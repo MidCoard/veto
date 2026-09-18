@@ -4,14 +4,91 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.mock;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.agent.TurnRecord;
+import top.focess.veto.agent.TurnType;
 import top.focess.veto.agent.translation.CapabilityTranslator;
+import top.focess.veto.llm.core.NativeToolState;
+import top.focess.veto.llm.core.ToolCall;
 import top.focess.veto.llm.core.ToolResultPresentationMode;
 
 class HistoryPromptTest {
+    @Test
+    void submittedAnswerSurvivesAlongsideNativeProviderTextFromTheSameCall() {
+        @NonNull CapabilityTranslator translator = mock();
+        var compiler = PromptCompiler.isolated(translator, new ObjectMapper(), "System", 100000);
+        var call =
+                new ToolCall("answer_with_citations", Map.of())
+                        .withNativeState(
+                                new NativeToolState("ANTHROPIC", 1, "model", "batch", "[]", 0));
+        var payload = new LinkedHashMap<>(TurnRecord.toolCall(3, call).payload());
+        payload.put("model_call_id", "call-1");
+        var messages =
+                compiler.resolveRewinds(
+                        List.of(
+                                TurnRecord.userPrompt(1, "Question"),
+                                new TurnRecord(
+                                        2,
+                                        TurnType.ASSISTANT_RESPONSE,
+                                        Map.of(
+                                                "content",
+                                                "Preparing answer",
+                                                "model_call_id",
+                                                "call-1",
+                                                "native_response_text",
+                                                true),
+                                        null),
+                                new TurnRecord(3, TurnType.TOOL_CALL, payload, null),
+                                TurnRecord.toolResponse(4, call.callId(), "accepted", true),
+                                new TurnRecord(
+                                        5,
+                                        TurnType.ASSISTANT_RESPONSE,
+                                        Map.of(
+                                                "content",
+                                                "Final cited answer",
+                                                "model_call_id",
+                                                "call-1"),
+                                        null)),
+                        ToolResultPresentationMode.BASIC);
+        assertEquals(4, messages.size());
+        assertEquals("Preparing answer", messages.get(1).content());
+        assertEquals("Final cited answer", messages.getLast().content());
+    }
+
+    @Test
+    void providerReasoningIsDisplayedButNotReplayedAsOrdinaryAssistantProse() {
+        @NonNull CapabilityTranslator translator = mock();
+        var compiler = PromptCompiler.isolated(translator, new ObjectMapper(), "System", 100000);
+        var messages =
+                compiler.resolveRewinds(
+                        List.of(
+                                TurnRecord.userPrompt(1, "Question"),
+                                new TurnRecord(
+                                        2,
+                                        TurnType.ASSISTANT_THOUGHT,
+                                        Map.of(
+                                                "response",
+                                                "Provider summary",
+                                                "provider_reasoning",
+                                                true,
+                                                "response_format",
+                                                "text"),
+                                        null),
+                                new TurnRecord(
+                                        3,
+                                        TurnType.ASSISTANT_RESPONSE,
+                                        Map.of("content", "Answer"),
+                                        null)),
+                        ToolResultPresentationMode.BASIC);
+        assertEquals(
+                List.of("Question", "Answer"),
+                messages.stream().map(message -> message.content()).toList());
+    }
+
     @Test
     void historicalSummariesAreFramedAsDataWithoutLosingLegacyContent() {
         @NonNull CapabilityTranslator translator = mock();

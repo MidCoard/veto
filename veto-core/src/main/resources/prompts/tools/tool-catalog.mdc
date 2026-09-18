@@ -4,42 +4,60 @@ id: tool-catalog
 requires: [tools]
 ---
 @if nonempty(tools)
+
 ## Your Tools
+
 The native tool schemas define argument names, types, required fields and constraints. The catalogue below describes tool behavior, usage and results. Follow the provider response channel instructions to invoke them.
 @for tool in tools
+
 ### `{{tool.name}}`
+
 {{tool.description}}
+
 #### Result formats
+
 @for format in tool.formats
 - `{{format.id}}`: {{format.description}}.
 @endfor
 @if nonempty(tool.documentation.behavior)
+
 #### Behavior
+
 {{tool.documentation.behavior}}
 @endif
 @if nonempty(tool.documentation.whenToUse)
+
 #### When to use
+
 {{tool.documentation.whenToUse}}
 @endif
 @if nonempty(tool.documentation.whenNotToUse)
+
 #### When not to use
+
 {{tool.documentation.whenNotToUse}}
 @endif
 @for example in tool.examples
 @if loop.first
+
 #### Argument examples
+
 ```json
 {{example}}
 ```
 @endif
 @endfor
 @if nonempty(tool.documentation.resultContract)
+
 #### Result contract
+
 {{tool.documentation.resultContract}}
 @endif
 @for example in tool.returnExamples
 @if loop.first
+
 #### Result examples
+
 @if isjson(example)
 ```json
 @else
@@ -50,7 +68,9 @@ The native tool schemas define argument names, types, required fields and constr
 @endif
 @endfor
 @if nonempty(tool.documentation.errorsAndEdgeCases)
+
 #### Errors and edge cases
+
 {{tool.documentation.errorsAndEdgeCases}}
 @endif
 @endfor

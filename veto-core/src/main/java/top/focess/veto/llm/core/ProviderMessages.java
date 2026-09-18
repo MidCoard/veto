@@ -2,6 +2,7 @@ package top.focess.veto.llm.core;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import org.jspecify.annotations.NonNull;
 
 /** The non-system message boundaries sent to a provider, retaining internal source identity. */
@@ -12,7 +13,27 @@ public final class ProviderMessages {
         List<List<ChatMessage>> result = new ArrayList<>();
         if (request.messages().isEmpty())
             return List.of(List.of(ChatMessage.user(request.userPrompt())));
-        if (request.providerType() == ProviderType.GEMINI) return geminiGroups(request);
+        if (request.messages().stream().anyMatch(message -> message.nativeState() != null)) {
+            var groups = nativeGroups(request);
+            if (request.providerType() != ProviderType.ANTHROPIC) return groups;
+            for (var group : groups) {
+                var nonEmpty =
+                        group.stream()
+                                .filter(
+                                        message ->
+                                                !message.role().equals("assistant")
+                                                        || !message.content().isEmpty()
+                                                        || message.toolName() != null)
+                                .toList();
+                if (nonEmpty.isEmpty()) continue;
+                boolean assistant = nonEmpty.getFirst().role().equals("assistant");
+                if (!result.isEmpty()
+                        && result.getLast().getFirst().role().equals("assistant") == assistant)
+                    result.getLast().addAll(nonEmpty);
+                else result.add(new ArrayList<>(nonEmpty));
+            }
+            return result.stream().map(List::copyOf).toList();
+        }
         String previousRole = null;
         for (ChatMessage message : request.messages()) {
             if (message.role().equals("system")) continue;
@@ -32,14 +53,14 @@ public final class ProviderMessages {
         return result.stream().map(List::copyOf).toList();
     }
 
-    private static @NonNull List<List<ChatMessage>> geminiGroups(@NonNull VetoRequest request) {
+    private static @NonNull List<List<ChatMessage>> nativeGroups(@NonNull VetoRequest request) {
         var messages = request.messages().stream().filter(m -> !m.role().equals("system")).toList();
         List<List<ChatMessage>> out = new ArrayList<>();
         for (int i = 0; i < messages.size(); ) {
             var first = messages.get(i);
             var state = first.nativeState();
             if (state == null
-                    || !state.supports("GEMINI", request.modelName())
+                    || !state.supports(request.providerType().name(), request.modelName())
                     || !first.role().equals("assistant")) {
                 out.add(List.of(first));
                 i++;
@@ -53,12 +74,13 @@ public final class ProviderMessages {
                 var next = call.nativeState();
                 if (next == null
                         || !next.batch().equals(state.batch())
-                        || !next.supports("GEMINI", request.modelName())) break;
+                        || !next.supports(request.providerType().name(), request.modelName()))
+                    break;
                 calls.add(call);
                 i++;
                 if (i < messages.size()
                         && messages.get(i).role().equals("tool")
-                        && java.util.Objects.equals(call.callId(), messages.get(i).callId()))
+                        && Objects.equals(call.callId(), messages.get(i).callId()))
                     results.add(messages.get(i++));
                 else break;
             }

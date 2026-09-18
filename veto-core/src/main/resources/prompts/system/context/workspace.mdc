@@ -5,10 +5,11 @@ requires: [workspace]
 ---
 @if nonempty(workspace.roots)
 ## Workspace
+
 @if workspace.pathMode == "VIRTUAL"
-Native file tools can address only the mounted workspace roots below. Use a slash-prefixed absolute workspace path beginning with a listed root name, independent of the host OS.
+- Native file tools can address only the mounted workspace roots below. Use a slash-prefixed absolute workspace path beginning with a listed root name, independent of the host OS.
 @else
-Use an absolute path for every file-tool path argument, using the host OS's path syntax. The roots below are the working context; the Boundaries section states whether other paths are reachable.
+- Use an absolute path for every file-tool path argument, using the host OS's path syntax. The roots below are the working context; the Boundaries section states whether other paths are reachable.
 @endif
 - Roots:
 @for root in workspace.roots

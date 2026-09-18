@@ -27,7 +27,7 @@ import top.focess.veto.agent.tool.ToolEngine;
  *
  * <p>Filtering the <em>resolved</em> {@link ToolDefinition} list (post-{@code getActiveTools}) -
  * not the name-whitelist param - is deliberate: {@link ToolEngine#getActiveTools} always includes
- * the agent tools ({@code load_skill}, {@code think}) regardless of the whitelist, so only a
+ * the agent tools ({@code load_skill}, {@code submit_plan}) regardless of the whitelist, so only a
  * post-resolution filter can scope them. Names identify calls; capabilities authorize sets of
  * effects. The prompt compiler performs the final conditional pass and removes {@code load_skill}
  * when the resolved persona has no skills.

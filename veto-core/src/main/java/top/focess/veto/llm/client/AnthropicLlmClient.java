@@ -2,6 +2,7 @@ package top.focess.veto.llm.client;
 
 import com.anthropic.client.AnthropicClient;
 import com.anthropic.core.JsonValue;
+import com.anthropic.core.ObjectMappers;
 import com.anthropic.models.messages.ContentBlock;
 import com.anthropic.models.messages.ContentBlockParam;
 import com.anthropic.models.messages.Message;
@@ -18,12 +19,14 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.stream.Collectors;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import top.focess.veto.llm.core.ChatMessage;
 import top.focess.veto.llm.core.LlmSystemUsage;
+import top.focess.veto.llm.core.NativeToolState;
 import top.focess.veto.llm.core.ProviderMessages;
 import top.focess.veto.llm.core.ResolvedRequest;
 import top.focess.veto.llm.core.ToolDefinition;
@@ -53,7 +56,7 @@ final class AnthropicLlmClient extends LlmClient {
     }
 
     @Override
-    public @NonNull RawCompletion complete(@NonNull ResolvedRequest resolved) {
+    public @NonNull RawCompletion complete(@NonNull ResolvedRequest resolved) throws Exception {
         VetoRequest request = resolved.request();
 
         MessageCreateParams.Builder builder =
@@ -62,7 +65,11 @@ final class AnthropicLlmClient extends LlmClient {
                         .maxTokens(request.options().maxTokensOrDefault())
                         .system(responsePrompt(request));
         Double temperature = request.options().temperature();
-        if (temperature != null) {
+        var thinking = ModelReasoning.anthropic(request);
+        if (!thinking.isEmpty())
+            builder.putAdditionalBodyProperty("thinking", JsonValue.from(thinking));
+        if (temperature != null
+                && (!request.modelName().startsWith("claude-") || thinking.isEmpty())) {
             builder.putAdditionalBodyProperty("temperature", JsonValue.from(temperature));
         }
         if (!request.tools().isEmpty()) {
@@ -158,18 +165,49 @@ final class AnthropicLlmClient extends LlmClient {
 
         String summary = "model=" + request.modelName() + ", tools=" + request.tools().size();
         return NativeToolResponses.completion(
-                objectMapper,
-                summary,
-                rawInput,
-                toolUses.stream()
-                        .map(
-                                tu ->
-                                        new NativeToolResponses.Call(
-                                                tu.name(),
-                                                objectMapper.valueToTree(toolInputMap(tu)),
-                                                tu.id()))
-                        .toList(),
-                List.of());
+                        objectMapper,
+                        summary,
+                        rawInput,
+                        toolUses.stream()
+                                .map(
+                                        tu ->
+                                                new NativeToolResponses.Call(
+                                                        tu.name(),
+                                                        objectMapper.valueToTree(toolInputMap(tu)),
+                                                        tu.id()))
+                                .toList(),
+                        nativeStates(message, request.modelName()))
+                .withReasoning(
+                        message.content().stream()
+                                .filter(ContentBlock::isThinking)
+                                .map(block -> block.asThinking().thinking())
+                                .collect(Collectors.joining("\n")));
+    }
+
+    private static @NonNull List<NativeToolState> nativeStates(
+            @NonNull Message message, @NonNull String model) throws Exception {
+        var segments = new ArrayList<List<ContentBlockParam>>();
+        var pending = new ArrayList<ContentBlockParam>();
+        for (var block : message.content()) {
+            pending.add(block.toParam());
+            if (block.isToolUse()) {
+                segments.add(new ArrayList<>(pending));
+                pending.clear();
+            }
+        }
+        if (!segments.isEmpty()) segments.getLast().addAll(pending);
+        var result = new ArrayList<NativeToolState>();
+        String batch = UUID.randomUUID().toString();
+        for (var segment : segments)
+            result.add(
+                    new NativeToolState(
+                            "ANTHROPIC",
+                            1,
+                            model,
+                            batch,
+                            ObjectMappers.jsonMapper().writeValueAsString(segment),
+                            result.size()));
+        return result;
     }
 
     private @NonNull String responsePrompt(@NonNull VetoRequest request) {
@@ -220,7 +258,8 @@ final class AnthropicLlmClient extends LlmClient {
      * tool_result} blocks keyed by tool_use_id; synthetic observations (null callId) become plain
      * user text, matching the compiler's intent.
      */
-    private @NonNull List<MessageParam> toMessageParams(@NonNull VetoRequest request) {
+    private @NonNull List<MessageParam> toMessageParams(@NonNull VetoRequest request)
+            throws Exception {
         // The PromptCompiler.wellFormed contract already guarantees a conversation every strict
         // provider accepts (opens on a user message; tool_use/tool_result pairs intact), so this
         // adapter maps messages directly and carries no provider-specific pairing guards.
@@ -239,7 +278,22 @@ final class AnthropicLlmClient extends LlmClient {
                             ? MessageParam.Role.ASSISTANT
                             : MessageParam.Role.USER;
             List<ContentBlockParam> groupBlocks = new ArrayList<>();
+            var headState = group.getFirst().nativeState();
+            boolean replayNative = headState != null && headState.position() == 0;
             for (ChatMessage m : group) {
+
+                var state = m.nativeState();
+                if (replayNative
+                        && state != null
+                        && state.supports("ANTHROPIC", request.modelName())) {
+                    List<ContentBlockParam> original =
+                            ObjectMappers.jsonMapper()
+                                    .readValue(
+                                            state.partsJson(),
+                                            new TypeReference<List<ContentBlockParam>>() {});
+                    groupBlocks.addAll(original);
+                    continue;
+                }
 
                 List<ContentBlockParam> blocks = new ArrayList<>();
                 switch (m.role()) {

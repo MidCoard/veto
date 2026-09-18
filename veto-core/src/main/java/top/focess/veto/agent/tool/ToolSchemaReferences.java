@@ -111,7 +111,7 @@ public final class ToolSchemaReferences {
             active.remove(reference);
             return result;
         }
-        JsonNode resolved = normalize(target, root, active, separateResource);
+        JsonNode resolved = normalize(target, root, active, false);
         active.remove(reference);
         if (result.isEmpty()) return resolved;
         if (resolved.isObject()) {

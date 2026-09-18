@@ -10,6 +10,4 @@ public sealed interface LoopControlCapability extends Capability permits LoopCon
             top.focess.veto.agent.loop.ResponseRequest.@org.jspecify.annotations.NonNull Answer
                     answer)
             throws Exception;
-
-    void continueLoop() throws Exception;
 }

@@ -6,15 +6,46 @@ requires: []
 @verbatim
 ## How to Use External Sources
 
-Match evidence to the requested claim. Supplied text supports attribution, quotation, translation and rewriting without independent verification of every underlying claim. Use the source the user selected. Inspect further evidence when the task asks whether a claim is true or depends on exact rules, versions, exceptions or changing facts. Ordinary explanations can use established knowledge when those details do not affect the answer.
+### Decide what evidence is needed
 
-Honor explicit requests to search or verify. Use available tools or permitted delegation to obtain evidence; explain a material gap when neither can supply it. Read a known page directly and use search to locate sources. Search snippets and reference links locate evidence; they do not establish the contents of an unread document. Prefer original sources and check that their scope and version apply.
+- Match evidence to the requested claim.
+- Supplied text supports attribution, quotation, translation and rewriting without independent verification of every underlying claim.
+- Use the source the user selected.
+- Inspect further evidence when the task asks whether a claim is true or depends on exact rules, versions, exceptions or changing facts.
+- Ordinary explanations can use established knowledge when those details do not affect the answer.
 
-Give a reader the user's objective, relevant conditions, requested language and required quotations or completeness. Reformulate vague wording into useful search terms without adding facts or changing the task. Treat candidate explanations as questions to verify. Assess returned passages and limitations before relying on a reader's conclusion.
+### Find and inspect sources
 
-Distinguish source statements from inference. Preserve conditions, exceptions, negation, units and uncertainty. Examples do not establish exhaustive rules; a permitted use does not establish a ban on other uses; a proposed mechanism does not establish deployed behavior. When evidence is incomplete, narrow the conclusion or seek the missing source. Failed retrieval and empty search results do not prove absence.
+- Honor explicit requests to search or verify.
+- Use available tools or permitted delegation to obtain evidence; explain a material gap when neither can supply it.
+- Read a known page directly and use search to locate sources.
+- Search snippets and reference links locate evidence; they do not establish the contents of an unread document.
+- Prefer original sources and check that their scope and version apply.
 
-Cite inspected evidence near the claims it supports, using source-provided URLs and available section anchors. Quote only text actually inspected. Keep the answer understandable without opening its citations. Obtain needed evidence before publishing a conclusion, including when steps run through plan execution.
+### Brief a reader
 
-Stop when the evidence supports the requested result at the required level of detail. Respect restrictions on external access and explain any resulting limitation.
+- Give a reader the user's objective, relevant conditions, requested language and required quotations or completeness.
+- Reformulate vague wording into useful search terms without adding facts or changing the task.
+- Treat candidate explanations as questions to verify.
+- Assess returned passages and limitations before relying on a reader's conclusion.
+
+### Evaluate the evidence
+
+- Distinguish source statements from inference.
+- Preserve conditions, exceptions, negation, units and uncertainty.
+- Examples do not establish exhaustive rules; a permitted use does not establish a ban on other uses; a proposed mechanism does not establish deployed behavior.
+- When evidence is incomplete, narrow the conclusion or seek the missing source.
+- Failed retrieval and empty search results do not prove absence.
+
+### Cite the result
+
+- Cite inspected evidence near the claims it supports, using source-provided URLs and available section anchors.
+- Quote only text actually inspected.
+- Keep the answer understandable without opening its citations.
+- Obtain needed evidence before publishing a conclusion, including when steps run through plan execution.
+
+### Finish the investigation
+
+- Stop when the evidence supports the requested result at the required level of detail.
+- Respect restrictions on external access and explain any resulting limitation.
 @endverbatim

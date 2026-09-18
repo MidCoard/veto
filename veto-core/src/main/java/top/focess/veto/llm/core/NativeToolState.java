@@ -3,7 +3,7 @@ package top.focess.veto.llm.core;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
 
-/** Opaque Gemini response parts, attached by the adapter, never accepted from model JSON. */
+/** Opaque provider response blocks, attached by the adapter, never accepted from model JSON. */
 public record NativeToolState(
         @NonNull String provider,
         int version,

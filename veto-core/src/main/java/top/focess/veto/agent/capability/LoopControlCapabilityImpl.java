@@ -23,9 +23,4 @@ public final class LoopControlCapabilityImpl implements LoopControlCapability {
         CapabilityAccess.require(ToolCapability.LOOP_CONTROL, "answer_with_citations");
         top.focess.veto.agent.tool.ToolCallContextHolder.requestResponse(answer);
     }
-
-    @Override
-    public void continueLoop() throws Exception {
-        CapabilityAccess.require(ToolCapability.LOOP_CONTROL, "think");
-    }
 }

@@ -7,6 +7,7 @@ requires: [persona, guidance, instructions, tools, presentation]
 @include identity
 @include tool-agent-operating-contract
 ## Task Instructions
+
 {{instructions}}
 @include tool-agent-tool-calls
 @include tool-catalog

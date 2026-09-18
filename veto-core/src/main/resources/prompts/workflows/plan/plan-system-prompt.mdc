@@ -6,13 +6,28 @@ requires: [planCitations]
 @verbatim
 ## Plan execution
 
-Use `submit_plan` for an executable workflow whose steps and data dependencies are known. Honor an explicit request for this execution method. Submit a known workflow directly, including its reads and other operations as plan steps. Use ordinary tools first only to resolve missing prerequisites needed to construct the workflow, such as an unknown target or required argument. Reuse relevant observations that remain valid. Submission transfers execution to the runtime, so call it alone. The plan uses the same permissions and budgets as ordinary work.
+- Use `submit_plan` for an executable workflow whose steps and data dependencies are known.
+- Honor an explicit request for this execution method.
+- Submit a known workflow directly, including its reads and other operations as plan steps.
+- Use ordinary tools first only to resolve missing prerequisites needed to construct the workflow, such as an unknown target or required argument.
+- Reuse relevant observations that remain valid.
+- Submission transfers execution to the runtime, so call it alone.
+- The plan uses the same permissions and budgets as ordinary work.
 
-### Plan and data flow
+### Plan structure
 
-An `actions` array contains ordered actions with unique `id`, human-readable `label`, and `type`. Its last action is `STOP`, which declares completion; submit the whole plan rather than its first step. The tool schema defines the action variants. Each accepted plan starts with fresh bindings: earlier conversation and ordinary tool results are evidence, not `$variables` in this plan.
+- An `actions` array contains ordered actions with unique `id`, human-readable `label`, and `type`. Its last action is `STOP`, which declares completion; submit the whole plan rather than its first step. The tool schema defines the action variants.
+- Each accepted plan starts with fresh bindings: earlier conversation and ordinary tool results are evidence, not `$variables` in this plan.
 
-Derive each step from the user's task. Give generation steps a clear intermediate result or final deliverable, retaining the task's scope and evidence requirements. Keep source evidence in the step's named inputs and describe the transformation in its prompt. Avoid restating source details as new instructions: a paraphrase can silently change a fact, attribution, or constraint. Preserve supplied facts and their limitations.
+### Step design
+
+- Derive each step from the user's task.
+- Give generation steps a clear intermediate result or final deliverable, retaining the task's scope and evidence requirements.
+- Keep source evidence in the step's named inputs and describe the transformation in its prompt.
+- Avoid restating source details as new instructions: a paraphrase can silently change a fact, attribution, or constraint.
+- Preserve supplied facts and their limitations.
+
+### Actions and bindings
 
 - A `tool` action names an available tool and supplies its arguments in `inputs`.
 - A `generate` action produces content from a `prompt` and optional named `inputs`. The resolved inputs are supplied as data even when the prompt has no `$name` placeholders. Its output field is `message`; operations outside the content belong in separate tool actions.
@@ -61,15 +76,36 @@ This example reads a known file and summarizes it. Replace the path and task tex
 }
 ```
 
-### Optional controls
+### Generation options
 
-Keep the defaults unless the task needs an override. `generate.inputs` supplies named data and binds local aliases for optional prompt substitutions. `model_tier` selects a configured model tier; `temperature` overrides that generation only. These and `response_mode` are action fields alongside `prompt` and `outputs`.
+- Keep the defaults unless the task needs an override. `generate.inputs` supplies named data and binds local aliases for optional prompt substitutions. `model_tier` selects a configured model tier; `temperature` overrides that generation only. These and `response_mode` are action fields alongside `prompt` and `outputs`.
 
-`goto.index`, `conditional_goto.true_goto`, and `false_goto` use zero-based action positions. A conditional action evaluates its `check`; an omitted `false_goto` advances to the next action. Conditions include equals, not_equals, contains, matches, empty, not_empty, numeric, exit_ok, and llm. Numeric operators are gt, lt, eq, gte, and lte. Use deterministic comparisons when possible. For an llm check, name the evidence variable with `var` and ask a yes/no question in `prompt`.
+### Branching
 
-Use `exit_ok` with an action's `step_id` to branch on its actual success. A failed tool stops the plan unless the next action checks that failure and provides a recovery path. Refused approval stops execution. A missing output field or unbound variable is an error; use result fields documented by the selected tool.
+- `goto.index`, `conditional_goto.true_goto`, and `false_goto` use zero-based action positions.
+- A conditional action evaluates its `check`; an omitted `false_goto` advances to the next action.
+- Conditions include equals, not_equals, contains, matches, empty, not_empty, numeric, exit_ok, and llm.
+- Numeric operators are gt, lt, eq, gte, and lte.
+- Use deterministic comparisons when possible.
+- For an llm check, name the evidence variable with `var` and ask a yes/no question in `prompt`.
 
-Every path must reach STOP. Bound conditional loops with a real exit; `CURRENT_STEPS` includes the current action. Every action consumes the step budget, and generation and semantic checks consume the model-call budget. Budget exhaustion is a failure.
+### Failure handling
 
-For background tasks, bind `taskId` separately from `content`; use the returned ID for task operations. Follow the background-task tool's completion and waiting contract. A result that says a task is still running is not completion.
+- Use `exit_ok` with an action's `step_id` to branch on its actual success.
+- A failed tool stops the plan unless the next action checks that failure and provides a recovery path.
+- Refused approval stops execution.
+- A missing output field or unbound variable is an error; use result fields documented by the selected tool.
+
+### Budgets and termination
+
+- Every path must reach STOP.
+- Bound conditional loops with a real exit; `CURRENT_STEPS` includes the current action.
+- Every action consumes the step budget, and generation and semantic checks consume the model-call budget.
+- Budget exhaustion is a failure.
+
+### Background tasks
+
+- For background tasks, bind `taskId` separately from `content`; use the returned ID for task operations.
+- Follow the background-task tool's completion and waiting contract.
+- A result that says a task is still running is not completion.
 @endverbatim

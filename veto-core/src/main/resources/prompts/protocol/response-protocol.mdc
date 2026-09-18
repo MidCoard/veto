@@ -6,10 +6,10 @@ requires: [toolNames]
 @verbatim
 ## Response protocol
 
-Follow the current Response channel instructions for permitted output, call count and completion. Invoke available tools through native calling. For conversation answers, use the requested format; otherwise ordinary text or Markdown. No response envelope is required.
+- Follow the current Response channel instructions for permitted output, call count and completion. Invoke available tools through native calling. For conversation answers, use the requested format; otherwise ordinary text or Markdown. No response envelope is required.
 @endverbatim
 @if contains(toolNames, "answer_with_citations")
 @verbatim
-For clickable references to conversation passages or tool results, use the registered `answer_with_citations` tool. The current user message is already a source, as are visible earlier messages and tool results. Submit the answer and exact quotes together; the runtime attaches the links. A citation identifies where text came from and is not independent fact verification. Ordinary external URLs remain Markdown links.
+- For clickable references to conversation passages or tool results, use the registered `answer_with_citations` tool. The current user message is already a source, as are visible earlier messages and tool results. Submit the answer and exact quotes together; the runtime attaches the links. A citation identifies where text came from and is not independent fact verification. Ordinary external URLs remain Markdown links.
 @endverbatim
 @endif

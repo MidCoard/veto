@@ -2,7 +2,9 @@ package top.focess.veto.llm.client;
 
 import java.util.List;
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.llm.core.NativeToolState;
 import top.focess.veto.llm.core.ResolvedRequest;
+import top.focess.veto.llm.core.ToolCall;
 
 /**
  * Our abstraction over third-party LLM SDK clients. Encapsulates all provider-specific request
@@ -36,8 +38,9 @@ public abstract class LlmClient {
     public record RawCompletion(
             @NonNull String requestSummary,
             @NonNull String rawResponse,
-            @NonNull List<top.focess.veto.llm.core.NativeToolState> nativeStates,
-            @NonNull List<top.focess.veto.llm.core.ToolCall> nativeCalls) {
+            @NonNull List<NativeToolState> nativeStates,
+            @NonNull List<ToolCall> nativeCalls,
+            String reasoning) {
         public RawCompletion {
             nativeStates = List.copyOf(nativeStates);
             nativeCalls = List.copyOf(nativeCalls);
@@ -46,7 +49,24 @@ public abstract class LlmClient {
         public RawCompletion(
                 @NonNull String requestSummary,
                 @NonNull String rawResponse,
-                @NonNull List<top.focess.veto.llm.core.NativeToolState> nativeStates) {
+                @NonNull List<NativeToolState> nativeStates,
+                @NonNull List<ToolCall> nativeCalls) {
+            this(requestSummary, rawResponse, nativeStates, nativeCalls, null);
+        }
+
+        public @NonNull RawCompletion withReasoning(String text) {
+            return new RawCompletion(
+                    requestSummary,
+                    rawResponse,
+                    nativeStates,
+                    nativeCalls,
+                    text == null || text.isBlank() ? null : text);
+        }
+
+        public RawCompletion(
+                @NonNull String requestSummary,
+                @NonNull String rawResponse,
+                @NonNull List<NativeToolState> nativeStates) {
             this(requestSummary, rawResponse, nativeStates, List.of());
         }
 

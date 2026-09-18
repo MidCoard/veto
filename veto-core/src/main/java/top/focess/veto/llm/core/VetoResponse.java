@@ -7,8 +7,8 @@ import org.jspecify.annotations.NonNull;
 
 /**
  * Internal adapter result: model text, native calls and resolved answer citations. Execution plans
- * are control directives created by submit_plan, never model response fields. thought is legacy
- * operational text, not a provider thinking configuration.
+ * are control directives created by submit_plan, never model response fields. thought contains
+ * provider-exposed reasoning text, not a model-authored envelope or a thinking configuration.
  */
 @com.fasterxml.jackson.annotation.JsonInclude(
         com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)

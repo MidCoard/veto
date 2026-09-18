@@ -37,7 +37,6 @@ final class OpenAiLlmClient extends LlmClient {
     private final boolean supportsJsonSchema;
     private final @NonNull String providerName;
     private final @NonNull ObjectMapper objectMapper;
-    private final @NonNull CapabilityTranslator capabilityTranslator;
 
     OpenAiLlmClient(
             @NonNull OpenAIClient sdkClient,
@@ -49,7 +48,6 @@ final class OpenAiLlmClient extends LlmClient {
         this.supportsJsonSchema = supportsJsonSchema;
         this.providerName = providerName;
         this.objectMapper = objectMapper;
-        this.capabilityTranslator = capabilityTranslator;
     }
 
     @Override
@@ -96,7 +94,10 @@ final class OpenAiLlmClient extends LlmClient {
         if (request.messages().isEmpty())
             builder.addMessage(
                     ChatCompletionUserMessageParam.builder().content(request.userPrompt()).build());
-        applyOptions(builder, request.options());
+        boolean reasoning = ModelReasoning.openAi(request.modelName());
+        if (reasoning)
+            builder.putAdditionalBodyProperty("reasoning_effort", JsonValue.from("medium"));
+        applyOptions(builder, request.options(), reasoning);
 
         ChatCompletion completion = sdkClient.chat().completions().create(builder.build());
         if (completion.usage().isPresent()) {
@@ -150,11 +151,13 @@ final class OpenAiLlmClient extends LlmClient {
     }
 
     private void applyOptions(
-            ChatCompletionCreateParams.@NonNull Builder builder, @NonNull LlmOptions options) {
-        if (options.temperature() != null) {
+            ChatCompletionCreateParams.@NonNull Builder builder,
+            @NonNull LlmOptions options,
+            boolean reasoning) {
+        if (!reasoning && options.temperature() != null) {
             builder.temperature(options.temperature());
         }
-        if (options.topP() != null) {
+        if (!reasoning && options.topP() != null) {
             builder.topP(options.topP());
         }
         Integer maxTokens = options.maxTokens();

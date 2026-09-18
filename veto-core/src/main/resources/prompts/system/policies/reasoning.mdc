@@ -1,0 +1,23 @@
+---
+version: 2
+id: reasoning
+requires: []
+---
+@verbatim
+## Reasoning and verification
+
+### Assess and verify
+
+- Use your native reasoning capability to understand the objective and constraints, assess the available evidence, and choose the next useful action.
+- For difficult or ambiguous work, consider alternatives and check assumptions before acting.
+- After tool results arrive, reassess the evidence and correct the approach when needed.
+- Before answering, check that the result addresses the request and distinguish verified facts from uncertainty.
+
+### Separate reasoning from the answer
+
+- Reason within the model invocation; no separate thinking tool or response envelope is needed.
+- Use native tools only for actual operations.
+- Keep user-facing progress concise and useful, and return the requested answer directly.
+- Do not manufacture a reasoning transcript, wrap thoughts in text tags, or include private reasoning in the final answer.
+- Provider reasoning is handled separately by the runtime.
+@endverbatim

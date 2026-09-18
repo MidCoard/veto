@@ -42,8 +42,8 @@ import top.focess.veto.agent.tool.ToolEngine;
 import top.focess.veto.agent.tool.ToolEngineImpl;
 import top.focess.veto.agent.tool.ToolResult;
 import top.focess.veto.agent.tool.builtin.AskUserTool;
+import top.focess.veto.agent.tool.builtin.FixtureLoopTool;
 import top.focess.veto.agent.tool.builtin.RunTaskTool;
-import top.focess.veto.agent.tool.builtin.ThinkTool;
 import top.focess.veto.agent.tool.builtin.UserQuestionRegistry;
 import top.focess.veto.agent.translation.DefaultCapabilityTranslator;
 import top.focess.veto.group.Blackboard;
@@ -124,19 +124,19 @@ class AgentRunnerTest {
             throws Exception {
         var think =
                 AgentToolDefinition.from(
-                        "think",
-                        ToolDocs.nonNullClass(ThinkTool.class),
-                        ToolDocs.nonNullClass(ThinkTool.Args.class),
+                        "fixture_loop",
+                        ToolDocs.nonNullClass(FixtureLoopTool.class),
+                        ToolDocs.nonNullClass(FixtureLoopTool.Args.class),
                         ToolCapability.LOOP_CONTROL);
         var finish =
                 AgentToolDefinition.from(
                         "finish",
-                        ToolDocs.nonNullClass(ThinkTool.class),
-                        ToolDocs.nonNullClass(ThinkTool.Args.class),
+                        ToolDocs.nonNullClass(FixtureLoopTool.class),
+                        ToolDocs.nonNullClass(FixtureLoopTool.Args.class),
                         ToolCapability.LOOP_CONTROL);
         @NonNull ToolEngine engine = Mockito.mock();
         Mockito.when(engine.getActiveTools(Mockito.any())).thenReturn(List.of(think, finish));
-        Mockito.when(engine.resolveDefinition("think")).thenReturn(think);
+        Mockito.when(engine.resolveDefinition("fixture_loop")).thenReturn(think);
         Mockito.when(engine.resolveDefinition("finish")).thenReturn(finish);
         List<String> executed = new CopyOnWriteArrayList<>();
         Mockito.when(engine.execute(Mockito.any(), Mockito.any()))
@@ -158,7 +158,7 @@ class AgentRunnerTest {
                                     !obey
                                                     || (limit == 4 && requests.size() <= 3)
                                                     || (limit < 0 && requests.size() == 1)
-                                            ? "think"
+                                            ? "fixture_loop"
                                             : "finish";
                             return new VetoResponse(
                                     null, List.of(new ToolCall(tool, Map.of())), null);
@@ -189,13 +189,27 @@ class AgentRunnerTest {
             assertEquals(limit < 0 ? 2 : limit, requests.size());
             assertEquals(
                     limit == 4
-                            ? obey ? List.of("think", "think", "finish") : List.of("think", "think")
+                            ? obey
+                                    ? List.of("fixture_loop", "fixture_loop", "finish")
+                                    : List.of("fixture_loop", "fixture_loop")
                             : limit < 0
-                                    ? List.of("think", "finish")
+                                    ? List.of("fixture_loop", "finish")
                                     : limit != 0 && obey ? List.of("finish") : List.of(),
                     executed);
             if (limit > 0) {
                 var last = requests.getLast();
+                assertEquals(
+                        1,
+                        last.messages().stream()
+                                .filter(
+                                        message ->
+                                                message.promptSources().stream()
+                                                        .anyMatch(
+                                                                span ->
+                                                                        span.source()
+                                                                                .equals(
+                                                                                        "runtime-completion.mdc")))
+                                .count());
                 assertEquals(
                         List.of("finish"), last.tools().stream().map(tool -> tool.name()).toList());
                 assertTrue(
@@ -260,12 +274,15 @@ class AgentRunnerTest {
             assertEquals(3, ids.size());
             assertNotNull(ids.getFirst());
             assertNotEquals(ids.getFirst(), ids.getLast());
-            TurnRecord toolCall =
+            assertTrue(
+                    agent.history().stream().noneMatch(turn -> turn.type() == TurnType.TOOL_CALL));
+            assertTrue(
                     agent.history().stream()
-                            .filter(turn -> turn.type() == TurnType.TOOL_CALL)
-                            .findFirst()
-                            .orElseThrow();
-            assertEquals(ids.get(1), toolCall.payload().get("model_call_id"));
+                            .anyMatch(
+                                    turn ->
+                                            turn.type() == TurnType.EXECUTION_ERROR
+                                                    && Boolean.TRUE.equals(
+                                                            turn.payload().get("recoverable"))));
             var outputs =
                     agent.history().stream()
                             .filter(
@@ -2481,9 +2498,9 @@ class AgentRunnerTest {
         assertTrue(rejection.contains("message"), "echoes the violation detail");
         assertTrue(rejection.contains("Expected:"), "carries the expected-description guidance");
         assertTrue(
-                rejection.contains("native tool calling"),
+                rejection.contains("Tool execution is disabled for this invocation"),
                 "correction preserves the native channel");
-        assertTrue(rejection.contains("VetoResponse has no calls field"));
+        assertFalse(rejection.contains("VetoResponse"));
 
         // The rejection is ephemeral: it must not be recorded in turn history.
         VetoAgent agent = requireAgent(service.agent("schema-retry"));
@@ -2527,7 +2544,7 @@ class AgentRunnerTest {
         VetoRequest retried = seenRequests.get(1);
         String rejection = retried.messages().get(retried.messages().size() - 1).content();
         assertTrue(
-                rejection.contains("message field is required"),
+                rejection.contains("message required"),
                 "message-required violation maps to the message-required guidance: " + rejection);
         assertFalse(
                 rejection.contains("thought field must not be present"),

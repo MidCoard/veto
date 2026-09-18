@@ -19,7 +19,7 @@ import org.jspecify.annotations.NonNull;
 final class MacOsSeatbeltSandbox {
 
     static final @NonNull Path SANDBOX_EXEC = Path.of("/usr/bin/sandbox-exec");
-    private static final List<Path> READ_ONLY_ROOTS =
+    private static final @NonNull List<Path> READ_ONLY_ROOTS =
             List.of(
                     Path.of("/System"),
                     Path.of("/usr"),

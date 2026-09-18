@@ -13,7 +13,7 @@ public final class ResponseEnforcer {
             Pattern.compile("\\[citation:([A-Za-z0-9_-]+)]");
 
     private static final @NonNull Pattern CITATION_LINK =
-            Pattern.compile("(?<![!\\\\])\\[[^\\]\\r\\n]+]\\(cite:([^)]*)\\)");
+            Pattern.compile("(?<![!\\\\])\\[[^]\\r\\n]+]\\(cite:([^)]*)\\)");
     private static final @NonNull Pattern CODE =
             Pattern.compile("(?s)```.*?```|~~~.*?~~~|`[^`\\n]*`");
 
@@ -24,6 +24,12 @@ public final class ResponseEnforcer {
     }
 
     public static @NonNull VetoResponse enforce(
+            @NonNull VetoResponse response, @NonNull Set<@NonNull String> allowedToolNames) {
+        validateCalls(response, allowedToolNames);
+        return validateMessage(response);
+    }
+
+    private static void validateCalls(
             @NonNull VetoResponse response, @NonNull Set<@NonNull String> allowedToolNames) {
         var calls = response.calls();
         if (calls != null) {
@@ -38,6 +44,10 @@ public final class ResponseEnforcer {
                 }
             }
         }
+    }
+
+    private static @NonNull VetoResponse validateMessage(@NonNull VetoResponse response) {
+        var calls = response.calls();
         String message = response.message();
         String prose = message == null ? "" : CODE.matcher(message).replaceAll("");
         if (BARE_CITATION.matcher(prose).find())

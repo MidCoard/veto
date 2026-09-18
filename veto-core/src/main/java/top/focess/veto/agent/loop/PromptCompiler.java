@@ -5,6 +5,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -27,6 +29,7 @@ import top.focess.veto.agent.tool.ToolResultStatus;
 import top.focess.veto.agent.translation.CapabilityTranslator;
 import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.llm.core.ChatMessage;
+import top.focess.veto.llm.core.NativeToolState;
 import top.focess.veto.llm.core.ToolDefinition;
 import top.focess.veto.llm.core.ToolResultPresentationMode;
 import top.focess.veto.llm.core.ToolResultPresenter;
@@ -297,26 +300,19 @@ public class PromptCompiler {
                         .map(ChatMessage::content)
                         .collect(Collectors.joining("\n\n"));
         if (isolatedInstructions != null) {
-            com.fasterxml.jackson.databind.JsonNode schema = null;
             List<ChatMessage> messages =
                     fitIsolatedBudget(
-                            conversation,
-                            flatTools,
-                            schema,
-                            maxInputTokens,
-                            toolResultPresentation);
+                            conversation, flatTools, null, maxInputTokens, toolResultPresentation);
             return new CompiledPrompt(
                     systemMessage,
                     messages,
                     flatTools,
-                    schema,
+                    null,
                     Math.max(0, conversation.size() - messages.size()),
-                    isolatedSize(messages, flatTools, schema));
+                    isolatedSize(messages, flatTools, null));
         }
         List<ChatMessage> messages =
                 wellFormed(conversation, conversation, interruptedResult(toolResultPresentation));
-
-        com.fasterxml.jackson.databind.JsonNode responseSchema = null;
 
         String provider = "";
         String model = "";
@@ -331,12 +327,12 @@ public class PromptCompiler {
                         systemMessage,
                         messages,
                         flatTools,
-                        responseSchema,
+                        null,
                         correctionFactor,
                         inputBudgetOverride != null
                                 ? inputBudgetOverride
                                 : inputBudget(provider, model));
-        return new CompiledPrompt(systemMessage, messages, flatTools, responseSchema, 0, estimate);
+        return new CompiledPrompt(systemMessage, messages, flatTools, null, 0, estimate);
     }
 
     /** Builds the system prompt stored in a newly created AGENT_INIT record. */
@@ -558,8 +554,39 @@ public class PromptCompiler {
         String pendingThought = null;
         String pendingReasoning = null;
         List<Integer> pendingTurns = List.of();
-        for (TurnRecord turn : HistoryProjection.effective(history)) {
+        var effective = HistoryProjection.effective(history);
+        var nativeCalls = new HashSet<String>();
+        for (var turn : effective) {
+            if (turn.type() == TurnType.TOOL_CALL
+                    && turn.payload().get("native_state") != null
+                    && turn.payload().get("model_call_id") instanceof String modelCallId)
+                nativeCalls.add(modelCallId);
+        }
+        var nativeText = new HashMap<String, TurnRecord>();
+        for (var turn : effective) {
+            if (turn.type() == TurnType.ASSISTANT_RESPONSE
+                    && Boolean.TRUE.equals(turn.payload().get("native_response_text"))
+                    && turn.payload().get("model_call_id") instanceof String modelCallId
+                    && nativeCalls.contains(modelCallId)) nativeText.put(modelCallId, turn);
+        }
+        for (TurnRecord turn : effective) {
             if (turn.type() == TurnType.TOKEN_USAGE) continue;
+            // Displayed reasoning is not assistant prose. Its provider-native state is on calls.
+            if (turn.type() == TurnType.ASSISTANT_THOUGHT
+                    && Boolean.TRUE.equals(turn.payload().get("provider_reasoning"))) continue;
+            if (turn.type() == TurnType.ASSISTANT_RESPONSE
+                    && Boolean.TRUE.equals(turn.payload().get("native_response_text"))
+                    && nativeCalls.contains(turn.payload().get("model_call_id"))) continue;
+            var state = NativeToolState.fromPayload(turn.payload().get("native_state"));
+            var textTurn = nativeText.get(turn.payload().get("model_call_id"));
+            if (turn.type() == TurnType.TOOL_CALL
+                    && state != null
+                    && state.position() == 0
+                    && textTurn != null) {
+                // Preserve plain text for provider/model changes; same-provider replay uses blocks.
+                pendingThought = str(textTurn.payload(), "content");
+                pendingTurns = List.of(textTurn.turnNumber());
+            }
             if (pendingThought != null
                     && turn.type() != TurnType.TOOL_CALL
                     && turn.type() != TurnType.REWIND) {
@@ -710,8 +737,7 @@ public class PromptCompiler {
                 yield ChatMessage.assistantToolCall(
                                 callId, toolName, toolArgs, thoughtContent, pendingReasoning)
                         .withNativeState(
-                                top.focess.veto.llm.core.NativeToolState.fromPayload(
-                                        turn.payload().get("native_state")));
+                                NativeToolState.fromPayload(turn.payload().get("native_state")));
             }
             case TOOL_RESPONSE -> mapPresentedToolResponse(turn, toolResultPresentation);
             case AGENT_INIT -> null; // handled before role mapping

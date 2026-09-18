@@ -10,6 +10,7 @@ import java.lang.reflect.Type;
 import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.regex.Pattern;
 import org.jspecify.annotations.NonNull;
 
 /**
@@ -153,8 +154,7 @@ public final class ToolSchemaCompiler {
                     paramNode.put("maxLength", text.maxLength());
                 }
                 if (!text.pattern().isEmpty()) {
-                    java.util.regex.Pattern.compile(text.pattern());
-                    paramNode.put("pattern", text.pattern());
+                    paramNode.put("pattern", Pattern.compile(text.pattern()).pattern());
                 }
             }
 

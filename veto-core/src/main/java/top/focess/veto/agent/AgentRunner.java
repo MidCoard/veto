@@ -89,7 +89,6 @@ import top.focess.veto.llm.core.LlmOptions;
 import top.focess.veto.llm.core.LlmSystemUsage;
 import top.focess.veto.llm.core.ProviderMessages;
 import top.focess.veto.llm.core.ProviderType;
-import top.focess.veto.llm.core.ReasoningContentHolder;
 import top.focess.veto.llm.core.ResponseContract;
 import top.focess.veto.llm.core.ToolCall;
 import top.focess.veto.llm.core.ToolResultPresentationMode;
@@ -310,10 +309,7 @@ public class AgentRunner {
     // Set only when the model-call ceiling trips. The next exact "continue" prompt consumes it and
     // carries the prior task into a self-contained resume turn; any other prompt starts a new task.
     private boolean awaitingBreakerContinuation = false;
-    // The provider's reasoning content (DeepSeek thinking mode) from the most recent model call.
-    // Captured in callModel via ReasoningContentHolder, stored in the ASSISTANT_THOUGHT turn by
-    // appendThought, and echoed back on the next request's assistant message by PromptCompiler.
-    private String lastReasoningContent = null;
+
     // The episode's first request is compiled against a prospective history containing the new
     // user turn. That exact immutable payload is dispatched after AGENT_INIT → USER_PROMPT are
     // persisted in logical order. Null after the first dispatch.
@@ -1037,7 +1033,7 @@ public class AgentRunner {
             chunks =
                     CompactionSupport.chunks(records, CompactionSupport.MAX_INPUT_CHARS - overhead);
         } catch (IllegalArgumentException oversized) {
-            log.warn("Compaction not performed: {}", String.valueOf(oversized.getMessage()));
+            log.warn("Compaction not performed: {}", safe(oversized.getMessage()));
             return "{}";
         }
         List<JsonNode> summaries = new ArrayList<>();
@@ -1136,7 +1132,7 @@ public class AgentRunner {
         } catch (IllegalArgumentException invalid) {
             log.warn(
                     "Compactor returned an invalid summary; original history will not be compacted: {}",
-                    String.valueOf(invalid.getMessage()));
+                    safe(invalid.getMessage()));
             return "{}";
         }
     }
@@ -1214,7 +1210,7 @@ public class AgentRunner {
                         top.focess.veto.agent.tool.ToolResultStatus.FAILURE,
                         top.focess.veto.agent.tool.ToolResultFormat.PLAINTEXT,
                         "INVALID_PLAN",
-                        "Plan rejected before execution: " + String.valueOf(error.getMessage()));
+                        "Plan rejected before execution: " + error.getMessage());
             }
         }
         try {
@@ -1243,7 +1239,7 @@ public class AgentRunner {
                     top.focess.veto.agent.tool.ToolResultStatus.FAILURE,
                     top.focess.veto.agent.tool.ToolResultFormat.PLAINTEXT,
                     "INVALID_CITATION",
-                    "Citation rejected: " + String.valueOf(error.getMessage()));
+                    "Citation rejected: " + error.getMessage());
         }
     }
 
@@ -1288,7 +1284,14 @@ public class AgentRunner {
             appendThought(response);
             String message = response.message();
             if (message != null && !message.isBlank()) {
-                emitMessage(message, lastCitations, lastModelCallId);
+                var calls = response.calls();
+                emitMessage(
+                        message,
+                        lastCitations,
+                        lastModelCallId,
+                        false,
+                        calls != null
+                                && calls.stream().anyMatch(call -> call.nativeState() != null));
             }
             List<ToolCall> responseCalls = response.calls();
             if (responseCalls != null && !responseCalls.isEmpty()) {
@@ -1297,8 +1300,7 @@ public class AgentRunner {
             } else {
                 // No tool calls: the agent has emitted its answer with nothing further to act
                 // on. Termination routes on call presence - calls absent means stop. The agent
-                // can call `think` to continue its thought flow for another step when it wants
-                // to reason more without a concrete action. Stop the episode here; the emitted
+                // reasons within its model invocation. Stop the episode here; the emitted
                 // message is the final answer.
                 return;
             }
@@ -1496,6 +1498,7 @@ public class AgentRunner {
         VetoResponse response;
         while (true) {
             response = callModel(false, gen, contract);
+            if (!Boolean.FALSE.equals(gen.thought())) appendThought(response);
             var calls = response.calls();
             if (calls == null || calls.isEmpty()) break;
             executeToolCalls(calls, response.thought());
@@ -1506,7 +1509,6 @@ public class AgentRunner {
             }
             checkTaskCancellation();
         }
-        if (!Boolean.FALSE.equals(gen.thought())) appendThought(response);
         return response;
     }
 
@@ -1560,7 +1562,7 @@ public class AgentRunner {
                             generation != null ? guidedEnabled : allowGuided,
                             generation != null);
         }
-        long estimatedTokens = compiled.estimatedTokens();
+        long estimatedTokens;
         double estimateFactor = correctionFactor;
         VetoRequest request = buildRequest(compiled).withResponseContract(contract);
         if (generation != null) request = generationRequest(request, generation);
@@ -1580,10 +1582,9 @@ public class AgentRunner {
                     throw new BreakerTripException();
                 }
                 checkExecutionBoundary();
-                if (completionOnly(breaker.count())
-                        && !request.responseContract().completionOnly()) {
+                if (completionOnly(breaker.count())) {
                     request = completionRequest(request);
-                    correctionBase = request;
+                    correctionBase = completionRequest(correctionBase);
                 }
                 reserveRequestCall();
                 request = promptCompiler.fitRequest(request, correctionFactor);
@@ -1596,7 +1597,7 @@ public class AgentRunner {
                         estimatedTokens,
                         correctionFactor);
                 int requestThroughTurn = turnNumber;
-                lastModelCallId = null;
+                lastModelCallId = UUID.randomUUID().toString();
                 LlmSystemUsage.begin();
                 try {
                     checkTaskCancellation();
@@ -1622,10 +1623,7 @@ public class AgentRunner {
                         this.correctionFactor = 0.9 * correctionFactor + 0.1 * rawRatio;
                     }
                 }
-                // Capture the provider's reasoning content (DeepSeek thinking mode) so it can be
-                // stored in the ASSISTANT_THOUGHT turn and echoed back on the next request's
-                // assistant message. Cleared immediately (one-shot per model call).
-                lastReasoningContent = ReasoningContentHolder.getAndClear();
+
                 VetoResponse checked = ResponseEnforcer.enforce(response, whitelistedTools);
                 validateResponseMode(checked, request);
                 validateLocalCallArguments(checked);
@@ -1769,6 +1767,12 @@ public class AgentRunner {
         String tool = completionTool;
         if (tool == null) return request;
         List<ChatMessage> messages = new ArrayList<>(request.messages());
+        messages.removeIf(
+                message ->
+                        message.promptSources().stream()
+                                .anyMatch(
+                                        source ->
+                                                source.source().equals("runtime-completion.mdc")));
         messages.add(
                 PromptLibrary.message(
                         "runtime-completion",
@@ -2021,7 +2025,7 @@ public class AgentRunner {
                             "native tool arguments must match the advertised argument schema for "
                                     + local.name()
                                     + ": "
-                                    + String.valueOf(invalid.getMessage()));
+                                    + invalid.getMessage());
                 }
             }
         }
@@ -2610,25 +2614,21 @@ public class AgentRunner {
 
     private void appendThought(@NonNull VetoResponse response) {
         String thought = response.thought();
-        // Store the thought text + the provider's reasoning_content (if any). The
-        // reasoning_content is echoed back on the next request's assistant message so DeepSeek
-        // thinking mode accepts the conversation history.
+        // Provider-exposed reasoning is display text; native replay state lives on tool calls.
         Map<String, Object> payload = new HashMap<>();
         if (thought != null && !thought.isBlank()) {
             payload.put("response", thought);
+            payload.put("provider_reasoning", true);
+            payload.put("response_format", "text");
         } else {
             return;
         }
         if (lastModelCallId != null) payload.put("model_call_id", lastModelCallId);
-        if (lastReasoningContent != null && !lastReasoningContent.isBlank()) {
-            payload.put("reasoning_content", lastReasoningContent);
-        }
         appendTurn(new TurnRecord(++turnNumber, TurnType.ASSISTANT_THOUGHT, payload, null));
-        lastReasoningContent = null; // consumed
         // Stream the thought to transports now (after it is durably recorded). The terminal
         // renders it dimmed/muted ahead of the user-facing message that follows, so the user
         // can follow the reasoning without it competing with the answer.
-        if (thought != null) emitThought(thought);
+        emitThought(thought);
     }
 
     private MessageCitations.Bound lastCitations;
@@ -2661,8 +2661,18 @@ public class AgentRunner {
             MessageCitations.Bound citations,
             String modelCallId,
             boolean runtimeForwarded) {
+        emitMessage(message, citations, modelCallId, runtimeForwarded, false);
+    }
+
+    private void emitMessage(
+            @NonNull String message,
+            MessageCitations.Bound citations,
+            String modelCallId,
+            boolean runtimeForwarded,
+            boolean nativeResponseText) {
         Map<String, Object> payload = new LinkedHashMap<>();
         if (runtimeForwarded) payload.put("runtimeOutputTokens", 0L);
+        if (nativeResponseText) payload.put("native_response_text", true);
         payload.put("content", message);
         if (modelCallId != null) payload.put("model_call_id", modelCallId);
         if (citations != null && !citations.checks().isEmpty())

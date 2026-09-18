@@ -1,6 +1,7 @@
 package top.focess.veto.llm.client;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -11,21 +12,21 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.LoggerFactory;
 import top.focess.veto.agent.translation.CapabilityTranslator;
 import top.focess.veto.llm.core.ChatMessage;
 import top.focess.veto.llm.core.LlmOptions;
 import top.focess.veto.llm.core.LlmSystemUsage;
+import top.focess.veto.llm.core.NativeToolState;
+import top.focess.veto.llm.core.ProviderMessages;
 import top.focess.veto.llm.core.ResolvedRequest;
 import top.focess.veto.llm.core.VetoRequest;
 import top.focess.veto.llm.exceptions.ModelCapabilityException;
 import top.focess.veto.llm.exceptions.ModelSchemaException;
 
-/**
- * DeepSeek Responses API adapter: native functions with JSON response/guide compatibility. Thinking
- * remains disabled; function calls and outputs are replayed with matching call ids.
- */
+/** DeepSeek Responses API adapter with native reasoning, functions and matching tool results. */
 final class DeepSeekLlmClient extends LlmClient {
 
     private static final @NonNull HttpClient HTTP =
@@ -35,7 +36,6 @@ final class DeepSeekLlmClient extends LlmClient {
     private final @NonNull String apiKey;
     private final @NonNull String providerName;
     private final @NonNull ObjectMapper objectMapper;
-    private final @NonNull CapabilityTranslator capabilityTranslator;
 
     DeepSeekLlmClient(
             @NonNull String baseUrl,
@@ -47,7 +47,6 @@ final class DeepSeekLlmClient extends LlmClient {
         this.apiKey = apiKey;
         this.providerName = providerName;
         this.objectMapper = objectMapper;
-        this.capabilityTranslator = capabilityTranslator;
     }
 
     @Override
@@ -77,16 +76,26 @@ final class DeepSeekLlmClient extends LlmClient {
                                 .toList());
                 body.put("tool_choice", "auto");
             }
-            body.put("reasoning", Map.of("effort", "none")); // disable thinking
+            body.put("reasoning", Map.of("effort", "high"));
 
             // Build input items from the conversation messages (skip system - it goes in
             // instructions).
             List<Map<String, Object>> inputItems = new ArrayList<>();
-            for (ChatMessage msg : request.messages()) {
-                if ("system".equals(msg.role())) {
-                    continue;
+            for (var group : ProviderMessages.groups(request)) {
+                var headState = group.getFirst().nativeState();
+                boolean replayNative = headState != null && headState.position() == 0;
+                for (ChatMessage msg : group) {
+                    var state = msg.nativeState();
+                    if (replayNative
+                            && state != null
+                            && state.supports("DEEPSEEK", request.modelName())) {
+                        List<Map<String, Object>> original =
+                                objectMapper.readValue(
+                                        state.partsJson(),
+                                        new TypeReference<List<Map<String, Object>>>() {});
+                        inputItems.addAll(original);
+                    } else inputItems.add(toInputItem(msg));
                 }
-                inputItems.add(toInputItem(msg));
             }
             if (inputItems.isEmpty())
                 inputItems.add(Map.of("role", "user", "content", request.userPrompt()));
@@ -160,9 +169,7 @@ final class DeepSeekLlmClient extends LlmClient {
                                         id));
                     }
                 }
-            content =
-                    NativeToolResponses.normalize(
-                            objectMapper, request, content == null ? "" : content, nativeCalls);
+            content = NativeToolResponses.normalize(objectMapper, request, content, nativeCalls);
 
             @SuppressWarnings("unchecked")
             Map<String, Object> usage = (Map<String, Object>) responseMap.get("usage");
@@ -184,17 +191,22 @@ final class DeepSeekLlmClient extends LlmClient {
             LoggerFactory.getLogger("top.focess.veto.llm.client.DeepSeekLlmClient")
                     .debug(
                             "DeepSeek Responses API response: contentLen={} contentBlank={}",
-                            content == null ? 0 : content.length(),
-                            content == null || content.isBlank());
+                            content.length(),
+                            content.isBlank());
 
-            if ((content == null || content.isBlank()) && nativeCalls.isEmpty()) {
+            if (content.isBlank() && nativeCalls.isEmpty()) {
                 throw new ModelCapabilityException(
                         providerName + " Responses API returned blank content", true);
             }
 
             String summary = "model=" + request.modelName() + ", via=responses-api";
             return NativeToolResponses.completion(
-                    objectMapper, summary, content, nativeCalls, java.util.List.of());
+                            objectMapper,
+                            summary,
+                            content,
+                            nativeCalls,
+                            nativeStates(output, request.modelName()))
+                    .withReasoning(extractReasoning(output));
         } catch (ModelCapabilityException | ModelSchemaException e) {
             throw e;
         } catch (InterruptedException e) {
@@ -217,12 +229,59 @@ final class DeepSeekLlmClient extends LlmClient {
         }
     }
 
+    private @NonNull List<NativeToolState> nativeStates(Object output, @NonNull String model)
+            throws JsonProcessingException {
+        var segments = new ArrayList<List<Object>>();
+        var pending = new ArrayList<Object>();
+        if (output instanceof List<?> items)
+            for (Object item : items) {
+                if (!(item instanceof Map<?, ?> map)) continue;
+                pending.add(item);
+                if ("function_call".equals(map.get("type"))) {
+                    segments.add(new ArrayList<>(pending));
+                    pending.clear();
+                }
+            }
+        if (!segments.isEmpty()) segments.getLast().addAll(pending);
+        String batch = UUID.randomUUID().toString();
+        var states = new ArrayList<NativeToolState>();
+        for (var segment : segments)
+            states.add(
+                    new NativeToolState(
+                            "DEEPSEEK",
+                            1,
+                            model,
+                            batch,
+                            objectMapper.writeValueAsString(segment),
+                            states.size()));
+        return states;
+    }
+
+    private static @NonNull String extractReasoning(Object output) {
+        var text = new ArrayList<String>();
+        if (output instanceof List<?> items)
+            for (Object item : items) {
+                if (!(item instanceof Map<?, ?> map) || !"reasoning".equals(map.get("type")))
+                    continue;
+                Object blocks = map.get("content");
+                if (!(blocks instanceof List<?> content) || content.isEmpty())
+                    blocks = map.get("summary");
+                if (blocks instanceof List<?> content)
+                    for (Object block : content) {
+                        if (block instanceof Map<?, ?> part
+                                && part.get("text") instanceof String value) text.add(value);
+                    }
+            }
+        return String.join("\n", text);
+    }
+
     /**
      * Extracts the text content from a DeepSeek Responses API response. The response may have
      * {@code output_text} (simple string) or an {@code output} array of items containing a message
      * with {@code output_text} content parts.
      */
-    private static String extractResponsesContent(@NonNull Map<String, Object> responseMap) {
+    private static @NonNull String extractResponsesContent(
+            @NonNull Map<String, Object> responseMap) {
         var parts = new ArrayList<String>();
         Object output = responseMap.get("output");
         if (output instanceof List<?> items)

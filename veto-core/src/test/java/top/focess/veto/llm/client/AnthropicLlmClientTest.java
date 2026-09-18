@@ -6,9 +6,11 @@ import static org.mockito.Mockito.*;
 import com.anthropic.client.AnthropicClient;
 import com.anthropic.core.JsonValue;
 import com.anthropic.models.messages.ContentBlock;
+import com.anthropic.models.messages.ContentBlockParam;
 import com.anthropic.models.messages.Message;
 import com.anthropic.models.messages.MessageCreateParams;
 import com.anthropic.models.messages.MessageParam;
+import com.anthropic.models.messages.ToolUseBlockParam;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
 import java.util.Map;
@@ -63,7 +65,7 @@ class AnthropicLlmClientTest {
     }
 
     @Test
-    void preservesCacheBreakdownWithoutDoubleCountingInput() {
+    void preservesCacheBreakdownWithoutDoubleCountingInput() throws Exception {
         var sdk = mock(ToolDocs.nonNullClass(AnthropicClient.class), RETURNS_DEEP_STUBS);
         var response = mock(ToolDocs.nonNullClass(Message.class), RETURNS_DEEP_STUBS);
         var block = text("{\"message\":\"ok\"}");
@@ -161,7 +163,7 @@ class AnthropicLlmClientTest {
     }
 
     @Test
-    void generationSchemaDisablesNativeToolsEvenWhenCatalogIsPresent() {
+    void generationSchemaDisablesNativeToolsEvenWhenCatalogIsPresent() throws Exception {
         var sdk = mock(ToolDocs.nonNullClass(AnthropicClient.class), RETURNS_DEEP_STUBS);
         var response = mock(ToolDocs.nonNullClass(Message.class), RETURNS_DEEP_STUBS);
         var finished = text("{\"message\":\"Finished\"}");
@@ -206,7 +208,7 @@ class AnthropicLlmClientTest {
     }
 
     @Test
-    void providerLookingTextNeverBecomesAnExecutableCall() {
+    void providerLookingTextNeverBecomesAnExecutableCall() throws Exception {
         var sdk = mock(ToolDocs.nonNullClass(AnthropicClient.class), RETURNS_DEEP_STUBS);
         var response = mock(ToolDocs.nonNullClass(Message.class), RETURNS_DEEP_STUBS);
         when(sdk.messages().create(any(ToolDocs.nonNullClass(MessageCreateParams.class))))
@@ -277,6 +279,19 @@ class AnthropicLlmClientTest {
         var nativeCall = mock(ToolDocs.nonNullClass(ContentBlock.class), RETURNS_DEEP_STUBS);
         when(nativeCall.isToolUse()).thenReturn(true);
         when(nativeCall.asToolUse().name()).thenReturn("list_dir");
+        when(nativeCall.toParam())
+                .thenReturn(
+                        ContentBlockParam.ofToolUse(
+                                ToolUseBlockParam.builder()
+                                        .id("call-1")
+                                        .name("list_dir")
+                                        .input(
+                                                ToolUseBlockParam.Input.builder()
+                                                        .putAdditionalProperty(
+                                                                "absolutePath",
+                                                                JsonValue.from("/workspace"))
+                                                        .build())
+                                        .build()));
         when(nativeCall.asToolUse()._input())
                 .thenReturn(JsonValue.from(Map.of("absolutePath", "/workspace")));
         var jsonCall =

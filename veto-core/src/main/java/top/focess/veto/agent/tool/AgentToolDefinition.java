@@ -6,8 +6,8 @@ import top.focess.veto.agent.screening.Danger;
 
 /**
  * An agent-internal control/meta tool — used directly inside the agent loop or workflows, not a
- * host-touching capability. Examples: {@code think} (keep the episode alive), {@code load_skill}
- * (load a skill body as an observation), {@code create_group} (spawn a delegation).
+ * host-touching capability. Examples: {@code load_skill} (load a skill body as an observation),
+ * {@code create_group} (spawn a delegation).
  *
  * <p>The Gateway identifies this definition flavour and returns {@code NotScreened}; capability
  * still selects the caller-scoped runtime service. These tools flow through the LoopInterceptor

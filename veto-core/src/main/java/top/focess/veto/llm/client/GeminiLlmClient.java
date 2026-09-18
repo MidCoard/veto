@@ -20,7 +20,6 @@ import top.focess.veto.llm.exceptions.ModelSchemaException;
 final class GeminiLlmClient extends LlmClient {
     private final @NonNull Client sdkClient;
     private final @NonNull ObjectMapper objectMapper;
-    private final @NonNull CapabilityTranslator capabilityTranslator;
 
     GeminiLlmClient(
             @NonNull Client sdkClient,
@@ -28,7 +27,6 @@ final class GeminiLlmClient extends LlmClient {
             @NonNull CapabilityTranslator capabilityTranslator) {
         this.sdkClient = sdkClient;
         this.objectMapper = objectMapper;
-        this.capabilityTranslator = capabilityTranslator;
     }
 
     @Override
@@ -58,7 +56,14 @@ final class GeminiLlmClient extends LlmClient {
                                     .build());
         }
         Double temperature = request.options().temperature();
-        if (temperature != null) config.temperature(temperature.floatValue());
+        if (ModelReasoning.gemini(request.modelName())) {
+            var thinking = ThinkingConfig.builder().includeThoughts(true);
+            if (request.modelName().startsWith("gemini-2.5-")) thinking.thinkingBudget(-1);
+            else thinking.thinkingLevel("HIGH");
+            config.thinkingConfig(thinking.build());
+        }
+        if (temperature != null && !request.modelName().startsWith("gemini-3"))
+            config.temperature(temperature.floatValue());
         Integer maxTokens = request.options().maxTokens();
         if (maxTokens != null) config.maxOutputTokens(maxTokens);
         var response =
@@ -69,9 +74,10 @@ final class GeminiLlmClient extends LlmClient {
                         usage ->
                                 LlmSystemUsage.set(
                                         usage.promptTokenCount().map(Number::longValue).orElse(0L),
-                                        usage.candidatesTokenCount()
-                                                .map(Number::longValue)
-                                                .orElse(0L),
+                                        usage.thoughtsTokenCount().map(Number::longValue).orElse(0L)
+                                                + usage.candidatesTokenCount()
+                                                        .map(Number::longValue)
+                                                        .orElse(0L),
                                         usage.cachedContentTokenCount()
                                                 .map(Number::longValue)
                                                 .orElse(null),
@@ -90,11 +96,13 @@ final class GeminiLlmClient extends LlmClient {
         var segments = new ArrayList<List<Part>>();
         var pending = new ArrayList<Part>();
         var text = new ArrayList<String>();
+        var reasoning = new ArrayList<String>();
         for (var part : parts) {
             if (part.toolCall().isPresent())
                 throw new ModelSchemaException("Unsupported Gemini native tool call type");
             pending.add(part);
-            if (!part.thought().orElse(false)) part.text().ifPresent(text::add);
+            if (part.thought().orElse(false)) part.text().ifPresent(reasoning::add);
+            else part.text().ifPresent(text::add);
             if (part.functionCall().isPresent()) {
                 var call = part.functionCall().get();
                 calls.add(
@@ -128,11 +136,12 @@ final class GeminiLlmClient extends LlmClient {
                             states.size()));
         }
         return NativeToolResponses.completion(
-                objectMapper,
-                "model=" + request.modelName() + ", tools=" + request.tools().size(),
-                normalized,
-                calls,
-                states);
+                        objectMapper,
+                        "model=" + request.modelName() + ", tools=" + request.tools().size(),
+                        normalized,
+                        calls,
+                        states)
+                .withReasoning(String.join("\n", reasoning));
     }
 
     private @NonNull List<Content> conversationContents(@NonNull VetoRequest request) {

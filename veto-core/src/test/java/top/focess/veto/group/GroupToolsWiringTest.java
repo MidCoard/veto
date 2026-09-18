@@ -296,7 +296,7 @@ class GroupToolsWiringTest {
                                     requireTransform(request))
                             .brief();
             assertTrue(
-                    brief.contains("Delegation complete"),
+                    brief.contains("The group has ended"),
                     "the reverse-transform brief carries the outcome");
 
             assertEquals(

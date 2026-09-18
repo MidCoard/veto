@@ -28,6 +28,17 @@ class ToolContractIntegrityTest {
     private final @NonNull ObjectMapper mapper = new ObjectMapper();
 
     @Test
+    void productionCatalogDoesNotRegisterRedundantThinkingOrTestTools() {
+        assertTrue(
+                agentTools.stream()
+                        .noneMatch(
+                                tool ->
+                                        tool.getName().equals("think")
+                                                || tool.getName().equals("fixture_loop")));
+        assertTrue(nativeTools.stream().noneMatch(tool -> tool.getName().equals("think")));
+    }
+
+    @Test
     void everyCallExamplePassesItsRuntimeArgumentValidator() {
         for (NativeTool<?> tool : nativeTools) {
             validateExamples(tool.getName(), tool.getClass(), tool.getArgsClass());

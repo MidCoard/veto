@@ -5,5 +5,8 @@ requires: [system, responseMode, toolNames, completionTool, completionOnly]
 ---
 {{system}}
 
+@include reasoning
+
 ## Response channel
+
 @include response-contract

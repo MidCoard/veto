@@ -25,6 +25,7 @@ import top.focess.veto.agent.intercept.*;
 import top.focess.veto.agent.loop.PromptCompiler;
 import top.focess.veto.agent.tool.*;
 import top.focess.veto.agent.tool.builtin.*;
+import top.focess.veto.agent.tool.builtin.FixtureLoopTool;
 import top.focess.veto.agent.translation.DefaultCapabilityTranslator;
 import top.focess.veto.agent.workspace.*;
 import top.focess.veto.llm.core.*;
@@ -322,7 +323,7 @@ class GuidedExecutionTest {
                                                                                 "id", "stop",
                                                                                 "label", "Finish",
                                                                                 "type", "STOP")))),
-                                                new ToolCall("think", Map.of())),
+                                                new ToolCall("fixture_loop", Map.of())),
                                         null);
                             assertTrue(
                                     request.messages().stream()
@@ -448,8 +449,8 @@ class GuidedExecutionTest {
         when(context.getBeansOfType(AgentTool.class))
                 .thenReturn(
                         Map.of(
-                                "think",
-                                new ThinkTool(new LoopControlCapabilityImpl()),
+                                "fixture_loop",
+                                new FixtureLoopTool(new LoopControlCapabilityImpl()),
                                 "submit_plan",
                                 new SubmitPlanTool(new LoopControlCapabilityImpl()),
                                 "answer_with_citations",
@@ -857,7 +858,9 @@ class GuidedExecutionTest {
                                 assertFalse(request.systemPrompt().contains("### `think`"));
                                 if (index == 2)
                                     return new VetoResponse(
-                                            null, List.of(new ToolCall("think", Map.of())), null);
+                                            null,
+                                            List.of(new ToolCall("fixture_loop", Map.of())),
+                                            null);
                                 return message("scoped output");
                             }
                             assertEquals("scripted", request.modelName());

@@ -4,6 +4,7 @@ import static top.focess.veto.util.LogValues.safe;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.net.SocketTimeoutException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -12,6 +13,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import top.focess.veto.llm.client.LlmClient;
 import top.focess.veto.llm.core.ResolvedRequest;
+import top.focess.veto.llm.core.ToolCall;
 import top.focess.veto.llm.core.ToolDefinition;
 import top.focess.veto.llm.core.VetoResponse;
 import top.focess.veto.llm.exceptions.LlmAuthException;
@@ -109,25 +111,11 @@ public abstract class AbstractLlmProvider implements LLMProviderStrategy {
                             Map.of("text", raw.rawResponse(), "nativeCalls", raw.nativeCalls())));
             VetoResponse response =
                     new VetoResponse(
-                            null,
+                            raw.reasoning(),
                             raw.nativeCalls().isEmpty() ? null : raw.nativeCalls(),
                             raw.rawResponse().isBlank() ? null : raw.rawResponse(),
                             null);
-            if (!raw.nativeStates().isEmpty()) {
-                var parsedCalls = response.calls();
-                if (parsedCalls == null || parsedCalls.size() != raw.nativeStates().size())
-                    throw new ModelSchemaException(
-                            "Native response metadata count does not match calls");
-                var restored = new java.util.ArrayList<top.focess.veto.llm.core.ToolCall>();
-                for (int i = 0; i < parsedCalls.size(); i++)
-                    restored.add(parsedCalls.get(i).withNativeState(raw.nativeStates().get(i)));
-                response =
-                        new VetoResponse(
-                                response.thought(),
-                                restored,
-                                response.message(),
-                                response.citations());
-            }
+            response = restoreNativeState(response, raw);
             var calls = response.calls();
             String message = response.message();
             String thought = response.thought();
@@ -163,6 +151,19 @@ public abstract class AbstractLlmProvider implements LLMProviderStrategy {
                     safe(e.getMessage()));
             throw classify(e, request.modelName());
         }
+    }
+
+    private static @NonNull VetoResponse restoreNativeState(
+            @NonNull VetoResponse response, LlmClient.@NonNull RawCompletion raw) {
+        if (raw.nativeStates().isEmpty()) return response;
+        var parsedCalls = response.calls();
+        if (parsedCalls == null || parsedCalls.size() != raw.nativeStates().size())
+            throw new ModelSchemaException("Native response metadata count does not match calls");
+        var restored = new ArrayList<ToolCall>();
+        for (int i = 0; i < parsedCalls.size(); i++)
+            restored.add(parsedCalls.get(i).withNativeState(raw.nativeStates().get(i)));
+        return new VetoResponse(
+                response.thought(), restored, response.message(), response.citations());
     }
 
     /**

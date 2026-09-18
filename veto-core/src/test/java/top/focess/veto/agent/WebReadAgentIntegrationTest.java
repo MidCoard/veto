@@ -307,11 +307,11 @@ class WebReadAgentIntegrationTest {
                                                         finishCall.payload().get("call_id"),
                                                         turn.payload().get("call_id"))));
         String childSystem = childRequests.getFirst().systemPrompt();
-        assertTrue(childSystem.contains("## Operating Contract"));
+        assertTrue(childSystem.contains("### Read with a purpose"));
         assertTrue(childSystem.contains("## Task Instructions"));
         assertTrue(childSystem.contains("## Your Tools"));
-        assertTrue(childSystem.contains("Use native tools for actions"));
-        assertTrue(childSystem.contains("Do not wrap answers in a JSON response envelope."));
+        assertTrue(childSystem.contains("Call one tool per turn"));
+        assertTrue(childSystem.contains("Finish through finish_read"));
         for (String name : List.of("fetch_page", "find_sections", "read_sections", "finish_read")) {
             assertTrue(childSystem.contains("### `" + name + "`"));
         }

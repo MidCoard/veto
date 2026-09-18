@@ -3,6 +3,8 @@ version: 2
 id: identity
 requires: [persona, guidance]
 ---
+## Identity
+
 @if nonempty(persona.name)
 You are {{persona.name}}.
 @else
