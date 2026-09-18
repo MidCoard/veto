@@ -1188,4 +1188,93 @@ class ToolEngineImplTest {
             server.stop(0);
         }
     }
+
+    @Test
+    void failedBuiltinInitializationPublishesNoPartialCatalog() {
+        var context = mock(ToolDocs.nonNullClass(ApplicationContext.class));
+        var engine = new ToolEngineImpl(new ObjectMapper(), List.of(new ViewFileTool()), context);
+        when(context.getBeansOfType(AgentTool.class))
+                .thenAnswer(
+                        invocation -> {
+                            assertNull(
+                                    engine.resolveDefinition("view_file"),
+                                    "native tools must remain staged during agent discovery");
+                            return Map.of("invalid", new UndeclaredAgentTool());
+                        });
+        assertThrows(IllegalArgumentException.class, engine::init);
+        assertTrue(engine.getActiveTools(null).isEmpty());
+        assertEquals(0, engine.catalogGeneration());
+        when(context.getBeansOfType(AgentTool.class)).thenReturn(Map.of());
+        engine.init();
+        assertEquals("view_file", definition(engine, "view_file").name());
+        assertEquals(1, engine.catalogGeneration());
+    }
+
+    @Test
+    void duplicateBuiltinBatchCannotPublishOrReplaceAnExistingDefinition() {
+        var context = mock(ToolDocs.nonNullClass(ApplicationContext.class));
+        when(context.getBeansOfType(AgentTool.class)).thenReturn(Map.of());
+        var engine =
+                new ToolEngineImpl(
+                        new ObjectMapper(),
+                        List.of(new ViewFileTool(), new ViewFileTool()),
+                        context);
+        assertThrows(IllegalArgumentException.class, engine::init);
+        assertNull(engine.resolveDefinition("view_file"));
+        assertEquals(0, engine.catalogGeneration());
+        var valid = newEngine();
+        var before = definition(valid, "view_file");
+        assertThrows(IllegalStateException.class, valid::init);
+        assertSame(before, definition(valid, "view_file"));
+        assertEquals(1, valid.catalogGeneration());
+    }
+
+    @Test
+    void failedRemoteBatchPreservesCatalogAndExistingBindings() throws Exception {
+        var payload =
+                new java.util.concurrent.atomic.AtomicReference<String>(
+                        "{\"tools\":[{\"name\":\"unique_tool\",\"inputSchema\":{\"type\":\"object\"}},{\"name\":\"view_file\",\"inputSchema\":{\"type\":\"object\"}}]}");
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext(
+                "/mcp",
+                exchange -> {
+                    exchange.getRequestBody().readAllBytes();
+                    byte[] response =
+                            ("{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":" + payload.get() + "}")
+                                    .getBytes(StandardCharsets.UTF_8);
+                    exchange.getResponseHeaders().set("Content-Type", "application/json");
+                    exchange.sendResponseHeaders(200, response.length);
+                    exchange.getResponseBody().write(response);
+                    exchange.close();
+                });
+        server.start();
+        try {
+            var engine = newEngine();
+            var original = definition(engine, "view_file");
+            var snapshot = engine.getActiveTools(null);
+            var transport =
+                    new McpTransport.SseMcpTransport(
+                            "http://127.0.0.1:" + server.getAddress().getPort() + "/mcp", "");
+            assertThrows(
+                    IllegalArgumentException.class, () -> engine.discoverAndRegister(transport));
+            assertNull(engine.resolveDefinition("unique_tool"));
+            assertSame(original, definition(engine, "view_file"));
+            assertEquals(1, engine.catalogGeneration());
+            payload.set(
+                    "{\"tools\":[{\"name\":\"Lookup.Event/v1\",\"inputSchema\":{\"type\":\"object\"}}]}");
+            assertEquals(1, engine.discoverAndRegister(transport).size());
+            var remote = definition(engine, "Lookup.Event/v1");
+            assertEquals(2, engine.catalogGeneration());
+            assertEquals(6, snapshot.size());
+            assertEquals(7, engine.getActiveTools(null).size());
+            assertThrows(UnsupportedOperationException.class, snapshot::clear);
+            assertSame(original, definition(engine, "view_file"));
+            assertThrows(
+                    IllegalArgumentException.class, () -> engine.discoverAndRegister(transport));
+            assertSame(remote, definition(engine, "Lookup.Event/v1"));
+            assertEquals(2, engine.catalogGeneration());
+        } finally {
+            server.stop(0);
+        }
+    }
 }

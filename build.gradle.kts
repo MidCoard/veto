@@ -67,10 +67,27 @@ subprojects {
 // scripts for the core jar, and VERSION/README. Idempotent: wipes and
 // rebuilds its own version directory, never touches other versions. release/
 // is a local artifact (gitignored).
+val releaseReadme = layout.buildDirectory.file("release-docs/README.md")
+val generateReleaseReadme by tasks.registering {
+    group = "release"
+    description = "Renders the user-facing release README without building binaries."
+    val template = layout.projectDirectory.file("RELEASE.md")
+    val releaseVersion = project.version.toString()
+    inputs.file(template)
+    inputs.property("releaseVersion", releaseVersion)
+    outputs.file(releaseReadme)
+    doLast {
+        val output = releaseReadme.get().asFile
+        output.parentFile.mkdirs()
+        output.writeText(template.asFile.readText().replace("@VETO_VERSION@", releaseVersion))
+    }
+}
+
 val localRelease by tasks.registering {
     group = "release"
     description = "Assembles the versioned local release bundle under release/."
     dependsOn(":veto-core:bootJar", ":veto-terminal:distZip", ":veto-protocol:jar")
+    dependsOn(generateReleaseReadme)
     val versionStr = project.version.toString()
     val outDir = layout.projectDirectory.dir("release/veto-$versionStr")
     doLast {
@@ -113,16 +130,7 @@ val localRelease by tasks.registering {
                                 dollar +
                                 "@\"\n")
         File(out, "VERSION").writeText("component=veto\nversion=$versionStr\n")
-        File(out, "README.md")
-                .writeText(
-                        "# Veto $versionStr — local release\n\n" +
-                                "- **core**: `core/veto-core.jar` — the Spring Boot server. Start with\n" +
-                                "  `start-core.bat` (Windows) or `start-core.sh` (Unix), or\n" +
-                                "  `java --enable-native-access=ALL-UNNAMED -jar core/veto-core.jar`.\n" +
-                                "  Serves the REST + WebSocket API on port 8443.\n" +
-                                "- **terminal**: `terminal/veto-terminal-$versionStr.zip` — the terminal\n" +
-                                "  client distribution. Unzip and run `bin/veto-terminal(.bat)`; it\n" +
-                                "  connects to the core over IPC.\n")
+        releaseReadme.get().asFile.copyTo(File(out, "README.md"))
         println("Local release assembled: ${out.absolutePath}")
     }
 }

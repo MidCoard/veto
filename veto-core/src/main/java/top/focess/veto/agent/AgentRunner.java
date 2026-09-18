@@ -111,9 +111,9 @@ import top.focess.veto.monitor.MonitorRecord;
 import top.focess.veto.monitor.MonitorService;
 import top.focess.veto.monitor.RequestContinuationStore;
 import top.focess.veto.sandbox.BackgroundTaskManager;
+import top.focess.veto.secret.references.SecretCandidateStore;
 import top.focess.veto.util.Nullness;
 import top.focess.veto.vault.KeysteadVault;
-import top.focess.veto.vault.SecretCandidateStore;
 import top.focess.veto.vault.UserContext;
 
 /**
@@ -2275,7 +2275,14 @@ public class AgentRunner {
                 transformed = plugin.postAction(agentId, call, transformed);
             }
 
-            // (f) ingress defense
+            // (f) plugin observation transformations are untrusted input to the final defense.
+            String pluginObservation = transformed.content();
+            for (LoopInterceptor plugin : interceptors) {
+                pluginObservation = plugin.preObservation(agentId, pluginObservation);
+            }
+            transformed = transformed.withContent(pluginObservation);
+
+            // (g) final ingress defense, immediately before committing the observation to history.
             String observation;
             if (transformed.success()
                     && def instanceof NativeToolDefinition
@@ -2297,11 +2304,6 @@ public class AgentRunner {
             } else {
                 observation =
                         ingressDefense.maskAndFrame(call, def, transformed, decision, readHistory);
-            }
-
-            // (g) plugin preObservation chain
-            for (LoopInterceptor plugin : interceptors) {
-                observation = plugin.preObservation(agentId, observation);
             }
 
             ToolResult observed = transformed.withContent(observation);

@@ -1,4 +1,4 @@
-package top.focess.veto.agent.intercept;
+package top.focess.veto.secret.detection;
 
 import java.util.ArrayList;
 import java.util.Comparator;

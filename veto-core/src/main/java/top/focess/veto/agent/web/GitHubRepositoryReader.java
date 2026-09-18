@@ -14,9 +14,9 @@ import org.jspecify.annotations.NonNull;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.capability.CapabilityAccess;
-import top.focess.veto.agent.intercept.SecretMasker;
 import top.focess.veto.agent.tool.ToolCapability;
 import top.focess.veto.agent.tool.ToolErrors;
+import top.focess.veto.secret.detection.SecretMasker;
 import top.focess.veto.vault.KeysteadVault;
 
 /** A fixed authenticated operation, never a general credential substitution proxy. */

@@ -30,7 +30,7 @@ import top.focess.veto.agent.workspace.PathMode;
 import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.llm.core.ToolCall;
 import top.focess.veto.llm.core.ToolResultPresentationMode;
-import top.focess.veto.vault.SecretCandidateStore;
+import top.focess.veto.secret.references.SecretCandidateStore;
 
 class WorkspaceFilePolicyTest {
     private static final @NonNull UUID USER = UUID.randomUUID();

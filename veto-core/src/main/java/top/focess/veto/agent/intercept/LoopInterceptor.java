@@ -33,8 +33,9 @@ public interface LoopInterceptor {
             @NonNull String agentId, @NonNull ToolCall call, @NonNull ToolResult result);
 
     /**
-     * Fired before an observation enters the prompt compiler (after ingress defense has
-     * framed/masked it). Each plugin may tag, frame, or redact.
+     * Fired after all postAction hooks and before the final ingress defense. Each plugin may tag,
+     * frame, or redact; the resulting content is then protected before entering history or the
+     * prompt compiler. Hooks run as trusted local code and may see sensitive tool output.
      */
     @NonNull String preObservation(@NonNull String agentId, @NonNull String rawObservation);
 }

@@ -1,4 +1,4 @@
-package top.focess.veto.vault;
+package top.focess.veto.secret.references;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
@@ -15,49 +15,11 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.NonNull;
-import org.springframework.scheduling.annotation.Scheduled;
-import org.springframework.stereotype.Component;
-import top.focess.veto.agent.capability.CapabilityAccess;
-import top.focess.veto.agent.intercept.SecretMasker;
-import top.focess.veto.agent.tool.ToolCapability;
+import top.focess.veto.secret.api.CredentialWriter;
+import top.focess.veto.secret.detection.SecretMasker;
 
 /** Bounded transient captures. No raw-value lookup is exposed to tools or model callers. */
-@Component
 public final class SecretCandidateStore {
-    /** Entry point for the screened native capability; no caller identity comes from model args. */
-    public @NonNull ImportReceipt importApproved(
-            @NonNull String reference,
-            @NonNull String service,
-            @NonNull String label,
-            @NonNull KeysteadVault vault) {
-        var context =
-                CapabilityAccess.require(
-                        ToolCapability.CREDENTIAL_IMPORT, "import_detected_credential");
-        String owner = context.owner();
-        var session = context.sessionId();
-        if (owner == null
-                || session == null
-                || !context.executionPermit()
-                        .call()
-                        .args()
-                        .equals(
-                                Map.of(
-                                        "secret_ref",
-                                        reference,
-                                        "service",
-                                        service,
-                                        "label",
-                                        label))) {
-            throw new SecurityException("Credential import does not match the authorized call");
-        }
-        return importOnce(
-                new Scope(owner, session.toString(), context.agentId()),
-                reference,
-                service,
-                label,
-                vault);
-    }
-
     private record SessionKey(@NonNull String owner, @NonNull String session) {}
 
     private final @NonNull Set<String> closedOwners = new HashSet<>();
@@ -289,12 +251,12 @@ public final class SecretCandidateStore {
     }
 
     /** Storage transition only. The trusted caller must validate the execution permit first. */
-    synchronized @NonNull ImportReceipt importOnce(
+    public synchronized @NonNull ImportReceipt importOnce(
             @NonNull Scope scope,
             @NonNull String reference,
             @NonNull String service,
             @NonNull String label,
-            @NonNull KeysteadVault vault) {
+            @NonNull CredentialWriter writer) {
         expire();
         Entry entry = entries.get(reference);
         if (closedOwners.contains(scope.owner())
@@ -308,7 +270,7 @@ public final class SecretCandidateStore {
                 || label.length() > 80
                 || !label.equals(label.trim()))
             throw new IllegalArgumentException("Invalid credential import binding");
-        if (!vault.isUnlocked(scope.owner()))
+        if (!writer.isUnlocked(scope.owner()))
             throw new IllegalStateException("Credential owner vault is locked");
         ImportReceipt previous = entry.imported;
         if (previous != null) {
@@ -322,7 +284,7 @@ public final class SecretCandidateStore {
         try {
             receipt =
                     new ImportReceipt(
-                            vault.createImportedCredential(
+                            writer.createImportedCredential(
                                     scope.owner(), reference, service, label, value),
                             service,
                             label);
@@ -379,7 +341,6 @@ public final class SecretCandidateStore {
         discardSession(owner, session);
     }
 
-    @Scheduled(fixedDelay = 60000)
     public synchronized void expire() {
         Instant now = clock.instant();
         entries.values().stream()

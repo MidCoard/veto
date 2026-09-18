@@ -56,10 +56,10 @@ import top.focess.veto.model.tier.ModelTierRegistry;
 import top.focess.veto.monitor.RequestContinuationStore;
 import top.focess.veto.observability.ObservabilityConfiguration;
 import top.focess.veto.sandbox.BackgroundTaskManager;
+import top.focess.veto.secret.references.SecretCandidateStore;
 import top.focess.veto.util.Nullness;
 import top.focess.veto.vault.CredentialVaultConfiguration;
 import top.focess.veto.vault.KeysteadVault;
-import top.focess.veto.vault.SecretCandidateStore;
 
 /**
  * The shared agent service ("Multi-Client Unification"). Both the ZMQ terminal ({@code

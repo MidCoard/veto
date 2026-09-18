@@ -5,7 +5,7 @@ import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.tool.ToolCapability;
-import top.focess.veto.vault.SecretCandidateStore;
+import top.focess.veto.secret.references.SecretCandidateStore;
 
 /** File capture bound to the screened native file read and its owned session. */
 @Component

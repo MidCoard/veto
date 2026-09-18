@@ -22,8 +22,9 @@ import top.focess.veto.agent.tool.ToolResult;
 import top.focess.veto.agent.web.FinishReadTool;
 import top.focess.veto.agent.web.WebFetchTool;
 import top.focess.veto.llm.core.ToolCall;
+import top.focess.veto.secret.detection.SecretMasker;
+import top.focess.veto.secret.references.SecretCandidateStore;
 import top.focess.veto.util.Nullness;
-import top.focess.veto.vault.SecretCandidateStore;
 
 /**
  * Deterministic ingress defense. Frames every observation as untrusted <b>data</b> with an explicit

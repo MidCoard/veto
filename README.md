@@ -70,6 +70,11 @@ veto/
 |-- veto-protocol/   Shared frames, transports, client-session state, and serialization contracts
 |-- veto-core/       Spring Boot backend, agent runtime, security gateway, persistence, and tools
 |-- veto-terminal/   JLine/Mordant terminal application; depends on veto-protocol, not veto-core
+|-- veto-extension/  Shared registration layer and experimental extension architecture
+|-- veto-plugin-api/ Experimental Java plugin lifecycle binding
+|-- veto-plugin-fixture/ Standalone plugin test fixture; not an installable production feature
+|-- veto-secret-protection/ Extracted secret-protection library
+|-- RELEASE.md      Release-user guide template
 |-- gradle/          Gradle wrapper support
 |-- qodana.yaml      Qodana inspection configuration
 |-- ignorekit.json   Source of truth for generated .gitignore rules
@@ -344,6 +349,18 @@ same `ToolDefinition` abstraction used by built-in tools. The Gateway screens re
 dispatch. Only external tools cross an MCP transport; native and agent-control tools execute
 through the in-process tool engine and their declared capability boundary.
 
+## Plugins and extensions — experimental
+
+The shared extension catalog and Veto's production tool-catalog adapter are implemented.
+External plugin installation/activation, configuration-driven script handlers, portable model
+hooks, and adapters for other agent clients are not available yet. The fixture package is for
+development tests; building it does not install or activate a plugin.
+
+- [Extension module README](veto-extension/README.md): implemented behavior and developer checks.
+- [Java plugin API README](veto-plugin-api/README.md): fixture and lifecycle-binding details.
+
+These APIs are experimental and are not a stable cross-client compatibility contract.
+
 ## AgentDojo evaluation
 
 The bridge under `veto-core/benchmarks/agentdojo` runs the upstream AgentDojo `v1.2.2` workspace
@@ -370,7 +387,9 @@ Build a versioned local distribution under the ignored `release/` directory:
 ```
 
 The bundle contains the executable core JAR, terminal distribution, launch scripts, license, and
-version metadata. `release/` is generated output and must not be committed.
+version metadata. Its `README.md` is rendered from [the release guide](RELEASE.md), which
+contains bundle-specific startup instructions rather than source-build commands. `release/`
+is generated output and must not be committed.
 
 ## Development rules
 

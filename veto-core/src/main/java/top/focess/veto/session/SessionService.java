@@ -33,8 +33,8 @@ import top.focess.veto.model.SessionRepository;
 import top.focess.veto.model.tier.ModelBinding;
 import top.focess.veto.model.tier.ModelTierRegistry;
 import top.focess.veto.monitor.RequestContinuationStore;
+import top.focess.veto.secret.references.SecretCandidateStore;
 import top.focess.veto.security.UserAdminService;
-import top.focess.veto.vault.SecretCandidateStore;
 
 /**
  * Owns the session lifecycle: create/list/activate/deactivate, plus the per-terminal active-session

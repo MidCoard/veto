@@ -19,7 +19,7 @@ import top.focess.veto.llm.core.LlmSystemUsage;
 import top.focess.veto.llm.core.ProviderType;
 import top.focess.veto.llm.core.ResolvedRequest;
 import top.focess.veto.llm.core.VetoRequest;
-import top.focess.veto.vault.SecretCandidateStore;
+import top.focess.veto.secret.references.SecretCandidateStore;
 
 /** Captures actual SDK HTTP bytes at a local provider substitute, never real credentials. */
 class ProtectedProviderBodyTest {

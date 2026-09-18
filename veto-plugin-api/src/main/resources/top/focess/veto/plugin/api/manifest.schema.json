@@ -1,0 +1,110 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Veto experimental plugin manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "manifestVersion",
+    "id",
+    "version",
+    "apiVersion",
+    "requiresJava",
+    "entryPoint",
+    "artifact",
+    "configSchema",
+    "extensions",
+    "promptResources",
+    "requiredServices"
+  ],
+  "properties": {
+    "manifestVersion": {
+      "const": 1
+    },
+    "apiVersion": {
+      "const": 1
+    },
+    "id": {
+      "type": "string",
+      "maxLength": 128,
+      "pattern": "^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)+$"
+    },
+    "version": {
+      "type": "string",
+      "maxLength": 64,
+      "pattern": "^(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)$"
+    },
+    "requiresJava": {
+      "type": "integer",
+      "minimum": 25
+    },
+    "entryPoint": {
+      "type": "string",
+      "maxLength": 256,
+      "pattern": "^[A-Za-z_$][A-Za-z0-9_$]*(?:\\.[A-Za-z_$][A-Za-z0-9_$]*)+$"
+    },
+    "artifact": {
+      "const": "plugin.jar"
+    },
+    "configSchema": {
+      "const": "config.schema.json"
+    },
+    "extensions": {
+      "type": "array",
+      "maxItems": 64,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "major"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "maxLength": 192,
+            "pattern": "^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*:[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$"
+          },
+          "major": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      }
+    },
+    "promptResources": {
+      "type": "array",
+      "uniqueItems": true,
+      "maxItems": 32,
+      "items": {
+        "type": "string",
+        "maxLength": 256,
+        "pattern": "^prompts/[a-zA-Z0-9_-]+\\.md$"
+      }
+    },
+    "requiredServices": {
+      "type": "array",
+      "maxItems": 64,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "major"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "maxLength": 192,
+            "pattern": "^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*:[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$"
+          },
+          "major": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      }
+    }
+  }
+}

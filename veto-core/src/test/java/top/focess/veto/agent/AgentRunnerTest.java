@@ -94,11 +94,11 @@ import top.focess.veto.monitor.RequestContinuationStore;
 import top.focess.veto.sandbox.BackgroundTaskManager;
 import top.focess.veto.sandbox.SandboxManager;
 import top.focess.veto.sandbox.TestSandboxFactory;
+import top.focess.veto.secret.references.SecretCandidateStore;
 import top.focess.veto.session.SessionHistoryLoader;
 import top.focess.veto.session.SessionService;
 import top.focess.veto.util.Nullness;
 import top.focess.veto.vault.KeysteadVault;
-import top.focess.veto.vault.SecretCandidateStore;
 import top.focess.veto.vault.UserContext;
 
 /**
