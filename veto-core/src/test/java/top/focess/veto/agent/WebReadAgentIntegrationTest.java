@@ -69,7 +69,7 @@ class WebReadAgentIntegrationTest {
         "DETAILED,true,4"
     })
     void parentContextAndReplayedHistoryContainOnlyTerminalEvidence(
-            @NonNull ToolResultPresentationMode presentation, boolean guided, int maxRounds)
+            @NonNull ToolResultPresentationMode presentation, boolean usePlan, int maxRounds)
             throws Exception {
         ObjectMapper mapper = new ObjectMapper();
         mapper.registerModule(new JavaTimeModule());
@@ -109,15 +109,15 @@ class WebReadAgentIntegrationTest {
                                                 "outcome",
                                                 maxRounds == 3 ? "partial" : "complete",
                                                 "answer",
-                                                maxRounds == 4 && childTurn.get() == 3 && !guided
+                                                maxRounds == 4 && childTurn.get() == 3 && !usePlan
                                                         ? "x".repeat(4001)
                                                         : "Timeout is 30 seconds.",
                                                 "evidenceIds",
-                                                maxRounds == 4 && childTurn.get() == 3 && !guided
+                                                maxRounds == 4 && childTurn.get() == 3 && !usePlan
                                                         ? Collections.nCopies(15, "s1")
                                                         : List.of("s1"),
                                                 "limitations",
-                                                maxRounds == 4 && childTurn.get() == 3 && guided
+                                                maxRounds == 4 && childTurn.get() == 3 && usePlan
                                                         ? List.of(List.of("Malformed nested entry"))
                                                         : maxRounds == 4 && childTurn.get() == 3
                                                                 ? Collections.nCopies(9, "Gap")
@@ -185,7 +185,7 @@ class WebReadAgentIntegrationTest {
                     parentRequests.add(request);
                     if (parentTurn.getAndIncrement() > 0)
                         return new VetoResponse(null, null, "Timeout is 30 seconds.");
-                    if (!guided)
+                    if (!usePlan)
                         return new VetoResponse(
                                 null,
                                 List.of(
@@ -237,8 +237,7 @@ class WebReadAgentIntegrationTest {
                 "test-owner",
                 "D:/IdeaProjects/veto",
                 0,
-                presentation,
-                guided);
+                presentation);
         var result =
                 service.submit(
                         session,
@@ -277,10 +276,10 @@ class WebReadAgentIntegrationTest {
             assertTrue(
                     mapper.writeValueAsString(finalRequest)
                             .contains(
-                                    guided
+                                    usePlan
                                             ? "schema violation"
                                             : "answer exceeds 4000 characters"));
-            if (!guided) {
+            if (!usePlan) {
                 String correction = mapper.writeValueAsString(finalRequest);
                 assertTrue(correction.contains("evidenceIds must contain at most 8"));
                 assertTrue(correction.contains("limitations must contain at most 8"));
@@ -363,8 +362,7 @@ class WebReadAgentIntegrationTest {
                 "test-owner",
                 "D:/IdeaProjects/veto",
                 0,
-                presentation,
-                guided);
+                presentation);
         var resumedResult =
                 resumed.submit(
                         resumedSession,
@@ -512,8 +510,7 @@ class WebReadAgentIntegrationTest {
                 "test-owner",
                 "D:/IdeaProjects/veto",
                 0,
-                ToolResultPresentationMode.BASIC,
-                false);
+                ToolResultPresentationMode.BASIC);
         AtomicReference<Throwable> failure = new AtomicReference<>();
         Thread submission =
                 Thread.ofVirtual()

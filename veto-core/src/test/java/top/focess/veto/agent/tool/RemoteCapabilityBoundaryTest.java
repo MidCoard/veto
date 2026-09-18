@@ -53,7 +53,6 @@ class RemoteCapabilityBoundaryTest {
                         "owner",
                         null,
                         ToolResultPresentationMode.BASIC,
-                        false,
                         permit));
         ToolCallContextHolder.setCurrentCallId(call.callId());
         assertThrows(SecurityException.class, () -> otherCapability.call(call));
@@ -76,7 +75,6 @@ class RemoteCapabilityBoundaryTest {
                         "owner",
                         null,
                         ToolResultPresentationMode.BASIC,
-                        false,
                         permit));
         assertThrows(SecurityException.class, () -> capability.call(call));
         verifyNoInteractions(client);
@@ -88,7 +86,6 @@ class RemoteCapabilityBoundaryTest {
                         "owner",
                         null,
                         ToolResultPresentationMode.BASIC,
-                        false,
                         permit));
         var result = mapper.createObjectNode().put("isError", false);
         when(client.callTool(transport, "lookup", call.args())).thenReturn(result);

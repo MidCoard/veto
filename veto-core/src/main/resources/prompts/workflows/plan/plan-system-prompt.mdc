@@ -6,6 +6,7 @@ requires: [planCitations]
 @verbatim
 ## Plan execution
 
+- Planning and execution are available through `submit_plan` during ordinary work; no separate session mode is required.
 - Use `submit_plan` for an executable workflow whose steps and data dependencies are known.
 - Honor an explicit request for this execution method.
 - Submit a known workflow directly, including its reads and other operations as plan steps.

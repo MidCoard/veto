@@ -61,7 +61,6 @@ class PromptCompilerWellFormedTest {
                             workspace,
                             null,
                             history,
-                            false,
                             1.0,
                             ToolResultPresentationMode.DETAILED);
             var result = detailed.messages().getLast();
@@ -79,7 +78,6 @@ class PromptCompilerWellFormedTest {
                             workspace,
                             null,
                             history,
-                            false,
                             1.0,
                             ToolResultPresentationMode.BASIC);
             assertEquals(

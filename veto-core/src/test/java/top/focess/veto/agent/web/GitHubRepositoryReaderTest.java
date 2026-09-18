@@ -96,7 +96,6 @@ class GitHubRepositoryReaderTest {
                             "alice",
                             session,
                             ToolResultPresentationMode.BASIC,
-                            false,
                             permit));
             var engine = ToolEngineImpl.isolated(new ObjectMapper(), List.of(tool));
             var definition = engine.getActiveTools(null).getFirst();

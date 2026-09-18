@@ -56,8 +56,7 @@ public class GroupRecoveryService {
             @NonNull UUID user,
             @NonNull String owner,
             @NonNull Workspace workspace,
-            @NonNull ToolResultPresentationMode presentation,
-            boolean guided) {
+            @NonNull ToolResultPresentationMode presentation) {
         GroupHistoryView saved =
                 history.latestSnapshots(session.toString()).stream()
                         .filter(view -> view.leaderId().equals(leader.id()))
@@ -89,7 +88,6 @@ public class GroupRecoveryService {
                             owner,
                             workspace,
                             presentation,
-                            guided,
                             session);
             groups.put(group);
         }

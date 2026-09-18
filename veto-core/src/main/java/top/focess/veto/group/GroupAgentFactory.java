@@ -61,7 +61,6 @@ public class GroupAgentFactory implements GroupSpawner.AgentFactory {
                 owner,
                 workspace,
                 mateBinding.toolResultPresentation(),
-                mateBinding.guidedEnabled(),
                 mateBinding.sessionId());
     }
 

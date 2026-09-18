@@ -213,21 +213,18 @@ public class PromptCompiler {
      *     veto.group.mate.system-prompt-base}); it never replaces persona identity or skillset
      *     context. Role/tools/boundaries are persona-driven.
      * @param history the raw, append-only turn history (oldest->newest)
-     * @param guidedEnabled whether the session permits guided programs
      */
     public @NonNull CompiledPrompt compile(
             @NonNull AgentPersona persona,
             @NonNull Workspace sessionWorkspace,
             String systemPromptBase,
             List<TurnRecord> history,
-            boolean guidedEnabled,
             double correctionFactor) {
         return compile(
                 persona,
                 sessionWorkspace,
                 systemPromptBase,
                 history,
-                guidedEnabled,
                 correctionFactor,
                 ToolResultPresentationMode.BASIC);
     }
@@ -237,7 +234,6 @@ public class PromptCompiler {
             @NonNull Workspace sessionWorkspace,
             String systemPromptBase,
             List<TurnRecord> history,
-            boolean guidedEnabled,
             double correctionFactor,
             @NonNull ToolResultPresentationMode toolResultPresentation) {
         return compile(
@@ -245,7 +241,6 @@ public class PromptCompiler {
                 sessionWorkspace,
                 systemPromptBase,
                 history,
-                guidedEnabled,
                 correctionFactor,
                 toolResultPresentation,
                 null);
@@ -256,7 +251,6 @@ public class PromptCompiler {
             @NonNull Workspace sessionWorkspace,
             String systemPromptBase,
             List<TurnRecord> history,
-            boolean guidedEnabled,
             double correctionFactor,
             @NonNull ToolResultPresentationMode toolResultPresentation,
             Long inputBudgetOverride) {
@@ -265,7 +259,6 @@ public class PromptCompiler {
                 sessionWorkspace,
                 systemPromptBase,
                 history,
-                guidedEnabled,
                 correctionFactor,
                 toolResultPresentation,
                 inputBudgetOverride,
@@ -277,7 +270,6 @@ public class PromptCompiler {
             @NonNull Workspace sessionWorkspace,
             String systemPromptBase,
             List<TurnRecord> history,
-            boolean guidedEnabled,
             double correctionFactor,
             @NonNull ToolResultPresentationMode toolResultPresentation,
             Long inputBudgetOverride,
@@ -286,9 +278,7 @@ public class PromptCompiler {
         List<ToolDefinition> flatTools =
                 translator.translateTools(
                         availableTools(
-                                persona.whitelistedTools(),
-                                persona.registeredSkills().isEmpty(),
-                                guidedEnabled));
+                                persona.whitelistedTools(), persona.registeredSkills().isEmpty()));
         List<ChatMessage> conversation = resolveRewinds(history, toolResultPresentation);
         if (!recoveryContext.content().isBlank()) {
             conversation = new ArrayList<>(conversation);
@@ -341,22 +331,7 @@ public class PromptCompiler {
             @NonNull Workspace sessionWorkspace,
             String systemPromptBase,
             @NonNull ToolResultPresentationMode toolResultPresentation) {
-        return linkSystemMessage(
-                persona, sessionWorkspace, systemPromptBase, toolResultPresentation, false);
-    }
-
-    public @NonNull String linkSystemMessage(
-            @NonNull AgentPersona persona,
-            @NonNull Workspace sessionWorkspace,
-            String systemPromptBase,
-            @NonNull ToolResultPresentationMode toolResultPresentation,
-            boolean guidedEnabled) {
-        return linkSystemSource(
-                        persona,
-                        sessionWorkspace,
-                        systemPromptBase,
-                        toolResultPresentation,
-                        guidedEnabled)
+        return linkSystemSource(persona, sessionWorkspace, systemPromptBase, toolResultPresentation)
                 .text();
     }
 
@@ -364,21 +339,13 @@ public class PromptCompiler {
             @NonNull AgentPersona persona,
             @NonNull Workspace sessionWorkspace,
             String systemPromptBase,
-            @NonNull ToolResultPresentationMode toolResultPresentation,
-            boolean guidedEnabled) {
+            @NonNull ToolResultPresentationMode toolResultPresentation) {
         List<ToolDefinition> flatTools =
                 translator.translateTools(
                         availableTools(
-                                persona.whitelistedTools(),
-                                persona.registeredSkills().isEmpty(),
-                                guidedEnabled));
+                                persona.whitelistedTools(), persona.registeredSkills().isEmpty()));
         return buildSystemMessage(
-                persona,
-                sessionWorkspace,
-                systemPromptBase,
-                flatTools,
-                toolResultPresentation,
-                guidedEnabled);
+                persona, sessionWorkspace, systemPromptBase, flatTools, toolResultPresentation);
     }
 
     /**
@@ -392,18 +359,7 @@ public class PromptCompiler {
             @NonNull Workspace workspace,
             String base,
             @NonNull ToolResultPresentationMode presentation) {
-        var toolNames = request.tools().stream().map(ToolDefinition::name).toList();
-        boolean plans =
-                persona.whitelistedTools().stream()
-                        .anyMatch(
-                                tool ->
-                                        toolNames.contains(tool.name())
-                                                && top.focess.veto.agent.tool.ResponseSubmission
-                                                                .Metadata.kindOf(tool)
-                                                        == top.focess.veto.agent.tool
-                                                                .ResponseSubmission.Kind.PLAN);
-        var source =
-                buildSystemMessage(persona, workspace, base, request.tools(), presentation, plans);
+        var source = buildSystemMessage(persona, workspace, base, request.tools(), presentation);
         List<ChatMessage> messages = new ArrayList<>();
         messages.add(ChatMessage.system(source.text()).withPromptSources(source.sources()));
         request.messages().stream()
@@ -428,21 +384,7 @@ public class PromptCompiler {
     static @NonNull List<top.focess.veto.agent.tool.@NonNull ToolDefinition> availableTools(
             @NonNull Collection<top.focess.veto.agent.tool.@NonNull ToolDefinition> tools,
             boolean skillsEmpty) {
-        return availableTools(tools, skillsEmpty, true);
-    }
-
-    static @NonNull List<top.focess.veto.agent.tool.@NonNull ToolDefinition> availableTools(
-            @NonNull Collection<top.focess.veto.agent.tool.@NonNull ToolDefinition> tools,
-            boolean skillsEmpty,
-            boolean guidedEnabled) {
         return tools.stream()
-                .filter(
-                        tool ->
-                                guidedEnabled
-                                        || top.focess.veto.agent.tool.ResponseSubmission.Metadata
-                                                        .kindOf(tool)
-                                                != top.focess.veto.agent.tool.ResponseSubmission
-                                                        .Kind.PLAN)
                 .filter(tool -> !skillsEmpty || !"load_skill".equals(tool.name()))
                 .toList();
     }
@@ -454,8 +396,7 @@ public class PromptCompiler {
             @NonNull Workspace sessionWorkspace,
             String base,
             @NonNull List<ToolDefinition> flatTools,
-            @NonNull ToolResultPresentationMode toolResultPresentation,
-            boolean guidedEnabled) {
+            @NonNull ToolResultPresentationMode toolResultPresentation) {
         String fixed = isolatedInstructions;
         Map<String, Object> data =
                 PromptInputs.standard(
@@ -464,8 +405,7 @@ public class PromptCompiler {
                         base,
                         flatTools,
                         deployerPolicy,
-                        toolResultPresentation,
-                        guidedEnabled);
+                        toolResultPresentation);
         String entry = "default-system-prompt";
         if (fixed != null) {
             entry = "default-tool-agent-system-prompt";

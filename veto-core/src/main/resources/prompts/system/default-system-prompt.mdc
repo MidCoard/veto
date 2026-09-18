@@ -1,7 +1,7 @@
 ---
 version: 2
 id: default-system-prompt
-requires: [persona, workspace, environment, lawSources, guidance, policy, presentation, guided, planCitations, tools, toolNames, skills]
+requires: [persona, workspace, environment, lawSources, guidance, policy, presentation, planCitations, tools, toolNames, skills]
 ---
 @message system
 @include law
@@ -27,9 +27,7 @@ requires: [persona, workspace, environment, lawSources, guidance, policy, presen
 @endif
 @include tool-catalog
 @include response-protocol
-@if guided
 @if contains(toolNames, "submit_plan")
 @include plan-system-prompt
-@endif
 @endif
 @endmessage

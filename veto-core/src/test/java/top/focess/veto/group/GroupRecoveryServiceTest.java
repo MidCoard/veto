@@ -52,7 +52,7 @@ class GroupRecoveryServiceTest {
         when(agents.records(session)).thenReturn(List.of());
         when(tools.resolve(any())).thenReturn(Set.of());
         recovery.restore(
-                leader, session, user, "owner", workspace, ToolResultPresentationMode.BASIC, false);
+                leader, session, user, "owner", workspace, ToolResultPresentationMode.BASIC);
     }
 
     private @NonNull GroupHistoryView snapshot(

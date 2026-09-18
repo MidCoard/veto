@@ -224,7 +224,6 @@ class ToolEngineImplTest {
                             mismatch.equals("owner") ? "other-owner" : null,
                             mismatch.equals("session") ? UUID.randomUUID() : null,
                             ToolResultPresentationMode.BASIC,
-                            false,
                             mismatch.equals("empty") ? ToolExecutionPermit.empty() : permit));
         }
         try {
@@ -399,7 +398,6 @@ class ToolEngineImplTest {
                         "test-owner",
                         sessionId,
                         ToolResultPresentationMode.BASIC,
-                        false,
                         permit.withCaller("test-agent", TEST_USER, null, "test-owner", sessionId)));
         try {
             ToolResult result = engine.execute(call, definition);
@@ -579,7 +577,6 @@ class ToolEngineImplTest {
                         null,
                         null,
                         ToolResultPresentationMode.BASIC,
-                        false,
                         permit.withCaller("test-agent", TEST_USER, null, null, null)));
         try {
             ToolResult result =
@@ -929,7 +926,6 @@ class ToolEngineImplTest {
                         null,
                         null,
                         ToolResultPresentationMode.BASIC,
-                        false,
                         permit.withCaller("test-agent", TEST_USER, null, null, null)));
         try {
             ToolResult result = engine.execute(call, definition);
@@ -1097,7 +1093,6 @@ class ToolEngineImplTest {
                         null,
                         null,
                         ToolResultPresentationMode.BASIC,
-                        false,
                         permit.withCaller("test-agent", TEST_USER, null, null, null)));
         try {
             ToolCall changed =

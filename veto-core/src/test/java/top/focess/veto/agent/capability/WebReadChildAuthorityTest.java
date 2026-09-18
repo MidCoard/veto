@@ -290,7 +290,7 @@ class WebReadChildAuthorityTest {
                                 base.taskBinding())
                         .withCaller(agent, user, null, owner, session);
         return new ToolCallContext(
-                agent, user, null, owner, session, ToolResultPresentationMode.BASIC, false, permit);
+                agent, user, null, owner, session, ToolResultPresentationMode.BASIC, permit);
     }
 
     private static @NonNull VetoResponse call(

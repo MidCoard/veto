@@ -185,25 +185,6 @@ public class SessionService {
             @NonNull String workspaceRoots,
             int currentWorkspaceRootIndex,
             @NonNull ToolResultPresentationMode toolResultPresentation) {
-        return createSession(
-                owner,
-                patternName,
-                sessionName,
-                workspaceRoots,
-                currentWorkspaceRootIndex,
-                toolResultPresentation,
-                false);
-    }
-
-    @Transactional
-    public @NonNull SessionEntity createSession(
-            @NonNull String owner,
-            @NonNull String patternName,
-            String sessionName,
-            @NonNull String workspaceRoots,
-            int currentWorkspaceRootIndex,
-            @NonNull ToolResultPresentationMode toolResultPresentation,
-            boolean guidedEnabled) {
         AgentPatternEntity pattern =
                 patterns.findByNameAndOwner(patternName, owner)
                         .orElseThrow(
@@ -276,8 +257,7 @@ public class SessionService {
                                 resolvedName,
                                 admittedWorkspaceRoots,
                                 currentWorkspaceRootIndex,
-                                toolResultPresentation,
-                                guidedEnabled));
+                                toolResultPresentation));
         ModelBinding cache = tierRegistry.resolve(owner, pattern.getTier());
         AgentEntity agent =
                 new AgentEntity(
@@ -402,8 +382,7 @@ public class SessionService {
                 owner,
                 session.getWorkspaceRoots(),
                 session.getCurrentWorkspaceRootIndex(),
-                session.getToolResultPresentation(),
-                session.getGuidedEnabled());
+                session.getToolResultPresentation());
         session.touch();
         sessions.save(session);
         activeSessions.put(terminalId, session.getId());
@@ -510,19 +489,14 @@ public class SessionService {
         if (agent == null) return Optional.empty();
         LlmConfig config = llmConfig(tierRegistry.resolve(session.getOwner(), agent.getTier()));
         return Optional.of(
-                new SessionConfig(
-                        session.getId(),
-                        config,
-                        session.getToolResultPresentation(),
-                        session.getGuidedEnabled()));
+                new SessionConfig(session.getId(), config, session.getToolResultPresentation()));
     }
 
     /** A resolved session's id + LLM config, for the REST prompt path. */
     public record SessionConfig(
             @NonNull String sessionId,
             @NonNull LlmConfig config,
-            @NonNull ToolResultPresentationMode toolResultPresentation,
-            boolean guidedEnabled) {}
+            @NonNull ToolResultPresentationMode toolResultPresentation) {}
 
     /**
      * Activates a session for the REST prompt path (no terminal, no cwd scoping): resolves the
@@ -551,16 +525,12 @@ public class SessionService {
                 owner,
                 session.getWorkspaceRoots(),
                 session.getCurrentWorkspaceRootIndex(),
-                session.getToolResultPresentation(),
-                session.getGuidedEnabled());
+                session.getToolResultPresentation());
         session.touch();
         sessions.save(session);
         return Optional.of(
                 new SessionConfig(
-                        session.getId(),
-                        llmConfig(resolved),
-                        session.getToolResultPresentation(),
-                        session.getGuidedEnabled()));
+                        session.getId(), llmConfig(resolved), session.getToolResultPresentation()));
     }
 
     /** Restores the exact primary/team identity for an already-authorized Monitor observation. */
@@ -593,8 +563,7 @@ public class SessionService {
                 owner,
                 session.getWorkspaceRoots(),
                 session.getCurrentWorkspaceRootIndex(),
-                session.getToolResultPresentation(),
-                session.getGuidedEnabled());
+                session.getToolResultPresentation());
         return true;
     }
 

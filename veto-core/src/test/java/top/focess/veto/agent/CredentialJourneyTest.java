@@ -35,7 +35,7 @@ class CredentialJourneyTest {
     @ParameterizedTest
     @CsvSource({"false,true", "true,true", "false,false", "true,false"})
     void fileImportAndAuthenticatedReadKeepSecretsOutOfModelAndHistory(
-            boolean guided, boolean approveUse, @TempDir @NonNull Path root) throws Exception {
+            boolean usePlan, boolean approveUse, @TempDir @NonNull Path root) throws Exception {
         var mapper = new ObjectMapper();
         String token = "ghp_" + "A1".repeat(18);
         Path file = Files.writeString(root.resolve("config.txt"), "token=" + token);
@@ -112,7 +112,7 @@ class CredentialJourneyTest {
                     assertFalse(observed.contains(token));
                     int step = calls.getAndIncrement();
                     if (step == 0) {
-                        if (!guided)
+                        if (!usePlan)
                             return tool("view_file", Map.of("absolutePath", file.toString()));
                         String program =
                                 """
@@ -146,7 +146,7 @@ class CredentialJourneyTest {
                     }
                     if (step == 1) {
                         String ref = extract(observed, "s_[a-f0-9]{32}");
-                        return guided
+                        return usePlan
                                 ? message(ref)
                                 : tool(
                                         "import_detected_credential",
@@ -161,7 +161,7 @@ class CredentialJourneyTest {
                     if (step == 2) {
                         String ref = extract(observed, "cred_[a-f0-9-]{36}");
                         importedReferences.add(ref);
-                        return guided
+                        return usePlan
                                 ? message(ref)
                                 : tool(
                                         "read_github_repository",
@@ -217,8 +217,7 @@ class CredentialJourneyTest {
                         "owner",
                         root.toString(),
                         0,
-                        ToolResultPresentationMode.BASIC,
-                        guided);
+                        ToolResultPresentationMode.BASIC);
         try {
             var result =
                     service.submit(

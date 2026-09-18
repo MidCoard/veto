@@ -113,7 +113,7 @@ class AskUserActionTest {
                                 ToolCallContextHolder.set(
                                         new ToolCallContext(
                                                 "agent", userId, null, "alice", sessionId, mode,
-                                                false, permit));
+                                                permit));
                                 try {
                                     return engine.execute(call, definition);
                                 } finally {

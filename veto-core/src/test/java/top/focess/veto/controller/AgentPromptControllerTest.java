@@ -53,8 +53,7 @@ class AgentPromptControllerTest {
                                 new SessionService.SessionConfig(
                                         sessionId.toString(),
                                         new LlmConfig(ProviderType.DEEPSEEK, "model", "key"),
-                                        ToolResultPresentationMode.BASIC,
-                                        false)));
+                                        ToolResultPresentationMode.BASIC)));
         when(mate.id()).thenReturn("mate");
         when(mate.state()).thenReturn(AgentState.RUNNING);
         when(agents.agents(sessionId))

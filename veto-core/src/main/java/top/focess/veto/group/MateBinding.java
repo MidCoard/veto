@@ -32,5 +32,4 @@ public record MateBinding(
         String owner,
         Workspace workspace,
         @NonNull ToolResultPresentationMode toolResultPresentation,
-        boolean guidedEnabled,
         UUID sessionId) {}

@@ -57,7 +57,6 @@ public final class DelegationCapabilityImpl implements DelegationCapability {
                         task,
                         hitlRegistry.workspace(leaderId),
                         ctx.toolResultPresentation(),
-                        ctx.guidedEnabled(),
                         ctx.sessionId());
 
         // Request the delegation transform: the runner rewinds, re-seeds the Leader persona +

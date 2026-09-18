@@ -48,11 +48,7 @@ public class SessionGroupController {
         var durable = history.load(cfg.sessionId(), registry);
         var legacy =
                 LegacyGroupHistory.read(
-                        records.load(
-                                        cfg.sessionId(),
-                                        name,
-                                        cfg.toolResultPresentation(),
-                                        cfg.guidedEnabled())
+                        records.load(cfg.sessionId(), name, cfg.toolResultPresentation())
                                 .records());
         List<GroupHistoryView> result = new ArrayList<>(durable);
         for (int i = 0; i < legacy.size(); i++) {

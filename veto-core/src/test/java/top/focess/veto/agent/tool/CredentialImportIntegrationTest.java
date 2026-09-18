@@ -89,7 +89,6 @@ class CredentialImportIntegrationTest {
                         "alice",
                         session,
                         ToolResultPresentationMode.BASIC,
-                        false,
                         permit));
         assertFalse(engine.execute(call, definition).success());
         verifyNoInteractions(vault);
@@ -101,7 +100,6 @@ class CredentialImportIntegrationTest {
                         "alice",
                         session,
                         ToolResultPresentationMode.BASIC,
-                        false,
                         permit));
         var changed =
                 new ToolCall(

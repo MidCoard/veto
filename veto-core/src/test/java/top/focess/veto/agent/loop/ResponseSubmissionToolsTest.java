@@ -14,7 +14,7 @@ class ResponseSubmissionToolsTest {
     private final @NonNull ObjectMapper mapper = new ObjectMapper();
 
     @Test
-    void guideAvailabilityFollowsSessionCapability() {
+    void planToolIsAvailableWithoutSkills() {
         var tool = new SubmitPlanTool(new LoopControlCapabilityImpl());
         var definition =
                 AgentToolDefinition.from(
@@ -22,10 +22,7 @@ class ResponseSubmissionToolsTest {
                         ToolDocs.nonNullClass(SubmitPlanTool.class),
                         tool.getArgsClass(),
                         tool.getCapability());
-        assertTrue(PromptCompiler.availableTools(List.of(definition), true, false).isEmpty());
-        assertEquals(
-                List.of(definition),
-                PromptCompiler.availableTools(List.of(definition), true, true));
+        assertEquals(List.of(definition), PromptCompiler.availableTools(List.of(definition), true));
         assertEquals(ResponseSubmission.Kind.PLAN, ResponseSubmission.Metadata.kindOf(definition));
     }
 

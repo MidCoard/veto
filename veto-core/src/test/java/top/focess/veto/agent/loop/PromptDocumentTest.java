@@ -109,13 +109,13 @@ class PromptDocumentTest {
         inputs.put("toolNames", List.of("submit_plan"));
         inputs.put("skills", List.of());
         inputs.put("planCitations", false);
-        for (boolean guided : List.of(false, true)) {
-            inputs.put("guided", guided);
+        for (boolean hasPlan : List.of(false, true)) {
+            inputs.put("toolNames", hasPlan ? List.of("submit_plan") : List.of());
             var result = PromptLibrary.compile("default-system-prompt", inputs);
             assertEquals(1, result.messages().size());
             assertTrue(result.text().contains(PromptLibrary.text("answer-style")));
             assertEquals(
-                    guided,
+                    hasPlan,
                     result.text()
                             .contains(
                                     PromptLibrary.text(

@@ -74,8 +74,7 @@ class PromptCapabilityContractTest {
                             null,
                             flat,
                             DeployerPolicy.FULL_ACCESS,
-                            ToolResultPresentationMode.BASIC,
-                            true);
+                            ToolResultPresentationMode.BASIC);
             inputs.put("lawSources", List.of());
             String prompt = PromptLibrary.text("default-system-prompt", inputs);
             assertTrue(prompt.contains("## Plan execution"));
@@ -98,7 +97,7 @@ class PromptCapabilityContractTest {
     }
 
     private static @NonNull Map<String, Object> inputs(
-            @NonNull Role role, @NonNull PathMode pathMode, boolean guided, boolean capabilities) {
+            @NonNull Role role, @NonNull PathMode pathMode, boolean capabilities) {
         var persona =
                 new AgentPersona(
                         "fixture",
@@ -129,8 +128,7 @@ class PromptCapabilityContractTest {
                         null,
                         tools,
                         DeployerPolicy.FULL_ACCESS,
-                        ToolResultPresentationMode.BASIC,
-                        guided);
+                        ToolResultPresentationMode.BASIC);
         // Keep this fixture independent of any local VETO.md in the developer checkout.
         data.put("lawSources", List.of());
         return data;
@@ -139,25 +137,22 @@ class PromptCapabilityContractTest {
     @Test
     void capabilityInstructionsFollowActualManifestAcrossRoles() {
         for (Role role : List.of(Role.STANDALONE, Role.LEADER, Role.MATE)) {
-            for (boolean guided : List.of(false, true)) {
-                for (boolean capabilities : List.of(false, true)) {
-                    String prompt =
-                            PromptLibrary.text(
-                                    "default-system-prompt",
-                                    inputs(role, PathMode.REAL, guided, capabilities));
-                    assertEquals(guided && capabilities, prompt.contains("## Plan execution"));
-                    assertEquals(capabilities, prompt.contains("For clickable references"));
-                    assertEquals(capabilities, prompt.contains("## Available Skills"));
-                    assertEquals(capabilities, prompt.contains("fixture-skill"));
-                    assertFalse(prompt.contains("@if"));
-                }
+            for (boolean capabilities : List.of(false, true)) {
+                String prompt =
+                        PromptLibrary.text(
+                                "default-system-prompt", inputs(role, PathMode.REAL, capabilities));
+                assertEquals(capabilities, prompt.contains("## Plan execution"));
+                assertEquals(capabilities, prompt.contains("For clickable references"));
+                assertEquals(capabilities, prompt.contains("## Available Skills"));
+                assertEquals(capabilities, prompt.contains("fixture-skill"));
+                assertFalse(prompt.contains("@if"));
             }
         }
     }
 
     @Test
     void windowsVirtualWorkspaceUsesMountPathsWhileRetainingHostFacts() {
-        var data = inputs(Role.STANDALONE, PathMode.VIRTUAL, false, false);
+        var data = inputs(Role.STANDALONE, PathMode.VIRTUAL, false);
         data.put("environment", Map.of("os", "Windows 11", "arch", "amd64", "windows", true));
         String prompt = PromptLibrary.text("default-system-prompt", data);
 
@@ -179,7 +174,7 @@ class PromptCapabilityContractTest {
 
     @Test
     void workspaceLawCannotMasqueradeAsTopPriorityRuntimeRules() {
-        var data = inputs(Role.STANDALONE, PathMode.REAL, false, false);
+        var data = inputs(Role.STANDALONE, PathMode.REAL, false);
         data.put(
                 "lawSources",
                 List.of(
@@ -224,8 +219,7 @@ class PromptCapabilityContractTest {
                         null,
                         List.of(),
                         DeployerPolicy.FULL_ACCESS,
-                        ToolResultPresentationMode.BASIC,
-                        false);
+                        ToolResultPresentationMode.BASIC);
         String law = PromptLibrary.text("law", data);
 
         assertTrue(law.contains("### Root `/first`"));

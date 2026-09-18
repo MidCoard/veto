@@ -79,7 +79,6 @@ class RunTaskToolTest {
                         null,
                         null,
                         ToolResultPresentationMode.BASIC,
-                        false,
                         ToolExecutionPermit.empty()));
     }
 
@@ -126,7 +125,6 @@ class RunTaskToolTest {
                         null,
                         UUID.fromString(session.getId()),
                         ToolResultPresentationMode.BASIC,
-                        false,
                         permit,
                         "launch-request"));
         boolean win = System.getProperty("os.name").toLowerCase().contains("win");

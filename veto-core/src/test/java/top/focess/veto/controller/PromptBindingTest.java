@@ -53,10 +53,7 @@ class PromptBindingTest {
                 .thenReturn(
                         Optional.of(
                                 new SessionService.SessionConfig(
-                                        "session-id",
-                                        config,
-                                        ToolResultPresentationMode.BASIC,
-                                        false)));
+                                        "session-id", config, ToolResultPresentationMode.BASIC)));
         var response =
                 new PromptController(sessions, agents, vault)
                         .prompt("session", new SubmitPromptRequest("Explain TCP"));

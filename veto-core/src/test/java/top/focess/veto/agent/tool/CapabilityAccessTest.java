@@ -54,7 +54,6 @@ class CapabilityAccessTest {
                         "owner",
                         null,
                         ToolResultPresentationMode.BASIC,
-                        false,
                         permit));
         ToolCallContextHolder.setCurrentCallId(permit.callId());
     }

@@ -273,7 +273,6 @@ class MonitorServiceTest {
                         "owner",
                         null,
                         ToolResultPresentationMode.BASIC,
-                        false,
                         UUID.fromString(session));
         group =
                 group.withDag(
@@ -361,7 +360,6 @@ class MonitorServiceTest {
                         "owner",
                         null,
                         ToolResultPresentationMode.BASIC,
-                        false,
                         UUID.fromString(session));
         groups.put(group);
         assertTrue(service.hasGroupWork("leader", "request-new"));
@@ -596,7 +594,6 @@ class MonitorServiceTest {
                         "owner",
                         null,
                         ToolResultPresentationMode.BASIC,
-                        false,
                         UUID.fromString(session));
         groups.put(group);
         assertTrue(service.hasUndeliveredGroup("leader"));

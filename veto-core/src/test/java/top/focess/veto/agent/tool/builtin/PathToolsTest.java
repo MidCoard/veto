@@ -278,7 +278,6 @@ class PathToolsTest {
                         null,
                         sessionId,
                         ToolResultPresentationMode.BASIC,
-                        false,
                         permit.withCaller("agent", userId, null, null, sessionId)));
         ReflectionTestUtils.invokeMethod(
                 ToolCallContextHolder.class, "setCurrentCallId", permit.callId());

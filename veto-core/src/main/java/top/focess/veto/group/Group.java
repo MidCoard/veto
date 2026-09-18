@@ -38,7 +38,6 @@ public record Group(
         String owner,
         Workspace workspace,
         @NonNull ToolResultPresentationMode toolResultPresentation,
-        boolean guidedEnabled,
         UUID sessionId) {
 
     public Group {
@@ -131,29 +130,6 @@ public record Group(
                 owner,
                 workspace,
                 toolResultPresentation,
-                false);
-    }
-
-    public static @NonNull Group create(
-            @NonNull String leaderId,
-            @NonNull String userId,
-            String contextBrief,
-            @NonNull Blackboard blackboard,
-            @NonNull ExecutionDag dag,
-            String owner,
-            Workspace workspace,
-            @NonNull ToolResultPresentationMode toolResultPresentation,
-            boolean guidedEnabled) {
-        return create(
-                leaderId,
-                userId,
-                contextBrief,
-                blackboard,
-                dag,
-                owner,
-                workspace,
-                toolResultPresentation,
-                guidedEnabled,
                 null);
     }
 
@@ -166,7 +142,6 @@ public record Group(
             String owner,
             Workspace workspace,
             @NonNull ToolResultPresentationMode toolResultPresentation,
-            boolean guidedEnabled,
             UUID sessionId) {
         UUID id = UUID.randomUUID();
         return new Group(
@@ -183,7 +158,6 @@ public record Group(
                 owner,
                 workspace,
                 toolResultPresentation,
-                guidedEnabled,
                 sessionId);
     }
 
@@ -202,7 +176,6 @@ public record Group(
                 owner,
                 workspace,
                 toolResultPresentation,
-                guidedEnabled,
                 sessionId);
     }
 
@@ -221,7 +194,6 @@ public record Group(
                 owner,
                 workspace,
                 toolResultPresentation,
-                guidedEnabled,
                 sessionId);
     }
 
@@ -242,7 +214,6 @@ public record Group(
                 owner,
                 workspace,
                 toolResultPresentation,
-                guidedEnabled,
                 sessionId);
     }
 
@@ -266,7 +237,6 @@ public record Group(
                 owner,
                 workspace,
                 toolResultPresentation,
-                guidedEnabled,
                 sessionId);
     }
 

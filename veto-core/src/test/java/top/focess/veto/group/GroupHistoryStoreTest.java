@@ -43,7 +43,6 @@ class GroupHistoryStoreTest {
                                 "owner",
                                 null,
                                 ToolResultPresentationMode.BASIC,
-                                false,
                                 session)
                         .withMate("working", "analysis")
                         .withMate("idle", "review");
@@ -139,7 +138,6 @@ class GroupHistoryStoreTest {
                         "owner",
                         null,
                         ToolResultPresentationMode.BASIC,
-                        false,
                         session);
         registry.put(group);
         registry.put(group);

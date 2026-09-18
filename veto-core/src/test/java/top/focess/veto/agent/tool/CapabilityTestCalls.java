@@ -26,7 +26,6 @@ public final class CapabilityTestCalls {
                             "test-owner",
                             UUID.randomUUID(),
                             ToolResultPresentationMode.BASIC,
-                            false,
                             ToolExecutionPermit.empty());
         String priorCall = ToolCallContextHolder.currentCallId();
         String callId = UUID.randomUUID().toString();
@@ -60,7 +59,6 @@ public final class CapabilityTestCalls {
                         previous.owner(),
                         previous.sessionId(),
                         previous.toolResultPresentation(),
-                        previous.guidedEnabled(),
                         permit,
                         previous.requestId()));
         ToolCallContextHolder.setCurrentCallId(callId);

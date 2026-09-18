@@ -214,7 +214,6 @@ class WorkspaceFilePolicyTest {
                         "owner",
                         SESSION,
                         ToolResultPresentationMode.BASIC,
-                        false,
                         permit));
         ToolCallContextHolder.setCurrentCallId(permit.callId());
     }

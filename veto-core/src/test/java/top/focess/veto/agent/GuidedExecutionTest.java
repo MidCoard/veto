@@ -37,10 +37,57 @@ import top.focess.veto.sandbox.BackgroundTaskManager;
 import top.focess.veto.vault.SecretCandidateStore;
 
 class GuidedExecutionTest {
+    @Test
+    void ordinarySessionCanExecutePlan(@TempDir @NonNull Path root) throws Exception {
+        Path file = Files.writeString(root.resolve("notes.txt"), "Plan result");
+        String pathJson = new ObjectMapper().writeValueAsString(file.toString());
+        AtomicInteger calls = new AtomicInteger();
+        var service =
+                service(
+                        request -> {
+                            calls.incrementAndGet();
+                            assertTrue(
+                                    request.tools().stream()
+                                            .anyMatch(t -> t.name().equals("submit_plan")));
+                            assertTrue(request.systemPrompt().contains("## Plan execution"));
+                            return actions(
+                                    """
+                [{"id":"read","label":"Read notes","type":"tool","tool":"view_file",
+                  "inputs":{"absolutePath":PATH},"outputs":{"text":"content"}},
+                 {"id":"stop","label":"Return notes","type":"STOP","result_binding":"text"}]
+                """
+                                            .replace("PATH", pathJson));
+                        },
+                        new HitlRegistry(),
+                        root);
+        String session = UUID.randomUUID().toString();
+        var agent =
+                service.getOrCreateAgent(
+                        session,
+                        UUID.randomUUID().toString(),
+                        binding(),
+                        List.of(),
+                        UUID.randomUUID(),
+                        "owner",
+                        root.toString(),
+                        0,
+                        ToolResultPresentationMode.BASIC);
+        try {
+            agent.submit("Read the notes with a plan");
+            var result = agent.await(Duration.ofSeconds(10));
+            assertTrue(result.success(), result.message());
+            assertTrue(result.message().contains("Plan result"), result.message());
+            assertEquals(
+                    1, calls.get(), "the accepted plan must execute without another planning turn");
+        } finally {
+            service.remove(session);
+        }
+    }
+
     @ParameterizedTest
     @ValueSource(booleans = {false, true})
     void protectedFileReferenceReachesTheModelWithoutRawSecret(
-            boolean guided, @TempDir @NonNull Path root) throws Exception {
+            boolean usePlan, @TempDir @NonNull Path root) throws Exception {
         String secret = "ghp_" + "A1".repeat(18);
         Path file =
                 Files.writeString(root.resolve("config.txt"), "token=" + secret + "\nnext line\n");
@@ -53,7 +100,7 @@ class GuidedExecutionTest {
                                     request.messages().stream()
                                             .noneMatch(m -> m.content().contains(secret)));
                             if (calls.getAndIncrement() == 0) {
-                                if (!guided)
+                                if (!usePlan)
                                     return new VetoResponse(
                                             null,
                                             List.of(
@@ -88,8 +135,7 @@ class GuidedExecutionTest {
                         "owner",
                         root.toString(),
                         0,
-                        ToolResultPresentationMode.BASIC,
-                        guided);
+                        ToolResultPresentationMode.BASIC);
         try {
             agent.submit("Read the configuration");
             var result = agent.await(Duration.ofSeconds(10));
@@ -303,9 +349,10 @@ class GuidedExecutionTest {
         }
     }
 
-    @Test
-    void responseSubmissionCannotExecuteAlongsideOtherCalls(@TempDir @NonNull Path root)
-            throws Exception {
+    @ParameterizedTest
+    @ValueSource(strings = {"fixture_loop", "answer_with_citations"})
+    void responseSubmissionCannotExecuteAlongsideOtherCalls(
+            @NonNull String otherTool, @TempDir @NonNull Path root) throws Exception {
         var calls = new AtomicInteger();
         var service =
                 service(
@@ -323,7 +370,7 @@ class GuidedExecutionTest {
                                                                                 "id", "stop",
                                                                                 "label", "Finish",
                                                                                 "type", "STOP")))),
-                                                new ToolCall("fixture_loop", Map.of())),
+                                                new ToolCall(otherTool, Map.of())),
                                         null);
                             assertTrue(
                                     request.messages().stream()
@@ -517,10 +564,9 @@ class GuidedExecutionTest {
                     "owner",
                     root.toString(),
                     0,
-                    ToolResultPresentationMode.BASIC,
-                    true);
+                    ToolResultPresentationMode.BASIC);
         }
-        for (String id : List.of("ordinary-comparison", "disabled-guide")) {
+        for (String id : List.of("ordinary-comparison", "default-plan")) {
             service.getOrCreateAgent(
                     id,
                     null,
@@ -530,8 +576,7 @@ class GuidedExecutionTest {
                     "owner",
                     root.toString(),
                     0,
-                    ToolResultPresentationMode.BASIC,
-                    false);
+                    ToolResultPresentationMode.BASIC);
         }
         return service;
     }
@@ -1054,16 +1099,16 @@ class GuidedExecutionTest {
         assertTrue(
                 guidedRequests.get(0).tools().stream()
                         .anyMatch(t -> t.name().equals("submit_plan")));
-        assertFalse(
+        assertTrue(
                 ordinaryRequests.get(0).tools().stream()
                         .anyMatch(t -> t.name().equals("submit_plan")));
-        String enabledPrompt = guidedRequests.get(0).systemPrompt();
-        String disabledPrompt = ordinaryRequests.get(0).systemPrompt();
+        String planPrompt = guidedRequests.get(0).systemPrompt();
+        String ordinaryPrompt = ordinaryRequests.get(0).systemPrompt();
         System.out.println(
-                "Guided comparison: enabled prompt chars="
-                        + enabledPrompt.length()
-                        + ", disabled prompt chars="
-                        + disabledPrompt.length()
+                "Guided comparison: plan prompt chars="
+                        + planPrompt.length()
+                        + ", ordinary prompt chars="
+                        + ordinaryPrompt.length()
                         + ", model requests="
                         + guidedRequests.size()
                         + "/"
@@ -1074,16 +1119,18 @@ class GuidedExecutionTest {
                         + ordinaryTools.size()
                         + ", final answer="
                         + guidedResult.message());
-        assertNotEquals(enabledPrompt, disabledPrompt);
-        assertTrue(enabledPrompt.contains("guide"));
-        assertFalse(disabledPrompt.contains("conditional_goto"));
+        assertEquals(planPrompt, ordinaryPrompt);
+        assertTrue(planPrompt.contains("guide"));
+        assertTrue(ordinaryPrompt.contains("conditional_goto"));
     }
 
     @Test
-    void disabledSessionRejectsGuideBeforeExecutingItsTool(@TempDir @NonNull Path root)
-            throws Exception {
+    void defaultSessionExecutesPlanWithoutOptIn(@TempDir @NonNull Path root) throws Exception {
         String path =
-                new ObjectMapper().writeValueAsString(root.resolve("must-not-read.txt").toString());
+                new ObjectMapper()
+                        .writeValueAsString(
+                                Files.writeString(root.resolve("notes.txt"), "Default plan result")
+                                        .toString());
         String program =
                 """
                 [{"id":"read","label":"Read","type":"tool","tool":"view_file","inputs":{"absolutePath":PATH},"outputs":{"answer":"content"}},
@@ -1095,26 +1142,20 @@ class GuidedExecutionTest {
         var service =
                 service(
                         request -> {
-                            if (calls.getAndIncrement() == 0) return actions(program);
-                            assertTrue(
-                                    request.messages()
-                                            .getLast()
-                                            .content()
-                                            .contains(
-                                                    "Tool is not available in this turn: submit_plan"));
+                            calls.incrementAndGet();
                             assertTrue(
                                     request.tools().stream()
-                                            .noneMatch(tool -> tool.name().equals("submit_plan")));
+                                            .anyMatch(tool -> tool.name().equals("submit_plan")));
                             assertEquals(
                                     ResponseContract.Mode.ORDINARY,
                                     request.responseContract().mode());
-                            return message("Use ordinary tools instead.");
+                            return actions(program);
                         },
                         new HitlRegistry(),
                         root);
         var result =
                 service.submit(
-                        "disabled-guide",
+                        "default-plan",
                         "Read the file",
                         binding(),
                         Duration.ofSeconds(10),
@@ -1124,10 +1165,11 @@ class GuidedExecutionTest {
                         toolCalls::add,
                         null);
         assertTrue(result.success(), result.message());
-        assertEquals(2, calls.get());
+        assertEquals(1, calls.get());
+        assertTrue(result.message().contains("Default plan result"), result.message());
         assertTrue(
-                toolCalls.stream().noneMatch(call -> call.toolName().equals("view_file")),
-                "a disabled guide must never execute its program tools");
+                toolCalls.stream().anyMatch(call -> call.toolName().equals("view_file")),
+                "default sessions execute plan tools without an opt-in flag");
     }
 
     @Test

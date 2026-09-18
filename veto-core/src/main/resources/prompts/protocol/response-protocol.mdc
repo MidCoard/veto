@@ -10,6 +10,13 @@ requires: [toolNames]
 @endverbatim
 @if contains(toolNames, "answer_with_citations")
 @verbatim
-- For clickable references to conversation passages or tool results, use the registered `answer_with_citations` tool. The current user message is already a source, as are visible earlier messages and tool results. Submit the answer and exact quotes together; the runtime attaches the links. A citation identifies where text came from and is not independent fact verification. Ordinary external URLs remain Markdown links.
+### Sourced answers
+
+- For clickable references to conversation passages or tool results, use the registered `answer_with_citations` tool. The current user message, visible earlier messages and tool results are valid sources.
+- In `message`, link each cited claim using `[label](cite:id)`, for example `[requirement](cite:req)`. Bare markers such as `[1]` do not create links.
+- Declare each linked `id` in `citations` with a nonempty `sources` array of exact `quote` values. Every link needs a declaration, and every declaration needs a link. Omit `message_index` unless a diagnostic supplies it for disambiguation.
+- Copy a short contiguous passage as displayed. File and search tools may insert line numbers or path prefixes: preserve those inside a multiline quote, or quote a unique single-line substring instead. Do not reconstruct unnumbered code across numbered lines. If a quote is rejected, correct the actual quote before retrying.
+- Call the tool alone. Its `message` is the complete answer; do not repeat it as ordinary text after acceptance.
+- A matched quote identifies its source; it does not verify the claim's truth or prove your inference. Ordinary external URLs remain Markdown links, and answers without conversation-source references remain ordinary text.
 @endverbatim
 @endif

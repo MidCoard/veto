@@ -62,7 +62,6 @@ class MemoryToolsTest {
                         null,
                         null,
                         ToolResultPresentationMode.BASIC,
-                        false,
                         ToolExecutionPermit.empty()));
 
         MemoryTools.ForgetMemory tool =
@@ -123,7 +122,6 @@ class MemoryToolsTest {
                         null,
                         sessionId,
                         ToolResultPresentationMode.BASIC,
-                        false,
                         ToolExecutionPermit.empty()));
 
         MemoryTools.RecallMemory tool =

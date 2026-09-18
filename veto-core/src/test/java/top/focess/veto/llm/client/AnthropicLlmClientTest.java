@@ -17,8 +17,6 @@ import java.util.Map;
 import java.util.Optional;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.springframework.test.util.ReflectionTestUtils;
 import top.focess.veto.agent.tool.ToolDocs;
@@ -90,9 +88,8 @@ class AnthropicLlmClientTest {
         }
     }
 
-    @ParameterizedTest
-    @ValueSource(booleans = {false, true})
-    void responseChannelPreservesContractsHistoryAndText(boolean guided) throws Exception {
+    @Test
+    void responseChannelPreservesContractsHistoryAndText() throws Exception {
         var sdk = mock(ToolDocs.nonNullClass(AnthropicClient.class), RETURNS_DEEP_STUBS);
         var response = mock(ToolDocs.nonNullClass(Message.class), RETURNS_DEEP_STUBS);
         var finished = text("Finished");
@@ -244,10 +241,8 @@ class AnthropicLlmClientTest {
                                 .complete(new ResolvedRequest(request(), null, "unused")));
     }
 
-    @ParameterizedTest
-    @ValueSource(booleans = {false, true})
-    void acceptsAlternatingJsonAndNativeCallsWithoutLosingArguments(boolean guided)
-            throws Exception {
+    @Test
+    void acceptsAlternatingJsonAndNativeCallsWithoutLosingArguments() throws Exception {
         var sdk = mock(ToolDocs.nonNullClass(AnthropicClient.class), RETURNS_DEEP_STUBS);
         var response = mock(ToolDocs.nonNullClass(Message.class), RETURNS_DEEP_STUBS);
         when(sdk.messages().create(any(ToolDocs.nonNullClass(MessageCreateParams.class))))

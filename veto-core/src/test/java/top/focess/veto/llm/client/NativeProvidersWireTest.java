@@ -97,204 +97,189 @@ class NativeProvidersWireTest {
                     default -> throw new AssertionError();
                 };
         try {
-            for (boolean guided : List.of(false, true)) {
-                var request = request(type, guided, List.of(ChatMessage.user("Read")));
-                reply.set(wire(type, "", true));
-                var raw = client.complete(new ResolvedRequest(request, url, "local-invalid"));
-                var calls = raw.nativeCalls();
-                assertEquals("", raw.rawResponse());
-                if (calls == null) throw new AssertionError("Expected calls");
-                assertEquals(2, calls.size());
-                assertEquals("/中文 notes", calls.getFirst().args().get("path"));
-                String sent = captured.get();
-                assertNotNull(sent);
-                var body = MAPPER.readTree(sent);
-                assertTrue(sent.contains("Invoke registered tools"));
-                assertFalse(sent.contains("Tool execution is disabled"));
-                assertTrue(body.has("tools"));
-                assertFalse(body.has("response_format"));
-                assertFalse(body.has("text"));
-                assertFalse(body.path("generationConfig").has("responseSchema"));
-                if (type == ProviderType.GEMINI) {
-                    assertEquals(
-                            "AUTO",
-                            body.path("toolConfig")
-                                    .path("functionCallingConfig")
-                                    .path("mode")
-                                    .asText());
-                    assertFalse(body.path("generationConfig").has("responseMimeType"));
-                } else assertEquals("auto", body.path("tool_choice").asText());
-                var history = new ArrayList<ChatMessage>();
-                history.add(ChatMessage.user("Read"));
-                for (int i = 0; i < calls.size(); i++) {
-                    var call = calls.get(i);
-                    var message =
-                            ChatMessage.assistantToolCall(
-                                    call.callId(),
-                                    call.toolName(),
-                                    MAPPER.writeValueAsString(call.args()),
-                                    "",
-                                    null);
-                    if (type == ProviderType.GEMINI) {
-                        // Persist metadata as the runtime does, then reconstruct after a DB JSON
-                        // round-trip.
-                        var persisted =
-                                TurnRecord.toolCall(
-                                        i + 1, call.withNativeState(raw.nativeStates().get(i)));
-                        var payload =
-                                MAPPER.readTree(MAPPER.writeValueAsString(persisted.payload()));
-                        @SuppressWarnings("unchecked")
-                        Map<String, Object> restored = MAPPER.convertValue(payload, Map.class);
-                        message =
-                                message.withNativeState(
-                                        NativeToolState.fromPayload(restored.get("native_state")));
-                    }
-                    history.add(message);
-                    history.add(ChatMessage.toolResult(call.callId(), "result-" + i, i == 0));
-                }
-                reply.set(wire(type, "Done **successfully**", false));
-                var followup = request(type, guided, history);
+            var request = request(type, List.of(ChatMessage.user("Read")));
+            reply.set(wire(type, "", true));
+            var raw = client.complete(new ResolvedRequest(request, url, "local-invalid"));
+            var calls = raw.nativeCalls();
+            assertEquals("", raw.rawResponse());
+            if (calls == null) throw new AssertionError("Expected calls");
+            assertEquals(2, calls.size());
+            assertEquals("/中文 notes", calls.getFirst().args().get("path"));
+            String sent = captured.get();
+            assertNotNull(sent);
+            var body = MAPPER.readTree(sent);
+            assertTrue(sent.contains("Invoke registered tools"));
+            assertFalse(sent.contains("Tool execution is disabled"));
+            assertTrue(body.has("tools"));
+            assertFalse(body.has("response_format"));
+            assertFalse(body.has("text"));
+            assertFalse(body.path("generationConfig").has("responseSchema"));
+            if (type == ProviderType.GEMINI) {
                 assertEquals(
-                        "Done **successfully**",
-                        client.complete(new ResolvedRequest(followup, url, "local-invalid"))
-                                .rawResponse());
-                String second = captured.get();
-                assertNotNull(second);
-                assertTrue(second.contains("result-1"));
-                var secondBody = MAPPER.readTree(second);
-                if (type == ProviderType.GEMINI) {
-                    var contents = secondBody.path("contents");
-                    assertEquals(ProviderMessages.groups(followup).size(), contents.size());
-                    assertEquals(3, contents.size());
-                    assertEquals(2, contents.path(1).path("parts").size());
-                    assertEquals(
-                            "c2lnbmF0dXJl",
-                            contents.path(1)
-                                    .path("parts")
-                                    .path(0)
-                                    .path("thoughtSignature")
-                                    .asText());
-                    assertEquals(
-                            "n1",
-                            contents.path(2)
-                                    .path("parts")
-                                    .path(0)
-                                    .path("functionResponse")
-                                    .path("id")
-                                    .asText());
-                    assertFalse(
-                            contents.path(2)
-                                    .path("parts")
-                                    .path(1)
-                                    .path("functionResponse")
-                                    .path("response")
-                                    .path("success")
-                                    .asBoolean());
-                } else if (type == ProviderType.DEEPSEEK) {
-                    assertEquals(
-                            "function_call",
-                            secondBody.path("input").path(1).path("type").asText());
-                    assertEquals(
-                            secondBody.path("input").path(1).path("call_id"),
-                            secondBody.path("input").path(2).path("call_id"));
-                } else {
-                    assertEquals(
-                            secondBody
-                                    .path("messages")
-                                    .path(2)
-                                    .path("tool_calls")
-                                    .path(0)
-                                    .path("id"),
-                            secondBody.path("messages").path(3).path("tool_call_id"));
-                }
-                if (type == ProviderType.GEMINI) {
-                    var compacted =
-                            request(
-                                    type,
-                                    guided,
-                                    List.of(
-                                            ChatMessage.user("Continue"),
-                                            history.get(3),
-                                            history.get(4)));
-                    client.complete(new ResolvedRequest(compacted, url, "local-invalid"));
-                    String tail = captured.get();
-                    assertNotNull(tail);
-                    String tailContents = MAPPER.readTree(tail).path("contents").toString();
-                    assertFalse(tailContents.contains("thoughtSignature"));
-                    assertFalse(tailContents.contains("functionCall"));
-                    assertTrue(tail.contains("read_file"));
-                }
-                if (guided) {
-                    String guide =
-                            "{\"guide\":{\"actions\":[{\"id\":\"stop\",\"type\":\"STOP\",\"label\":\"Done\"}]}}";
-                    reply.set(wire(type, guide, false));
-                    assertEquals(
-                            guide,
-                            client.complete(new ResolvedRequest(request, url, "local-invalid"))
-                                    .rawResponse());
-                }
-                // Same and different JSON operations, plus guide: all are rejected before
-                // execution.
-                for (String mixed :
-                        List.of(
-                                "{\"calls\":[{\"tool_name\":\"read_file\",\"args\":{\"path\":\"/中文 notes\"}}]}",
-                                "{\"calls\":[{\"tool_name\":\"read_file\",\"args\":{\"path\":\"different\"}}]}",
-                                "{\"guide\":{\"actions\":[]}}")) {
-                    reply.set(wire(type, mixed, true));
-                    var withText =
-                            client.complete(new ResolvedRequest(request, url, "local-invalid"));
-                    assertEquals(mixed, withText.rawResponse());
-                    assertEquals(2, withText.nativeCalls().size());
-                }
-                String jsonCall =
-                        "{\"calls\":[{\"tool_name\":\"read_file\",\"args\":{\"path\":\"compat\"}}]}";
-                reply.set(wire(type, jsonCall, false));
-                assertEquals(
-                        jsonCall,
-                        client.complete(new ResolvedRequest(request, url, "local-invalid"))
-                                .rawResponse());
-                var truncated = MAPPER.readTree(wire(type, "partial", true));
-                switch (type) {
-                    case OPENAI ->
-                            ((com.fasterxml.jackson.databind.node.ObjectNode)
-                                            truncated.path("choices").get(0))
-                                    .put("finish_reason", "length");
-                    case GEMINI ->
-                            ((com.fasterxml.jackson.databind.node.ObjectNode)
-                                            truncated.path("candidates").get(0))
-                                    .put("finishReason", "MAX_TOKENS");
-                    case DEEPSEEK ->
-                            ((com.fasterxml.jackson.databind.node.ObjectNode) truncated)
-                                    .put("status", "incomplete");
-                    default -> throw new AssertionError();
-                }
-                reply.set(truncated.toString());
-                assertThrows(
-                        ToolDocs.nonNullClass(ModelSchemaException.class),
-                        () -> client.complete(new ResolvedRequest(request, url, "local-invalid")));
-                var noTools =
-                        new VetoRequest(
-                                "System",
-                                "Generate",
-                                List.of(),
-                                type,
-                                "test",
-                                "key",
-                                LlmOptions.defaults(),
-                                List.of(ChatMessage.user("Generate")),
-                                MAPPER.readTree(
-                                        "{\"type\":\"object\",\"properties\":{\"message\":{\"type\":\"string\"}}}"),
+                        "AUTO",
+                        body.path("toolConfig")
+                                .path("functionCallingConfig")
+                                .path("mode")
+                                .asText());
+                assertFalse(body.path("generationConfig").has("responseMimeType"));
+            } else assertEquals("auto", body.path("tool_choice").asText());
+            var history = new ArrayList<ChatMessage>();
+            history.add(ChatMessage.user("Read"));
+            for (int i = 0; i < calls.size(); i++) {
+                var call = calls.get(i);
+                var message =
+                        ChatMessage.assistantToolCall(
+                                call.callId(),
+                                call.toolName(),
+                                MAPPER.writeValueAsString(call.args()),
+                                "",
                                 null);
-                reply.set(wire(type, "", true));
-                assertThrows(
-                        ToolDocs.nonNullClass(ModelSchemaException.class),
-                        () -> client.complete(new ResolvedRequest(noTools, url, "local-invalid")));
-                String disabled = captured.get();
-                assertNotNull(disabled);
-                assertFalse(MAPPER.readTree(disabled).has("tools"));
-                assertTrue(disabled.contains("Tool execution is disabled"));
-                assertFalse(disabled.contains("Invoke registered tools"));
+                if (type == ProviderType.GEMINI) {
+                    // Persist metadata as the runtime does, then reconstruct after a DB JSON
+                    // round-trip.
+                    var persisted =
+                            TurnRecord.toolCall(
+                                    i + 1, call.withNativeState(raw.nativeStates().get(i)));
+                    var payload = MAPPER.readTree(MAPPER.writeValueAsString(persisted.payload()));
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> restored = MAPPER.convertValue(payload, Map.class);
+                    message =
+                            message.withNativeState(
+                                    NativeToolState.fromPayload(restored.get("native_state")));
+                }
+                history.add(message);
+                history.add(ChatMessage.toolResult(call.callId(), "result-" + i, i == 0));
             }
+            reply.set(wire(type, "Done **successfully**", false));
+            var followup = request(type, history);
+            assertEquals(
+                    "Done **successfully**",
+                    client.complete(new ResolvedRequest(followup, url, "local-invalid"))
+                            .rawResponse());
+            String second = captured.get();
+            assertNotNull(second);
+            assertTrue(second.contains("result-1"));
+            var secondBody = MAPPER.readTree(second);
+            if (type == ProviderType.GEMINI) {
+                var contents = secondBody.path("contents");
+                assertEquals(ProviderMessages.groups(followup).size(), contents.size());
+                assertEquals(3, contents.size());
+                assertEquals(2, contents.path(1).path("parts").size());
+                assertEquals(
+                        "c2lnbmF0dXJl",
+                        contents.path(1).path("parts").path(0).path("thoughtSignature").asText());
+                assertEquals(
+                        "n1",
+                        contents.path(2)
+                                .path("parts")
+                                .path(0)
+                                .path("functionResponse")
+                                .path("id")
+                                .asText());
+                assertFalse(
+                        contents.path(2)
+                                .path("parts")
+                                .path(1)
+                                .path("functionResponse")
+                                .path("response")
+                                .path("success")
+                                .asBoolean());
+            } else if (type == ProviderType.DEEPSEEK) {
+                assertEquals(
+                        "function_call", secondBody.path("input").path(1).path("type").asText());
+                assertEquals(
+                        secondBody.path("input").path(1).path("call_id"),
+                        secondBody.path("input").path(2).path("call_id"));
+            } else {
+                assertEquals(
+                        secondBody.path("messages").path(2).path("tool_calls").path(0).path("id"),
+                        secondBody.path("messages").path(3).path("tool_call_id"));
+            }
+            if (type == ProviderType.GEMINI) {
+                var compacted =
+                        request(
+                                type,
+                                List.of(
+                                        ChatMessage.user("Continue"),
+                                        history.get(3),
+                                        history.get(4)));
+                client.complete(new ResolvedRequest(compacted, url, "local-invalid"));
+                String tail = captured.get();
+                assertNotNull(tail);
+                String tailContents = MAPPER.readTree(tail).path("contents").toString();
+                assertFalse(tailContents.contains("thoughtSignature"));
+                assertFalse(tailContents.contains("functionCall"));
+                assertTrue(tail.contains("read_file"));
+            }
+            String guide =
+                    "{\"guide\":{\"actions\":[{\"id\":\"stop\",\"type\":\"STOP\",\"label\":\"Done\"}]}}";
+            reply.set(wire(type, guide, false));
+            assertEquals(
+                    guide,
+                    client.complete(new ResolvedRequest(request, url, "local-invalid"))
+                            .rawResponse());
+
+            // Same and different JSON operations, plus guide: all are rejected before
+            // execution.
+            for (String mixed :
+                    List.of(
+                            "{\"calls\":[{\"tool_name\":\"read_file\",\"args\":{\"path\":\"/中文 notes\"}}]}",
+                            "{\"calls\":[{\"tool_name\":\"read_file\",\"args\":{\"path\":\"different\"}}]}",
+                            "{\"guide\":{\"actions\":[]}}")) {
+                reply.set(wire(type, mixed, true));
+                var withText = client.complete(new ResolvedRequest(request, url, "local-invalid"));
+                assertEquals(mixed, withText.rawResponse());
+                assertEquals(2, withText.nativeCalls().size());
+            }
+            String jsonCall =
+                    "{\"calls\":[{\"tool_name\":\"read_file\",\"args\":{\"path\":\"compat\"}}]}";
+            reply.set(wire(type, jsonCall, false));
+            assertEquals(
+                    jsonCall,
+                    client.complete(new ResolvedRequest(request, url, "local-invalid"))
+                            .rawResponse());
+            var truncated = MAPPER.readTree(wire(type, "partial", true));
+            switch (type) {
+                case OPENAI ->
+                        ((com.fasterxml.jackson.databind.node.ObjectNode)
+                                        truncated.path("choices").get(0))
+                                .put("finish_reason", "length");
+                case GEMINI ->
+                        ((com.fasterxml.jackson.databind.node.ObjectNode)
+                                        truncated.path("candidates").get(0))
+                                .put("finishReason", "MAX_TOKENS");
+                case DEEPSEEK ->
+                        ((com.fasterxml.jackson.databind.node.ObjectNode) truncated)
+                                .put("status", "incomplete");
+                default -> throw new AssertionError();
+            }
+            reply.set(truncated.toString());
+            assertThrows(
+                    ToolDocs.nonNullClass(ModelSchemaException.class),
+                    () -> client.complete(new ResolvedRequest(request, url, "local-invalid")));
+            var noTools =
+                    new VetoRequest(
+                            "System",
+                            "Generate",
+                            List.of(),
+                            type,
+                            "test",
+                            "key",
+                            LlmOptions.defaults(),
+                            List.of(ChatMessage.user("Generate")),
+                            MAPPER.readTree(
+                                    "{\"type\":\"object\",\"properties\":{\"message\":{\"type\":\"string\"}}}"),
+                            null);
+            reply.set(wire(type, "", true));
+            assertThrows(
+                    ToolDocs.nonNullClass(ModelSchemaException.class),
+                    () -> client.complete(new ResolvedRequest(noTools, url, "local-invalid")));
+            String disabled = captured.get();
+            assertNotNull(disabled);
+            assertFalse(MAPPER.readTree(disabled).has("tools"));
+            assertTrue(disabled.contains("Tool execution is disabled"));
+            assertFalse(disabled.contains("Invoke registered tools"));
+
         } finally {
             server.stop(0);
             LlmSystemUsage.drain();
@@ -302,7 +287,7 @@ class NativeProvidersWireTest {
     }
 
     private static @NonNull VetoRequest request(
-            @NonNull ProviderType type, boolean guided, @NonNull List<ChatMessage> history) {
+            @NonNull ProviderType type, @NonNull List<ChatMessage> history) {
         return new VetoRequest(
                 "System",
                 "Read",

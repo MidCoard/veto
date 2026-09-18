@@ -10,9 +10,9 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
-import org.junit.jupiter.params.provider.ValueSource;
 import top.focess.veto.agent.tool.AgentToolDefinition;
 import top.focess.veto.agent.tool.RemoteToolDefinition;
 import top.focess.veto.agent.tool.ToolCapability;
@@ -89,10 +89,8 @@ class AnthropicNativeToolWireTest {
         }
     }
 
-    @ParameterizedTest
-    @ValueSource(booleans = {false, true})
-    void nativeCallAndItsResultRoundTripWithGuideEnabledOrDisabled(boolean guided)
-            throws Exception {
+    @Test
+    void nativeCallAndItsResultRoundTrip() throws Exception {
         var mapper = new ObjectMapper();
         List<String> bodies = new CopyOnWriteArrayList<>();
         var server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);

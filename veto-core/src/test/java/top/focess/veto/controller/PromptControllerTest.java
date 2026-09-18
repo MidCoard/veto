@@ -30,8 +30,7 @@ class PromptControllerTest {
                                 new SessionService.SessionConfig(
                                         UUID.randomUUID().toString(),
                                         new LlmConfig(ProviderType.DEEPSEEK, "model", "key"),
-                                        ToolResultPresentationMode.BASIC,
-                                        false)));
+                                        ToolResultPresentationMode.BASIC)));
         doThrow(new ProtectedInputException())
                 .when(agents)
                 .submitNow(anyString(), anyString(), any());

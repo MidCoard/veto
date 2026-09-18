@@ -227,13 +227,8 @@ public class AgentRunner {
     private final @NonNull List<TurnRecord> history = new ArrayList<>();
     private int turnNumber = 0;
     private boolean guided;
-    private boolean guidedEnabled;
     private int maxGuidedSteps;
     private ModelTierRegistry guidedTierRegistry;
-
-    void setGuidedEnabled(boolean guidedEnabled) {
-        this.guidedEnabled = guidedEnabled;
-    }
 
     void configureGuided(ModelTierRegistry registry, int maxSteps) {
         if (maxSteps < 1) throw new IllegalArgumentException("guided max-steps must be positive");
@@ -845,7 +840,7 @@ public class AgentRunner {
         }
         prospectiveUserTurn = withRequestId(prospectiveUserTurn);
         prospectiveHistory.add(prospectiveUserTurn);
-        preparedFirstPrompt = compilePrompt(prospectiveHistory, guidedEnabled);
+        preparedFirstPrompt = compilePrompt(prospectiveHistory, false);
         appendTurn(
                 withRequestId(
                         resumeContext != null
@@ -1165,7 +1160,7 @@ public class AgentRunner {
             throw new IllegalArgumentException("This agent must finish through " + completionTool);
         if (submission instanceof ResponseRequest.Plan plan) {
             try {
-                if (!guidedEnabled || submissionGeneration)
+                if (submissionGeneration)
                     throw new IllegalArgumentException(
                             "Plan submission is unavailable in this context");
                 var planDefinition =
@@ -1278,7 +1273,7 @@ public class AgentRunner {
             VetoResponse response =
                     accepted instanceof ToolCallContextHolder.ResponseDirective.Answer answer
                             ? takeResponse(answer)
-                            : callModel(guidedEnabled);
+                            : callModel();
             checkTaskCancellation();
 
             appendThought(response);
@@ -1497,7 +1492,7 @@ public class AgentRunner {
         }
         VetoResponse response;
         while (true) {
-            response = callModel(false, gen, contract);
+            response = callModel(gen, contract);
             if (!Boolean.FALSE.equals(gen.thought())) appendThought(response);
             var calls = response.calls();
             if (calls == null || calls.isEmpty()) break;
@@ -1539,10 +1534,9 @@ public class AgentRunner {
 
     // ── The model call (compile + dispatch + enforce, with schema retry) ────
 
-    private @NonNull VetoResponse callModel(boolean allowGuided) {
+    private @NonNull VetoResponse callModel() {
         String completion = completionTool;
         return callModel(
-                allowGuided,
                 null,
                 completion == null
                         ? ResponseContract.ordinary()
@@ -1550,17 +1544,13 @@ public class AgentRunner {
     }
 
     private @NonNull VetoResponse callModel(
-            boolean allowGuided, GenerateAction generation, @NonNull ResponseContract contract) {
+            GenerateAction generation, @NonNull ResponseContract contract) {
         lastCitations = null;
         CompiledPrompt compiled = preparedFirstPrompt;
         preparedFirstPrompt = null;
         if (compiled == null) {
             refreshSystemHistory();
-            compiled =
-                    compilePrompt(
-                            List.copyOf(history),
-                            generation != null ? guidedEnabled : allowGuided,
-                            generation != null);
+            compiled = compilePrompt(List.copyOf(history), generation != null);
         }
         long estimatedTokens;
         double estimateFactor = correctionFactor;
@@ -1889,14 +1879,7 @@ public class AgentRunner {
     }
 
     private @NonNull CompiledPrompt compilePrompt(
-            @NonNull List<TurnRecord> sourceHistory, boolean allowGuided) {
-        return compilePrompt(sourceHistory, allowGuided, false);
-    }
-
-    private @NonNull CompiledPrompt compilePrompt(
-            @NonNull List<TurnRecord> sourceHistory,
-            boolean allowGuided,
-            boolean scopedInvocation) {
+            @NonNull List<TurnRecord> sourceHistory, boolean scopedInvocation) {
         // Generation/predicate calls first assemble history, then rebuild the system with their
         // restricted tool manifest. The dispatch guard budgets that final request and selected
         // model; budgeting this temporary full manifest could reject an otherwise fitting call.
@@ -1909,7 +1892,6 @@ public class AgentRunner {
                 gateway.workspace(),
                 binding.systemPromptBase(),
                 sourceHistory,
-                allowGuided,
                 this.correctionFactor,
                 toolResultPresentation,
                 inputBudgetOverride,
@@ -1924,8 +1906,7 @@ public class AgentRunner {
                         persona,
                         gateway.workspace(),
                         binding.systemPromptBase(),
-                        toolResultPresentation,
-                        guidedEnabled);
+                        toolResultPresentation);
         currentSystemSource = source;
         return source.text();
     }
@@ -2258,7 +2239,6 @@ public class AgentRunner {
                         owner,
                         sessionId,
                         toolResultPresentation,
-                        guidedEnabled,
                         executionPermit.withCaller(agentId, userId, groupId, owner, sessionId),
                         activeRequestId));
         try {

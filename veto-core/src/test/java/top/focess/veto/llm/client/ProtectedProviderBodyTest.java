@@ -25,7 +25,8 @@ import top.focess.veto.vault.SecretCandidateStore;
 class ProtectedProviderBodyTest {
     @ParameterizedTest
     @ValueSource(booleans = {false, true})
-    void capturedUserAndFileValuesStayAbsentAfterSdkSerialization(boolean guided) throws Exception {
+    void capturedUserAndFileValuesStayAbsentAfterSdkSerialization(boolean extraContext)
+            throws Exception {
         String userValue = "ghp_SYNTHETIC0913INVALIDUSER00000000000000000";
         String fileValue = "ghp_SYNTHETIC0913INVALIDFILE00000000000000000";
         var store = new SecretCandidateStore();
@@ -35,10 +36,10 @@ class ProtectedProviderBodyTest {
         var source =
                 PromptDocument.compile(
                         "wire-test",
-                        Map.of("VALUE", "System {{literal-data}}", "guided", guided),
+                        Map.of("VALUE", "System {{literal-data}}", "extraContext", extraContext),
                         Map.of(
                                 "wire-test",
-                                "---\nversion: 2\nid: wire\nrequires: [VALUE, guided]\n---\n{{VALUE}}\n@if guided\nGuided\n@endif"));
+                                "---\nversion: 2\nid: wire\nrequires: [VALUE, extraContext]\n---\n{{VALUE}}\n@if extraContext\nExtra context\n@endif"));
         List<String> bodies = new CopyOnWriteArrayList<>();
         HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext(

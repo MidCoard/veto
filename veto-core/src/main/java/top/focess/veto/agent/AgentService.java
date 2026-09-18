@@ -562,30 +562,6 @@ public class AgentService {
             String workspaceRoots,
             int currentWorkspaceRootIndex,
             @NonNull ToolResultPresentationMode toolResultPresentation) {
-        return getOrCreateAgent(
-                sessionId,
-                primaryAgentId,
-                binding,
-                history,
-                userId,
-                owner,
-                workspaceRoots,
-                currentWorkspaceRootIndex,
-                toolResultPresentation,
-                false);
-    }
-
-    public @NonNull Agent getOrCreateAgent(
-            @NonNull String sessionId,
-            String primaryAgentId,
-            AgentRunner.@NonNull LlmBinding binding,
-            @NonNull List<TurnRecord> history,
-            @NonNull UUID userId,
-            String owner,
-            String workspaceRoots,
-            int currentWorkspaceRootIndex,
-            @NonNull ToolResultPresentationMode toolResultPresentation,
-            boolean guidedEnabled) {
         boolean[] created = {false};
         Workspace workspace = buildWorkspace(workspaceRoots, currentWorkspaceRootIndex);
         VetoAgent agent =
@@ -600,8 +576,7 @@ public class AgentService {
                                     userId,
                                     owner,
                                     workspace,
-                                    toolResultPresentation,
-                                    guidedEnabled);
+                                    toolResultPresentation);
                         });
         bindForSubmission(agent, binding);
         if (created[0] && !history.isEmpty()) {
@@ -610,13 +585,7 @@ public class AgentService {
         GroupRecoveryService recovery = groupRecovery;
         if (recovery != null && owner != null)
             recovery.restore(
-                    agent,
-                    agent.sessionId(),
-                    userId,
-                    owner,
-                    workspace,
-                    toolResultPresentation,
-                    guidedEnabled);
+                    agent, agent.sessionId(), userId, owner, workspace, toolResultPresentation);
         return agent;
     }
 
@@ -709,8 +678,7 @@ public class AgentService {
                 userId,
                 owner,
                 workspace,
-                ToolResultPresentationMode.BASIC,
-                false);
+                ToolResultPresentationMode.BASIC);
     }
 
     private @NonNull VetoAgent createAgent(
@@ -720,8 +688,7 @@ public class AgentService {
             @NonNull UUID userId,
             String owner,
             @NonNull Workspace workspace,
-            @NonNull ToolResultPresentationMode toolResultPresentation,
-            boolean guidedEnabled) {
+            @NonNull ToolResultPresentationMode toolResultPresentation) {
         AgentPersona persona = buildPersona(agentKey, primaryAgentId, binding);
         // Register this agent's workspace on the HITL registry under its persona id so grant
         // matching + path canonicalization scope to this session's workspace.
@@ -760,7 +727,6 @@ public class AgentService {
         runner.configureGuided(guidedTierRegistry, maxGuidedSteps);
         runner.setOwner(owner);
         runner.setToolResultPresentation(toolResultPresentation);
-        runner.setGuidedEnabled(guidedEnabled);
         if (primaryAgentId != null) {
             runner.setSessionId(UUID.fromString(agentKey));
         }
@@ -839,8 +805,7 @@ public class AgentService {
             String owner,
             @NonNull Workspace workspace,
             @NonNull ToolResultPresentationMode toolResultPresentation) {
-        return createMate(
-                persona, binding, userId, owner, workspace, toolResultPresentation, false);
+        return createMate(persona, binding, userId, owner, workspace, toolResultPresentation, null);
     }
 
     public @NonNull Agent createMate(
@@ -850,26 +815,6 @@ public class AgentService {
             String owner,
             @NonNull Workspace workspace,
             @NonNull ToolResultPresentationMode toolResultPresentation,
-            boolean guidedEnabled) {
-        return createMate(
-                persona,
-                binding,
-                userId,
-                owner,
-                workspace,
-                toolResultPresentation,
-                guidedEnabled,
-                null);
-    }
-
-    public @NonNull Agent createMate(
-            @NonNull AgentPersona persona,
-            AgentRunner.@NonNull LlmBinding binding,
-            @NonNull UUID userId,
-            String owner,
-            @NonNull Workspace workspace,
-            @NonNull ToolResultPresentationMode toolResultPresentation,
-            boolean guidedEnabled,
             UUID sessionId) {
         // Re-scope the persona's tools to its role. The persona may have been built with the full
         // standalone manifest before its role (MATE/LEADER) was known; the RoleToolFilter narrows
@@ -912,7 +857,6 @@ public class AgentService {
         runner.configureGuided(guidedTierRegistry, maxGuidedSteps);
         runner.setOwner(owner);
         runner.setToolResultPresentation(toolResultPresentation);
-        runner.setGuidedEnabled(guidedEnabled);
         if (sessionId != null) {
             return sessionAgents.startInSession(sessionId, scoped, runner);
         }

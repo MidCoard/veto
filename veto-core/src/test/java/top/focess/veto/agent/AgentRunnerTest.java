@@ -177,8 +177,7 @@ class AgentRunnerTest {
                         "owner",
                         null,
                         0,
-                        ToolResultPresentationMode.BASIC,
-                        false);
+                        ToolResultPresentationMode.BASIC);
         Object owned = ReflectionTestUtils.getField(agent, "runner");
         if (!(owned instanceof AgentRunner runner)) throw new AssertionError("Missing runner");
         runner.setCompletionTool("finish");
@@ -327,10 +326,8 @@ class AgentRunnerTest {
         }
     }
 
-    @ParameterizedTest
-    @ValueSource(booleans = {false, true})
-    void protectedUserInputIsCapturedBeforeHistoryAndProvider(boolean guidedEnabled)
-            throws Exception {
+    @Test
+    void protectedUserInputIsCapturedBeforeHistoryAndProvider() throws Exception {
         List<VetoRequest> requests = new CopyOnWriteArrayList<>();
         AgentService service =
                 serviceWith(
@@ -352,8 +349,7 @@ class AgentRunnerTest {
                         "alice",
                         null,
                         0,
-                        ToolResultPresentationMode.BASIC,
-                        guidedEnabled);
+                        ToolResultPresentationMode.BASIC);
         var scope = new SecretCandidateStore.Scope("alice", session, agentId);
         try {
             agent.submit("Inspect password=synthetic-token");
@@ -662,8 +658,7 @@ class AgentRunnerTest {
                                 null,
                                 "D:/IdeaProjects/veto/work/tmp/unfinished-group",
                                 0,
-                                ToolResultPresentationMode.BASIC,
-                                false);
+                                ToolResultPresentationMode.BASIC);
         @NonNull MonitorService monitor = Mockito.mock();
         agent.attachMonitor(monitor);
         try {
@@ -760,8 +755,7 @@ class AgentRunnerTest {
                                     null,
                                     "D:/IdeaProjects/veto/work/tmp/unfinished-group",
                                     0,
-                                    ToolResultPresentationMode.BASIC,
-                                    false);
+                                    ToolResultPresentationMode.BASIC);
             agent.attachMonitor(monitor);
             agent.signalMonitor();
             assertTrue(entered.await(5, TimeUnit.SECONDS));
@@ -840,8 +834,7 @@ class AgentRunnerTest {
                 null,
                 "D:/IdeaProjects/veto/work/tmp/unfinished-group",
                 0,
-                ToolResultPresentationMode.BASIC,
-                false);
+                ToolResultPresentationMode.BASIC);
         first.submit(session.toString(), "Review apples", binding("System"), EPISODE_TIMEOUT);
         var original = requireAgent(first.agent(session.toString()));
         String requestId = requestIdentity(original);
@@ -863,8 +856,7 @@ class AgentRunnerTest {
                                     null,
                                     "D:/IdeaProjects/veto/work/tmp/unfinished-group",
                                     0,
-                                    ToolResultPresentationMode.BASIC,
-                                    false);
+                                    ToolResultPresentationMode.BASIC);
             var event =
                     new MonitorRecord.Event(
                             "late",
@@ -989,8 +981,7 @@ class AgentRunnerTest {
                                     null,
                                     "D:/IdeaProjects/veto/work/tmp/unfinished-group",
                                     0,
-                                    ToolResultPresentationMode.BASIC,
-                                    false);
+                                    ToolResultPresentationMode.BASIC);
             var event =
                     new MonitorRecord.Event(
                             "timer-event", "timer", "TIME_ONCE", "Timer fired", Instant.now());
@@ -1065,7 +1056,6 @@ class AgentRunnerTest {
                                 "owner",
                                 null,
                                 ToolResultPresentationMode.BASIC,
-                                false,
                                 session)
                         .withMate(mateId, "review")
                         .withMate(idleId, "analysis");
@@ -1120,7 +1110,6 @@ class AgentRunnerTest {
                                         "owner",
                                         Nullness.requireNonNull(mateBinding.workspace()),
                                         ToolResultPresentationMode.BASIC,
-                                        false,
                                         session));
         Object owned = ReflectionTestUtils.getField(service, "sessionAgents");
         if (!(owned instanceof SessionAgentRegistry agents))
@@ -1148,8 +1137,7 @@ class AgentRunnerTest {
                                     "owner",
                                     "D:/IdeaProjects/veto/work/tmp/unfinished-group",
                                     0,
-                                    ToolResultPresentationMode.BASIC,
-                                    false));
+                                    ToolResultPresentationMode.BASIC));
             assertEquals(
                     2,
                     agents.agents(session).size(),
@@ -1164,8 +1152,7 @@ class AgentRunnerTest {
                             "owner",
                             "D:/IdeaProjects/veto/work/tmp/unfinished-group",
                             0,
-                            ToolResultPresentationMode.BASIC,
-                            false);
+                            ToolResultPresentationMode.BASIC);
             assertEquals(Role.LEADER, leader.persona().role());
             assertEquals(3, historyLoads.get(), "Retry loads only the missing member");
             Group restored = Nullness.requireNonNull(registry.get(old.groupId()));
@@ -1252,8 +1239,7 @@ class AgentRunnerTest {
                             "owner",
                             "D:/IdeaProjects/veto/work/tmp/unfinished-group",
                             0,
-                            ToolResultPresentationMode.BASIC,
-                            false));
+                            ToolResultPresentationMode.BASIC));
             assertEquals(3, agents.agents(session).size());
             service.submitNow(session.toString(), "Follow-up", binding("System"));
             assertTrue(leader.await(EPISODE_TIMEOUT).success());
@@ -1344,8 +1330,7 @@ class AgentRunnerTest {
                                     null,
                                     "D:/IdeaProjects/veto/work/tmp/unfinished-group",
                                     0,
-                                    ToolResultPresentationMode.BASIC,
-                                    false);
+                                    ToolResultPresentationMode.BASIC);
             var event =
                     new MonitorRecord.Event(
                             "old-process-exit",

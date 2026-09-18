@@ -254,8 +254,7 @@ class PromptCompileRenderTest {
                         base,
                         tools,
                         policy,
-                        ToolResultPresentationMode.BASIC,
-                        false));
+                        ToolResultPresentationMode.BASIC));
     }
 
     @Test

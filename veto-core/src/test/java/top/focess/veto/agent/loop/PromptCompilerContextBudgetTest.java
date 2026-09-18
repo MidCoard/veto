@@ -180,7 +180,6 @@ class PromptCompilerContextBudgetTest {
                                 workspace,
                                 null,
                                 history,
-                                false,
                                 1.1,
                                 ToolResultPresentationMode.BASIC,
                                 10000L,
@@ -193,7 +192,6 @@ class PromptCompilerContextBudgetTest {
                                 workspace,
                                 null,
                                 history,
-                                false,
                                 1.1,
                                 ToolResultPresentationMode.BASIC,
                                 10000L,
@@ -205,65 +203,58 @@ class PromptCompilerContextBudgetTest {
         var persona = new AgentPersona("test", "test", "test", Set.of(), List.of(), Role.MATE);
         var workspace =
                 Workspace.single(Path.of(System.getProperty("user.dir", ".")), PathMode.REAL);
-        for (boolean guided : List.of(false, true)) {
-            for (ToolResultPresentationMode mode :
+        for (ToolResultPresentationMode mode :
+                List.of(ToolResultPresentationMode.BASIC, ToolResultPresentationMode.DETAILED)) {
+            var result = new ToolResult("run_task", "approved-call", true, "raw output");
+            String original = new ToolResultPresenter(mapper).present(result, mode);
+            var recorded = TurnRecord.presentedToolResponse(3, result, original, mode);
+            Map<String, Object> payload = new HashMap<>(recorded.payload());
+            payload.put(
+                    "approval",
+                    Map.of("decision", "ACCEPT_COMMAND", "decisionSource", "CLIENT_RESPONSE"));
+            var receipt = new TurnRecord(3, TurnType.TOOL_RESPONSE, payload, null);
+            List<TurnRecord> history =
                     List.of(
-                            ToolResultPresentationMode.BASIC,
-                            ToolResultPresentationMode.DETAILED)) {
-                var result = new ToolResult("run_task", "approved-call", true, "raw output");
-                String original = new ToolResultPresenter(mapper).present(result, mode);
-                var recorded = TurnRecord.presentedToolResponse(3, result, original, mode);
-                Map<String, Object> payload = new HashMap<>(recorded.payload());
-                payload.put(
-                        "approval",
-                        Map.of("decision", "ACCEPT_COMMAND", "decisionSource", "CLIENT_RESPONSE"));
-                var receipt = new TurnRecord(3, TurnType.TOOL_RESPONSE, payload, null);
-                List<TurnRecord> history =
-                        List.of(
-                                TurnRecord.userPrompt(1, "Run the requested task"),
-                                TurnRecord.toolCall(
-                                        2, new ToolCall("run_task", Map.of(), "approved-call")),
-                                receipt,
-                                TurnRecord.userPrompt(4, "A different request"));
-                var compiled =
-                        compiler(32000)
-                                .compile(persona, workspace, null, history, guided, 1.1, mode);
-                var messages = compiled.messages();
-                var response =
-                        messages.stream()
-                                .filter(m -> "tool".equals(m.role()))
-                                .findFirst()
-                                .orElseThrow();
-                assertEquals(original, response.content());
-                assertEquals("approved-call", response.callId());
-                int index = messages.indexOf(response);
-                var observation = messages.get(index + 1);
-                assertEquals("user", observation.role());
-                assertTrue(observation.content().contains("CLIENT_RESPONSE"));
-                assertTrue(observation.content().contains("approved-call"));
-                assertEquals(List.of(3), observation.sourceTurns());
-                assertEquals("A different request", messages.get(index + 2).content());
+                            TurnRecord.userPrompt(1, "Run the requested task"),
+                            TurnRecord.toolCall(
+                                    2, new ToolCall("run_task", Map.of(), "approved-call")),
+                            receipt,
+                            TurnRecord.userPrompt(4, "A different request"));
+            var compiled = compiler(32000).compile(persona, workspace, null, history, 1.1, mode);
+            var messages = compiled.messages();
+            var response =
+                    messages.stream()
+                            .filter(m -> "tool".equals(m.role()))
+                            .findFirst()
+                            .orElseThrow();
+            assertEquals(original, response.content());
+            assertEquals("approved-call", response.callId());
+            int index = messages.indexOf(response);
+            var observation = messages.get(index + 1);
+            assertEquals("user", observation.role());
+            assertTrue(observation.content().contains("CLIENT_RESPONSE"));
+            assertTrue(observation.content().contains("approved-call"));
+            assertEquals(List.of(3), observation.sourceTurns());
+            assertEquals("A different request", messages.get(index + 2).content());
 
-                var rewound =
-                        compiler(32000)
-                                .resolveRewinds(
-                                        List.of(
-                                                history.get(0),
-                                                history.get(1),
-                                                receipt,
-                                                TurnRecord.rewind(4, 0)),
-                                        mode);
-                assertTrue(
-                        rewound.stream()
-                                .noneMatch(
-                                        m -> m.content().contains("Runtime approval observation")));
-                payload.put(
-                        "approval",
-                        Map.of("decision", "INVENTED", "decisionSource", "CLIENT_RESPONSE"));
-                var invalid = new TurnRecord(3, TurnType.TOOL_RESPONSE, payload, null);
-                assertEquals(1, compiler(32000).resolveRewinds(List.of(invalid), mode).size());
-                assertEquals(1, compiler(32000).resolveRewinds(List.of(recorded), mode).size());
-            }
+            var rewound =
+                    compiler(32000)
+                            .resolveRewinds(
+                                    List.of(
+                                            history.get(0),
+                                            history.get(1),
+                                            receipt,
+                                            TurnRecord.rewind(4, 0)),
+                                    mode);
+            assertTrue(
+                    rewound.stream()
+                            .noneMatch(m -> m.content().contains("Runtime approval observation")));
+            payload.put(
+                    "approval",
+                    Map.of("decision", "INVENTED", "decisionSource", "CLIENT_RESPONSE"));
+            var invalid = new TurnRecord(3, TurnType.TOOL_RESPONSE, payload, null);
+            assertEquals(1, compiler(32000).resolveRewinds(List.of(invalid), mode).size());
+            assertEquals(1, compiler(32000).resolveRewinds(List.of(recorded), mode).size());
         }
     }
 
@@ -284,7 +275,7 @@ class PromptCompilerContextBudgetTest {
                 new AgentPersona("test", "test", "test", Set.of(), List.of(), Role.STANDALONE);
         var workspace =
                 Workspace.single(Path.of(System.getProperty("user.dir", ".")), PathMode.REAL);
-        var compiled = compiler(32000).compile(persona, workspace, null, history, false, 1.1);
+        var compiled = compiler(32000).compile(persona, workspace, null, history, 1.1);
         assertFalse(
                 compiled.messages().stream()
                         .anyMatch(message -> "private failure detail".equals(message.content())));
@@ -306,7 +297,7 @@ class PromptCompilerContextBudgetTest {
                             TurnRecord.userPrompt(1, "Old work"),
                             new TurnRecord(2, TurnType.EXECUTION_ERROR, payload, null),
                             TurnRecord.userPrompt(3, "New work"));
-            var compiled = compiler(32000).compile(persona, workspace, null, history, false, 1.1);
+            var compiled = compiler(32000).compile(persona, workspace, null, history, 1.1);
             assertEquals(
                     started,
                     compiled.messages().stream()
@@ -389,14 +380,14 @@ class PromptCompilerContextBudgetTest {
                 new AgentPersona("test", "test", "test", Set.of(), List.of(), Role.STANDALONE);
         var workspace =
                 Workspace.single(Path.of(System.getProperty("user.dir", ".")), PathMode.REAL);
-        var compiled = compiler.compile(persona, workspace, null, history, false, 1.1);
+        var compiled = compiler.compile(persona, workspace, null, history, 1.1);
         assertEquals(0, compiled.trimmedTurns());
         assertEquals(4, compiled.messages().size());
         assertEquals("Explain TCP", compiled.messages().get(1).content());
         assertTrue(compiled.messages().get(2).content().startsWith("TCP handshake"));
         assertThrows(
                 IllegalStateException.class,
-                () -> compiler(32000).compile(persona, workspace, null, history, false, 1.1));
+                () -> compiler(32000).compile(persona, workspace, null, history, 1.1));
         assertEquals(4, history.size());
     }
 

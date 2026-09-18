@@ -94,8 +94,7 @@ class SystemPromptDumpTest {
                             personaFor(role),
                             dumpWorkspace(),
                             baseFor(role),
-                            ToolResultPresentationMode.BASIC,
-                            true);
+                            ToolResultPresentationMode.BASIC);
             assertTrue(linked.contains(PromptLibrary.text("answer-style")));
             assertTrue(
                     linked.contains(
@@ -113,7 +112,6 @@ class SystemPromptDumpTest {
                         dumpWorkspace(),
                         null,
                         List.of(TurnRecord.agentInit(1, "standalone", legacy, "test", "test")),
-                        false,
                         1.0);
         assertEquals(legacy, compiled.systemMessage());
         String baseline =
@@ -121,8 +119,7 @@ class SystemPromptDumpTest {
                         personaFor(Role.STANDALONE),
                         dumpWorkspace(),
                         null,
-                        ToolResultPresentationMode.BASIC,
-                        false);
+                        ToolResultPresentationMode.BASIC);
         assertTrue(baseline.contains(PromptLibrary.text("answer-style")));
         assertTrue(baseline.contains("## How to Include Diagrams"));
     }
@@ -175,13 +172,12 @@ class SystemPromptDumpTest {
                                                             ToolResultPresentationMode.BASIC),
                                                     "test",
                                                     "test")),
-                                    false,
                                     1.0)
                             .systemMessage());
             // Per-role tool inventory so the role-scoping is visible at a glance.
             write("03-tools-" + role + ".md", inventory(roleTools));
         }
-        var enabled =
+        var planned =
                 promptCompiler.compile(
                         personaFor(Role.STANDALONE),
                         renderedWorkspace,
@@ -194,41 +190,14 @@ class SystemPromptDumpTest {
                                                 personaFor(Role.STANDALONE),
                                                 renderedWorkspace,
                                                 null,
-                                                ToolResultPresentationMode.BASIC,
-                                                true),
+                                                ToolResultPresentationMode.BASIC),
                                         "test",
                                         "test")),
-                        true,
                         1.0);
-        var disabled =
-                promptCompiler.compile(
-                        personaFor(Role.STANDALONE),
-                        renderedWorkspace,
-                        null,
-                        List.of(
-                                TurnRecord.agentInit(
-                                        0,
-                                        "STANDALONE",
-                                        promptCompiler.linkSystemMessage(
-                                                personaFor(Role.STANDALONE),
-                                                renderedWorkspace,
-                                                null,
-                                                ToolResultPresentationMode.BASIC,
-                                                false),
-                                        "test",
-                                        "test")),
-                        false,
-                        1.0);
-        write("STANDALONE-guided-enabled.md", enabled.systemMessage());
-        write("STANDALONE-guided-disabled.md", disabled.systemMessage());
-        assertTrue(enabled.systemMessage().contains("conditional_goto"));
-        assertFalse(
-                disabled.systemMessage().contains("conditional_goto"),
-                "persisted enabled prompt must not restore a disabled capability");
-        assertNull(enabled.responseSchema());
-        assertNull(disabled.responseSchema());
-        assertTrue(enabled.tools().stream().anyMatch(tool -> tool.name().equals("submit_plan")));
-        assertFalse(disabled.tools().stream().anyMatch(tool -> tool.name().equals("submit_plan")));
+        write("STANDALONE-plan-tool.md", planned.systemMessage());
+        assertTrue(planned.systemMessage().contains("conditional_goto"));
+        assertNull(planned.responseSchema());
+        assertTrue(planned.tools().stream().anyMatch(tool -> tool.name().equals("submit_plan")));
         deleteLegacyRolePolicyDumps(roles);
         String standalone = Files.readString(DUMP_DIR.resolve("STANDALONE.md"));
         assertFalse(

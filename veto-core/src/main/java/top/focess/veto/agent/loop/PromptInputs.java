@@ -27,8 +27,7 @@ public final class PromptInputs {
             String guidance,
             @NonNull List<ToolDefinition> tools,
             @NonNull DeployerPolicy policy,
-            @NonNull ToolResultPresentationMode presentation,
-            boolean guided) {
+            @NonNull ToolResultPresentationMode presentation) {
         Map<String, Object> data = new LinkedHashMap<>();
         data.put(
                 "persona",
@@ -64,7 +63,6 @@ public final class PromptInputs {
         data.put("environment", environment());
         data.put("policy", policy.name());
         data.put("presentation", presentation.name());
-        data.put("guided", guided);
         data.put(
                 "planCitations",
                 persona.whitelistedTools().stream()

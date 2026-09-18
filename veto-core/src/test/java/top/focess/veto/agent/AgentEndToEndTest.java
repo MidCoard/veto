@@ -507,8 +507,7 @@ class AgentEndToEndTest {
                 "owner",
                 Path.of(".").toAbsolutePath().toString(),
                 0,
-                ToolResultPresentationMode.BASIC,
-                false);
+                ToolResultPresentationMode.BASIC);
         var persona =
                 new AgentPersona(
                         UUID.randomUUID().toString(),
@@ -525,7 +524,6 @@ class AgentEndToEndTest {
                         "owner",
                         Workspace.single(Path.of("."), PathMode.REAL),
                         ToolResultPresentationMode.BASIC,
-                        false,
                         sessionId);
         try {
             var runner =
@@ -597,8 +595,7 @@ class AgentEndToEndTest {
                 null,
                 null,
                 0,
-                ToolResultPresentationMode.BASIC,
-                true);
+                ToolResultPresentationMode.BASIC);
         var result =
                 service.submit(
                         "guided-transform",

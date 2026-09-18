@@ -108,7 +108,6 @@ class GroupToolsWiringTest {
                         null,
                         null,
                         ToolResultPresentationMode.BASIC,
-                        false,
                         ToolExecutionPermit.empty(),
                         "request-one"));
         try {
@@ -149,7 +148,6 @@ class GroupToolsWiringTest {
                         null,
                         null,
                         ToolResultPresentationMode.BASIC,
-                        false,
                         ToolExecutionPermit.empty()));
         try {
             assertThrows(
@@ -182,7 +180,6 @@ class GroupToolsWiringTest {
                         "owner",
                         parentSession,
                         ToolResultPresentationMode.BASIC,
-                        true,
                         ToolExecutionPermit.empty()));
         try {
             String result =
@@ -212,14 +209,6 @@ class GroupToolsWiringTest {
                             .withState(Group.GroupState.COMPLETED, g.createdAt())
                             .withoutMate("test-mate")
                             .sessionId());
-            assertTrue(g.guidedEnabled(), "the group inherits guided availability");
-            assertTrue(
-                    g.withMate("test-mate", "review")
-                            .withDag(g.dag())
-                            .withState(Group.GroupState.COMPLETED, g.createdAt())
-                            .withoutMate("test-mate")
-                            .guidedEnabled(),
-                    "group transitions retain guided availability");
             assertEquals(
                     directive.groupId(), g.groupId(), "the directive stamps the registered group");
             assertTrue(g.dag().nodes().isEmpty(), "the group starts with an empty DAG");
@@ -247,7 +236,6 @@ class GroupToolsWiringTest {
                         null,
                         null,
                         ToolResultPresentationMode.BASIC,
-                        false,
                         ToolExecutionPermit.empty()));
         try {
             ToolExecutionException error =
@@ -280,7 +268,6 @@ class GroupToolsWiringTest {
                         null,
                         null,
                         ToolResultPresentationMode.BASIC,
-                        false,
                         ToolExecutionPermit.empty()));
         try {
             String result = CapabilityTestCalls.execute(disband, new DisbandGroup.Args());
@@ -322,7 +309,6 @@ class GroupToolsWiringTest {
                         null,
                         null,
                         ToolResultPresentationMode.BASIC,
-                        false,
                         ToolExecutionPermit.empty()));
         try {
             ToolExecutionException error =
@@ -357,7 +343,6 @@ class GroupToolsWiringTest {
                         null,
                         null,
                         ToolResultPresentationMode.BASIC,
-                        false,
                         ToolExecutionPermit.empty()));
         try {
             String result =
@@ -414,7 +399,6 @@ class GroupToolsWiringTest {
                         null,
                         null,
                         ToolResultPresentationMode.BASIC,
-                        false,
                         ToolExecutionPermit.empty()));
         try {
             ToolExecutionException error =
@@ -451,7 +435,6 @@ class GroupToolsWiringTest {
                         null,
                         null,
                         ToolResultPresentationMode.BASIC,
-                        false,
                         ToolExecutionPermit.empty()));
         try {
             ToolExecutionException error =
@@ -497,7 +480,6 @@ class GroupToolsWiringTest {
                         null,
                         null,
                         ToolResultPresentationMode.BASIC,
-                        false,
                         ToolExecutionPermit.empty()));
         try {
             String first = CapabilityTestCalls.execute(inspect, new InspectGroup.Args(0L, 0));
@@ -536,7 +518,6 @@ class GroupToolsWiringTest {
                             null,
                             null,
                             ToolResultPresentationMode.BASIC,
-                            false,
                             ToolExecutionPermit.empty()));
             var failure =
                     assertThrows(
@@ -553,7 +534,6 @@ class GroupToolsWiringTest {
                             null,
                             null,
                             ToolResultPresentationMode.BASIC,
-                            false,
                             ToolExecutionPermit.empty()));
             assertThrows(
                     SecurityException.class,
@@ -577,7 +557,6 @@ class GroupToolsWiringTest {
                         "brief",
                         null,
                         ToolResultPresentationMode.BASIC,
-                        false,
                         session);
         var tool =
                 new CollaborationTools.RemoveMate(
@@ -593,7 +572,6 @@ class GroupToolsWiringTest {
                                     "other",
                                     null,
                                     ToolResultPresentationMode.BASIC,
-                                    false,
                                     ToolExecutionPermit.empty()),
                             new ToolCallContext(
                                     "leader",
@@ -602,7 +580,6 @@ class GroupToolsWiringTest {
                                     "owner",
                                     null,
                                     ToolResultPresentationMode.BASIC,
-                                    false,
                                     ToolExecutionPermit.empty()))) {
                 ToolCallContextHolder.set(context);
                 assertThrows(

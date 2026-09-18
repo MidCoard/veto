@@ -43,8 +43,7 @@ class SessionMonitorControllerTest {
                                 new SessionService.SessionConfig(
                                         "session-id",
                                         new LlmConfig(ProviderType.DEEPSEEK, "model", "key"),
-                                        ToolResultPresentationMode.BASIC,
-                                        false)));
+                                        ToolResultPresentationMode.BASIC)));
         var record =
                 new MonitorRecord(
                         "timer",

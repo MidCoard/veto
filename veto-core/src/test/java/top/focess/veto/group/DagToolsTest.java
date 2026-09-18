@@ -66,7 +66,6 @@ class DagToolsTest {
                         null,
                         null,
                         ToolResultPresentationMode.BASIC,
-                        false,
                         ToolExecutionPermit.empty()));
     }
 

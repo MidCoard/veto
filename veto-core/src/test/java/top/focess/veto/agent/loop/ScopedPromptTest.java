@@ -32,7 +32,7 @@ class ScopedPromptTest {
                 Workspace.single(Path.of(System.getProperty("user.dir", ".")), PathMode.REAL);
         String full =
                 compiler.linkSystemMessage(
-                        persona, workspace, null, ToolResultPresentationMode.BASIC, false);
+                        persona, workspace, null, ToolResultPresentationMode.BASIC);
         var conversation =
                 List.of(
                         ChatMessage.user("Review this source.").withSourceTurns(List.of(2)),
