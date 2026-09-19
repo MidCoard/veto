@@ -2,10 +2,12 @@ package top.focess.veto.agent;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-import java.util.List;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
+
 import top.focess.veto.llm.core.*;
+
+import java.util.List;
 
 class ContextUsageTrackerTest {
     @Test
@@ -15,18 +17,57 @@ class ContextUsageTrackerTest {
         var known = tracker.measure(req, new LlmSystemUsage.Usage(1000, 5, 800L, 100L));
         var persisted = RecordUsage.add(TurnRecord.userPrompt(1, "one"), known);
         assertTrue(persisted.payload().get("llmUsage") instanceof List<?>);
-        assertEquals(800L, known.get("cacheReadInputTokens"));
-        assertEquals(100L, known.get("cacheCreationInputTokens"));
+        assertEquals(Long.valueOf(800L), known.cacheReadInputTokens());
+        assertEquals(Long.valueOf(100L), known.cacheCreationInputTokens());
         assertFalse(
-                tracker.measure(req, new LlmSystemUsage.Usage(1000, 5))
-                        .containsKey("cacheReadInputTokens"));
+                tracker.measure(req, new LlmSystemUsage.Usage(1000, 5)).cacheReadInputTokens()
+                        != null);
         assertEquals(
-                0L,
+                Long.valueOf(0L),
                 tracker.measure(req, new LlmSystemUsage.Usage(1000, 5, 0L, null))
-                        .get("cacheReadInputTokens"));
+                        .cacheReadInputTokens());
         assertFalse(
                 tracker.measure(req, new LlmSystemUsage.Usage(1000, 5, 900L, 200L))
-                        .containsKey("cacheReadInputTokens"));
+                                .cacheReadInputTokens()
+                        != null);
+    }
+
+    @Test
+    void restoresMeasuredBaselineAcrossSerializationWithoutKeepingPromptText() throws Exception {
+        var tracker = new ContextUsageTracker();
+        var first = request("private-system", List.of(ChatMessage.user("private-input")));
+        tracker.measure(first, new LlmSystemUsage.Usage(19291, 72));
+        var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        var checkpoint = tracker.checkpoint();
+        if (checkpoint == null) throw new AssertionError("Missing checkpoint");
+        String serialized = mapper.writeValueAsString(checkpoint);
+        assertFalse(serialized.contains("private"));
+        var recovered = new ContextUsageTracker();
+        recovered.restore(
+                mapper.readValue(
+                        serialized,
+                        top.focess.veto.agent.tool.ToolDocs.nonNullClass(UsageCheckpoint.class)));
+        var next =
+                request(
+                        "private-system",
+                        List.of(
+                                ChatMessage.user("private-input"),
+                                ChatMessage.assistant("answer"),
+                                ChatMessage.user("next")));
+        var measured = recovered.measure(next, new LlmSystemUsage.Usage(19436, 67));
+        assertFalse(measured.baselineReset());
+        assertEquals(Long.valueOf(145), measured.contextDeltaTokens());
+        assertEquals(Long.valueOf(73), measured.inputDeltaTokens());
+        recovered.restore(
+                mapper.readValue(
+                        serialized,
+                        top.focess.veto.agent.tool.ToolDocs.nonNullClass(UsageCheckpoint.class)));
+        assertTrue(
+                recovered
+                        .measure(
+                                request("changed-system", next.messages()),
+                                new LlmSystemUsage.Usage(19436, 67))
+                        .baselineReset());
     }
 
     private @NonNull VetoRequest request(
@@ -49,31 +90,29 @@ class ContextUsageTrackerTest {
         var tracker = new ContextUsageTracker();
         var first = request("system", List.of(ChatMessage.user("one")));
         assertEquals(
-                true,
-                tracker.measure(first, new LlmSystemUsage.Usage(100, 10)).get("baselineReset"));
+                true, tracker.measure(first, new LlmSystemUsage.Usage(100, 10)).baselineReset());
         var next =
                 request("system", List.of(ChatMessage.user("one"), ChatMessage.assistant("two")));
         var measurement = tracker.measure(next, new LlmSystemUsage.Usage(120, 5));
-        assertEquals(20L, measurement.get("contextDeltaTokens"));
-        assertEquals(10L, measurement.get("inputDeltaTokens"));
-        assertEquals("request_difference", measurement.get("inputDeltaSource"));
+        assertEquals(Long.valueOf(20L), measurement.contextDeltaTokens());
+        assertEquals(Long.valueOf(10L), measurement.inputDeltaTokens());
+        assertEquals("request_difference", measurement.inputDeltaSource());
         assertFalse(
-                tracker.measure(next, new LlmSystemUsage.Usage(120, 5))
-                        .containsKey("inputDeltaTokens"));
-        assertEquals(1, measurement.get("appendedMessages"));
+                tracker.measure(next, new LlmSystemUsage.Usage(120, 5)).inputDeltaTokens() != null);
+        assertEquals(Integer.valueOf(1), measurement.appendedMessages());
         assertEquals(
-                0L,
-                tracker.measure(next, new LlmSystemUsage.Usage(120, 5)).get("contextDeltaTokens"));
+                Long.valueOf(0L),
+                tracker.measure(next, new LlmSystemUsage.Usage(120, 5)).contextDeltaTokens());
         assertEquals(
                 true,
                 tracker.measure(
                                 request("changed", next.messages()),
                                 new LlmSystemUsage.Usage(90, 2))
-                        .get("baselineReset"));
+                        .baselineReset());
         tracker.reset();
         assertFalse(
-                tracker.measure(next, new LlmSystemUsage.Usage(120, 5))
-                        .containsKey("contextDeltaTokens"));
+                tracker.measure(next, new LlmSystemUsage.Usage(120, 5)).contextDeltaTokens()
+                        != null);
     }
 
     @Test
@@ -89,8 +128,8 @@ class ContextUsageTrackerTest {
                                 ChatMessage.assistant("answer"),
                                 ChatMessage.user("two")));
         assertEquals(
-                -1L,
-                tracker.measure(next, new LlmSystemUsage.Usage(109, 5)).get("inputDeltaTokens"));
+                Long.valueOf(-1L),
+                tracker.measure(next, new LlmSystemUsage.Usage(109, 5)).inputDeltaTokens());
         var correction =
                 request(
                         "system",
@@ -100,9 +139,8 @@ class ContextUsageTrackerTest {
                                 ChatMessage.user("two"),
                                 ChatMessage.user("correct")));
         assertEquals(
-                7L,
-                tracker.measure(correction, new LlmSystemUsage.Usage(116, 2))
-                        .get("inputDeltaTokens"));
+                Long.valueOf(7L),
+                tracker.measure(correction, new LlmSystemUsage.Usage(116, 2)).inputDeltaTokens());
     }
 
     @Test
@@ -133,10 +171,10 @@ class ContextUsageTrackerTest {
                                 ChatMessage.assistant("accepted call"),
                                 ChatMessage.user("file result")));
         var measured = tracker.measure(next, new LlmSystemUsage.Usage(32724, 6));
-        assertEquals(false, measured.get("baselineReset"));
-        assertEquals(29L, measured.get("inputDeltaTokens"));
-        assertEquals(57L, measured.get("subtractedOutputTokens"));
-        assertEquals(32724L, measured.get("inputTokens"));
+        assertEquals(false, measured.baselineReset());
+        assertEquals(Long.valueOf(29L), measured.inputDeltaTokens());
+        assertEquals(Long.valueOf(57L), measured.subtractedOutputTokens());
+        assertEquals(Long.valueOf(32724L), measured.inputTokens());
     }
 
     @Test
@@ -157,14 +195,14 @@ class ContextUsageTrackerTest {
                                 ChatMessage.assistant("accepted"),
                                 ChatMessage.user("two")));
         assertEquals(
-                5L,
-                tracker.measure(next, new LlmSystemUsage.Usage(115, 3)).get("inputDeltaTokens"));
+                Long.valueOf(5L),
+                tracker.measure(next, new LlmSystemUsage.Usage(115, 3)).inputDeltaTokens());
         assertEquals(
                 true,
                 tracker.measure(
                                 request("changed", next.messages()),
                                 new LlmSystemUsage.Usage(130, 3))
-                        .get("baselineReset"));
+                        .baselineReset());
     }
 
     @Test

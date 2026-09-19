@@ -1,11 +1,11 @@
 package top.focess.veto.agent.tool.builtin;
 
-import java.util.LinkedHashMap;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CancellationException;
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.capability.TaskControlCapability;
 import top.focess.veto.agent.screening.Danger;
@@ -114,14 +114,12 @@ public final class ViewTaskTool implements TaskControlTool<ViewTaskTool.Args> {
     @Override
     public @NonNull String execute(@NonNull Args args, @NonNull TaskControlCapability capability) {
         String taskId = args.taskId();
-        Map<String, Object> result = new LinkedHashMap<>();
         if (taskId == null || taskId.isBlank()) {
             if (Boolean.TRUE.equals(args.waitForExit()))
                 return ToolErrors.failure("waitForExit requires taskId");
             var all = capability.list();
-            result.put("count", all.size());
-            List<Map<String, Object>> tasks = all.stream().map(ViewTaskTool::summary).toList();
-            result.put("tasks", tasks);
+            return ToolJson.object(
+                    new TaskList(all.size(), all.stream().map(ViewTaskTool::summary).toList()));
         } else {
             var found =
                     Boolean.TRUE.equals(args.waitForExit())
@@ -129,20 +127,45 @@ public final class ViewTaskTool implements TaskControlTool<ViewTaskTool.Args> {
                             : capability.status(taskId);
             if (found.isEmpty()) return ToolErrors.failure("task not found: " + taskId);
             var task = found.get();
-            result.putAll(summary(task));
-            result.put("pid", task.pid());
-            result.put("startedAt", task.startedAt().toString());
-            result.put("uptimeSeconds", task.uptimeSeconds());
-            result.put("cwd", task.cwd());
-            result.put("recentOutput", capability.output(taskId, 50).orElse(""));
-            result.put(
-                    "outputCapture",
-                    "recentOutput merges stdout and stderr without stream labels. Report it as combined output;"
-                            + " it cannot establish that either stream was empty.");
-            result.put("inputFailures", capability.inputFailures(taskId));
+            return ToolJson.object(
+                    new TaskDetail(
+                            task.taskId(),
+                            task.command(),
+                            task.alive(),
+                            task.exitCode(),
+                            task.pid(),
+                            task.startedAt().toString(),
+                            task.uptimeSeconds(),
+                            task.cwd(),
+                            capability.output(taskId, 50).orElse(""),
+                            "recentOutput merges stdout and stderr without stream labels. Report it as combined output;"
+                                    + " it cannot establish that either stream was empty.",
+                            capability.inputFailures(taskId)));
         }
-        return ToolJson.object(result);
     }
+
+    public record TaskList(int count, @NonNull List<TaskSummary> tasks) {}
+
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record TaskSummary(
+            @NonNull String taskId,
+            @NonNull String command,
+            boolean alive,
+            @Nullable Integer exitCode) {}
+
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record TaskDetail(
+            @NonNull String taskId,
+            @NonNull String command,
+            boolean alive,
+            @Nullable Integer exitCode,
+            long pid,
+            @NonNull String startedAt,
+            long uptimeSeconds,
+            @NonNull String cwd,
+            @NonNull String recentOutput,
+            @NonNull String outputCapture,
+            @NonNull List<String> inputFailures) {}
 
     private static @NonNull Optional<BackgroundTaskManager.TaskInfo> awaitExit(
             @NonNull TaskControlCapability capability, @NonNull String taskId) {
@@ -154,14 +177,7 @@ public final class ViewTaskTool implements TaskControlTool<ViewTaskTool.Args> {
         }
     }
 
-    private static @NonNull Map<String, Object> summary(
-            BackgroundTaskManager.@NonNull TaskInfo task) {
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put("taskId", task.taskId());
-        result.put("command", task.command());
-        result.put("alive", task.alive());
-        Integer exitCode = task.exitCode();
-        if (exitCode != null) result.put("exitCode", exitCode);
-        return result;
+    private static @NonNull TaskSummary summary(BackgroundTaskManager.@NonNull TaskInfo task) {
+        return new TaskSummary(task.taskId(), task.command(), task.alive(), task.exitCode());
     }
 }

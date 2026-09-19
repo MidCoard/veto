@@ -1,14 +1,35 @@
 package top.focess.veto.extension.contract;
 
-import java.util.HashSet;
 import org.jspecify.annotations.NonNull;
+
 import top.focess.veto.extension.ExtensionCatalog;
 import top.focess.veto.extension.ExtensionId;
 import top.focess.veto.extension.ExtensionPoint;
 
+import java.util.HashSet;
+
 /** Initial application contracts. The catalog itself knows none of these types. */
 public final class StandardExtensionPoints {
     private StandardExtensionPoints() {}
+
+    public static final @NonNull ExtensionPoint<TextProtection> FILE_OBSERVATION =
+            new ExtensionPoint<>(
+                    new ExtensionId("veto:file-observation"),
+                    1,
+                    TextProtection.class,
+                    ExtensionPoint.Cardinality.MULTIPLE);
+    public static final @NonNull ExtensionPoint<TextProtection> INPUT_PROTECTION =
+            new ExtensionPoint<>(
+                    new ExtensionId("veto:input-protection"),
+                    1,
+                    TextProtection.class,
+                    ExtensionPoint.Cardinality.MULTIPLE);
+    public static final @NonNull ExtensionPoint<TextProtection> FILE_PROTECTION =
+            new ExtensionPoint<>(
+                    new ExtensionId("veto:file-protection"),
+                    1,
+                    TextProtection.class,
+                    ExtensionPoint.Cardinality.MULTIPLE);
 
     /** Semantic validator registered by the application, not hard-coded in the catalog. */
     public static void validateToolCategories(@NonNull ExtensionCatalog catalog) {

@@ -3,7 +3,6 @@ package top.focess.veto.controller;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
-import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
@@ -40,9 +39,9 @@ class PromptControllerTest {
                         .prompt("session", new SubmitPromptRequest("synthetic-secret"));
         if (response == null) throw new AssertionError("Missing rejection response");
         assertEquals(422, response.getStatusCode().value());
-        if (!(response.getBody() instanceof Map<?, ?> body))
+        if (!(response.getBody() instanceof top.focess.veto.controller.dto.CodedErrorResponse body))
             throw new AssertionError("Missing error body");
-        assertEquals("PROTECTED_INPUT_UNAVAILABLE", body.get("code"));
-        assertFalse(body.toString().contains("synthetic-secret"));
+        assertEquals("PROTECTED_INPUT_UNAVAILABLE", body.code());
+        assertFalse(String.valueOf(body).contains("synthetic-secret"));
     }
 }

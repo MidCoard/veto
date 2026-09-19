@@ -10,7 +10,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -21,6 +20,7 @@ import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import top.focess.veto.agent.tool.ToolDocs;
 import top.focess.veto.security.HostPathInput;
 
 /**
@@ -311,7 +311,7 @@ public class TrainingManager {
      *
      * @return the quality filter report as a Map, or null on failure
      */
-    public Map<String, Object> runStandaloneQualityCheck() {
+    public @org.jspecify.annotations.Nullable QualityReport runStandaloneQualityCheck() {
         Path trainingDir = Path.of(config.getTrainingDir()).toAbsolutePath();
         Path pythonDir = trainingDir.resolve("python");
         Path dataPath = trainingDir.resolve("data").resolve("veto_training_data.jsonl");
@@ -360,9 +360,8 @@ public class TrainingManager {
             }
 
             if (Files.exists(reportPath)) {
-                @SuppressWarnings("unchecked")
-                Map<String, Object> report = objectMapper.readValue(reportPath.toFile(), Map.class);
-                return report;
+                return objectMapper.readValue(
+                        reportPath.toFile(), ToolDocs.nonNullClass(QualityReport.class));
             }
         } catch (Exception e) {
             log.error("Quality filter failed", e);
@@ -501,40 +500,19 @@ public class TrainingManager {
             return;
         }
         try {
-            @SuppressWarnings("unchecked")
-            Map<String, Object> report = objectMapper.readValue(reportPath.toFile(), Map.class);
-
-            Map<String, Object> gbnf = requiredMap(report, "gbnfCompliance");
-            Map<String, Object> decision = requiredMap(report, "decisionAccuracy");
-            Map<String, Object> redaction = requiredMap(report, "redactionAccuracy");
-            Map<String, Object> structural = requiredMap(report, "structuralValidation");
-
             TrainingProgress.EvaluationReport evalReport =
-                    new TrainingProgress.EvaluationReport(
-                            (String) report.get("modelPath"),
-                            (String) report.get("datasetPath"),
-                            (String) report.get("timestamp"),
-                            requiredNumber(report, "totalSamples").intValue(),
-                            requiredNumber(report, "elapsedSeconds").doubleValue(),
-                            new TrainingProgress.EvaluationReport.GbnfCompliance(
-                                    requiredNumber(gbnf, "validJsonCount").intValue(),
-                                    requiredNumber(gbnf, "validJsonRate").doubleValue()),
-                            new TrainingProgress.EvaluationReport.DecisionAccuracy(
-                                    requiredNumber(decision, "correct").intValue(),
-                                    requiredNumber(decision, "total").intValue(),
-                                    requiredNumber(decision, "accuracy").doubleValue()),
-                            new TrainingProgress.EvaluationReport.RedactionAccuracy(
-                                    requiredNumber(redaction, "truePositives").intValue(),
-                                    requiredNumber(redaction, "falsePositives").intValue(),
-                                    requiredNumber(redaction, "falseNegatives").intValue(),
-                                    requiredNumber(redaction, "precision").doubleValue(),
-                                    requiredNumber(redaction, "recall").doubleValue(),
-                                    requiredNumber(redaction, "f1").doubleValue()),
-                            new TrainingProgress.EvaluationReport.StructuralValidation(
-                                    requiredNumber(structural, "correct").intValue(),
-                                    requiredNumber(structural, "total").intValue(),
-                                    requiredNumber(structural, "accuracy").doubleValue()));
+                    objectMapper
+                            .readerFor(
+                                    ToolDocs.nonNullClass(TrainingProgress.EvaluationReport.class))
+                            .with(
+                                    com.fasterxml.jackson.databind.DeserializationFeature
+                                            .FAIL_ON_MISSING_CREATOR_PROPERTIES)
+                            .with(
+                                    com.fasterxml.jackson.databind.DeserializationFeature
+                                            .FAIL_ON_NULL_CREATOR_PROPERTIES)
+                            .readValue(reportPath.toFile());
 
+            if (evalReport == null) throw new IllegalArgumentException("Missing evaluation report");
             progress.setEvaluation(evalReport);
             log.info(
                     "Evaluation report parsed: GBNF compliance={}, decision accuracy={}",
@@ -549,37 +527,6 @@ public class TrainingManager {
         } catch (Exception e) {
             log.warn("Failed to parse evaluation report: {}", safe(e.getMessage()));
         }
-    }
-
-    private static @NonNull Number requiredNumber(
-            @NonNull Map<String, Object> values, @NonNull String key) {
-        Object value = values.get(key);
-        if (value instanceof Number number) {
-            return number;
-        }
-        throw new IllegalArgumentException(
-                "Evaluation report field '" + key + "' must be a number");
-    }
-
-    private static @NonNull Map<String, Object> requiredMap(
-            @NonNull Map<String, Object> values, @NonNull String key) {
-        Object value = values.get(key);
-        if (!(value instanceof Map<?, ?> raw)) {
-            throw new IllegalArgumentException(
-                    "Evaluation report field '" + key + "' must be an object");
-        }
-        Map<String, Object> result = new LinkedHashMap<>();
-        for (Map.Entry<?, ?> entry : raw.entrySet()) {
-            if (!(entry.getKey() instanceof String entryKey)) {
-                throw new IllegalArgumentException(
-                        "Evaluation report object '" + key + "' has a non-string key");
-            }
-            Object entryValue = entry.getValue();
-            if (entryValue != null) {
-                result.put(entryKey, entryValue);
-            }
-        }
-        return result;
     }
 
     private @NonNull Path resolveTrainingDataPath(

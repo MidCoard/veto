@@ -3,7 +3,6 @@ package top.focess.veto.agent.tool.builtin;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.NoSuchFileException;
-import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.capability.WorkspaceWriteCapability;
@@ -157,7 +156,7 @@ public final class ReplaceFileContentTool
             try (var output = file.openForReplace()) {
                 output.write(bytes);
             }
-            return ToolJson.object(Map.of("status", "ok", "file", args.absolutePath()));
+            return ToolJson.object(new Result("ok", args.absolutePath()));
         } catch (NoSuchFileException e) {
             return ToolErrors.failure("Not a regular file: " + args.absolutePath());
         } catch (IOException e) {
@@ -179,4 +178,6 @@ public final class ReplaceFileContentTool
         int newline = content.indexOf('\n', start);
         return newline < 0 ? content.length() : newline + 1;
     }
+
+    public record Result(@NonNull String status, @NonNull String file) {}
 }

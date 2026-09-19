@@ -1,15 +1,14 @@
 package top.focess.veto.controller;
 
 import java.time.Instant;
-import java.util.LinkedHashMap;
 import java.util.Locale;
-import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import top.focess.veto.controller.dto.*;
 import top.focess.veto.controller.dto.AuthCredentials;
 import top.focess.veto.controller.dto.CreateUserRequest;
 import top.focess.veto.i18n.Msg;
@@ -54,7 +53,7 @@ public class AuthController {
             value = "/setup",
             consumes = MediaType.APPLICATION_JSON_VALUE,
             produces = MediaType.APPLICATION_JSON_VALUE)
-    public @NonNull ResponseEntity<Map<String, @NonNull Object>> setup(
+    public @NonNull ResponseEntity<RestResponse> setup(
             @RequestBody @NonNull AuthCredentials request) {
         String username = request.username();
         String password = request.password();
@@ -78,17 +77,8 @@ public class AuthController {
 
             log.info("Vault setup complete - admin user '{}' created", username);
             return ResponseEntity.ok(
-                    Map.of(
-                            "status",
-                            "ok",
-                            "token",
-                            token,
-                            "username",
-                            username,
-                            "role",
-                            "ADMIN",
-                            "message",
-                            "Vault initialized and unlocked"));
+                    new AuthSetupResponse(
+                            "ok", token, username, "ADMIN", "Vault initialized and unlocked"));
         } catch (Exception e) {
             log.error("Setup failed", e);
             return ResponseEntity.internalServerError()
@@ -103,7 +93,7 @@ public class AuthController {
             value = "/login",
             consumes = MediaType.APPLICATION_JSON_VALUE,
             produces = MediaType.APPLICATION_JSON_VALUE)
-    public @NonNull ResponseEntity<Map<String, @NonNull Object>> login(
+    public @NonNull ResponseEntity<RestResponse> login(
             @RequestBody @NonNull AuthCredentials request) {
         String username = request.username();
         String password = request.password();
@@ -124,15 +114,7 @@ public class AuthController {
 
             log.info("User '{}' logged in", username);
             return ResponseEntity.ok(
-                    Map.of(
-                            "status",
-                            "ok",
-                            "token",
-                            token,
-                            "username",
-                            username,
-                            "role",
-                            user.get().getRole()));
+                    new AuthSessionResponse("ok", token, username, user.get().getRole()));
         } catch (Exception e) {
             log.error("Login failed for user '{}'", username, e);
             return ResponseEntity.internalServerError()
@@ -144,7 +126,7 @@ public class AuthController {
 
     /** POST /api/auth/logout - Invalidate session and lock vault if no other sessions active. */
     @PostMapping(value = "/logout", produces = MediaType.APPLICATION_JSON_VALUE)
-    public @NonNull ResponseEntity<Map<String, @NonNull Object>> logout(
+    public @NonNull ResponseEntity<RestResponse> logout(
             @RequestHeader(TOKEN_HEADER) @NonNull String token) {
         var session = sessionManager.validate(token);
         if (session.isEmpty()) {
@@ -158,43 +140,28 @@ public class AuthController {
         }
 
         return ResponseEntity.ok(
-                Map.of(
-                        "status",
-                        "ok",
-                        "message",
-                        "Logged out",
-                        "username",
-                        session.get().username()));
+                new AuthLogoutResponse("ok", "Logged out", session.get().username()));
     }
 
     // ── Status ─────────────────────────────────────────────────────────────
 
     /** GET /api/auth/status - Returns vault and session state. */
     @GetMapping(value = "/status", produces = MediaType.APPLICATION_JSON_VALUE)
-    public @NonNull ResponseEntity<Map<String, Object>> status(
+    public @NonNull ResponseEntity<RestResponse> status(
             @RequestHeader(value = TOKEN_HEADER, required = false) String token) {
         boolean setupNeeded = !userRegistry.anyUserExists();
         boolean vaultLocked = !vault.isUnlocked();
 
-        var result = new LinkedHashMap<String, Object>();
-        result.put("setupNeeded", setupNeeded);
-        result.put("vaultLocked", vaultLocked);
-        result.put("activeSessions", sessionManager.activeSessionCount());
-        String currentUser = vault.currentUser();
-        if (currentUser != null) {
-            result.put("currentUser", currentUser);
-        }
-        result.put("timestamp", Instant.now().toString());
-
-        if (token != null) {
-            var session = sessionManager.validate(token);
-            result.put("authenticated", session.isPresent());
-            session.ifPresent(s -> result.put("username", s.username()));
-        } else {
-            result.put("authenticated", false);
-        }
-
-        return ResponseEntity.ok(result);
+        var session = sessionManager.validate(token == null ? "" : token);
+        return ResponseEntity.ok(
+                new AuthStatusResponse(
+                        setupNeeded,
+                        vaultLocked,
+                        sessionManager.activeSessionCount(),
+                        vault.currentUser(),
+                        Instant.now().toString(),
+                        session.isPresent(),
+                        session.map(value -> value.username()).orElse(null)));
     }
 
     // ── User management (admin only) ────────────────────────────────────────
@@ -206,7 +173,7 @@ public class AuthController {
             produces = MediaType.APPLICATION_JSON_VALUE)
     // User-controlled fields below are validated and serialized as application/json by Jackson.
     @SuppressWarnings("JvmTaintAnalysis")
-    public @NonNull ResponseEntity<Map<String, Object>> addUser(
+    public @NonNull ResponseEntity<RestResponse> addUser(
             @RequestHeader(TOKEN_HEADER) @NonNull String token,
             @RequestBody @NonNull CreateUserRequest request) {
 
@@ -251,16 +218,7 @@ public class AuthController {
                     session.get().username(),
                     username,
                     role);
-            return ResponseEntity.ok(
-                    Map.of(
-                            "status",
-                            "ok",
-                            "username",
-                            username,
-                            "role",
-                            role,
-                            "message",
-                            "User created"));
+            return ResponseEntity.ok(new UserCreatedResponse("ok", username, role, "User created"));
         } catch (IllegalArgumentException e) {
             // Duplicate username (UserRegistry.create rejects an existing id).
             return ResponseEntity.status(409)
@@ -278,7 +236,7 @@ public class AuthController {
         return null;
     }
 
-    private static @NonNull Map<String, @NonNull Object> error(@NonNull String message) {
-        return Map.of("status", "error", "message", message);
+    private static @NonNull StatusMessageResponse error(@NonNull String message) {
+        return new StatusMessageResponse("error", message);
     }
 }

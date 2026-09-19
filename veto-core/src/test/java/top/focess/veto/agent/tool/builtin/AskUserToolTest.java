@@ -333,7 +333,7 @@ class AskUserToolTest {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
         while (System.nanoTime() < deadline) {
             var pending = registry.pendingFor("test-agent");
-            if (!pending.isEmpty()) return String.valueOf(pending.getFirst().get("callId"));
+            if (!pending.isEmpty()) return String.valueOf(pending.getFirst().callId());
             Thread.sleep(5);
         }
         throw new AssertionError("Tool did not register its question batch");

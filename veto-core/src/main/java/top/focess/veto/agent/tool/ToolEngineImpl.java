@@ -4,10 +4,7 @@ import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Set;
+
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -16,14 +13,25 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.ApplicationContext;
 import org.springframework.stereotype.Service;
+
 import top.focess.veto.agent.capability.RemoteCallCapability;
 import top.focess.veto.agent.capability.RemoteCallCapabilityImpl;
 import top.focess.veto.agent.mcp.transport.McpJsonRpcClient;
 import top.focess.veto.agent.mcp.transport.McpTransport;
+import top.focess.veto.extension.contract.StandardExtensionPoints;
 import top.focess.veto.llm.config.LlmJacksonConfig;
 import top.focess.veto.llm.core.ToolCall;
+import top.focess.veto.plugin.api.PluginState;
+import top.focess.veto.plugin.runtime.PluginJson;
+import top.focess.veto.plugin.runtime.PluginManager;
+import top.focess.veto.plugin.runtime.PluginSchema;
 import top.focess.veto.sandbox.SandboxSubstrate;
 import top.focess.veto.util.Nullness;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Set;
 
 /**
  * The tool engine implementation — manages server registrations, schema discovery, and tool
@@ -60,6 +68,12 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
     // One volatile publication binds every definition and implementation in a complete snapshot.
     private volatile @NonNull ToolCatalog catalog = ToolCatalog.empty();
     private boolean initialized;
+    private top.focess.veto.plugin.runtime.SessionPlugins sessionPlugins;
+
+    @Autowired
+    public void attachSessionPlugins(top.focess.veto.plugin.runtime.@NonNull SessionPlugins value) {
+        sessionPlugins = value;
+    }
 
     @Autowired
     public ToolEngineImpl(
@@ -115,20 +129,17 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
             }
         }
         if (context != null) {
-            for (var manager :
-                    context.getBeansOfType(top.focess.veto.plugin.runtime.ScriptPlugins.class)
-                            .values()) {
-                for (var plugin : manager.plugins()) {
-                    for (var descriptor : plugin.tools()) {
-                        var definition =
-                                new PluginToolDefinition(
-                                        "plugin_" + plugin.id() + "__" + descriptor.id(),
-                                        plugin.bindingId(),
-                                        plugin.id(),
-                                        plugin.version(),
-                                        descriptor);
-                        staged.add(new RegisteredTool.Plugin(definition, plugin));
-                    }
+            for (var manager : context.getBeansOfType(PluginManager.class).values()) {
+                for (var entry : manager.catalog().entries(StandardExtensionPoints.TOOLS)) {
+                    var plugin = manager.plugin(entry.source().namespace());
+                    var definition =
+                            new PluginToolDefinition(
+                                    manager.toolName(entry),
+                                    plugin.bindingId(),
+                                    plugin.identity().id(),
+                                    plugin.identity().version(),
+                                    entry.implementation());
+                    staged.add(new RegisteredTool.Plugin(definition, plugin));
                 }
             }
         }
@@ -143,7 +154,8 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
             @NonNull McpTransport transport) {
         if (!(transport instanceof McpTransport.SseMcpTransport remote)) {
             throw new IllegalArgumentException(
-                    "This MCP transport has no enforced execution boundary and cannot be registered.");
+                    "This MCP transport has no enforced execution boundary and cannot be"
+                        + " registered.");
         }
         try {
             List<RemoteToolDefinition> tools = remoteClient.discoverTools(transport);
@@ -244,13 +256,38 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
     private @NonNull ToolResult executePlugin(
             @NonNull ToolCall call, RegisteredTool.@NonNull Plugin registration) {
         requirePermit(call, registration.definition());
+        var selection = sessionPlugins;
+        if (selection != null) {
+            var context = ToolCallContextHolder.get();
+            var session = context == null ? null : context.sessionId();
+            if (session == null
+                    || !selection.includes(
+                            session.toString(), registration.definition().pluginId()))
+                throw new SecurityException("Plugin is not selected for this session");
+        }
         try {
-            JsonNode result =
+            var descriptor = registration.definition().descriptor();
+            JsonNode arguments = mapper.valueToTree(call.args());
+            PluginSchema.validate(registration.definition().inputSchema(), arguments);
+            var value =
                     registration
                             .runtime()
-                            .invoke(
-                                    registration.definition().descriptor(),
-                                    mapper.valueToTree(call.args()));
+                            .execute(
+                                    () ->
+                                            descriptor
+                                                    .handler()
+                                                    .invoke(
+                                                            PluginJson.object(arguments),
+                                                            () ->
+                                                                    Thread.currentThread()
+                                                                                    .isInterrupted()
+                                                                            || registration
+                                                                                            .runtime()
+                                                                                            .state()
+                                                                                    != PluginState
+                                                                                            .ACTIVE));
+            JsonNode result = PluginJson.toNode(value);
+            PluginSchema.validate(PluginJson.toNode(descriptor.outputSchema()), result);
             return new ToolResult(
                     call.toolName(),
                     call.callId(),
@@ -327,11 +364,13 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
         ToolCallContext context = ToolCallContextHolder.get();
         if (context == null) {
             throw new SecurityException(
-                    "This tool call is not authorized for the current session; submit a fresh call.");
+                    "This tool call is not authorized for the current session; submit a fresh"
+                        + " call.");
         }
         if (!context.executionPermit().authorizes(call, definition, context)) {
             throw new SecurityException(
-                    "This tool call is not authorized for the current session; submit a fresh call.");
+                    "This tool call is not authorized for the current session; submit a fresh"
+                        + " call.");
         }
         if (definition.capability() == ToolCapability.AGENT_CONTROL) {
             throw new SecurityException("This tool is unavailable; use another available tool.");

@@ -1,8 +1,6 @@
 package top.focess.veto.agent.tool.builtin;
 
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.capability.ProcessExecutionCapability;
@@ -156,22 +154,28 @@ public final class RunTaskTool implements ProcessExecutionTool<RunTaskTool.Args>
 
     private static @NonNull String startedResult(
             BackgroundTaskManager.@NonNull TaskInfo info, int timeout, long maximumTimeout) {
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put("status", "started");
-        result.put(
-                "nextStep",
-                "If the assignment needs the final result, call view_task once with this taskId and waitForExit=true."
-                        + " Do not finish the assignment with a waiting message or poll."
-                        + " If only starting a long-lived service was requested, report that it started without waiting for exit."
-                        + " Answer in the user's language.");
-        result.put("taskId", info.taskId());
-        result.put("pid", info.pid());
-        result.put("command", info.command());
-        result.put("cwd", info.cwd());
-        result.put("requestedTimeoutSeconds", timeout);
-        result.put(
-                "effectiveTimeoutSeconds",
-                timeout == 0 ? maximumTimeout : Math.min(timeout, maximumTimeout));
-        return ToolJson.object(result);
+        return ToolJson.object(
+                new Result(
+                        "started",
+                        "If the assignment needs the final result, call view_task once with this taskId and waitForExit=true."
+                                + " Do not finish the assignment with a waiting message or poll."
+                                + " If only starting a long-lived service was requested, report that it started without waiting for exit."
+                                + " Answer in the user's language.",
+                        info.taskId(),
+                        info.pid(),
+                        info.command(),
+                        info.cwd(),
+                        timeout,
+                        timeout == 0 ? maximumTimeout : Math.min(timeout, maximumTimeout)));
     }
+
+    public record Result(
+            @NonNull String status,
+            @NonNull String nextStep,
+            @NonNull String taskId,
+            long pid,
+            @NonNull String command,
+            @NonNull String cwd,
+            int requestedTimeoutSeconds,
+            long effectiveTimeoutSeconds) {}
 }

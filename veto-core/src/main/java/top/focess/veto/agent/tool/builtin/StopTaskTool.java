@@ -1,7 +1,5 @@
 package top.focess.veto.agent.tool.builtin;
 
-import java.util.LinkedHashMap;
-import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.capability.TaskControlCapability;
@@ -98,16 +96,21 @@ public final class StopTaskTool implements TaskControlTool<StopTaskTool.Args> {
         var stopped = capability.stop(args.taskId());
         if (stopped.isEmpty()) return ToolErrors.failure("task not found: " + args.taskId());
         var info = stopped.get();
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put(
-                "status",
-                info.alive()
-                        ? "stop_requested"
-                        : before.get().alive() ? "stopped" : "already_exited");
-        result.put("taskId", info.taskId());
-        result.put("alive", info.alive());
-        Integer exitCode = info.exitCode();
-        if (exitCode != null) result.put("exitCode", exitCode);
-        return ToolJson.object(result);
+        return ToolJson.object(
+                new Result(
+                        info.alive()
+                                ? "stop_requested"
+                                : before.get().alive() ? "stopped" : "already_exited",
+                        info.taskId(),
+                        info.alive(),
+                        info.exitCode()));
     }
+
+    @com.fasterxml.jackson.annotation.JsonInclude(
+            com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+    public record Result(
+            @NonNull String status,
+            @NonNull String taskId,
+            boolean alive,
+            @org.jspecify.annotations.Nullable Integer exitCode) {}
 }

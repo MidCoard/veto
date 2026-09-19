@@ -1,16 +1,7 @@
 package top.focess.veto.agent;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.nio.charset.StandardCharsets;
-import java.time.Duration;
-import java.util.Collections;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.TimeoutException;
-import java.util.function.Consumer;
+
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -20,6 +11,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.context.i18n.LocaleContextHolder;
 import org.springframework.stereotype.Service;
+
 import top.focess.veto.agent.drift.ReadHistory;
 import top.focess.veto.agent.identity.AgentPersona;
 import top.focess.veto.agent.identity.Role;
@@ -61,6 +53,17 @@ import top.focess.veto.util.Nullness;
 import top.focess.veto.vault.CredentialVaultConfiguration;
 import top.focess.veto.vault.KeysteadVault;
 
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeoutException;
+import java.util.function.Consumer;
+
 /**
  * The shared agent service ("Multi-Client Unification"). Both the ZMQ terminal ({@code
  * PromptHandler}) and the REST controllers are thin facades that delegate here — loop execution is
@@ -74,6 +77,13 @@ import top.focess.veto.vault.KeysteadVault;
 @SuppressWarnings(
         "DuplicatedCode") // Standalone and group-agent factories intentionally mirror setup.
 public class AgentService {
+    private top.focess.veto.plugin.runtime.SessionPlugins sessionPlugins;
+
+    @Autowired
+    public void attachSessionPlugins(top.focess.veto.plugin.runtime.@NonNull SessionPlugins value) {
+        sessionPlugins = value;
+    }
+
     private GroupRecoveryService groupRecovery;
 
     private RequestContinuationStore continuationStore;
@@ -90,6 +100,8 @@ public class AgentService {
     }
 
     private void configureContinuations(@NonNull AgentRunner runner) {
+        var plugins = sessionPlugins;
+        if (plugins != null) runner.attachSessionPlugins(plugins);
         SecretCandidateStore candidates = secretCandidates;
         if (candidates != null) runner.attachSecretCandidates(candidates);
         KeysteadVault vault = monitorVault;
@@ -874,7 +886,11 @@ public class AgentService {
         // Re-scope the persona's tools to its role. The persona may have been built with the full
         // standalone manifest before its role (MATE/LEADER) was known; the RoleToolFilter narrows
         // it to the role's allow-list (MATE: no group tools; LEADER: read + arrange only).
-        AgentPersona scoped = persona.withWhitelistedTools(roleToolFilter.resolve(persona.role()));
+        Set<ToolDefinition> selectedTools = roleToolFilter.resolve(persona.role());
+        var selection = sessionPlugins;
+        if (selection != null && sessionId != null)
+            selectedTools = selection.tools(sessionId.toString(), selectedTools);
+        AgentPersona scoped = persona.withWhitelistedTools(selectedTools);
         hitlRegistry.setWorkspace(scoped.id(), workspace);
         ReadHistory readHistory = new ReadHistory();
         String protectionOwner = owner == null || owner.isBlank() ? userId.toString() : owner;
@@ -936,6 +952,8 @@ public class AgentService {
             String primaryAgentId,
             AgentRunner.@NonNull LlmBinding binding) {
         Set<ToolDefinition> tools = roleToolFilter.resolve(Role.STANDALONE);
+        var selection = sessionPlugins;
+        if (selection != null && primaryAgentId != null) tools = selection.tools(agentKey, tools);
         String personaId = primaryAgentId != null ? primaryAgentId : UUID.randomUUID().toString();
         return new AgentPersona(
                 personaId,

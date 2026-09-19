@@ -11,8 +11,15 @@ re-exports [veto-extension](../veto-extension/README.md), which owns shared
 contributions and initial application contracts.
 
 `PluginContributions` is a bounded immutable list of typed
-`ExtensionContribution<?>` values. `PluginContext` carries identity metadata only;
-it does not issue permissions or approved invocation services.
+`ExtensionContribution<?>` values. `PluginContext` carries identity metadata, a live
+read-only lifecycle state via `state()`, and a failure-reporting callback; it does not issue permissions or approved invocation services.
+
+`AbstractVetoPlugin` provides lifecycle callbacks without allocating threads or owning
+lifecycle state. Veto's `PluginManager` owns one shared control executor and each
+plugin's `ManagedPlugin` handle. Handles serialize lifecycle transitions and invocation
+admission; tool handlers run on caller threads. Closing a handle drains admitted calls
+and releases the plugin's resources once. The manager shuts down the shared executor
+after closing all handles.
 
 The standalone fixture contributes a computation tool, a category, a static prompt
 and an observation-text transformer. Its JAR does not bundle shared contracts.

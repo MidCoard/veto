@@ -9,6 +9,13 @@ import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 class RecordUsageTest {
+    private static @org.jspecify.annotations.NonNull UsageMeasurement measurement(
+            long input, long output, long delta) {
+        return new UsageMeasurement(
+                input, output, null, null, 1000, "test", "test", 1, false, delta, null, null, null,
+                null, null, null, null, null, null);
+    }
+
     @Test
     void thoughtHasExplicitNullThroughAppendUsageAndHistoricalProjection() throws Exception {
         TurnRecord historical =
@@ -25,16 +32,7 @@ class RecordUsageTest {
                                 "model_call_id",
                                 "call-1"),
                         null);
-        Map<String, Object> measurement =
-                Map.of(
-                        "recordDelta",
-                        true,
-                        "contextDeltaTokens",
-                        12,
-                        "inputTokens",
-                        100,
-                        "outputTokens",
-                        19);
+        var measurement = measurement(100, 19, 12);
         TurnRecord updated = RecordUsage.add(historical, measurement);
         for (TurnRecord thought :
                 List.of(
@@ -50,9 +48,7 @@ class RecordUsageTest {
         }
         assertEquals(List.of(measurement), updated.payload().get("llmUsage"));
         TurnRecord zero =
-                RecordUsage.add(
-                        TurnRecord.userPrompt(2, "hello"),
-                        Map.of("recordDelta", true, "contextDeltaTokens", 0));
+                RecordUsage.add(TurnRecord.userPrompt(2, "hello"), measurement(100, 0, 0));
         assertNull(RecordTokenCounter.count(zero.payload()));
         assertEquals(
                 Long.valueOf(0),
@@ -84,26 +80,24 @@ class RecordUsageTest {
             assertFalse(projected.payload().containsKey("usedTokens"));
             assertFalse(projected.payload().containsKey("tokenCountSource"));
             assertEquals(25, raw.payload().get("usedTokens"));
-            var updated = RecordUsage.add(raw, measurement);
+            var current = measurement(125, 8, 25);
+            var updated = RecordUsage.add(raw, current);
             assertFalse(updated.payload().containsKey("usedTokens"));
             assertTrue(
                     updated.payload().get("llmUsage") instanceof List<?> calls
-                            && calls.contains(measurement));
+                            && calls.contains(current));
         }
     }
 
     @Test
     void enrichesTheSameRecordWithoutCreatingATurn() {
         TurnRecord original = TurnRecord.userPrompt(7, "hello");
-        TurnRecord updated =
-                RecordUsage.add(original, Map.of("inputTokens", 100, "outputTokens", 5));
+        TurnRecord updated = RecordUsage.add(original, measurement(100, 5, 0));
         assertEquals(7, updated.turnNumber());
         assertEquals(TurnType.USER_PROMPT, updated.type());
         assertEquals(original.timestamp(), updated.timestamp());
         assertEquals("hello", updated.payload().get("content"));
-        assertEquals(
-                List.of(Map.of("inputTokens", 100, "outputTokens", 5)),
-                updated.payload().get("llmUsage"));
+        assertEquals(List.of(measurement(100, 5, 0)), updated.payload().get("llmUsage"));
     }
 
     @Test

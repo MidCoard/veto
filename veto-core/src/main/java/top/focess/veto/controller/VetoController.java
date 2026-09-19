@@ -1,7 +1,6 @@
 package top.focess.veto.controller;
 
 import java.time.Instant;
-import java.util.Map;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
@@ -9,6 +8,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import top.focess.veto.controller.dto.*;
 import top.focess.veto.controller.dto.CheckVetoRequest;
 import top.focess.veto.controller.dto.ProcessVetoRequest;
 import top.focess.veto.i18n.Msg;
@@ -38,17 +38,14 @@ public class VetoController {
             value = "/process",
             consumes = MediaType.APPLICATION_JSON_VALUE,
             produces = MediaType.APPLICATION_JSON_VALUE)
-    public @NonNull ResponseEntity<Map<String, Object>> processPayload(
+    public @NonNull ResponseEntity<RestResponse> processPayload(
             @RequestBody @NonNull ProcessVetoRequest request) {
         String payload = request.payload();
         if (payload == null || payload.isEmpty()) {
             return ResponseEntity.badRequest()
                     .body(
-                            Map.of(
-                                    "status",
-                                    "error",
-                                    "message",
-                                    Msg.get("error.veto.payloadRequired")));
+                            new StatusMessageResponse(
+                                    "error", Msg.get("error.veto.payloadRequired")));
         }
 
         String dagPayloadId = request.dagPayloadId();
@@ -73,27 +70,27 @@ public class VetoController {
                 vetoGateway.processOutbound(payload, dagPayloadId, requestId, componentSource);
 
         return ResponseEntity.ok(
-                Map.of(
-                        "status", "ok",
-                        "decision", result.decision().name(),
-                        "processedPayload", result.processedPayload(),
-                        "reason", result.reason(),
-                        "redactionCount", result.redactionCount(),
-                        "allowed", result.isAllowed(),
-                        "timestamp", Instant.now().toString()));
+                new VetoProcessResponse(
+                        "ok",
+                        result.decision().name(),
+                        result.processedPayload(),
+                        result.reason(),
+                        result.redactionCount(),
+                        result.isAllowed(),
+                        Instant.now().toString()));
     }
 
     /** GET /api/veto/status - Return gateway statistics. */
     @GetMapping(value = "/status", produces = MediaType.APPLICATION_JSON_VALUE)
-    public @NonNull ResponseEntity<Map<String, Object>> getStatus() {
+    public @NonNull ResponseEntity<RestResponse> getStatus() {
         return ResponseEntity.ok(
-                Map.of(
-                        "status", "ok",
-                        "enabled", vetoGateway.isEnabled(),
-                        "totalVetoes", vetoGateway.getTotalVetoes(),
-                        "totalPasses", vetoGateway.getTotalPasses(),
-                        "totalRedactions", vetoGateway.getTotalRedactions(),
-                        "timestamp", Instant.now().toString()));
+                new VetoStatusResponse(
+                        "ok",
+                        vetoGateway.isEnabled(),
+                        vetoGateway.getTotalVetoes(),
+                        vetoGateway.getTotalPasses(),
+                        vetoGateway.getTotalRedactions(),
+                        Instant.now().toString()));
     }
 
     /** POST /api/veto/check - Simple check: test if a string contains sensitive data. */
@@ -101,17 +98,14 @@ public class VetoController {
             value = "/check",
             consumes = MediaType.APPLICATION_JSON_VALUE,
             produces = MediaType.APPLICATION_JSON_VALUE)
-    public @NonNull ResponseEntity<Map<String, Object>> checkPayload(
+    public @NonNull ResponseEntity<RestResponse> checkPayload(
             @RequestBody @NonNull CheckVetoRequest request) {
         String payload = request.payload();
         if (payload == null || payload.isEmpty()) {
             return ResponseEntity.badRequest()
                     .body(
-                            Map.of(
-                                    "status",
-                                    "error",
-                                    "message",
-                                    Msg.get("error.veto.payloadRequired")));
+                            new StatusMessageResponse(
+                                    "error", Msg.get("error.veto.payloadRequired")));
         }
 
         VetoGateway.VetoResult result =
@@ -119,14 +113,10 @@ public class VetoController {
                         payload, "check-" + UUID.randomUUID(), "check", "REST-check");
 
         return ResponseEntity.ok(
-                Map.of(
-                        "status",
+                new VetoCheckResponse(
                         "ok",
-                        "safe",
                         result.decision() == VetoGateway.VetoDecision.PASS,
-                        "decision",
                         result.decision().name(),
-                        "redactionCount",
                         result.redactionCount()));
     }
 }

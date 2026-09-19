@@ -1,6 +1,5 @@
 package top.focess.veto.controller;
 
-import java.util.Map;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.springframework.http.HttpStatus;
@@ -13,6 +12,7 @@ import org.springframework.web.server.ResponseStatusException;
 import top.focess.veto.agent.AgentState;
 import top.focess.veto.agent.ProtectedInputException;
 import top.focess.veto.agent.SessionAgentRegistry;
+import top.focess.veto.controller.dto.*;
 import top.focess.veto.controller.dto.SubmitPromptRequest;
 import top.focess.veto.session.SessionService;
 import top.focess.veto.vault.KeysteadVault;
@@ -45,7 +45,7 @@ public class AgentPromptController {
                         .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
         String prompt = body.prompt();
         if (prompt == null || prompt.isBlank())
-            return ResponseEntity.badRequest().body(Map.of("error", "Prompt must not be empty"));
+            return ResponseEntity.badRequest().body(new ErrorResponse("Prompt must not be empty"));
         var agent =
                 agents.agents(UUID.fromString(session.sessionId())).stream()
                         .filter(entry -> entry.agent().id().equals(agentId))
@@ -54,32 +54,23 @@ public class AgentPromptController {
                         .agent();
         if (!agent.userInteractionEnabled())
             return ResponseEntity.status(HttpStatus.FORBIDDEN)
-                    .body(Map.of("error", "Direct user interaction is disabled for this agent"));
+                    .body(new ErrorResponse("Direct user interaction is disabled for this agent"));
         if (agent.state() == AgentState.TERMINATED)
             return ResponseEntity.status(HttpStatus.CONFLICT)
-                    .body(Map.of("error", "Agent has terminated"));
+                    .body(new ErrorResponse("Agent has terminated"));
         try {
             agent.submitUserPrompt(prompt);
         } catch (ProtectedInputException rejected) {
             return ResponseEntity.unprocessableEntity()
                     .body(
-                            Map.of(
-                                    "code",
+                            new CodedErrorResponse(
                                     "PROTECTED_INPUT_UNAVAILABLE",
-                                    "error",
                                     "Protected input could not be processed; retry or use credential settings"));
         } catch (IllegalStateException error) {
             return ResponseEntity.status(HttpStatus.CONFLICT)
-                    .body(Map.of("error", "Agent is no longer available"));
+                    .body(new ErrorResponse("Agent is no longer available"));
         }
         return ResponseEntity.accepted()
-                .body(
-                        Map.of(
-                                "status",
-                                "queued",
-                                "sessionId",
-                                session.sessionId(),
-                                "agentId",
-                                agentId));
+                .body(new AgentPromptQueuedResponse("queued", session.sessionId(), agentId));
     }
 }

@@ -2,8 +2,6 @@ package top.focess.veto.agent.tool.builtin;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
-import java.util.LinkedHashMap;
-import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.capability.TaskControlCapability;
@@ -119,12 +117,19 @@ public final class InputTaskTool implements TaskControlTool<InputTaskTool.Args> 
                     };
             return ToolErrors.failure(queued.status().name(), message);
         }
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put("status", "queued");
-        result.put("taskId", args.taskId());
-        result.put("bytes", queued.bytes());
-        result.put("newline", args.appendNewline());
-        result.put("closeQueued", queued.closeQueued());
-        return ToolJson.object(result);
+        return ToolJson.object(
+                new Result(
+                        "queued",
+                        args.taskId(),
+                        queued.bytes(),
+                        args.appendNewline(),
+                        queued.closeQueued()));
     }
+
+    public record Result(
+            @NonNull String status,
+            @NonNull String taskId,
+            int bytes,
+            boolean newline,
+            boolean closeQueued) {}
 }

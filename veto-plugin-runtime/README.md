@@ -118,3 +118,16 @@ model hooks, credential services and cross-harness adapters are not enabled by t
 runtime. Existing Java lifecycle fixtures remain separate and are not activated by
 this loader. Script tools have unknown effects and elevated default danger; a
 manifest cannot lower their authority requirements by claiming to be computation-only.
+
+Select plugins when creating a session. The selected IDs, versions and revisions are
+persisted with that session and cannot be changed afterward. An empty selection enables
+no plugins. Settings → Plugins lists installed packages and their tools and hooks;
+it does not change existing sessions. Execution checks the session selection as well
+as the normal approval permit. Package loading and worker startup follow host configuration.
+If an installed package no longer matches a session's pinned revision, activation fails
+rather than silently changing that session's implementation.
+
+The built-in `org.veto.secret-protection` provider uses this same selection mechanism.
+It registers the credential-import tool and input, file-capture and file-observation
+protection hooks. Credential import remains subject to host authorization and writes
+through a local encrypted-vault port. Script packages currently support tools only.

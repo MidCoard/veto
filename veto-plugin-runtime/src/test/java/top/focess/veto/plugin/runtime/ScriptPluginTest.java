@@ -45,10 +45,208 @@ class ScriptPluginTest {
                                 "result = [...request.params.arguments.text].length;", expression));
     }
 
+    /** Real worker plus host-owned lifecycle, matching application ownership. */
+    private static @NonNull LoadedScript load(
+            @NonNull Path root, @NonNull Path node, @NonNull Duration timeout) throws IOException {
+        var executor = java.util.concurrent.Executors.newSingleThreadExecutor();
+        ManagedPlugin managed = null;
+        try {
+            var script = new ScriptPluginLoader(node, timeout).load(root);
+            managed = new ManagedPlugin(script, executor);
+            managed.initialize(
+                    new top.focess.veto.plugin.api.PluginContext(script.identity()),
+                    new top.focess.veto.extension.contract.JsonValue.ObjectValue(
+                            java.util.Map.of()));
+            managed.start();
+            return new LoadedScript(script, managed, executor);
+        } catch (Exception failure) {
+            if (managed != null) managed.close();
+            executor.shutdown();
+            if (failure instanceof RuntimeException invalid) throw invalid;
+            throw new IOException("Plugin activation failed", failure);
+        }
+    }
+
+    private record LoadedScript(
+            @NonNull ScriptPlugin script,
+            @NonNull ManagedPlugin managed,
+            java.util.concurrent.@NonNull ExecutorService executor)
+            implements AutoCloseable {
+        public void close() {
+            managed.close();
+            executor.shutdown();
+        }
+
+        java.util.@NonNull List<ScriptTool> tools() {
+            return script.tools();
+        }
+
+        @NonNull String digest() {
+            return script.digest();
+        }
+
+        boolean active() {
+            return state() == top.focess.veto.plugin.api.PluginState.ACTIVE && script.active();
+        }
+
+        top.focess.veto.plugin.api.@NonNull PluginState state() {
+            return managed.state();
+        }
+
+
+
+        <T extends @NonNull Object> @NonNull T execute(
+                ManagedPlugin.@NonNull Operation<T> operation)
+                throws top.focess.veto.extension.contract.ExtensionFailure {
+            return managed.execute(operation);
+        }
+
+        com.fasterxml.jackson.databind.@NonNull JsonNode invoke(
+                @NonNull ScriptTool tool,
+                com.fasterxml.jackson.databind.@NonNull JsonNode arguments)
+                throws IOException {
+            try {
+                return managed.execute(
+                        () -> {
+                            try {
+                                return script.invoke(tool, arguments);
+                            } catch (IOException failure) {
+                                throw new top.focess.veto.extension.contract.ExtensionFailure(
+                                        top.focess.veto.extension.contract.ExtensionFailure.Code
+                                                .INTERNAL_FAILURE);
+                            }
+                        });
+            } catch (top.focess.veto.extension.contract.ExtensionFailure failure) {
+                throw new IOException("Plugin invocation failed", failure);
+            }
+        }
+    }
+
+    @Test
+    void closingOnePluginKeepsSharedManagerExecutorAvailable(@TempDir @NonNull Path root)
+            throws Exception {
+        Path firstDir = Files.createDirectory(root.resolve("first"));
+        Path secondDir = Files.createDirectory(root.resolve("second"));
+        copy(firstDir);
+        copy(secondDir);
+        var executor = java.util.concurrent.Executors.newSingleThreadExecutor();
+        var loader = new ScriptPluginLoader(node(), Duration.ofSeconds(3));
+        var first = new ManagedPlugin(loader.load(firstDir), executor);
+        var secondScript = loader.load(secondDir);
+        var second = new ManagedPlugin(secondScript, executor);
+        try {
+            for (var managed : java.util.List.of(first, second)) {
+                managed.initialize(
+                        new top.focess.veto.plugin.api.PluginContext(managed.identity()),
+                        new top.focess.veto.extension.contract.JsonValue.ObjectValue(
+                                java.util.Map.of()));
+                managed.start();
+            }
+            first.close();
+            assertFalse(executor.isShutdown());
+            assertEquals(
+                    3,
+                    second.execute(
+                            () -> {
+                                try {
+                                    return secondScript
+                                            .invoke(
+                                                    secondScript.tools().getFirst(),
+                                                    JSON.createObjectNode().put("text", "a😀b"))
+                                            .asInt();
+                                } catch (IOException failure) {
+                                    throw new top.focess.veto.extension.contract.ExtensionFailure(
+                                            top.focess.veto.extension.contract.ExtensionFailure.Code
+                                                    .INTERNAL_FAILURE);
+                                }
+                            }));
+        } finally {
+            first.close();
+            second.close();
+            executor.shutdown();
+        }
+    }
+
+    @Test
+    void closeDrainsAdmittedCallsAndRejectsNewCalls(@TempDir @NonNull Path root) throws Exception {
+        copy(root);
+        var plugin = load(root, node(), Duration.ofSeconds(3));
+        var entered = new java.util.concurrent.CountDownLatch(1);
+        var release = new java.util.concurrent.CompletableFuture<Boolean>();
+        try (var callers = java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor()) {
+            try {
+                java.util.concurrent.Future<Integer> call =
+                        callers.<Integer>submit(
+                                () ->
+                                        plugin.execute(
+                                                () -> {
+                                                    int result;
+                                                    try {
+                                                        result =
+                                                                plugin.invoke(
+                                                                                plugin.tools()
+                                                                                        .getFirst(),
+                                                                                JSON.createObjectNode()
+                                                                                        .put(
+                                                                                                "text",
+                                                                                                "a😀b"))
+                                                                        .asInt();
+                                                    } catch (IOException failure) {
+                                                        throw new top.focess.veto.extension.contract
+                                                                .ExtensionFailure(
+                                                                top.focess.veto.extension.contract
+                                                                        .ExtensionFailure.Code
+                                                                        .INTERNAL_FAILURE);
+                                                    }
+                                                    // A plugin must not synchronously close itself
+                                                    // while owning an invocation.
+                                                    assertThrows(
+                                                            IllegalStateException.class,
+                                                            plugin::close);
+                                                    entered.countDown();
+                                                    release.join();
+                                                    return result;
+                                                }));
+                assertTrue(entered.await(5, java.util.concurrent.TimeUnit.SECONDS));
+                assertFalse(call.isDone());
+                assertEquals(
+                        4,
+                        plugin.invoke(
+                                        plugin.tools().getFirst(),
+                                        JSON.createObjectNode().put("text", "中文测试"))
+                                .asInt());
+                var closing = callers.submit(plugin::close);
+                long deadline =
+                        System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(5);
+                while (plugin.state() != top.focess.veto.plugin.api.PluginState.STOPPING
+                        && System.nanoTime() < deadline) Thread.sleep(5);
+                assertEquals(top.focess.veto.plugin.api.PluginState.STOPPING, plugin.state());
+                assertFalse(closing.isDone());
+                assertThrows(
+                        top.focess.veto.extension.contract.ExtensionFailure.class,
+                        () -> plugin.execute(() -> true));
+                release.complete(true);
+                assertEquals(
+                        Integer.valueOf(3), call.get(5, java.util.concurrent.TimeUnit.SECONDS));
+                closing.get(5, java.util.concurrent.TimeUnit.SECONDS);
+                assertEquals(top.focess.veto.plugin.api.PluginState.CLOSED, plugin.state());
+                plugin.close();
+                assertThrows(
+                        top.focess.veto.extension.contract.ExtensionFailure.class,
+                        plugin.managed()::start);
+                assertEquals(top.focess.veto.plugin.api.PluginState.CLOSED, plugin.state());
+            } finally {
+                release.complete(true);
+            }
+        } finally {
+            plugin.close();
+        }
+    }
+
     @Test
     void invokesPersistentWorkerAndPinsCode(@TempDir @NonNull Path root) throws Exception {
         copy(root);
-        var plugin = ScriptPlugin.load(root, node(), Duration.ofSeconds(3));
+        var plugin = load(root, node(), Duration.ofSeconds(3));
         try {
             var tool = plugin.tools().getFirst();
             assertEquals(
@@ -80,7 +278,7 @@ class ScriptPluginTest {
     @Test
     void invalidArgumentsDoNotReachOrRetireWorker(@TempDir @NonNull Path root) throws Exception {
         copy(root);
-        try (var plugin = ScriptPlugin.load(root, node(), Duration.ofSeconds(3))) {
+        try (var plugin = load(root, node(), Duration.ofSeconds(3))) {
             var tool = plugin.tools().getFirst();
             assertThrows(
                     IllegalArgumentException.class,
@@ -112,7 +310,7 @@ class ScriptPluginTest {
             Files.writeString(file, invalid);
             assertThrows(
                     IllegalArgumentException.class,
-                    () -> ScriptPlugin.load(root, node(), Duration.ofSeconds(3)));
+                    () -> load(root, node(), Duration.ofSeconds(3)));
         }
     }
 
@@ -126,15 +324,27 @@ class ScriptPluginTest {
                         .replace(
                                 "\"schemaVersion\": 1",
                                 "\"schemaVersion\": 1, \"schemaVersion\": 1"));
-        assertThrows(
-                IOException.class, () -> ScriptPlugin.load(root, node(), Duration.ofSeconds(3)));
+        assertThrows(IOException.class, () -> load(root, node(), Duration.ofSeconds(3)));
+    }
+
+    @Test
+    void startupTimeoutDoesNotWaitForItsOwnCleanupQueue(@TempDir @NonNull Path root)
+            throws Exception {
+        copy(root);
+        Files.writeString(root.resolve("worker.mjs"), "setInterval(() => {}, 1000);");
+        assertTimeoutPreemptively(
+                Duration.ofSeconds(4),
+                () ->
+                        assertThrows(
+                                IOException.class,
+                                () -> load(root, node(), Duration.ofMillis(500))));
     }
 
     @Test
     void deadlineKillsWorkerAndDoesNotLeakPayload(@TempDir @NonNull Path root) throws Exception {
         copy(root);
         behavior(root, "setInterval(() => {}, 1000); await new Promise(() => {});");
-        try (var plugin = ScriptPlugin.load(root, node(), Duration.ofMillis(500))) {
+        try (var plugin = load(root, node(), Duration.ofMillis(500))) {
             assertTimeoutPreemptively(
                     Duration.ofSeconds(4),
                     () -> {
@@ -156,7 +366,7 @@ class ScriptPluginTest {
     void oversizedOutputRetiresWorker(@TempDir @NonNull Path root) throws Exception {
         copy(root);
         behavior(root, "result = 'x'.repeat(70000);");
-        try (var plugin = ScriptPlugin.load(root, node(), Duration.ofSeconds(3))) {
+        try (var plugin = load(root, node(), Duration.ofSeconds(3))) {
             assertThrows(
                     IOException.class,
                     () ->
@@ -171,7 +381,7 @@ class ScriptPluginTest {
     void invalidResultRetiresWorker(@TempDir @NonNull Path root) throws Exception {
         copy(root);
         behavior(root, "result = 'CANARY_PRIVATE';");
-        try (var plugin = ScriptPlugin.load(root, node(), Duration.ofSeconds(3))) {
+        try (var plugin = load(root, node(), Duration.ofSeconds(3))) {
             var error =
                     assertThrows(
                             IOException.class,
@@ -194,7 +404,7 @@ class ScriptPluginTest {
                         .replace(
                                 "id: request.id, result",
                                 "id: request.method === 'invoke' ? request.id + 1 : request.id, result"));
-        try (var plugin = ScriptPlugin.load(root, node(), Duration.ofSeconds(3))) {
+        try (var plugin = load(root, node(), Duration.ofSeconds(3))) {
             assertThrows(
                     IOException.class,
                     () ->
@@ -211,7 +421,7 @@ class ScriptPluginTest {
         behavior(
                 root,
                 "result = ['PATH', 'NODE_OPTIONS', 'VETO_PLUGIN_TEST_SENTINEL'].filter(key => Object.hasOwn(process.env, key)).length;");
-        try (var plugin = ScriptPlugin.load(root, node(), Duration.ofSeconds(3))) {
+        try (var plugin = load(root, node(), Duration.ofSeconds(3))) {
             assertEquals(
                     0,
                     plugin.invoke(

@@ -8,4 +8,22 @@ public record CreateSessionRequest(
         String workspaceRoots,
         Integer currentWorkspaceRootIndex,
         ToolResultPresentationMode toolResultPresentation,
-        Boolean guidedEnabled) {}
+        Boolean guidedEnabled,
+        java.util.List<String> pluginIds) {
+    public CreateSessionRequest(
+            String pattern,
+            String name,
+            String workspaceRoots,
+            Integer currentWorkspaceRootIndex,
+            ToolResultPresentationMode toolResultPresentation,
+            Boolean guidedEnabled) {
+        this(
+                pattern,
+                name,
+                workspaceRoots,
+                currentWorkspaceRootIndex,
+                toolResultPresentation,
+                guidedEnabled,
+                null);
+    }
+}

@@ -12,9 +12,12 @@ public record ToolContribution(
         @NonNull Effect effect,
         @NonNull Set<@NonNull ExtensionId> categories,
         @NonNull ToolHandler handler) {
-    /** Only pure computation is exposed until effectful capability bridges are implemented. */
+    /** Declared effects; the host remains responsible for authorization. */
     public enum Effect {
-        COMPUTATION
+        COMPUTATION,
+        CREDENTIAL_IMPORT,
+        /** Trusted external code whose effects require host scrutiny on every call. */
+        EXTERNAL_UNKNOWN
     }
 
     public ToolContribution {

@@ -9,31 +9,26 @@ import top.focess.veto.extension.contract.*;
 import top.focess.veto.plugin.api.*;
 
 /** Harmless executable fixture. No Spring, host internals, network or filesystem access. */
-public final class FixturePlugin implements VetoPlugin {
-    private enum State {
-        NEW,
-        INITIALIZED,
-        ACTIVE,
-        CLOSED
-    }
-
-    private State state = State.NEW;
+public final class FixturePlugin extends AbstractVetoPlugin {
     private boolean failStart;
 
     public FixturePlugin() {}
 
     @Override
-    public synchronized @NonNull PluginContributions initialize(
+    public @NonNull PluginIdentity identity() {
+        return new PluginIdentity("org.veto.fixture", "0.1.0");
+    }
+
+    @Override
+    public @NonNull PluginContributions onInitialize(
             @NonNull PluginContext context, JsonValue.@NonNull ObjectValue configuration)
             throws ExtensionFailure {
-        if (state != State.NEW) throw new ExtensionFailure(ExtensionFailure.Code.NOT_READY);
         if (!Set.of("failStart").containsAll(configuration.values().keySet()))
             throw new ExtensionFailure(ExtensionFailure.Code.INVALID_CONFIGURATION);
         JsonValue option = configuration.values().get("failStart");
         if (option != null && !(option instanceof JsonValue.BooleanValue))
             throw new ExtensionFailure(ExtensionFailure.Code.INVALID_CONFIGURATION);
         failStart = option instanceof JsonValue.BooleanValue flag && flag.value();
-        state = State.INITIALIZED;
         var input =
                 new JsonValue.ObjectValue(
                         Map.of(
@@ -77,17 +72,18 @@ public final class FixturePlugin implements VetoPlugin {
                                 StandardExtensionPoints.OBSERVATION, "trim", this::trim)));
     }
 
+    private volatile boolean active;
+
     @Override
-    public synchronized void start() throws ExtensionFailure {
-        if (state != State.INITIALIZED) throw new ExtensionFailure(ExtensionFailure.Code.NOT_READY);
+    public void onStart() throws ExtensionFailure {
         if (failStart) throw new ExtensionFailure(ExtensionFailure.Code.INTERNAL_FAILURE);
-        state = State.ACTIVE;
+        active = true;
     }
 
     private synchronized @NonNull JsonValue length(
             JsonValue.@NonNull ObjectValue arguments, @NonNull Cancellation invocation)
             throws ExtensionFailure {
-        if (state != State.ACTIVE) throw new ExtensionFailure(ExtensionFailure.Code.NOT_READY);
+        if (!active) throw new ExtensionFailure(ExtensionFailure.Code.NOT_READY);
         invocation.checkCancelled();
         if (arguments.values().size() != 1
                 || !(arguments.values().get("text") instanceof JsonValue.StringValue text))
@@ -100,13 +96,13 @@ public final class FixturePlugin implements VetoPlugin {
     private synchronized @NonNull String trim(
             @NonNull String observation, @NonNull Cancellation cancellation)
             throws ExtensionFailure {
-        if (state != State.ACTIVE) throw new ExtensionFailure(ExtensionFailure.Code.NOT_READY);
+        if (!active) throw new ExtensionFailure(ExtensionFailure.Code.NOT_READY);
         cancellation.checkCancelled();
         return observation.strip();
     }
 
     @Override
-    public synchronized void close() {
-        state = State.CLOSED;
+    public void onClose() {
+        active = false;
     }
 }

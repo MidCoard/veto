@@ -341,6 +341,14 @@ public final class SecretCandidateStore {
         discardSession(owner, session);
     }
 
+    /** Release all captured secret material when the owning plugin stops. */
+    public synchronized void clear() {
+        entries.values().forEach(entry -> entry.discard(State.DISCARDED));
+        entries.clear();
+        closedOwners.clear();
+        retiredSessions.clear();
+    }
+
     public synchronized void expire() {
         Instant now = clock.instant();
         entries.values().stream()

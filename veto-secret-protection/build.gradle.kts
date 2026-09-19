@@ -16,6 +16,7 @@ repositories {
 }
 
 dependencies {
+    api(project(":veto-plugin-api"))
     api("org.jspecify:jspecify:1.0.0")
     testImplementation("org.junit.jupiter:junit-jupiter:5.10.2")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.10.2")

@@ -11,9 +11,12 @@ import org.jspecify.annotations.NonNull;
 public final class HistoryProjection {
     private HistoryProjection() {}
 
-    public record Entry(@NonNull TurnRecord record, int removedBy, int removedCount) {
+    public record Entry(@NonNull TurnRecord record, int removedBy, int removedCount, boolean superseded) {
+        public Entry(@NonNull TurnRecord record, int removedBy, int removedCount) {
+            this(record, removedBy, removedCount, false);
+        }
         public boolean active() {
-            return removedBy == 0;
+            return removedBy == 0 && !superseded;
         }
     }
 
@@ -22,6 +25,17 @@ public final class HistoryProjection {
         List<Integer> active = new ArrayList<>();
         for (TurnRecord turn : history) {
             int removed = 0;
+            if (turn.type() == TurnType.AGENT_INIT
+                    && Boolean.TRUE.equals(turn.payload().get("context_update"))) {
+                for (int i = active.size() - 1; i >= 0; i--) {
+                    int index = active.get(i);
+                    Entry previous = entries.get(index);
+                    if (previous.record().type() == TurnType.AGENT_INIT) {
+                        entries.set(index, new Entry(previous.record(), 0, previous.removedCount(), true));
+                        active.remove(i);
+                    }
+                }
+            }
             if (turn.type() == TurnType.REWIND) {
                 Object recordIndex = turn.payload().get("record_index");
                 Object messageIndex = turn.payload().get("from_index");
@@ -97,24 +111,11 @@ public final class HistoryProjection {
             }
         }
         if (initCount == 1 && matches) return List.of();
-        List<TurnRecord> additions = new ArrayList<>();
-        int number = lastTurn;
-        if (!effective.isEmpty()) additions.add(TurnRecord.rewind(++number, 0));
-        additions.add(
-                TurnRecord.agentInit(
-                        ++number, role.toLowerCase(Locale.ROOT), system, provider, model));
-        for (TurnRecord turn : effective) {
-            if (turn.type() == TurnType.AGENT_INIT || turn.type() == TurnType.TOKEN_USAGE) continue;
-            if (turn.type() == TurnType.REWIND) {
-                if (turn.payload().get("content") instanceof String content && !content.isBlank())
-                    additions.add(TurnRecord.userPrompt(++number, content));
-            } else {
-                Map<String, Object> payload = new LinkedHashMap<>(turn.payload());
-                payload.putIfAbsent("restored_from_turn", turn.turnNumber());
-                additions.add(new TurnRecord(++number, turn.type(), payload, null));
-            }
-        }
-        return List.copyOf(additions);
+        TurnRecord init = TurnRecord.agentInit(
+                lastTurn + 1, role.toLowerCase(Locale.ROOT), system, provider, model);
+        Map<String, Object> payload = new LinkedHashMap<>(init.payload());
+        payload.put("context_update", true);
+        return List.of(new TurnRecord(init.turnNumber(), init.type(), payload, init.timestamp()));
     }
 
     public static @NonNull List<TurnRecord> effective(@NonNull List<TurnRecord> history) {

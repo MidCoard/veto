@@ -1,6 +1,5 @@
 package top.focess.veto.controller;
 
-import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -13,6 +12,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 import top.focess.veto.agent.AgentService;
 import top.focess.veto.agent.intercept.HitlRegistry;
+import top.focess.veto.controller.dto.*;
 import top.focess.veto.controller.dto.ResolveVetoRequest;
 import top.focess.veto.i18n.Msg;
 import top.focess.veto.session.SessionService;
@@ -89,10 +89,7 @@ public class HitlController {
                         .filter(
                                 id ->
                                         hitlRegistry.pendingFor(id).stream()
-                                                .anyMatch(
-                                                        prompt ->
-                                                                callId.equals(
-                                                                        prompt.get("callId"))))
+                                                .anyMatch(prompt -> callId.equals(prompt.callId())))
                         .toList();
         if (candidates.size() > 1) {
             throw new ResponseStatusException(
@@ -123,6 +120,6 @@ public class HitlController {
                 hitlRegistry.sessionAgents(agentId).stream()
                         .mapToInt(agentService::declineAllVetoes)
                         .sum();
-        return ResponseEntity.ok(Map.of("status", "ok", "declined", declined));
+        return ResponseEntity.ok(new VetoCancelledResponse("ok", declined));
     }
 }

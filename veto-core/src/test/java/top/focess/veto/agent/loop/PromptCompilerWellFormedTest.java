@@ -33,6 +33,24 @@ import top.focess.veto.llm.core.ToolResultPresentationMode;
  */
 class PromptCompilerWellFormedTest {
     @Test
+    void contextUpdateKeepsConversationIdentityAndPutsSystemFirst() {
+        var compiler = PromptCompiler.isolated(new VetoCapabilityTranslator(),
+                new ObjectMapper(), "instructions", 100000);
+        var history = new java.util.ArrayList<>(List.of(
+                TurnRecord.agentInit(1, "standalone", "old", "test", "test"),
+                TurnRecord.userPrompt(2, "original message")));
+        history.addAll(top.focess.veto.agent.HistoryProjection.reinitialize(
+                history, 2, "standalone", "updated", "test", "test"));
+        var messages = compiler.resolveRewinds(history, ToolResultPresentationMode.BASIC);
+        assertEquals(2, messages.size());
+        assertEquals("system", messages.getFirst().role());
+        assertEquals("updated", messages.getFirst().content());
+        assertEquals("original message", messages.getLast().content());
+        assertEquals(3, history.size());
+        assertTrue(history.stream().noneMatch(t -> t.payload().containsKey("restored_from_turn")));
+    }
+
+    @Test
     void interruptedRepairUsesTheSelectedResultFormatInBothCompilerModes() throws Exception {
         ObjectMapper mapper = new ObjectMapper();
         var translator = new VetoCapabilityTranslator();

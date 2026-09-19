@@ -241,9 +241,9 @@ class NewRequirementsTest {
             Thread.sleep(10);
         var pending = hitlRegistry.pendingFor(agent.id());
         assertEquals(1, pending.size());
-        assertEquals("call-nc", pending.getFirst().get("callId"));
-        assertEquals("CRITICAL", pending.getFirst().get("danger"));
-        assertEquals(List.of("EXEC_DECLINE"), pending.getFirst().get("options"));
+        assertEquals("call-nc", pending.getFirst().callId());
+        assertEquals("CRITICAL", pending.getFirst().danger());
+        assertEquals(List.of("EXEC_DECLINE"), pending.getFirst().options());
         // An unoffered approval must only end the hold as refusal, never authorize execution.
         assertTrue(hitlRegistry.resolveOption(agent.id(), "call-nc", "ACCEPT_COMMAND"));
         AgentResult result = resultFuture.get(5, TimeUnit.SECONDS);

@@ -11,6 +11,7 @@ import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.identity.AgentPersona;
 import top.focess.veto.agent.screening.DeployerPolicy;
 import top.focess.veto.agent.tool.ResponseSubmission;
+import top.focess.veto.agent.tool.ToolDocumentation;
 import top.focess.veto.agent.workspace.PathMode;
 import top.focess.veto.agent.workspace.VetoMdResolver;
 import top.focess.veto.agent.workspace.Workspace;
@@ -32,13 +33,7 @@ public final class PromptInputs {
         Map<String, Object> data = new LinkedHashMap<>();
         data.put(
                 "persona",
-                Map.of(
-                        "name",
-                        persona.name(),
-                        "description",
-                        persona.description(),
-                        "role",
-                        persona.role().name()));
+                new Persona(persona.name(), persona.description(), persona.role().name()));
         data.put("workspace", workspace(workspace));
         var lawSources = workspace.vetoMdResolver().sources();
         data.put(
@@ -51,14 +46,11 @@ public final class PromptInputs {
                 lawSources.stream()
                         .map(
                                 source ->
-                                        Map.of(
-                                                "root",
-                                                        displayedRoot(
-                                                                source.root(),
-                                                                workspace.pathMode()),
-                                                "file", source.relativePath(),
-                                                "override", source.override(),
-                                                "content", source.content()))
+                                        new LawSource(
+                                                displayedRoot(source.root(), workspace.pathMode()),
+                                                source.relativePath(),
+                                                source.override(),
+                                                source.content()))
                         .toList());
         data.put("guidance", guidance == null ? "" : guidance);
         data.put("environment", environment());
@@ -85,13 +77,7 @@ public final class PromptInputs {
         data.put(
                 "skills",
                 persona.registeredSkills().stream()
-                        .map(
-                                skill ->
-                                        Map.of(
-                                                "name",
-                                                skill.name(),
-                                                "description",
-                                                skill.description()))
+                        .map(skill -> new Skill(skill.name(), skill.description()))
                         .toList());
         return data;
     }
@@ -102,62 +88,76 @@ public final class PromptInputs {
         return "/" + (name == null ? "" : name.toString());
     }
 
-    public static @NonNull Map<String, Object> environment() {
+    public record Environment(@NonNull String os, @NonNull String arch, boolean windows) {}
+
+    public record Root(
+            @NonNull String hostPath, @NonNull String mountedPath, boolean operational) {}
+
+    public record WorkspaceInput(@NonNull String pathMode, @NonNull List<Root> roots) {}
+
+    public record ToolInput(
+            @NonNull String name,
+            @NonNull String description,
+            @NonNull List<String> examples,
+            @NonNull List<String> returnExamples,
+            @NonNull List<Format> formats,
+            @NonNull ToolDocumentation documentation) {}
+
+    public record Format(@NonNull String id, @NonNull String description) {}
+
+    public record Persona(
+            @NonNull String name, @NonNull String description, @NonNull String role) {}
+
+    public record Skill(@NonNull String name, @NonNull String description) {}
+
+    public record LawSource(
+            @NonNull String root,
+            @NonNull String file,
+            boolean override,
+            @NonNull String content) {}
+
+    public static @NonNull Environment environment() {
         String os = System.getProperty("os.name", "unknown");
-        return Map.of(
-                "os",
+        return new Environment(
                 os,
-                "arch",
                 System.getProperty("os.arch", "unknown"),
-                "windows",
                 os.toLowerCase(Locale.ROOT).contains("win"));
     }
 
-    public static @NonNull Map<String, Object> workspace(@NonNull Workspace workspace) {
+    public static @NonNull WorkspaceInput workspace(@NonNull Workspace workspace) {
         Path operational = workspace.pathResolver().operationalRoot();
-        return Map.of(
-                "pathMode",
+        return new WorkspaceInput(
                 workspace.pathMode().name(),
-                "roots",
                 workspace.roots().stream()
                         .map(
                                 root -> {
                                     Path name = root.hostPath().getFileName();
-                                    return Map.of(
-                                            "hostPath",
+                                    return new Root(
                                             root.hostPath().toString(),
-                                            "mountedPath",
                                             "/" + (name == null ? "" : name.toString()),
-                                            "operational",
                                             root.hostPath().equals(operational));
                                 })
                         .toList());
     }
 
-    public static @NonNull List<Map<String, Object>> tools(@NonNull List<ToolDefinition> tools) {
+    public static @NonNull List<ToolInput> tools(@NonNull List<ToolDefinition> tools) {
         return tools.stream()
                 .sorted(Comparator.comparing(ToolDefinition::name))
                 .map(
-                        tool -> {
-                            Map<String, Object> value = new LinkedHashMap<>();
-                            value.put("name", tool.name());
-                            value.put("description", tool.description());
-                            value.put("examples", tool.examples());
-                            value.put("returnExamples", tool.returnExamples());
-                            value.put(
-                                    "formats",
-                                    tool.resultFormats().stream()
-                                            .map(
-                                                    format ->
-                                                            Map.of(
-                                                                    "id",
-                                                                    format.id(),
-                                                                    "description",
-                                                                    format.description()))
-                                            .toList());
-                            value.put("documentation", tool.documentation());
-                            return value;
-                        })
+                        tool ->
+                                new ToolInput(
+                                        tool.name(),
+                                        tool.description(),
+                                        tool.examples(),
+                                        tool.returnExamples(),
+                                        tool.resultFormats().stream()
+                                                .map(
+                                                        format ->
+                                                                new Format(
+                                                                        format.id(),
+                                                                        format.description()))
+                                                .toList(),
+                                        tool.documentation()))
                 .toList();
     }
 }

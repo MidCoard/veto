@@ -379,11 +379,19 @@ public final class GroupTools {
                 "group-disband-brief", Map.of("group", GroupPromptInputs.snapshot(g)));
     }
 
+    private record Observation(
+            long sequence,
+            @NonNull String sender,
+            BlackboardMessage.@NonNull MessageType type,
+            @NonNull String dispatch,
+            boolean current,
+            @NonNull String payload) {}
+
     private static @NonNull String render(
             @NonNull GroupSnapshot group,
             @NonNull List<@NonNull BlackboardMessage> messages,
             long since) {
-        List<Map<String, Object>> observations = new ArrayList<>();
+        List<Observation> observations = new ArrayList<>();
         long next = since;
         for (BlackboardMessage message : messages) {
             next = Math.max(next, message.turnSeq());
@@ -394,23 +402,17 @@ public final class GroupTools {
                             : message.payload();
             String dispatch = message.dispatchId();
             observations.add(
-                    Map.of(
-                            "sequence",
+                    new Observation(
                             message.turnSeq(),
-                            "sender",
                             message.senderId(),
-                            "type",
                             message.type(),
-                            "dispatch",
                             dispatch == null ? "" : dispatch,
-                            "current",
                             dispatch != null
                                     && group.nodes().stream()
                                             .anyMatch(
                                                     node ->
                                                             Objects.equals(
                                                                     dispatch, node.dispatchId())),
-                            "payload",
                             payload));
         }
         return PromptLibrary.text(

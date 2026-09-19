@@ -8,6 +8,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
+import top.focess.veto.controller.dto.*;
 import top.focess.veto.controller.dto.CreateModelTierProfileRequest;
 import top.focess.veto.controller.dto.ModelTierBindingResponse;
 import top.focess.veto.i18n.Msg;
@@ -40,14 +41,14 @@ public class ModelTierController {
     }
 
     @GetMapping
-    public @NonNull List<Map<String, Object>> list() {
+    public @NonNull List<ModelTierProfileResponse> list() {
         return profiles.listProfiles(requireUser()).stream()
                 .map(ModelTierController::profileView)
                 .toList();
     }
 
     @PostMapping
-    public @NonNull Map<String, Object> create(
+    public @NonNull ModelTierProfileResponse create(
             @RequestBody @NonNull CreateModelTierProfileRequest body) {
         String user = requireUser();
         String name = body.name();
@@ -156,11 +157,9 @@ public class ModelTierController {
         return ResponseEntity.noContent().build();
     }
 
-    private static @NonNull Map<String, Object> profileView(@NonNull ModelTierProfileEntity p) {
-        return Map.of(
-                "name", p.getName(),
-                "active", p.isActive(),
-                "createdAt", p.getCreatedAt().toString());
+    private static @NonNull ModelTierProfileResponse profileView(
+            @NonNull ModelTierProfileEntity p) {
+        return new ModelTierProfileResponse(p.getName(), p.isActive(), p.getCreatedAt().toString());
     }
 
     private static @NonNull ModelTierBindingResponse bindingView(

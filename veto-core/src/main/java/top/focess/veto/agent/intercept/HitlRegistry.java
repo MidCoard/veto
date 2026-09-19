@@ -2,7 +2,6 @@ package top.focess.veto.agent.intercept;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -719,36 +718,46 @@ public class HitlRegistry {
      * offered to the user. Entries without a stashed call are skipped. CRITICAL refusals expose
      * only the option to decline and end the hold; they cannot be approved.
      */
-    public @NonNull List<@NonNull Map<@NonNull String, Object>> pendingFor(
-            @NonNull String agentId) {
-        List<@NonNull Map<@NonNull String, Object>> out = new ArrayList<>();
+    @com.fasterxml.jackson.annotation.JsonInclude(
+            com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+    public record PendingVeto(
+            @NonNull String agentId,
+            @NonNull String callId,
+            @NonNull String toolName,
+            @NonNull Map<@NonNull String, Object> args,
+            @NonNull List<@NonNull String> options,
+            @org.jspecify.annotations.Nullable String danger,
+            @org.jspecify.annotations.Nullable String relevance) {
+        public PendingVeto {
+            options = List.copyOf(options);
+        }
+    }
+
+    public @NonNull List<PendingVeto> pendingFor(@NonNull String agentId) {
+        List<PendingVeto> out = new ArrayList<>();
         String prefix = agentId + "|";
         pending.forEach(
-                (k, p) -> {
-                    ToolCall call = p.call();
-                    if (!k.startsWith(prefix) || call == null || p.future().isDone()) {
+                (key, pendingCall) -> {
+                    ToolCall call = pendingCall.call();
+                    if (!key.startsWith(prefix) || call == null || pendingCall.future().isDone())
                         return;
-                    }
-                    Map<@NonNull String, Object> view = new LinkedHashMap<>();
-                    view.put("agentId", agentId);
-                    view.put("callId", call.callId());
-                    view.put("toolName", call.toolName());
-                    view.put("args", call.args());
-                    view.put(
-                            "options",
-                            p.danger() == Danger.CRITICAL
-                                    ? List.of(VetoOption.EXEC_DECLINE.name())
-                                    : transportOptions(p.options()));
-                    // Danger level so the UI can warn prominently on DANGEROUS/CRITICAL calls.
-                    if (p.danger() != null) {
-                        view.put("danger", p.danger().name());
-                    }
-                    if (p.relevance() != null) {
-                        view.put("relevance", p.relevance().name());
-                    }
-                    out.add(view);
+                    out.add(
+                            new PendingVeto(
+                                    agentId,
+                                    call.callId(),
+                                    call.toolName(),
+                                    call.args(),
+                                    pendingCall.danger() == Danger.CRITICAL
+                                            ? List.of(VetoOption.EXEC_DECLINE.name())
+                                            : transportOptions(pendingCall.options()),
+                                    pendingCall.danger() == null
+                                            ? null
+                                            : pendingCall.danger().name(),
+                                    pendingCall.relevance() == null
+                                            ? null
+                                            : pendingCall.relevance().name()));
                 });
-        return out;
+        return List.copyOf(out);
     }
 
     private static @NonNull List<@NonNull String> transportOptions(

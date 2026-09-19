@@ -1,14 +1,11 @@
 package top.focess.veto.agent.tool.builtin;
 
-import com.fasterxml.jackson.databind.node.NullNode;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.NoSuchFileException;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
@@ -114,14 +111,15 @@ public final class FindFilesTool implements WorkspaceReadTool<FindFilesTool.Args
             if (reason == null) reason = traversal.reason();
             matches.sort(Comparator.naturalOrder());
             while (true) {
-                Map<String, Object> result = new LinkedHashMap<>();
-                result.put("base", args.absolutePath());
-                result.put("pattern", args.pattern());
-                result.put("matches", List.copyOf(matches));
-                result.put("truncated", reason != null);
-                result.put("truncationReason", reason == null ? NullNode.getInstance() : reason);
-                result.put("skippedEntries", traversal.skipped());
-                String json = ToolJson.object(result);
+                String json =
+                        ToolJson.object(
+                                new Result(
+                                        args.absolutePath(),
+                                        args.pattern(),
+                                        List.copyOf(matches),
+                                        reason != null,
+                                        reason,
+                                        traversal.skipped()));
                 if (json.getBytes(StandardCharsets.UTF_8).length <= 1024 * 1024
                         || matches.isEmpty()) {
                     return json;
@@ -159,4 +157,12 @@ public final class FindFilesTool implements WorkspaceReadTool<FindFilesTool.Args
         }
         return regex.append('$').toString();
     }
+
+    public record Result(
+            @NonNull String base,
+            @NonNull String pattern,
+            @NonNull List<String> matches,
+            boolean truncated,
+            @org.jspecify.annotations.Nullable String truncationReason,
+            int skippedEntries) {}
 }

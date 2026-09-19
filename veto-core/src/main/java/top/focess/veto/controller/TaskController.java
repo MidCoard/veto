@@ -1,7 +1,6 @@
 package top.focess.veto.controller;
 
 import java.time.Instant;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -15,6 +14,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 import top.focess.veto.bus.RoutingBusService;
+import top.focess.veto.controller.dto.*;
 import top.focess.veto.controller.dto.CreateTaskRequest;
 import top.focess.veto.i18n.Msg;
 import top.focess.veto.model.DAGPayload;
@@ -49,13 +49,13 @@ public class TaskController {
     @PostMapping(
             consumes = MediaType.APPLICATION_JSON_VALUE,
             produces = MediaType.APPLICATION_JSON_VALUE)
-    public @NonNull ResponseEntity<Map<String, Object>> createTask(
+    public @NonNull ResponseEntity<RestResponse> createTask(
             @RequestBody @NonNull CreateTaskRequest request) {
         String owner = authorization.requireUser();
         String taskType = request.taskType();
         if (taskType == null || taskType.isEmpty()) {
             return ResponseEntity.badRequest()
-                    .body(Map.of("status", "error", "message", Msg.get("error.task.typeRequired")));
+                    .body(new StatusMessageResponse("error", Msg.get("error.task.typeRequired")));
         }
 
         Map<String, Object> parameters = request.parameters();
@@ -88,46 +88,43 @@ public class TaskController {
         }
 
         return ResponseEntity.ok(
-                Map.of(
-                        "status", "ok",
-                        "id", payload.getId(),
-                        "taskType", payload.getTaskType(),
-                        "dagStatus", payload.getStatus().name(),
-                        "timestamp", Instant.now().toString()));
+                new TaskCreatedResponse(
+                        "ok",
+                        payload.getId(),
+                        payload.getTaskType(),
+                        payload.getStatus().name(),
+                        Instant.now().toString()));
     }
 
     /** GET /api/tasks/{id} - Get DAG task status and details. */
     @GetMapping(value = "/{id}", produces = MediaType.APPLICATION_JSON_VALUE)
     // DAG parameters are intentionally preserved as JSON; Jackson supplies JSON encoding.
     @SuppressWarnings("JvmTaintAnalysis")
-    public @NonNull ResponseEntity<Map<String, @NonNull Object>> getTask(
-            @PathVariable @NonNull String id) {
+    public @NonNull ResponseEntity<RestResponse> getTask(@PathVariable @NonNull String id) {
         DAGPayload payload = ownedPayload(id, authorization.requireUser());
         if (payload == null) {
             return ResponseEntity.status(404)
-                    .body(Map.of("status", "error", "message", Msg.get("error.task.notFound", id)));
+                    .body(new StatusMessageResponse("error", Msg.get("error.task.notFound", id)));
         }
 
-        HashMap<String, Object> result = new HashMap<>();
-        result.put("status", "ok");
-        result.put("id", payload.getId());
-        result.put("taskType", payload.getTaskType());
-        result.put("dagStatus", payload.getStatus().name());
-        result.put("parameters", payload.getParameters());
-        result.put("dependencies", payload.getDependencies());
-        String sourceComponent = payload.getSourceComponent();
-        if (sourceComponent != null) result.put("sourceComponent", sourceComponent);
-        String targetComponent = payload.getTargetComponent();
-        if (targetComponent != null) result.put("targetComponent", targetComponent);
-        result.put("createdAt", payload.getCreatedAt().toString());
-        result.put("updatedAt", payload.getUpdatedAt().toString());
-        result.put("timestamp", Instant.now().toString());
-        return ResponseEntity.ok(result);
+        return ResponseEntity.ok(
+                new TaskDetailResponse(
+                        "ok",
+                        payload.getId(),
+                        payload.getTaskType(),
+                        payload.getStatus().name(),
+                        payload.getParameters(),
+                        payload.getDependencies(),
+                        payload.getSourceComponent(),
+                        payload.getTargetComponent(),
+                        payload.getCreatedAt().toString(),
+                        payload.getUpdatedAt().toString(),
+                        Instant.now().toString()));
     }
 
     /** GET /api/tasks - List all tasks. */
     @GetMapping(produces = MediaType.APPLICATION_JSON_VALUE)
-    public @NonNull ResponseEntity<Map<String, Object>> listTasks() {
+    public @NonNull ResponseEntity<RestResponse> listTasks() {
         String owner = authorization.requireUser();
         List<DAGPayload> owned =
                 taskStore.values().stream()
@@ -135,28 +132,19 @@ public class TaskController {
                         .map(OwnedTask::payload)
                         .toList();
         return ResponseEntity.ok(
-                Map.of(
-                        "status",
+                new TaskListResponse(
                         "ok",
-                        "total",
                         owned.size(),
-                        "tasks",
                         owned.stream()
                                 .map(
                                         p ->
-                                                Map.of(
-                                                        "id",
+                                                new TaskSummaryResponse(
                                                         p.getId(),
-                                                        "taskType",
                                                         p.getTaskType(),
-                                                        "status",
                                                         p.getStatus().name(),
-                                                        "createdAt",
                                                         p.getCreatedAt().toString()))
                                 .toList(),
-                        "busConnected",
                         routingBusService.isConnected(),
-                        "timestamp",
                         Instant.now().toString()));
     }
 
@@ -164,27 +152,22 @@ public class TaskController {
     @DeleteMapping(value = "/{id}", produces = MediaType.APPLICATION_JSON_VALUE)
     // The validated task identifier is serialized as JSON, never rendered as HTML.
     @SuppressWarnings("JvmTaintAnalysis")
-    public @NonNull ResponseEntity<Map<String, @NonNull Object>> cancelTask(
-            @PathVariable @NonNull String id) {
+    public @NonNull ResponseEntity<RestResponse> cancelTask(@PathVariable @NonNull String id) {
         String owner = authorization.requireUser();
         DAGPayload existing = ownedPayload(id, owner);
         if (existing == null) {
             return ResponseEntity.status(404)
-                    .body(Map.of("status", "error", "message", Msg.get("error.task.notFound", id)));
+                    .body(new StatusMessageResponse("error", Msg.get("error.task.notFound", id)));
         }
 
         DAGPayload cancelled = existing.withStatus(DAGPayload.DAGPayloadStatus.CANCELLED);
         taskStore.put(id, new OwnedTask(owner, cancelled));
 
         return ResponseEntity.ok(
-                Map.of(
-                        "status",
+                new TaskCancelledResponse(
                         "ok",
-                        "id",
                         id,
-                        "newStatus",
                         DAGPayload.DAGPayloadStatus.CANCELLED.name(),
-                        "timestamp",
                         Instant.now().toString()));
     }
 

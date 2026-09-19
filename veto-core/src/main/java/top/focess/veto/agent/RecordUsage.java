@@ -11,7 +11,12 @@ public final class RecordUsage {
     private RecordUsage() {}
 
     public static @NonNull TurnRecord add(
-            @NonNull TurnRecord turn, @NonNull Map<String, Object> measurement) {
+            @NonNull TurnRecord turn, @NonNull UsageMeasurement measurement) {
+        return append(turn, measurement);
+    }
+
+    private static @NonNull TurnRecord append(
+            @NonNull TurnRecord turn, @NonNull Object measurement) {
         Map<String, Object> payload =
                 new LinkedHashMap<>(RecordTokenCounter.withoutEstimate(turn).payload());
         List<Object> usage = new ArrayList<>();
@@ -44,7 +49,7 @@ public final class RecordUsage {
                     }
                 }
             }
-            if (target >= 0) result.set(target, add(result.get(target), turn.payload()));
+            if (target >= 0) result.set(target, append(result.get(target), turn.payload()));
         }
         return List.copyOf(result);
     }

@@ -100,7 +100,8 @@ public final class LenientStringListModule extends SimpleModule {
             if (codec == null) {
                 return List.of();
             }
-            JsonNode node = codec.readTree(p);
+            // Read this nested value without applying root-level trailing-token checks.
+            JsonNode node = ctxt.readTree(p);
             if (node == null) {
                 return List.of();
             }

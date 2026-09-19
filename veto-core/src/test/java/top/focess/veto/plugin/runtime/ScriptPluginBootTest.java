@@ -52,10 +52,12 @@ class ScriptPluginBootTest {
     private static final @NonNull Path STATE = stateDirectory();
     @LocalServerPort private int port;
     private final @NonNull ToolEngine engine;
-    private final @NonNull ScriptPlugins plugins;
+    private final @NonNull PluginManager plugins;
+    @Autowired private top.focess.veto.model.SessionRepository sessions;
+    @Autowired private SessionPlugins selection;
 
     @Autowired
-    ScriptPluginBootTest(@NonNull ToolEngine engine, @NonNull ScriptPlugins plugins) {
+    ScriptPluginBootTest(@NonNull ToolEngine engine, @NonNull PluginManager plugins) {
         this.engine = engine;
         this.plugins = plugins;
     }
@@ -97,8 +99,8 @@ class ScriptPluginBootTest {
 
     @Test
     void startedApplicationRegistersAndDispatchesApprovedPluginTool() throws Exception {
-        assertEquals(1, plugins.plugins().size());
-        assertTrue(plugins.plugins().getFirst().active());
+        assertEquals(1, plugins.scriptPlugins().size());
+        assertTrue(plugins.scriptPlugins().getFirst().active());
         var definition =
                 assertInstanceOf(
                         ToolDocs.nonNullClass(PluginToolDefinition.class),
@@ -124,17 +126,21 @@ class ScriptPluginBootTest {
         var call = new ToolCall(definition.name(), Map.of("text", "a😀b"), "plugin-boot-call");
         assertEquals(ToolResultStatus.FAILURE, engine.execute(call, definition).status());
         UUID user = UUID.randomUUID();
+        var session = new top.focess.veto.model.SessionEntity("test-owner", "plugin-selection");
+        session.setPluginBindings(selection.selection(java.util.List.of("text")));
+        sessions.saveAndFlush(session);
+        UUID sessionId = UUID.fromString(session.getId());
         var permit =
                 ToolExecutionPermit.capture(
                                 call, definition, Workspace.single(STATE, PathMode.REAL))
-                        .withCaller("test-agent", user, null, "test-owner", null);
+                        .withCaller("test-agent", user, null, "test-owner", sessionId);
         ToolCallContextHolder.set(
                 new ToolCallContext(
                         "test-agent",
                         user,
                         null,
                         "test-owner",
-                        null,
+                        sessionId,
                         ToolResultPresentationMode.BASIC,
                         false,
                         permit));
@@ -185,7 +191,7 @@ class ScriptPluginBootTest {
     @Test
     void untrustedConfigurationIsRejectedBeforeExecution() {
         assertThrows(
-                IllegalArgumentException.class,
-                () -> new ScriptPlugins("/unused", node(), false, 5000));
+                IOException.class,
+                () -> new PluginManager("/unused", node(), false, 5000, java.util.List.of()));
     }
 }

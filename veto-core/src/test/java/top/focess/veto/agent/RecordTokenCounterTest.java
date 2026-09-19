@@ -9,6 +9,10 @@ import org.junit.jupiter.api.Test;
 import top.focess.veto.llm.core.*;
 
 class RecordTokenCounterTest {
+    private static com.fasterxml.jackson.databind.@NonNull JsonNode json(@NonNull Object value) {
+        return new com.fasterxml.jackson.databind.ObjectMapper().valueToTree(value);
+    }
+
     private @NonNull VetoRequest request(@NonNull List<ChatMessage> messages) {
         return new VetoRequest(
                 "system",
@@ -34,13 +38,12 @@ class RecordTokenCounterTest {
                                 ChatMessage.assistant("answer"),
                                 ChatMessage.user("two")));
         assertFalse(
-                tracker.measure(first, new LlmSystemUsage.Usage(100, 10))
-                        .containsKey("recordDelta"));
+                json(tracker.measure(first, new LlmSystemUsage.Usage(100, 10))).has("recordDelta"));
         TurnRecord last = TurnRecord.userPrompt(4, "two");
         var measurement = tracker.measure(second, new LlmSystemUsage.Usage(125, 8));
-        assertEquals(25L, measurement.get("contextDeltaTokens"));
-        assertFalse(measurement.containsKey("recordDelta"));
-        assertFalse(measurement.containsKey("fromRecordTurn"));
+        assertEquals(Long.valueOf(25L), measurement.contextDeltaTokens());
+        assertFalse(json(measurement).has("recordDelta"));
+        assertFalse(json(measurement).has("fromRecordTurn"));
         TurnRecord updated = RecordUsage.add(last, measurement);
         assertNull(RecordTokenCounter.count(updated.payload()));
         assertFalse(updated.payload().containsKey("tokenDeltaFromTurn"));
@@ -51,8 +54,7 @@ class RecordTokenCounterTest {
         assertTrue(updated.payload().get("llmUsage") instanceof List<?> calls && calls.size() == 2);
         tracker.reset();
         assertFalse(
-                tracker.measure(second, new LlmSystemUsage.Usage(80, 1))
-                        .containsKey("recordDelta"));
+                json(tracker.measure(second, new LlmSystemUsage.Usage(80, 1))).has("recordDelta"));
     }
 
     @Test

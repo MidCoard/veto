@@ -10,7 +10,6 @@ import top.focess.veto.secret.api.CredentialWriter;
 import top.focess.veto.secret.references.SecretCandidateStore;
 import top.focess.veto.vault.KeysteadVault;
 
-@Component
 public final class CredentialImportCapabilityImpl implements CredentialImportCapability {
     private final @NonNull SecretCandidateStore candidates;
     private final @NonNull CredentialWriter writer;
@@ -47,7 +46,7 @@ public final class CredentialImportCapabilityImpl implements CredentialImportCap
             @NonNull String reference, @NonNull String service, @NonNull String label) {
         var context =
                 CapabilityAccess.require(
-                        ToolCapability.CREDENTIAL_IMPORT, "import_detected_credential");
+                        ToolCapability.CREDENTIAL_IMPORT);
         String owner = context.owner();
         var session = context.sessionId();
         if (owner == null

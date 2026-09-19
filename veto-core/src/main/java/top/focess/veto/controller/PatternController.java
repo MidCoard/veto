@@ -1,12 +1,12 @@
 package top.focess.veto.controller;
 
 import java.util.List;
-import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
+import top.focess.veto.controller.dto.*;
 import top.focess.veto.controller.dto.CreatePatternRequest;
 import top.focess.veto.i18n.Msg;
 import top.focess.veto.model.AgentPatternEntity;
@@ -82,11 +82,8 @@ public class PatternController {
         if (user == null) {
             return ResponseEntity.status(401)
                     .body(
-                            Map.of(
-                                    "status",
-                                    "error",
-                                    "message",
-                                    Msg.get("error.auth.notAuthenticated")));
+                            new StatusMessageResponse(
+                                    "error", Msg.get("error.auth.notAuthenticated")));
         }
         repo.deleteByNameAndOwner(name, user);
         return ResponseEntity.noContent().build();
