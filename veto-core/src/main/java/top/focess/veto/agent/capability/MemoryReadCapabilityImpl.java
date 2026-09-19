@@ -8,6 +8,7 @@ import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.tool.ToolCallContext;
 import top.focess.veto.agent.tool.ToolCapability;
+import top.focess.veto.agent.tool.ToolErrorCode;
 import top.focess.veto.agent.tool.ToolErrors;
 import top.focess.veto.memory.MemoryQuery;
 import top.focess.veto.memory.MemoryStore;
@@ -30,7 +31,9 @@ public final class MemoryReadCapabilityImpl implements MemoryReadCapability {
             try {
                 sessionId = UUID.fromString(ctx.agentId());
             } catch (IllegalArgumentException e) {
-                return ToolErrors.failure("no session context; memories not recalled");
+                return ToolErrors.failure(
+                        ToolErrorCode.SESSION.NO_SESSION_CONTEXT,
+                        "No session context: memories were not recalled.");
             }
         }
         MemoryQuery sessionQuery =

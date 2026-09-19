@@ -28,27 +28,37 @@ import top.focess.veto.agent.tool.WorkspaceWriteTool;
         resultFormats = {ToolResultFormat.JSON},
         description = "Move or rename one authorized file, link, or directory without overwriting.",
         behavior =
-                "Moves the source to an existing destination parent without overwriting. A"
-                        + " cross-filesystem move fails instead of copying and deleting the source."
-                        + " Directory preflight does not follow links, snapshots entry identities,"
-                        + " and is bounded to 50000 entries or 10 seconds.",
+                """
+                Moves the source to an existing destination parent without overwriting. A \
+                cross-filesystem move fails instead of copying and deleting the source. Directory \
+                preflight does not follow links, snapshots entry identities, and is bounded to \
+                50000 entries or 10 seconds.""",
         whenToUse =
-                "Use it to rename or relocate one exact file, symbolic link, or directory tree."
-                        + " Discover an uncertain source first with find_files or list_dir.",
+                """
+                Use it to rename or relocate one exact file, symbolic link, or directory tree. \
+                Discover an uncertain source first with find_files or list_dir.""",
         whenNotToUse = "Do not use it to copy content or replace an existing destination.",
         resultContract =
-                "Success returns JSON with `status`, the two requested paths as `source` and"
-                        + " `destination`, and `kind` (`file`, `directory`, or `symbolic_link`). In"
-                        + " detailed-result mode, failures use SOURCE_NOT_FOUND,"
-                        + " DESTINATION_EXISTS, INVALID_DESTINATION, CROSS_FILESYSTEM_MOVE,"
-                        + " TREE_CHANGED, UNSAFE_LINK, or IO_ERROR; failure"
-                        + " content is actionable plaintext in every mode.",
+                """
+                Success returns JSON with `status`, the two requested paths as `source` and \
+                `destination`, and `kind` (`file`, `directory`, or `symbolic_link`). In \
+                detailed-result mode, failures use SOURCE_NOT_FOUND \
+                (`Source path not found: <sourceAbsolutePath>`), ALREADY_EXISTS \
+                (`Destination already exists: <destinationAbsolutePath>`), INVALID_DESTINATION \
+                (`Invalid destination: a directory cannot be moved inside itself.` or \
+                `Invalid destination: the destination parent is not an existing directory.`), \
+                CROSS_FILESYSTEM_MOVE \
+                (`Cross-filesystem move: source and destination are on different filesystems.`), \
+                TREE_CHANGED (`Tree changed: ...`), UNSAFE_LINK \
+                (`Unsafe link: symbolic links and reparse points cannot be followed.`), or \
+                IO_ERROR (`I/O error: cannot move <sourceAbsolutePath> to its destination.`); \
+                failure content is actionable plaintext in every mode.""",
         errorsAndEdgeCases =
-                "The destination parent must already exist. A destination created concurrently"
-                        + " is not overwritten. Symbolic links are moved as links. Protected"
-                        + " descendants reject a directory move before mutation. If an entry"
-                        + " changes after preflight, the move stops with TREE_CHANGED before"
-                        + " mutation.",
+                """
+                The destination parent must already exist. A destination created concurrently is \
+                not overwritten. Symbolic links are moved as links. Protected descendants reject a \
+                directory move before mutation. If an entry changes after preflight, the move stops \
+                with TREE_CHANGED before mutation.""",
         security =
                 "An existing destination is never overwritten, and a cross-filesystem move fails rather than falling back to copy-and-delete, so the source is never lost mid-move.",
         examples = {
@@ -101,15 +111,16 @@ public final class MovePathTool implements WorkspaceWriteTool<MovePathTool.Args>
                             kind));
         } catch (NoSuchFileException e) {
             return ToolErrors.failure(
-                    ToolErrorCode.SOURCE_NOT_FOUND,
+                    ToolErrorCode.WORKSPACE.SOURCE_NOT_FOUND,
                     "Source path not found: " + args.sourceAbsolutePath());
         } catch (FileAlreadyExistsException e) {
             return ToolErrors.failure(
-                    ToolErrorCode.DESTINATION_EXISTS,
+                    ToolErrorCode.WORKSPACE.ALREADY_EXISTS,
                     "Destination already exists: " + args.destinationAbsolutePath());
         } catch (IOException e) {
             return ToolErrors.failure(
-                    ToolErrorCode.IO_ERROR, "Cannot move path: " + args.sourceAbsolutePath());
+                    ToolErrorCode.WORKSPACE.IO_ERROR,
+                    "I/O error: cannot move " + args.sourceAbsolutePath() + " to its destination.");
         }
     }
 }

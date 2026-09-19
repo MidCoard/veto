@@ -16,7 +16,11 @@ public final class ToolJson {
         try {
             return MAPPER.writeValueAsString(fields);
         } catch (JsonProcessingException e) {
-            return ToolErrors.failure("Could not encode tool JSON result: " + e.getMessage());
+            return ToolErrors.failure(
+                    ToolErrorCode.RESULT.ENCODING_FAILED,
+                    "Encoding failed: could not encode the tool JSON result ("
+                            + e.getMessage()
+                            + ").");
         }
     }
 }

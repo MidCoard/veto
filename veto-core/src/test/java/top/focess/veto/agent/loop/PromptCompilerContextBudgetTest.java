@@ -205,7 +205,7 @@ class PromptCompilerContextBudgetTest {
                 Workspace.single(Path.of(System.getProperty("user.dir", ".")), PathMode.REAL);
         for (ToolResultPresentationMode mode :
                 List.of(ToolResultPresentationMode.BASIC, ToolResultPresentationMode.DETAILED)) {
-            var result = new ToolResult("run_task", "approved-call", true, "raw output");
+            var result = ToolResult.success("run_task", "approved-call", "raw output");
             String original = new ToolResultPresenter(mapper).present(result, mode);
             var recorded = TurnRecord.presentedToolResponse(3, result, original, mode);
             Map<String, Object> payload = new HashMap<>(recorded.payload());

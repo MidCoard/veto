@@ -9,6 +9,7 @@ import top.focess.veto.agent.capability.GroupControlCapability;
 import top.focess.veto.agent.tool.Doc;
 import top.focess.veto.agent.tool.GroupControlTool;
 import top.focess.veto.agent.tool.ToolDoc;
+import top.focess.veto.agent.tool.ToolErrorCode;
 import top.focess.veto.agent.tool.ToolErrors;
 import top.focess.veto.agent.tool.ToolResultFormat;
 
@@ -25,9 +26,9 @@ public final class CollaborationTools {
             whenNotToUse =
                     "Not for removing a collaborator or stopping independent background processes.",
             resultContract =
-                    "Success means CANCELLED with execution exit confirmed. A pending response means CANCEL_REQUESTED; inspect_group or retry can confirm later. Dependents remain blocked, other work can continue.",
+                    "Success means CANCELLED with execution exit confirmed. A pending response means CANCEL_REQUESTED; inspect_group or retry can confirm later. Dependents remain blocked, other work can continue. Failure (failure, REQUEST_REJECTED): `Task not cancelled: <reason>`.",
             errorsAndEdgeCases =
-                    "Unknown or already successful tasks are rejected. Cancelled tasks are idempotent. Cancellation does not undo completed side effects or satisfy dependencies.",
+                    "Unknown or already successful tasks fail (failure, REQUEST_REJECTED). Cancelled tasks are idempotent. Cancellation does not undo completed side effects or satisfy dependencies.",
             security = "Caller must lead the current owner and Session scoped group.",
             examples = {
                 "{\"taskId\":\"analysis\"}",
@@ -39,7 +40,7 @@ public final class CollaborationTools {
                 "Task cancelled; execution exit confirmed. Dependent tasks remain blocked; explicitly replan or cancel them. Mate identity and history retained. Independent background processes are not stopped.",
                 "Task cancelled; execution exit confirmed. Dependent tasks remain blocked; explicitly replan or cancel them. Mate identity and history retained. Independent background processes are not stopped.",
                 "Task cancelled; execution exit confirmed. Dependent tasks remain blocked; explicitly replan or cancel them. Mate identity and history retained. Independent background processes are not stopped.",
-                "Unknown task: unknown-task"
+                "Task not cancelled: Unknown task: unknown-task"
             })
     public static final class CancelTask implements GroupControlTool<CancelTask.Args> {
         private final @NonNull GroupControlCapability capability;
@@ -71,7 +72,9 @@ public final class CollaborationTools {
                 @NonNull Args args, @NonNull GroupControlCapability capability) {
             var result = capability.cancelTask(args.taskId());
             if (result instanceof GroupOrchestrator.NodeEdit.Rejected rejected)
-                return ToolErrors.failure(rejected.reason());
+                return ToolErrors.failure(
+                        ToolErrorCode.GROUP.REQUEST_REJECTED,
+                        "Task not cancelled: " + rejected.reason());
             return "Task cancelled; execution exit confirmed. Dependent tasks remain blocked; explicitly replan or cancel them. Mate identity and history retained. Independent background processes are not stopped.";
         }
     }
@@ -85,7 +88,7 @@ public final class CollaborationTools {
             whenToUse = "Use when the user no longer needs this collaborator in the team.",
             whenNotToUse = "Not a task cancellation tool. Finish or cancel assigned work first.",
             resultContract =
-                    "Success confirms member execution and dispatch waiter stopped. A timeout retains membership; retry to confirm exit.",
+                    "Success confirms member execution and dispatch waiter stopped. A timeout retains membership; retry to confirm exit. Failure (failure, REQUEST_REJECTED): `Mate not removed: <reason>`.",
             errorsAndEdgeCases =
                     "Unfinished task ids are listed. A stopping member cannot receive new work. Independent background processes are not stopped.",
             security = "Caller must lead the current owner and Session scoped group.",
@@ -131,7 +134,9 @@ public final class CollaborationTools {
                 @NonNull Args args, @NonNull GroupControlCapability capability) {
             var result = capability.removeMate(args.mateId());
             if (result instanceof GroupOrchestrator.NodeEdit.Rejected rejected)
-                return ToolErrors.failure("Mate not removed: " + rejected.reason());
+                return ToolErrors.failure(
+                        ToolErrorCode.GROUP.REQUEST_REJECTED,
+                        "Mate not removed: " + rejected.reason());
             return "Mate removed; execution exit confirmed. History retained. Independent background processes are not stopped.";
         }
     }
@@ -145,7 +150,8 @@ public final class CollaborationTools {
             whenToUse = "Create the people needed for your plan before assigning tasks.",
             whenNotToUse =
                     "Do not create another member merely because an existing member is busy; tasks can queue.",
-            resultContract = "Returns the created Mate id. Failure leaves no assigned task.",
+            resultContract =
+                    "Returns the created Mate id. Blank name or responsibility (failure, INVALID_ARGUMENTS): `Mate not created: name and responsibility must not be blank.`. Failure leaves no assigned task.",
             errorsAndEdgeCases =
                     "Blank names or responsibilities and unavailable groups are rejected.",
             security = "Caller must lead the current owner and Session scoped group.",
@@ -159,7 +165,7 @@ public final class CollaborationTools {
                 "Mate created: 9b2e8c1a-4d5f-4e7b-8c9d-0a1b2c3d4e5f",
                 "Mate created: 5c1a2b3d-7e8f-4a5b-9c0d-1e2f3a4b5c6d",
                 "Mate created: 7d3e5f1a-2b4c-4d6e-8f0a-1b2c3d4e5f6a",
-                "Agent tool error: Name and responsibility must not be blank"
+                "Mate not created: name and responsibility must not be blank."
             })
     public static final class CreateMate implements GroupControlTool<CreateMate.Args> {
         private final @NonNull GroupControlCapability capability;
@@ -191,6 +197,11 @@ public final class CollaborationTools {
         @Override
         public @NonNull String execute(
                 @NonNull Args args, @NonNull GroupControlCapability capability) {
+            if (args.name().isBlank() || args.responsibility().isBlank()) {
+                return ToolErrors.failure(
+                        ToolErrorCode.VALIDATION.INVALID_ARGUMENTS,
+                        "Mate not created: name and responsibility must not be blank.");
+            }
             return "Mate created: " + capability.createMate(args.name(), args.responsibility());
         }
     }
@@ -206,9 +217,9 @@ public final class CollaborationTools {
             whenNotToUse =
                     "Do not use for background processes or create a task for your own final synthesis.",
             resultContract =
-                    "Returns the registered task id and assignee. Registration is not completion.",
+                    "Returns the registered task id and assignee. Registration is not completion. Failure (failure, REQUEST_REJECTED): `Task not created: <reason>`.",
             errorsAndEdgeCases =
-                    "Unknown members, duplicate ids and missing dependencies are rejected. A busy member causes queueing, not substitution.",
+                    "Unknown members, duplicate ids and missing dependencies fail (failure, REQUEST_REJECTED). A busy member causes queueing, not substitution.",
             security = "Caller must lead the current owner and Session scoped group.",
             examples = {
                 "{\"taskId\":\"calculation\",\"description\":\"Calculate the supplied order total\",\"mateId\":\"9b2e8c1a-4d5f-4e7b-8c9d-0a1b2c3d4e5f\"}",
@@ -261,7 +272,9 @@ public final class CollaborationTools {
             var result =
                     capability.createTask(args.taskId(), args.description(), args.mateId(), deps);
             if (result instanceof GroupOrchestrator.NodeEdit.Rejected rejected)
-                return ToolErrors.failure("Task not created: " + rejected.reason());
+                return ToolErrors.failure(
+                        ToolErrorCode.GROUP.REQUEST_REJECTED,
+                        "Task not created: " + rejected.reason());
             return "Task registered: "
                     + args.taskId()
                     + "; assigned Mate: "

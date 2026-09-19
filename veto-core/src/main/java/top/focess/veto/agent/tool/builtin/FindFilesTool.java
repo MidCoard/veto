@@ -35,28 +35,32 @@ import top.focess.veto.agent.tool.WorkspaceReadTool;
         resultFormats = {ToolResultFormat.JSON},
         description = "Find regular files below an authorized directory using a portable glob.",
         behavior =
-                "Searches recursively without following symbolic links or directory reparse"
-                        + " points. The pattern uses `/` separators and supports `*`, `**`, and"
-                        + " `?`. Matches are relative `/`-separated paths, sorted"
-                        + " lexicographically; an empty `matches` array is a successful search with"
-                        + " no matches. Returns at most 5000 matching file paths.",
+                """
+                Searches recursively without following symbolic links or directory reparse points. \
+                The pattern uses `/` separators and supports `*`, `**`, and `?`. Matches are \
+                relative `/`-separated paths, sorted lexicographically; an empty `matches` array is \
+                a successful search with no matches. Returns at most 5000 matching file paths.""",
         whenToUse = "Use it when you know a filename or portable glob but not its exact path.",
         whenNotToUse =
-                "Do not use it to search file contents; use grep_search. Do not use it when the"
-                        + " exact path is already known.",
+                """
+                Do not use it to search file contents; use grep_search. Do not use it when the \
+                exact path is already known.""",
         resultContract =
-                "Returns JSON with `base`, `pattern`, `matches`, `truncated`,"
-                        + " `truncationReason`, and `skippedEntries`. `truncationReason` is null or"
-                        + " RESULT_LIMIT, VISIT_LIMIT, TIME_LIMIT, or OUTPUT_LIMIT. In"
-                        + " detailed-result mode, failures use NOT_A_DIRECTORY, INVALID_PATTERN,"
-                        + " PATH_PROTECTED, or IO_ERROR; failure content is actionable plaintext"
-                        + " in every result mode.",
+                """
+                Returns JSON with `base`, `pattern`, `matches`, `truncated`, `truncationReason`, \
+                and `skippedEntries`. `truncationReason` is null or RESULT_LIMIT, VISIT_LIMIT, \
+                TIME_LIMIT, or OUTPUT_LIMIT. In detailed-result mode, failures use NOT_A_DIRECTORY \
+                (`Not a directory: <absolutePath>`), INVALID_ARGUMENTS \
+                (`Invalid arguments: pattern must be non-blank and use '/' separators.`), or \
+                IO_ERROR (`I/O error: cannot search directory <absolutePath>.`); protected roots \
+                are refused with PATH_PROTECTED. Failure content is actionable plaintext in every \
+                result mode.""",
         errorsAndEdgeCases =
-                "Traversal also stops at 50000 visited entries, 1 MiB"
-                        + " encoded output, or 10 seconds. `skippedEntries` counts unreadable,"
-                        + " protected, symbolic-link, and reparse-point entries that were not"
-                        + " traversed. `**/*.java` also matches a Java file directly below the"
-                        + " base.",
+                """
+                Traversal also stops at 50000 visited entries, 1 MiB encoded output, or 10 seconds. \
+                `skippedEntries` counts unreadable, protected, symbolic-link, and reparse-point \
+                entries that were not traversed. `**/*.java` also matches a Java file directly \
+                below the base.""",
         security =
                 "Protected paths, symbolic links, and reparse points are skipped without being opened; they are counted in `skippedEntries`.",
         examples = {
@@ -97,15 +101,16 @@ public final class FindFilesTool implements WorkspaceReadTool<FindFilesTool.Args
     public @NonNull String execute(@NonNull Args args, @NonNull WorkspaceReadCapability workspace) {
         if (args.pattern().isBlank() || args.pattern().indexOf('\\') >= 0) {
             return ToolErrors.failure(
-                    ToolErrorCode.INVALID_PATTERN,
-                    "Pattern must be non-blank and use '/' separators.");
+                    ToolErrorCode.VALIDATION.INVALID_ARGUMENTS,
+                    "Invalid arguments: pattern must be non-blank and use '/' separators.");
         }
         Pattern matcher = Pattern.compile(globRegex(args.pattern()));
         try {
             WorkspaceFile root = workspace.file(args.absolutePath());
             if (!root.kind().equals("directory")) {
                 return ToolErrors.failure(
-                        ToolErrorCode.NOT_A_DIRECTORY, "Not a directory: " + args.absolutePath());
+                        ToolErrorCode.WORKSPACE.NOT_A_DIRECTORY,
+                        "Not a directory: " + args.absolutePath());
             }
             var traversal = new WorkspaceTraversal(root);
             List<String> matches = new ArrayList<>();
@@ -140,10 +145,12 @@ public final class FindFilesTool implements WorkspaceReadTool<FindFilesTool.Args
             }
         } catch (NoSuchFileException e) {
             return ToolErrors.failure(
-                    ToolErrorCode.NOT_A_DIRECTORY, "Not a directory: " + args.absolutePath());
+                    ToolErrorCode.WORKSPACE.NOT_A_DIRECTORY,
+                    "Not a directory: " + args.absolutePath());
         } catch (IOException e) {
             return ToolErrors.failure(
-                    ToolErrorCode.IO_ERROR, "Cannot search directory: " + args.absolutePath());
+                    ToolErrorCode.WORKSPACE.IO_ERROR,
+                    "I/O error: cannot search directory " + args.absolutePath() + ".");
         }
     }
 

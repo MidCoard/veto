@@ -63,14 +63,20 @@ import top.focess.veto.agent.tool.WorkspaceWriteTool;
                     - Success: `{"status":"ok","file":"<absolutePath>"}`.
                     - Invalid `absolutePath`, range, or replacement (failure): one of \
                     `Not a regular file: <absolutePath>` (`NOT_A_FILE`), \
-                    `File exceeds 16 MiB (16,777,216 bytes)` (`FILE_TOO_LARGE`), \
-                    `Invalid line range`, `Line range outside file`, or \
-                    `targetContent must not be empty` (`INVALID_ARGUMENTS`) or \
-                    `Replacement exceeds 16 MiB (16,777,216 bytes)` (`FILE_TOO_LARGE`).
+                    `File too large: the file exceeds 16 MiB (16,777,216 bytes).` (`FILE_TOO_LARGE`), \
+                    `Invalid arguments: startLine must be at least 1 and endLine must be at least \
+                    startLine.`, `Invalid arguments: the line range is outside the file.`, or \
+                    `Invalid arguments: targetContent must not be empty.` (`INVALID_ARGUMENTS`) or \
+                    `File too large: the replacement exceeds 16 MiB (16,777,216 bytes).` \
+                    (`FILE_TOO_LARGE`).
                     - Match failure (failure): \
-                    `targetContent not found in selected range.` (`TARGET_NOT_FOUND`) or \
-                    `targetContent is not unique in selected range.` (`TARGET_NOT_UNIQUE`). \
+                    `Target not found: the selected range does not contain targetContent.` \
+                    (`TARGET_NOT_FOUND`) or \
+                    `Target not unique: the selected range contains targetContent more than once.` \
+                    (`TARGET_NOT_UNIQUE`). \
                     The file remains unchanged.
+                    - Update failure (failure, `IO_ERROR`): \
+                    `I/O error: cannot update file <absolutePath>.`
                     """,
         errorsAndEdgeCases =
                 """
@@ -98,7 +104,7 @@ import top.focess.veto.agent.tool.WorkspaceWriteTool;
             "{\"status\":\"ok\",\"file\":\"/abs/project/src/Main.java\"}",
             "{\"status\":\"ok\",\"file\":\"/abs/project/src/Main.java\"}",
             "{\"status\":\"ok\",\"file\":\"/abs/project/src/Service.java\"}",
-            "targetContent not found in selected range."
+            "Target not found: the selected range does not contain targetContent."
         })
 public final class ReplaceFileContentTool
         implements WorkspaceWriteTool<ReplaceFileContentTool.Args> {
@@ -128,42 +134,51 @@ public final class ReplaceFileContentTool
     public @NonNull String execute(
             @NonNull Args args, @NonNull WorkspaceWriteCapability workspace) {
         if (args.startLine() < 1 || args.endLine() < args.startLine()) {
-            return ToolErrors.failure(ToolErrorCode.INVALID_ARGUMENTS, "Invalid line range");
+            return ToolErrors.failure(
+                    ToolErrorCode.VALIDATION.INVALID_ARGUMENTS,
+                    "Invalid arguments: startLine must be at least 1 and endLine must be at least"
+                            + " startLine.");
         }
         if (args.targetContent().isEmpty())
             return ToolErrors.failure(
-                    ToolErrorCode.INVALID_ARGUMENTS, "targetContent must not be empty");
+                    ToolErrorCode.VALIDATION.INVALID_ARGUMENTS,
+                    "Invalid arguments: targetContent must not be empty.");
         try {
             var file = workspace.file(args.absolutePath());
             if (!"file".equals(file.kind()))
                 return ToolErrors.failure(
-                        ToolErrorCode.NOT_A_FILE, "Not a regular file: " + args.absolutePath());
+                        ToolErrorCode.WORKSPACE.NOT_A_FILE,
+                        "Not a regular file: " + args.absolutePath());
             if (file.size() > MAX_TEXT_BYTES)
                 return ToolErrors.failure(
-                        ToolErrorCode.FILE_TOO_LARGE, "File exceeds 16 MiB (16,777,216 bytes)");
+                        ToolErrorCode.WORKSPACE.FILE_TOO_LARGE,
+                        "File too large: the file exceeds 16 MiB (16,777,216 bytes).");
             String content;
             try (var input = file.openRead()) {
                 byte[] bytes = input.readNBytes(MAX_TEXT_BYTES + 1);
                 if (bytes.length > MAX_TEXT_BYTES)
                     return ToolErrors.failure(
-                            ToolErrorCode.FILE_TOO_LARGE, "File exceeds 16 MiB (16,777,216 bytes)");
+                            ToolErrorCode.WORKSPACE.FILE_TOO_LARGE,
+                            "File too large: the file exceeds 16 MiB (16,777,216 bytes).");
                 content = new String(bytes, StandardCharsets.UTF_8);
             }
             int start = lineStart(content, args.startLine());
             int end = lineEnd(content, args.endLine());
             if (start < 0 || end < start)
                 return ToolErrors.failure(
-                        ToolErrorCode.INVALID_ARGUMENTS, "Line range outside file");
+                        ToolErrorCode.VALIDATION.INVALID_ARGUMENTS,
+                        "Invalid arguments: the line range is outside the file.");
             int index = content.indexOf(args.targetContent(), start);
             if (index < 0 || index + args.targetContent().length() > end)
                 return ToolErrors.failure(
-                        ToolErrorCode.TARGET_NOT_FOUND,
-                        "targetContent not found in selected range.");
+                        ToolErrorCode.WORKSPACE.TARGET_NOT_FOUND,
+                        "Target not found: the selected range does not contain targetContent.");
             int next = content.indexOf(args.targetContent(), index + 1);
             if (next >= 0 && next + args.targetContent().length() <= end)
                 return ToolErrors.failure(
-                        ToolErrorCode.TARGET_NOT_UNIQUE,
-                        "targetContent is not unique in selected range.");
+                        ToolErrorCode.WORKSPACE.TARGET_NOT_UNIQUE,
+                        "Target not unique: the selected range contains targetContent more than"
+                                + " once.");
             String updated =
                     content.substring(0, index)
                             + args.replacementContent()
@@ -171,18 +186,20 @@ public final class ReplaceFileContentTool
             byte[] bytes = updated.getBytes(StandardCharsets.UTF_8);
             if (bytes.length > MAX_TEXT_BYTES)
                 return ToolErrors.failure(
-                        ToolErrorCode.FILE_TOO_LARGE,
-                        "Replacement exceeds 16 MiB (16,777,216 bytes)");
+                        ToolErrorCode.WORKSPACE.FILE_TOO_LARGE,
+                        "File too large: the replacement exceeds 16 MiB (16,777,216 bytes).");
             try (var output = file.openForReplace()) {
                 output.write(bytes);
             }
             return ToolJson.object(Map.of("status", "ok", "file", args.absolutePath()));
         } catch (NoSuchFileException e) {
             return ToolErrors.failure(
-                    ToolErrorCode.NOT_A_FILE, "Not a regular file: " + args.absolutePath());
+                    ToolErrorCode.WORKSPACE.NOT_A_FILE,
+                    "Not a regular file: " + args.absolutePath());
         } catch (IOException e) {
             return ToolErrors.failure(
-                    ToolErrorCode.IO_ERROR, "Cannot update file: " + args.absolutePath());
+                    ToolErrorCode.WORKSPACE.IO_ERROR,
+                    "I/O error: cannot update file " + args.absolutePath() + ".");
         }
     }
 

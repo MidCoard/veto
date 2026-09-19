@@ -472,7 +472,9 @@ class PromptCompileRenderTest {
         String contract = block.substring(contractStart, examplesStart);
 
         assertTrue(contract.contains("Success -> `forgotten: <memoryId>`"));
-        assertTrue(contract.contains("memory not found or not owned; nothing forgotten"));
+        assertTrue(
+                contract.contains(
+                        "Memory not found: the memory does not exist or is not owned; nothing forgotten."));
         assertFalse(contract.contains("Missing `memoryId`"));
         assertFalse(contract.contains("invalid memoryId"));
         assertFalse(contract.contains("error-special-plaintext"));

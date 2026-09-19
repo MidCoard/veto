@@ -61,13 +61,15 @@ public final class GitHubRepositoryReader {
         String owner = context.owner();
         if (owner == null || owner.isBlank() || context.sessionId() == null)
             return ToolErrors.failure(
-                    ToolErrorCode.CREDENTIAL_UNAVAILABLE, "An active owned session is required");
+                    ToolErrorCode.NETWORK.CREDENTIAL_UNAVAILABLE,
+                    "Credential unavailable: an active owned session is required.");
         if (!repositoryOwner.matches("[A-Za-z0-9][A-Za-z0-9-]{0,38}")
                 || !repositoryName.matches("[A-Za-z0-9_.-]{1,100}")
                 || repositoryName.equals(".")
                 || repositoryName.equals(".."))
             return ToolErrors.failure(
-                    ToolErrorCode.INVALID_REPOSITORY, "Invalid repository owner or name");
+                    ToolErrorCode.NETWORK.INVALID_REPOSITORY,
+                    "Invalid repository: the repository owner or name is invalid.");
         AtomicReference<String> result = new AtomicReference<>();
         AtomicInteger httpError = new AtomicInteger();
         try {
@@ -133,18 +135,20 @@ public final class GitHubRepositoryReader {
                     });
         } catch (RuntimeException failure) {
             return ToolErrors.failure(
-                    ToolErrorCode.CREDENTIAL_UNAVAILABLE,
-                    "Credential is unavailable for this operation");
+                    ToolErrorCode.NETWORK.CREDENTIAL_UNAVAILABLE,
+                    "Credential unavailable: the credential is unavailable for this operation.");
         }
         String answer = result.get();
         if (httpError.get() != 0)
             return ToolErrors.failure(
-                    ToolErrorCode.GITHUB_HTTP_ERROR,
-                    "GitHub repository request returned HTTP " + httpError.get());
+                    ToolErrorCode.NETWORK.GITHUB_HTTP_ERROR,
+                    "GitHub HTTP error: the repository request returned HTTP "
+                            + httpError.get()
+                            + ".");
         if (answer == null)
             return ToolErrors.failure(
-                    ToolErrorCode.AUTHENTICATED_READ_FAILED,
-                    "Repository information could not be read");
+                    ToolErrorCode.NETWORK.AUTHENTICATED_READ_FAILED,
+                    "Authenticated read failed: the repository information could not be read.");
         return answer;
     }
 }

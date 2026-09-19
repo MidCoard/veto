@@ -136,7 +136,7 @@ class PathToolsTest {
                                         new MovePathTool.Args(
                                                 source.toString(), destination.toString())));
 
-        assertEquals(ToolErrorCode.DESTINATION_EXISTS, error.errorCode());
+        assertEquals(ToolErrorCode.WORKSPACE.ALREADY_EXISTS, error.errorCode());
         assertTrue(Files.exists(source));
         assertEquals("destination", Files.readString(destination));
     }
@@ -187,7 +187,7 @@ class PathToolsTest {
                                         new WriteToFileTool.Args(
                                                 file.toString(), "secret", false)));
 
-        assertEquals(ToolErrorCode.PATH_PROTECTED, error.errorCode());
+        assertEquals(ToolErrorCode.POLICY.PATH_PROTECTED, error.errorCode());
         assertFalse(Files.exists(file));
     }
 
@@ -218,7 +218,7 @@ class PathToolsTest {
                                 CapabilityTestCalls.execute(
                                         new DeletePathTool(),
                                         new DeletePathTool.Args(directory.toString(), false)));
-        assertEquals(ToolErrorCode.DIRECTORY_NOT_EMPTY, error.errorCode());
+        assertEquals(ToolErrorCode.WORKSPACE.DIRECTORY_NOT_EMPTY, error.errorCode());
 
         JsonNode deleted =
                 mapper.readTree(
@@ -243,7 +243,7 @@ class PathToolsTest {
                                         new WriteToFileTool(),
                                         new WriteToFileTool.Args(file.toString(), "new", false)));
 
-        assertEquals(ToolErrorCode.FILE_EXISTS, error.errorCode());
+        assertEquals(ToolErrorCode.WORKSPACE.ALREADY_EXISTS, error.errorCode());
         assertEquals("old", Files.readString(file));
     }
 
@@ -261,7 +261,7 @@ class PathToolsTest {
                                         new ReplaceFileContentTool(),
                                         new ReplaceFileContentTool.Args(
                                                 file.toString(), 1, 3, "gamma", "x")));
-        assertEquals(ToolErrorCode.TARGET_NOT_FOUND, missing.errorCode());
+        assertEquals(ToolErrorCode.WORKSPACE.TARGET_NOT_FOUND, missing.errorCode());
 
         ToolExecutionException ambiguous =
                 assertThrows(
@@ -271,7 +271,7 @@ class PathToolsTest {
                                         new ReplaceFileContentTool(),
                                         new ReplaceFileContentTool.Args(
                                                 file.toString(), 1, 3, "beta", "x")));
-        assertEquals(ToolErrorCode.TARGET_NOT_UNIQUE, ambiguous.errorCode());
+        assertEquals(ToolErrorCode.WORKSPACE.TARGET_NOT_UNIQUE, ambiguous.errorCode());
         assertEquals("alpha\nbeta\nbeta\n", Files.readString(file));
     }
 
@@ -294,7 +294,7 @@ class PathToolsTest {
                                         new MovePathTool(),
                                         new MovePathTool.Args(
                                                 directory.toString(), inside.toString())));
-        assertEquals(ToolErrorCode.INVALID_DESTINATION, insideItself.errorCode());
+        assertEquals(ToolErrorCode.VALIDATION.INVALID_DESTINATION, insideItself.errorCode());
         assertTrue(Files.exists(directory));
 
         Path source = Files.writeString(root.resolve("source.txt"), "source");
@@ -315,7 +315,7 @@ class PathToolsTest {
                                         new MovePathTool(),
                                         new MovePathTool.Args(
                                                 source.toString(), orphan.toString())));
-        assertEquals(ToolErrorCode.INVALID_DESTINATION, noParent.errorCode());
+        assertEquals(ToolErrorCode.VALIDATION.INVALID_DESTINATION, noParent.errorCode());
         assertTrue(Files.exists(source));
     }
 

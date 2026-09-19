@@ -119,7 +119,7 @@ public record TurnRecord(
                 success ? ToolResultStatus.SUCCESS : ToolResultStatus.FAILURE,
                 ToolResultFormat.UNKNOWN,
                 content,
-                success ? null : ToolErrorCode.TOOL_FAILURE);
+                success ? null : ToolErrorCode.GENERIC.TOOL_FAILURE);
     }
 
     public static @NonNull TurnRecord toolResponse(int turnNumber, @NonNull ToolResult result) {

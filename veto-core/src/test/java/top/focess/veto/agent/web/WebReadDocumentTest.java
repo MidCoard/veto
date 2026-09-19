@@ -31,17 +31,16 @@ class WebReadDocumentTest {
         assertTrue(document.inspected().isEmpty());
         String body = matches.get(1).id();
         assertThrows(
-                ToolDocs.nonNullClass(IllegalArgumentException.class),
-                () -> document.evidence(body));
+                ToolDocs.nonNullClass(ToolExecutionException.class), () -> document.evidence(body));
         var read = document.read(List.of(body)).getFirst();
         document.recordInspection(List.of(body));
         assertEquals("Retry\t rules:\n  preserve this spacing.", read.text());
         assertEquals(read.text(), document.evidence(body).quote());
         assertThrows(
-                ToolDocs.nonNullClass(IllegalArgumentException.class),
+                ToolDocs.nonNullClass(ToolExecutionException.class),
                 () -> document.find("\u00a0\t"));
         assertThrows(
-                ToolDocs.nonNullClass(IllegalArgumentException.class),
+                ToolDocs.nonNullClass(ToolExecutionException.class),
                 () -> document.find("x".repeat(201)));
     }
 
@@ -167,17 +166,23 @@ class WebReadDocumentTest {
     @Test
     void rejectsUnreadOrUnknownEvidenceAndDoesNotPartiallyAuthorizeAnInvalidRead() {
         WebReadDocument document = document("text/plain", "Evidence text", false);
-        assertThrows(IllegalArgumentException.class, () -> document.evidence("s1"));
-        assertThrows(IllegalArgumentException.class, () -> document.read(List.of("s1", "unknown")));
+        assertThrows(
+                ToolDocs.nonNullClass(ToolExecutionException.class), () -> document.evidence("s1"));
+        assertThrows(
+                ToolDocs.nonNullClass(ToolExecutionException.class),
+                () -> document.read(List.of("s1", "unknown")));
         assertTrue(document.inspected().isEmpty());
 
         document.read(List.of("s1"));
         assertTrue(document.inspected().isEmpty());
-        assertThrows(IllegalArgumentException.class, () -> document.evidence("s1"));
+        assertThrows(
+                ToolDocs.nonNullClass(ToolExecutionException.class), () -> document.evidence("s1"));
         document.recordInspection(List.of("s1"));
         assertEquals("Evidence text", document.evidence("s1").quote());
         assertEquals("https://example.com/docs", document.evidence("s1").url());
-        assertThrows(IllegalArgumentException.class, () -> document.evidence("unknown"));
+        assertThrows(
+                ToolDocs.nonNullClass(ToolExecutionException.class),
+                () -> document.evidence("unknown"));
     }
 
     @Test
@@ -187,7 +192,8 @@ class WebReadDocumentTest {
         first.read(List.of("s1"));
         first.recordInspection(List.of("s1"));
 
-        assertThrows(IllegalArgumentException.class, () -> second.evidence("s1"));
+        assertThrows(
+                ToolDocs.nonNullClass(ToolExecutionException.class), () -> second.evidence("s1"));
         second.read(List.of("s1"));
         second.recordInspection(List.of("s1"));
         assertEquals("Second source", second.evidence("s1").quote());

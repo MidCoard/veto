@@ -105,6 +105,6 @@ class ToolResultPresenterTest {
                 ToolResultStatus.FAILURE,
                 ToolResultFormat.PLAINTEXT,
                 "memory not found; nothing forgotten",
-                ToolErrorCode.TOOL_FAILURE);
+                ToolErrorCode.GENERIC.TOOL_FAILURE);
     }
 }

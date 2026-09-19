@@ -8,6 +8,7 @@ import top.focess.veto.agent.intercept.HitlRegistry;
 import top.focess.veto.agent.tool.ToolCallContext;
 import top.focess.veto.agent.tool.ToolCallContextHolder;
 import top.focess.veto.agent.tool.ToolCapability;
+import top.focess.veto.agent.tool.ToolErrorCode;
 import top.focess.veto.agent.tool.ToolErrors;
 import top.focess.veto.group.Group;
 import top.focess.veto.group.GroupSpawner;
@@ -39,7 +40,9 @@ public final class DelegationCapabilityImpl implements DelegationCapability {
 
         String owner = ctx.owner();
         if (owner == null || owner.isBlank()) {
-            ToolErrors.failure("Group not created: no authenticated session owner is available.");
+            ToolErrors.failure(
+                    ToolErrorCode.SESSION.NO_SESSION_CONTEXT,
+                    "Group not created: no authenticated session owner is available.");
             return;
         }
         String leaderId = ctx.agentId();

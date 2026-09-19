@@ -13,6 +13,7 @@ import top.focess.veto.agent.tool.SecurityHint;
 import top.focess.veto.agent.tool.ToolCallContext;
 import top.focess.veto.agent.tool.ToolDoc;
 import top.focess.veto.agent.tool.ToolDocs;
+import top.focess.veto.agent.tool.ToolErrorCode;
 import top.focess.veto.agent.tool.ToolErrors;
 import top.focess.veto.agent.tool.ToolResultFormat;
 import top.focess.veto.group.GroupOrchestrator.NodeEdit;
@@ -36,8 +37,7 @@ public final class DagTools {
     @ToolDoc(
             resultFormats = {ToolResultFormat.PLAINTEXT},
             description =
-                    "Add a node to your group's execution plan - one discrete task with "
-                            + "a required skillset.",
+                    "Add a node to your group's execution plan - one discrete task with a required skillset.",
             behavior =
                     """
                     Adds one node to the execution plan. `dependsOn` may reference only existing, \
@@ -74,15 +74,16 @@ public final class DagTools {
                     """
                     On success - one prose line per created node:
                       Node created: node-1 (skillset: coding). It is eligible for dispatch.
-                    On rejection:
-                      Node not created: <reason and what to do next>
+                    Failures, all `Node not created: <reason and what to do next>`: no active \
+                    group (failure, NO_ACTIVE_GROUP); plan change rejected (failure, REQUEST_REJECTED).
                     """,
             errorsAndEdgeCases =
                     """
-                    - Duplicate `nodeId` -> rejected; choose a unique id.
-                    - `dependsOn` references an unknown or retired (stale) node -> rejected naming \
-                    the id; create dependencies first.
-                    - Blank `nodeId`, `description`, or `skillset` -> rejected.
+                    - Duplicate `nodeId` (failure, REQUEST_REJECTED) -> choose a unique id.
+                    - `dependsOn` referencing an unknown or retired (stale) node (failure, \
+                    REQUEST_REJECTED) -> the failure names the id; create dependencies first.
+                    - Blank `nodeId`, `description`, or `skillset` (failure, REQUEST_REJECTED).
+                    - No active group in your context (failure, NO_ACTIVE_GROUP).
                     """,
             security = "Only the group coordinator can change the task plan.",
             examples = {
@@ -121,8 +122,7 @@ public final class DagTools {
                         @NonNull String skillset,
                 @SecurityHint(ParamCategory.GENERIC)
                         @Doc(
-                                "Ids of existing nodes that must verify before this one dispatches; "
-                                        + "omit for a root node.")
+                                "Ids of existing nodes that must verify before this one dispatches; omit for a root node.")
                         List<String> dependsOn,
                 @SecurityHint(ParamCategory.GENERIC)
                         @Doc(
@@ -153,6 +153,7 @@ public final class DagTools {
                 @NonNull Args args, @NonNull GroupControlCapability capability) {
             if (capability.snapshot() == null)
                 return ToolErrors.failure(
+                        ToolErrorCode.GROUP.NO_ACTIVE_GROUP,
                         "Node not created: no active group in your context. create_node is a Leader tool inside a group.");
             String nodeId = args.nodeId().strip();
             String description = args.description().strip();
@@ -171,7 +172,8 @@ public final class DagTools {
                             args.mateId(),
                             Boolean.TRUE.equals(args.newMate()));
             if (edit instanceof NodeEdit.Rejected r) {
-                return ToolErrors.failure("Node not created: " + r.reason());
+                return ToolErrors.failure(
+                        ToolErrorCode.GROUP.REQUEST_REJECTED, "Node not created: " + r.reason());
             }
             if (deps.isEmpty()) {
                 return "Node created: "
@@ -195,8 +197,7 @@ public final class DagTools {
     @ToolDoc(
             resultFormats = {ToolResultFormat.PLAINTEXT},
             description =
-                    "Retire a node from your group's plan - re-planning marks it stale "
-                            + "rather than deleting it.",
+                    "Retire a node from your group's plan - re-planning marks it stale rather than deleting it.",
             behavior =
                     """
                     Marks the node STALE and keeps it in the plan record for audit. New nodes cannot \
@@ -222,12 +223,12 @@ public final class DagTools {
                     """
                     On success:
                       Node removed: node-2 (marked stale).
-                    On refusal:
-                      Node not removed: node-3 depends on node-1. Remove or re-plan it first.
+                    Failures, all `Node not removed: <reason and what to do next>`: no active \
+                    group (failure, NO_ACTIVE_GROUP); removal refused (failure, REQUEST_REJECTED).
                     """,
             errorsAndEdgeCases =
                     """
-                    - Unknown `nodeId` -> `Node not removed: node not found: <id>`.
+                    - Unknown `nodeId` (failure, REQUEST_REJECTED): `Node not removed: node not found: <id>`.
                     - Live dependents exist -> refused, naming the dependents.
                     - Already stale or COMPLETED -> not removed; completed work remains checkpointed.
                     - RUNNING -> refused; removing a node is not cancellation.
@@ -275,11 +276,13 @@ public final class DagTools {
                 @NonNull Args args, @NonNull GroupControlCapability capability) {
             if (capability.snapshot() == null)
                 return ToolErrors.failure(
+                        ToolErrorCode.GROUP.NO_ACTIVE_GROUP,
                         "Node not removed: no active group in your context. remove_node is a Leader tool inside a group.");
             String nodeId = args.nodeId().strip();
             NodeEdit edit = capability.removeNode(nodeId);
             if (edit instanceof NodeEdit.Rejected r) {
-                return ToolErrors.failure("Node not removed: " + r.reason());
+                return ToolErrors.failure(
+                        ToolErrorCode.GROUP.REQUEST_REJECTED, "Node not removed: " + r.reason());
             }
             return "Node removed: " + nodeId + " (marked stale).";
         }

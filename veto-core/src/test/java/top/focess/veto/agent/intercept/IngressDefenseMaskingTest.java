@@ -38,8 +38,7 @@ class IngressDefenseMaskingTest {
                         new ViewFileTool(new ProtectedWorkspaceReadCapabilityImpl(candidates)));
         var fileCall = new ToolCall("view_file", Map.of("absolutePath", "/fixture"), "file-call");
         var fileResult =
-                new ToolResult(
-                        "view_file", "file-call", true, captured + "\npassword=extra-secret");
+                ToolResult.success("view_file", "file-call", captured + "\npassword=extra-secret");
         LlamaCppBridge bridge = mock(ToolDocs.nonNullClass(LlamaCppBridge.class));
         when(bridge.isAvailable()).thenReturn(true);
         when(bridge.infer(anyString(), anyString()))
@@ -107,7 +106,7 @@ class IngressDefenseMaskingTest {
     }
 
     private static @NonNull ToolResult result(@NonNull String content) {
-        return new ToolResult("read_file", "c1", true, content);
+        return ToolResult.success("read_file", "c1", content);
     }
 
     private static @NonNull ToolCall call() {

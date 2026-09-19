@@ -36,34 +36,40 @@ import top.focess.veto.agent.tool.WorkspaceWriteTool;
 @ToolDoc(
         resultFormats = {ToolResultFormat.JSON},
         description =
-                "Delete one authorized file, link, or directory with explicit recursive"
-                        + " intent.",
+                "Delete one authorized file, link, or directory with explicit recursive intent.",
         behavior =
-                "Deletes a file or link directly. An empty directory can be deleted with"
-                        + " recursive=false; a non-empty directory requires recursive=true."
-                        + " Recursive deletion performs a bounded no-follow identity snapshot and"
-                        + " then deletes unchanged children before parents. It is not transactional"
-                        + " and has no rollback.",
+                """
+                Deletes a file or link directly. An empty directory can be deleted with \
+                recursive=false; a non-empty directory requires recursive=true. Recursive deletion \
+                performs a bounded no-follow identity snapshot and then deletes unchanged children \
+                before parents. It is not transactional and has no rollback.""",
         whenToUse =
-                "Use it only when the exact requested path must be removed; inspect an"
-                        + " uncertain target first with list_dir, find_files, or view_file.",
+                """
+                Use it only when the exact requested path must be removed; inspect an uncertain \
+                target first with list_dir, find_files, or view_file.""",
         whenNotToUse =
-                "Do not use it to clear generated output when a narrower build-tool cleanup is"
-                        + " available. Do not use recursive=true speculatively.",
+                """
+                Do not use it to clear generated output when a narrower build-tool cleanup is \
+                available. Do not use recursive=true speculatively.""",
         resultContract =
-                "Success returns JSON with `status`, requested `path`, `kind` (`file`,"
-                        + " `directory`, or `symbolic_link`), and `entriesDeleted`. In"
-                        + " detailed-result mode, failures use PATH_NOT_FOUND, DIRECTORY_NOT_EMPTY,"
-                        + " DELETE_LIMIT_EXCEEDED, TREE_CHANGED, or IO_ERROR; protected paths are"
-                        + " refused with PATH_PROTECTED or"
-                        + " DESCENDANT_REFUSED. Failure content is actionable plaintext in every"
-                        + " mode.",
+                """
+                Success returns JSON with `status`, requested `path`, `kind` (`file`, `directory`, \
+                or `symbolic_link`), and `entriesDeleted`. In detailed-result mode, failures use \
+                PATH_NOT_FOUND (`Path not found: <absolutePath>`), DIRECTORY_NOT_EMPTY \
+                (`Directory not empty: the directory is not empty; recursive=true is required.`), \
+                DELETE_LIMIT_EXCEEDED \
+                (`Delete limit exceeded: directory preflight exceeded its safety limit.`), \
+                TREE_CHANGED (`Tree changed: the directory changed during deletion after <n> \
+                entries were deleted.`), or IO_ERROR \
+                (`I/O error: deletion stopped after <n> entries while deleting <absolutePath>.`); \
+                protected paths are refused with PATH_PROTECTED or DESCENDANT_REFUSED. Failure \
+                content is actionable plaintext in every mode.""",
         errorsAndEdgeCases =
-                "Links and Windows reparse points are deleted as links and never traversed."
-                        + " Recursive preflight is limited to 50000 entries or 10 seconds. If the"
-                        + " tree changes after preflight, deletion stops and reports TREE_CHANGED"
-                        + " with the number already deleted in its message. Earlier deletions cannot"
-                        + " be rolled back.",
+                """
+                Links and Windows reparse points are deleted as links and never traversed. \
+                Recursive preflight is limited to 50000 entries or 10 seconds. If the tree changes \
+                after preflight, deletion stops and reports TREE_CHANGED with the number already \
+                deleted in its message. Earlier deletions cannot be rolled back.""",
         security =
                 "Deletion is irreversible and not transactional; entries already deleted cannot be rolled back. Verify the target and recursive flag before calling.",
         examples = {
@@ -118,8 +124,9 @@ public final class DeletePathTool implements WorkspaceWriteTool<DeletePathTool.A
                             || Duration.between(started, Instant.now()).compareTo(MAX_DURATION)
                                     > 0) {
                         return ToolErrors.failure(
-                                ToolErrorCode.DELETE_LIMIT_EXCEEDED,
-                                "Directory preflight exceeded its safety limit.");
+                                ToolErrorCode.WORKSPACE.DELETE_LIMIT_EXCEEDED,
+                                "Delete limit exceeded: directory preflight exceeded its safety"
+                                        + " limit.");
                     }
                 }
             }
@@ -140,21 +147,34 @@ public final class DeletePathTool implements WorkspaceWriteTool<DeletePathTool.A
         } catch (DirectoryNotEmptyException e) {
             if (args.recursive())
                 return ToolErrors.failure(
-                        ToolErrorCode.TREE_CHANGED,
-                        "Directory changed during deletion after "
+                        ToolErrorCode.WORKSPACE.TREE_CHANGED,
+                        "Tree changed: the directory changed during deletion after "
                                 + deleted
                                 + " entries were deleted.");
             return ToolErrors.failure(
-                    ToolErrorCode.DIRECTORY_NOT_EMPTY,
-                    "Directory is not empty; recursive=true is required.");
+                    ToolErrorCode.WORKSPACE.DIRECTORY_NOT_EMPTY,
+                    "Directory not empty: the directory is not empty; recursive=true is required.");
         } catch (NoSuchFileException e) {
+            if (deleted == 0) {
+                return ToolErrors.failure(
+                        ToolErrorCode.WORKSPACE.PATH_NOT_FOUND,
+                        "Path not found: " + args.absolutePath());
+            }
             return ToolErrors.failure(
-                    deleted == 0 ? ToolErrorCode.PATH_NOT_FOUND : ToolErrorCode.TREE_CHANGED,
-                    "Path not found: " + args.absolutePath());
+                    ToolErrorCode.WORKSPACE.TREE_CHANGED,
+                    "Tree changed: "
+                            + args.absolutePath()
+                            + " disappeared after "
+                            + deleted
+                            + " entries were deleted.");
         } catch (IOException e) {
             return ToolErrors.failure(
-                    ToolErrorCode.IO_ERROR,
-                    "Deletion stopped after " + deleted + " entries: " + args.absolutePath());
+                    ToolErrorCode.WORKSPACE.IO_ERROR,
+                    "I/O error: deletion stopped after "
+                            + deleted
+                            + " entries while deleting "
+                            + args.absolutePath()
+                            + ".");
         }
     }
 }

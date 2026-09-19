@@ -145,7 +145,7 @@ class AgentRunnerTest {
                             ToolCall call = invocation.getArgument(0);
                             if (call == null) throw new AssertionError("Missing call");
                             executed.add(call.toolName());
-                            return new ToolResult(call.toolName(), call.callId(), true, "done");
+                            return ToolResult.success(call.toolName(), call.callId(), "done");
                         });
         List<VetoRequest> requests = new CopyOnWriteArrayList<>();
         var service =

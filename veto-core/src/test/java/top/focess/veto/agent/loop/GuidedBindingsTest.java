@@ -63,7 +63,7 @@ class GuidedBindingsTest {
                 resolved.get("commands"));
         scope.bindTool(
                 Map.of("items", "matches", "ok", "success"),
-                new ToolResult("find_files", "id", true, "{\"matches\":[\"$literal\",\"b\"]}"));
+                ToolResult.success("find_files", "id", "{\"matches\":[\"$literal\",\"b\"]}"));
         assertEquals(List.of("$literal", "b"), scope.get("items"));
         assertEquals(true, scope.get("ok"));
         var generate =
@@ -122,7 +122,7 @@ class GuidedBindingsTest {
         Scope scope = new Scope(mapper);
         assertThrows(
                 ToolDocs.nonNullClass(IllegalArgumentException.class),
-                () -> scope.bindTool(Map.of("x", "absent"), new ToolResult("t", "id", true, "{}")));
+                () -> scope.bindTool(Map.of("x", "absent"), ToolResult.success("t", "id", "{}")));
     }
 
     @Test

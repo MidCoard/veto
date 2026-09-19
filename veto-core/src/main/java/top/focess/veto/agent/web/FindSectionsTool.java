@@ -20,7 +20,7 @@ import top.focess.veto.agent.tool.WebDocumentTool;
                 "After fetch_page, locate relevant sections beyond the initial outline before reading their text.",
         whenNotToUse = "Do not use for another URL, workspace resources, or unrelated operations.",
         resultContract =
-                "JSON array of matching entries with id and section. An empty array means no keyword match, not that the answer is absent.",
+                "JSON array of matching entries with id and section. An empty array means no keyword match, not that the answer is absent. Failures are plaintext: `Invalid arguments: use a non-blank keyword of at most 200 characters.` (INVALID_ARGUMENTS) or `Document not fetched: fetch the page first with fetch_page.` (READER_DOCUMENT).",
         errorsAndEdgeCases =
                 "Fetch first. Query must contain 1 to 200 characters and not be blank. Narrow broad queries or try alternative terms; matching IDs are not yet eligible evidence.",
         security =
@@ -30,7 +30,7 @@ import top.focess.veto.agent.tool.WebDocumentTool;
             "[{\"id\":\"s1\",\"section\":\"Timeout\"}]",
             "[{\"id\":\"s4\",\"section\":\"Rate limits\"},{\"id\":\"s7\",\"section\":\"Errors\"}]",
             "[]",
-            "Tool execution failed: Use a non-blank keyword of at most 200 characters."
+            "Invalid arguments: use a non-blank keyword of at most 200 characters."
         },
         examples = {
             "{\"query\":\"timeout\"}",

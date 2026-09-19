@@ -19,7 +19,7 @@ import top.focess.veto.agent.tool.*;
         whenNotToUse =
                 "Reply directly in text for answers without verified conversation references. Ordinary external URLs do not require this tool. A plain blockquote or a handwritten citation marker does not create source metadata.",
         resultContract =
-                "Success: JSON {\"status\":\"accepted\"}; the submitted answer is published with verified source links. Failure returns a diagnostic, publishes no answer, and keeps the conversation active so you can correct the source reference or answer without a citation.",
+                "Success: JSON {\"status\":\"accepted\"}; the submitted answer is published with verified source links. Failure (INVALID_CITATION) returns `Citation rejected: <detail>` as plaintext, publishes no answer, and keeps the conversation active so you can correct the source reference or answer without a citation.",
         errorsAndEdgeCases =
                 "Use [label](cite:id) links in message and declare each id once; every declaration must have a link and every link must have a declaration. Both citations and each sources value are nonempty arrays, even for one item. Omit message_index normally: do not count messages. Identical complete results from the same tool and arguments retain all repeated occurrences as sources. Otherwise, use a longer unique quote or select a message_index from the returned candidates. Copy punctuation and whitespace verbatim. Each citation supports 1-8 passages, each up to 4000 characters; at most 32 citations. References attach to this answer; no memory write or file creation is needed.",
         security =

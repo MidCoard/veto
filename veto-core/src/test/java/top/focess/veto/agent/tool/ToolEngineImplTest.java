@@ -249,7 +249,7 @@ class ToolEngineImplTest {
         ToolResult result = executeJsonOutput("{\"data\":\"" + "x".repeat(1_000_000) + "\"}");
         assertFalse(result.success());
         assertEquals(ToolResultFormat.PLAINTEXT, result.format());
-        assertEquals(ToolErrorCode.TOOL_RESULT_TOO_LARGE, result.errorCode());
+        assertEquals(ToolErrorCode.RESULT.TOOL_RESULT_TOO_LARGE, result.errorCode());
         assertTrue(result.content().length() < 1_000);
     }
 
@@ -326,7 +326,7 @@ class ToolEngineImplTest {
         @Override
         public @NonNull String execute(
                 @NonNull FailingAgentArgs args, @NonNull LoopControlCapability capability) {
-            return ToolErrors.failure(args.reason());
+            return ToolErrors.failure(ToolErrorCode.GENERIC.TOOL_FAILURE, args.reason());
         }
     }
 

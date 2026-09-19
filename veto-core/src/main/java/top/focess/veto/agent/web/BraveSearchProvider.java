@@ -51,7 +51,7 @@ public class BraveSearchProvider implements SearchProvider {
                             + " veto.websearch.provider to duckduckgo (keyless).");
         }
         if (query.isBlank() || query.strip().length() < 2) {
-            throw new IllegalArgumentException("web_search query must be at least 2 characters");
+            throw new IllegalArgumentException("query must be at least 2 characters");
         }
         int cap = options.maxResults() > 0 ? options.maxResults() : 10;
         String url =

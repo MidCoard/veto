@@ -71,7 +71,7 @@ class PersonaToolWhitelistTest {
             @Override
             public @NonNull ToolResult execute(
                     @NonNull ToolCall call, @NonNull ToolDefinition def) {
-                return new ToolResult(call.toolName(), call.callId(), true, "");
+                return ToolResult.success(call.toolName(), call.callId(), "");
             }
         };
     }

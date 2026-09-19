@@ -31,6 +31,7 @@ import top.focess.veto.agent.tool.ToolCapability;
 import top.focess.veto.agent.tool.ToolDefinition;
 import top.focess.veto.agent.tool.ToolDocs;
 import top.focess.veto.agent.tool.ToolEngine;
+import top.focess.veto.agent.tool.ToolErrorCode;
 import top.focess.veto.agent.tool.ToolResult;
 import top.focess.veto.agent.translation.DefaultCapabilityTranslator;
 import top.focess.veto.agent.workspace.PathMode;
@@ -667,7 +668,7 @@ class AgentEndToEndTest {
         public @NonNull ToolResult execute(@NonNull ToolCall call, @NonNull ToolDefinition tool) {
             assertEquals("calc", call.toolName());
             assertEquals(Map.of("expr", "2+2"), call.args());
-            return new ToolResult(call.toolName(), call.callId(), true, "4");
+            return ToolResult.success(call.toolName(), call.callId(), "4");
         }
     }
 
@@ -756,9 +757,13 @@ class AgentEndToEndTest {
                     ToolCallContextHolder.requestResponse(
                             new top.focess.veto.agent.loop.ResponseRequest.Plan(
                                     new ObjectMapper().valueToTree(actions)));
-                    return new ToolResult(call.toolName(), call.callId(), true, "accepted");
+                    return ToolResult.success(call.toolName(), call.callId(), "accepted");
                 } catch (Exception e) {
-                    return new ToolResult(call.toolName(), call.callId(), false, e.toString());
+                    return ToolResult.failure(
+                            call.toolName(),
+                            call.callId(),
+                            e.toString(),
+                            ToolErrorCode.GENERIC.TOOL_FAILURE);
                 }
             }
             executed.add(call.toolName());
@@ -771,14 +776,18 @@ class AgentEndToEndTest {
                                 leaderTools);
                 lastDirective = directive;
                 ToolCallContextHolder.requestTransform(directive);
-                return new ToolResult(call.toolName(), call.callId(), true, "");
+                return ToolResult.success(call.toolName(), call.callId(), "");
             }
             if ("disband_group".equals(call.toolName())) {
                 ToolCallContextHolder.requestReverseTransform(
                         "Delegation complete: feature shipped.");
-                return new ToolResult(call.toolName(), call.callId(), true, "");
+                return ToolResult.success(call.toolName(), call.callId(), "");
             }
-            return new ToolResult(call.toolName(), call.callId(), false, "unknown tool");
+            return ToolResult.failure(
+                    call.toolName(),
+                    call.callId(),
+                    "unknown tool",
+                    ToolErrorCode.GENERIC.TOOL_FAILURE);
         }
     }
 

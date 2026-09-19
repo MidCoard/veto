@@ -107,7 +107,7 @@ class NewRequirementsTest {
         @Override
         public @NonNull ToolResult execute(@NonNull ToolCall call, @NonNull ToolDefinition def) {
             executed.add(call.callId());
-            return new ToolResult(call.toolName(), call.callId(), true, "success");
+            return ToolResult.success(call.toolName(), call.callId(), "success");
         }
     }
 

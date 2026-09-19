@@ -661,14 +661,16 @@ class SystemPromptDumpTest {
             @NonNull String toolName, @NonNull String entry) {
         String diagnostic =
                 switch (toolName) {
-                    case "forget" -> "memory not found or not owned; nothing forgotten";
-                    case "grep_search" -> "Search path does not exist: <absolutePath>";
+                    case "forget" ->
+                            "Memory not found: the memory does not exist or is not owned; nothing forgotten.";
+                    case "grep_search" -> "Path not found: <absolutePath>";
                     case "list_dir" -> "Not a directory: <absolutePath>";
                     case "replace_file_content", "view_file" ->
                             "Not a regular file: <absolutePath>";
-                    case "stop_task", "view_task" -> "task not found: <taskId>";
+                    case "stop_task", "view_task" -> "Task not found: <taskId>";
                     case "web_search" -> "(no results)";
-                    case "write_to_file" -> "File exists and overwrite=false: <absolutePath>";
+                    case "write_to_file" ->
+                            "Already exists: <absolutePath> exists and overwrite is false.";
                     default -> null;
                 };
         if (diagnostic != null) {

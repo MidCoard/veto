@@ -59,7 +59,7 @@ public class DuckDuckGoSearchProvider implements SearchProvider {
     public @NonNull List<SearchResult> search(@NonNull String query, @NonNull SearchOptions options)
             throws Exception {
         if (query.isBlank() || query.strip().length() < 2) {
-            throw new IllegalArgumentException("web_search query must be at least 2 characters");
+            throw new IllegalArgumentException("query must be at least 2 characters");
         }
         String url = ENDPOINT + URLEncoder.encode(query.strip(), StandardCharsets.UTF_8);
         HttpRequest request =

@@ -82,6 +82,8 @@ import top.focess.veto.agent.tool.ToolEngine;
 import top.focess.veto.agent.tool.ToolErrorCode;
 import top.focess.veto.agent.tool.ToolExecutionException;
 import top.focess.veto.agent.tool.ToolResult;
+import top.focess.veto.agent.tool.ToolResultFormat;
+import top.focess.veto.agent.tool.ToolResultStatus;
 import top.focess.veto.bus.DeltaBroker;
 import top.focess.veto.bus.DeltaFrame;
 import top.focess.veto.i18n.Msg;
@@ -1203,9 +1205,9 @@ public class AgentRunner {
                 return new ToolCallContextHolder.ResponseDirective.Plan(program);
             } catch (IllegalArgumentException | ProgramValidator.InvalidProgramException error) {
                 throw new ToolExecutionException(
-                        top.focess.veto.agent.tool.ToolResultStatus.FAILURE,
-                        top.focess.veto.agent.tool.ToolResultFormat.PLAINTEXT,
-                        ToolErrorCode.INVALID_PLAN,
+                        ToolResultStatus.FAILURE,
+                        ToolResultFormat.PLAINTEXT,
+                        ToolErrorCode.VALIDATION.INVALID_PLAN,
                         "Plan rejected before execution: " + error.getMessage());
             }
         }
@@ -1232,9 +1234,9 @@ public class AgentRunner {
             return new ToolCallContextHolder.ResponseDirective.Answer(response, bound);
         } catch (IllegalArgumentException | ModelSchemaException error) {
             throw new ToolExecutionException(
-                    top.focess.veto.agent.tool.ToolResultStatus.FAILURE,
-                    top.focess.veto.agent.tool.ToolResultFormat.PLAINTEXT,
-                    ToolErrorCode.INVALID_CITATION,
+                    ToolResultStatus.FAILURE,
+                    ToolResultFormat.PLAINTEXT,
+                    ToolErrorCode.VALIDATION.INVALID_CITATION,
                     "Citation rejected: " + error.getMessage());
         }
     }
@@ -2220,14 +2222,24 @@ public class AgentRunner {
             String observation =
                     "Filesystem target changed after screening; submit a fresh tool call";
             appendToolResponse(call.toolName(), call.callId(), observation, false);
-            return new ToolResult(call.toolName(), call.callId(), false, observation);
+            return new ToolResult(
+                    call.toolName(),
+                    call.callId(),
+                    ToolResultStatus.FAILURE,
+                    ToolResultFormat.PLAINTEXT,
+                    observation,
+                    ToolErrorCode.WORKSPACE.TREE_CHANGED);
         }
 
         // (c) plugin preAction chain
         for (LoopInterceptor plugin : interceptors) {
             if (!plugin.preAction(agentId, call)) {
                 appendObservation(call.toolName(), "Blocked by plugin.");
-                return new ToolResult(call.toolName(), call.callId(), false, "blocked by plugin");
+                return ToolResult.failure(
+                        call.toolName(),
+                        call.callId(),
+                        "blocked by plugin",
+                        ToolErrorCode.POLICY.CALL_BLOCKED);
             }
         }
 
@@ -2350,8 +2362,11 @@ public class AgentRunner {
             if (decision instanceof ApprovalDecision.AutoBlock ab) {
                 appendToolCall(call);
                 appendObservation(call.toolName(), "Blocked: " + ab.reason());
-                return new ToolResult(
-                        call.toolName(), call.callId(), false, "blocked: " + ab.reason());
+                return ToolResult.failure(
+                        call.toolName(),
+                        call.callId(),
+                        "blocked: " + ab.reason(),
+                        ToolErrorCode.POLICY.CALL_BLOCKED);
             }
             if (decision instanceof ApprovalDecision.Refused r) {
                 appendToolCall(call);
@@ -2382,7 +2397,8 @@ public class AgentRunner {
         String observation = "Tool not found: " + call.toolName();
         appendToolCall(call);
         appendObservation(call.toolName(), observation);
-        return new ToolResult(call.toolName(), call.callId(), false, observation);
+        return ToolResult.failure(
+                call.toolName(), call.callId(), observation, ToolErrorCode.VALIDATION.UNKNOWN_TOOL);
     }
 
     /**
@@ -2762,7 +2778,11 @@ public class AgentRunner {
 
     private void appendToolResponse(
             @NonNull String toolName, String callId, @NonNull String content, boolean success) {
-        appendToolResponse(new ToolResult(toolName, callId, success, content));
+        appendToolResponse(
+                success
+                        ? ToolResult.success(toolName, callId, content)
+                        : ToolResult.failure(
+                                toolName, callId, content, ToolErrorCode.GENERIC.TOOL_FAILURE));
     }
 
     /** Persists exactly the representation that this session presents to the model. */

@@ -17,6 +17,7 @@ import top.focess.veto.agent.tool.SecurityHint;
 import top.focess.veto.agent.tool.ToolCallContext;
 import top.focess.veto.agent.tool.ToolDoc;
 import top.focess.veto.agent.tool.ToolDocs;
+import top.focess.veto.agent.tool.ToolErrorCode;
 import top.focess.veto.agent.tool.ToolErrors;
 import top.focess.veto.agent.tool.ToolResultFormat;
 
@@ -51,8 +52,18 @@ public final class GroupTools {
             whenNotToUse =
                     "Unless the user explicitly requests collaborators, prefer direct execution for small or tightly coupled work.",
             resultContract =
-                    "Success returns empty text. Refusal returns: Group not created: <reason and what to do next>.",
-            errorsAndEdgeCases = "A blank task is refused; supply a concise, concrete brief.",
+                    """
+                    Success returns empty text. Failures:
+                    - Blank brief (failure, INVALID_ARGUMENTS): `Group not created: blank brief. \
+                    Pass a real description of the work.`
+                    - No session (failure, NO_SESSION_CONTEXT): `Group not created: no authenticated \
+                    session owner is available.`
+                    """,
+            errorsAndEdgeCases =
+                    """
+                    A blank brief and a missing authenticated session owner are the only creation \
+                    failures; both leave the group uncreated.
+                    """,
             security =
                     "Delegation remains within the user's authorized task and workspace boundaries.",
             examples = {
@@ -101,6 +112,7 @@ public final class GroupTools {
             String task = args.task().strip();
             if (task.isBlank())
                 return ToolErrors.failure(
+                        ToolErrorCode.VALIDATION.INVALID_ARGUMENTS,
                         "Group not created: blank brief. Pass a real description of the work.");
             capability.createGroup(task);
             return "";
@@ -133,12 +145,13 @@ public final class GroupTools {
             resultContract =
                     """
                     On success - empty; you continue in standalone operation with the outcome brief.
-                    On refusal:
-                      Group not disbanded: <reason and what to do next>
+                    Failure (failure, NO_ACTIVE_GROUP): `Group not disbanded: no active group in \
+                    your context. disband_group is a Leader tool inside a group.`
                     """,
             errorsAndEdgeCases =
                     """
-                    Mates still RUNNING -> the disband proceeds and their in-flight work may be lost.
+                    Mates still RUNNING -> the disband proceeds and their in-flight work may be lost. \
+                    Calling without an active group fails (failure, NO_ACTIVE_GROUP).
                     """,
             security =
                     """
@@ -177,6 +190,7 @@ public final class GroupTools {
             GroupSnapshot group = capability.snapshot();
             if (group == null) {
                 return ToolErrors.failure(
+                        ToolErrorCode.GROUP.NO_ACTIVE_GROUP,
                         "Group not disbanded: no active group in your context. disband_group is "
                                 + "a Leader tool inside a group.");
             }
@@ -218,8 +232,10 @@ public final class GroupTools {
                     """
                     On success - a plaintext snapshot with group state, node lines, zero or more new \
                     message lines, and `nextSinceSeq: <number>`.
-                    On refusal:
-                      Group not inspected: <reason and what to do next>
+                    Failures, all `Group not inspected: <reason and what to do next>`: \
+                    no active group (failure, NO_ACTIVE_GROUP); negative `sinceSeq` (failure, \
+                    INVALID_ARGUMENTS); interrupted wait (failure, TOOL_INTERRUPTED); group record \
+                    disappeared mid-wait (failure, RECORD_GONE).
                     """,
             errorsAndEdgeCases =
                     """
@@ -281,13 +297,16 @@ public final class GroupTools {
             GroupSnapshot initial = capability.snapshot();
             if (initial == null) {
                 return ToolErrors.failure(
+                        ToolErrorCode.GROUP.NO_ACTIVE_GROUP,
                         "Group not inspected: no active group in your context. inspect_group is a "
                                 + "Leader tool inside a group.");
             }
             Long requestedSince = args.sinceSeq();
             long since = requestedSince == null ? 0 : requestedSince;
             if (since < 0) {
-                return ToolErrors.failure("Group not inspected: sinceSeq must be non-negative.");
+                return ToolErrors.failure(
+                        ToolErrorCode.VALIDATION.INVALID_ARGUMENTS,
+                        "Group not inspected: sinceSeq must be non-negative.");
             }
             Integer requestedWait = args.waitSeconds();
             int waitSeconds = requestedWait == null ? 0 : requestedWait;
@@ -296,11 +315,15 @@ public final class GroupTools {
                 capability.awaitChange(since, initial.state(), waitSeconds);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-                return ToolErrors.failure("Group not inspected: wait interrupted.");
+                return ToolErrors.failure(
+                        ToolErrorCode.LIFECYCLE.TOOL_INTERRUPTED,
+                        "Group not inspected: wait interrupted.");
             }
             var inspection = capability.inspect(since);
             if (inspection == null)
-                return ToolErrors.failure("Group not inspected: group record disappeared.");
+                return ToolErrors.failure(
+                        ToolErrorCode.GROUP.RECORD_GONE,
+                        "Group not inspected: group record disappeared.");
             return render(inspection.group(), inspection.messages(), since);
         }
     }
@@ -314,7 +337,13 @@ public final class GroupTools {
                     "Record a short status, feedback, artifact reference or log reference for your own coordination.",
             whenNotToUse =
                     "For Mate work, use create_task with mateId. TASK_DISPATCH and ACCEPT are reserved for task execution and completion.",
-            resultContract = "On success: posted. Otherwise: Not posted followed by the reason.",
+            resultContract =
+                    """
+                    On success: `posted`. On failure: `Not posted: <reason>` with code \
+                    `NO_ACTIVE_GROUP` (no active group), `NOT_ACTIVE` (disbanded group), or \
+                    `INVALID_ARGUMENTS` (non-LEADER receiver, reserved type, blank payload, or a \
+                    payload over 4096 characters).
+                    """,
             errorsAndEdgeCases =
                     "Only receiver LEADER is accepted. Disbanded groups, blank payloads and payloads over 4096 characters are rejected.",
             security = "Notes cannot create tasks or mark work completed.",
@@ -374,6 +403,7 @@ public final class GroupTools {
             GroupSnapshot group = capability.snapshot();
             if (group == null) {
                 return ToolErrors.failure(
+                        ToolErrorCode.GROUP.NO_ACTIVE_GROUP,
                         "Not posted: no active group in your context. post_message is a Leader "
                                 + "tool inside a group.");
             }
@@ -385,17 +415,23 @@ public final class GroupTools {
                     || args.type() == BlackboardMessage.MessageType.TASK_DISPATCH
                     || args.type() == BlackboardMessage.MessageType.ACCEPT) {
                 return ToolErrors.failure(
+                        ToolErrorCode.VALIDATION.INVALID_ARGUMENTS,
                         "Not posted: use create_task with mateId for tracked Mate work. post_message only records Leader notes.");
             }
             if (group.state() == Group.GroupState.DISBANDED) {
-                return ToolErrors.failure("Not posted: group is no longer active.");
+                return ToolErrors.failure(
+                        ToolErrorCode.GROUP.NOT_ACTIVE, "Not posted: group is no longer active.");
             }
             String payload = args.payload();
             if (payload.isBlank()) {
-                return ToolErrors.failure("Not posted: payload must not be blank.");
+                return ToolErrors.failure(
+                        ToolErrorCode.VALIDATION.INVALID_ARGUMENTS,
+                        "Not posted: payload must not be blank.");
             }
             if (payload.length() > MAX_PAYLOAD_CHARS) {
-                return ToolErrors.failure("Not posted: payload exceeds 4096 characters.");
+                return ToolErrors.failure(
+                        ToolErrorCode.VALIDATION.INVALID_ARGUMENTS,
+                        "Not posted: payload exceeds 4096 characters.");
             }
             capability.post(receiver, args.type(), payload);
             return "posted";

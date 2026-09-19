@@ -14,6 +14,7 @@ import top.focess.veto.agent.tool.TaskControlTool;
 import top.focess.veto.agent.tool.ToolCapability;
 import top.focess.veto.agent.tool.ToolDoc;
 import top.focess.veto.agent.tool.ToolDocs;
+import top.focess.veto.agent.tool.ToolErrorCode;
 import top.focess.veto.agent.tool.ToolErrors;
 import top.focess.veto.agent.tool.ToolJson;
 import top.focess.veto.agent.tool.ToolResultFormat;
@@ -30,8 +31,7 @@ import top.focess.veto.sandbox.BackgroundTaskManager;
 @ToolDoc(
         resultFormats = {ToolResultFormat.JSON},
         description =
-                "Inspect a background task launched by run_task (status + recent output), or"
-                        + " list every task you own when taskId is omitted.",
+                "Inspect a background task launched by run_task (status + recent output), or list every task you own when taskId is omitted.",
         behavior =
                 """
                 With `taskId`: returns that task's status (alive / exitCode / pid / uptime / \
@@ -60,8 +60,10 @@ import top.focess.veto.sandbox.BackgroundTaskManager;
                 `outputCapture` (merged-stream limitation), and `inputFailures`.
                 - List success: `count` and `tasks`; each task contains only `taskId`, \
                 `command`, `alive`, and optional `exitCode`.
-                - Unknown task (failure): \
-                `task not found: <taskId>`.
+                - Unknown task (failure, TASK_NOT_FOUND): \
+                `Task not found: <taskId>`.
+                - `waitForExit` without `taskId` (failure, INVALID_ARGUMENTS): \
+                `Invalid arguments: waitForExit requires taskId.`
                 """,
         errorsAndEdgeCases =
                 """
@@ -77,21 +79,10 @@ import top.focess.veto.sandbox.BackgroundTaskManager;
             "{\"taskId\": \"bg-99\"}"
         },
         returnExamples = {
-            "{\"count\": 1, \"tasks\": [{\"taskId\": \"bg-3\", \"command\": \"npm run dev\","
-                    + " \"alive\": true}]}",
-            "{\"taskId\": \"bg-3\", \"command\": \"npm run dev\", \"alive\": true, \"pid\": 12345,"
-                    + " \"startedAt\": \"2026-01-01T00:00:00Z\", \"uptimeSeconds\": 42, \"cwd\":"
-                    + " \"/abs/project\", \"recentOutput\": \"VITE ready in 300 ms\","
-                    + " \"outputCapture\": \"recentOutput merges stdout and stderr without stream"
-                    + " labels. Report it as combined output; it cannot establish that either"
-                    + " stream was empty.\", \"inputFailures\": []}",
-            "{\"taskId\": \"bg-3\", \"command\": \"npm run dev\", \"alive\": false, \"exitCode\": 0,"
-                    + " \"pid\": 12345, \"startedAt\": \"2026-01-01T00:00:00Z\", \"uptimeSeconds\":"
-                    + " 184, \"cwd\": \"/abs/project\", \"recentOutput\": \"Server stopped.\","
-                    + " \"outputCapture\": \"recentOutput merges stdout and stderr without stream"
-                    + " labels. Report it as combined output; it cannot establish that either"
-                    + " stream was empty.\", \"inputFailures\": []}",
-            "task not found: bg-99"
+            "{\"count\": 1, \"tasks\": [{\"taskId\": \"bg-3\", \"command\": \"npm run dev\", \"alive\": true}]}",
+            "{\"taskId\": \"bg-3\", \"command\": \"npm run dev\", \"alive\": true, \"pid\": 12345, \"startedAt\": \"2026-01-01T00:00:00Z\", \"uptimeSeconds\": 42, \"cwd\": \"/abs/project\", \"recentOutput\": \"VITE ready in 300 ms\", \"outputCapture\": \"recentOutput merges stdout and stderr without stream labels. Report it as combined output; it cannot establish that either stream was empty.\", \"inputFailures\": []}",
+            "{\"taskId\": \"bg-3\", \"command\": \"npm run dev\", \"alive\": false, \"exitCode\": 0, \"pid\": 12345, \"startedAt\": \"2026-01-01T00:00:00Z\", \"uptimeSeconds\": 184, \"cwd\": \"/abs/project\", \"recentOutput\": \"Server stopped.\", \"outputCapture\": \"recentOutput merges stdout and stderr without stream labels. Report it as combined output; it cannot establish that either stream was empty.\", \"inputFailures\": []}",
+            "Task not found: bg-99"
         })
 public final class ViewTaskTool implements TaskControlTool<ViewTaskTool.Args> {
     private final @NonNull TaskControlCapability capability;
@@ -132,7 +123,9 @@ public final class ViewTaskTool implements TaskControlTool<ViewTaskTool.Args> {
         Map<String, Object> result = new LinkedHashMap<>();
         if (taskId == null || taskId.isBlank()) {
             if (Boolean.TRUE.equals(args.waitForExit()))
-                return ToolErrors.failure("waitForExit requires taskId");
+                return ToolErrors.failure(
+                        ToolErrorCode.VALIDATION.INVALID_ARGUMENTS,
+                        "Invalid arguments: waitForExit requires taskId.");
             var all = capability.list();
             result.put("count", all.size());
             List<Map<String, Object>> tasks = all.stream().map(ViewTaskTool::summary).toList();
@@ -142,7 +135,9 @@ public final class ViewTaskTool implements TaskControlTool<ViewTaskTool.Args> {
                     Boolean.TRUE.equals(args.waitForExit())
                             ? awaitExit(capability, taskId)
                             : capability.status(taskId);
-            if (found.isEmpty()) return ToolErrors.failure("task not found: " + taskId);
+            if (found.isEmpty())
+                return ToolErrors.failure(
+                        ToolErrorCode.TASK.TASK_NOT_FOUND, "Task not found: " + taskId);
             var task = found.get();
             result.putAll(summary(task));
             result.put("pid", task.pid());

@@ -34,12 +34,13 @@ import top.focess.veto.vault.SecretCandidateStore;
         resultFormats = {ToolResultFormat.PLAINTEXT},
         description = "Read lines of a text file from the local filesystem.",
         behavior =
-                "Read UTF-8, replacing detected secrets with session references before selecting lines. "
-                        + "startLine/endLine are inclusive, 1-indexed; omitted bounds mean first/last line. "
-                        + "Bounds clamp to the file; reversed or out-of-file ranges are empty. "
-                        + "The whole input must fit 16 MiB (16,777,216 bytes), even for a line range. "
-                        + "Output stops at 5000 lines or 1000000 characters with "
-                        + "`[truncated; request a narrower line range]`.",
+                """
+                Read UTF-8, replacing detected secrets with session references before selecting lines. \
+                startLine/endLine are inclusive, 1-indexed; omitted bounds mean first/last line. \
+                Bounds clamp to the file; reversed or out-of-file ranges are empty. \
+                The whole input must fit 16 MiB (16,777,216 bytes), even for a line range. \
+                Output stops at 5000 lines or 1000000 characters with \
+                `[truncated; request a narrower line range]`.""",
         whenToUse =
                 "Inspect text or read current source before editing; numbered lines support replace_file_content.",
         whenNotToUse =
@@ -51,10 +52,13 @@ import top.focess.veto.vault.SecretCandidateStore;
                     - Supplied `absolutePath` does not exist or is not a regular file (failure): \
                     `Not a regular file: <absolutePath>`.
                     - Oversized file (failure): \
-                    `File exceeds 16 MiB (16,777,216 bytes); request a smaller artifact`.
+                    `File too large: the file exceeds 16 MiB (16,777,216 bytes); request a smaller artifact.`
                     - Invalid `absolutePath` syntax (failure): `Invalid path: <absolutePath>`.
-                    - Invalid UTF-8 (failure): `File is not valid UTF-8: <absolutePath>`.
-                    - Read failure (failure): `Cannot read file: <absolutePath>`.
+                    - Invalid UTF-8 (failure): `Invalid UTF-8: <absolutePath>`.
+                    - Protected content cannot be processed (failure): \
+                    `Protected content unavailable: the file content could not be processed; retry or adjust \
+                    credential settings.`
+                    - Read failure (failure): `I/O error: cannot read file <absolutePath>.`
                     """,
         errorsAndEdgeCases =
                 """
@@ -63,6 +67,10 @@ import top.focess.veto.vault.SecretCandidateStore;
                     - `startLine` greater than the file length -> no output (range clamped to empty).
                     - `endLine` less than `startLine` -> no output.
                     - Directories, device files, and sockets are rejected as "not a regular file".
+                    - A symbolic-link or reparse-point target fails with UNSAFE_LINK (`Unsafe link: \
+                    symbolic links and reparse points cannot be followed.`); a file that changed after \
+                    authorization fails with TREE_CHANGED (`Tree changed: ...`); a protected target is \
+                    refused with PATH_PROTECTED.
                     """,
         security =
                 "Detected secrets are replaced with session references before lines are returned, so file secrets do not enter the conversation.",
@@ -116,12 +124,14 @@ public final class ViewFileTool implements WorkspaceReadTool<ViewFileTool.Args> 
             WorkspaceFile file = workspace.file(args.absolutePath());
             if (!file.kind().equals("file")) {
                 return ToolErrors.failure(
-                        ToolErrorCode.NOT_A_FILE, "Not a regular file: " + args.absolutePath());
+                        ToolErrorCode.WORKSPACE.NOT_A_FILE,
+                        "Not a regular file: " + args.absolutePath());
             }
             if (file.size() > 16L * 1024 * 1024) {
                 return ToolErrors.failure(
-                        ToolErrorCode.FILE_TOO_LARGE,
-                        "File exceeds 16 MiB (16,777,216 bytes); request a smaller artifact");
+                        ToolErrorCode.WORKSPACE.FILE_TOO_LARGE,
+                        "File too large: the file exceeds 16 MiB (16,777,216 bytes); request a"
+                                + " smaller artifact.");
             }
             Integer start = args.startLine();
             Integer end = args.endLine();
@@ -136,8 +146,9 @@ public final class ViewFileTool implements WorkspaceReadTool<ViewFileTool.Args> 
             }
             if (bytes.length > 16 * 1024 * 1024) {
                 return ToolErrors.failure(
-                        ToolErrorCode.FILE_TOO_LARGE,
-                        "File exceeds 16 MiB (16,777,216 bytes); request a smaller artifact");
+                        ToolErrorCode.WORKSPACE.FILE_TOO_LARGE,
+                        "File too large: the file exceeds 16 MiB (16,777,216 bytes); request a"
+                                + " smaller artifact.");
             }
             String original =
                     StandardCharsets.UTF_8.newDecoder().decode(ByteBuffer.wrap(bytes)).toString();
@@ -146,8 +157,9 @@ public final class ViewFileTool implements WorkspaceReadTool<ViewFileTool.Args> 
                 protectedText = protectedFiles.captureFileText(original);
             } catch (RuntimeException failure) {
                 return ToolErrors.failure(
-                        ToolErrorCode.PROTECTED_INPUT_UNAVAILABLE,
-                        "Protected file content could not be processed; retry or use credential settings");
+                        ToolErrorCode.POLICY.PROTECTED_INPUT_UNAVAILABLE,
+                        "Protected content unavailable: the file content could not be processed;"
+                                + " retry or adjust credential settings.");
             }
             try (var reader = new BufferedReader(new StringReader(protectedText))) {
                 String line;
@@ -168,13 +180,15 @@ public final class ViewFileTool implements WorkspaceReadTool<ViewFileTool.Args> 
             return output.toString();
         } catch (MalformedInputException e) {
             return ToolErrors.failure(
-                    ToolErrorCode.INVALID_UTF8, "File is not valid UTF-8: " + args.absolutePath());
+                    ToolErrorCode.VALIDATION.INVALID_UTF8, "Invalid UTF-8: " + args.absolutePath());
         } catch (NoSuchFileException e) {
             return ToolErrors.failure(
-                    ToolErrorCode.NOT_A_FILE, "Not a regular file: " + args.absolutePath());
+                    ToolErrorCode.WORKSPACE.NOT_A_FILE,
+                    "Not a regular file: " + args.absolutePath());
         } catch (IOException e) {
             return ToolErrors.failure(
-                    ToolErrorCode.IO_ERROR, "Cannot read file: " + args.absolutePath());
+                    ToolErrorCode.WORKSPACE.IO_ERROR,
+                    "I/O error: cannot read file " + args.absolutePath() + ".");
         }
     }
 }

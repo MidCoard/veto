@@ -16,6 +16,7 @@ import top.focess.veto.agent.tool.RequiredWhen;
 import top.focess.veto.agent.tool.SecurityHint;
 import top.focess.veto.agent.tool.ToolDoc;
 import top.focess.veto.agent.tool.ToolDocs;
+import top.focess.veto.agent.tool.ToolErrorCode;
 import top.focess.veto.agent.tool.ToolErrors;
 import top.focess.veto.agent.tool.ToolResultFormat;
 import top.focess.veto.util.Nullness;
@@ -75,8 +76,7 @@ public final class MemoryTools {
     @ToolDoc(
             resultFormats = {ToolResultFormat.PLAINTEXT},
             description =
-                    "Search the current session's captured memory and the user's cross-session "
-                            + "insights together.",
+                    "Search the current session's captured memory and the user's cross-session insights together.",
             behavior =
                     """
                     Embeds `query`, searches both the current session and the user's cross-session \
@@ -101,8 +101,8 @@ public final class MemoryTools {
                     """
                     Plain text beginning `<count> memories:`, followed by bullet entries containing \
                     tier, id, score, source, and a content snippet. No match returns \
-                    `no matching memories`. Missing session context fails with \
-                    `no session context; memories not recalled`.
+                    `no matching memories`. Missing session context (failure, NO_SESSION_CONTEXT): \
+                    `No session context: memories were not recalled.`
                     """,
             errorsAndEdgeCases =
                     """
@@ -169,8 +169,7 @@ public final class MemoryTools {
     @ToolDoc(
             resultFormats = {ToolResultFormat.PLAINTEXT},
             description =
-                    "Write durable cross-session memory, or promote a Session-LTM memory to "
-                            + "cross-session visibility.",
+                    "Write durable cross-session memory, or promote a Session-LTM memory to cross-session visibility.",
             behavior =
                     """
                     Set `mode` to `WRITE` to store `content` as new durable Cross-Session memory, tagged \
@@ -199,14 +198,15 @@ public final class MemoryTools {
                     - Direct-write success: \
                     `memory written: <memory UUID>`.
                     - Promotion success: `promoted: <new memory UUID>`.
-                    - Promotion failure: \
-                    `memory not found or not owned; not promoted`.
-                    - Write failure: \
-                    `no content; memory not written` or \
-                    `memory exceeds 64000 characters; not written` or \
-                    `invalid projectId; memory not written` (the value is not a UUID).
-                    - Mode-field mismatch: `PROMOTE accepts only promoteMemoryId; memory not \
-                    promoted` or `WRITE does not accept promoteMemoryId; memory not written`.
+                    - Promotion failure (failure, NOT_FOUND): \
+                    `Memory not found: the memory does not exist or is not owned; not promoted.`
+                    - Write failures: too-large content (failure, TOO_LARGE): \
+                    `Memory too large: the content exceeds 64000 characters; memory not written.`; \
+                    invalid project id (failure, INVALID_ARGUMENTS): \
+                    `Invalid arguments: projectId must be a UUID; memory not written.`
+                    - Mode-field mismatch (failure, INVALID_ARGUMENTS): \
+                    `Invalid arguments: PROMOTE accepts only promoteMemoryId; memory not promoted.` \
+                    or `Invalid arguments: WRITE does not accept promoteMemoryId; memory not written.`
                     """,
             errorsAndEdgeCases =
                     """
@@ -229,7 +229,7 @@ public final class MemoryTools {
                 "memory written: 123e4567-e89b-12d3-a456-426614174001",
                 "memory written: 123e4567-e89b-12d3-a456-426614174002",
                 "promoted: 123e4567-e89b-12d3-a456-426614174003",
-                "PROMOTE accepts only promoteMemoryId; memory not promoted"
+                "Invalid arguments: PROMOTE accepts only promoteMemoryId; memory not promoted."
             })
     public static final class WriteMemory implements MemoryWriteTool<WriteMemory.Args> {
 
@@ -282,7 +282,8 @@ public final class MemoryTools {
                 if ((requestedContent != null && !requestedContent.isBlank())
                         || (requestedProjectId != null && !requestedProjectId.isBlank())) {
                     return ToolErrors.failure(
-                            "PROMOTE accepts only promoteMemoryId; memory not promoted");
+                            ToolErrorCode.VALIDATION.INVALID_ARGUMENTS,
+                            "Invalid arguments: PROMOTE accepts only promoteMemoryId; memory not promoted.");
                 }
                 String promoteId =
                         Nullness.requireNonNull(
@@ -293,24 +294,33 @@ public final class MemoryTools {
                             capability.promote(new MemoryId(UUID.fromString(promoteId.strip())));
                     return promoted != null
                             ? "promoted: " + promoted.value()
-                            : ToolErrors.failure("memory not found or not owned; not promoted");
+                            : ToolErrors.failure(
+                                    ToolErrorCode.MEMORY.NOT_FOUND,
+                                    "Memory not found: the memory does not exist or is not owned; not promoted.");
                 } catch (IllegalArgumentException e) {
-                    return ToolErrors.failure("memory not found or not owned; not promoted");
+                    return ToolErrors.failure(
+                            ToolErrorCode.MEMORY.NOT_FOUND,
+                            "Memory not found: the memory does not exist or is not owned; not promoted.");
                 }
             }
             if (requestedPromoteId != null && !requestedPromoteId.isBlank()) {
                 return ToolErrors.failure(
-                        "WRITE does not accept promoteMemoryId; memory not written");
+                        ToolErrorCode.VALIDATION.INVALID_ARGUMENTS,
+                        "Invalid arguments: WRITE does not accept promoteMemoryId; memory not written.");
             }
             String content =
                     Nullness.requireNonNull(
                             requestedContent, "RequiredWhen validation must supply content");
             if (content.length() > MAX_MEMORY_CHARS) {
-                return ToolErrors.failure("memory exceeds 64000 characters; not written");
+                return ToolErrors.failure(
+                        ToolErrorCode.MEMORY.TOO_LARGE,
+                        "Memory too large: the content exceeds 64000 characters; memory not written.");
             }
             UUID projectId = parseUuidOrNull(requestedProjectId);
             if (requestedProjectId != null && !requestedProjectId.isBlank() && projectId == null) {
-                return ToolErrors.failure("invalid projectId; memory not written");
+                return ToolErrors.failure(
+                        ToolErrorCode.VALIDATION.INVALID_ARGUMENTS,
+                        "Invalid arguments: projectId must be a UUID; memory not written.");
             }
             MemoryId id = capability.add(content, projectId);
             return "memory written: " + id.value();
@@ -341,8 +351,8 @@ public final class MemoryTools {
             resultContract =
                     """
                     - Success -> `forgotten: <memoryId>`.
-                    - Invalid, unknown, or cross-user id -> failed result: \
-                    `memory not found or not owned; nothing forgotten`.
+                    - Invalid, unknown, or cross-user id (failure, NOT_FOUND): \
+                    `Memory not found: the memory does not exist or is not owned; nothing forgotten.`
                     """,
             errorsAndEdgeCases =
                     """
@@ -359,7 +369,7 @@ public final class MemoryTools {
             returnExamples = {
                 "forgotten: af7730d5-47ab-4e63-b61c-3fda7777b5a0",
                 "forgotten: 123e4567-e89b-12d3-a456-426614174001",
-                "memory not found or not owned; nothing forgotten"
+                "Memory not found: the memory does not exist or is not owned; nothing forgotten."
             })
     public static final class ForgetMemory implements MemoryWriteTool<ForgetMemory.Args> {
 
@@ -393,16 +403,22 @@ public final class MemoryTools {
                 @NonNull Args args, @NonNull MemoryWriteCapability capability) {
             String id = args.memoryId();
             if (id.isBlank()) {
-                return ToolErrors.failure("memory not found or not owned; nothing forgotten");
+                return ToolErrors.failure(
+                        ToolErrorCode.MEMORY.NOT_FOUND,
+                        "Memory not found: the memory does not exist or is not owned; nothing forgotten.");
             }
             try {
                 MemoryId memoryId = new MemoryId(UUID.fromString(id.strip()));
                 boolean forgotten = capability.forget(memoryId);
                 return forgotten
                         ? "forgotten: " + memoryId.value()
-                        : ToolErrors.failure("memory not found or not owned; nothing forgotten");
+                        : ToolErrors.failure(
+                                ToolErrorCode.MEMORY.NOT_FOUND,
+                                "Memory not found: the memory does not exist or is not owned; nothing forgotten.");
             } catch (IllegalArgumentException e) {
-                return ToolErrors.failure("memory not found or not owned; nothing forgotten");
+                return ToolErrors.failure(
+                        ToolErrorCode.MEMORY.NOT_FOUND,
+                        "Memory not found: the memory does not exist or is not owned; nothing forgotten.");
             }
         }
     }

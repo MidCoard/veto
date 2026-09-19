@@ -21,16 +21,31 @@ public record ToolResult(
         @NonNull String content,
         ToolErrorCode errorCode) {
 
-    /** Creates a basic result when the tool has no more specific format or error code. */
-    public ToolResult(
-            @NonNull String toolName, String callId, boolean success, @NonNull String content) {
-        this(
+    /** A successful result with no declared encoding; success carries no error code. */
+    public static @NonNull ToolResult success(
+            @NonNull String toolName, String callId, @NonNull String content) {
+        return new ToolResult(
                 toolName,
                 callId,
-                success ? ToolResultStatus.SUCCESS : ToolResultStatus.FAILURE,
+                ToolResultStatus.SUCCESS,
                 ToolResultFormat.UNKNOWN,
                 content,
-                success ? null : ToolErrorCode.TOOL_FAILURE);
+                null);
+    }
+
+    /** A failed result; failures always carry an explicit error code. */
+    public static @NonNull ToolResult failure(
+            @NonNull String toolName,
+            String callId,
+            @NonNull String content,
+            @NonNull ToolErrorCode errorCode) {
+        return new ToolResult(
+                toolName,
+                callId,
+                ToolResultStatus.FAILURE,
+                ToolResultFormat.UNKNOWN,
+                content,
+                errorCode);
     }
 
     public boolean success() {

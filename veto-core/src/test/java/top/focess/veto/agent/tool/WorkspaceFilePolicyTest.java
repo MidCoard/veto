@@ -82,7 +82,7 @@ class WorkspaceFilePolicyTest {
                 assertThrows(
                         ToolDocs.nonNullClass(ToolExecutionException.class),
                         () -> workspace.file(file.toString()));
-        assertEquals(ToolErrorCode.PATH_PROTECTED, refusal.errorCode());
+        assertEquals(ToolErrorCode.POLICY.PATH_PROTECTED, refusal.errorCode());
         assertThrows(
                 ToolDocs.nonNullClass(SecurityException.class),
                 () -> workspace.file(root.resolve("unapproved.txt").toString()));
@@ -106,7 +106,7 @@ class WorkspaceFilePolicyTest {
                 assertThrows(
                         ToolDocs.nonNullClass(ToolExecutionException.class),
                         () -> workspace.file(directory.toString()));
-        assertEquals(ToolErrorCode.DESCENDANT_REFUSED, refusal.errorCode());
+        assertEquals(ToolErrorCode.POLICY.DESCENDANT_REFUSED, refusal.errorCode());
         assertEquals("keep", Files.readString(ordinary));
         assertEquals("secret", Files.readString(secret));
     }
@@ -122,7 +122,7 @@ class WorkspaceFilePolicyTest {
         Files.writeString(file, "replacement");
         var failure =
                 assertThrows(ToolDocs.nonNullClass(ToolExecutionException.class), handle::openRead);
-        assertEquals(ToolErrorCode.TREE_CHANGED, failure.errorCode());
+        assertEquals(ToolErrorCode.WORKSPACE.TREE_CHANGED, failure.errorCode());
         assertEquals("replacement", Files.readString(file));
     }
 
@@ -141,7 +141,7 @@ class WorkspaceFilePolicyTest {
         Files.writeString(file, "replacement");
         var failure =
                 assertThrows(ToolDocs.nonNullClass(ToolExecutionException.class), output::close);
-        assertEquals(ToolErrorCode.TREE_CHANGED, failure.errorCode());
+        assertEquals(ToolErrorCode.WORKSPACE.TREE_CHANGED, failure.errorCode());
         assertEquals("replacement", Files.readString(file));
         assertEquals("approved", Files.readString(original));
     }

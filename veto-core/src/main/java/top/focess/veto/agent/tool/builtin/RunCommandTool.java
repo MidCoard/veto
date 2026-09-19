@@ -27,8 +27,7 @@ import top.focess.veto.sandbox.CommandResult;
 @ToolDoc(
         resultFormats = {ToolResultFormat.PLAINTEXT},
         description =
-                "Run one or more commands inside the sandbox. The model lists discrete commands; "
-                        + "Veto connects them per `connect`.",
+                "Run one or more commands inside the sandbox. The model lists discrete commands; Veto connects them per `connect`.",
         behavior =
                 """
                 Each `commands` entry is `{executable, args}` where `executable` is a binary name or path \
@@ -66,8 +65,11 @@ import top.focess.veto.sandbox.CommandResult;
                 """
                 Plain text containing stdout, followed by a `[stderr]` section when stderr is present. \
                 A non-zero final command/stage status appends `(exit code: N)` and marks the tool result as \
-                failed. `RUN_ALL` and `PIPE` use the last command/stage as the overall status. Timeout output \
-                contains `[timeout]` and exit code -1. A successful command with no output returns empty text.
+                failed (COMMAND_FAILED). `RUN_ALL` and `PIPE` use the last command/stage as the overall \
+                status. Timeout output contains `[timeout]` and exit code -1. A successful command with \
+                no output returns empty text. Invalid arguments (failure, INVALID_ARGUMENTS): \
+                `Invalid arguments: timeout must be zero or positive.` or \
+                `Invalid arguments: commands must contain at least one command.`
                 """,
         errorsAndEdgeCases =
                 """
@@ -121,8 +123,7 @@ public final class RunCommandTool implements ProcessExecutionTool<RunCommandTool
                     Boolean network,
             @NonNull
                     @Doc(
-                            "Timeout in seconds. 0 selects the configured maximum; larger values are capped"
-                                    + " by that maximum.")
+                            "Timeout in seconds. 0 selects the configured maximum; larger values are capped by that maximum.")
                     Integer timeout) {
 
         /** Compatibility constructor for callers that accept the default deny-network posture. */
@@ -152,9 +153,14 @@ public final class RunCommandTool implements ProcessExecutionTool<RunCommandTool
     @Override
     public @NonNull String execute(
             @NonNull Args args, @NonNull ProcessExecutionCapability capability) {
-        if (args.timeout() < 0) return ToolErrors.failure("timeout must be zero or positive");
+        if (args.timeout() < 0)
+            return ToolErrors.failure(
+                    ToolErrorCode.VALIDATION.INVALID_ARGUMENTS,
+                    "Invalid arguments: timeout must be zero or positive.");
         if (args.commands().isEmpty())
-            return ToolErrors.failure("commands must contain at least one command");
+            return ToolErrors.failure(
+                    ToolErrorCode.VALIDATION.INVALID_ARGUMENTS,
+                    "Invalid arguments: commands must contain at least one command.");
         var commands =
                 args.commands().stream().map(c -> new Command(c.executable(), c.args())).toList();
         ChainMode mode = args.connect();
@@ -169,7 +175,7 @@ public final class RunCommandTool implements ProcessExecutionTool<RunCommandTool
         String content = result.stdout() + (stderr.isEmpty() ? "" : "\n[stderr]\n" + stderr);
         if (!result.success())
             return ToolErrors.failure(
-                    ToolErrorCode.COMMAND_FAILED,
+                    ToolErrorCode.TASK.COMMAND_FAILED,
                     content + "\n(exit code: " + result.exitCode() + ")");
         return content;
     }

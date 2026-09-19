@@ -15,7 +15,7 @@ import top.focess.veto.agent.tool.*;
         whenNotToUse =
                 "No plaintext or arbitrary URLs. Import approval does not authorize this request.",
         resultContract =
-                "JSON with id, private, full_name and optional description/default_branch. Responses are filtered before returning. Errors do not include raw service bodies.",
+                "JSON with id, private, full_name and optional description/default_branch. Responses are filtered before returning. Errors do not include raw service bodies. Failures are plaintext: `Invalid repository: the repository owner or name is invalid.` (INVALID_REPOSITORY), `Credential unavailable: ...` (CREDENTIAL_UNAVAILABLE), `GitHub HTTP error: the repository request returned HTTP <status>.` (GITHUB_HTTP_ERROR), or `Authenticated read failed: the repository information could not be read.` (AUTHENTICATED_READ_FAILED).",
         errorsAndEdgeCases =
                 "Invalid repository names, unavailable or wrong-owner credentials, HTTP errors, timeouts and oversized responses fail safely.",
         security =
@@ -25,7 +25,7 @@ import top.focess.veto.agent.tool.*;
             "{\"id\":12,\"private\":true,\"full_name\":\"example/project\"}",
             "{\"id\":1296269,\"private\":false,\"full_name\":\"octo-cat/hello-world\",\"description\":\"My first repository\",\"default_branch\":\"main\"}",
             "{\"id\":48151623,\"private\":false,\"full_name\":\"upstream-org/shared-library\",\"default_branch\":\"main\"}",
-            "Invalid repository owner or name"
+            "Invalid repository: the repository owner or name is invalid."
         },
         examples = {
             "{\"credentialRef\":\"cred_01234567-89ab-cdef-0123-456789abcdef\",\"repositoryOwner\":\"example\",\"repositoryName\":\"project\"}",

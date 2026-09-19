@@ -89,7 +89,7 @@ class AskUserToolTest {
                         () ->
                                 CapabilityTestCalls.execute(
                                         tool, new AskUserTool.Args(List.of(valid, invalid))));
-        assertEquals(ToolErrorCode.INVALID_QUESTIONS, error.errorCode());
+        assertEquals(ToolErrorCode.VALIDATION.INVALID_QUESTIONS, error.errorCode());
         assertTrue(Nullness.requireNonNull(error.getMessage()).contains("'scope' has 6 options"));
         assertTrue(Nullness.requireNonNull(error.getMessage()).contains("No questions were sent"));
         assertTrue(registry.pendingFor("test-agent").isEmpty());
@@ -210,7 +210,7 @@ class AskUserToolTest {
                             ToolDocs.nonNullClass(ToolExecutionException.class),
                             Nullness.requireNonNull(failure.getCause()));
             assertEquals(ToolResultStatus.CANCELLED, error.status());
-            assertEquals(ToolErrorCode.USER_CANCELLED, error.errorCode());
+            assertEquals(ToolErrorCode.LIFECYCLE.USER_CANCELLED, error.errorCode());
             assertTrue(registry.pendingFor("test-agent").isEmpty());
         } finally {
             executor.shutdownNow();
@@ -247,7 +247,7 @@ class AskUserToolTest {
                             ToolDocs.nonNullClass(ToolExecutionException.class),
                             completed.get(2, TimeUnit.SECONDS));
             assertEquals(ToolResultStatus.CANCELLED, error.status());
-            assertEquals(ToolErrorCode.TOOL_INTERRUPTED, error.errorCode());
+            assertEquals(ToolErrorCode.LIFECYCLE.TOOL_INTERRUPTED, error.errorCode());
             assertTrue(interrupted.get());
             assertEquals(1, registry.pendingFor("test-agent").size());
             assertFalse(other.isDone());
@@ -274,10 +274,10 @@ class AskUserToolTest {
                         () ->
                                 CapabilityTestCalls.execute(
                                         tool, new AskUserTool.Args(List.of(question))));
-        assertEquals(ToolErrorCode.INVALID_QUESTIONS, error.errorCode());
+        assertEquals(ToolErrorCode.VALIDATION.INVALID_QUESTIONS, error.errorCode());
         assertTrue(
                 String.valueOf(error.getMessage())
-                        .contains("Question 'project', option 1: label has 121"));
+                        .contains("question 'project', option 1: label has 121"));
         assertTrue(String.valueOf(error.getMessage()).contains("no questions were sent"));
         assertTrue(registry.pendingFor("test-agent").isEmpty());
     }
@@ -325,7 +325,7 @@ class AskUserToolTest {
                                     () ->
                                             CapabilityTestCalls.execute(
                                                     tool, new AskUserTool.Args(questions)));
-                    assertEquals(ToolErrorCode.INVALID_QUESTIONS, error.errorCode());
+                    assertEquals(ToolErrorCode.VALIDATION.INVALID_QUESTIONS, error.errorCode());
                     assertTrue(registry.pendingFor("test-agent").isEmpty());
                 });
     }

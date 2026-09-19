@@ -59,9 +59,11 @@ import top.focess.veto.agent.tool.WorkspaceWriteTool;
                 `{"status":"ok","file":"<absolutePath>","bytes":<byteCount>}`, where `byteCount` is \
                 the UTF-8 byte length written.
                 - Oversized content (failure, `FILE_TOO_LARGE`): \
-                `Content exceeds 16 MiB (16,777,216 bytes)`.
-                - Existing `absolutePath` with overwrite disabled (failure, `FILE_EXISTS`): \
-                `File exists and overwrite=false: <absolutePath>`.
+                `File too large: the content exceeds 16 MiB (16,777,216 bytes).`
+                - Existing `absolutePath` with overwrite disabled (failure, `ALREADY_EXISTS`): \
+                `Already exists: <absolutePath> exists and overwrite is false.`
+                - Write failure (failure, `IO_ERROR`): \
+                `I/O error: cannot write file <absolutePath>.`
                 """,
         errorsAndEdgeCases =
                 """
@@ -69,7 +71,11 @@ import top.focess.veto.agent.tool.WorkspaceWriteTool;
                 do not count as success.
                 - `codeContent` is written byte-for-byte; an empty string creates an empty file.
                 - Replacing a target may replace its filesystem metadata. Symbolic-link and Windows \
-                reparse-point targets are rejected; the tool does not write through them or replace them.
+                reparse-point targets are rejected (UNSAFE_LINK, \
+                `Unsafe link: symbolic links and reparse points cannot be followed.`); the tool does \
+                not write through them or replace them. A target or ancestor that changed after \
+                authorization fails with TREE_CHANGED (`Tree changed: ...`); a protected target is \
+                refused with PATH_PROTECTED.
                 """,
         security =
                 "With overwrite=true the file's previous contents are lost and cannot be recovered. Do not write secrets into files.",
@@ -85,7 +91,7 @@ import top.focess.veto.agent.tool.WorkspaceWriteTool;
             "{\"status\":\"ok\",\"file\":\"/abs/project/notes/todo.md\",\"bytes\":24}",
             "{\"status\":\"ok\",\"file\":\"/abs/project/src/Main.java\",\"bytes\":80}",
             "{\"status\":\"ok\",\"file\":\"/abs/project/build/marker.txt\",\"bytes\":0}",
-            "File exists and overwrite=false: /abs/project/src/Main.java"
+            "Already exists: /abs/project/src/Main.java exists and overwrite is false."
         })
 public final class WriteToFileTool implements WorkspaceWriteTool<WriteToFileTool.Args> {
     private static final int MAX_TEXT_BYTES = 16 * 1024 * 1024;
@@ -113,7 +119,8 @@ public final class WriteToFileTool implements WorkspaceWriteTool<WriteToFileTool
         byte[] bytes = args.codeContent().getBytes(StandardCharsets.UTF_8);
         if (bytes.length > MAX_TEXT_BYTES) {
             return ToolErrors.failure(
-                    ToolErrorCode.FILE_TOO_LARGE, "Content exceeds 16 MiB (16,777,216 bytes)");
+                    ToolErrorCode.WORKSPACE.FILE_TOO_LARGE,
+                    "File too large: the content exceeds 16 MiB (16,777,216 bytes).");
         }
         try {
             var file = workspace.file(args.absolutePath());
@@ -124,11 +131,12 @@ public final class WriteToFileTool implements WorkspaceWriteTool<WriteToFileTool
                     Map.of("status", "ok", "file", args.absolutePath(), "bytes", bytes.length));
         } catch (FileAlreadyExistsException e) {
             return ToolErrors.failure(
-                    ToolErrorCode.FILE_EXISTS,
-                    "File exists and overwrite=false: " + args.absolutePath());
+                    ToolErrorCode.WORKSPACE.ALREADY_EXISTS,
+                    "Already exists: " + args.absolutePath() + " exists and overwrite is false.");
         } catch (IOException e) {
             return ToolErrors.failure(
-                    ToolErrorCode.IO_ERROR, "Cannot write file: " + args.absolutePath());
+                    ToolErrorCode.WORKSPACE.IO_ERROR,
+                    "I/O error: cannot write file " + args.absolutePath() + ".");
         }
     }
 }

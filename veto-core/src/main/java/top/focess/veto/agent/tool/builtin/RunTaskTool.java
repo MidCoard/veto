@@ -14,6 +14,7 @@ import top.focess.veto.agent.tool.SecurityHint;
 import top.focess.veto.agent.tool.ToolCapability;
 import top.focess.veto.agent.tool.ToolDoc;
 import top.focess.veto.agent.tool.ToolDocs;
+import top.focess.veto.agent.tool.ToolErrorCode;
 import top.focess.veto.agent.tool.ToolErrors;
 import top.focess.veto.agent.tool.ToolJson;
 import top.focess.veto.agent.tool.ToolResultFormat;
@@ -39,8 +40,7 @@ import top.focess.veto.sandbox.Command;
 @ToolDoc(
         resultFormats = {ToolResultFormat.JSON},
         description =
-                "Launch a long-running command as a detached background task (non-blocking). "
-                        + "Returns a taskId immediately; the process keeps running across turns.",
+                "Launch a long-running command as a detached background task (non-blocking). Returns a taskId immediately; the process keeps running across turns.",
         behavior =
                 """
                 Starts `commands[0]` from the session workspace using `run_command` direct-execution rules. \
@@ -72,7 +72,10 @@ import top.focess.veto.sandbox.Command;
                 """
                 A JSON outcome: `{"status":"started","taskId":"bg-3","pid":1234, \
                 "command":"npm run dev","cwd":"...","requestedTimeoutSeconds":0, \
-                "effectiveTimeoutSeconds":600}` plus `nextStep` waiting guidance.
+                "effectiveTimeoutSeconds":600}` plus `nextStep` waiting guidance. Invalid \
+                arguments (failure, INVALID_ARGUMENTS): \
+                `Invalid arguments: timeout must be zero or positive.` or \
+                `Invalid arguments: exactly one command is required (background mode does not chain); got 2.`
                 """,
         errorsAndEdgeCases =
                 """
@@ -90,15 +93,11 @@ import top.focess.veto.sandbox.Command;
             "{\"commands\": [{\"executable\": \"gradle\", \"args\": [\"build\"]}, {\"executable\": \"gradle\", \"args\": [\"test\"]}], \"timeout\": 1200}"
         },
         returnExamples = {
-            "{\"status\": \"started\", \"taskId\": \"bg-3\", \"pid\": 12345, \"command\": \"npm run dev\","
-                    + " \"cwd\": \"/abs/project\", \"requestedTimeoutSeconds\": 0, \"effectiveTimeoutSeconds\": 600}",
-            "{\"status\": \"started\", \"taskId\": \"bg-4\", \"pid\": 12351, \"command\": \"gradle build\","
-                    + " \"cwd\": \"/abs/project\", \"requestedTimeoutSeconds\": 1200, \"effectiveTimeoutSeconds\": 600}",
-            "{\"status\": \"started\", \"taskId\": \"bg-5\", \"pid\": 12387, \"command\": \"gradle test --continuous\","
-                    + " \"cwd\": \"/abs/project\", \"requestedTimeoutSeconds\": 1800, \"effectiveTimeoutSeconds\": 600}",
-            "{\"status\": \"started\", \"taskId\": \"bg-6\", \"pid\": 12402, \"command\": \"python -m http.server 8000\","
-                    + " \"cwd\": \"/abs/project\", \"requestedTimeoutSeconds\": 3600, \"effectiveTimeoutSeconds\": 600}",
-            "run_task requires exactly one command (background mode does not chain); got 2"
+            "{\"status\": \"started\", \"taskId\": \"bg-3\", \"pid\": 12345, \"command\": \"npm run dev\", \"cwd\": \"/abs/project\", \"requestedTimeoutSeconds\": 0, \"effectiveTimeoutSeconds\": 600}",
+            "{\"status\": \"started\", \"taskId\": \"bg-4\", \"pid\": 12351, \"command\": \"gradle build\", \"cwd\": \"/abs/project\", \"requestedTimeoutSeconds\": 1200, \"effectiveTimeoutSeconds\": 600}",
+            "{\"status\": \"started\", \"taskId\": \"bg-5\", \"pid\": 12387, \"command\": \"gradle test --continuous\", \"cwd\": \"/abs/project\", \"requestedTimeoutSeconds\": 1800, \"effectiveTimeoutSeconds\": 600}",
+            "{\"status\": \"started\", \"taskId\": \"bg-6\", \"pid\": 12402, \"command\": \"python -m http.server 8000\", \"cwd\": \"/abs/project\", \"requestedTimeoutSeconds\": 3600, \"effectiveTimeoutSeconds\": 600}",
+            "Invalid arguments: exactly one command is required (background mode does not chain); got 2."
         })
 public final class RunTaskTool implements ProcessExecutionTool<RunTaskTool.Args> {
     private final @NonNull ProcessExecutionCapability capability;
@@ -116,8 +115,7 @@ public final class RunTaskTool implements ProcessExecutionTool<RunTaskTool.Args>
                     Boolean network,
             @NonNull
                     @Doc(
-                            "Requested max lifetime in seconds. 0 selects the configured"
-                                    + " maximum; larger values are capped by that maximum.")
+                            "Requested max lifetime in seconds. 0 selects the configured maximum; larger values are capped by that maximum.")
                     Integer timeout) {}
 
     @Override
@@ -139,11 +137,17 @@ public final class RunTaskTool implements ProcessExecutionTool<RunTaskTool.Args>
     public @NonNull String execute(
             @NonNull Args args, @NonNull ProcessExecutionCapability capability) {
         int timeout = args.timeout();
-        if (timeout < 0) return ToolErrors.failure("run_task timeout must be zero or positive.");
+        if (timeout < 0)
+            return ToolErrors.failure(
+                    ToolErrorCode.VALIDATION.INVALID_ARGUMENTS,
+                    "Invalid arguments: timeout must be zero or positive.");
         if (args.commands().size() != 1)
             return ToolErrors.failure(
-                    "run_task requires exactly one command (background mode does not chain); got "
-                            + args.commands().size());
+                    ToolErrorCode.VALIDATION.INVALID_ARGUMENTS,
+                    "Invalid arguments: exactly one command is required (background mode does not"
+                            + " chain); got "
+                            + args.commands().size()
+                            + ".");
         var input = args.commands().getFirst();
         long maximumTimeout = capability.maxRuntime().toSeconds();
         var info =
@@ -156,7 +160,9 @@ public final class RunTaskTool implements ProcessExecutionTool<RunTaskTool.Args>
         } catch (RuntimeException e) {
             capability.cancel(info.taskId());
             return ToolErrors.failure(
-                    "Task response encoding failed; the started task was stopped (taskId="
+                    ToolErrorCode.RESULT.ENCODING_FAILED,
+                    "Encoding failed: the task result could not be encoded; the started task was"
+                            + " stopped (taskId="
                             + info.taskId()
                             + "): "
                             + e.getMessage());

@@ -22,9 +22,9 @@ public final class MonitorTools {
             whenNotToUse =
                     "Do not schedule repeated checks for Group results; those arrive automatically. Do not use to bypass a pause or task limit.",
             resultContract =
-                    "JSON containing registered rule state, or a list of rules. Registration is not completion of future work.",
+                    "JSON containing registered rule state. Registration is not completion of future work. Failures return `Monitor not created: <reason>`.",
             errorsAndEdgeCases =
-                    "Invalid times, missing purpose, inaccessible rules and exhausted active-rule limits are rejected. Offline wake-ups can be delayed.",
+                    "Invalid times, missing purpose, and exhausted active-rule limits are rejected: argument problems (failure, INVALID_ARGUMENTS), the 32-monitor limit (failure, LIMIT_EXCEEDED), and a missing session context (failure, NO_SESSION_CONTEXT). Offline wake-ups can be delayed.",
             security =
                     "Owner, Session and Agent are taken from the execution permit. No arbitrary resource access is granted.",
             examples = {
@@ -37,7 +37,7 @@ public final class MonitorTools {
                 "{\"id\":\"3f6c9f4e-7b1a-4c2d-9e5f-2a8b6d1c4e70\",\"kind\":\"TIME_ONCE\",\"purpose\":\"Remind me to review the report\",\"state\":\"ACTIVE\"}",
                 "{\"id\":\"7a1e2c5b-3d6f-4e8a-9b0c-1d2e3f4a5b6c\",\"kind\":\"TIME_ONCE\",\"purpose\":\"Summarize the CI results for the nightly build\",\"state\":\"ACTIVE\"}",
                 "{\"id\":\"b8d2e4f6-1a3c-4b5d-9e7f-0a1b2c3d4e5f\",\"kind\":\"TIME_ONCE\",\"purpose\":\"Re-check whether the example.com certificate renewal completed and report the new expiry date\",\"state\":\"ACTIVE\"}",
-                "Agent tool error: Supply exactly one of afterSeconds or at"
+                "Monitor not created: supply exactly one of afterSeconds or at."
             })
     public static final class CreateMonitor implements MonitorTool<CreateMonitor.Args> {
         private final @NonNull MonitorCapability capability;
@@ -85,9 +85,9 @@ public final class MonitorTools {
             whenNotToUse =
                     "Do not schedule repeated checks for Group results; those arrive automatically. Do not use to bypass a pause or task limit.",
             resultContract =
-                    "JSON containing registered rule state, or a list of rules. Registration is not completion of future work.",
+                    "JSON containing a list of registered rules. Missing session context (failure, NO_SESSION_CONTEXT).",
             errorsAndEdgeCases =
-                    "Invalid times, missing purpose, inaccessible rules and exhausted active-rule limits are rejected. Offline wake-ups can be delayed.",
+                    "Missing session context (failure, NO_SESSION_CONTEXT): `Monitors not listed: no active session context.`. Offline wake-ups can be delayed.",
             security =
                     "Owner, Session and Agent are taken from the execution permit. No arbitrary resource access is granted.",
             examples = "{}",
@@ -135,9 +135,9 @@ public final class MonitorTools {
             whenNotToUse =
                     "Do not schedule repeated checks for Group results; those arrive automatically. Do not use to bypass a pause or task limit.",
             resultContract =
-                    "JSON containing registered rule state, or a list of rules. Registration is not completion of future work.",
+                    "JSON containing the updated rule state. Failures: unknown id (failure, UNKNOWN): `Monitor not found: <id detail>`; group-managed or missing session (failure, GROUP_MANAGED or NO_SESSION_CONTEXT): `Monitor not updated: <reason>`.",
             errorsAndEdgeCases =
-                    "Invalid times, missing purpose, inaccessible rules and exhausted active-rule limits are rejected. Offline wake-ups can be delayed.",
+                    "Unknown or inaccessible monitor ids (failure, UNKNOWN): `Monitor not found: no accessible monitor has id <id>.`; group observation monitors cannot be controlled directly (failure, GROUP_MANAGED); a missing session context (failure, NO_SESSION_CONTEXT). Offline wake-ups can be delayed.",
             security =
                     "Owner, Session and Agent are taken from the execution permit. No arbitrary resource access is granted.",
             examples = {
@@ -193,9 +193,9 @@ public final class MonitorTools {
             whenNotToUse =
                     "Do not schedule repeated checks for Group results; those arrive automatically. Do not use to bypass a pause or task limit.",
             resultContract =
-                    "JSON containing registered rule state, or a list of rules. Registration is not completion of future work.",
+                    "JSON containing the updated rule state. Failures: unknown id (failure, UNKNOWN): `Monitor not found: <id detail>`; group-managed or missing session (failure, GROUP_MANAGED or NO_SESSION_CONTEXT): `Monitor not updated: <reason>`.",
             errorsAndEdgeCases =
-                    "Invalid times, missing purpose, inaccessible rules and exhausted active-rule limits are rejected. Offline wake-ups can be delayed.",
+                    "Unknown or inaccessible monitor ids (failure, UNKNOWN): `Monitor not found: no accessible monitor has id <id>.`; group observation monitors cannot be controlled directly (failure, GROUP_MANAGED); a missing session context (failure, NO_SESSION_CONTEXT). Offline wake-ups can be delayed.",
             security =
                     "Owner, Session and Agent are taken from the execution permit. No arbitrary resource access is granted.",
             examples = {
@@ -251,9 +251,9 @@ public final class MonitorTools {
             whenNotToUse =
                     "Do not schedule repeated checks for Group results; those arrive automatically. Do not use to bypass a pause or task limit.",
             resultContract =
-                    "JSON containing registered rule state, or a list of rules. Registration is not completion of future work.",
+                    "JSON containing the updated rule state. Failures: unknown id (failure, UNKNOWN): `Monitor not found: <id detail>`; group-managed or missing session (failure, GROUP_MANAGED or NO_SESSION_CONTEXT): `Monitor not updated: <reason>`.",
             errorsAndEdgeCases =
-                    "Invalid times, missing purpose, inaccessible rules and exhausted active-rule limits are rejected. Offline wake-ups can be delayed.",
+                    "Unknown or inaccessible monitor ids (failure, UNKNOWN): `Monitor not found: no accessible monitor has id <id>.`; group observation monitors cannot be controlled directly (failure, GROUP_MANAGED); a missing session context (failure, NO_SESSION_CONTEXT). Offline wake-ups can be delayed.",
             security =
                     "Owner, Session and Agent are taken from the execution permit. No arbitrary resource access is granted.",
             examples = {

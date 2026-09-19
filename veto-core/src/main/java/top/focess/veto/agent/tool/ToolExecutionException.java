@@ -9,14 +9,6 @@ public final class ToolExecutionException extends RuntimeException {
     private final @NonNull ToolResultFormat format;
     private final @NonNull ToolErrorCode errorCode;
 
-    public ToolExecutionException(@NonNull String message) {
-        this(
-                ToolResultStatus.FAILURE,
-                ToolResultFormat.PLAINTEXT,
-                ToolErrorCode.TOOL_FAILURE,
-                message);
-    }
-
     public ToolExecutionException(
             @NonNull ToolResultStatus status,
             @NonNull ToolResultFormat format,

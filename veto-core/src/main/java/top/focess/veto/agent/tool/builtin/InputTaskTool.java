@@ -32,31 +32,35 @@ import top.focess.veto.agent.tool.ToolSecurity;
         resultFormats = {ToolResultFormat.JSON},
         description = "Queue text to the standard input of a running background task.",
         behavior =
-                "Encodes content as UTF-8, optionally appends one newline, queues it in order,"
-                        + " and optionally closes stdin after those bytes. The byte count includes"
-                        + " the optional `\n"
-                        + "`. A queued result means accepted by the bounded input queue, not yet"
-                        + " consumed by the process; later pipe failures appear in view_task"
-                        + " `inputFailures`.",
+                """
+                Encodes content as UTF-8, optionally appends one newline, queues it in order, and \
+                optionally closes stdin after those bytes. The byte count includes the optional `\\n`. \
+                A queued result means accepted by the bounded input queue, not yet consumed by the \
+                process; later pipe failures appear in view_task `inputFailures`.""",
         whenToUse =
-                "Use it to answer an interactive prompt or send input to a process launched by"
-                        + " run_task.",
+                "Use it to answer an interactive prompt or send input to a process launched by run_task.",
         whenNotToUse =
-                "Do not use it for a finished task, a task from another session or agent, or to"
-                        + " start a new process. Do not send credentials unless the user explicitly"
-                        + " supplied and authorized them for this process.",
+                """
+                Do not use it for a finished task, a task from another session or agent, or to start \
+                a new process. Do not send credentials unless the user explicitly supplied and \
+                authorized them for this process.""",
         resultContract =
-                "Success returns JSON with `status`, `taskId`, `bytes`, `newline`, and"
-                        + " `closeQueued`. `bytes` is the queued UTF-8 byte count including an"
-                        + " appended newline. In detailed-result mode, failures use TASK_NOT_FOUND,"
-                        + " TASK_NOT_RUNNING, STDIN_CLOSED, EMPTY_INPUT, INPUT_TOO_LARGE, or"
-                        + " INPUT_QUEUE_FULL; failure content is actionable plaintext in every"
-                        + " mode.",
+                """
+                Success returns JSON with `status`, `taskId`, `bytes`, `newline`, and `closeQueued`. \
+                `bytes` is the queued UTF-8 byte count including an appended newline. In \
+                detailed-result mode, failures use TASK_NOT_FOUND (`Task not found: <taskId>`), \
+                TASK_NOT_RUNNING (`Task not running: <taskId>`), STDIN_CLOSED \
+                (`Stdin closed: <taskId>`), EMPTY_INPUT \
+                (`Empty input: no content, newline, or stdin close was requested.`), FILE_TOO_LARGE \
+                (`Input too large: content exceeds 65536 bytes.`), or INPUT_QUEUE_FULL \
+                (`Input queue full: the task input queue exceeds 262144 bytes.`); failure content is \
+                actionable plaintext in every mode.""",
         errorsAndEdgeCases =
-                "Each call is limited to 64 KiB and each task to 256 KiB of queued input. Empty"
-                        + " content is valid only when a newline is appended or stdin is closed."
-                        + " Use view_task to inspect bounded asynchronous inputFailures and"
-                        + " stop_task if the process must be terminated.",
+                """
+                Each call is limited to 64 KiB and each task to 256 KiB of queued input. Empty \
+                content is valid only when a newline is appended or stdin is closed. Use view_task \
+                to inspect bounded asynchronous inputFailures and stop_task if the process must be \
+                terminated.""",
         security =
                 "You can send input only to your own task in this session. Queued content is delivered to the process stdin verbatim.",
         examples = {
@@ -71,7 +75,7 @@ import top.focess.veto.agent.tool.ToolSecurity;
             "{\"status\":\"queued\",\"taskId\":\"bg-3\",\"bytes\":13,\"newline\":false,\"closeQueued\":false}",
             "{\"status\":\"queued\",\"taskId\":\"bg-3\",\"bytes\":5,\"newline\":true,\"closeQueued\":true}",
             "{\"status\":\"queued\",\"taskId\":\"bg-3\",\"bytes\":0,\"newline\":false,\"closeQueued\":true}",
-            "Task is not running: bg-7"
+            "Task not running: bg-7"
         })
 public final class InputTaskTool implements TaskControlTool<InputTaskTool.Args> {
     private final @NonNull TaskControlCapability capability;
@@ -108,7 +112,8 @@ public final class InputTaskTool implements TaskControlTool<InputTaskTool.Args> 
     public @NonNull String execute(@NonNull Args args, @NonNull TaskControlCapability capability) {
         if (args.content().isEmpty() && !args.appendNewline() && !args.closeStdin()) {
             return ToolErrors.failure(
-                    ToolErrorCode.EMPTY_INPUT, "No input, newline, or stdin close was requested.");
+                    ToolErrorCode.VALIDATION.EMPTY_INPUT,
+                    "Empty input: no content, newline, or stdin close was requested.");
         }
         byte[] content = args.content().getBytes(StandardCharsets.UTF_8);
         byte[] bytes = args.appendNewline() ? Arrays.copyOf(content, content.length + 1) : content;
@@ -118,20 +123,21 @@ public final class InputTaskTool implements TaskControlTool<InputTaskTool.Args> 
             String message =
                     switch (queued.status()) {
                         case TASK_NOT_FOUND -> "Task not found: " + args.taskId();
-                        case TASK_NOT_RUNNING -> "Task is not running: " + args.taskId();
-                        case STDIN_CLOSED -> "Task stdin is already closed: " + args.taskId();
-                        case INPUT_TOO_LARGE -> "Input exceeds 65536 bytes.";
-                        case INPUT_QUEUE_FULL -> "Task input queue exceeds 262144 bytes.";
+                        case TASK_NOT_RUNNING -> "Task not running: " + args.taskId();
+                        case STDIN_CLOSED -> "Stdin closed: " + args.taskId();
+                        case INPUT_TOO_LARGE -> "Input too large: content exceeds 65536 bytes.";
+                        case INPUT_QUEUE_FULL ->
+                                "Input queue full: the task input queue exceeds 262144 bytes.";
                         case QUEUED ->
                                 throw new IllegalStateException("queued result handled above");
                     };
             ToolErrorCode code =
                     switch (queued.status()) {
-                        case TASK_NOT_FOUND -> ToolErrorCode.TASK_NOT_FOUND;
-                        case TASK_NOT_RUNNING -> ToolErrorCode.TASK_NOT_RUNNING;
-                        case STDIN_CLOSED -> ToolErrorCode.STDIN_CLOSED;
-                        case INPUT_TOO_LARGE -> ToolErrorCode.INPUT_TOO_LARGE;
-                        case INPUT_QUEUE_FULL -> ToolErrorCode.INPUT_QUEUE_FULL;
+                        case TASK_NOT_FOUND -> ToolErrorCode.TASK.TASK_NOT_FOUND;
+                        case TASK_NOT_RUNNING -> ToolErrorCode.TASK.TASK_NOT_RUNNING;
+                        case STDIN_CLOSED -> ToolErrorCode.TASK.STDIN_CLOSED;
+                        case INPUT_TOO_LARGE -> ToolErrorCode.WORKSPACE.FILE_TOO_LARGE;
+                        case INPUT_QUEUE_FULL -> ToolErrorCode.TASK.INPUT_QUEUE_FULL;
                         case QUEUED ->
                                 throw new IllegalStateException("queued result handled above");
                     };

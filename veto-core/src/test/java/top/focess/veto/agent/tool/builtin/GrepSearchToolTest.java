@@ -52,8 +52,8 @@ class GrepSearchToolTest {
                                         new GrepSearchTool.Args(
                                                 tempDir.toString(), "", null, null)));
 
-        assertEquals("query must not be empty", failure.getMessage());
-        assertEquals(ToolErrorCode.INVALID_QUERY, failure.errorCode());
+        assertEquals("Invalid arguments: query must not be empty.", failure.getMessage());
+        assertEquals(ToolErrorCode.VALIDATION.INVALID_ARGUMENTS, failure.errorCode());
     }
 
     @Test
@@ -70,8 +70,8 @@ class GrepSearchToolTest {
                                         new GrepSearchTool.Args(
                                                 missing.toString(), "needle", null, null)));
 
-        assertEquals("Search path does not exist: " + missing, failure.getMessage());
-        assertEquals(ToolErrorCode.PATH_NOT_FOUND, failure.errorCode());
+        assertEquals("Path not found: " + missing, failure.getMessage());
+        assertEquals(ToolErrorCode.WORKSPACE.PATH_NOT_FOUND, failure.errorCode());
     }
 
     @Test

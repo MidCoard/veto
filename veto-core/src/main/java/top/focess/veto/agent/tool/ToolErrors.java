@@ -7,11 +7,6 @@ public final class ToolErrors {
 
     private ToolErrors() {}
 
-    /** Throws an expected tool failure while preserving the enclosing method's return type. */
-    public static <T> T failure(String message) {
-        throw new ToolExecutionException(normalize(message));
-    }
-
     /** Throws an expected failure with a stable machine-readable code. */
     public static <T> T failure(@NonNull ToolErrorCode errorCode, String message) {
         throw new ToolExecutionException(

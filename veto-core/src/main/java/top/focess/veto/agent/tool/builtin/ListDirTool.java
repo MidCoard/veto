@@ -60,7 +60,7 @@ import top.focess.veto.agent.tool.WorkspaceReadTool;
                     - Supplied `absolutePath` does not exist or is not a directory (failure): \
                     `Not a directory: <absolutePath>`.
                     - Directory cannot be opened or enumerated (failure): \
-                    `Cannot list directory: <absolutePath>`.
+                    `I/O error: cannot list directory <absolutePath>.`
                     """,
         errorsAndEdgeCases =
                 """
@@ -71,6 +71,10 @@ import top.focess.veto.agent.tool.WorkspaceReadTool;
                     narrowed before relying on the listing as complete.
                     - A directory access or iteration failure rejects the listing; it is not returned as a \
                     partial success.
+                    - A symbolic-link or reparse-point target fails with UNSAFE_LINK (`Unsafe link: \
+                    symbolic links and reparse points cannot be followed.`); a tree that changed after \
+                    authorization fails with TREE_CHANGED (`Tree changed: ...`). A protected target is \
+                    refused with PATH_PROTECTED.
                     """,
         security =
                 "Protected entries, symbolic links, and reparse points are silently omitted, so the listing never reveals them.",
@@ -108,7 +112,8 @@ public final class ListDirTool implements WorkspaceReadTool<ListDirTool.Args> {
             WorkspaceFile directory = workspace.file(args.absolutePath());
             if (!directory.kind().equals("directory")) {
                 return ToolErrors.failure(
-                        ToolErrorCode.NOT_A_DIRECTORY, "Not a directory: " + args.absolutePath());
+                        ToolErrorCode.WORKSPACE.NOT_A_DIRECTORY,
+                        "Not a directory: " + args.absolutePath());
             }
             var entries = new ArrayList<String>();
             for (WorkspaceFile child : directory.children()) {
@@ -130,10 +135,12 @@ public final class ListDirTool implements WorkspaceReadTool<ListDirTool.Args> {
             return truncated ? output + "[truncated at 5000 entries]\n" : output;
         } catch (NoSuchFileException e) {
             return ToolErrors.failure(
-                    ToolErrorCode.NOT_A_DIRECTORY, "Not a directory: " + args.absolutePath());
+                    ToolErrorCode.WORKSPACE.NOT_A_DIRECTORY,
+                    "Not a directory: " + args.absolutePath());
         } catch (IOException e) {
             return ToolErrors.failure(
-                    ToolErrorCode.IO_ERROR, "Cannot list directory: " + args.absolutePath());
+                    ToolErrorCode.WORKSPACE.IO_ERROR,
+                    "I/O error: cannot list directory " + args.absolutePath() + ".");
         }
     }
 }

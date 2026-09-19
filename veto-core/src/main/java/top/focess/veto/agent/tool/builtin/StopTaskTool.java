@@ -11,6 +11,7 @@ import top.focess.veto.agent.tool.TaskControlTool;
 import top.focess.veto.agent.tool.ToolCapability;
 import top.focess.veto.agent.tool.ToolDoc;
 import top.focess.veto.agent.tool.ToolDocs;
+import top.focess.veto.agent.tool.ToolErrorCode;
 import top.focess.veto.agent.tool.ToolErrors;
 import top.focess.veto.agent.tool.ToolJson;
 import top.focess.veto.agent.tool.ToolResultFormat;
@@ -25,8 +26,7 @@ import top.focess.veto.agent.tool.ToolSecurity;
 @ToolDoc(
         resultFormats = {ToolResultFormat.JSON},
         description =
-                "Force-stop a background task launched by run_task. The only sanctioned way to"
-                        + " stop a task; idempotent.",
+                "Force-stop a background task launched by run_task. The only sanctioned way to stop a task; idempotent.",
         behavior =
                 """
                 Requests a force-stop of the task's direct process and waits up to five seconds \
@@ -53,8 +53,8 @@ import top.focess.veto.agent.tool.ToolSecurity;
                 """
                 - Success: `status`, `taskId`, `alive`, and optional `exitCode`. `status` is \
                 `stopped`, `stop_requested` when still alive after the wait, or `already_exited`.
-                - Unknown task (failure): \
-                `task not found: <taskId>`.
+                - Unknown task (failure, TASK_NOT_FOUND): \
+                `Task not found: <taskId>`.
                 """,
         errorsAndEdgeCases =
                 """
@@ -73,7 +73,7 @@ import top.focess.veto.agent.tool.ToolSecurity;
             "{\"status\": \"stopped\", \"taskId\": \"bg-3\", \"alive\": false, \"exitCode\": 1}",
             "{\"status\": \"stop_requested\", \"taskId\": \"bg-7\", \"alive\": true}",
             "{\"status\": \"already_exited\", \"taskId\": \"bg-12\", \"alive\": false, \"exitCode\": 0}",
-            "task not found: bg-99"
+            "Task not found: bg-99"
         })
 public final class StopTaskTool implements TaskControlTool<StopTaskTool.Args> {
     private final @NonNull TaskControlCapability capability;
@@ -102,9 +102,13 @@ public final class StopTaskTool implements TaskControlTool<StopTaskTool.Args> {
     @Override
     public @NonNull String execute(@NonNull Args args, @NonNull TaskControlCapability capability) {
         var before = capability.status(args.taskId());
-        if (before.isEmpty()) return ToolErrors.failure("task not found: " + args.taskId());
+        if (before.isEmpty())
+            return ToolErrors.failure(
+                    ToolErrorCode.TASK.TASK_NOT_FOUND, "Task not found: " + args.taskId());
         var stopped = capability.stop(args.taskId());
-        if (stopped.isEmpty()) return ToolErrors.failure("task not found: " + args.taskId());
+        if (stopped.isEmpty())
+            return ToolErrors.failure(
+                    ToolErrorCode.TASK.TASK_NOT_FOUND, "Task not found: " + args.taskId());
         var info = stopped.get();
         Map<String, Object> result = new LinkedHashMap<>();
         result.put(

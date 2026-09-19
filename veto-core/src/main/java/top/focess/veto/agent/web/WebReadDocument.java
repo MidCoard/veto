@@ -38,8 +38,8 @@ final class WebReadDocument {
         String type = page.contentType();
         if (!(type.startsWith("text/") || type.contains("json") || type.contains("xhtml")))
             ToolErrors.failure(
-                    ToolErrorCode.UNSUPPORTED_CONTENT,
-                    "Reader supports HTML and text documents only.");
+                    ToolErrorCode.RESULT.UNSUPPORTED_CONTENT,
+                    "Unsupported content: the reader supports HTML and text documents only.");
         if (type.contains("html")) {
             var doc = Jsoup.parse(page.content(), url);
             doc.select("script,style,noscript,iframe,nav,footer,header,form").remove();
@@ -49,7 +49,9 @@ final class WebReadDocument {
             var blocks = root.getAllElements();
             for (Element block : blocks) {
                 if (Thread.currentThread().isInterrupted())
-                    ToolErrors.failure(ToolErrorCode.CANCELLED, "Web reader cancelled.");
+                    ToolErrors.failure(
+                            ToolErrorCode.LIFECYCLE.CANCELLED,
+                            "Cancelled: the web reader was cancelled.");
                 if (block.parents().stream()
                         .anyMatch(p -> p != root && TEXT_BLOCKS.contains(p.tagName()))) continue;
                 if (block.tagName().matches("h[1-6]")) section = block.text();
@@ -76,7 +78,9 @@ final class WebReadDocument {
             }
         } else add("Document", page.content());
         if (segments.isEmpty())
-            ToolErrors.failure(ToolErrorCode.EMPTY_CONTENT, "Page has no readable content.");
+            ToolErrors.failure(
+                    ToolErrorCode.VALIDATION.EMPTY_CONTENT,
+                    "Empty content: the page has no readable content.");
     }
 
     private void add(@NonNull String section, @NonNull String text) {
@@ -99,12 +103,14 @@ final class WebReadDocument {
 
     @NonNull List<@NonNull Entry> find(@NonNull String query) {
         if (query.isBlank() || query.length() > 200)
-            throw new IllegalArgumentException(
-                    "Use a non-blank keyword of at most 200 characters.");
+            return ToolErrors.failure(
+                    ToolErrorCode.VALIDATION.INVALID_ARGUMENTS,
+                    "Invalid arguments: use a non-blank keyword of at most 200 characters.");
         String needle = searchText(query);
         if (needle.isEmpty())
-            throw new IllegalArgumentException(
-                    "Use a non-blank keyword of at most 200 characters.");
+            return ToolErrors.failure(
+                    ToolErrorCode.VALIDATION.INVALID_ARGUMENTS,
+                    "Invalid arguments: use a non-blank keyword of at most 200 characters.");
         return segments.stream()
                 .filter(
                         s ->
@@ -125,7 +131,8 @@ final class WebReadDocument {
     @NonNull List<@NonNull Segment> read(@NonNull List<@NonNull String> ids) {
         if (ids.isEmpty() || ids.size() > MAX_READ_SEGMENTS)
             return ToolErrors.failure(
-                    ToolErrorCode.INVALID_ARGUMENTS, "Read between one and eight segment IDs.");
+                    ToolErrorCode.VALIDATION.INVALID_ARGUMENTS,
+                    "Invalid arguments: read between one and eight segment IDs.");
         return ids.stream().map(this::segment).toList();
     }
 
@@ -134,15 +141,19 @@ final class WebReadDocument {
     }
 
     private @NonNull Segment segment(@NonNull String id) {
-        return segments.stream()
-                .filter(s -> s.id().equals(id))
-                .findFirst()
-                .orElseThrow(() -> new IllegalArgumentException("Unknown document segment."));
+        var match = segments.stream().filter(s -> s.id().equals(id)).findFirst();
+        if (match.isEmpty())
+            return ToolErrors.failure(
+                    ToolErrorCode.VALIDATION.INVALID_ARGUMENTS,
+                    "Invalid arguments: the segment id is unknown.");
+        return match.get();
     }
 
     @NonNull Evidence evidence(@NonNull String id) {
         if (!inspected.contains(id))
-            throw new IllegalArgumentException("Evidence must reference a read segment.");
+            ToolErrors.failure(
+                    ToolErrorCode.VALIDATION.INVALID_ARGUMENTS,
+                    "Invalid arguments: evidence must reference a read segment.");
         var source = segment(id);
         return new Evidence(url, source.section(), source.text());
     }

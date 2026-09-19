@@ -222,8 +222,10 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
             return new ToolResult(
                     call.toolName(),
                     callId,
-                    false,
-                    "Tool execution failed: " + ToolErrors.normalize(e.getMessage()));
+                    ToolResultStatus.FAILURE,
+                    ToolResultFormat.UNKNOWN,
+                    "Tool execution failed: " + ToolErrors.normalize(e.getMessage()),
+                    ToolErrorCode.GENERIC.TOOL_FAILURE);
         } finally {
             ToolCallContextHolder.setCurrentCallId("");
         }
@@ -240,7 +242,7 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
                     ToolResultStatus.FAILURE,
                     ToolResultFormat.PLAINTEXT,
                     "Tool completed but its JSON result exceeds the output limit; result omitted.",
-                    ToolErrorCode.TOOL_RESULT_TOO_LARGE);
+                    ToolErrorCode.RESULT.TOOL_RESULT_TOO_LARGE);
         }
         String bounded =
                 result.content().substring(0, MAX_TOOL_RESULT_CHARS)
@@ -272,8 +274,10 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
             return new ToolResult(
                     call.toolName(),
                     call.callId(),
-                    false,
-                    "No bean for native tool: " + def.name());
+                    ToolResultStatus.FAILURE,
+                    ToolResultFormat.UNKNOWN,
+                    "No bean for native tool: " + def.name(),
+                    ToolErrorCode.GENERIC.TOOL_FAILURE);
         }
         String result = executeLocal(bean, jsonArgs);
         return successfulResult(call, def, result);
@@ -290,7 +294,12 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
         AgentTool<?> bean = agentBeans.get(def.name());
         if (bean == null) {
             return new ToolResult(
-                    call.toolName(), call.callId(), false, "Unknown agent tool: " + def.name());
+                    call.toolName(),
+                    call.callId(),
+                    ToolResultStatus.FAILURE,
+                    ToolResultFormat.UNKNOWN,
+                    "Unknown agent tool: " + def.name(),
+                    ToolErrorCode.GENERIC.TOOL_FAILURE);
         }
         try {
             JsonNode jsonArgs = mapper.valueToTree(call.args());
@@ -304,8 +313,10 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
             return new ToolResult(
                     call.toolName(),
                     call.callId(),
-                    false,
-                    "Agent tool error: " + ToolErrors.normalize(e.getMessage()));
+                    ToolResultStatus.FAILURE,
+                    ToolResultFormat.UNKNOWN,
+                    "Agent tool error: " + ToolErrors.normalize(e.getMessage()),
+                    ToolErrorCode.GENERIC.TOOL_FAILURE);
         }
     }
 
@@ -327,7 +338,7 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
                 success ? ToolResultStatus.SUCCESS : ToolResultStatus.FAILURE,
                 ToolResultFormat.UNKNOWN,
                 content,
-                success ? null : ToolErrorCode.REMOTE_TOOL_FAILED);
+                success ? null : ToolErrorCode.NETWORK.REMOTE_TOOL_FAILED);
     }
 
     private static @NonNull ToolCallContext requirePermit(
@@ -394,16 +405,20 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
                             .readTree(result);
             if (parsed == null || parsed.isMissingNode()) {
                 ToolErrors.failure(
-                        "Tool '"
+                        ToolErrorCode.RESULT.INVALID_JSON,
+                        "Invalid JSON result: tool '"
                                 + definition.name()
-                                + "' declared json but returned no JSON value");
+                                + "' declared json but returned no JSON value.");
             }
         } catch (IOException | RuntimeException e) {
             if (e instanceof ToolExecutionException toolFailure) {
                 throw toolFailure;
             }
             ToolErrors.failure(
-                    "Tool '" + definition.name() + "' declared json but returned invalid JSON");
+                    ToolErrorCode.RESULT.INVALID_JSON,
+                    "Invalid JSON result: tool '"
+                            + definition.name()
+                            + "' declared json but returned invalid JSON.");
         }
     }
 

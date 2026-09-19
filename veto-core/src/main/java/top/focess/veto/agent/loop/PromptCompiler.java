@@ -901,7 +901,7 @@ public class PromptCompiler {
                 ToolResultStatus.INTERRUPTED,
                 ToolResultFormat.PLAINTEXT,
                 INTERRUPTED_TOOL_RESULT,
-                ToolErrorCode.TOOL_RESULT_MISSING,
+                ToolErrorCode.LIFECYCLE.TOOL_RESULT_MISSING,
                 presentation);
     }
 

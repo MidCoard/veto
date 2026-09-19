@@ -45,7 +45,7 @@ class ReaderExecutionMaskingTest {
                     defense.maskAndFrame(
                             call,
                             definition,
-                            new ToolResult(toolName, call.callId(), true, body),
+                            ToolResult.success(toolName, call.callId(), body),
                             true,
                             new ReadHistory());
             var parsed = mapper.readTree(masked);
@@ -57,7 +57,7 @@ class ReaderExecutionMaskingTest {
                     defense.maskAndFrame(
                                     call,
                                     definition,
-                                    new ToolResult(toolName, call.callId(), true, spoofed),
+                                    ToolResult.success(toolName, call.callId(), spoofed),
                                     true,
                                     new ReadHistory())
                             .contains(forged));
@@ -65,7 +65,7 @@ class ReaderExecutionMaskingTest {
                     defense.maskAndFrame(
                                     new ToolCall(toolName, Map.of(), "next-call"),
                                     definition,
-                                    new ToolResult(toolName, "next-call", true, body),
+                                    ToolResult.success(toolName, "next-call", body),
                                     true,
                                     new ReadHistory())
                             .contains(id));
@@ -73,7 +73,11 @@ class ReaderExecutionMaskingTest {
                     defense.maskAndFrame(
                                     call,
                                     definition,
-                                    new ToolResult(toolName, call.callId(), false, body),
+                                    ToolResult.failure(
+                                            toolName,
+                                            call.callId(),
+                                            body,
+                                            ToolErrorCode.GENERIC.TOOL_FAILURE),
                                     true,
                                     new ReadHistory())
                             .contains(id));
@@ -91,7 +95,7 @@ class ReaderExecutionMaskingTest {
                     defense.maskAndFrame(
                                     call,
                                     impostor,
-                                    new ToolResult(toolName, call.callId(), true, body),
+                                    ToolResult.success(toolName, call.callId(), body),
                                     true,
                                     new ReadHistory())
                             .contains(id));
@@ -103,7 +107,7 @@ class ReaderExecutionMaskingTest {
                 defense.maskAndFrame(
                                 call,
                                 definition,
-                                new ToolResult(toolName, call.callId(), true, body),
+                                ToolResult.success(toolName, call.callId(), body),
                                 true,
                                 new ReadHistory())
                         .contains(id));

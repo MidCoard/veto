@@ -9,6 +9,8 @@ import org.springframework.stereotype.Component;
 import top.focess.veto.agent.tool.ToolCallContext;
 import top.focess.veto.agent.tool.ToolCallContextHolder;
 import top.focess.veto.agent.tool.ToolCapability;
+import top.focess.veto.agent.tool.ToolErrorCode;
+import top.focess.veto.agent.tool.ToolErrors;
 import top.focess.veto.group.Blackboard;
 import top.focess.veto.group.BlackboardMessage;
 import top.focess.veto.group.BlackboardMessage.MessageType;
@@ -75,7 +77,12 @@ public final class GroupControlCapabilityImpl implements GroupControlCapability 
         var ctx = CapabilityAccess.require(ToolCapability.GROUP_CONTROL, "disband_group");
         requireLeader(ctx);
         UUID id = ctx.groupId();
-        if (id == null) throw new SecurityException("No active group");
+        if (id == null) {
+            ToolErrors.failure(
+                    ToolErrorCode.GROUP.NO_ACTIVE_GROUP,
+                    "Group not disbanded: no active group in your context. disband_group is a Leader tool inside a group.");
+            return;
+        }
         spawner.disband(id);
         ToolCallContextHolder.requestReverseTransform(brief);
     }
@@ -129,7 +136,10 @@ public final class GroupControlCapabilityImpl implements GroupControlCapability 
         var ctx = CapabilityAccess.require(ToolCapability.GROUP_CONTROL, "create_mate");
         requireLeader(ctx);
         UUID id = ctx.groupId();
-        if (id == null) throw new SecurityException("No active group");
+        if (id == null)
+            return ToolErrors.failure(
+                    ToolErrorCode.GROUP.NO_ACTIVE_GROUP,
+                    "Mate not created: no active group in your context. create_mate is a Leader tool inside a group.");
         return orchestrator.createMate(id, name, responsibility, spawner);
     }
 
@@ -143,7 +153,10 @@ public final class GroupControlCapabilityImpl implements GroupControlCapability 
         requireLeader(ctx);
         UUID groupId = ctx.groupId();
         Group group = groupId == null ? null : registry.get(groupId);
-        if (group == null) throw new SecurityException("No active group");
+        if (group == null)
+            return ToolErrors.failure(
+                    ToolErrorCode.GROUP.NO_ACTIVE_GROUP,
+                    "Task not created: no active group in your context. create_task is a Leader tool inside a group.");
         String responsibility = group.mates().get(mateId);
         if (responsibility == null)
             return new NodeEdit.Rejected("Unknown Mate in this group: " + mateId);
@@ -169,7 +182,10 @@ public final class GroupControlCapabilityImpl implements GroupControlCapability 
         var ctx = CapabilityAccess.require(ToolCapability.GROUP_CONTROL, "create_node");
         requireLeader(ctx);
         UUID groupId = ctx.groupId();
-        if (groupId == null) throw new SecurityException("No active group");
+        if (groupId == null)
+            return ToolErrors.failure(
+                    ToolErrorCode.GROUP.NO_ACTIVE_GROUP,
+                    "Node not created: no active group in your context. create_node is a Leader tool inside a group.");
         return orchestrator.addNode(
                 groupId, id, description, skillset, dependencies, mateId, newMate, ctx.requestId());
     }
@@ -179,7 +195,10 @@ public final class GroupControlCapabilityImpl implements GroupControlCapability 
         var ctx = CapabilityAccess.require(ToolCapability.GROUP_CONTROL, "remove_node");
         requireLeader(ctx);
         UUID groupId = ctx.groupId();
-        if (groupId == null) throw new SecurityException("No active group");
+        if (groupId == null)
+            return ToolErrors.failure(
+                    ToolErrorCode.GROUP.NO_ACTIVE_GROUP,
+                    "Node not removed: no active group in your context. remove_node is a Leader tool inside a group.");
         return orchestrator.removeNode(groupId, id);
     }
 
@@ -188,7 +207,10 @@ public final class GroupControlCapabilityImpl implements GroupControlCapability 
         var ctx = CapabilityAccess.require(ToolCapability.GROUP_CONTROL, "remove_mate");
         requireLeader(ctx);
         UUID groupId = ctx.groupId();
-        if (groupId == null) throw new SecurityException("No active group");
+        if (groupId == null)
+            return ToolErrors.failure(
+                    ToolErrorCode.GROUP.NO_ACTIVE_GROUP,
+                    "Mate not removed: no active group in your context. remove_mate is a Leader tool inside a group.");
         return orchestrator.removeMate(groupId, id, spawner);
     }
 
@@ -197,7 +219,10 @@ public final class GroupControlCapabilityImpl implements GroupControlCapability 
         var ctx = CapabilityAccess.require(ToolCapability.GROUP_CONTROL, "cancel_group_task");
         requireLeader(ctx);
         UUID groupId = ctx.groupId();
-        if (groupId == null) throw new SecurityException("No active group");
+        if (groupId == null)
+            return ToolErrors.failure(
+                    ToolErrorCode.GROUP.NO_ACTIVE_GROUP,
+                    "Task not cancelled: no active group in your context. cancel_group_task is a Leader tool inside a group.");
         return orchestrator.cancelTask(groupId, id, spawner);
     }
 

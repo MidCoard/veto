@@ -153,7 +153,7 @@ class AskUserActionTest {
             if (cancel) {
                 assertEquals(ToolResultStatus.CANCELLED, completed.status());
                 assertEquals(ToolResultFormat.PLAINTEXT, completed.format());
-                assertEquals(ToolErrorCode.USER_CANCELLED, completed.errorCode());
+                assertEquals(ToolErrorCode.LIFECYCLE.USER_CANCELLED, completed.errorCode());
             } else {
                 assertTrue(completed.success(), completed.content());
                 assertEquals(ToolResultFormat.JSON, completed.format());

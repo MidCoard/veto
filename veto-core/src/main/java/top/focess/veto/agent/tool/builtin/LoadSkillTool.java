@@ -7,6 +7,7 @@ import top.focess.veto.agent.tool.Doc;
 import top.focess.veto.agent.tool.SkillReadTool;
 import top.focess.veto.agent.tool.ToolDoc;
 import top.focess.veto.agent.tool.ToolDocs;
+import top.focess.veto.agent.tool.ToolErrorCode;
 import top.focess.veto.agent.tool.ToolErrors;
 import top.focess.veto.agent.tool.ToolResultFormat;
 
@@ -21,8 +22,7 @@ import top.focess.veto.agent.tool.ToolResultFormat;
 @ToolDoc(
         resultFormats = {ToolResultFormat.PLAINTEXT},
         description =
-                "Load a skill's full instructions into context as an observation, "
-                        + "so you can follow its procedure for the current task.",
+                "Load a skill's full instructions into context as an observation, so you can follow its procedure for the current task.",
         behavior =
                 """
                 Looks up the exact, case-sensitive `skillName` in the configured skill registry, verifies the \
@@ -46,8 +46,10 @@ import top.focess.veto.agent.tool.ToolResultFormat;
         resultContract =
                 """
                 - Success: the skill's full instruction body.
-                - Unknown or tampered skill (failure): `Skill '<name>' not found or tampered.`
-                - Registered skill with no loaded body (failure): `Skill body is not loaded.`
+                - Unknown or tampered skill (failure, `SKILL_NOT_FOUND`): \
+                `Skill not found: '<name>' is not registered or its stored content failed verification.`
+                - Registered skill with no loaded body (failure, `TOOL_FAILURE`): \
+                `Skill unavailable: the registered skill has no loaded body.`
                 """,
         errorsAndEdgeCases =
                 """
@@ -66,7 +68,7 @@ import top.focess.veto.agent.tool.ToolResultFormat;
             "# commit\n1. Review the staged diff and draft the commit message ...",
             "# verify_suite\n1. Run the focused checks ...",
             "# git-rebase\n1. Fetch the target branch, then replay local commits ...",
-            "Skill 'deploy' not found or tampered."
+            "Skill not found: 'deploy' is not registered or its stored content failed verification."
         })
 public final class LoadSkillTool implements SkillReadTool<LoadSkillTool.Args> {
 
@@ -96,11 +98,17 @@ public final class LoadSkillTool implements SkillReadTool<LoadSkillTool.Args> {
             throws Exception {
         var skill = capability.load(args.skillName());
         if (skill.isEmpty()) {
-            return ToolErrors.failure("Skill '" + args.skillName() + "' not found or tampered.");
+            return ToolErrors.failure(
+                    ToolErrorCode.VALIDATION.SKILL_NOT_FOUND,
+                    "Skill not found: '"
+                            + args.skillName()
+                            + "' is not registered or its stored content failed verification.");
         }
         String instructions = skill.get().promptInstructions();
         return instructions == null
-                ? ToolErrors.failure("Skill body is not loaded.")
+                ? ToolErrors.failure(
+                        ToolErrorCode.GENERIC.TOOL_FAILURE,
+                        "Skill unavailable: the registered skill has no loaded body.")
                 : instructions;
     }
 

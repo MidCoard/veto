@@ -27,32 +27,38 @@ import top.focess.veto.agent.tool.UserInteractionTool;
 @ToolDoc(
         resultFormats = {ToolResultFormat.JSON},
         description =
-                "Ask the user for necessary information or a requested interview step, then wait"
-                        + " for their answers. Follow the requested question count and pacing; use"
-                        + " the answers to continue the task.",
+                "Ask the user for necessary information or a requested interview step, then wait for their answers. Follow the requested question count and pacing; use the answers to continue the task.",
         behavior =
-                "Publishes one pending question batch to the session UI and pauses this agent"
-                        + " call until the user answers or cancels. The UI adds a free-form Other"
-                        + " choice; every answer is returned under its stable question id. Pending"
-                        + " batches are in-memory and are cancelled by a backend restart.",
+                """
+                Publishes one pending question batch to the session UI and pauses this agent call \
+                until the user answers or cancels. The UI adds a free-form Other choice; every \
+                answer is returned under its stable question id. Pending batches are in-memory and \
+                are cancelled by a backend restart.""",
         whenToUse =
-                "Use it when a missing user choice materially changes the result and cannot be"
-                        + " inferred safely, or when the user explicitly requests an interview or guided choice."
-                        + " Batch independent questions when useful; wait for earlier answers before"
-                        + " asking dependent questions.",
+                """
+                Use it when a missing user choice materially changes the result and cannot be \
+                inferred safely, or when the user explicitly requests an interview or guided \
+                choice. Batch independent questions when useful; wait for earlier answers before \
+                asking dependent questions.""",
         whenNotToUse =
-                "Do not use it for permission approval, status updates, facts discoverable with"
-                        + " tools, or unsolicited optional preferences that do not block useful progress."
-                        + " Preferences are relevant when learning them is the user's requested task.",
+                """
+                Do not use it for permission approval, status updates, facts discoverable with \
+                tools, or unsolicited optional preferences that do not block useful progress. \
+                Preferences are relevant when learning them is the user's requested task.""",
         resultContract =
-                "Returns JSON `{\"answers\":{\"question_id\":\"selected or entered value\"}}`."
-                        + " Cancellation reports USER_CANCELLED; invalid questions report INVALID_QUESTIONS."
-                        + " Failure details are plaintext.",
+                """
+                Returns JSON `{"answers":{"question_id":"selected or entered value"}}`. Invalid \
+                questions fail with INVALID_QUESTIONS and `Invalid questions: <detail>`; \
+                cancellation reports USER_CANCELLED \
+                (`Cancelled: the user cancelled the question batch.`), and an interrupted wait \
+                reports TOOL_INTERRUPTED \
+                (`Interrupted: the wait for user answers was interrupted.`). Failure details are \
+                plaintext.""",
         errorsAndEdgeCases =
-                "Use 2-5 exclusive options. Put the recommended option first;"
-                        + " the UI adds its marker. Labels must be case-insensitively unique;"
-                        + " `Other` is reserved. Follow field lengths and unique ids"
-                        + " specified in the argument schema.",
+                """
+                Use 2-5 exclusive options. Put the recommended option first; the UI adds its \
+                marker. Labels must be case-insensitively unique; `Other` is reserved. Follow field \
+                lengths and unique ids specified in the argument schema.""",
         security =
                 "Questions are shown to the user verbatim. A user answer does not replace any separate approval required to perform an operation.",
         examples = {
@@ -67,7 +73,7 @@ import top.focess.veto.agent.tool.UserInteractionTool;
             "{\"answers\":{\"format\":\"Markdown\"}}",
             "{\"answers\":{\"scope\":\"main and test\",\"baseline\":\"master\"}}",
             "{\"answers\":{\"verbosity\":\"NOTICE\"}}",
-            "Question ids must be unique snake_case identifiers."
+            "Invalid questions: question ids must be unique snake_case identifiers."
         })
 public final class AskUserTool implements UserInteractionTool<AskUserTool.Args> {
 
@@ -85,12 +91,7 @@ public final class AskUserTool implements UserInteractionTool<AskUserTool.Args> 
             @ArraySize(min = 1, max = MAX_QUESTIONS)
                     @NonNull
                     @Doc(
-                            "One to "
-                                    + MAX_QUESTIONS
-                                    + " questions shown together. Match the user's requested question count"
-                                    + " and pacing; keep sequentially requested questions in separate batches."
-                                    + " Each object contains required"
-                                    + " `header`, `id`, `question`, and `options` fields.")
+                            "One to 10 questions shown together. Match the user's requested question count and pacing; keep sequentially requested questions in separate batches. Each object contains required `header`, `id`, `question`, and `options` fields.")
                     List<@NonNull Question> questions) {}
 
     public record Question(
@@ -116,8 +117,7 @@ public final class AskUserTool implements UserInteractionTool<AskUserTool.Args> 
             @StringConstraint(minLength = 1, maxLength = 120)
                     @NonNull
                     @Doc(
-                            "Plain choice label, 1-120 Unicode characters. The application marks the first option as recommended; do not write `(Recommended)` yourself. Move explanations into the description; `Other`"
-                                    + " is reserved.")
+                            "Plain choice label, 1-120 Unicode characters. The application marks the first option as recommended; do not write `(Recommended)` yourself. Move explanations into the description; `Other` is reserved.")
                     String label,
             @StringConstraint(minLength = 1, maxLength = 200)
                     @NonNull
@@ -153,15 +153,15 @@ public final class AskUserTool implements UserInteractionTool<AskUserTool.Args> 
             throw new ToolExecutionException(
                     ToolResultStatus.CANCELLED,
                     ToolResultFormat.PLAINTEXT,
-                    ToolErrorCode.TOOL_INTERRUPTED,
-                    "The question was interrupted.");
+                    ToolErrorCode.LIFECYCLE.TOOL_INTERRUPTED,
+                    "Interrupted: the wait for user answers was interrupted.");
         }
         if (answer.cancelled()) {
             throw new ToolExecutionException(
                     ToolResultStatus.CANCELLED,
                     ToolResultFormat.PLAINTEXT,
-                    ToolErrorCode.USER_CANCELLED,
-                    "The user cancelled the question.");
+                    ToolErrorCode.LIFECYCLE.USER_CANCELLED,
+                    "Cancelled: the user cancelled the question batch.");
         }
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("answers", answer.answers());
@@ -171,33 +171,36 @@ public final class AskUserTool implements UserInteractionTool<AskUserTool.Args> 
     private static void validate(@NonNull List<@NonNull Question> questions) {
         if (questions.isEmpty() || questions.size() > MAX_QUESTIONS) {
             ToolErrors.failure(
-                    ToolErrorCode.INVALID_QUESTIONS,
-                    "ask_user requires between 1 and " + MAX_QUESTIONS + " questions.");
+                    ToolErrorCode.VALIDATION.INVALID_QUESTIONS,
+                    "Invalid questions: ask_user requires between 1 and "
+                            + MAX_QUESTIONS
+                            + " questions.");
         }
         Set<String> ids = new HashSet<>();
         for (Question question : questions) {
             if (question.header().isBlank() || length(question.header()) > 12) {
                 ToolErrors.failure(
-                        ToolErrorCode.INVALID_QUESTIONS,
-                        "Each question header must contain 1 to 12 characters.");
+                        ToolErrorCode.VALIDATION.INVALID_QUESTIONS,
+                        "Invalid questions: each question header must contain 1 to 12 characters.");
             }
             if (question.id().isBlank()
                     || !question.id().matches("[a-z][a-z0-9_]*")
                     || !ids.add(question.id())) {
                 ToolErrors.failure(
-                        ToolErrorCode.INVALID_QUESTIONS,
-                        "Question ids must be unique snake_case identifiers.");
+                        ToolErrorCode.VALIDATION.INVALID_QUESTIONS,
+                        "Invalid questions: question ids must be unique snake_case identifiers.");
             }
             if (question.question().isBlank() || length(question.question()) > 300) {
                 ToolErrors.failure(
-                        ToolErrorCode.INVALID_QUESTIONS,
-                        "Each question prompt must contain 1 to 300 characters.");
+                        ToolErrorCode.VALIDATION.INVALID_QUESTIONS,
+                        "Invalid questions: each question prompt must contain 1 to 300"
+                                + " characters.");
             }
             if (question.options().size() < MIN_OPTIONS
                     || question.options().size() > MAX_OPTIONS) {
                 ToolErrors.failure(
-                        ToolErrorCode.INVALID_QUESTIONS,
-                        "Question '"
+                        ToolErrorCode.VALIDATION.INVALID_QUESTIONS,
+                        "Invalid questions: question '"
                                 + question.id()
                                 + "' has "
                                 + question.options().size()
@@ -213,8 +216,8 @@ public final class AskUserTool implements UserInteractionTool<AskUserTool.Args> 
                 String normalizedLabel = option.label().strip().toLowerCase(Locale.ROOT);
                 if (length(option.label()) > 120) {
                     ToolErrors.failure(
-                            ToolErrorCode.INVALID_QUESTIONS,
-                            "Question '"
+                            ToolErrorCode.VALIDATION.INVALID_QUESTIONS,
+                            "Invalid questions: question '"
                                     + question.id()
                                     + "', option "
                                     + (index + 1)
@@ -229,9 +232,10 @@ public final class AskUserTool implements UserInteractionTool<AskUserTool.Args> 
                         || length(option.description()) > 200
                         || !labels.add(normalizedLabel)) {
                     ToolErrors.failure(
-                            ToolErrorCode.INVALID_QUESTIONS,
-                            "Option labels must be distinct, at most 120 characters, and not"
-                                    + " `Other`; descriptions must contain 1 to 200 characters.");
+                            ToolErrorCode.VALIDATION.INVALID_QUESTIONS,
+                            "Invalid questions: option labels must be distinct, at most 120"
+                                    + " characters, and not `Other`; descriptions must contain 1"
+                                    + " to 200 characters.");
                 }
             }
         }

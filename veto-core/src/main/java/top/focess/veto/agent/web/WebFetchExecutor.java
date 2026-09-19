@@ -119,10 +119,12 @@ public final class WebFetchExecutor {
         UUID sessionId = parent.sessionId();
         if (owner == null || sessionId == null || !owner.equals(UserContext.get()))
             return ToolErrors.refused(
-                    ToolErrorCode.READER_IDENTITY, "Reader needs an authenticated session owner.");
+                    ToolErrorCode.READER.READER_IDENTITY,
+                    "Reader identity: an authenticated session owner is required.");
         if (objective.length() > MAX_ANSWER_CHARS)
             return ToolErrors.failure(
-                    ToolErrorCode.INVALID_ARGUMENTS, "Reading objective is too long.");
+                    ToolErrorCode.VALIDATION.INVALID_ARGUMENTS,
+                    "Invalid arguments: the reading objective exceeds 4000 characters.");
         var model = resolveModel(owner, tier);
         long start = System.nanoTime();
         long deadline = start + Duration.ofSeconds(timeoutSeconds).toNanos();
@@ -273,12 +275,18 @@ public final class WebFetchExecutor {
                 var failure = document.failure();
                 if (failure != null) throw failure;
                 var result = document.result();
-                if (!completed.success() || result == null)
+                if (!completed.success() || result == null) {
+                    if (calls.get() >= maxRounds) {
+                        return ToolErrors.failure(
+                                ToolErrorCode.READER.READER_BUDGET,
+                                "Reader budget: the reader exhausted its execution budget without a"
+                                        + " validated result.");
+                    }
                     return ToolErrors.failure(
-                            calls.get() >= maxRounds
-                                    ? ToolErrorCode.READER_BUDGET
-                                    : ToolErrorCode.READER_MODEL,
-                            "Reader ended without a validated result; check its configured model and execution budget.");
+                            ToolErrorCode.READER.READER_MODEL,
+                            "Reader model: the reader ended without a validated result; check its"
+                                    + " configured model.");
+                }
                 log.info(
                         "Web reader finished: execution={}, outcome={}, rounds={}, promptTokens={}, completionTokens={}",
                         id,
@@ -290,10 +298,13 @@ public final class WebFetchExecutor {
                 return json(result);
             } catch (InterruptedException error) {
                 Thread.currentThread().interrupt();
-                return ToolErrors.failure(ToolErrorCode.CANCELLED, "Web reader cancelled.");
+                return ToolErrors.failure(
+                        ToolErrorCode.LIFECYCLE.CANCELLED,
+                        "Cancelled: the web reader was cancelled.");
             } catch (TimeoutException error) {
                 return ToolErrors.failure(
-                        ToolErrorCode.READER_TIMEOUT, "Web reader exceeded its time budget.");
+                        ToolErrorCode.READER.READER_TIMEOUT,
+                        "Reader timeout: the web reader exceeded its time budget.");
             } finally {
                 // A terminal result/state is set before the child thread actually unwinds.
                 // Keep the parent operation occupied until its child can no longer execute.
@@ -343,10 +354,12 @@ public final class WebFetchExecutor {
 
     static void checkDeadline(long deadline) {
         if (Thread.currentThread().isInterrupted())
-            ToolErrors.failure(ToolErrorCode.CANCELLED, "Web reader cancelled.");
+            ToolErrors.failure(
+                    ToolErrorCode.LIFECYCLE.CANCELLED, "Cancelled: the web reader was cancelled.");
         if (System.nanoTime() >= deadline)
             ToolErrors.failure(
-                    ToolErrorCode.READER_TIMEOUT, "Web reader exceeded its time budget.");
+                    ToolErrorCode.READER.READER_TIMEOUT,
+                    "Reader timeout: the web reader exceeded its time budget.");
     }
 
     private static int bytes(@NonNull String value) {
@@ -359,7 +372,8 @@ public final class WebFetchExecutor {
             return mapper.writeValueAsString(value);
         } catch (JsonProcessingException error) {
             return ToolErrors.failure(
-                    ToolErrorCode.READER_OUTPUT, "Could not encode reader result.");
+                    ToolErrorCode.READER.READER_OUTPUT,
+                    "Reader output: the reader result could not be encoded.");
         }
     }
 
@@ -387,12 +401,16 @@ public final class WebFetchExecutor {
         if (value.limitations().stream().anyMatch(s -> s.length() > 500))
             errors.add("Each limitations entry must be at most 500 characters.");
         if (!errors.isEmpty())
-            throw new IllegalArgumentException(
-                    String.join(" ", errors)
+            return ToolErrors.failure(
+                    ToolErrorCode.VALIDATION.INVALID_ARGUMENTS,
+                    "Invalid arguments: "
+                            + String.join(" ", errors)
                             + " Correct all listed fields together. Choose supporting evidence and keep the answer within its scope; exact quotations are attached from evidenceIds. Combine related limitations.");
         var evidence = value.evidenceIds().stream().distinct().map(document::evidence).toList();
         if (value.outcome().equals("complete") && evidence.isEmpty())
-            throw new IllegalArgumentException("Complete answers need read evidence.");
+            return ToolErrors.failure(
+                    ToolErrorCode.VALIDATION.INVALID_ARGUMENTS,
+                    "Invalid arguments: complete answers need read evidence.");
         String outcome = value.outcome();
         List<String> limitations = new ArrayList<>(value.limitations());
         if (outcome.equals("not_found") && !document.fullyRead()) {

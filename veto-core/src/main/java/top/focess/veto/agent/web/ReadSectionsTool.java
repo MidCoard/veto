@@ -20,7 +20,8 @@ import top.focess.veto.agent.tool.WebDocumentTool;
         whenToUse =
                 "After fetch_page, inspect identified sections before answering or citing them.",
         whenNotToUse = "Do not use for another URL, workspace resources, or unrelated operations.",
-        resultContract = "JSON array of sections with id, section, and text in requested order.",
+        resultContract =
+                "JSON array of sections with id, section, and text in requested order. Failures are plaintext: `Invalid arguments: read between one and eight segment IDs.` or `Invalid arguments: the segment id is unknown.` (INVALID_ARGUMENTS), `Document not fetched: fetch the page first with fetch_page.` (READER_DOCUMENT), or `Observation budget: these sections exceed the reading budget. Read fewer IDs per call.` (READER_OBSERVATION).",
         errorsAndEdgeCases =
                 "Use one to eight valid IDs from this document. Unknown IDs fail. If the response exceeds the remaining observation budget, retry with fewer IDs; a failed read is not evidence.",
         security =
@@ -31,7 +32,7 @@ import top.focess.veto.agent.tool.WebDocumentTool;
             "[{\"id\":\"s2\",\"section\":\"Timeout\",\"text\":\"The default timeout is 30 seconds.\"},{\"id\":\"s3\",\"section\":\"Retries\",\"text\":\"Failed requests are retried up to 3 times.\"}]",
             "[{\"id\":\"s2\",\"section\":\"Pricing\",\"text\":\"The Pro plan costs $12 per month.\"},{\"id\":\"s5\",\"section\":\"Limits\",\"text\":\"Pro allows 1000 requests per day.\"},{\"id\":\"s7\",\"section\":\"Overage\",\"text\":\"Extra requests are billed per call.\"}]",
             "[{\"id\":\"s1\",\"section\":\"Overview\",\"text\":\"...\"},{\"id\":\"s2\",\"section\":\"Install\",\"text\":\"...\"},{\"id\":\"s3\",\"section\":\"Config\",\"text\":\"...\"},{\"id\":\"s4\",\"section\":\"Auth\",\"text\":\"...\"},{\"id\":\"s5\",\"section\":\"Limits\",\"text\":\"...\"},{\"id\":\"s6\",\"section\":\"Errors\",\"text\":\"...\"},{\"id\":\"s7\",\"section\":\"Overage\",\"text\":\"...\"},{\"id\":\"s8\",\"section\":\"FAQ\",\"text\":\"...\"}]",
-            "Read between one and eight segment IDs."
+            "Invalid arguments: read between one and eight segment IDs."
         },
         examples = {
             "{\"ids\":[\"s1\"]}",

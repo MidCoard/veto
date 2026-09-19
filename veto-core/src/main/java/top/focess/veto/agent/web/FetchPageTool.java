@@ -19,7 +19,7 @@ import top.focess.veto.agent.tool.WebDocumentTool;
                 "Call first to obtain the section count, initial outline, and truncation status.",
         whenNotToUse = "Do not use for another URL, workspace resources, or unrelated operations.",
         resultContract =
-                "JSON object with outline (up to 24 entries containing id and section), segmentCount, and truncated. The outline is not the page body and does not establish evidence.",
+                "JSON object with outline (up to 24 entries containing id and section), segmentCount, and truncated. The outline is not the page body and does not establish evidence. Failures are plaintext: `Unsupported content: ...` (UNSUPPORTED_CONTENT), `Empty content: the page has no readable content.` (EMPTY_CONTENT), `Observation budget: no budget remains for the page outline.` (READER_OBSERVATION), `Cancelled: the web reader was cancelled.` (CANCELLED), or `Reader timeout: the web reader exceeded its time budget.` (READER_TIMEOUT).",
         errorsAndEdgeCases =
                 "Retrieval failures are tool errors, not evidence of absence. A truncated document cannot support a complete result.",
         security =

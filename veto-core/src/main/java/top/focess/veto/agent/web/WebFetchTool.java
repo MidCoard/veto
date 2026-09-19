@@ -28,9 +28,9 @@ import top.focess.veto.agent.tool.ToolSecurity;
         whenNotToUse =
                 "Use web_search to discover URLs. This tool cannot browse interactive pages, follow unrelated links, or return complete large datasets.",
         resultContract =
-                "JSON with outcome (complete, partial, not_found), answer, evidence (url, section, quote), limitations, and execution metadata. Complete reports that the reader answered its objective, not that the entire page was read. Check excerpts and limitations against your intended claim. A stated purpose or example does not establish an exclusive restriction. Quote evidence.quote directly, not the reader answer or a paraphrase. Cite returned URLs and section labels; do not invent section anchors. Partial identifies missing coverage; not_found concerns only the inspected document.",
+                "JSON with outcome (complete, partial, not_found), answer, evidence (url, section, quote), limitations, and execution metadata. Complete reports that the reader answered its objective, not that the entire page was read. Check excerpts and limitations against your intended claim. A stated purpose or example does not establish an exclusive restriction. Quote evidence.quote directly, not the reader answer or a paraphrase. Cite returned URLs and section labels; do not invent section anchors. Partial identifies missing coverage; not_found concerns only the inspected document. Blank url/objective, an invalid URL, or an overlong objective fails with INVALID_ARGUMENTS (`Invalid arguments: ...`); network retrieval failures carry the fetch layer's own codes.",
         errorsAndEdgeCases =
-                "Destination denial, unsupported content, network/model errors, cancellation, and exhausted budgets are tool failures. A cross-origin redirect needs a fresh call. Failed retrieval never means information was absent.",
+                "Destination denial, unsupported content (UNSUPPORTED_CONTENT: `Unsupported content: ...`), empty pages (EMPTY_CONTENT: `Empty content: ...`), network/model errors (READER_MODEL: `Reader model: ...`), cancellation (CANCELLED: `Cancelled: the web reader was cancelled.`), and exhausted budgets (READER_TIMEOUT: `Reader timeout: ...`; READER_BUDGET: `Reader budget: ...`) are tool failures. A missing session owner is refused with READER_IDENTITY (`Reader identity: an authenticated session owner is required.`). A cross-origin redirect needs a fresh call. Failed retrieval never means information was absent.",
         security =
                 "NETWORK_EGRESS with invocation-scoped destination authority. Reader has no workspace, process, memory, skill, MCP, search, or delegation access.",
         examples = {
@@ -45,7 +45,7 @@ import top.focess.veto.agent.tool.ToolSecurity;
             "{\"outcome\":\"complete\",\"answer\":\"v3 retries failed requests up to 3 times, except on 4xx responses.\",\"evidence\":[{\"url\":\"https://example.com/migration\",\"section\":\"v3 retry changes\",\"quote\":\"Requests are retried up to 3 times; 4xx responses are never retried.\"}],\"limitations\":[]}",
             "{\"outcome\":\"complete\",\"answer\":\"Authentication requires an Authorization: Bearer header; invalid tokens return 401 TOKEN_INVALID.\",\"evidence\":[{\"url\":\"https://example.com/api/reference\",\"section\":\"Authentication\",\"quote\":\"Send Authorization: Bearer <token>. Invalid tokens return 401 with code TOKEN_INVALID.\"}],\"limitations\":[]}",
             "{\"outcome\":\"partial\",\"answer\":\"v2.0 removes the XML formatter and renames retryLimit to maxRetries; the deprecations section was truncated.\",\"evidence\":[{\"url\":\"https://example.com/changelog\",\"section\":\"Breaking changes\",\"quote\":\"The XML formatter is removed; retryLimit is renamed to maxRetries.\"}],\"limitations\":[\"Deprecations section truncated; the full deprecation list is not verified.\"]}",
-            "url and objective must not be blank."
+            "Invalid arguments: url and objective must not be blank."
         })
 public final class WebFetchTool implements NetworkEgressTool<WebFetchTool.Args> {
     private final @NonNull NetworkEgressCapability network;
@@ -83,12 +83,15 @@ public final class WebFetchTool implements NetworkEgressTool<WebFetchTool.Args> 
             @NonNull Args args, @NonNull NetworkEgressCapability capability) {
         if (args.url().isBlank() || args.objective().isBlank())
             return ToolErrors.failure(
-                    ToolErrorCode.INVALID_ARGUMENTS, "url and objective must not be blank.");
+                    ToolErrorCode.VALIDATION.INVALID_ARGUMENTS,
+                    "Invalid arguments: url and objective must not be blank.");
         URI uri;
         try {
             uri = URI.create(args.url().trim());
         } catch (IllegalArgumentException e) {
-            return ToolErrors.failure(ToolErrorCode.INVALID_ARGUMENTS, "Invalid URL.");
+            return ToolErrors.failure(
+                    ToolErrorCode.VALIDATION.INVALID_ARGUMENTS,
+                    "Invalid arguments: url is not a valid URL.");
         }
         try (var access = capability.openReader(uri)) {
             return access.read(args.objective());

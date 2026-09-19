@@ -64,11 +64,14 @@ import top.focess.veto.agent.tool.WorkspaceReadTool;
                 """
                     - Success: one match per line as `<file>:<lineNumber>: <line text>` (1-indexed). No hits returns \
                     `(no matches)`; bounded results end with `[truncated: ...]`.
-                    - Missing path (failure, PATH_NOT_FOUND): `Search path does not exist: <absolutePath>`.
-                    - Empty query (failure, INVALID_QUERY): `query must not be empty`.
-                    - Invalid include glob (failure, INVALID_PATTERN): `Invalid includes glob`.
-                    - A symbolic-link or reparse-point root fails with UNSAFE_LINK; a protected root fails with \
-                    PATH_PROTECTED.
+                    - Missing path (failure, PATH_NOT_FOUND): `Path not found: <absolutePath>`.
+                    - Empty query (failure, INVALID_ARGUMENTS): `Invalid arguments: query must not be empty.`
+                    - Invalid include glob (failure, INVALID_ARGUMENTS): \
+                    `Invalid arguments: includes contains an invalid glob.`
+                    - Search failure (failure, IO_ERROR): `I/O error: cannot search <absolutePath>.`
+                    - A symbolic-link or reparse-point root fails with UNSAFE_LINK \
+                    (`Unsafe link: the search path is a symbolic link or reparse point.`); a \
+                    protected root is refused with PATH_PROTECTED.
                     """,
         errorsAndEdgeCases =
                 """
@@ -91,7 +94,7 @@ import top.focess.veto.agent.tool.WorkspaceReadTool;
             "/abs/project/src/Main.java:12: // TODO: refactor\n/abs/project/src/notes.md:3: - todo: write docs",
             "/abs/project/src/Main.java:3: public class Main {\n/abs/project/src/util/Helper.java:7: public class Helper {",
             "/abs/project/config/app.yml:7: password: ${DB_PASSWORD}",
-            "Invalid includes glob"
+            "Invalid arguments: includes contains an invalid glob."
         })
 public final class GrepSearchTool implements WorkspaceReadTool<GrepSearchTool.Args> {
 
@@ -115,13 +118,17 @@ public final class GrepSearchTool implements WorkspaceReadTool<GrepSearchTool.Ar
     @Override
     public @NonNull String execute(@NonNull Args args, @NonNull WorkspaceReadCapability workspace) {
         if (args.query().isEmpty()) {
-            return ToolErrors.failure(ToolErrorCode.INVALID_QUERY, "query must not be empty");
+            return ToolErrors.failure(
+                    ToolErrorCode.VALIDATION.INVALID_ARGUMENTS,
+                    "Invalid arguments: query must not be empty.");
         }
         List<PathMatcher> includes;
         try {
             includes = compileIncludes(args.includes());
         } catch (IllegalArgumentException e) {
-            return ToolErrors.failure(ToolErrorCode.INVALID_PATTERN, "Invalid includes glob");
+            return ToolErrors.failure(
+                    ToolErrorCode.VALIDATION.INVALID_ARGUMENTS,
+                    "Invalid arguments: includes contains an invalid glob.");
         }
         boolean insensitive = Boolean.TRUE.equals(args.caseInsensitive());
         String query = insensitive ? args.query().toLowerCase(Locale.ROOT) : args.query();
@@ -130,13 +137,13 @@ public final class GrepSearchTool implements WorkspaceReadTool<GrepSearchTool.Ar
             String kind = root.kind();
             if (kind.equals("missing")) {
                 return ToolErrors.failure(
-                        ToolErrorCode.PATH_NOT_FOUND,
-                        "Search path does not exist: " + args.absolutePath());
+                        ToolErrorCode.WORKSPACE.PATH_NOT_FOUND,
+                        "Path not found: " + args.absolutePath());
             }
             if (kind.equals("symbolic_link")) {
                 return ToolErrors.failure(
-                        ToolErrorCode.UNSAFE_LINK,
-                        "Search path is a symbolic link or reparse point");
+                        ToolErrorCode.WORKSPACE.UNSAFE_LINK,
+                        "Unsafe link: the search path is a symbolic link or reparse point.");
             }
             var traversal = new WorkspaceTraversal(root);
             StringBuilder output = new StringBuilder();
@@ -204,11 +211,12 @@ public final class GrepSearchTool implements WorkspaceReadTool<GrepSearchTool.Ar
             return output.isEmpty() ? "(no matches)" : output.toString();
         } catch (NoSuchFileException e) {
             return ToolErrors.failure(
-                    ToolErrorCode.PATH_NOT_FOUND,
-                    "Search path does not exist: " + args.absolutePath());
+                    ToolErrorCode.WORKSPACE.PATH_NOT_FOUND,
+                    "Path not found: " + args.absolutePath());
         } catch (IOException e) {
             return ToolErrors.failure(
-                    ToolErrorCode.IO_ERROR, "Cannot search path: " + args.absolutePath());
+                    ToolErrorCode.WORKSPACE.IO_ERROR,
+                    "I/O error: cannot search " + args.absolutePath() + ".");
         }
     }
 

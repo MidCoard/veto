@@ -24,6 +24,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.tool.ToolCapability;
+import top.focess.veto.agent.tool.ToolErrorCode;
 import top.focess.veto.agent.tool.ToolErrors;
 import top.focess.veto.agent.tool.ToolExecutionException;
 import top.focess.veto.agent.web.FetchedPage;
@@ -123,9 +124,9 @@ public final class NetworkEgressCapabilityImpl implements NetworkEgressCapabilit
                 Math.min(
                         readerDeadline,
                         System.nanoTime() + TimeUnit.SECONDS.toNanos(timeoutSeconds));
-        String validationError = validateUri(uri);
-        if (validationError != null) {
-            return ToolErrors.failure(validationError);
+        UriProblem problem = validateUri(uri);
+        if (problem != null) {
+            return ToolErrors.failure(problem.code(), problem.body());
         }
         try {
             URI current = uri;
@@ -146,32 +147,53 @@ public final class NetworkEgressCapabilityImpl implements NetworkEgressCapabilit
                     String location = response.headers().firstValue("Location").orElse("");
                     if (location.isBlank()) {
                         return ToolErrors.failure(
-                                "HTTP " + status + " without Location for " + current);
+                                ToolErrorCode.NETWORK.INVALID_REDIRECT,
+                                "Invalid redirect: HTTP "
+                                        + status
+                                        + " from "
+                                        + current
+                                        + " has no Location header.");
                     }
                     if (redirectCount == MAX_REDIRECTS) {
-                        return ToolErrors.failure("too many redirects for " + uri);
+                        return ToolErrors.failure(
+                                ToolErrorCode.NETWORK.TOO_MANY_REDIRECTS,
+                                "Too many redirects: more than "
+                                        + MAX_REDIRECTS
+                                        + " redirects while fetching "
+                                        + uri
+                                        + ".");
                     }
                     URI next;
                     try {
                         next = current.resolve(location);
                     } catch (IllegalArgumentException e) {
-                        return ToolErrors.failure("invalid redirect target from " + current);
+                        return ToolErrors.failure(
+                                ToolErrorCode.NETWORK.INVALID_REDIRECT,
+                                "Invalid redirect: the Location target from "
+                                        + current
+                                        + " is not a valid URI.");
                     }
-                    String redirectError = validateUri(next);
-                    if (redirectError != null) {
-                        return ToolErrors.failure("redirect rejected: " + redirectError);
+                    UriProblem redirectProblem = validateUri(next);
+                    if (redirectProblem != null) {
+                        return ToolErrors.failure(
+                                ToolErrorCode.NETWORK.REDIRECT_REJECTED,
+                                "Redirect rejected: " + redirectProblem.detail());
                     }
                     if (!sameOrigin(uri, next)) {
                         return ToolErrors.failure(
-                                "cross-origin redirect requires a separately approved tool call: "
-                                        + next);
+                                ToolErrorCode.NETWORK.CROSS_ORIGIN_REDIRECT,
+                                "Redirect refused: cross-origin redirect requires a separately approved tool call: "
+                                        + next
+                                        + ".");
                     }
                     current = next;
                     continue;
                 }
                 if (status < 200 || status >= 300) {
                     closeBody(response);
-                    return ToolErrors.failure("HTTP " + status + " for " + current);
+                    return ToolErrors.failure(
+                            ToolErrorCode.NETWORK.HTTP_ERROR,
+                            "HTTP error: " + status + " for " + current + ".");
                 }
                 String contentType =
                         response.headers().firstValue("Content-Type").orElse("").toLowerCase();
@@ -183,17 +205,32 @@ public final class NetworkEgressCapabilityImpl implements NetworkEgressCapabilit
                 return new FetchedPage(
                         current, status, contentType, content, bounded.truncated(), maxChars);
             }
-            return ToolErrors.failure("too many redirects for " + uri);
+            return ToolErrors.failure(
+                    ToolErrorCode.NETWORK.TOO_MANY_REDIRECTS,
+                    "Too many redirects: more than "
+                            + MAX_REDIRECTS
+                            + " redirects while fetching "
+                            + uri
+                            + ".");
         } catch (ToolExecutionException e) {
             throw e;
         } catch (HttpTimeoutException e) {
-            return ToolErrors.failure("timed out after " + timeoutSeconds + "s fetching " + uri);
+            return ToolErrors.failure(
+                    ToolErrorCode.NETWORK.TIMEOUT,
+                    "Fetch timed out: no response within " + timeoutSeconds + "s for " + uri + ".");
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            return ToolErrors.failure("fetch interrupted for " + uri);
+            return ToolErrors.failure(
+                    ToolErrorCode.LIFECYCLE.TOOL_INTERRUPTED,
+                    "Fetch interrupted: the fetch of " + uri + " was interrupted.");
         } catch (Exception e) {
             return ToolErrors.failure(
-                    "could not fetch " + uri + " (" + e.getClass().getSimpleName() + ")");
+                    ToolErrorCode.NETWORK.FETCH_FAILED,
+                    "Fetch failed: could not fetch "
+                            + uri
+                            + " ("
+                            + e.getClass().getSimpleName()
+                            + ").");
         }
     }
 
@@ -242,28 +279,51 @@ public final class NetworkEgressCapabilityImpl implements NetworkEgressCapabilit
         return status == 301 || status == 302 || status == 303 || status == 307 || status == 308;
     }
 
-    private String validateUri(@NonNull URI uri) {
+    /** A URL validation failure: the code, the direct-fetch label, and the reusable detail. */
+    private record UriProblem(
+            @NonNull ToolErrorCode code, @NonNull String label, @NonNull String detail) {
+        private @NonNull String body() {
+            return label + ": " + detail;
+        }
+    }
+
+    private UriProblem validateUri(@NonNull URI uri) {
         String scheme = uri.getScheme();
         if (scheme == null
                 || !(scheme.equalsIgnoreCase("http") || scheme.equalsIgnoreCase("https"))) {
-            return "only http/https URLs are allowed (got scheme: " + scheme + ")";
+            return new UriProblem(
+                    ToolErrorCode.VALIDATION.INVALID_ARGUMENTS,
+                    "Invalid URL",
+                    "only http and https URLs are allowed (scheme: " + scheme + ").");
         }
         if (uri.getHost() == null || uri.getHost().isBlank()) {
-            return "URL must contain a host";
+            return new UriProblem(
+                    ToolErrorCode.VALIDATION.INVALID_ARGUMENTS,
+                    "Invalid URL",
+                    "the URL must contain a host.");
         }
         if (uri.getUserInfo() != null) {
-            return "URLs containing credentials are not allowed";
+            return new UriProblem(
+                    ToolErrorCode.VALIDATION.INVALID_ARGUMENTS,
+                    "Invalid URL",
+                    "URLs containing credentials are not allowed.");
         }
         if (!allowPrivateAddresses) {
             try {
                 for (InetAddress address : InetAddress.getAllByName(uri.getHost())) {
                     if (isPrivateAddress(address)) {
-                        return "private, loopback, link-local, or multicast destinations are not"
-                                + " allowed";
+                        return new UriProblem(
+                                ToolErrorCode.NETWORK.DESTINATION_REFUSED,
+                                "Destination refused",
+                                "private, loopback, link-local, or multicast destinations are not"
+                                        + " allowed.");
                     }
                 }
             } catch (UnknownHostException e) {
-                return "host could not be resolved";
+                return new UriProblem(
+                        ToolErrorCode.NETWORK.HOST_UNRESOLVED,
+                        "Host unresolved",
+                        "the host could not be resolved.");
             }
         }
         return null;

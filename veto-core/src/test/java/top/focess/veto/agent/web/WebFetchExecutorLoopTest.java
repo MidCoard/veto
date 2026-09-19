@@ -73,7 +73,7 @@ class WebFetchExecutorLoopTest {
         ToolExecutionException error =
                 assertThrows(
                         ToolDocs.nonNullClass(ToolExecutionException.class), () -> execute(tool));
-        assertEquals(ToolErrorCode.READER_MODEL, error.errorCode());
+        assertEquals(ToolErrorCode.READER.READER_MODEL, error.errorCode());
         assertTrue(requests.isEmpty());
         verify(access, never()).fetch(anyLong());
         verify(models, never()).resolve("test-owner", ModelTier.MID);
@@ -317,7 +317,7 @@ class WebFetchExecutorLoopTest {
                         .messages()
                         .getLast()
                         .content()
-                        .contains("Evidence must reference a read segment"));
+                        .contains("Invalid arguments: evidence must reference a read segment."));
         mapper.registerModule(new JavaTimeModule());
         assertFalse(mapper.writeValueAsString(requests).contains("UNSEEN_SECTION_8"));
         assertEquals(5, requests.size());
@@ -399,7 +399,7 @@ class WebFetchExecutorLoopTest {
                                 message ->
                                         message.content()
                                                 .contains(
-                                                        "Evidence must reference a read segment")));
+                                                        "Invalid arguments: evidence must reference a read segment.")));
         assertEquals(4, requests.size());
     }
 
@@ -416,7 +416,7 @@ class WebFetchExecutorLoopTest {
                 assertThrows(
                         ToolDocs.nonNullClass(ToolExecutionException.class), () -> execute(tool));
         String message = error.content();
-        assertEquals(ToolErrorCode.READER_MODEL, error.errorCode());
+        assertEquals(ToolErrorCode.READER.READER_MODEL, error.errorCode());
         assertFalse(message.contains("provider secret"));
         assertFalse(message.contains("not_found"));
         verify(models, never()).resolve("test-owner", ModelTier.MID);
