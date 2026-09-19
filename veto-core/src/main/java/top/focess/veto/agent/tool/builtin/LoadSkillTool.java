@@ -59,12 +59,14 @@ import top.focess.veto.agent.tool.ToolResultFormat;
         examples = {
             "{\"skillName\": \"commit\"}",
             "{\"skillName\": \"verify_suite\"}",
-            "{\"skillName\": \"git-rebase\"}"
+            "{\"skillName\": \"git-rebase\"}",
+            "{\"skillName\": \"deploy\"}"
         },
         returnExamples = {
             "# commit\n1. Review the staged diff and draft the commit message ...",
             "# verify_suite\n1. Run the focused checks ...",
-            "# git-rebase\n1. Fetch the target branch, then replay local commits ..."
+            "# git-rebase\n1. Fetch the target branch, then replay local commits ...",
+            "Skill 'deploy' not found or tampered."
         })
 public final class LoadSkillTool implements SkillReadTool<LoadSkillTool.Args> {
 

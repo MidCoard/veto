@@ -73,17 +73,25 @@ import top.focess.veto.sandbox.BackgroundTaskManager;
         examples = {
             "{}",
             "{\"taskId\": \"bg-3\"}",
-            "{\"taskId\": \"bg-3\", \"waitForExit\": true}"
+            "{\"taskId\": \"bg-3\", \"waitForExit\": true}",
+            "{\"taskId\": \"bg-99\"}"
         },
         returnExamples = {
             "{\"count\": 1, \"tasks\": [{\"taskId\": \"bg-3\", \"command\": \"npm run dev\","
                     + " \"alive\": true}]}",
-            "{\"taskId\": \"bg-3\", \"alive\": true, \"pid\": 12345, \"startedAt\":"
-                    + " \"2026-01-01T00:00:00Z\", \"uptimeSeconds\": 42, \"command\": \"npm run"
-                    + " dev\", \"cwd\": \"/abs/project\", \"recentOutput\": \"VITE ready in 300 ms\"}",
-            "{\"taskId\": \"bg-3\", \"alive\": false, \"exitCode\": 0, \"pid\": 12345, \"startedAt\":"
-                    + " \"2026-01-01T00:00:00Z\", \"uptimeSeconds\": 184, \"command\": \"npm run"
-                    + " dev\", \"cwd\": \"/abs/project\", \"recentOutput\": \"Server stopped.\"}"
+            "{\"taskId\": \"bg-3\", \"command\": \"npm run dev\", \"alive\": true, \"pid\": 12345,"
+                    + " \"startedAt\": \"2026-01-01T00:00:00Z\", \"uptimeSeconds\": 42, \"cwd\":"
+                    + " \"/abs/project\", \"recentOutput\": \"VITE ready in 300 ms\","
+                    + " \"outputCapture\": \"recentOutput merges stdout and stderr without stream"
+                    + " labels. Report it as combined output; it cannot establish that either"
+                    + " stream was empty.\", \"inputFailures\": []}",
+            "{\"taskId\": \"bg-3\", \"command\": \"npm run dev\", \"alive\": false, \"exitCode\": 0,"
+                    + " \"pid\": 12345, \"startedAt\": \"2026-01-01T00:00:00Z\", \"uptimeSeconds\":"
+                    + " 184, \"cwd\": \"/abs/project\", \"recentOutput\": \"Server stopped.\","
+                    + " \"outputCapture\": \"recentOutput merges stdout and stderr without stream"
+                    + " labels. Report it as combined output; it cannot establish that either"
+                    + " stream was empty.\", \"inputFailures\": []}",
+            "task not found: bg-99"
         })
 public final class ViewTaskTool implements TaskControlTool<ViewTaskTool.Args> {
     private final @NonNull TaskControlCapability capability;

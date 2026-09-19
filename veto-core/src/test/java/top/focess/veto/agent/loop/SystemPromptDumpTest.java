@@ -61,9 +61,9 @@ class SystemPromptDumpTest {
 
     private static final @NonNull Path DUMP_DIR = Path.of("build", "prompt-dump");
     // Includes the two response submission tools, per-tool argument lists, security sections, and
-    // up to five positionally paired argument/result examples per tool (actual catalog is ~100 KiB
+    // up to five positionally paired argument/result examples per tool (actual catalog is ~105 KiB
     // at this writing).
-    private static final int MAX_TOOL_CATALOG_CHARS = 108 * 1024;
+    private static final int MAX_TOOL_CATALOG_CHARS = 113 * 1024;
 
     @Autowired private @NonNull ToolEngine mcpEngine;
     @Autowired private @NonNull CapabilityTranslator translator;
@@ -351,7 +351,6 @@ class SystemPromptDumpTest {
                         "ToolEngine",
                         "SandboxSubstrate",
                         "ComSpec",
-                        "CreateProcess",
                         "BackgroundTaskManager",
                         "SandboxProfile",
                         "AGENT_INIT",
@@ -377,6 +376,13 @@ class SystemPromptDumpTest {
             assertFalse(
                     catalog.contains(internalName),
                     "model-facing tool documentation must not expose " + internalName);
+        }
+        // "CreateProcess" stays banned from authored prose; verbatim failure examples may quote
+        // real sandbox stderr (run_command's observed CreateProcessW spawn failure).
+        for (ToolDefinition tool : flatTools) {
+            assertFalse(
+                    tool.documentation().security().contains("CreateProcess"),
+                    tool.name() + " security guidance must not expose CreateProcess");
         }
         assertFalse(
                 catalog.contains("available to YOU this turn"),

@@ -18,12 +18,14 @@ import top.focess.veto.agent.tool.ToolSecurity;
         examples = {
             "{\"secret_ref\":\"s_0123456789abcdef0123456789abcdef\",\"service\":\"github\",\"label\":\"Project repository\"}",
             "{\"secret_ref\":\"s_fedcba9876543210fedcba9876543210\",\"service\":\"github\",\"label\":\"CI token for example/project\"}",
-            "{\"secret_ref\":\"s_aabbccddeeff00112233445566778899\",\"service\":\"github\",\"label\":\"Release automation\"}"
+            "{\"secret_ref\":\"s_aabbccddeeff00112233445566778899\",\"service\":\"github\",\"label\":\"Release automation\"}",
+            "{\"secret_ref\":\"s_0000000000000000000000000000000a\",\"service\":\"github\",\"label\":\"Unknown reference\"}"
         },
         returnExamples = {
             "{\"credential_ref\":\"cred_01234567-89ab-cdef-0123-456789abcdef\",\"service\":\"github\",\"label\":\"Project repository\",\"status\":\"created\"}",
             "{\"credential_ref\":\"cred_9f8e7d6c-5b4a-4c3d-2e1f-0a9b8c7d6e5f\",\"service\":\"github\",\"label\":\"CI token for example/project\",\"status\":\"created\"}",
-            "{\"credential_ref\":\"cred_1a2b3c4d-5e6f-4a5b-8c9d-0e1f2a3b4c5d\",\"service\":\"github\",\"label\":\"Release automation\",\"status\":\"created\"}"
+            "{\"credential_ref\":\"cred_1a2b3c4d-5e6f-4a5b-8c9d-0e1f2a3b4c5d\",\"service\":\"github\",\"label\":\"Release automation\",\"status\":\"created\"}",
+            "Tool execution failed: Secret reference is unavailable"
         },
         description = "Import a detected reference into the owner's encrypted vault.",
         resultFormats = {ToolResultFormat.JSON},

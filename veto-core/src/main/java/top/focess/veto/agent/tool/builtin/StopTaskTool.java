@@ -63,11 +63,17 @@ import top.focess.veto.agent.tool.ToolSecurity;
                 """,
         security =
                 "You can stop only your own tasks. Prefer this tool over an operating-system kill command.",
-        examples = {"{\"taskId\": \"bg-3\"}", "{\"taskId\": \"bg-7\"}", "{\"taskId\": \"bg-12\"}"},
+        examples = {
+            "{\"taskId\": \"bg-3\"}",
+            "{\"taskId\": \"bg-7\"}",
+            "{\"taskId\": \"bg-12\"}",
+            "{\"taskId\": \"bg-99\"}"
+        },
         returnExamples = {
             "{\"status\": \"stopped\", \"taskId\": \"bg-3\", \"alive\": false, \"exitCode\": 1}",
             "{\"status\": \"stop_requested\", \"taskId\": \"bg-7\", \"alive\": true}",
-            "{\"status\": \"already_exited\", \"taskId\": \"bg-12\", \"alive\": false, \"exitCode\": 0}"
+            "{\"status\": \"already_exited\", \"taskId\": \"bg-12\", \"alive\": false, \"exitCode\": 0}",
+            "task not found: bg-99"
         })
 public final class StopTaskTool implements TaskControlTool<StopTaskTool.Args> {
     private final @NonNull TaskControlCapability capability;

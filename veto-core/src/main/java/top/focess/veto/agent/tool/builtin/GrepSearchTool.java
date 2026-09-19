@@ -82,13 +82,15 @@ import top.focess.veto.agent.tool.WorkspaceReadTool;
             "{\"absolutePath\": \"/abs/project/src\", \"query\": \"TODO\"}",
             "{\"absolutePath\": \"/abs/project/src\", \"query\": \"todo\", \"caseInsensitive\": true}",
             "{\"absolutePath\": \"/abs/project/src\", \"query\": \"public class \", \"includes\": [\"*.java\"]}",
-            "{\"absolutePath\": \"/abs/project/config/app.yml\", \"query\": \"password\"}"
+            "{\"absolutePath\": \"/abs/project/config/app.yml\", \"query\": \"password\"}",
+            "{\"absolutePath\": \"/abs/project/src\", \"query\": \"alpha\", \"includes\": [\"[broken\"]}"
         },
         returnExamples = {
             "/abs/project/src/Main.java:12: // TODO: refactor\n/abs/project/src/util/Helper.java:30: // TODO(jess): cleanup",
             "/abs/project/src/Main.java:12: // TODO: refactor\n/abs/project/src/notes.md:3: - todo: write docs",
             "/abs/project/src/Main.java:3: public class Main {\n/abs/project/src/util/Helper.java:7: public class Helper {",
-            "/abs/project/config/app.yml:7: password: ${DB_PASSWORD}"
+            "/abs/project/config/app.yml:7: password: ${DB_PASSWORD}",
+            "Invalid includes glob"
         })
 public final class GrepSearchTool implements WorkspaceReadTool<GrepSearchTool.Args> {
 

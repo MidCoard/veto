@@ -70,13 +70,15 @@ public @interface ToolDoc {
     @NonNull String @NonNull [] examples();
 
     /**
-     * Representative successful return-value shapes, positionally aligned with {@link #examples()}:
-     * entry {@code i} is the success result of the call shown in {@code examples()[i]}. Tools with
-     * arguments declare three to five pairs; a no-argument tool declares exactly one empty-call
-     * pair. Stable expected failure bodies belong in the normative Return format section; their
-     * triggers and recovery belong under Errors &amp; edge cases. Failures never belong in this
-     * example array. Rendered as explicitly illustrative fenced blocks after the {@link
-     * #resultContract()}. REQUIRED.
+     * Representative result shapes, positionally aligned with {@link #examples()}: entry {@code i}
+     * is the result of the call shown in {@code examples()[i]}. Tools with arguments declare three
+     * to five pairs; a no-argument tool declares exactly one empty-call pair. Cover the tool's
+     * meaningful outcome types: successful shapes and, when the tool has a distinct failure mode,
+     * at least one failure pair showing the real failure body for a call that fails. Refusals are
+     * runtime-generated and shared across tools, so they are documented once in the result
+     * conventions, never here. The normative shapes stay owned by {@link #resultContract()}; these
+     * examples illustrate them. Rendered as fenced blocks after {@link #resultContract()}.
+     * REQUIRED.
      */
     @NonNull String @NonNull [] returnExamples();
 }

@@ -53,12 +53,14 @@ import top.focess.veto.agent.tool.WorkspaceWriteTool;
         examples = {
             "{\"sourceAbsolutePath\":\"/abs/project/old.txt\",\"destinationAbsolutePath\":\"/abs/project/new.txt\"}",
             "{\"sourceAbsolutePath\":\"/abs/project/downloads/report.pdf\",\"destinationAbsolutePath\":\"/abs/project/reports/report.pdf\"}",
-            "{\"sourceAbsolutePath\":\"/abs/project/src/legacy\",\"destinationAbsolutePath\":\"/abs/project/archive/legacy\"}"
+            "{\"sourceAbsolutePath\":\"/abs/project/src/legacy\",\"destinationAbsolutePath\":\"/abs/project/archive/legacy\"}",
+            "{\"sourceAbsolutePath\":\"/abs/project/notes.txt\",\"destinationAbsolutePath\":\"/abs/project/new.txt\"}"
         },
         returnExamples = {
             "{\"status\":\"moved\",\"source\":\"/abs/project/old.txt\",\"destination\":\"/abs/project/new.txt\",\"kind\":\"file\"}",
             "{\"status\":\"moved\",\"source\":\"/abs/project/downloads/report.pdf\",\"destination\":\"/abs/project/reports/report.pdf\",\"kind\":\"file\"}",
-            "{\"status\":\"moved\",\"source\":\"/abs/project/src/legacy\",\"destination\":\"/abs/project/archive/legacy\",\"kind\":\"directory\"}"
+            "{\"status\":\"moved\",\"source\":\"/abs/project/src/legacy\",\"destination\":\"/abs/project/archive/legacy\",\"kind\":\"directory\"}",
+            "Destination already exists: /abs/project/new.txt"
         })
 public final class MovePathTool implements WorkspaceWriteTool<MovePathTool.Args> {
 

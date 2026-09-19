@@ -30,12 +30,14 @@ public final class MonitorTools {
             examples = {
                 "{\"purpose\":\"Remind me to review the report\",\"afterSeconds\":600}",
                 "{\"purpose\":\"Summarize the CI results for the nightly build\",\"at\":\"2026-09-20T07:30:00+08:00\"}",
-                "{\"purpose\":\"Re-check whether the example.com certificate renewal completed and report the new expiry date\",\"afterSeconds\":86400}"
+                "{\"purpose\":\"Re-check whether the example.com certificate renewal completed and report the new expiry date\",\"afterSeconds\":86400}",
+                "{\"purpose\":\"Weekly digest\",\"afterSeconds\":604800,\"at\":\"2026-09-26T09:00:00+08:00\"}"
             },
             returnExamples = {
                 "{\"id\":\"3f6c9f4e-7b1a-4c2d-9e5f-2a8b6d1c4e70\",\"kind\":\"TIME_ONCE\",\"purpose\":\"Remind me to review the report\",\"state\":\"ACTIVE\"}",
                 "{\"id\":\"7a1e2c5b-3d6f-4e8a-9b0c-1d2e3f4a5b6c\",\"kind\":\"TIME_ONCE\",\"purpose\":\"Summarize the CI results for the nightly build\",\"state\":\"ACTIVE\"}",
-                "{\"id\":\"b8d2e4f6-1a3c-4b5d-9e7f-0a1b2c3d4e5f\",\"kind\":\"TIME_ONCE\",\"purpose\":\"Re-check whether the example.com certificate renewal completed and report the new expiry date\",\"state\":\"ACTIVE\"}"
+                "{\"id\":\"b8d2e4f6-1a3c-4b5d-9e7f-0a1b2c3d4e5f\",\"kind\":\"TIME_ONCE\",\"purpose\":\"Re-check whether the example.com certificate renewal completed and report the new expiry date\",\"state\":\"ACTIVE\"}",
+                "Agent tool error: Supply exactly one of afterSeconds or at"
             })
     public static final class CreateMonitor implements MonitorTool<CreateMonitor.Args> {
         private final @NonNull MonitorCapability capability;

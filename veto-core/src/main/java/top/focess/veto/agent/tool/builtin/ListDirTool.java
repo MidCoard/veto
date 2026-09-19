@@ -76,12 +76,14 @@ import top.focess.veto.agent.tool.WorkspaceReadTool;
         examples = {
             "{\"absolutePath\": \"/abs/project\"}",
             "{\"absolutePath\": \"/abs/project/src/main/java\"}",
-            "{\"absolutePath\": \"/abs/project/config\"}"
+            "{\"absolutePath\": \"/abs/project/config\"}",
+            "{\"absolutePath\": \"/abs/project/notes.txt\"}"
         },
         returnExamples = {
             "README.md\nbuild.gradle.kts\nsrc/",
             "Main.java\nService.java\nutil/",
-            "app.yml\nlocal.properties"
+            "app.yml\nlocal.properties",
+            "Not a directory: /abs/project/notes.txt"
         })
 public final class ListDirTool implements WorkspaceReadTool<ListDirTool.Args> {
 

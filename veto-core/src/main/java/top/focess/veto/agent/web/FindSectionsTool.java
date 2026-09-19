@@ -29,12 +29,14 @@ import top.focess.veto.agent.tool.WebDocumentTool;
         returnExamples = {
             "[{\"id\":\"s1\",\"section\":\"Timeout\"}]",
             "[{\"id\":\"s4\",\"section\":\"Rate limits\"},{\"id\":\"s7\",\"section\":\"Errors\"}]",
-            "[]"
+            "[]",
+            "Tool execution failed: Use a non-blank keyword of at most 200 characters."
         },
         examples = {
             "{\"query\":\"timeout\"}",
             "{\"query\":\"rate limit\"}",
-            "{\"query\":\"HTTP 429\"}"
+            "{\"query\":\"HTTP 429\"}",
+            "{\"query\":\"  \"}"
         })
 public final class FindSectionsTool implements WebDocumentTool<FindSectionsTool.Args> {
     public record Args(

@@ -29,13 +29,15 @@ import top.focess.veto.agent.tool.*;
             "{\"message\":\"The meeting starts at [14:30](cite:meeting).\",\"citations\":[{\"id\":\"meeting\",\"sources\":[{\"quote\":\"The meeting starts at 14:30.\"}]}]}",
             "{\"message\":\"The build uses [Gradle 8.5](cite:gradle) and targets [Java 21](cite:java).\",\"citations\":[{\"id\":\"gradle\",\"sources\":[{\"quote\":\"The build uses Gradle 8.5\"}]},{\"id\":\"java\",\"sources\":[{\"quote\":\"and targets Java 21\"}]}]}",
             "{\"message\":\"Both reviewers approved the change: [the approvals](cite:approvals).\",\"citations\":[{\"id\":\"approvals\",\"sources\":[{\"quote\":\"Alice approved the pull request.\"},{\"quote\":\"Bob approved the pull request.\"}]}]}",
-            "{\"message\":\"The configured timeout is [30 seconds](cite:timeout).\",\"citations\":[{\"id\":\"timeout\",\"sources\":[{\"message_index\":7,\"quote\":\"\\\"timeout\\\": \\\"30 seconds\\\"\"}]}]}"
+            "{\"message\":\"The configured timeout is [30 seconds](cite:timeout).\",\"citations\":[{\"id\":\"timeout\",\"sources\":[{\"message_index\":7,\"quote\":\"\\\"timeout\\\": \\\"30 seconds\\\"\"}]}]}",
+            "{\"message\":\"The deadline is [next Friday](cite:deadline).\",\"citations\":[{\"id\":\"deadline\",\"sources\":[{\"quote\":\"The deadline is next Friday.\"}]}]}"
         },
         returnExamples = {
             "{\"status\":\"accepted\"}",
             "{\"status\":\"accepted\"}",
             "{\"status\":\"accepted\"}",
-            "{\"status\":\"accepted\"}"
+            "{\"status\":\"accepted\"}",
+            "Citation rejected: Citation deadline: quote was not found in visible conversation evidence. Copy a longer exact passage from the source; do not paraphrase or invent a message index."
         })
 public final class AnswerWithCitationsTool
         implements LoopControlTool<AnswerWithCitationsTool.Args> {

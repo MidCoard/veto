@@ -30,13 +30,15 @@ import top.focess.veto.agent.tool.WebDocumentTool;
             "[{\"id\":\"s1\",\"section\":\"Timeout\",\"text\":\"30 seconds.\"}]",
             "[{\"id\":\"s2\",\"section\":\"Timeout\",\"text\":\"The default timeout is 30 seconds.\"},{\"id\":\"s3\",\"section\":\"Retries\",\"text\":\"Failed requests are retried up to 3 times.\"}]",
             "[{\"id\":\"s2\",\"section\":\"Pricing\",\"text\":\"The Pro plan costs $12 per month.\"},{\"id\":\"s5\",\"section\":\"Limits\",\"text\":\"Pro allows 1000 requests per day.\"},{\"id\":\"s7\",\"section\":\"Overage\",\"text\":\"Extra requests are billed per call.\"}]",
-            "[{\"id\":\"s1\",\"section\":\"Overview\",\"text\":\"...\"},{\"id\":\"s2\",\"section\":\"Install\",\"text\":\"...\"},{\"id\":\"s3\",\"section\":\"Config\",\"text\":\"...\"},{\"id\":\"s4\",\"section\":\"Auth\",\"text\":\"...\"},{\"id\":\"s5\",\"section\":\"Limits\",\"text\":\"...\"},{\"id\":\"s6\",\"section\":\"Errors\",\"text\":\"...\"},{\"id\":\"s7\",\"section\":\"Overage\",\"text\":\"...\"},{\"id\":\"s8\",\"section\":\"FAQ\",\"text\":\"...\"}]"
+            "[{\"id\":\"s1\",\"section\":\"Overview\",\"text\":\"...\"},{\"id\":\"s2\",\"section\":\"Install\",\"text\":\"...\"},{\"id\":\"s3\",\"section\":\"Config\",\"text\":\"...\"},{\"id\":\"s4\",\"section\":\"Auth\",\"text\":\"...\"},{\"id\":\"s5\",\"section\":\"Limits\",\"text\":\"...\"},{\"id\":\"s6\",\"section\":\"Errors\",\"text\":\"...\"},{\"id\":\"s7\",\"section\":\"Overage\",\"text\":\"...\"},{\"id\":\"s8\",\"section\":\"FAQ\",\"text\":\"...\"}]",
+            "Read between one and eight segment IDs."
         },
         examples = {
             "{\"ids\":[\"s1\"]}",
             "{\"ids\":[\"s2\",\"s3\"]}",
             "{\"ids\":[\"s2\",\"s5\",\"s7\"]}",
-            "{\"ids\":[\"s1\",\"s2\",\"s3\",\"s4\",\"s5\",\"s6\",\"s7\",\"s8\"]}"
+            "{\"ids\":[\"s1\",\"s2\",\"s3\",\"s4\",\"s5\",\"s6\",\"s7\",\"s8\"]}",
+            "{\"ids\":[\"s1\",\"s2\",\"s3\",\"s4\",\"s5\",\"s6\",\"s7\",\"s8\",\"s9\"]}"
         })
 public final class ReadSectionsTool implements WebDocumentTool<ReadSectionsTool.Args> {
     public record Args(

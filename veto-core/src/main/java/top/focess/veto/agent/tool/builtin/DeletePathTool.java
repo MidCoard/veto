@@ -69,13 +69,15 @@ import top.focess.veto.agent.tool.WorkspaceWriteTool;
             "{\"absolutePath\":\"/abs/project/obsolete.txt\",\"recursive\":false}",
             "{\"absolutePath\":\"/abs/project/build/empty-out\",\"recursive\":false}",
             "{\"absolutePath\":\"/abs/project/out/current-link\",\"recursive\":false}",
-            "{\"absolutePath\":\"/abs/project/generated\",\"recursive\":true}"
+            "{\"absolutePath\":\"/abs/project/generated\",\"recursive\":true}",
+            "{\"absolutePath\":\"/abs/project/no-such-path.txt\",\"recursive\":false}"
         },
         returnExamples = {
             "{\"status\":\"deleted\",\"path\":\"/abs/project/obsolete.txt\",\"kind\":\"file\",\"entriesDeleted\":1}",
             "{\"status\":\"deleted\",\"path\":\"/abs/project/build/empty-out\",\"kind\":\"directory\",\"entriesDeleted\":1}",
             "{\"status\":\"deleted\",\"path\":\"/abs/project/out/current-link\",\"kind\":\"symbolic_link\",\"entriesDeleted\":1}",
-            "{\"status\":\"deleted\",\"path\":\"/abs/project/generated\",\"kind\":\"directory\",\"entriesDeleted\":42}"
+            "{\"status\":\"deleted\",\"path\":\"/abs/project/generated\",\"kind\":\"directory\",\"entriesDeleted\":42}",
+            "Path not found: /abs/project/no-such-path.txt"
         })
 public final class DeletePathTool implements WorkspaceWriteTool<DeletePathTool.Args> {
     private static final int MAX_ENTRIES = 50_000;

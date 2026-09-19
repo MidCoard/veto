@@ -83,14 +83,14 @@ import top.focess.veto.sandbox.CommandResult;
             "{\"commands\": [{\"executable\": \"gradle\", \"args\": [\"build\"]}, {\"executable\": \"gradle\", \"args\": [\"test\"]}], \"connect\": \"STOP_ON_FAILURE\", \"timeout\": 600}",
             "{\"commands\": [{\"executable\": \"grep\", \"args\": [\"-r\", \"TODO\", \"src\"]}, {\"executable\": \"wc\", \"args\": [\"-l\"]}], \"connect\": \"PIPE\", \"timeout\": 120}",
             "{\"commands\": [{\"executable\": \"gradle\", \"args\": [\"clean\"]}, {\"executable\": \"gradle\", \"args\": [\"build\"]}, {\"executable\": \"gradle\", \"args\": [\"test\"]}], \"connect\": \"RUN_ALL\", \"timeout\": 900}",
-            "{\"commands\": [{\"executable\": \"npm\", \"args\": [\"install\"]}], \"network\": true, \"timeout\": 600}"
+            "{\"commands\": [{\"executable\": \"definitely-not-a-real-executable-xyz\", \"args\": []}], \"timeout\": 10}"
         },
         returnExamples = {
             "On branch main\nnothing to commit, working tree clean",
             "BUILD SUCCESSFUL in 12s",
             "42",
             "BUILD SUCCESSFUL in 45s",
-            "added 214 packages in 18s"
+            "\n[stderr]\nCreateProcessW(AppContainer) failed (Win32 error=2)\r\n\n(exit code: 125)"
         })
 public final class RunCommandTool implements ProcessExecutionTool<RunCommandTool.Args> {
     private final @NonNull ProcessExecutionCapability capability;

@@ -116,7 +116,8 @@ public class SessionController {
      * in the prompt response, but available for past/inactive sessions too. Payload contents vary
      * by turn type (see {@link TurnRecord} factories): USER_PROMPT {content}, ASSISTANT_THOUGHT
      * {response} (raw veto_pulse JSON string), ASSISTANT_RESPONSE {content}, TOOL_CALL {call_id,
-     * tool_name, args}, TOOL_RESPONSE {call_id, content, success}.
+     * tool_name, args, native_state?, model_call_id?}, TOOL_RESPONSE {call_id, content, success,
+     * status, format, presentation, llmUsage?, errorCode?, approval?}.
      */
     @GetMapping(value = "/{name}/history", produces = MediaType.APPLICATION_JSON_VALUE)
     // Turn payloads intentionally preserve code and model text; Jackson supplies JSON encoding.

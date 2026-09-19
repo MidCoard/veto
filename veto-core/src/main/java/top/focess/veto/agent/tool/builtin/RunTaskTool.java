@@ -86,7 +86,8 @@ import top.focess.veto.sandbox.Command;
             "{\"commands\": [{\"executable\": \"npm\", \"args\": [\"run\", \"dev\"]}], \"timeout\": 0}",
             "{\"commands\": [{\"executable\": \"gradle\", \"args\": [\"build\"]}], \"timeout\": 1200}",
             "{\"commands\": [{\"executable\": \"gradle\", \"args\": [\"test\", \"--continuous\"]}], \"timeout\": 1800}",
-            "{\"commands\": [{\"executable\": \"python\", \"args\": [\"-m\", \"http.server\", \"8000\"]}], \"network\": true, \"timeout\": 3600}"
+            "{\"commands\": [{\"executable\": \"python\", \"args\": [\"-m\", \"http.server\", \"8000\"]}], \"network\": true, \"timeout\": 3600}",
+            "{\"commands\": [{\"executable\": \"gradle\", \"args\": [\"build\"]}, {\"executable\": \"gradle\", \"args\": [\"test\"]}], \"timeout\": 1200}"
         },
         returnExamples = {
             "{\"status\": \"started\", \"taskId\": \"bg-3\", \"pid\": 12345, \"command\": \"npm run dev\","
@@ -96,7 +97,8 @@ import top.focess.veto.sandbox.Command;
             "{\"status\": \"started\", \"taskId\": \"bg-5\", \"pid\": 12387, \"command\": \"gradle test --continuous\","
                     + " \"cwd\": \"/abs/project\", \"requestedTimeoutSeconds\": 1800, \"effectiveTimeoutSeconds\": 600}",
             "{\"status\": \"started\", \"taskId\": \"bg-6\", \"pid\": 12402, \"command\": \"python -m http.server 8000\","
-                    + " \"cwd\": \"/abs/project\", \"requestedTimeoutSeconds\": 3600, \"effectiveTimeoutSeconds\": 600}"
+                    + " \"cwd\": \"/abs/project\", \"requestedTimeoutSeconds\": 3600, \"effectiveTimeoutSeconds\": 600}",
+            "run_task requires exactly one command (background mode does not chain); got 2"
         })
 public final class RunTaskTool implements ProcessExecutionTool<RunTaskTool.Args> {
     private final @NonNull ProcessExecutionCapability capability;

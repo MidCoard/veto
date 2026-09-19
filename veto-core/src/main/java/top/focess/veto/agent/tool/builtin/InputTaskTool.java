@@ -62,13 +62,15 @@ import top.focess.veto.agent.tool.ToolSecurity;
             "{\"taskId\":\"bg-3\",\"content\":\"yes\",\"appendNewline\":true,\"closeStdin\":false}",
             "{\"taskId\":\"bg-3\",\"content\":\"partial input\",\"appendNewline\":false,\"closeStdin\":false}",
             "{\"taskId\":\"bg-3\",\"content\":\"quit\",\"appendNewline\":true,\"closeStdin\":true}",
-            "{\"taskId\":\"bg-3\",\"content\":\"\",\"appendNewline\":false,\"closeStdin\":true}"
+            "{\"taskId\":\"bg-3\",\"content\":\"\",\"appendNewline\":false,\"closeStdin\":true}",
+            "{\"taskId\":\"bg-7\",\"content\":\"yes\",\"appendNewline\":true,\"closeStdin\":false}"
         },
         returnExamples = {
             "{\"status\":\"queued\",\"taskId\":\"bg-3\",\"bytes\":4,\"newline\":true,\"closeQueued\":false}",
             "{\"status\":\"queued\",\"taskId\":\"bg-3\",\"bytes\":13,\"newline\":false,\"closeQueued\":false}",
             "{\"status\":\"queued\",\"taskId\":\"bg-3\",\"bytes\":5,\"newline\":true,\"closeQueued\":true}",
-            "{\"status\":\"queued\",\"taskId\":\"bg-3\",\"bytes\":0,\"newline\":false,\"closeQueued\":true}"
+            "{\"status\":\"queued\",\"taskId\":\"bg-3\",\"bytes\":0,\"newline\":false,\"closeQueued\":true}",
+            "Task is not running: bg-7"
         })
 public final class InputTaskTool implements TaskControlTool<InputTaskTool.Args> {
     private final @NonNull TaskControlCapability capability;

@@ -69,13 +69,15 @@ import top.focess.veto.vault.SecretCandidateStore;
             "{\"absolutePath\": \"/abs/src/Main.java\"}",
             "{\"absolutePath\": \"/abs/src/Main.java\", \"startLine\": 10, \"endLine\": 20}",
             "{\"absolutePath\": \"/abs/src/Main.java\", \"startLine\": 100}",
-            "{\"absolutePath\": \"/abs/config/app.yml\", \"endLine\": 30}"
+            "{\"absolutePath\": \"/abs/config/app.yml\", \"endLine\": 30}",
+            "{\"absolutePath\": \"/abs/project/missing-file.txt\"}"
         },
         returnExamples = {
             "1: package com.example;\n2: \n3: public class Main {",
             "10:     public static void main(String[] args) {\n11:         System.out.println(\"hi\");\n12:     }",
             "100: }\n101: ",
-            "1: server:\n2:   port: 8443\n3:   host: 0.0.0.0"
+            "1: server:\n2:   port: 8443\n3:   host: 0.0.0.0",
+            "Not a regular file: /abs/project/missing-file.txt"
         })
 public final class ViewFileTool implements WorkspaceReadTool<ViewFileTool.Args> {
     private final @NonNull WorkspaceReadCapability protectedFiles;

@@ -62,13 +62,15 @@ import top.focess.veto.agent.tool.WorkspaceReadTool;
             "{\"absolutePath\":\"/abs/project\",\"pattern\":\"**/*.java\"}",
             "{\"absolutePath\":\"/abs/project\",\"pattern\":\"*.md\"}",
             "{\"absolutePath\":\"/abs/project\",\"pattern\":\"**/build.gradle.kts\"}",
-            "{\"absolutePath\":\"/abs/project/src\",\"pattern\":\"**/test_?.py\"}"
+            "{\"absolutePath\":\"/abs/project/src\",\"pattern\":\"**/test_?.py\"}",
+            "{\"absolutePath\":\"/abs/project/notes.txt\",\"pattern\":\"**/*.txt\"}"
         },
         returnExamples = {
             "{\"base\":\"/abs/project\",\"pattern\":\"**/*.java\",\"matches\":[\"src/Main.java\",\"src/util/Helper.java\"],\"truncated\":false,\"truncationReason\":null,\"skippedEntries\":0}",
             "{\"base\":\"/abs/project\",\"pattern\":\"*.md\",\"matches\":[\"README.md\"],\"truncated\":false,\"truncationReason\":null,\"skippedEntries\":0}",
             "{\"base\":\"/abs/project\",\"pattern\":\"**/build.gradle.kts\",\"matches\":[\"build.gradle.kts\",\"veto-core/build.gradle.kts\"],\"truncated\":false,\"truncationReason\":null,\"skippedEntries\":0}",
-            "{\"base\":\"/abs/project/src\",\"pattern\":\"**/test_?.py\",\"matches\":[\"test/test_1.py\"],\"truncated\":false,\"truncationReason\":null,\"skippedEntries\":0}"
+            "{\"base\":\"/abs/project/src\",\"pattern\":\"**/test_?.py\",\"matches\":[],\"truncated\":false,\"truncationReason\":null,\"skippedEntries\":0}",
+            "Not a directory: /abs/project/notes.txt"
         })
 public final class FindFilesTool implements WorkspaceReadTool<FindFilesTool.Args> {
 

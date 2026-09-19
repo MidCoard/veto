@@ -76,13 +76,15 @@ import top.focess.veto.agent.tool.WorkspaceWriteTool;
             "{\"absolutePath\": \"/abs/project/src/Main.java\", \"codeContent\": \"package x;\\n\\npublic class Main {}\\n\", \"overwrite\": false}",
             "{\"absolutePath\": \"/abs/project/notes/todo.md\", \"codeContent\": \"# Todo\\n- [ ] first task\\n\", \"overwrite\": false}",
             "{\"absolutePath\": \"/abs/project/src/Main.java\", \"codeContent\": \"package x;\\n\\npublic class Main {\\n    public static void main(String[] args) {}\\n}\\n\", \"overwrite\": true}",
-            "{\"absolutePath\": \"/abs/project/build/marker.txt\", \"codeContent\": \"\", \"overwrite\": false}"
+            "{\"absolutePath\": \"/abs/project/build/marker.txt\", \"codeContent\": \"\", \"overwrite\": false}",
+            "{\"absolutePath\": \"/abs/project/src/Main.java\", \"codeContent\": \"package x;\\n\", \"overwrite\": false}"
         },
         returnExamples = {
             "{\"status\":\"ok\",\"file\":\"/abs/project/src/Main.java\",\"bytes\":33}",
             "{\"status\":\"ok\",\"file\":\"/abs/project/notes/todo.md\",\"bytes\":24}",
             "{\"status\":\"ok\",\"file\":\"/abs/project/src/Main.java\",\"bytes\":80}",
-            "{\"status\":\"ok\",\"file\":\"/abs/project/build/marker.txt\",\"bytes\":0}"
+            "{\"status\":\"ok\",\"file\":\"/abs/project/build/marker.txt\",\"bytes\":0}",
+            "File exists and overwrite=false: /abs/project/src/Main.java"
         })
 public final class WriteToFileTool implements WorkspaceWriteTool<WriteToFileTool.Args> {
     private static final int MAX_TEXT_BYTES = 16 * 1024 * 1024;

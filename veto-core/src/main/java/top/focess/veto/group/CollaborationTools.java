@@ -32,12 +32,14 @@ public final class CollaborationTools {
             examples = {
                 "{\"taskId\":\"analysis\"}",
                 "{\"taskId\":\"legacy-import\"}",
-                "{\"taskId\":\"soak-test\"}"
+                "{\"taskId\":\"soak-test\"}",
+                "{\"taskId\":\"unknown-task\"}"
             },
             returnExamples = {
                 "Task cancelled; execution exit confirmed. Dependent tasks remain blocked; explicitly replan or cancel them. Mate identity and history retained. Independent background processes are not stopped.",
                 "Task cancelled; execution exit confirmed. Dependent tasks remain blocked; explicitly replan or cancel them. Mate identity and history retained. Independent background processes are not stopped.",
-                "Task cancelled; execution exit confirmed. Dependent tasks remain blocked; explicitly replan or cancel them. Mate identity and history retained. Independent background processes are not stopped."
+                "Task cancelled; execution exit confirmed. Dependent tasks remain blocked; explicitly replan or cancel them. Mate identity and history retained. Independent background processes are not stopped.",
+                "Unknown task: unknown-task"
             })
     public static final class CancelTask implements GroupControlTool<CancelTask.Args> {
         private final @NonNull GroupControlCapability capability;
@@ -90,12 +92,14 @@ public final class CollaborationTools {
             examples = {
                 "{\"mateId\":\"9b2e8c1a-4d5f-4e7b-8c9d-0a1b2c3d4e5f\"}",
                 "{\"mateId\":\"5c1a2b3d-7e8f-4a5b-9c0d-1e2f3a4b5c6d\"}",
-                "{\"mateId\":\"7d3e5f1a-2b4c-4d6e-8f0a-1b2c3d4e5f6a\"}"
+                "{\"mateId\":\"7d3e5f1a-2b4c-4d6e-8f0a-1b2c3d4e5f6a\"}",
+                "{\"mateId\":\"00000000-0000-0000-0000-000000000000\"}"
             },
             returnExamples = {
                 "Mate removed; execution exit confirmed. History retained. Independent background processes are not stopped.",
                 "Mate removed; execution exit confirmed. History retained. Independent background processes are not stopped.",
-                "Mate removed; execution exit confirmed. History retained. Independent background processes are not stopped."
+                "Mate removed; execution exit confirmed. History retained. Independent background processes are not stopped.",
+                "Mate not removed: Unknown Mate in this group: 00000000-0000-0000-0000-000000000000"
             })
     public static final class RemoveMate implements GroupControlTool<RemoveMate.Args> {
         private final @NonNull GroupControlCapability capability;
@@ -148,12 +152,14 @@ public final class CollaborationTools {
             examples = {
                 "{\"name\":\"Alice\",\"responsibility\":\"Review the supplied calculations\"}",
                 "{\"name\":\"Priya\",\"responsibility\":\"Implement and test the retry logic in the billing client\"}",
-                "{\"name\":\"Kenji\",\"responsibility\":\"Investigate the memory regression and report findings with evidence\"}"
+                "{\"name\":\"Kenji\",\"responsibility\":\"Investigate the memory regression and report findings with evidence\"}",
+                "{\"name\":\"Morgan\",\"responsibility\":\"  \"}"
             },
             returnExamples = {
                 "Mate created: 9b2e8c1a-4d5f-4e7b-8c9d-0a1b2c3d4e5f",
                 "Mate created: 5c1a2b3d-7e8f-4a5b-9c0d-1e2f3a4b5c6d",
-                "Mate created: 7d3e5f1a-2b4c-4d6e-8f0a-1b2c3d4e5f6a"
+                "Mate created: 7d3e5f1a-2b4c-4d6e-8f0a-1b2c3d4e5f6a",
+                "Agent tool error: Name and responsibility must not be blank"
             })
     public static final class CreateMate implements GroupControlTool<CreateMate.Args> {
         private final @NonNull GroupControlCapability capability;
@@ -208,13 +214,15 @@ public final class CollaborationTools {
                 "{\"taskId\":\"calculation\",\"description\":\"Calculate the supplied order total\",\"mateId\":\"9b2e8c1a-4d5f-4e7b-8c9d-0a1b2c3d4e5f\"}",
                 "{\"taskId\":\"integration-tests\",\"description\":\"Run the integration suite against the migrated schema and report failures\",\"mateId\":\"5c1a2b3d-7e8f-4a5b-9c0d-1e2f3a4b5c6d\",\"dependsOn\":[\"schema-migration\"]}",
                 "{\"taskId\":\"release-notes\",\"description\":\"Draft the release notes from the completed feature and fix reports\",\"mateId\":\"9b2e8c1a-4d5f-4e7b-8c9d-0a1b2c3d4e5f\",\"dependsOn\":[\"feature-api\",\"fix-retry\"]}",
-                "{\"taskId\":\"retry-regression-test\",\"description\":\"Add a regression test for the race fixed in fix-retry\",\"mateId\":\"5c1a2b3d-7e8f-4a5b-9c0d-1e2f3a4b5c6d\",\"dependsOn\":[\"integration-tests\"]}"
+                "{\"taskId\":\"retry-regression-test\",\"description\":\"Add a regression test for the race fixed in fix-retry\",\"mateId\":\"5c1a2b3d-7e8f-4a5b-9c0d-1e2f3a4b5c6d\",\"dependsOn\":[\"integration-tests\"]}",
+                "{\"taskId\":\"docs\",\"description\":\"Write the API documentation\",\"mateId\":\"00000000-0000-0000-0000-000000000000\"}"
             },
             returnExamples = {
                 "Task registered: calculation; assigned Mate: 9b2e8c1a-4d5f-4e7b-8c9d-0a1b2c3d4e5f. It waits for its dependencies and this Mate to become available.",
                 "Task registered: integration-tests; assigned Mate: 5c1a2b3d-7e8f-4a5b-9c0d-1e2f3a4b5c6d. It waits for its dependencies and this Mate to become available.",
                 "Task registered: release-notes; assigned Mate: 9b2e8c1a-4d5f-4e7b-8c9d-0a1b2c3d4e5f. It waits for its dependencies and this Mate to become available.",
-                "Task registered: retry-regression-test; assigned Mate: 5c1a2b3d-7e8f-4a5b-9c0d-1e2f3a4b5c6d. It waits for its dependencies and this Mate to become available."
+                "Task registered: retry-regression-test; assigned Mate: 5c1a2b3d-7e8f-4a5b-9c0d-1e2f3a4b5c6d. It waits for its dependencies and this Mate to become available.",
+                "Task not created: Unknown Mate in this group: 00000000-0000-0000-0000-000000000000"
             })
     public static final class CreateTask implements GroupControlTool<CreateTask.Args> {
         private final @NonNull GroupControlCapability capability;

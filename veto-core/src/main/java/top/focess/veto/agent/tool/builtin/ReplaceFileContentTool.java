@@ -85,17 +85,17 @@ import top.focess.veto.agent.tool.WorkspaceWriteTool;
                 "The matched block is replaced in place, so an unintended unique match overwrites the wrong text; quote enough context to pin the target. A failed match leaves the file unchanged.",
         examples = {
             "{\"absolutePath\": \"/abs/project/src/Main.java\", \"startLine\": 12, \"endLine\": 12, \"targetContent\": \"int x = 1;\", \"replacementContent\": \"int x = 2;\"}",
-            "{\"absolutePath\": \"/abs/project/config/app.yml\", \"startLine\": 10, \"endLine\": 10, \"targetContent\": \"port: 8080\", \"replacementContent\": \"port: 8443\"}",
             "{\"absolutePath\": \"/abs/project/src/Main.java\", \"startLine\": 5, \"endLine\": 8, \"targetContent\": \"    void run() {\\n        start();\\n    }\", \"replacementContent\": \"    void run() {\\n        prepare();\\n        start();\\n    }\"}",
             "{\"absolutePath\": \"/abs/project/src/Main.java\", \"startLine\": 20, \"endLine\": 22, \"targetContent\": \"    // TODO: drop debug logging\\n    log.debug(\\\"state\\\");\\n\", \"replacementContent\": \"\"}",
-            "{\"absolutePath\": \"/abs/project/src/Service.java\", \"startLine\": 40, \"endLine\": 46, \"targetContent\": \"    @Override\\n    public String name() {\\n        return \\\"legacy\\\";\\n    }\", \"replacementContent\": \"    @Override\\n    public String name() {\\n        return \\\"modern\\\";\\n    }\"}"
+            "{\"absolutePath\": \"/abs/project/src/Service.java\", \"startLine\": 40, \"endLine\": 46, \"targetContent\": \"    @Override\\n    public String name() {\\n        return \\\"legacy\\\";\\n    }\", \"replacementContent\": \"    @Override\\n    public String name() {\\n        return \\\"modern\\\";\\n    }\"}",
+            "{\"absolutePath\": \"/abs/project/src/Main.java\", \"startLine\": 1, \"endLine\": 5, \"targetContent\": \"this text does not exist anywhere\", \"replacementContent\": \"x\"}"
         },
         returnExamples = {
             "{\"status\":\"ok\",\"file\":\"/abs/project/src/Main.java\"}",
-            "{\"status\":\"ok\",\"file\":\"/abs/project/config/app.yml\"}",
             "{\"status\":\"ok\",\"file\":\"/abs/project/src/Main.java\"}",
             "{\"status\":\"ok\",\"file\":\"/abs/project/src/Main.java\"}",
-            "{\"status\":\"ok\",\"file\":\"/abs/project/src/Service.java\"}"
+            "{\"status\":\"ok\",\"file\":\"/abs/project/src/Service.java\"}",
+            "targetContent not found in selected range."
         })
 public final class ReplaceFileContentTool
         implements WorkspaceWriteTool<ReplaceFileContentTool.Args> {

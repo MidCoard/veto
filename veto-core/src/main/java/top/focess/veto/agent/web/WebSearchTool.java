@@ -90,7 +90,8 @@ import top.focess.veto.agent.tool.ToolSecurity;
                     + " [\"pinterest.com\"]}",
             "{\"query\": \"Spring Boot 4 release notes\", \"allowed_domains\":"
                     + " [\"spring.io\", \"github.com\"], \"blocked_domains\":"
-                    + " [\"stackoverflow.com\"]}"
+                    + " [\"stackoverflow.com\"]}",
+            "{\"query\": \"x\"}"
         },
         returnExamples = {
             "Found 3 results:\n\n"
@@ -124,7 +125,8 @@ import top.focess.veto.agent.tool.ToolSecurity;
                     + "   The Spring Boot 4.0 release and its highlights...\n\n"
                     + "Sources:\n"
                     + "- https://github.com/spring-projects/spring-boot/wiki/Spring-Boot-4.0-Release-Notes\n"
-                    + "- https://spring.io/blog/spring-boot-4-0"
+                    + "- https://spring.io/blog/spring-boot-4-0",
+            "web_search query must be at least 2 characters"
         })
 public final class WebSearchTool implements NetworkEgressTool<WebSearchTool.Args> {
     private static final int DEFAULT_MAX_RESULTS = 10;
