@@ -36,6 +36,6 @@ class AgentToolParameterContractTest {
                         () ->
                                 NativeToolArgumentValidator.validate(
                                         "post_message", invalid, argsClass));
-        assertEquals("INVALID_ARGUMENTS", error.errorCode());
+        assertEquals(ToolErrorCode.INVALID_ARGUMENTS, error.errorCode());
     }
 }

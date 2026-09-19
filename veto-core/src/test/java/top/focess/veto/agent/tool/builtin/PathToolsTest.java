@@ -29,6 +29,7 @@ import top.focess.veto.agent.tool.ToolCallContext;
 import top.focess.veto.agent.tool.ToolCallContextHolder;
 import top.focess.veto.agent.tool.ToolCapability;
 import top.focess.veto.agent.tool.ToolDocs;
+import top.focess.veto.agent.tool.ToolErrorCode;
 import top.focess.veto.agent.tool.ToolExecutionException;
 import top.focess.veto.llm.core.ToolCall;
 import top.focess.veto.llm.core.ToolResultPresentationMode;
@@ -135,7 +136,7 @@ class PathToolsTest {
                                         new MovePathTool.Args(
                                                 source.toString(), destination.toString())));
 
-        assertEquals("DESTINATION_EXISTS", error.errorCode());
+        assertEquals(ToolErrorCode.DESTINATION_EXISTS, error.errorCode());
         assertTrue(Files.exists(source));
         assertEquals("destination", Files.readString(destination));
     }
@@ -186,7 +187,7 @@ class PathToolsTest {
                                         new WriteToFileTool.Args(
                                                 file.toString(), "secret", false)));
 
-        assertEquals("PATH_PROTECTED", error.errorCode());
+        assertEquals(ToolErrorCode.PATH_PROTECTED, error.errorCode());
         assertFalse(Files.exists(file));
     }
 
@@ -217,7 +218,7 @@ class PathToolsTest {
                                 CapabilityTestCalls.execute(
                                         new DeletePathTool(),
                                         new DeletePathTool.Args(directory.toString(), false)));
-        assertEquals("DIRECTORY_NOT_EMPTY", error.errorCode());
+        assertEquals(ToolErrorCode.DIRECTORY_NOT_EMPTY, error.errorCode());
 
         JsonNode deleted =
                 mapper.readTree(
@@ -226,6 +227,96 @@ class PathToolsTest {
                                 new DeletePathTool.Args(directory.toString(), true)));
         assertEquals(2, deleted.get("entriesDeleted").asInt());
         assertFalse(Files.exists(directory));
+    }
+
+    @Test
+    void writeToFileReportsFileExistsWithoutOverwrite(@TempDir @NonNull Path root)
+            throws Exception {
+        Path file = Files.writeString(root.resolve("existing.txt"), "old");
+        permit("write_to_file", root, Map.of("absolutePath", file.toString()));
+
+        ToolExecutionException error =
+                assertThrows(
+                        ToolDocs.nonNullClass(ToolExecutionException.class),
+                        () ->
+                                CapabilityTestCalls.execute(
+                                        new WriteToFileTool(),
+                                        new WriteToFileTool.Args(file.toString(), "new", false)));
+
+        assertEquals(ToolErrorCode.FILE_EXISTS, error.errorCode());
+        assertEquals("old", Files.readString(file));
+    }
+
+    @Test
+    void replaceFileContentReportsMissingOrAmbiguousTarget(@TempDir @NonNull Path root)
+            throws Exception {
+        Path file = Files.writeString(root.resolve("target.txt"), "alpha\nbeta\nbeta\n");
+        permit("replace_file_content", root, Map.of("absolutePath", file.toString()));
+
+        ToolExecutionException missing =
+                assertThrows(
+                        ToolDocs.nonNullClass(ToolExecutionException.class),
+                        () ->
+                                CapabilityTestCalls.execute(
+                                        new ReplaceFileContentTool(),
+                                        new ReplaceFileContentTool.Args(
+                                                file.toString(), 1, 3, "gamma", "x")));
+        assertEquals(ToolErrorCode.TARGET_NOT_FOUND, missing.errorCode());
+
+        ToolExecutionException ambiguous =
+                assertThrows(
+                        ToolDocs.nonNullClass(ToolExecutionException.class),
+                        () ->
+                                CapabilityTestCalls.execute(
+                                        new ReplaceFileContentTool(),
+                                        new ReplaceFileContentTool.Args(
+                                                file.toString(), 1, 3, "beta", "x")));
+        assertEquals(ToolErrorCode.TARGET_NOT_UNIQUE, ambiguous.errorCode());
+        assertEquals("alpha\nbeta\nbeta\n", Files.readString(file));
+    }
+
+    @Test
+    void movePathRejectsAnInvalidDestination(@TempDir @NonNull Path root) throws Exception {
+        Path directory = Files.createDirectory(root.resolve("tree"));
+        Path inside = directory.resolve("inner");
+        permit(
+                "move_path",
+                root,
+                Map.of(
+                        "sourceAbsolutePath", directory.toString(),
+                        "destinationAbsolutePath", inside.toString()));
+
+        ToolExecutionException insideItself =
+                assertThrows(
+                        ToolDocs.nonNullClass(ToolExecutionException.class),
+                        () ->
+                                CapabilityTestCalls.execute(
+                                        new MovePathTool(),
+                                        new MovePathTool.Args(
+                                                directory.toString(), inside.toString())));
+        assertEquals(ToolErrorCode.INVALID_DESTINATION, insideItself.errorCode());
+        assertTrue(Files.exists(directory));
+
+        Path source = Files.writeString(root.resolve("source.txt"), "source");
+        Path fileParent = Files.writeString(root.resolve("not-a-dir.txt"), "file");
+        Path orphan = fileParent.resolve("child.txt");
+        permit(
+                "move_path",
+                root,
+                Map.of(
+                        "sourceAbsolutePath", source.toString(),
+                        "destinationAbsolutePath", orphan.toString()));
+
+        ToolExecutionException noParent =
+                assertThrows(
+                        ToolDocs.nonNullClass(ToolExecutionException.class),
+                        () ->
+                                CapabilityTestCalls.execute(
+                                        new MovePathTool(),
+                                        new MovePathTool.Args(
+                                                source.toString(), orphan.toString())));
+        assertEquals(ToolErrorCode.INVALID_DESTINATION, noParent.errorCode());
+        assertTrue(Files.exists(source));
     }
 
     private static void permit(

@@ -15,6 +15,7 @@ import top.focess.veto.agent.capability.WebReadCapability;
 import top.focess.veto.agent.tool.ToolCallContext;
 import top.focess.veto.agent.tool.ToolCallContextHolder;
 import top.focess.veto.agent.tool.ToolCapability;
+import top.focess.veto.agent.tool.ToolErrorCode;
 import top.focess.veto.agent.tool.ToolErrors;
 import top.focess.veto.agent.tool.ToolExecutionException;
 
@@ -86,7 +87,8 @@ final class WebReadSession implements WebDocumentCapability, AutoCloseable {
                     return observation;
                 if (count == 0)
                     return ToolErrors.failure(
-                            "READER_OBSERVATION", "No budget remains for the page outline.");
+                            ToolErrorCode.READER_OBSERVATION,
+                            "No budget remains for the page outline.");
                 count--;
             }
         } catch (ToolExecutionException error) {
@@ -108,7 +110,7 @@ final class WebReadSession implements WebDocumentCapability, AutoCloseable {
         String observation = json(current.read(ids));
         if (observation.getBytes(StandardCharsets.UTF_8).length > observationBudget)
             return ToolErrors.failure(
-                    "READER_OBSERVATION",
+                    ToolErrorCode.READER_OBSERVATION,
                     "These sections exceed the reading budget. Read fewer IDs per call.");
         current.recordInspection(ids);
         return observation;
@@ -128,7 +130,8 @@ final class WebReadSession implements WebDocumentCapability, AutoCloseable {
 
     private @NonNull WebReadDocument document() {
         WebReadDocument current = document;
-        if (current == null) return ToolErrors.failure("READER_DOCUMENT", "Fetch the page first.");
+        if (current == null)
+            return ToolErrors.failure(ToolErrorCode.READER_DOCUMENT, "Fetch the page first.");
         return current;
     }
 
@@ -148,7 +151,8 @@ final class WebReadSession implements WebDocumentCapability, AutoCloseable {
         try {
             return mapper.writeValueAsString(value);
         } catch (JsonProcessingException error) {
-            return ToolErrors.failure("READER_OUTPUT", "Could not encode reader result.");
+            return ToolErrors.failure(
+                    ToolErrorCode.READER_OUTPUT, "Could not encode reader result.");
         }
     }
 

@@ -14,6 +14,7 @@ import top.focess.veto.agent.tool.SecurityHint;
 import top.focess.veto.agent.tool.ToolCapability;
 import top.focess.veto.agent.tool.ToolDoc;
 import top.focess.veto.agent.tool.ToolDocs;
+import top.focess.veto.agent.tool.ToolErrorCode;
 import top.focess.veto.agent.tool.ToolErrors;
 import top.focess.veto.agent.tool.ToolJson;
 import top.focess.veto.agent.tool.ToolResultFormat;
@@ -40,7 +41,7 @@ import top.focess.veto.agent.tool.WorkspaceWriteTool;
                         + " `destination`, and `kind` (`file`, `directory`, or `symbolic_link`). In"
                         + " detailed-result mode, failures use SOURCE_NOT_FOUND,"
                         + " DESTINATION_EXISTS, INVALID_DESTINATION, CROSS_FILESYSTEM_MOVE,"
-                        + " MOVE_LIMIT_EXCEEDED, TREE_CHANGED, UNSAFE_LINK, or IO_ERROR; failure"
+                        + " TREE_CHANGED, UNSAFE_LINK, or IO_ERROR; failure"
                         + " content is actionable plaintext in every mode.",
         errorsAndEdgeCases =
                 "The destination parent must already exist. A destination created concurrently"
@@ -100,13 +101,15 @@ public final class MovePathTool implements WorkspaceWriteTool<MovePathTool.Args>
                             kind));
         } catch (NoSuchFileException e) {
             return ToolErrors.failure(
-                    "SOURCE_NOT_FOUND", "Source path not found: " + args.sourceAbsolutePath());
+                    ToolErrorCode.SOURCE_NOT_FOUND,
+                    "Source path not found: " + args.sourceAbsolutePath());
         } catch (FileAlreadyExistsException e) {
             return ToolErrors.failure(
-                    "DESTINATION_EXISTS",
+                    ToolErrorCode.DESTINATION_EXISTS,
                     "Destination already exists: " + args.destinationAbsolutePath());
         } catch (IOException e) {
-            return ToolErrors.failure("IO_ERROR", "Cannot move path: " + args.sourceAbsolutePath());
+            return ToolErrors.failure(
+                    ToolErrorCode.IO_ERROR, "Cannot move path: " + args.sourceAbsolutePath());
         }
     }
 }

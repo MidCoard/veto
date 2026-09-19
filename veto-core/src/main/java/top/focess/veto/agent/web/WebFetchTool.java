@@ -11,6 +11,7 @@ import top.focess.veto.agent.tool.ParamCategory;
 import top.focess.veto.agent.tool.SecurityHint;
 import top.focess.veto.agent.tool.ToolCapability;
 import top.focess.veto.agent.tool.ToolDoc;
+import top.focess.veto.agent.tool.ToolErrorCode;
 import top.focess.veto.agent.tool.ToolErrors;
 import top.focess.veto.agent.tool.ToolResultFormat;
 import top.focess.veto.agent.tool.ToolSecurity;
@@ -81,12 +82,13 @@ public final class WebFetchTool implements NetworkEgressTool<WebFetchTool.Args> 
     public @NonNull String execute(
             @NonNull Args args, @NonNull NetworkEgressCapability capability) {
         if (args.url().isBlank() || args.objective().isBlank())
-            return ToolErrors.failure("INVALID_ARGUMENTS", "url and objective must not be blank.");
+            return ToolErrors.failure(
+                    ToolErrorCode.INVALID_ARGUMENTS, "url and objective must not be blank.");
         URI uri;
         try {
             uri = URI.create(args.url().trim());
         } catch (IllegalArgumentException e) {
-            return ToolErrors.failure("INVALID_ARGUMENTS", "Invalid URL.");
+            return ToolErrors.failure(ToolErrorCode.INVALID_ARGUMENTS, "Invalid URL.");
         }
         try (var access = capability.openReader(uri)) {
             return access.read(args.objective());

@@ -22,7 +22,11 @@ import top.focess.veto.agent.intercept.ToolExecutionPermit;
 import top.focess.veto.agent.intercept.ToolExecutionPermit.FileIdentity;
 import top.focess.veto.agent.screening.DeployerPolicy;
 import top.focess.veto.agent.tool.ToolCapability;
+import top.focess.veto.agent.tool.ToolErrorCode;
 import top.focess.veto.agent.tool.ToolErrors;
+import top.focess.veto.agent.tool.ToolExecutionException;
+import top.focess.veto.agent.tool.ToolResultFormat;
+import top.focess.veto.agent.tool.ToolResultStatus;
 
 /** Private resource binding shared by read and write handles. */
 final class WorkspaceFileAccess {
@@ -78,7 +82,8 @@ final class WorkspaceFileAccess {
             Path parent = normalized.getParent();
             if (parent != null
                     && !authorized.parentIdentity().sameObject(FileIdentity.capture(parent))) {
-                ToolErrors.failure("TREE_CHANGED", "File parent changed after authorization.");
+                ToolErrors.failure(
+                        ToolErrorCode.TREE_CHANGED, "File parent changed after authorization.");
             }
             WorkspaceFileAccess result =
                     new WorkspaceFileAccess(
@@ -127,7 +132,8 @@ final class WorkspaceFileAccess {
             throw new IOException("Not a regular file");
         }
         if (size() > MAX_BYTES) {
-            return ToolErrors.failure("FILE_TOO_LARGE", "File exceeds 16 MiB (16,777,216 bytes)");
+            return ToolErrors.failure(
+                    ToolErrorCode.FILE_TOO_LARGE, "File exceeds 16 MiB (16,777,216 bytes)");
         }
         InputStream stream =
                 Files.newInputStream(path, StandardOpenOption.READ, LinkOption.NOFOLLOW_LINKS);
@@ -292,11 +298,16 @@ final class WorkspaceFileAccess {
             throw new SecurityException("Destination belongs to another invocation");
         }
         if (destination.path.startsWith(path) && !destination.path.equals(path)) {
-            throw new IOException("A directory cannot be moved inside itself");
+            ToolErrors.failure(
+                    ToolErrorCode.INVALID_DESTINATION, "A directory cannot be moved inside itself");
         }
         Path parent = destination.path.getParent();
         if (parent == null || !Files.isDirectory(parent, LinkOption.NOFOLLOW_LINKS)) {
-            throw new IOException("Destination parent is not a directory");
+            throw new ToolExecutionException(
+                    ToolResultStatus.FAILURE,
+                    ToolResultFormat.PLAINTEXT,
+                    ToolErrorCode.INVALID_DESTINATION,
+                    "Destination parent is not a directory");
         }
         if (Files.exists(destination.path, LinkOption.NOFOLLOW_LINKS)) {
             throw new FileAlreadyExistsException(destination.path.toString());
@@ -305,7 +316,7 @@ final class WorkspaceFileAccess {
         if (sourceStorePath == null
                 || !Files.getFileStore(sourceStorePath).equals(Files.getFileStore(parent))) {
             ToolErrors.failure(
-                    "CROSS_FILESYSTEM_MOVE",
+                    ToolErrorCode.CROSS_FILESYSTEM_MOVE,
                     "Source and destination are on different filesystems.");
         }
         // Inspect all entries before a directory mutation; never descend through links.
@@ -338,7 +349,7 @@ final class WorkspaceFileAccess {
         refuseProtected(permit, path, writable);
         verifyAncestors();
         if (!identity.sameObject(FileIdentity.capture(path))) {
-            ToolErrors.failure("TREE_CHANGED", "File changed after authorization.");
+            ToolErrors.failure(ToolErrorCode.TREE_CHANGED, "File changed after authorization.");
         }
     }
 
@@ -353,7 +364,8 @@ final class WorkspaceFileAccess {
         for (var ancestor : ancestors.entrySet()) {
             refuseLink(ancestor.getKey());
             if (!ancestor.getValue().sameObject(FileIdentity.capture(ancestor.getKey()))) {
-                ToolErrors.failure("TREE_CHANGED", "File ancestor changed after authorization.");
+                ToolErrors.failure(
+                        ToolErrorCode.TREE_CHANGED, "File ancestor changed after authorization.");
             }
         }
     }
@@ -390,19 +402,21 @@ final class WorkspaceFileAccess {
     private static void refuseProtected(
             @NonNull ToolExecutionPermit permit, @NonNull Path path, boolean tree) {
         if (isProtected(permit, path)) {
-            ToolErrors.refused("PATH_PROTECTED", "Protected path cannot be accessed.");
+            ToolErrors.refused(ToolErrorCode.PATH_PROTECTED, "Protected path cannot be accessed.");
         }
         if (tree
                 && permit.protectedPaths().stream()
                         .anyMatch(protectedPath -> protectedPath.startsWith(path))) {
-            ToolErrors.refused("DESCENDANT_REFUSED", "Path contains a protected descendant.");
+            ToolErrors.refused(
+                    ToolErrorCode.DESCENDANT_REFUSED, "Path contains a protected descendant.");
         }
     }
 
     private static void refuseLink(@NonNull Path path) throws IOException {
         if (isLink(path)) {
             ToolErrors.failure(
-                    "UNSAFE_LINK", "Symbolic links and reparse points cannot be followed.");
+                    ToolErrorCode.UNSAFE_LINK,
+                    "Symbolic links and reparse points cannot be followed.");
         }
     }
 

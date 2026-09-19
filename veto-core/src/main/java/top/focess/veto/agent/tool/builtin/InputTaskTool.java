@@ -16,6 +16,7 @@ import top.focess.veto.agent.tool.TaskControlTool;
 import top.focess.veto.agent.tool.ToolCapability;
 import top.focess.veto.agent.tool.ToolDoc;
 import top.focess.veto.agent.tool.ToolDocs;
+import top.focess.veto.agent.tool.ToolErrorCode;
 import top.focess.veto.agent.tool.ToolErrors;
 import top.focess.veto.agent.tool.ToolJson;
 import top.focess.veto.agent.tool.ToolResultFormat;
@@ -107,7 +108,7 @@ public final class InputTaskTool implements TaskControlTool<InputTaskTool.Args> 
     public @NonNull String execute(@NonNull Args args, @NonNull TaskControlCapability capability) {
         if (args.content().isEmpty() && !args.appendNewline() && !args.closeStdin()) {
             return ToolErrors.failure(
-                    "EMPTY_INPUT", "No input, newline, or stdin close was requested.");
+                    ToolErrorCode.EMPTY_INPUT, "No input, newline, or stdin close was requested.");
         }
         byte[] content = args.content().getBytes(StandardCharsets.UTF_8);
         byte[] bytes = args.appendNewline() ? Arrays.copyOf(content, content.length + 1) : content;
@@ -124,7 +125,17 @@ public final class InputTaskTool implements TaskControlTool<InputTaskTool.Args> 
                         case QUEUED ->
                                 throw new IllegalStateException("queued result handled above");
                     };
-            return ToolErrors.failure(queued.status().name(), message);
+            ToolErrorCode code =
+                    switch (queued.status()) {
+                        case TASK_NOT_FOUND -> ToolErrorCode.TASK_NOT_FOUND;
+                        case TASK_NOT_RUNNING -> ToolErrorCode.TASK_NOT_RUNNING;
+                        case STDIN_CLOSED -> ToolErrorCode.STDIN_CLOSED;
+                        case INPUT_TOO_LARGE -> ToolErrorCode.INPUT_TOO_LARGE;
+                        case INPUT_QUEUE_FULL -> ToolErrorCode.INPUT_QUEUE_FULL;
+                        case QUEUED ->
+                                throw new IllegalStateException("queued result handled above");
+                    };
+            return ToolErrors.failure(code, message);
         }
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("status", "queued");

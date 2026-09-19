@@ -21,6 +21,7 @@ import top.focess.veto.agent.tool.SecurityHint;
 import top.focess.veto.agent.tool.ToolCapability;
 import top.focess.veto.agent.tool.ToolDoc;
 import top.focess.veto.agent.tool.ToolDocs;
+import top.focess.veto.agent.tool.ToolErrorCode;
 import top.focess.veto.agent.tool.ToolErrors;
 import top.focess.veto.agent.tool.ToolJson;
 import top.focess.veto.agent.tool.ToolResultFormat;
@@ -96,14 +97,15 @@ public final class FindFilesTool implements WorkspaceReadTool<FindFilesTool.Args
     public @NonNull String execute(@NonNull Args args, @NonNull WorkspaceReadCapability workspace) {
         if (args.pattern().isBlank() || args.pattern().indexOf('\\') >= 0) {
             return ToolErrors.failure(
-                    "INVALID_PATTERN", "Pattern must be non-blank and use '/' separators.");
+                    ToolErrorCode.INVALID_PATTERN,
+                    "Pattern must be non-blank and use '/' separators.");
         }
         Pattern matcher = Pattern.compile(globRegex(args.pattern()));
         try {
             WorkspaceFile root = workspace.file(args.absolutePath());
             if (!root.kind().equals("directory")) {
                 return ToolErrors.failure(
-                        "NOT_A_DIRECTORY", "Not a directory: " + args.absolutePath());
+                        ToolErrorCode.NOT_A_DIRECTORY, "Not a directory: " + args.absolutePath());
             }
             var traversal = new WorkspaceTraversal(root);
             List<String> matches = new ArrayList<>();
@@ -137,10 +139,11 @@ public final class FindFilesTool implements WorkspaceReadTool<FindFilesTool.Args
                 reason = "OUTPUT_LIMIT";
             }
         } catch (NoSuchFileException e) {
-            return ToolErrors.failure("NOT_A_DIRECTORY", "Not a directory: " + args.absolutePath());
+            return ToolErrors.failure(
+                    ToolErrorCode.NOT_A_DIRECTORY, "Not a directory: " + args.absolutePath());
         } catch (IOException e) {
             return ToolErrors.failure(
-                    "IO_ERROR", "Cannot search directory: " + args.absolutePath());
+                    ToolErrorCode.IO_ERROR, "Cannot search directory: " + args.absolutePath());
         }
     }
 

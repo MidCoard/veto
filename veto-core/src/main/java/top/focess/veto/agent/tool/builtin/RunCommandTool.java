@@ -13,6 +13,7 @@ import top.focess.veto.agent.tool.SecurityHint;
 import top.focess.veto.agent.tool.ToolCapability;
 import top.focess.veto.agent.tool.ToolDoc;
 import top.focess.veto.agent.tool.ToolDocs;
+import top.focess.veto.agent.tool.ToolErrorCode;
 import top.focess.veto.agent.tool.ToolErrors;
 import top.focess.veto.agent.tool.ToolResultFormat;
 import top.focess.veto.agent.tool.ToolSecurity;
@@ -168,7 +169,8 @@ public final class RunCommandTool implements ProcessExecutionTool<RunCommandTool
         String content = result.stdout() + (stderr.isEmpty() ? "" : "\n[stderr]\n" + stderr);
         if (!result.success())
             return ToolErrors.failure(
-                    "COMMAND_FAILED", content + "\n(exit code: " + result.exitCode() + ")");
+                    ToolErrorCode.COMMAND_FAILED,
+                    content + "\n(exit code: " + result.exitCode() + ")");
         return content;
     }
 }

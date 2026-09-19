@@ -132,7 +132,7 @@ class ToolContractIntegrityTest {
                     String.valueOf(missingFailure.getMessage())
                             .contains(
                                     "missing required parameter '" + required.displayPath() + "'"));
-            assertEquals("INVALID_ARGUMENTS", missingFailure.errorCode());
+            assertEquals(ToolErrorCode.INVALID_ARGUMENTS, missingFailure.errorCode());
 
             ObjectNode explicitNull = complete.deepCopy();
             JsonNode nullParent = explicitNull.at(required.parentPointer());
@@ -153,7 +153,7 @@ class ToolContractIntegrityTest {
                     String.valueOf(nullFailure.getMessage())
                             .contains("'" + required.displayPath() + "'"),
                     () -> toolName + ": " + nullFailure.getMessage());
-            assertEquals("INVALID_ARGUMENTS", nullFailure.errorCode());
+            assertEquals(ToolErrorCode.INVALID_ARGUMENTS, nullFailure.errorCode());
         }
     }
 

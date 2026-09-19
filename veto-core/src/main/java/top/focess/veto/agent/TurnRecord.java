@@ -5,6 +5,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.agent.tool.ToolErrorCode;
 import top.focess.veto.agent.tool.ToolResult;
 import top.focess.veto.agent.tool.ToolResultFormat;
 import top.focess.veto.agent.tool.ToolResultStatus;
@@ -118,7 +119,7 @@ public record TurnRecord(
                 success ? ToolResultStatus.SUCCESS : ToolResultStatus.FAILURE,
                 ToolResultFormat.UNKNOWN,
                 content,
-                success ? null : "TOOL_FAILURE");
+                success ? null : ToolErrorCode.TOOL_FAILURE);
     }
 
     public static @NonNull TurnRecord toolResponse(int turnNumber, @NonNull ToolResult result) {
@@ -158,7 +159,7 @@ public record TurnRecord(
             @NonNull ToolResultStatus status,
             @NonNull ToolResultFormat format,
             @NonNull String content,
-            String errorCode) {
+            ToolErrorCode errorCode) {
         return new TurnRecord(
                 turnNumber,
                 TurnType.TOOL_RESPONSE,
@@ -171,7 +172,7 @@ public record TurnRecord(
             @NonNull ToolResultStatus status,
             @NonNull ToolResultFormat format,
             @NonNull String content,
-            String errorCode) {
+            ToolErrorCode errorCode) {
         // callId is OPTIONAL (absent for synthetic observations — guided-escape, llm-error,
         // tool-not-found), so Map.of's null-hostile builder would throw; use a null-tolerant map.
         Map<String, Object> p = new LinkedHashMap<>();
@@ -183,7 +184,8 @@ public record TurnRecord(
         p.put("status", status.id());
         p.put("format", format.id());
         if (errorCode != null) {
-            p.put("errorCode", errorCode);
+            // The payload is the persistence/wire shape: the code travels as its enum name.
+            p.put("errorCode", errorCode.name());
         }
         return p;
     }

@@ -7,16 +7,20 @@ public final class ToolExecutionException extends RuntimeException {
 
     private final @NonNull ToolResultStatus status;
     private final @NonNull ToolResultFormat format;
-    private final @NonNull String errorCode;
+    private final @NonNull ToolErrorCode errorCode;
 
     public ToolExecutionException(@NonNull String message) {
-        this(ToolResultStatus.FAILURE, ToolResultFormat.PLAINTEXT, "TOOL_FAILURE", message);
+        this(
+                ToolResultStatus.FAILURE,
+                ToolResultFormat.PLAINTEXT,
+                ToolErrorCode.TOOL_FAILURE,
+                message);
     }
 
     public ToolExecutionException(
             @NonNull ToolResultStatus status,
             @NonNull ToolResultFormat format,
-            @NonNull String errorCode,
+            @NonNull ToolErrorCode errorCode,
             @NonNull String content) {
         super(content);
         this.status = status;
@@ -32,7 +36,7 @@ public final class ToolExecutionException extends RuntimeException {
         return format;
     }
 
-    public @NonNull String errorCode() {
+    public @NonNull ToolErrorCode errorCode() {
         return errorCode;
     }
 

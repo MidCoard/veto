@@ -15,6 +15,7 @@ import top.focess.veto.agent.tool.SecurityHint;
 import top.focess.veto.agent.tool.ToolCapability;
 import top.focess.veto.agent.tool.ToolDoc;
 import top.focess.veto.agent.tool.ToolDocs;
+import top.focess.veto.agent.tool.ToolErrorCode;
 import top.focess.veto.agent.tool.ToolErrors;
 import top.focess.veto.agent.tool.ToolResultFormat;
 import top.focess.veto.agent.tool.ToolSecurity;
@@ -107,7 +108,7 @@ public final class ListDirTool implements WorkspaceReadTool<ListDirTool.Args> {
             WorkspaceFile directory = workspace.file(args.absolutePath());
             if (!directory.kind().equals("directory")) {
                 return ToolErrors.failure(
-                        "NOT_A_DIRECTORY", "Not a directory: " + args.absolutePath());
+                        ToolErrorCode.NOT_A_DIRECTORY, "Not a directory: " + args.absolutePath());
             }
             var entries = new ArrayList<String>();
             for (WorkspaceFile child : directory.children()) {
@@ -128,9 +129,11 @@ public final class ListDirTool implements WorkspaceReadTool<ListDirTool.Args> {
             String output = entries.isEmpty() ? "" : String.join("\n", entries) + "\n";
             return truncated ? output + "[truncated at 5000 entries]\n" : output;
         } catch (NoSuchFileException e) {
-            return ToolErrors.failure("NOT_A_DIRECTORY", "Not a directory: " + args.absolutePath());
+            return ToolErrors.failure(
+                    ToolErrorCode.NOT_A_DIRECTORY, "Not a directory: " + args.absolutePath());
         } catch (IOException e) {
-            return ToolErrors.failure("IO_ERROR", "Cannot list directory: " + args.absolutePath());
+            return ToolErrors.failure(
+                    ToolErrorCode.IO_ERROR, "Cannot list directory: " + args.absolutePath());
         }
     }
 }

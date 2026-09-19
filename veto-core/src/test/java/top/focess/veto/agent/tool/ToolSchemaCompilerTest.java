@@ -367,7 +367,7 @@ class ToolSchemaCompilerTest {
         assertTrue(
                 String.valueOf(missing.getMessage())
                         .contains("missing required parameter 'content' when 'mode' is 'WRITE'"));
-        assertEquals("INVALID_ARGUMENTS", missing.errorCode());
+        assertEquals(ToolErrorCode.INVALID_ARGUMENTS, missing.errorCode());
 
         ToolExecutionException blank =
                 assertThrows(
@@ -380,7 +380,7 @@ class ToolSchemaCompilerTest {
         assertTrue(
                 String.valueOf(blank.getMessage())
                         .contains("parameter 'content' must not be blank"));
-        assertEquals("INVALID_ARGUMENTS", blank.errorCode());
+        assertEquals(ToolErrorCode.INVALID_ARGUMENTS, blank.errorCode());
 
         assertDoesNotThrow(
                 () ->

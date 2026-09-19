@@ -249,7 +249,7 @@ class ToolEngineImplTest {
         ToolResult result = executeJsonOutput("{\"data\":\"" + "x".repeat(1_000_000) + "\"}");
         assertFalse(result.success());
         assertEquals(ToolResultFormat.PLAINTEXT, result.format());
-        assertEquals("TOOL_RESULT_TOO_LARGE", result.errorCode());
+        assertEquals(ToolErrorCode.TOOL_RESULT_TOO_LARGE, result.errorCode());
         assertTrue(result.content().length() < 1_000);
     }
 

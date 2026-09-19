@@ -34,6 +34,7 @@ import top.focess.veto.agent.screening.SlmScreeningProvider;
 import top.focess.veto.agent.tool.ToolCallContextHolder;
 import top.focess.veto.agent.tool.ToolCapability;
 import top.focess.veto.agent.tool.ToolEngineImpl;
+import top.focess.veto.agent.tool.ToolErrorCode;
 import top.focess.veto.agent.tool.ToolErrors;
 import top.focess.veto.agent.translation.CapabilityTranslator;
 import top.focess.veto.agent.workspace.Workspace;
@@ -118,9 +119,10 @@ public final class WebFetchExecutor {
         UUID sessionId = parent.sessionId();
         if (owner == null || sessionId == null || !owner.equals(UserContext.get()))
             return ToolErrors.refused(
-                    "READER_IDENTITY", "Reader needs an authenticated session owner.");
+                    ToolErrorCode.READER_IDENTITY, "Reader needs an authenticated session owner.");
         if (objective.length() > MAX_ANSWER_CHARS)
-            return ToolErrors.failure("INVALID_ARGUMENTS", "Reading objective is too long.");
+            return ToolErrors.failure(
+                    ToolErrorCode.INVALID_ARGUMENTS, "Reading objective is too long.");
         var model = resolveModel(owner, tier);
         long start = System.nanoTime();
         long deadline = start + Duration.ofSeconds(timeoutSeconds).toNanos();
@@ -273,7 +275,9 @@ public final class WebFetchExecutor {
                 var result = document.result();
                 if (!completed.success() || result == null)
                     return ToolErrors.failure(
-                            calls.get() >= maxRounds ? "READER_BUDGET" : "READER_MODEL",
+                            calls.get() >= maxRounds
+                                    ? ToolErrorCode.READER_BUDGET
+                                    : ToolErrorCode.READER_MODEL,
                             "Reader ended without a validated result; check its configured model and execution budget.");
                 log.info(
                         "Web reader finished: execution={}, outcome={}, rounds={}, promptTokens={}, completionTokens={}",
@@ -286,9 +290,10 @@ public final class WebFetchExecutor {
                 return json(result);
             } catch (InterruptedException error) {
                 Thread.currentThread().interrupt();
-                return ToolErrors.failure("CANCELLED", "Web reader cancelled.");
+                return ToolErrors.failure(ToolErrorCode.CANCELLED, "Web reader cancelled.");
             } catch (TimeoutException error) {
-                return ToolErrors.failure("READER_TIMEOUT", "Web reader exceeded its time budget.");
+                return ToolErrors.failure(
+                        ToolErrorCode.READER_TIMEOUT, "Web reader exceeded its time budget.");
             } finally {
                 // A terminal result/state is set before the child thread actually unwinds.
                 // Keep the parent operation occupied until its child can no longer execute.
@@ -338,9 +343,10 @@ public final class WebFetchExecutor {
 
     static void checkDeadline(long deadline) {
         if (Thread.currentThread().isInterrupted())
-            ToolErrors.failure("CANCELLED", "Web reader cancelled.");
+            ToolErrors.failure(ToolErrorCode.CANCELLED, "Web reader cancelled.");
         if (System.nanoTime() >= deadline)
-            ToolErrors.failure("READER_TIMEOUT", "Web reader exceeded its time budget.");
+            ToolErrors.failure(
+                    ToolErrorCode.READER_TIMEOUT, "Web reader exceeded its time budget.");
     }
 
     private static int bytes(@NonNull String value) {
@@ -352,7 +358,8 @@ public final class WebFetchExecutor {
         try {
             return mapper.writeValueAsString(value);
         } catch (JsonProcessingException error) {
-            return ToolErrors.failure("READER_OUTPUT", "Could not encode reader result.");
+            return ToolErrors.failure(
+                    ToolErrorCode.READER_OUTPUT, "Could not encode reader result.");
         }
     }
 

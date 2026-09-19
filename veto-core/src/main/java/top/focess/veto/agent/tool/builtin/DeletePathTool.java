@@ -20,6 +20,7 @@ import top.focess.veto.agent.tool.SecurityHint;
 import top.focess.veto.agent.tool.ToolCapability;
 import top.focess.veto.agent.tool.ToolDoc;
 import top.focess.veto.agent.tool.ToolDocs;
+import top.focess.veto.agent.tool.ToolErrorCode;
 import top.focess.veto.agent.tool.ToolErrors;
 import top.focess.veto.agent.tool.ToolJson;
 import top.focess.veto.agent.tool.ToolResultFormat;
@@ -53,8 +54,8 @@ import top.focess.veto.agent.tool.WorkspaceWriteTool;
                 "Success returns JSON with `status`, requested `path`, `kind` (`file`,"
                         + " `directory`, or `symbolic_link`), and `entriesDeleted`. In"
                         + " detailed-result mode, failures use PATH_NOT_FOUND, DIRECTORY_NOT_EMPTY,"
-                        + " DELETE_LIMIT_EXCEEDED, SAFE_TREE_OPERATION_UNAVAILABLE, TREE_CHANGED,"
-                        + " or IO_ERROR; protected paths are refused with PATH_PROTECTED or"
+                        + " DELETE_LIMIT_EXCEEDED, TREE_CHANGED, or IO_ERROR; protected paths are"
+                        + " refused with PATH_PROTECTED or"
                         + " DESCENDANT_REFUSED. Failure content is actionable plaintext in every"
                         + " mode.",
         errorsAndEdgeCases =
@@ -117,7 +118,7 @@ public final class DeletePathTool implements WorkspaceWriteTool<DeletePathTool.A
                             || Duration.between(started, Instant.now()).compareTo(MAX_DURATION)
                                     > 0) {
                         return ToolErrors.failure(
-                                "DELETE_LIMIT_EXCEEDED",
+                                ToolErrorCode.DELETE_LIMIT_EXCEEDED,
                                 "Directory preflight exceeded its safety limit.");
                     }
                 }
@@ -139,19 +140,20 @@ public final class DeletePathTool implements WorkspaceWriteTool<DeletePathTool.A
         } catch (DirectoryNotEmptyException e) {
             if (args.recursive())
                 return ToolErrors.failure(
-                        "TREE_CHANGED",
+                        ToolErrorCode.TREE_CHANGED,
                         "Directory changed during deletion after "
                                 + deleted
                                 + " entries were deleted.");
             return ToolErrors.failure(
-                    "DIRECTORY_NOT_EMPTY", "Directory is not empty; recursive=true is required.");
+                    ToolErrorCode.DIRECTORY_NOT_EMPTY,
+                    "Directory is not empty; recursive=true is required.");
         } catch (NoSuchFileException e) {
             return ToolErrors.failure(
-                    deleted == 0 ? "PATH_NOT_FOUND" : "TREE_CHANGED",
+                    deleted == 0 ? ToolErrorCode.PATH_NOT_FOUND : ToolErrorCode.TREE_CHANGED,
                     "Path not found: " + args.absolutePath());
         } catch (IOException e) {
             return ToolErrors.failure(
-                    "IO_ERROR",
+                    ToolErrorCode.IO_ERROR,
                     "Deletion stopped after " + deleted + " entries: " + args.absolutePath());
         }
     }

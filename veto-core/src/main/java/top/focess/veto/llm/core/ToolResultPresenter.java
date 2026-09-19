@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
+import top.focess.veto.agent.tool.ToolErrorCode;
 import top.focess.veto.agent.tool.ToolResult;
 import top.focess.veto.agent.tool.ToolResultFormat;
 import top.focess.veto.agent.tool.ToolResultStatus;
@@ -32,11 +33,11 @@ public class ToolResultPresenter {
         envelope.put("status", result.status().id());
         envelope.put("format", result.format().id());
         envelope.put("content", result.content());
-        String errorCode = result.errorCode();
+        ToolErrorCode errorCode = result.errorCode();
         if (errorCode == null) {
             envelope.putNull("errorCode");
         } else {
-            envelope.put("errorCode", errorCode);
+            envelope.put("errorCode", errorCode.name());
         }
         try {
             return mapper.writeValueAsString(envelope);
@@ -51,7 +52,7 @@ public class ToolResultPresenter {
             @NonNull ToolResultStatus status,
             @NonNull ToolResultFormat format,
             @NonNull String content,
-            String errorCode,
+            ToolErrorCode errorCode,
             @NonNull ToolResultPresentationMode mode) {
         return present(new ToolResult(toolName, callId, status, format, content, errorCode), mode);
     }

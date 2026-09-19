@@ -16,6 +16,7 @@ import org.springframework.stereotype.Component;
 import top.focess.veto.agent.capability.CapabilityAccess;
 import top.focess.veto.agent.intercept.SecretMasker;
 import top.focess.veto.agent.tool.ToolCapability;
+import top.focess.veto.agent.tool.ToolErrorCode;
 import top.focess.veto.agent.tool.ToolErrors;
 import top.focess.veto.vault.KeysteadVault;
 
@@ -60,12 +61,13 @@ public final class GitHubRepositoryReader {
         String owner = context.owner();
         if (owner == null || owner.isBlank() || context.sessionId() == null)
             return ToolErrors.failure(
-                    "CREDENTIAL_UNAVAILABLE", "An active owned session is required");
+                    ToolErrorCode.CREDENTIAL_UNAVAILABLE, "An active owned session is required");
         if (!repositoryOwner.matches("[A-Za-z0-9][A-Za-z0-9-]{0,38}")
                 || !repositoryName.matches("[A-Za-z0-9_.-]{1,100}")
                 || repositoryName.equals(".")
                 || repositoryName.equals(".."))
-            return ToolErrors.failure("INVALID_REPOSITORY", "Invalid repository owner or name");
+            return ToolErrors.failure(
+                    ToolErrorCode.INVALID_REPOSITORY, "Invalid repository owner or name");
         AtomicReference<String> result = new AtomicReference<>();
         AtomicInteger httpError = new AtomicInteger();
         try {
@@ -131,16 +133,18 @@ public final class GitHubRepositoryReader {
                     });
         } catch (RuntimeException failure) {
             return ToolErrors.failure(
-                    "CREDENTIAL_UNAVAILABLE", "Credential is unavailable for this operation");
+                    ToolErrorCode.CREDENTIAL_UNAVAILABLE,
+                    "Credential is unavailable for this operation");
         }
         String answer = result.get();
         if (httpError.get() != 0)
             return ToolErrors.failure(
-                    "GITHUB_HTTP_ERROR",
+                    ToolErrorCode.GITHUB_HTTP_ERROR,
                     "GitHub repository request returned HTTP " + httpError.get());
         if (answer == null)
             return ToolErrors.failure(
-                    "AUTHENTICATED_READ_FAILED", "Repository information could not be read");
+                    ToolErrorCode.AUTHENTICATED_READ_FAILED,
+                    "Repository information could not be read");
         return answer;
     }
 }

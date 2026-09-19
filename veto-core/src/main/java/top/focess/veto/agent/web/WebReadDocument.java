@@ -10,6 +10,7 @@ import java.util.regex.Pattern;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Element;
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.agent.tool.ToolErrorCode;
 import top.focess.veto.agent.tool.ToolErrors;
 
 /** Bounded source segments owned by one reader invocation, never a filesystem resource. */
@@ -37,7 +38,8 @@ final class WebReadDocument {
         String type = page.contentType();
         if (!(type.startsWith("text/") || type.contains("json") || type.contains("xhtml")))
             ToolErrors.failure(
-                    "UNSUPPORTED_CONTENT", "Reader supports HTML and text documents only.");
+                    ToolErrorCode.UNSUPPORTED_CONTENT,
+                    "Reader supports HTML and text documents only.");
         if (type.contains("html")) {
             var doc = Jsoup.parse(page.content(), url);
             doc.select("script,style,noscript,iframe,nav,footer,header,form").remove();
@@ -47,7 +49,7 @@ final class WebReadDocument {
             var blocks = root.getAllElements();
             for (Element block : blocks) {
                 if (Thread.currentThread().isInterrupted())
-                    ToolErrors.failure("CANCELLED", "Web reader cancelled.");
+                    ToolErrors.failure(ToolErrorCode.CANCELLED, "Web reader cancelled.");
                 if (block.parents().stream()
                         .anyMatch(p -> p != root && TEXT_BLOCKS.contains(p.tagName()))) continue;
                 if (block.tagName().matches("h[1-6]")) section = block.text();
@@ -74,7 +76,7 @@ final class WebReadDocument {
             }
         } else add("Document", page.content());
         if (segments.isEmpty())
-            ToolErrors.failure("EMPTY_CONTENT", "Page has no readable content.");
+            ToolErrors.failure(ToolErrorCode.EMPTY_CONTENT, "Page has no readable content.");
     }
 
     private void add(@NonNull String section, @NonNull String text) {
@@ -123,7 +125,7 @@ final class WebReadDocument {
     @NonNull List<@NonNull Segment> read(@NonNull List<@NonNull String> ids) {
         if (ids.isEmpty() || ids.size() > MAX_READ_SEGMENTS)
             return ToolErrors.failure(
-                    "INVALID_ARGUMENTS", "Read between one and eight segment IDs.");
+                    ToolErrorCode.INVALID_ARGUMENTS, "Read between one and eight segment IDs.");
         return ids.stream().map(this::segment).toList();
     }
 

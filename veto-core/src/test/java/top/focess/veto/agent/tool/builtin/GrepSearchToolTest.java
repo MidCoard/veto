@@ -25,6 +25,7 @@ import top.focess.veto.agent.tool.ToolCallContext;
 import top.focess.veto.agent.tool.ToolCallContextHolder;
 import top.focess.veto.agent.tool.ToolCapability;
 import top.focess.veto.agent.tool.ToolDocs;
+import top.focess.veto.agent.tool.ToolErrorCode;
 import top.focess.veto.agent.tool.ToolExecutionException;
 import top.focess.veto.llm.core.ToolCall;
 import top.focess.veto.llm.core.ToolResultPresentationMode;
@@ -52,7 +53,7 @@ class GrepSearchToolTest {
                                                 tempDir.toString(), "", null, null)));
 
         assertEquals("query must not be empty", failure.getMessage());
-        assertEquals("INVALID_QUERY", failure.errorCode());
+        assertEquals(ToolErrorCode.INVALID_QUERY, failure.errorCode());
     }
 
     @Test
@@ -70,7 +71,7 @@ class GrepSearchToolTest {
                                                 missing.toString(), "needle", null, null)));
 
         assertEquals("Search path does not exist: " + missing, failure.getMessage());
-        assertEquals("PATH_NOT_FOUND", failure.errorCode());
+        assertEquals(ToolErrorCode.PATH_NOT_FOUND, failure.errorCode());
     }
 
     @Test

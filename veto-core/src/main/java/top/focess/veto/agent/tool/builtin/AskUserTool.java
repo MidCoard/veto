@@ -14,6 +14,7 @@ import top.focess.veto.agent.tool.Doc;
 import top.focess.veto.agent.tool.StringConstraint;
 import top.focess.veto.agent.tool.ToolDoc;
 import top.focess.veto.agent.tool.ToolDocs;
+import top.focess.veto.agent.tool.ToolErrorCode;
 import top.focess.veto.agent.tool.ToolErrors;
 import top.focess.veto.agent.tool.ToolExecutionException;
 import top.focess.veto.agent.tool.ToolJson;
@@ -152,14 +153,14 @@ public final class AskUserTool implements UserInteractionTool<AskUserTool.Args> 
             throw new ToolExecutionException(
                     ToolResultStatus.CANCELLED,
                     ToolResultFormat.PLAINTEXT,
-                    "TOOL_INTERRUPTED",
+                    ToolErrorCode.TOOL_INTERRUPTED,
                     "The question was interrupted.");
         }
         if (answer.cancelled()) {
             throw new ToolExecutionException(
                     ToolResultStatus.CANCELLED,
                     ToolResultFormat.PLAINTEXT,
-                    "USER_CANCELLED",
+                    ToolErrorCode.USER_CANCELLED,
                     "The user cancelled the question.");
         }
         Map<String, Object> result = new LinkedHashMap<>();
@@ -170,31 +171,32 @@ public final class AskUserTool implements UserInteractionTool<AskUserTool.Args> 
     private static void validate(@NonNull List<@NonNull Question> questions) {
         if (questions.isEmpty() || questions.size() > MAX_QUESTIONS) {
             ToolErrors.failure(
-                    "INVALID_QUESTIONS",
+                    ToolErrorCode.INVALID_QUESTIONS,
                     "ask_user requires between 1 and " + MAX_QUESTIONS + " questions.");
         }
         Set<String> ids = new HashSet<>();
         for (Question question : questions) {
             if (question.header().isBlank() || length(question.header()) > 12) {
                 ToolErrors.failure(
-                        "INVALID_QUESTIONS",
+                        ToolErrorCode.INVALID_QUESTIONS,
                         "Each question header must contain 1 to 12 characters.");
             }
             if (question.id().isBlank()
                     || !question.id().matches("[a-z][a-z0-9_]*")
                     || !ids.add(question.id())) {
                 ToolErrors.failure(
-                        "INVALID_QUESTIONS", "Question ids must be unique snake_case identifiers.");
+                        ToolErrorCode.INVALID_QUESTIONS,
+                        "Question ids must be unique snake_case identifiers.");
             }
             if (question.question().isBlank() || length(question.question()) > 300) {
                 ToolErrors.failure(
-                        "INVALID_QUESTIONS",
+                        ToolErrorCode.INVALID_QUESTIONS,
                         "Each question prompt must contain 1 to 300 characters.");
             }
             if (question.options().size() < MIN_OPTIONS
                     || question.options().size() > MAX_OPTIONS) {
                 ToolErrors.failure(
-                        "INVALID_QUESTIONS",
+                        ToolErrorCode.INVALID_QUESTIONS,
                         "Question '"
                                 + question.id()
                                 + "' has "
@@ -211,7 +213,7 @@ public final class AskUserTool implements UserInteractionTool<AskUserTool.Args> 
                 String normalizedLabel = option.label().strip().toLowerCase(Locale.ROOT);
                 if (length(option.label()) > 120) {
                     ToolErrors.failure(
-                            "INVALID_QUESTIONS",
+                            ToolErrorCode.INVALID_QUESTIONS,
                             "Question '"
                                     + question.id()
                                     + "', option "
@@ -227,7 +229,7 @@ public final class AskUserTool implements UserInteractionTool<AskUserTool.Args> 
                         || length(option.description()) > 200
                         || !labels.add(normalizedLabel)) {
                     ToolErrors.failure(
-                            "INVALID_QUESTIONS",
+                            ToolErrorCode.INVALID_QUESTIONS,
                             "Option labels must be distinct, at most 120 characters, and not"
                                     + " `Other`; descriptions must contain 1 to 200 characters.");
                 }

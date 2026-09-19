@@ -10,7 +10,8 @@ import org.jspecify.annotations.NonNull;
  * @param status provider-independent execution status
  * @param format encoding of {@code content}
  * @param content canonical tool output before the session-specific representation is applied
- * @param errorCode stable machine-readable failure code, or null when not applicable
+ * @param errorCode stable machine-readable failure code, or null when not applicable; the wire and
+ *     persisted representation is {@link ToolErrorCode#name()}
  */
 public record ToolResult(
         @NonNull String toolName,
@@ -18,7 +19,7 @@ public record ToolResult(
         @NonNull ToolResultStatus status,
         @NonNull ToolResultFormat format,
         @NonNull String content,
-        String errorCode) {
+        ToolErrorCode errorCode) {
 
     /** Creates a basic result when the tool has no more specific format or error code. */
     public ToolResult(
@@ -29,7 +30,7 @@ public record ToolResult(
                 success ? ToolResultStatus.SUCCESS : ToolResultStatus.FAILURE,
                 ToolResultFormat.UNKNOWN,
                 content,
-                success ? null : "TOOL_FAILURE");
+                success ? null : ToolErrorCode.TOOL_FAILURE);
     }
 
     public boolean success() {

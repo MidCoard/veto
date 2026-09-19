@@ -8,6 +8,7 @@ import java.util.Objects;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.agent.TurnRecord;
+import top.focess.veto.agent.tool.ToolErrorCode;
 import top.focess.veto.agent.tool.ToolResult;
 import top.focess.veto.agent.tool.ToolResultFormat;
 import top.focess.veto.agent.tool.ToolResultStatus;
@@ -52,7 +53,7 @@ class ToolResultPresenterTest {
         assertThat(failure.path("format").asText()).isEqualTo("plaintext");
         assertThat(failure.path("content").asText())
                 .isEqualTo("memory not found; nothing forgotten");
-        assertThat(failure.path("errorCode").asText()).isEqualTo("MEMORY_NOT_FOUND");
+        assertThat(failure.path("errorCode").asText()).isEqualTo("TOOL_FAILURE");
     }
 
     @Test
@@ -70,7 +71,7 @@ class ToolResultPresenterTest {
         assertThat(turn.payload().get("presentation")).isEqualTo("DETAILED");
         assertThat(turn.payload().get("status")).isEqualTo("failure");
         assertThat(turn.payload().get("format")).isEqualTo("plaintext");
-        assertThat(turn.payload().get("errorCode")).isEqualTo("MEMORY_NOT_FOUND");
+        assertThat(turn.payload().get("errorCode")).isEqualTo("TOOL_FAILURE");
     }
 
     @Test
@@ -104,6 +105,6 @@ class ToolResultPresenterTest {
                 ToolResultStatus.FAILURE,
                 ToolResultFormat.PLAINTEXT,
                 "memory not found; nothing forgotten",
-                "MEMORY_NOT_FOUND");
+                ToolErrorCode.TOOL_FAILURE);
     }
 }

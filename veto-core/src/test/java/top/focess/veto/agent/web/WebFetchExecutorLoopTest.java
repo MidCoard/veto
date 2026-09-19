@@ -32,6 +32,7 @@ import top.focess.veto.agent.capability.WebReadCapability;
 import top.focess.veto.agent.tool.CapabilityTestCalls;
 import top.focess.veto.agent.tool.ToolCallContextHolder;
 import top.focess.veto.agent.tool.ToolDocs;
+import top.focess.veto.agent.tool.ToolErrorCode;
 import top.focess.veto.agent.tool.ToolExecutionException;
 import top.focess.veto.agent.translation.DefaultCapabilityTranslator;
 import top.focess.veto.llm.core.ProviderType;
@@ -72,7 +73,7 @@ class WebFetchExecutorLoopTest {
         ToolExecutionException error =
                 assertThrows(
                         ToolDocs.nonNullClass(ToolExecutionException.class), () -> execute(tool));
-        assertEquals("READER_MODEL", error.errorCode());
+        assertEquals(ToolErrorCode.READER_MODEL, error.errorCode());
         assertTrue(requests.isEmpty());
         verify(access, never()).fetch(anyLong());
         verify(models, never()).resolve("test-owner", ModelTier.MID);
@@ -415,7 +416,7 @@ class WebFetchExecutorLoopTest {
                 assertThrows(
                         ToolDocs.nonNullClass(ToolExecutionException.class), () -> execute(tool));
         String message = error.content();
-        assertEquals("READER_MODEL", error.errorCode());
+        assertEquals(ToolErrorCode.READER_MODEL, error.errorCode());
         assertFalse(message.contains("provider secret"));
         assertFalse(message.contains("not_found"));
         verify(models, never()).resolve("test-owner", ModelTier.MID);

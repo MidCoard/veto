@@ -15,6 +15,7 @@ import top.focess.veto.agent.tool.SecurityHint;
 import top.focess.veto.agent.tool.ToolCapability;
 import top.focess.veto.agent.tool.ToolDoc;
 import top.focess.veto.agent.tool.ToolDocs;
+import top.focess.veto.agent.tool.ToolErrorCode;
 import top.focess.veto.agent.tool.ToolErrors;
 import top.focess.veto.agent.tool.ToolJson;
 import top.focess.veto.agent.tool.ToolResultFormat;
@@ -57,9 +58,9 @@ import top.focess.veto.agent.tool.WorkspaceWriteTool;
                 - Success: \
                 `{"status":"ok","file":"<absolutePath>","bytes":<byteCount>}`, where `byteCount` is \
                 the UTF-8 byte length written.
-                - Oversized content (failure): \
+                - Oversized content (failure, `FILE_TOO_LARGE`): \
                 `Content exceeds 16 MiB (16,777,216 bytes)`.
-                - Existing `absolutePath` with overwrite disabled (failure): \
+                - Existing `absolutePath` with overwrite disabled (failure, `FILE_EXISTS`): \
                 `File exists and overwrite=false: <absolutePath>`.
                 """,
         errorsAndEdgeCases =
@@ -111,7 +112,8 @@ public final class WriteToFileTool implements WorkspaceWriteTool<WriteToFileTool
             @NonNull Args args, @NonNull WorkspaceWriteCapability workspace) {
         byte[] bytes = args.codeContent().getBytes(StandardCharsets.UTF_8);
         if (bytes.length > MAX_TEXT_BYTES) {
-            return ToolErrors.failure("Content exceeds 16 MiB (16,777,216 bytes)");
+            return ToolErrors.failure(
+                    ToolErrorCode.FILE_TOO_LARGE, "Content exceeds 16 MiB (16,777,216 bytes)");
         }
         try {
             var file = workspace.file(args.absolutePath());
@@ -121,9 +123,12 @@ public final class WriteToFileTool implements WorkspaceWriteTool<WriteToFileTool
             return ToolJson.object(
                     Map.of("status", "ok", "file", args.absolutePath(), "bytes", bytes.length));
         } catch (FileAlreadyExistsException e) {
-            return ToolErrors.failure("File exists and overwrite=false: " + args.absolutePath());
+            return ToolErrors.failure(
+                    ToolErrorCode.FILE_EXISTS,
+                    "File exists and overwrite=false: " + args.absolutePath());
         } catch (IOException e) {
-            return ToolErrors.failure("IO_ERROR", "Cannot write file: " + args.absolutePath());
+            return ToolErrors.failure(
+                    ToolErrorCode.IO_ERROR, "Cannot write file: " + args.absolutePath());
         }
     }
 }

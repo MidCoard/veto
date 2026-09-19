@@ -240,7 +240,7 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
                     ToolResultStatus.FAILURE,
                     ToolResultFormat.PLAINTEXT,
                     "Tool completed but its JSON result exceeds the output limit; result omitted.",
-                    "TOOL_RESULT_TOO_LARGE");
+                    ToolErrorCode.TOOL_RESULT_TOO_LARGE);
         }
         String bounded =
                 result.content().substring(0, MAX_TOOL_RESULT_CHARS)
@@ -327,7 +327,7 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
                 success ? ToolResultStatus.SUCCESS : ToolResultStatus.FAILURE,
                 ToolResultFormat.UNKNOWN,
                 content,
-                success ? null : "REMOTE_TOOL_FAILED");
+                success ? null : ToolErrorCode.REMOTE_TOOL_FAILED);
     }
 
     private static @NonNull ToolCallContext requirePermit(

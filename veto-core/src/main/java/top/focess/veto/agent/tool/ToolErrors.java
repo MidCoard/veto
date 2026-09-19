@@ -13,7 +13,7 @@ public final class ToolErrors {
     }
 
     /** Throws an expected failure with a stable machine-readable code. */
-    public static <T> T failure(@NonNull String errorCode, String message) {
+    public static <T> T failure(@NonNull ToolErrorCode errorCode, String message) {
         throw new ToolExecutionException(
                 ToolResultStatus.FAILURE,
                 ToolResultFormat.PLAINTEXT,
@@ -22,7 +22,7 @@ public final class ToolErrors {
     }
 
     /** Throws an expected refusal with a stable machine-readable code. */
-    public static <T> T refused(@NonNull String errorCode, String message) {
+    public static <T> T refused(@NonNull ToolErrorCode errorCode, String message) {
         throw new ToolExecutionException(
                 ToolResultStatus.REFUSED,
                 ToolResultFormat.PLAINTEXT,

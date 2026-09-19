@@ -65,7 +65,7 @@ public final class NativeToolArgumentValidator {
             throw new ToolExecutionException(
                     ToolResultStatus.FAILURE,
                     ToolResultFormat.PLAINTEXT,
-                    "INVALID_ARGUMENTS",
+                    ToolErrorCode.INVALID_ARGUMENTS,
                     "Invalid arguments for "
                             + toolName
                             + ": "

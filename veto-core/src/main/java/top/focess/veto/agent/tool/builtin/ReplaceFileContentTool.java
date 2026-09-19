@@ -15,6 +15,7 @@ import top.focess.veto.agent.tool.SecurityHint;
 import top.focess.veto.agent.tool.ToolCapability;
 import top.focess.veto.agent.tool.ToolDoc;
 import top.focess.veto.agent.tool.ToolDocs;
+import top.focess.veto.agent.tool.ToolErrorCode;
 import top.focess.veto.agent.tool.ToolErrors;
 import top.focess.veto.agent.tool.ToolJson;
 import top.focess.veto.agent.tool.ToolResultFormat;
@@ -61,13 +62,15 @@ import top.focess.veto.agent.tool.WorkspaceWriteTool;
                 """
                     - Success: `{"status":"ok","file":"<absolutePath>"}`.
                     - Invalid `absolutePath`, range, or replacement (failure): one of \
-                    `Not a regular file: <absolutePath>`, `File exceeds 16 MiB (16,777,216 bytes)`, \
+                    `Not a regular file: <absolutePath>` (`NOT_A_FILE`), \
+                    `File exceeds 16 MiB (16,777,216 bytes)` (`FILE_TOO_LARGE`), \
                     `Invalid line range`, `Line range outside file`, or \
-                    `targetContent must not be empty` or \
-                    `Replacement exceeds 16 MiB (16,777,216 bytes)`.
+                    `targetContent must not be empty` (`INVALID_ARGUMENTS`) or \
+                    `Replacement exceeds 16 MiB (16,777,216 bytes)` (`FILE_TOO_LARGE`).
                     - Match failure (failure): \
-                    `targetContent not found in selected range.` or \
-                    `targetContent is not unique in selected range.` The file remains unchanged.
+                    `targetContent not found in selected range.` (`TARGET_NOT_FOUND`) or \
+                    `targetContent is not unique in selected range.` (`TARGET_NOT_UNIQUE`). \
+                    The file remains unchanged.
                     """,
         errorsAndEdgeCases =
                 """
@@ -125,47 +128,61 @@ public final class ReplaceFileContentTool
     public @NonNull String execute(
             @NonNull Args args, @NonNull WorkspaceWriteCapability workspace) {
         if (args.startLine() < 1 || args.endLine() < args.startLine()) {
-            return ToolErrors.failure("Invalid line range");
+            return ToolErrors.failure(ToolErrorCode.INVALID_ARGUMENTS, "Invalid line range");
         }
         if (args.targetContent().isEmpty())
-            return ToolErrors.failure("targetContent must not be empty");
+            return ToolErrors.failure(
+                    ToolErrorCode.INVALID_ARGUMENTS, "targetContent must not be empty");
         try {
             var file = workspace.file(args.absolutePath());
             if (!"file".equals(file.kind()))
-                return ToolErrors.failure("Not a regular file: " + args.absolutePath());
+                return ToolErrors.failure(
+                        ToolErrorCode.NOT_A_FILE, "Not a regular file: " + args.absolutePath());
             if (file.size() > MAX_TEXT_BYTES)
-                return ToolErrors.failure("File exceeds 16 MiB (16,777,216 bytes)");
+                return ToolErrors.failure(
+                        ToolErrorCode.FILE_TOO_LARGE, "File exceeds 16 MiB (16,777,216 bytes)");
             String content;
             try (var input = file.openRead()) {
                 byte[] bytes = input.readNBytes(MAX_TEXT_BYTES + 1);
                 if (bytes.length > MAX_TEXT_BYTES)
-                    return ToolErrors.failure("File exceeds 16 MiB (16,777,216 bytes)");
+                    return ToolErrors.failure(
+                            ToolErrorCode.FILE_TOO_LARGE, "File exceeds 16 MiB (16,777,216 bytes)");
                 content = new String(bytes, StandardCharsets.UTF_8);
             }
             int start = lineStart(content, args.startLine());
             int end = lineEnd(content, args.endLine());
-            if (start < 0 || end < start) return ToolErrors.failure("Line range outside file");
+            if (start < 0 || end < start)
+                return ToolErrors.failure(
+                        ToolErrorCode.INVALID_ARGUMENTS, "Line range outside file");
             int index = content.indexOf(args.targetContent(), start);
             if (index < 0 || index + args.targetContent().length() > end)
-                return ToolErrors.failure("targetContent not found in selected range.");
+                return ToolErrors.failure(
+                        ToolErrorCode.TARGET_NOT_FOUND,
+                        "targetContent not found in selected range.");
             int next = content.indexOf(args.targetContent(), index + 1);
             if (next >= 0 && next + args.targetContent().length() <= end)
-                return ToolErrors.failure("targetContent is not unique in selected range.");
+                return ToolErrors.failure(
+                        ToolErrorCode.TARGET_NOT_UNIQUE,
+                        "targetContent is not unique in selected range.");
             String updated =
                     content.substring(0, index)
                             + args.replacementContent()
                             + content.substring(index + args.targetContent().length());
             byte[] bytes = updated.getBytes(StandardCharsets.UTF_8);
             if (bytes.length > MAX_TEXT_BYTES)
-                return ToolErrors.failure("Replacement exceeds 16 MiB (16,777,216 bytes)");
+                return ToolErrors.failure(
+                        ToolErrorCode.FILE_TOO_LARGE,
+                        "Replacement exceeds 16 MiB (16,777,216 bytes)");
             try (var output = file.openForReplace()) {
                 output.write(bytes);
             }
             return ToolJson.object(Map.of("status", "ok", "file", args.absolutePath()));
         } catch (NoSuchFileException e) {
-            return ToolErrors.failure("Not a regular file: " + args.absolutePath());
+            return ToolErrors.failure(
+                    ToolErrorCode.NOT_A_FILE, "Not a regular file: " + args.absolutePath());
         } catch (IOException e) {
-            return ToolErrors.failure("IO_ERROR", "Cannot update file: " + args.absolutePath());
+            return ToolErrors.failure(
+                    ToolErrorCode.IO_ERROR, "Cannot update file: " + args.absolutePath());
         }
     }
 

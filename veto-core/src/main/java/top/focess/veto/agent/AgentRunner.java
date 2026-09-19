@@ -79,6 +79,7 @@ import top.focess.veto.agent.tool.ToolCallContextHolder;
 import top.focess.veto.agent.tool.ToolCapability;
 import top.focess.veto.agent.tool.ToolDefinition;
 import top.focess.veto.agent.tool.ToolEngine;
+import top.focess.veto.agent.tool.ToolErrorCode;
 import top.focess.veto.agent.tool.ToolExecutionException;
 import top.focess.veto.agent.tool.ToolResult;
 import top.focess.veto.bus.DeltaBroker;
@@ -1204,7 +1205,7 @@ public class AgentRunner {
                 throw new ToolExecutionException(
                         top.focess.veto.agent.tool.ToolResultStatus.FAILURE,
                         top.focess.veto.agent.tool.ToolResultFormat.PLAINTEXT,
-                        "INVALID_PLAN",
+                        ToolErrorCode.INVALID_PLAN,
                         "Plan rejected before execution: " + error.getMessage());
             }
         }
@@ -1233,7 +1234,7 @@ public class AgentRunner {
             throw new ToolExecutionException(
                     top.focess.veto.agent.tool.ToolResultStatus.FAILURE,
                     top.focess.veto.agent.tool.ToolResultFormat.PLAINTEXT,
-                    "INVALID_CITATION",
+                    ToolErrorCode.INVALID_CITATION,
                     "Citation rejected: " + error.getMessage());
         }
     }

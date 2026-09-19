@@ -24,6 +24,7 @@ import top.focess.veto.agent.identity.SystemPromptResolver;
 import top.focess.veto.agent.intercept.InterceptResolution;
 import top.focess.veto.agent.intercept.VetoOption;
 import top.focess.veto.agent.screening.DeployerPolicy;
+import top.focess.veto.agent.tool.ToolErrorCode;
 import top.focess.veto.agent.tool.ToolResultFormat;
 import top.focess.veto.agent.tool.ToolResultStatus;
 import top.focess.veto.agent.translation.CapabilityTranslator;
@@ -758,16 +759,11 @@ public class PromptCompiler {
             return ChatMessage.toolResult(callId, content, status == ToolResultStatus.SUCCESS);
         }
         ToolResultFormat format = ToolResultFormat.fromId(turn.payload().get("format"));
-        String errorCode = str(turn.payload(), "errorCode");
+        // Legacy payloads may carry codes this build no longer knows; they parse to null.
+        ToolErrorCode errorCode = ToolErrorCode.parse(str(turn.payload(), "errorCode"));
         String presented =
                 toolResultPresenter.present(
-                        "",
-                        callId,
-                        status,
-                        format,
-                        content,
-                        errorCode.isBlank() ? null : errorCode,
-                        toolResultPresentation);
+                        "", callId, status, format, content, errorCode, toolResultPresentation);
         return ChatMessage.toolResult(callId, presented, status == ToolResultStatus.SUCCESS);
     }
 
@@ -905,7 +901,7 @@ public class PromptCompiler {
                 ToolResultStatus.INTERRUPTED,
                 ToolResultFormat.PLAINTEXT,
                 INTERRUPTED_TOOL_RESULT,
-                "TOOL_RESULT_MISSING",
+                ToolErrorCode.TOOL_RESULT_MISSING,
                 presentation);
     }
 

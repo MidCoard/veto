@@ -20,6 +20,7 @@ import top.focess.veto.agent.tool.SecurityHint;
 import top.focess.veto.agent.tool.ToolCapability;
 import top.focess.veto.agent.tool.ToolDoc;
 import top.focess.veto.agent.tool.ToolDocs;
+import top.focess.veto.agent.tool.ToolErrorCode;
 import top.focess.veto.agent.tool.ToolErrors;
 import top.focess.veto.agent.tool.ToolResultFormat;
 import top.focess.veto.agent.tool.ToolSecurity;
@@ -115,11 +116,11 @@ public final class ViewFileTool implements WorkspaceReadTool<ViewFileTool.Args> 
             WorkspaceFile file = workspace.file(args.absolutePath());
             if (!file.kind().equals("file")) {
                 return ToolErrors.failure(
-                        "NOT_A_FILE", "Not a regular file: " + args.absolutePath());
+                        ToolErrorCode.NOT_A_FILE, "Not a regular file: " + args.absolutePath());
             }
             if (file.size() > 16L * 1024 * 1024) {
                 return ToolErrors.failure(
-                        "FILE_TOO_LARGE",
+                        ToolErrorCode.FILE_TOO_LARGE,
                         "File exceeds 16 MiB (16,777,216 bytes); request a smaller artifact");
             }
             Integer start = args.startLine();
@@ -135,7 +136,7 @@ public final class ViewFileTool implements WorkspaceReadTool<ViewFileTool.Args> 
             }
             if (bytes.length > 16 * 1024 * 1024) {
                 return ToolErrors.failure(
-                        "FILE_TOO_LARGE",
+                        ToolErrorCode.FILE_TOO_LARGE,
                         "File exceeds 16 MiB (16,777,216 bytes); request a smaller artifact");
             }
             String original =
@@ -145,7 +146,7 @@ public final class ViewFileTool implements WorkspaceReadTool<ViewFileTool.Args> 
                 protectedText = protectedFiles.captureFileText(original);
             } catch (RuntimeException failure) {
                 return ToolErrors.failure(
-                        "PROTECTED_INPUT_UNAVAILABLE",
+                        ToolErrorCode.PROTECTED_INPUT_UNAVAILABLE,
                         "Protected file content could not be processed; retry or use credential settings");
             }
             try (var reader = new BufferedReader(new StringReader(protectedText))) {
@@ -167,11 +168,13 @@ public final class ViewFileTool implements WorkspaceReadTool<ViewFileTool.Args> 
             return output.toString();
         } catch (MalformedInputException e) {
             return ToolErrors.failure(
-                    "INVALID_UTF8", "File is not valid UTF-8: " + args.absolutePath());
+                    ToolErrorCode.INVALID_UTF8, "File is not valid UTF-8: " + args.absolutePath());
         } catch (NoSuchFileException e) {
-            return ToolErrors.failure("NOT_A_FILE", "Not a regular file: " + args.absolutePath());
+            return ToolErrors.failure(
+                    ToolErrorCode.NOT_A_FILE, "Not a regular file: " + args.absolutePath());
         } catch (IOException e) {
-            return ToolErrors.failure("IO_ERROR", "Cannot read file: " + args.absolutePath());
+            return ToolErrors.failure(
+                    ToolErrorCode.IO_ERROR, "Cannot read file: " + args.absolutePath());
         }
     }
 }

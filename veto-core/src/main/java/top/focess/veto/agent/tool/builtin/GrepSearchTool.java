@@ -22,6 +22,7 @@ import top.focess.veto.agent.tool.SecurityHint;
 import top.focess.veto.agent.tool.ToolCapability;
 import top.focess.veto.agent.tool.ToolDoc;
 import top.focess.veto.agent.tool.ToolDocs;
+import top.focess.veto.agent.tool.ToolErrorCode;
 import top.focess.veto.agent.tool.ToolErrors;
 import top.focess.veto.agent.tool.ToolResultFormat;
 import top.focess.veto.agent.tool.ToolSecurity;
@@ -114,13 +115,13 @@ public final class GrepSearchTool implements WorkspaceReadTool<GrepSearchTool.Ar
     @Override
     public @NonNull String execute(@NonNull Args args, @NonNull WorkspaceReadCapability workspace) {
         if (args.query().isEmpty()) {
-            return ToolErrors.failure("INVALID_QUERY", "query must not be empty");
+            return ToolErrors.failure(ToolErrorCode.INVALID_QUERY, "query must not be empty");
         }
         List<PathMatcher> includes;
         try {
             includes = compileIncludes(args.includes());
         } catch (IllegalArgumentException e) {
-            return ToolErrors.failure("INVALID_PATTERN", "Invalid includes glob");
+            return ToolErrors.failure(ToolErrorCode.INVALID_PATTERN, "Invalid includes glob");
         }
         boolean insensitive = Boolean.TRUE.equals(args.caseInsensitive());
         String query = insensitive ? args.query().toLowerCase(Locale.ROOT) : args.query();
@@ -129,11 +130,13 @@ public final class GrepSearchTool implements WorkspaceReadTool<GrepSearchTool.Ar
             String kind = root.kind();
             if (kind.equals("missing")) {
                 return ToolErrors.failure(
-                        "PATH_NOT_FOUND", "Search path does not exist: " + args.absolutePath());
+                        ToolErrorCode.PATH_NOT_FOUND,
+                        "Search path does not exist: " + args.absolutePath());
             }
             if (kind.equals("symbolic_link")) {
                 return ToolErrors.failure(
-                        "UNSAFE_LINK", "Search path is a symbolic link or reparse point");
+                        ToolErrorCode.UNSAFE_LINK,
+                        "Search path is a symbolic link or reparse point");
             }
             var traversal = new WorkspaceTraversal(root);
             StringBuilder output = new StringBuilder();
@@ -201,9 +204,11 @@ public final class GrepSearchTool implements WorkspaceReadTool<GrepSearchTool.Ar
             return output.isEmpty() ? "(no matches)" : output.toString();
         } catch (NoSuchFileException e) {
             return ToolErrors.failure(
-                    "PATH_NOT_FOUND", "Search path does not exist: " + args.absolutePath());
+                    ToolErrorCode.PATH_NOT_FOUND,
+                    "Search path does not exist: " + args.absolutePath());
         } catch (IOException e) {
-            return ToolErrors.failure("IO_ERROR", "Cannot search path: " + args.absolutePath());
+            return ToolErrors.failure(
+                    ToolErrorCode.IO_ERROR, "Cannot search path: " + args.absolutePath());
         }
     }
 
