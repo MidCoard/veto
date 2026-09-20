@@ -25,7 +25,7 @@ import top.focess.veto.agent.tool.ToolErrors;
 import top.focess.veto.agent.tool.ToolResultFormat;
 import top.focess.veto.agent.tool.ToolSecurity;
 import top.focess.veto.agent.tool.WorkspaceReadTool;
-import top.focess.veto.vault.SecretCandidateStore;
+import top.focess.veto.secret.references.SecretCandidateStore;
 
 /** {@code view_file} — read lines of a text file from the local filesystem. */
 @Component

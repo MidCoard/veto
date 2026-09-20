@@ -1,7 +1,9 @@
 package top.focess.veto.llm.client;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -9,11 +11,11 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.LoggerFactory;
 import top.focess.veto.agent.translation.CapabilityTranslator;
 import top.focess.veto.llm.core.ChatMessage;
@@ -53,34 +55,22 @@ final class DeepSeekLlmClient extends LlmClient {
     public @NonNull RawCompletion complete(@NonNull ResolvedRequest resolved) {
         VetoRequest request = resolved.request();
         try {
-            Map<String, Object> body = new LinkedHashMap<>();
-            body.put("model", request.modelName());
-            body.put("instructions", NativeToolResponses.prompt(request));
-            if (NativeToolResponses.enabled(request)) {
-                body.put(
-                        "tools",
-                        request.tools().stream()
-                                .map(
-                                        tool ->
-                                                Map.of(
-                                                        "type",
-                                                        "function",
-                                                        "name",
-                                                        tool.name(),
-                                                        "description",
-                                                        tool.description(),
-                                                        "parameters",
-                                                        tool.inputSchema(),
-                                                        "strict",
-                                                        false))
-                                .toList());
-                body.put("tool_choice", "auto");
-            }
-            body.put("reasoning", Map.of("effort", "high"));
-
+            List<Function> tools =
+                    NativeToolResponses.enabled(request)
+                            ? request.tools().stream()
+                                    .map(
+                                            tool ->
+                                                    new Function(
+                                                            "function",
+                                                            tool.name(),
+                                                            tool.description(),
+                                                            tool.inputSchema(),
+                                                            false))
+                                    .toList()
+                            : null;
             // Build input items from the conversation messages (skip system - it goes in
-            // instructions).
-            List<Map<String, Object>> inputItems = new ArrayList<>();
+            // instructions). Replayed native parts keep their raw provider shape.
+            List<Object> inputItems = new ArrayList<>();
             for (var group : ProviderMessages.groups(request)) {
                 var headState = group.getFirst().nativeState();
                 boolean replayNative = headState != null && headState.position() == 0;
@@ -98,20 +88,18 @@ final class DeepSeekLlmClient extends LlmClient {
                 }
             }
             if (inputItems.isEmpty())
-                inputItems.add(Map.of("role", "user", "content", request.userPrompt()));
-            body.put("input", inputItems);
-
+                inputItems.add(new MessageInput("user", request.userPrompt()));
             LlmOptions options = request.options();
-            Integer maxTokens = options.maxTokens();
-            if (maxTokens != null) {
-                body.put("max_output_tokens", maxTokens);
-            }
-
-            Double temperature = options.temperature();
-            if (temperature != null) {
-                body.put("temperature", temperature);
-            }
-
+            var body =
+                    new ResponsesRequest(
+                            request.modelName(),
+                            NativeToolResponses.prompt(request),
+                            tools,
+                            tools == null ? null : "auto",
+                            new Reasoning("high"),
+                            inputItems,
+                            options.maxTokens(),
+                            options.temperature());
             String json = objectMapper.writeValueAsString(body);
             LoggerFactory.getLogger("top.focess.veto.llm.client.DeepSeekLlmClient")
                     .debug(
@@ -139,53 +127,44 @@ final class DeepSeekLlmClient extends LlmClient {
                                 + httpResponse.body());
             }
 
-            @SuppressWarnings("unchecked")
-            Map<String, Object> responseMap =
-                    objectMapper.readValue(httpResponse.body(), Map.class);
-
-            if ("incomplete".equals(responseMap.get("status"))
-                    || "failed".equals(responseMap.get("status")))
+            JsonNode response = objectMapper.readTree(httpResponse.body());
+            if (response == null || !response.isObject())
+                throw new ModelSchemaException("Invalid Responses API envelope");
+            String status = response.path("status").asText();
+            if ("incomplete".equals(status) || "failed".equals(status))
                 throw new ModelSchemaException(
                         "DeepSeek returned an incomplete response; no calls were executed");
-            String content = extractResponsesContent(responseMap);
+            String content = extractResponsesContent(response);
             var nativeCalls = new ArrayList<NativeToolResponses.Call>();
-            Object output = responseMap.get("output");
-            if (output instanceof List<?> items)
-                for (Object item : items) {
-                    if (item instanceof Map<?, ?> unsupported
-                            && "custom_tool_call".equals(unsupported.get("type")))
-                        throw new ModelSchemaException("Unsupported native custom tool call");
-                    if (item instanceof Map<?, ?> call
-                            && "function_call".equals(call.get("type"))) {
-                        if (!(call.get("name") instanceof String name)
-                                || !(call.get("arguments") instanceof String arguments)
-                                || !(call.get("call_id") instanceof String id)
-                                || id.isBlank())
-                            throw new ModelSchemaException("Incomplete native function call");
-                        nativeCalls.add(
-                                new NativeToolResponses.Call(
-                                        name,
-                                        NativeToolResponses.arguments(objectMapper, arguments),
-                                        id));
-                    }
+            for (JsonNode item : response.path("output")) {
+                if ("custom_tool_call".equals(item.path("type").asText()))
+                    throw new ModelSchemaException("Unsupported native custom tool call");
+                if ("function_call".equals(item.path("type").asText())) {
+                    if (!item.path("name").isTextual()
+                            || !item.path("arguments").isTextual()
+                            || !item.path("call_id").isTextual()
+                            || item.path("call_id").asText().isBlank())
+                        throw new ModelSchemaException("Incomplete native function call");
+                    nativeCalls.add(
+                            new NativeToolResponses.Call(
+                                    item.path("name").asText(),
+                                    NativeToolResponses.arguments(
+                                            objectMapper, item.path("arguments").asText()),
+                                    item.path("call_id").asText()));
                 }
-            content = NativeToolResponses.normalize(objectMapper, request, content, nativeCalls);
+            }
+            content =
+                    NativeToolResponses.normalize(
+                            objectMapper, request, content == null ? "" : content, nativeCalls);
 
-            @SuppressWarnings("unchecked")
-            Map<String, Object> usage = (Map<String, Object>) responseMap.get("usage");
-            if (usage != null) {
-                Number prompt = (Number) usage.get("input_tokens");
-                Number completion = (Number) usage.get("output_tokens");
-                if (prompt != null && completion != null) {
-                    Object details = usage.get("input_tokens_details");
-                    Long cached =
-                            details instanceof Map<?, ?> breakdown
-                                            && breakdown.get("cached_tokens")
-                                                    instanceof Number value
-                                    ? value.longValue()
-                                    : null;
-                    LlmSystemUsage.set(prompt.longValue(), completion.longValue(), cached, null);
-                }
+            JsonNode usage = response.path("usage");
+            if (usage.path("input_tokens").isNumber() && usage.path("output_tokens").isNumber()) {
+                JsonNode cached = usage.path("input_tokens_details").path("cached_tokens");
+                LlmSystemUsage.set(
+                        usage.path("input_tokens").longValue(),
+                        usage.path("output_tokens").longValue(),
+                        cached.isNumber() ? cached.longValue() : null,
+                        null);
             }
 
             LoggerFactory.getLogger("top.focess.veto.llm.client.DeepSeekLlmClient")
@@ -280,55 +259,72 @@ final class DeepSeekLlmClient extends LlmClient {
      * {@code output_text} (simple string) or an {@code output} array of items containing a message
      * with {@code output_text} content parts.
      */
-    private static @NonNull String extractResponsesContent(
-            @NonNull Map<String, Object> responseMap) {
+    private static @NonNull String extractResponsesContent(@NonNull JsonNode response) {
         var parts = new ArrayList<String>();
-        Object output = responseMap.get("output");
-        if (output instanceof List<?> items)
-            for (Object item : items) {
-                if (!(item instanceof Map<?, ?> map)) continue;
-                if ("output_text".equals(map.get("type")) && map.get("text") instanceof String text)
-                    parts.add(text);
-                if ("message".equals(map.get("type"))
-                        && map.get("content") instanceof List<?> content)
-                    for (Object block : content)
-                        if (block instanceof Map<?, ?> part
-                                && "output_text".equals(part.get("type"))
-                                && part.get("text") instanceof String text) parts.add(text);
-            }
-        if (responseMap.get("output_text") instanceof String text
-                && !text.isBlank()
-                && !text.equals(String.join("\n", parts))) parts.add(text);
+        for (JsonNode item : response.path("output")) {
+            if ("output_text".equals(item.path("type").asText()) && item.path("text").isTextual())
+                parts.add(item.path("text").asText());
+            if ("message".equals(item.path("type").asText()))
+                for (JsonNode block : item.path("content"))
+                    if ("output_text".equals(block.path("type").asText())
+                            && block.path("text").isTextual())
+                        parts.add(block.path("text").asText());
+        }
+        String text = response.path("output_text").asText("");
+        if (!text.isBlank() && !text.equals(String.join("\n", parts))) parts.add(text);
         return String.join("\n", parts);
     }
 
+    private sealed interface InputItem permits MessageInput, FunctionInput, FunctionOutput {}
+
+    private record MessageInput(@NonNull String role, @NonNull String content)
+            implements InputItem {}
+
+    private record FunctionInput(
+            @NonNull String type,
+            @JsonProperty("call_id") @NonNull String callId,
+            @NonNull String name,
+            @NonNull String arguments)
+            implements InputItem {}
+
+    private record FunctionOutput(
+            @NonNull String type,
+            @JsonProperty("call_id") @NonNull String callId,
+            @NonNull String output)
+            implements InputItem {}
+
+    private record Function(
+            @NonNull String type,
+            @NonNull String name,
+            @NonNull String description,
+            @NonNull Map<String, Object> parameters,
+            boolean strict) {}
+
+    private record Reasoning(@NonNull String effort) {}
+
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private record ResponsesRequest(
+            @NonNull String model,
+            @NonNull String instructions,
+            @Nullable List<Function> tools,
+            @JsonProperty("tool_choice") @Nullable String toolChoice,
+            @NonNull Reasoning reasoning,
+            @NonNull List<?> input,
+            @JsonProperty("max_output_tokens") @Nullable Integer maxOutputTokens,
+            @Nullable Double temperature) {}
+
     /** Replays calls and results as native Responses API items, preserving their pairing. */
-    private @NonNull Map<String, Object> toInputItem(@NonNull ChatMessage msg)
-            throws JsonProcessingException {
+    private @NonNull InputItem toInputItem(@NonNull ChatMessage msg) {
         String callId = msg.callId();
-        if ("tool".equals(msg.role()) && callId != null) {
-            return Map.of(
-                    "type",
-                    "function_call_output",
-                    "call_id",
-                    callId,
-                    "output",
-                    msg.toolResultContentWithStatus());
-        }
+        if ("tool".equals(msg.role()) && callId != null)
+            return new FunctionOutput(
+                    "function_call_output", callId, msg.toolResultContentWithStatus());
         if ("assistant".equals(msg.role()) && callId != null) {
             String name = msg.toolName();
             String args = msg.toolArgs();
-            return Map.of(
-                    "type",
-                    "function_call",
-                    "call_id",
-                    callId,
-                    "name",
-                    name == null ? "" : name,
-                    "arguments",
-                    args == null ? "{}" : args);
+            return new FunctionInput(
+                    "function_call", callId, name == null ? "" : name, args == null ? "{}" : args);
         }
-        return Map.of(
-                "role", "tool".equals(msg.role()) ? "user" : msg.role(), "content", msg.content());
+        return new MessageInput("tool".equals(msg.role()) ? "user" : msg.role(), msg.content());
     }
 }

@@ -11,9 +11,14 @@ import org.jspecify.annotations.NonNull;
 public final class HistoryProjection {
     private HistoryProjection() {}
 
-    public record Entry(@NonNull TurnRecord record, int removedBy, int removedCount) {
+    public record Entry(
+            @NonNull TurnRecord record, int removedBy, int removedCount, boolean superseded) {
+        public Entry(@NonNull TurnRecord record, int removedBy, int removedCount) {
+            this(record, removedBy, removedCount, false);
+        }
+
         public boolean active() {
-            return removedBy == 0;
+            return removedBy == 0 && !superseded;
         }
     }
 
@@ -22,6 +27,19 @@ public final class HistoryProjection {
         List<Integer> active = new ArrayList<>();
         for (TurnRecord turn : history) {
             int removed = 0;
+            if (turn.type() == TurnType.AGENT_INIT
+                    && Boolean.TRUE.equals(turn.payload().get("context_update"))) {
+                for (int i = active.size() - 1; i >= 0; i--) {
+                    int index = active.get(i);
+                    Entry previous = entries.get(index);
+                    if (previous.record().type() == TurnType.AGENT_INIT) {
+                        entries.set(
+                                index,
+                                new Entry(previous.record(), 0, previous.removedCount(), true));
+                        active.remove(i);
+                    }
+                }
+            }
             if (turn.type() == TurnType.REWIND) {
                 Object recordIndex = turn.payload().get("record_index");
                 Object messageIndex = turn.payload().get("from_index");
@@ -78,6 +96,40 @@ public final class HistoryProjection {
 
     /** Explicitly rebuild a changed system context without recording fresh tool executions. */
     public static @NonNull List<TurnRecord> reinitialize(
+            @NonNull List<TurnRecord> history,
+            int lastTurn,
+            @NonNull String role,
+            @NonNull String system,
+            @NonNull String provider,
+            @NonNull String model) {
+        List<TurnRecord> effective = effective(history);
+        int initCount = 0;
+        boolean matches = false;
+        for (TurnRecord turn : effective) {
+            if (turn.type() == TurnType.AGENT_INIT) {
+                initCount++;
+                matches =
+                        system.equals(turn.payload().get("system_prompt"))
+                                && provider.equals(turn.payload().get("provider"))
+                                && model.equals(turn.payload().get("model"));
+            }
+        }
+        if (initCount == 1 && matches) return List.of();
+        TurnRecord init =
+                TurnRecord.agentInit(
+                        lastTurn + 1, role.toLowerCase(Locale.ROOT), system, provider, model);
+        Map<String, Object> payload = new LinkedHashMap<>(init.payload());
+        payload.put("context_update", true);
+        return List.of(new TurnRecord(init.turnNumber(), init.type(), payload, init.timestamp()));
+    }
+
+    /**
+     * Rebuild a changed system context as a fresh conversation: REWIND to 0, the new AGENT_INIT,
+     * then restored copies of the previously effective turns. The delegation transforms use this
+     * when no valid compaction summary exists, so the boundary REWIND is recorded while the
+     * conversation itself is retained.
+     */
+    public static @NonNull List<TurnRecord> reinitializeWithRewind(
             @NonNull List<TurnRecord> history,
             int lastTurn,
             @NonNull String role,

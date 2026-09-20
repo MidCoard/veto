@@ -18,7 +18,8 @@ import top.focess.veto.agent.tool.ToolResult;
 import top.focess.veto.agent.tool.ToolSchemaCompiler;
 import top.focess.veto.agent.tool.builtin.ViewFileTool;
 import top.focess.veto.llm.core.ToolCall;
-import top.focess.veto.vault.SecretCandidateStore;
+import top.focess.veto.secret.detection.SecretMasker;
+import top.focess.veto.secret.references.SecretCandidateStore;
 import top.focess.veto.veto.LlamaCppBridge;
 
 /**

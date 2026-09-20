@@ -113,7 +113,10 @@ class ToolErrorCodeTest {
                 "INVALID_JSON",
                 "TOOL_RESULT_TOO_LARGE",
                 "UNSUPPORTED_CONTENT");
-        assertGroup(Nullness.requireNonNull(ToolErrorCode.GENERIC.values()), "TOOL_FAILURE");
+        assertGroup(
+                Nullness.requireNonNull(ToolErrorCode.GENERIC.values()),
+                "PLUGIN_CALL_FAILED",
+                "TOOL_FAILURE");
         assertGroup(
                 Nullness.requireNonNull(ToolErrorCode.GROUP.values()),
                 "NO_ACTIVE_GROUP",

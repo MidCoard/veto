@@ -1,12 +1,14 @@
 package top.focess.veto.session;
 
-import java.util.ArrayList;
-import java.util.List;
 import org.jspecify.annotations.NonNull;
+
 import top.focess.veto.agent.HistoryProjection;
 import top.focess.veto.agent.RecordUsage;
 import top.focess.veto.agent.TurnRecord;
 import top.focess.veto.agent.TurnType;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /** Annotates the audit log using the same replay as the model context. */
 final class SessionRecordProjector {
@@ -22,7 +24,8 @@ final class SessionRecordProjector {
                                                 record.turnNumber(),
                                                 type(record.type()),
                                                 record.payload(),
-                                                record.timestamp()))
+                                                record.timestamp(),
+                                                record.llmUsage()))
                         .toList();
         List<HistoryProjection.Entry> projection = HistoryProjection.replay(turns);
         List<SessionRecord> result = new ArrayList<>();
@@ -50,7 +53,8 @@ final class SessionRecordProjector {
                                     record.timestamp(),
                                     record.active(),
                                     record.rewoundByTurnNumber(),
-                                    record.rewoundRecords()));
+                                    record.rewoundRecords(),
+                                    turn.llmUsage()));
                     break;
                 }
             }

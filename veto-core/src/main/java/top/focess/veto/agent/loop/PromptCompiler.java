@@ -3,6 +3,31 @@ package top.focess.veto.agent.loop;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+
+import org.jspecify.annotations.NonNull;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Component;
+
+import top.focess.veto.agent.HistoryProjection;
+import top.focess.veto.agent.TurnRecord;
+import top.focess.veto.agent.TurnType;
+import top.focess.veto.agent.identity.AgentPersona;
+import top.focess.veto.agent.identity.SystemPromptResolver;
+import top.focess.veto.agent.intercept.ApprovalReceipt;
+import top.focess.veto.agent.screening.DeployerPolicy;
+import top.focess.veto.agent.tool.ResponseSubmission;
+import top.focess.veto.agent.tool.ToolResultFormat;
+import top.focess.veto.agent.tool.ToolResultStatus;
+import top.focess.veto.agent.translation.CapabilityTranslator;
+import top.focess.veto.agent.workspace.Workspace;
+import top.focess.veto.llm.core.ChatMessage;
+import top.focess.veto.llm.core.NativeToolState;
+import top.focess.veto.llm.core.ToolDefinition;
+import top.focess.veto.llm.core.ToolResultPresentationMode;
+import top.focess.veto.llm.core.ToolResultPresenter;
+import top.focess.veto.llm.core.VetoRequest;
+
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -541,13 +566,6 @@ public class PromptCompiler {
                 pendingReasoning = null;
                 pendingTurns = List.of();
             }
-            if (turn.type() == TurnType.AGENT_INIT) {
-                pendingTurns = List.of();
-                compiled.add(
-                        restoreSource(
-                                turn, ChatMessage.system(str(turn.payload(), "system_prompt"))));
-                continue;
-            }
             if (turn.type() == TurnType.REWIND) {
                 String recalledContent = str(turn.payload(), "content");
                 if (!recalledContent.isBlank()) {
@@ -618,7 +636,8 @@ public class PromptCompiler {
         payload.put(
                 "prompt_source",
                 Map.of("version", 2, "message", message.role(), "spans", message.promptSources()));
-        return new TurnRecord(turn.turnNumber(), turn.type(), payload, turn.timestamp());
+        return new TurnRecord(
+                turn.turnNumber(), turn.type(), payload, turn.timestamp(), turn.llmUsage());
     }
 
     private @NonNull ChatMessage restoreSource(
@@ -705,18 +724,11 @@ public class PromptCompiler {
 
     private ChatMessage approvalObservation(@NonNull TurnRecord turn) {
         String callId = str(turn.payload(), "call_id");
-        if (turn.type() != TurnType.TOOL_RESPONSE
-                || callId.isBlank()
-                || !(turn.payload().get("approval") instanceof Map<?, ?> receipt)) return null;
-        Object decision = receipt.get("decision");
-        Object source = receipt.get("decisionSource");
-        if (!(decision instanceof String option) || !(source instanceof String origin)) return null;
-        try {
-            VetoOption.valueOf(option);
-            InterceptResolution.Source.valueOf(origin);
-        } catch (IllegalArgumentException invalidReceipt) {
-            return null;
-        }
+        if (turn.type() != TurnType.TOOL_RESPONSE || callId.isBlank()) return null;
+        ApprovalReceipt receipt = ApprovalReceipt.fromStored(turn.payload().get("approval"));
+        if (receipt == null) return null;
+        String option = receipt.decision().name();
+        String origin = receipt.decisionSource().name();
         return PromptLibrary.message(
                         "runtime-approval",
                         Map.of(

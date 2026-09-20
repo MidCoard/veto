@@ -2,7 +2,6 @@ package top.focess.veto.agent.tool;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.util.Map;
 import org.jspecify.annotations.NonNull;
 
 /** Safe JSON serialization for tool success values. */
@@ -12,9 +11,13 @@ public final class ToolJson {
 
     private ToolJson() {}
 
-    public static @NonNull String object(@NonNull Map<@NonNull String, ?> fields) {
+    public static @NonNull String object(@NonNull Record value) {
+        return encode(value);
+    }
+
+    private static @NonNull String encode(@NonNull Object value) {
         try {
-            return MAPPER.writeValueAsString(fields);
+            return MAPPER.writeValueAsString(value);
         } catch (JsonProcessingException e) {
             return ToolErrors.failure(
                     ToolErrorCode.RESULT.ENCODING_FAILED,

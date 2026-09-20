@@ -12,7 +12,6 @@ import top.focess.veto.agent.tool.ToolDocs;
 import top.focess.veto.agent.tool.ToolResultFormat;
 import top.focess.veto.agent.tool.ToolSecurity;
 
-@Component
 @ToolSecurity(capability = ToolCapability.CREDENTIAL_IMPORT, defaultDanger = Danger.DANGEROUS)
 @ToolDoc(
         examples = {

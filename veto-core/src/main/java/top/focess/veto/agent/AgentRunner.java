@@ -35,6 +35,7 @@ import top.focess.veto.agent.drift.ReadHistory;
 import top.focess.veto.agent.identity.AgentPersona;
 import top.focess.veto.agent.identity.Role;
 import top.focess.veto.agent.intercept.ApprovalDecision;
+import top.focess.veto.agent.intercept.ApprovalReceipt;
 import top.focess.veto.agent.intercept.Gateway;
 import top.focess.veto.agent.intercept.GatewayResult;
 import top.focess.veto.agent.intercept.GuidedStepContext;
@@ -74,6 +75,8 @@ import top.focess.veto.agent.tool.LocalToolDefinition;
 import top.focess.veto.agent.tool.NativeToolArgumentValidator;
 import top.focess.veto.agent.tool.NativeToolDefinition;
 import top.focess.veto.agent.tool.ParamCategory;
+import top.focess.veto.agent.tool.PluginToolDefinition;
+import top.focess.veto.agent.tool.ResponseSubmission;
 import top.focess.veto.agent.tool.ToolCallContext;
 import top.focess.veto.agent.tool.ToolCallContextHolder;
 import top.focess.veto.agent.tool.ToolCapability;
@@ -113,9 +116,9 @@ import top.focess.veto.monitor.MonitorRecord;
 import top.focess.veto.monitor.MonitorService;
 import top.focess.veto.monitor.RequestContinuationStore;
 import top.focess.veto.sandbox.BackgroundTaskManager;
+import top.focess.veto.secret.references.SecretCandidateStore;
 import top.focess.veto.util.Nullness;
 import top.focess.veto.vault.KeysteadVault;
-import top.focess.veto.vault.SecretCandidateStore;
 import top.focess.veto.vault.UserContext;
 
 /**
@@ -303,7 +306,15 @@ public class AgentRunner {
 
     private volatile boolean sessionAlive = true;
     private double correctionFactor = 1.0;
-    private final @NonNull ContextUsageTracker contextUsage = new ContextUsageTracker();
+    private volatile PluginContextSnapshot lastPluginContext;
+
+    public @NonNull PluginContextSnapshot pluginContext() {
+        var snapshot = lastPluginContext;
+        return snapshot == null
+                ? PluginContextSnapshot.from(persona.whitelistedTools(), false)
+                : snapshot;
+    }
+
     // Set only when the model-call ceiling trips. The next exact "continue" prompt consumes it and
     // carries the prior task into a self-contained resume turn; any other prompt starts a new task.
     private boolean awaitingBreakerContinuation = false;
@@ -531,7 +542,8 @@ public class AgentRunner {
                                         "kind",
                                         event.kind(),
                                         "content",
-                                        "Notification for the following originating task (later user requests remain separate):\n"
+                                        "Notification for the following originating task (later"
+                                                + " user requests remain separate):\n"
                                                 + activeUserTask
                                                 + "\n\nObservation:\n"
                                                 + event.content(),
@@ -804,7 +816,9 @@ public class AgentRunner {
                                     "outcome",
                                     "INTERRUPTED",
                                     "content",
-                                    "The previous execution was interrupted by a backend restart. Its uncompleted plans are not pending; tool effects without recorded results remain unknown."),
+                                    "The previous execution was interrupted by a backend restart."
+                                            + " Its uncompleted plans are not pending; tool effects"
+                                            + " without recorded results remain unknown."),
                             null));
         }
         completionToolFinished = false;
@@ -1117,9 +1131,8 @@ public class AgentRunner {
             checkTaskCancellation();
         } finally {
             for (LlmSystemUsage.Usage measured : LlmSystemUsage.drain()) {
-                Map<String, Object> data = new ContextUsageTracker().measure(request, measured);
-                data.put("affectsContext", false);
-                data.put("purpose", "compaction");
+                UsageMeasurement data =
+                        UsageMeasurement.measured(request, measured).forCompaction();
                 recordUsage(turnNumber, data);
             }
         }
@@ -1177,7 +1190,8 @@ public class AgentRunner {
                                 .orElseThrow(
                                         () ->
                                                 new IllegalArgumentException(
-                                                        "Plan tool was not available in the current request"));
+                                                        "Plan tool was not available in the current"
+                                                                + " request"));
                 NativeToolArgumentValidator.validateAgainstSchema(
                         planDefinition.name(),
                         objectMapper.createObjectNode().set("actions", plan.actions()),
@@ -1197,10 +1211,12 @@ public class AgentRunner {
                                                                     .ResponseSubmission.Kind
                                                                     .ANSWER))
                         throw new IllegalArgumentException(
-                                "CITATIONS generation requires an available answer submission tool");
+                                "CITATIONS generation requires an available answer submission"
+                                        + " tool");
                     if (action instanceof ToolAction tool && submissionKind(tool.tool()) != null)
                         throw new IllegalArgumentException(
-                                "Response submission tools cannot be nested as plan tool steps; use generate for a cited answer and STOP to finish");
+                                "Response submission tools cannot be nested as plan tool steps; use"
+                                        + " generate for a cited answer and STOP to finish");
                 }
                 return new ToolCallContextHolder.ResponseDirective.Plan(program);
             } catch (IllegalArgumentException | ProgramValidator.InvalidProgramException error) {
@@ -1227,7 +1243,10 @@ public class AgentRunner {
                                             + check.id()
                                             + " could not match the exact quote in input message "
                                             + reference.messageIndex()
-                                            + "; omit message_index and provide an exact quote from a successful source. If the runtime returns ambiguous candidates, select one of those indices.");
+                                            + "; omit message_index and provide an exact quote from"
+                                            + " a successful source. If the runtime returns"
+                                            + " ambiguous candidates, select one of those"
+                                            + " indices.");
                     }
                 }
             }
@@ -1241,10 +1260,8 @@ public class AgentRunner {
         }
     }
 
-    private top.focess.veto.agent.tool.ResponseSubmission.Kind submissionKind(
-            @NonNull String name) {
-        return top.focess.veto.agent.tool.ResponseSubmission.Metadata.kindOf(
-                toolEngine.resolveDefinition(name));
+    private ResponseSubmission.Kind submissionKind(@NonNull String name) {
+        return ResponseSubmission.Metadata.kindOf(toolEngine.resolveDefinition(name));
     }
 
     private void runAutonomous() {
@@ -1564,8 +1581,6 @@ public class AgentRunner {
         int citationRetries = 0;
         VetoResponse citationCandidate = null;
         String candidateModelCallId = null;
-        ContextUsageTracker.Baseline inputBaseline = null;
-        ContextUsageTracker.Baseline candidateUsage = null;
         MessageCitations.Bound candidateSources = null;
         for (; ; ) {
             VetoResponse response;
@@ -1583,7 +1598,8 @@ public class AgentRunner {
                 request = promptCompiler.fitRequest(request, correctionFactor);
                 estimatedTokens = promptCompiler.estimateRequest(request, estimateFactor);
                 log.debug(
-                        "Agent {} input: model={}, messages={}, estimatedTokens={}, correctionFactor={}",
+                        "Agent {} input: model={}, messages={}, estimatedTokens={},"
+                                + " correctionFactor={}",
                         agentId,
                         request.modelName(),
                         request.messages().size(),
@@ -1594,16 +1610,23 @@ public class AgentRunner {
                 LlmSystemUsage.begin();
                 try {
                     checkTaskCancellation();
+                    lastPluginContext =
+                            PluginContextSnapshot.from(
+                                    toolEngine.getActiveTools(
+                                            request.tools().stream()
+                                                    .map(
+                                                            top.focess.veto.llm.core.ToolDefinition
+                                                                    ::name)
+                                                    .collect(Collectors.toSet())),
+                                    true);
                     response = caller.call(request);
                     checkTaskCancellation();
                 } finally {
                     List<LlmSystemUsage.Usage> measurements = LlmSystemUsage.drain();
                     for (LlmSystemUsage.Usage measured : measurements) {
-                        Map<String, Object> measurement = contextUsage.measure(request, measured);
-                        if (inputBaseline == null) inputBaseline = contextUsage.baseline();
-                        measurement.put("throughTurn", requestThroughTurn);
+                        UsageMeasurement measurement = UsageMeasurement.measured(request, measured);
                         lastModelCallId = UUID.randomUUID().toString();
-                        measurement.put("modelCallId", lastModelCallId);
+                        measurement = measurement.forRequest(lastModelCallId);
                         recordUsage(requestThroughTurn, measurement);
                     }
                     if (!measurements.isEmpty()
@@ -1649,7 +1672,7 @@ public class AgentRunner {
                         }
                     }
                     if (citationError != null && citationRetries < MAX_CITATION_RETRIES) {
-                        List<Map<String, Object>> order = new ArrayList<>();
+                        List<CitationMessage> order = new ArrayList<>();
                         for (int index =
                                         Math.max(
                                                 0, messageGroups.size() - MAX_CITATION_ORDER_ITEMS);
@@ -1657,13 +1680,8 @@ public class AgentRunner {
                                 index++) {
                             var item = messageGroups.get(index).getFirst();
                             order.add(
-                                    Map.of(
-                                            "index",
-                                            index,
-                                            "role",
-                                            item.role(),
-                                            "toolCall",
-                                            item.toolName() != null));
+                                    new CitationMessage(
+                                            index, item.role(), item.toolName() != null));
                         }
                         citationError =
                                 PromptLibrary.text(
@@ -1671,7 +1689,6 @@ public class AgentRunner {
                                         Map.of("error", citationError, "items", order));
                         citationCandidate = checked;
                         candidateModelCallId = lastModelCallId;
-                        candidateUsage = contextUsage.baseline();
                         candidateSources = bound;
                         citationRetries++;
                         log.warn(
@@ -1685,9 +1702,6 @@ public class AgentRunner {
                         continue;
                     }
                     lastCitations = bound;
-                }
-                if (inputBaseline != null) {
-                    contextUsage.accept(inputBaseline, contextUsage.baseline());
                 }
                 submissionRequest = request;
                 submissionGeneration = generation != null;
@@ -1711,9 +1725,6 @@ public class AgentRunner {
                                         "MODEL_RESPONSE_REJECTED"),
                                 null));
                 if (schemaRetries >= MAX_SCHEMA_RETRIES && citationCandidate != null) {
-                    if (inputBaseline != null && candidateUsage != null) {
-                        contextUsage.accept(inputBaseline, candidateUsage);
-                    }
                     lastCitations = candidateSources;
                     lastModelCallId = candidateModelCallId;
                     return citationCandidate;
@@ -1933,6 +1944,30 @@ public class AgentRunner {
         }
     }
 
+    /**
+     * The transform fallback when no valid compaction summary exists: discard the compiled view
+     * (REWIND to 0), record the new role's AGENT_INIT, and retain the prior conversation as
+     * restored copies. Unlike {@link #refreshSystemHistory()} (an in-place context update), the
+     * delegation transform must record the boundary REWIND.
+     */
+    private void rewindAndRestoreHistory() {
+        List<TurnRecord> additions;
+        synchronized (history) {
+            additions =
+                    HistoryProjection.reinitializeWithRewind(
+                            history,
+                            turnNumber,
+                            persona.role().name(),
+                            linkCurrentSystemMessage(),
+                            binding.provider().name(),
+                            binding.model());
+        }
+        for (TurnRecord record : additions) {
+            turnNumber = record.turnNumber();
+            appendTurn(record);
+        }
+    }
+
     private void appendAgentInit(@NonNull String systemPrompt) {
         LlmBinding current = binding;
         String role = persona.role().name().toLowerCase(Locale.ROOT);
@@ -2035,7 +2070,8 @@ public class AgentRunner {
                     appendToolResponse(
                             call.toolName(),
                             call.callId(),
-                            "A response submission must be the only tool call. No calls in this batch were executed; resubmit separately.",
+                            "A response submission must be the only tool call. No calls in this"
+                                    + " batch were executed; resubmit separately.",
                             false);
                 }
                 return;
@@ -2272,33 +2308,57 @@ public class AgentRunner {
                 transformed = plugin.postAction(agentId, call, transformed);
             }
 
-            // (f) ingress defense
+            // (f) plugin observation transformations are untrusted input to the final defense.
+            String pluginObservation = transformed.content();
+            for (LoopInterceptor plugin : interceptors) {
+                pluginObservation = plugin.preObservation(agentId, pluginObservation);
+            }
+            transformed = transformed.withContent(pluginObservation);
+
+            // (g) final ingress defense, immediately before committing the observation to history.
             String observation;
             if (transformed.success()
                     && def instanceof NativeToolDefinition
                     && def.name().equals("view_file")) {
-                SecretCandidateStore candidates = secretCandidates;
+                var selected = sessionPlugins;
                 String currentOwner = owner;
-                if (candidates == null || currentOwner == null || currentOwner.isBlank())
-                    throw new IllegalStateException("Protected file observation is unavailable");
-                observation =
-                        ingressDefense.maskProtectedFileAndFrame(
-                                call,
-                                def,
-                                transformed,
-                                true,
-                                readHistory,
-                                candidates,
-                                new SecretCandidateStore.Scope(
-                                        currentOwner, sessionId.toString(), agentId));
+                if (selected != null
+                        && currentOwner != null
+                        && selected.has(
+                                sessionId.toString(),
+                                top.focess.veto.extension.contract.StandardExtensionPoints
+                                        .FILE_OBSERVATION)) {
+                    String protectedText =
+                            selected.protect(
+                                    top.focess.veto.extension.contract.StandardExtensionPoints
+                                            .FILE_OBSERVATION,
+                                    new top.focess.veto.extension.contract.TextProtection.Scope(
+                                            currentOwner, sessionId.toString(), agentId),
+                                    transformed.content());
+                    observation =
+                            ingressDefense.frameProtectedFile(
+                                    call, def, transformed, protectedText);
+                } else {
+                    // No plugin owns file observations: keep the in-module candidate store path,
+                    // which preserves SECRET_REF markers while masking the surrounding text.
+                    SecretCandidateStore candidates = secretCandidates;
+                    if (candidates == null || currentOwner == null || currentOwner.isBlank())
+                        throw new IllegalStateException(
+                                "Protected file observation is unavailable");
+                    observation =
+                            ingressDefense.maskProtectedFileAndFrame(
+                                    call,
+                                    def,
+                                    transformed,
+                                    true,
+                                    readHistory,
+                                    candidates,
+                                    new SecretCandidateStore.Scope(
+                                            currentOwner, sessionId.toString(), agentId));
+                }
             } else {
                 observation =
                         ingressDefense.maskAndFrame(call, def, transformed, decision, readHistory);
-            }
-
-            // (g) plugin preObservation chain
-            for (LoopInterceptor plugin : interceptors) {
-                observation = plugin.preObservation(agentId, observation);
             }
 
             ToolResult observed = transformed.withContent(observation);
@@ -2422,7 +2482,9 @@ public class AgentRunner {
      * DeltaFrame.Kind#VETO_RESOLVED} so subscribers can drop the prompt without polling. The single
      * wait-and-announce point shared by every veto await site.
      */
-    private final @NonNull Map<String, Map<String, Object>> approvalReceipts = new HashMap<>();
+    private record CitationMessage(int index, @NonNull String role, boolean toolCall) {}
+
+    private final @NonNull Map<String, ApprovalReceipt> approvalReceipts = new HashMap<>();
 
     private @NonNull InterceptResolution awaitResolution(@NonNull String callId) {
         InterceptResolution resolution = hitlRegistry.await(agentId, callId);
@@ -2440,13 +2502,8 @@ public class AgentRunner {
         checkTaskCancellation();
         approvalReceipts.put(
                 callId,
-                Map.of(
-                        "decision",
-                        resolution.option().name(),
-                        "decisionSource",
-                        resolution.source().name(),
-                        "resolvedAt",
-                        Instant.now().toString()));
+                new ApprovalReceipt(
+                        resolution.option(), resolution.source(), Instant.now().toString()));
         publishFrame(
                 DeltaFrame.builder()
                         .sessionId(sessionId)
@@ -2792,7 +2849,7 @@ public class AgentRunner {
                 TurnRecord.presentedToolResponse(
                         ++turnNumber, result, presented, toolResultPresentation);
         String responseCallId = result.callId();
-        Map<String, Object> receipt =
+        ApprovalReceipt receipt =
                 responseCallId == null ? null : approvalReceipts.remove(responseCallId);
         if (receipt != null) {
             Map<String, Object> payload = new HashMap<>(turn.payload());
@@ -2802,7 +2859,7 @@ public class AgentRunner {
         appendTurn(turn);
     }
 
-    private void recordUsage(int throughTurn, @NonNull Map<String, Object> measurement) {
+    private void recordUsage(int throughTurn, @NonNull UsageMeasurement measurement) {
         TurnRecord updated = null;
         synchronized (this) {
             for (int i = history.size() - 1; i >= 0; i--) {
@@ -2823,11 +2880,16 @@ public class AgentRunner {
     private void appendToolCall(@NonNull ToolCall call) {
         TurnRecord turn = TurnRecord.toolCall(++turnNumber, call);
         String origin = currentToolModelCallId;
-        if (origin != null) {
-            Map<String, Object> payload = new LinkedHashMap<>(turn.payload());
-            payload.put("model_call_id", origin);
-            turn = new TurnRecord(turn.turnNumber(), turn.type(), payload, turn.timestamp());
+        Map<String, Object> payload = new LinkedHashMap<>(turn.payload());
+        if (origin != null) payload.put("model_call_id", origin);
+        ToolDefinition definition = toolEngine.resolveDefinition(call.toolName());
+        if (definition != null) {
+            payload.put("tool_origin", definition.origin());
+            if (definition instanceof PluginToolDefinition plugin) {
+                payload.put("plugin_id", plugin.pluginId());
+            }
         }
+        turn = new TurnRecord(turn.turnNumber(), turn.type(), payload, turn.timestamp());
         appendTurn(turn);
     }
 
@@ -2838,8 +2900,6 @@ public class AgentRunner {
                 turn.type() == TurnType.MONITOR_EVENT
                         || (turn.type() == TurnType.TOOL_RESPONSE
                                 && waiting == WaitReason.QUESTION);
-        if (turn.type() == TurnType.REWIND || turn.type() == TurnType.AGENT_INIT)
-            contextUsage.reset();
         if (turn.type() == TurnType.AGENT_INIT) {
             Map<String, Object> metadata = new LinkedHashMap<>(turn.payload());
             metadata.put("contextMaxTokens", binding.options().contextWindowOrDefault());
@@ -2859,7 +2919,13 @@ public class AgentRunner {
                                 "spans",
                                 source.sources()));
             }
-            turn = new TurnRecord(turn.turnNumber(), turn.type(), metadata, turn.timestamp());
+            turn =
+                    new TurnRecord(
+                            turn.turnNumber(),
+                            turn.type(),
+                            metadata,
+                            turn.timestamp(),
+                            turn.llmUsage());
         }
         turn = RecordTokenCounter.unmeasured(turn);
         TurnRecord numbered;
@@ -3460,7 +3526,18 @@ public class AgentRunner {
      * session, and user stay; only the role-scoped identity changes). The next {@link #callModel}
      * compiles against the new persona.
      */
+    private top.focess.veto.plugin.runtime.SessionPlugins sessionPlugins;
+
+    public void attachSessionPlugins(top.focess.veto.plugin.runtime.@NonNull SessionPlugins value) {
+        sessionPlugins = value;
+    }
+
     public void applyPersona(@NonNull AgentPersona persona) {
+        var selection = sessionPlugins;
+        if (selection != null)
+            persona =
+                    persona.withWhitelistedTools(
+                            selection.tools(sessionId.toString(), persona.whitelistedTools()));
         this.persona = persona;
         this.whitelistedTools =
                 persona.whitelistedTools().stream()
@@ -3514,8 +3591,8 @@ public class AgentRunner {
             appendTurn(TurnRecord.compactionSummary(++turnNumber, summary));
         } else {
             // The role/tool change already happened. Preserve the full conversation when no
-            // valid summary exists, replacing only the system context for the new role.
-            refreshSystemHistory();
+            // valid summary exists, recording the boundary REWIND for the new role.
+            rewindAndRestoreHistory();
         }
         appendTurn(
                 PromptCompiler.sourcedUserPrompt(
@@ -3581,8 +3658,8 @@ public class AgentRunner {
             appendTurn(TurnRecord.compactionSummary(++turnNumber, summary));
         } else {
             // The role/tool change already happened. Preserve the full conversation when no
-            // valid summary exists, replacing only the system context for the new role.
-            refreshSystemHistory();
+            // valid summary exists, recording the boundary REWIND for the restored role.
+            rewindAndRestoreHistory();
         }
         appendTurn(
                 PromptCompiler.sourcedUserPrompt(
@@ -3641,6 +3718,21 @@ public class AgentRunner {
     }
 
     private synchronized @NonNull String captureUserPrompt(@NonNull String prompt) {
+        var selected = sessionPlugins;
+        if (selected != null) {
+            String currentOwner = owner;
+            if (!sessionAlive || currentOwner == null || currentOwner.isBlank())
+                throw new ProtectedInputException();
+            try {
+                return selected.protect(
+                        top.focess.veto.extension.contract.StandardExtensionPoints.INPUT_PROTECTION,
+                        new top.focess.veto.extension.contract.TextProtection.Scope(
+                                currentOwner, sessionId.toString(), agentId),
+                        prompt);
+            } catch (RuntimeException failure) {
+                throw new ProtectedInputException();
+            }
+        }
         SecretCandidateStore candidates = secretCandidates;
         if (candidates == null) return prompt;
         String currentOwner = owner;

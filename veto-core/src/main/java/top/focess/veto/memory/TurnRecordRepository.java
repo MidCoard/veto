@@ -1,12 +1,13 @@
 package top.focess.veto.memory;
 
-import java.util.List;
-import java.util.Optional;
 import org.jspecify.annotations.NonNull;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
+
+import java.util.List;
+import java.util.Optional;
 
 /**
  * Spring Data JPA repository for {@link TurnRecordEntity} — the durable per-turn audit/replay log.
@@ -19,16 +20,20 @@ public interface TurnRecordRepository extends JpaRepository<TurnRecordEntity, St
     @org.springframework.data.jpa.repository.Modifying
     @org.springframework.transaction.annotation.Transactional
     @Query(
-            "update TurnRecordEntity t set t.payload = :payload where t.sessionId = :sessionId and t.userId = :userId and t.agentId = :agentId and t.turnNumber = :turn")
+            "update TurnRecordEntity t set t.payload = :payload, t.llmUsage = :usage where"
+                + " t.sessionId = :sessionId and t.userId = :userId and t.agentId = :agentId and"
+                + " t.turnNumber = :turn")
     int updateRecordMetadata(
             @Param("sessionId") String sessionId,
             @Param("userId") String userId,
             @Param("agentId") String agentId,
             @Param("turn") int turn,
-            @Param("payload") String payload);
+            @Param("payload") String payload,
+            @Param("usage") String usage);
 
     @Query(
-            "select distinct t.agentId from TurnRecordEntity t where t.sessionId = :sessionId and t.agentId is not null")
+            "select distinct t.agentId from TurnRecordEntity t where t.sessionId = :sessionId and"
+                + " t.agentId is not null")
     @NonNull List<String> findAgentIdsBySessionId(@Param("sessionId") @NonNull String sessionId);
 
     /** A session's turns in order (for replay). */

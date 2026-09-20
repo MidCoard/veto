@@ -70,6 +70,12 @@ veto/
 |-- veto-protocol/   Shared frames, transports, client-session state, and serialization contracts
 |-- veto-core/       Spring Boot backend, agent runtime, security gateway, persistence, and tools
 |-- veto-terminal/   JLine/Mordant terminal application; depends on veto-protocol, not veto-core
+|-- veto-extension/  Shared registration layer and experimental extension architecture
+|-- veto-plugin-api/ Experimental Java plugin lifecycle binding
+|-- veto-plugin-runtime/ Operator-configured script workers and example package
+|-- veto-plugin-fixture/ Standalone plugin test fixture; not an installable production feature
+|-- veto-secret-protection/ Extracted secret-protection library
+|-- RELEASE.md      Release-user guide template
 |-- gradle/          Gradle wrapper support
 |-- qodana.yaml      Qodana inspection configuration
 |-- ignorekit.json   Source of truth for generated .gitignore rules
@@ -344,6 +350,26 @@ same `ToolDefinition` abstraction used by built-in tools. The Gateway screens re
 dispatch. Only external tools cross an MCP transport; native and agent-control tools execute
 through the in-process tool engine and their declared capability boundary.
 
+## Plugins and extensions — experimental
+
+Veto can activate explicitly configured local JavaScript plugin packages at startup.
+The experimental script runtime validates descriptors, starts persistent Node workers,
+and registers namespaced tools through the shared catalog. Plugin calls retain ordinary
+Gateway approval and role restrictions. `GET /api/plugins` provides administrator-only
+status information.
+
+Scripts are trusted local code running as the server user, not sandboxed extensions.
+Activation requires explicit operator configuration; Node and plugin packages are not
+bundled. Model hooks, credential-service access, cross-client adapters and external Java
+JAR activation remain unavailable.
+
+- [Script plugin README](veto-plugin-runtime/README.md): configuration, executable example,
+  protocol, trust boundaries and tests.
+- [Extension module README](veto-extension/README.md): shared registration behavior.
+- [Java plugin API README](veto-plugin-api/README.md): separate experimental lifecycle fixture.
+
+These APIs are experimental and are not a stable cross-client compatibility contract.
+
 ## AgentDojo evaluation
 
 The bridge under `veto-core/benchmarks/agentdojo` runs the upstream AgentDojo `v1.2.2` workspace
@@ -370,7 +396,9 @@ Build a versioned local distribution under the ignored `release/` directory:
 ```
 
 The bundle contains the executable core JAR, terminal distribution, launch scripts, license, and
-version metadata. `release/` is generated output and must not be committed.
+version metadata. Its `README.md` is rendered from [the release guide](RELEASE.md), which
+contains bundle-specific startup instructions rather than source-build commands. `release/`
+is generated output and must not be committed.
 
 ## Development rules
 

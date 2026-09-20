@@ -31,7 +31,7 @@ import top.focess.veto.model.SessionEntity;
 import top.focess.veto.model.SessionRepository;
 import top.focess.veto.model.tier.ModelBinding;
 import top.focess.veto.model.tier.ModelTierRegistry;
-import top.focess.veto.vault.SecretCandidateStore;
+import top.focess.veto.secret.references.SecretCandidateStore;
 
 class SessionServiceTest {
     @Test

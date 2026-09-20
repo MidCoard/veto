@@ -1,18 +1,10 @@
 package top.focess.veto.session;
 
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.time.Instant;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Optional;
-import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ThreadLocalRandom;
 import org.jspecify.annotations.NonNull;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
 import top.focess.veto.agent.Agent;
 import top.focess.veto.agent.AgentRunner;
 import top.focess.veto.agent.AgentService;
@@ -33,8 +25,18 @@ import top.focess.veto.model.SessionRepository;
 import top.focess.veto.model.tier.ModelBinding;
 import top.focess.veto.model.tier.ModelTierRegistry;
 import top.focess.veto.monitor.RequestContinuationStore;
+import top.focess.veto.secret.references.SecretCandidateStore;
 import top.focess.veto.security.UserAdminService;
-import top.focess.veto.vault.SecretCandidateStore;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.Instant;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ThreadLocalRandom;
 
 /**
  * Owns the session lifecycle: create/list/activate/deactivate, plus the per-terminal active-session
@@ -53,6 +55,13 @@ public class SessionService {
     @Autowired
     public void attachHitlRecords(@NonNull HitlRecordRepository records) {
         hitlRecords = records;
+    }
+
+    private top.focess.veto.plugin.runtime.SessionPlugins sessionPlugins;
+
+    @Autowired
+    public void attachSessionPlugins(top.focess.veto.plugin.runtime.@NonNull SessionPlugins value) {
+        sessionPlugins = value;
     }
 
     private SecretCandidateStore candidates;
@@ -185,6 +194,25 @@ public class SessionService {
             @NonNull String workspaceRoots,
             int currentWorkspaceRootIndex,
             @NonNull ToolResultPresentationMode toolResultPresentation) {
+        return createSession(
+                owner,
+                patternName,
+                sessionName,
+                workspaceRoots,
+                currentWorkspaceRootIndex,
+                toolResultPresentation,
+                null);
+    }
+
+    @Transactional
+    public @NonNull SessionEntity createSession(
+            @NonNull String owner,
+            @NonNull String patternName,
+            String sessionName,
+            @NonNull String workspaceRoots,
+            int currentWorkspaceRootIndex,
+            @NonNull ToolResultPresentationMode toolResultPresentation,
+            List<String> pluginIds) {
         AgentPatternEntity pattern =
                 patterns.findByNameAndOwner(patternName, owner)
                         .orElseThrow(
@@ -258,6 +286,9 @@ public class SessionService {
                                 admittedWorkspaceRoots,
                                 currentWorkspaceRootIndex,
                                 toolResultPresentation));
+        var pluginSelection = sessionPlugins;
+        if (pluginSelection != null)
+            session.setPluginBindings(pluginSelection.selection(pluginIds));
         ModelBinding cache = tierRegistry.resolve(owner, pattern.getTier());
         AgentEntity agent =
                 new AgentEntity(

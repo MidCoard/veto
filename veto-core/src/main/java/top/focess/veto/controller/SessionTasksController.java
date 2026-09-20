@@ -3,9 +3,7 @@ package top.focess.veto.controller;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import org.jspecify.annotations.NonNull;
 import org.springframework.http.HttpStatus;
@@ -16,6 +14,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import top.focess.veto.controller.dto.*;
 import top.focess.veto.i18n.Msg;
 import top.focess.veto.sandbox.BackgroundTaskManager;
 import top.focess.veto.session.SessionService;
@@ -50,25 +49,21 @@ public class SessionTasksController {
 
     /** GET /api/sessions/{name}/tasks — the session's background tasks, running first. */
     @GetMapping("/{name}/tasks")
-    public @NonNull ResponseEntity<Map<String, @NonNull Object>> list(
-            @PathVariable @NonNull String name) {
+    public @NonNull ResponseEntity<RestResponse> list(@PathVariable @NonNull String name) {
         String agentId = RequestAuthorization.requireAgentId(name, sessionService, vault);
         List<BackgroundTaskManager.TaskInfo> tasks = taskManager.list(agentId);
-        List<Map<String, Object>> rows = new ArrayList<>(tasks.size());
+        List<BackgroundTaskResponse> rows = new ArrayList<>(tasks.size());
         for (BackgroundTaskManager.TaskInfo task : tasks) {
-            Map<String, Object> row = toJson(task);
-            row.put(
-                    "recentOutput",
-                    taskManager.output(agentId, task.taskId(), LIST_OUTPUT_LINES).orElse(""));
-            rows.add(row);
+            rows.add(
+                    toResponse(
+                            task,
+                            taskManager
+                                    .output(agentId, task.taskId(), LIST_OUTPUT_LINES)
+                                    .orElse("")));
         }
         // Running tasks first; otherwise keep registry (insertion) order.
-        rows.sort(
-                (a, b) ->
-                        Boolean.compare(
-                                Boolean.TRUE.equals(b.get("alive")),
-                                Boolean.TRUE.equals(a.get("alive"))));
-        return ResponseEntity.ok(Map.of("status", "ok", "tasks", rows));
+        rows.sort(java.util.Comparator.comparing(BackgroundTaskResponse::alive).reversed());
+        return ResponseEntity.ok(new BackgroundTaskListResponse("ok", rows));
     }
 
     /**
@@ -79,7 +74,7 @@ public class SessionTasksController {
     @DeleteMapping(value = "/{name}/tasks/{taskId}", produces = MediaType.APPLICATION_JSON_VALUE)
     // Task metadata is intentionally returned as JSON; it is not inserted into an HTML context.
     @SuppressWarnings("JvmTaintAnalysis")
-    public @NonNull ResponseEntity<Map<String, @NonNull Object>> stopOrRemove(
+    public @NonNull ResponseEntity<RestResponse> stopOrRemove(
             @PathVariable @NonNull String name, @PathVariable @NonNull String taskId) {
         String agentId = RequestAuthorization.requireAgentId(name, sessionService, vault);
         boolean alive =
@@ -89,64 +84,61 @@ public class SessionTasksController {
                         .orElse(false);
         // Try the state-matching action; if the task flipped state meanwhile (exit landed between
         // the check and the action), the other action applies.
-        Optional<Map.Entry<String, BackgroundTaskManager.TaskInfo>> result =
+        Optional<TaskAction> result =
                 alive
                         ? taskManager
                                 .stop(agentId, taskId, BackgroundTaskManager.ExitCause.USER_STOP)
-                                .map(info -> Map.entry("stopped", info))
+                                .map(info -> new TaskAction("stopped", info))
                         : taskManager
                                 .remove(agentId, taskId)
-                                .map(info -> Map.entry("removed", info));
+                                .map(info -> new TaskAction("removed", info));
         if (result.isEmpty()) {
             result =
                     alive
                             ? taskManager
                                     .remove(agentId, taskId)
-                                    .map(info -> Map.entry("removed", info))
+                                    .map(info -> new TaskAction("removed", info))
                             : taskManager
                                     .stop(
                                             agentId,
                                             taskId,
                                             BackgroundTaskManager.ExitCause.USER_STOP)
-                                    .map(info -> Map.entry("stopped", info));
+                                    .map(info -> new TaskAction("stopped", info));
         }
         return result.map(
                         entry ->
-                                ResponseEntity.ok(
-                                        Map.of(
-                                                "status",
-                                                entry.getKey(),
-                                                "task",
-                                                toJson(entry.getValue()))))
+                                ResponseEntity.<RestResponse>ok(
+                                        new BackgroundTaskActionResponse(
+                                                entry.status(), toResponse(entry.task(), null))))
                 .orElseGet(
                         () ->
                                 ResponseEntity.status(HttpStatus.NOT_FOUND)
                                         .body(
-                                                Map.of(
-                                                        "status",
+                                                new StatusMessageResponse(
                                                         "error",
-                                                        "message",
                                                         Msg.get("error.task.notFound", taskId))));
     }
 
-    /** Flattens a {@link BackgroundTaskManager.TaskInfo} into its wire shape. */
-    private @NonNull Map<String, Object> toJson(BackgroundTaskManager.@NonNull TaskInfo task) {
+    private record TaskAction(
+            @NonNull String status, BackgroundTaskManager.@NonNull TaskInfo task) {}
+
+    private @NonNull BackgroundTaskResponse toResponse(
+            BackgroundTaskManager.@NonNull TaskInfo task, String recentOutput) {
         Instant finishedAt = task.finishedAt();
         long uptimeSeconds =
                 finishedAt != null
                         ? Duration.between(task.startedAt(), finishedAt).toSeconds()
                         : task.uptimeSeconds();
-        Map<String, Object> row = new LinkedHashMap<>();
-        row.put("taskId", task.taskId());
-        row.put("command", task.command());
-        row.put("cwd", task.cwd());
-        row.put("pid", task.pid());
-        row.put("alive", task.alive());
-        Integer exitCode = task.exitCode();
-        if (exitCode != null) row.put("exitCode", exitCode);
-        row.put("startedAt", task.startedAt().toString());
-        if (finishedAt != null) row.put("finishedAt", finishedAt.toString());
-        row.put("uptimeSeconds", Math.max(0, uptimeSeconds));
-        return row;
+        return new BackgroundTaskResponse(
+                task.taskId(),
+                task.command(),
+                task.cwd(),
+                task.pid(),
+                task.alive(),
+                task.exitCode(),
+                task.startedAt().toString(),
+                finishedAt == null ? null : finishedAt.toString(),
+                Math.max(0, uptimeSeconds),
+                recentOutput);
     }
 }

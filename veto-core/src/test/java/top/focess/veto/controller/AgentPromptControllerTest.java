@@ -4,7 +4,6 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
@@ -39,9 +38,9 @@ class AgentPromptControllerTest {
         var response =
                 controller.prompt("session", "mate", new SubmitPromptRequest("synthetic-secret"));
         assertEquals(422, response.getStatusCode().value());
-        if (!(response.getBody() instanceof Map<?, ?> body))
+        if (!(response.getBody() instanceof top.focess.veto.controller.dto.CodedErrorResponse body))
             throw new AssertionError("Missing error body");
-        assertEquals("PROTECTED_INPUT_UNAVAILABLE", body.get("code"));
+        assertEquals("PROTECTED_INPUT_UNAVAILABLE", body.code());
         assertFalse(String.valueOf(response.getBody()).contains("synthetic-secret"));
     }
 

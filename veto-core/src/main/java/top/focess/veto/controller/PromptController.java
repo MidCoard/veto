@@ -1,6 +1,5 @@
 package top.focess.veto.controller;
 
-import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -15,6 +14,7 @@ import org.springframework.web.bind.annotation.RestController;
 import top.focess.veto.agent.AgentRunner;
 import top.focess.veto.agent.AgentService;
 import top.focess.veto.agent.ProtectedInputException;
+import top.focess.veto.controller.dto.*;
 import top.focess.veto.controller.dto.SubmitPromptRequest;
 import top.focess.veto.i18n.Msg;
 import top.focess.veto.session.SessionService;
@@ -65,11 +65,12 @@ public class PromptController {
         String user = vault.currentUser();
         if (user == null) {
             return ResponseEntity.status(401)
-                    .body(Map.of("error", Msg.get("error.auth.notAuthenticated")));
+                    .body(new ErrorResponse(Msg.get("error.auth.notAuthenticated")));
         }
         String prompt = body.prompt();
         if (prompt == null || prompt.isBlank()) {
-            return ResponseEntity.badRequest().body(Map.of("error", Msg.get("error.prompt.empty")));
+            return ResponseEntity.badRequest()
+                    .body(new ErrorResponse(Msg.get("error.prompt.empty")));
         }
 
         // activateForRest (not resolveByName): the agent must be the session-aware one - persona
@@ -78,7 +79,7 @@ public class PromptController {
         SessionConfig cfg = sessionService.activateForRest(name, user).orElse(null);
         if (cfg == null) {
             return ResponseEntity.status(404)
-                    .body(Map.of("error", Msg.get("error.session.notFoundForUser", name, user)));
+                    .body(new ErrorResponse(Msg.get("error.session.notFoundForUser", name, user)));
         }
 
         AgentRunner.LlmBinding binding =
@@ -94,19 +95,17 @@ public class PromptController {
             agentService.submitNow(cfg.sessionId(), prompt, binding);
             log.info("Prompt accepted for session {} (agent {})", name, cfg.sessionId());
             return ResponseEntity.status(HttpStatus.ACCEPTED)
-                    .body(Map.of("status", "started", "sessionId", cfg.sessionId()));
+                    .body(new PromptStartedResponse("started", cfg.sessionId()));
         } catch (ProtectedInputException rejected) {
             return ResponseEntity.unprocessableEntity()
                     .body(
-                            Map.of(
-                                    "code",
+                            new CodedErrorResponse(
                                     "PROTECTED_INPUT_UNAVAILABLE",
-                                    "error",
                                     "Protected input could not be processed; retry or use credential settings"));
         } catch (Exception e) {
             log.warn("Prompt submit failed for session {}", name, e);
             return ResponseEntity.internalServerError()
-                    .body(Map.of("error", Msg.get("error.prompt.failed")));
+                    .body(new ErrorResponse(Msg.get("error.prompt.failed")));
         }
     }
 }

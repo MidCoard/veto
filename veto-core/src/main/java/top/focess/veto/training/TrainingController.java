@@ -1,8 +1,5 @@
 package top.focess.veto.training;
 
-import java.time.Instant;
-import java.util.LinkedHashMap;
-import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -10,6 +7,8 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import top.focess.veto.controller.RequestAuthorization;
+import top.focess.veto.controller.dto.RestResponse;
+import top.focess.veto.training.TrainingResponses.*;
 
 /**
  * Administrator-only REST API for managing the Veto SLM model training pipeline.
@@ -55,18 +54,15 @@ public class TrainingController {
      * "/path/to/custom_data.jsonl", "skipQualityFilter": false }}
      */
     @PostMapping("/start")
-    public @NonNull ResponseEntity<Map<String, Object>> startTraining(
+    public @NonNull ResponseEntity<RestResponse> startTraining(
             @RequestBody(required = false) TrainingRequest request) {
         authorization.requireAdmin();
         if (trainingManager.isRunning()) {
             return ResponseEntity.status(409)
                     .body(
-                            Map.of(
-                                    "success",
+                            new ActionProgress(
                                     false,
-                                    "message",
                                     "Training is already in progress",
-                                    "progress",
                                     trainingManager.getProgress()));
         }
 
@@ -74,74 +70,53 @@ public class TrainingController {
         if (started) {
             log.info("Training pipeline started");
             return ResponseEntity.ok(
-                    Map.of(
-                            "success",
+                    new Started(
                             true,
-                            "message",
                             "Training pipeline started",
-                            "baseModel",
                             config.getBaseModel(),
-                            "progress",
                             trainingManager.getProgress()));
         } else {
             return ResponseEntity.status(500)
                     .body(
-                            Map.of(
-                                    "success",
+                            new Failed(
                                     false,
-                                    "message",
                                     "Failed to start training pipeline. Check configuration.",
-                                    "error",
                                     trainingManager.getProgress().getErrorMessage()));
         }
     }
 
     /** Cancel the current training run. */
     @PostMapping("/cancel")
-    public @NonNull ResponseEntity<Map<String, Object>> cancelTraining() {
+    public @NonNull ResponseEntity<RestResponse> cancelTraining() {
         authorization.requireAdmin();
         if (!trainingManager.isRunning()) {
             return ResponseEntity.ok(
-                    Map.of(
-                            "success",
-                            true,
-                            "message",
-                            "No training in progress",
-                            "progress",
-                            trainingManager.getProgress()));
+                    new ActionProgress(
+                            true, "No training in progress", trainingManager.getProgress()));
         }
 
         trainingManager.cancelTraining();
         log.warn("Training cancelled by user request");
         return ResponseEntity.ok(
-                Map.of(
-                        "success",
-                        true,
-                        "message",
-                        "Training cancelled",
-                        "progress",
-                        trainingManager.getProgress()));
+                new ActionProgress(true, "Training cancelled", trainingManager.getProgress()));
     }
 
     /** Get current training progress. */
     @GetMapping("/progress")
-    public @NonNull ResponseEntity<Map<String, Object>> getProgress() {
+    public @NonNull ResponseEntity<RestResponse> getProgress() {
         authorization.requireAdmin();
         TrainingProgress p = trainingManager.getProgress();
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("status", p.getStatus().name());
-        body.put("progress", p.getProgress());
-        body.put("phase", p.getCurrentPhase());
-        body.put("message", p.getMessage());
-        Instant startedAt = p.getStartedAt();
-        if (startedAt != null) body.put("startedAt", startedAt);
-        Instant completedAt = p.getCompletedAt();
-        if (completedAt != null) body.put("completedAt", completedAt);
-        body.put("trainedModelPath", p.getTrainedModelPath());
-        body.put("error", p.getErrorMessage());
-        TrainingProgress.EvaluationReport evaluation = p.getEvaluation();
-        if (evaluation != null) body.put("evaluation", evaluation);
-        return ResponseEntity.ok(body);
+        return ResponseEntity.ok(
+                new Progress(
+                        p.getStatus().name(),
+                        p.getProgress(),
+                        p.getCurrentPhase(),
+                        p.getMessage(),
+                        p.getStartedAt(),
+                        p.getCompletedAt(),
+                        p.getTrainedModelPath(),
+                        p.getErrorMessage(),
+                        p.getEvaluation()));
     }
 
     /**
@@ -154,7 +129,7 @@ public class TrainingController {
             value = "/deploy",
             consumes = MediaType.APPLICATION_JSON_VALUE,
             produces = MediaType.APPLICATION_JSON_VALUE)
-    public @NonNull ResponseEntity<Map<String, Object>> deployModel(
+    public @NonNull ResponseEntity<RestResponse> deployModel(
             @RequestBody @NonNull DeployModelRequest request) {
         authorization.requireAdmin();
         String modelPath = request.modelPath();
@@ -170,39 +145,31 @@ public class TrainingController {
         if (deployed) {
             log.info("Model deployed: {}", modelPath);
             return ResponseEntity.ok(
-                    Map.of(
-                            "success",
+                    new Deployed(
                             true,
-                            "message",
                             "Model deployed successfully",
-                            "targetPath",
                             config.getModelOutputDir() + "/" + config.getDefaultGgufName()));
         } else {
             return ResponseEntity.status(500)
-                    .body(
-                            Map.of(
-                                    "success",
-                                    false,
-                                    "message",
-                                    "Failed to deploy model. Check that the file exists."));
+                    .body(new Action(false, "Failed to deploy model. Check that the file exists."));
         }
     }
 
     /** Get overall training system status (configuration info). */
     @GetMapping("/status")
-    public @NonNull ResponseEntity<Map<String, Object>> getStatus() {
+    public @NonNull ResponseEntity<RestResponse> getStatus() {
         authorization.requireAdmin();
         return ResponseEntity.ok(
-                Map.of(
-                        "running", trainingManager.isRunning(),
-                        "baseModel", config.getBaseModel(),
-                        "trainingDir", config.getTrainingDir(),
-                        "modelOutputDir", config.getModelOutputDir(),
-                        "defaultGgufName", config.getDefaultGgufName(),
-                        "autoDeployOnCompletion", config.isAutoDeployOnCompletion(),
-                        "qualityFilterEnabled", config.isQualityFilterEnabled(),
-                        "maxTrainingHours", config.getMaxTrainingHours(),
-                        "progress", trainingManager.getProgress()));
+                new Status(
+                        trainingManager.isRunning(),
+                        config.getBaseModel(),
+                        config.getTrainingDir(),
+                        config.getModelOutputDir(),
+                        config.getDefaultGgufName(),
+                        config.isAutoDeployOnCompletion(),
+                        config.isQualityFilterEnabled(),
+                        config.getMaxTrainingHours(),
+                        trainingManager.getProgress()));
     }
 
     /**
@@ -210,43 +177,30 @@ public class TrainingController {
      * filter report.
      */
     @PostMapping("/quality-check")
-    public @NonNull ResponseEntity<Map<String, Object>> runQualityCheck() {
+    public @NonNull ResponseEntity<RestResponse> runQualityCheck() {
         authorization.requireAdmin();
-        Map<String, Object> report = trainingManager.runStandaloneQualityCheck();
+        QualityReport report = trainingManager.runStandaloneQualityCheck();
         if (report != null) {
-            return ResponseEntity.ok(
-                    Map.of(
-                            "success",
-                            true,
-                            "message",
-                            "Quality check completed",
-                            "report",
-                            report));
+            return ResponseEntity.ok(new Quality(true, "Quality check completed", report));
         } else {
             return ResponseEntity.status(500)
                     .body(
-                            Map.of(
-                                    "success",
+                            new Action(
                                     false,
-                                    "message",
                                     "Quality check failed. Training data may not exist yet."));
         }
     }
 
     /** Get the latest evaluation report from the most recent training run. */
     @GetMapping("/evaluation")
-    public @NonNull ResponseEntity<Map<String, Object>> getEvaluation() {
+    public @NonNull ResponseEntity<RestResponse> getEvaluation() {
         authorization.requireAdmin();
         TrainingProgress.EvaluationReport eval = trainingManager.getProgress().getEvaluation();
         if (eval != null) {
-            return ResponseEntity.ok(Map.of("success", true, "evaluation", eval));
+            return ResponseEntity.ok(new Evaluation(true, eval));
         } else {
             return ResponseEntity.ok(
-                    Map.of(
-                            "success",
-                            false,
-                            "message",
-                            "No evaluation report available. Run training first."));
+                    new Action(false, "No evaluation report available. Run training first."));
         }
     }
 }

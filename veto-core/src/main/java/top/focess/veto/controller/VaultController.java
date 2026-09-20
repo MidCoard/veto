@@ -1,12 +1,12 @@
 package top.focess.veto.controller;
 
 import java.util.List;
-import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
+import top.focess.veto.controller.dto.*;
 import top.focess.veto.controller.dto.PutVaultNoteRequest;
 import top.focess.veto.i18n.Msg;
 import top.focess.veto.vault.KeysteadVault;
@@ -44,7 +44,7 @@ public class VaultController {
      * under the title.
      */
     @GetMapping("/notes/{title}")
-    public @NonNull Map<String, String> read(@PathVariable @NonNull String title) {
+    public @NonNull VaultNoteResponse read(@PathVariable @NonNull String title) {
         requireUser();
         String value =
                 vault.readNoteBody(title)
@@ -53,7 +53,7 @@ public class VaultController {
                                         new ResponseStatusException(
                                                 HttpStatus.NOT_FOUND,
                                                 Msg.get("error.vault.credentialNotFound", title)));
-        return Map.of("title", title, "value", value);
+        return new VaultNoteResponse(title, value);
     }
 
     /**

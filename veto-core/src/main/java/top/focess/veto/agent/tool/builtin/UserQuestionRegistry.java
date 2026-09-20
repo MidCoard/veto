@@ -1,8 +1,6 @@
 package top.focess.veto.agent.tool.builtin;
 
-import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -52,20 +50,19 @@ public final class UserQuestionRegistry {
         return future;
     }
 
-    public @NonNull List<Map<String, Object>> pendingFor(@NonNull String agentId) {
-        List<Pending> matching =
-                pending.values().stream()
-                        .filter(value -> value.agentId().equals(agentId))
-                        .sorted(Comparator.comparing(Pending::callId))
-                        .toList();
-        List<Map<String, Object>> result = new ArrayList<>();
-        for (Pending value : matching) {
-            Map<String, Object> item = new LinkedHashMap<>();
-            item.put("callId", value.callId());
-            item.put("questions", value.questions());
-            result.add(item);
+    public record PendingQuestionBatch(
+            @NonNull String callId, @NonNull List<AskUserTool.Question> questions) {
+        public PendingQuestionBatch {
+            questions = List.copyOf(questions);
         }
-        return result;
+    }
+
+    public @NonNull List<PendingQuestionBatch> pendingFor(@NonNull String agentId) {
+        return pending.values().stream()
+                .filter(value -> value.agentId().equals(agentId))
+                .sorted(Comparator.comparing(Pending::callId))
+                .map(value -> new PendingQuestionBatch(value.callId(), value.questions()))
+                .toList();
     }
 
     public boolean answer(

@@ -1,17 +1,21 @@
 package top.focess.veto.memory;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Index;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
+
+import org.jspecify.annotations.NonNull;
+
+import top.focess.veto.agent.TurnRecord;
+
 import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
-import org.jspecify.annotations.NonNull;
-import top.focess.veto.agent.TurnRecord;
 
 /**
  * JPA persistence for a raw {@link TurnRecord} — the durable per-turn audit/replay log (distinct
@@ -58,6 +62,9 @@ public class TurnRecordEntity {
     @Column(name = "payload", columnDefinition = "TEXT")
     private @NonNull String payload = "";
 
+    @Column(name = "llm_usage", columnDefinition = "TEXT")
+    private String llmUsage;
+
     @Column(name = "timestamp", nullable = false)
     private @NonNull Instant timestamp = Instant.EPOCH;
 
@@ -79,6 +86,11 @@ public class TurnRecordEntity {
         e.type = turn.type().name();
         e.payload = serializePayload(turn.payload(), mapper);
         e.timestamp = turn.timestamp();
+        try {
+            e.llmUsage = mapper.writeValueAsString(turn.llmUsage());
+        } catch (Exception failure) {
+            throw new IllegalStateException("Cannot serialize usage", failure);
+        }
         return e;
     }
 
@@ -117,6 +129,10 @@ public class TurnRecordEntity {
 
     public @NonNull String getType() {
         return type;
+    }
+
+    public String getLlmUsage() {
+        return llmUsage;
     }
 
     public @NonNull String getPayload() {

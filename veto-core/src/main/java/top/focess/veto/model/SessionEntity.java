@@ -1,13 +1,16 @@
 package top.focess.veto.model;
 
 import jakarta.persistence.*;
-import java.time.Instant;
-import java.util.UUID;
+
 import org.jspecify.annotations.NonNull;
+
 import top.focess.veto.agent.AgentService;
 import top.focess.veto.llm.core.ToolResultPresentationMode;
 import top.focess.veto.llm.core.ToolResultPresentationModeConverter;
 import top.focess.veto.session.SessionService;
+
+import java.time.Instant;
+import java.util.UUID;
 
 /**
  * A session - the conversation container a terminal/frontend attaches to. Holds a primary agent and
@@ -16,6 +19,22 @@ import top.focess.veto.session.SessionService;
 @Entity
 @Table(name = "sessions")
 public class SessionEntity {
+
+    @jakarta.persistence.Convert(
+            converter = top.focess.veto.plugin.runtime.PluginBindingsConverter.class)
+    @Column(name = "plugin_bindings", columnDefinition = "TEXT")
+    private java.util.List<top.focess.veto.plugin.runtime.PluginBinding> pluginBindings;
+
+    public java.util.List<top.focess.veto.plugin.runtime.PluginBinding> getPluginBindings() {
+        return pluginBindings;
+    }
+
+    public void setPluginBindings(
+            java.util.@NonNull List<top.focess.veto.plugin.runtime.PluginBinding> value) {
+        if (pluginBindings != null)
+            throw new IllegalStateException("Session plugins are immutable");
+        pluginBindings = java.util.List.copyOf(value);
+    }
 
     @Id private @NonNull String id = "";
 

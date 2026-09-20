@@ -7,7 +7,6 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.capability.WorkspaceWriteCapability;
@@ -134,16 +133,7 @@ public final class DeletePathTool implements WorkspaceWriteTool<DeletePathTool.A
                 entries.get(i).delete();
                 deleted++;
             }
-            return ToolJson.object(
-                    Map.of(
-                            "status",
-                            "deleted",
-                            "path",
-                            args.absolutePath(),
-                            "kind",
-                            kind,
-                            "entriesDeleted",
-                            deleted));
+            return ToolJson.object(new Result("deleted", args.absolutePath(), kind, deleted));
         } catch (DirectoryNotEmptyException e) {
             if (args.recursive())
                 return ToolErrors.failure(
@@ -177,4 +167,10 @@ public final class DeletePathTool implements WorkspaceWriteTool<DeletePathTool.A
                             + ".");
         }
     }
+
+    public record Result(
+            @NonNull String status,
+            @NonNull String path,
+            @NonNull String kind,
+            int entriesDeleted) {}
 }

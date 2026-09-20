@@ -24,6 +24,9 @@ repositories {
 
 dependencies {
     implementation(project(":veto-protocol"))
+    implementation(project(":veto-extension"))
+    implementation(project(":veto-plugin-runtime"))
+    implementation(project(":veto-secret-protection"))
 
     // JSpecify nullability contracts are part of normal compilation and reflection metadata.
     implementation("org.jspecify:jspecify:1.0.0")

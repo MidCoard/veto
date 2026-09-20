@@ -11,16 +11,28 @@ import top.focess.veto.agent.screening.Danger;
  * Gateway reads these properties to select the security boundary and screen each call without
  * hard-coding per-tool-name logic.
  *
- * <p>Three flavours:
+ * <p>Definition flavours:
  *
  * <ul>
  *   <li>{@link NativeToolDefinition} — a shipped tool backed by a Java record.
+ *   <li>{@link PluginToolDefinition} — an operator-configured local script tool.
  *   <li>{@link RemoteToolDefinition} — an external MCP tool with raw JSON Schema.
  *   <li>{@link AgentToolDefinition} — an engine-provided control/meta tool used directly inside the
  *       agent loop or workflows ({@code create_group}, {@code load_skill}).
  * </ul>
  */
-public sealed interface ToolDefinition permits LocalToolDefinition, RemoteToolDefinition {
+public sealed interface ToolDefinition
+        permits LocalToolDefinition, RemoteToolDefinition, PluginToolDefinition {
+
+    /** Registration provenance, independent of the security/effect capability. */
+    default @NonNull String origin() {
+        return switch (this) {
+            case PluginToolDefinition ignored -> "plugin";
+            case NativeToolDefinition ignored -> "native";
+            case AgentToolDefinition ignored -> "agent_loop";
+            case RemoteToolDefinition ignored -> "external_mcp";
+        };
+    }
 
     @NonNull String name();
 

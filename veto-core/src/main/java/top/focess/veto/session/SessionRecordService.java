@@ -2,18 +2,21 @@ package top.focess.veto.session;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+
+import org.jspecify.annotations.NonNull;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+
+import top.focess.veto.llm.core.ToolResultPresentationMode;
+import top.focess.veto.memory.TurnRecordEntity;
+import top.focess.veto.memory.TurnRecordRepository;
+
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import org.jspecify.annotations.NonNull;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.stereotype.Service;
-import top.focess.veto.llm.core.ToolResultPresentationMode;
-import top.focess.veto.memory.TurnRecordEntity;
-import top.focess.veto.memory.TurnRecordRepository;
 
 /** Builds the complete rewind-annotated, multi-agent session trace consumed by veto-ui. */
 @Service
@@ -93,7 +96,10 @@ public class SessionRecordService {
                     row.getTimestamp(),
                     true,
                     0,
-                    0);
+                    0,
+                    row.getLlmUsage() == null
+                            ? top.focess.veto.agent.RecordUsage.decode(payload.get("llmUsage"))
+                            : top.focess.veto.agent.RecordUsage.read(row.getLlmUsage()));
         } catch (RuntimeException e) {
             log.warn("Skipping unparseable session record {} in {}", row.getId(), sessionId, e);
             return null;

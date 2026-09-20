@@ -22,8 +22,8 @@ import top.focess.veto.agent.tool.builtin.ImportDetectedCredentialTool;
 import top.focess.veto.agent.workspace.*;
 import top.focess.veto.llm.core.ToolCall;
 import top.focess.veto.llm.core.ToolResultPresentationMode;
+import top.focess.veto.secret.references.SecretCandidateStore;
 import top.focess.veto.vault.KeysteadVault;
-import top.focess.veto.vault.SecretCandidateStore;
 
 class CredentialImportIntegrationTest {
 
@@ -118,6 +118,114 @@ class CredentialImportIntegrationTest {
         verify(vault, times(1))
                 .createImportedCredential(
                         "alice", reference, "github", "Repository", "synthetic-token");
+    }
+
+    @Test
+    void capabilityChecksTheExactOperationAndScopeBeforeInvokingStorage(
+            @TempDir @NonNull Path directory) {
+        var session = UUID.randomUUID();
+        var store = new SecretCandidateStore();
+        var scope = new SecretCandidateStore.Scope("alice", session.toString(), "agent");
+        String reference =
+                store.capture(scope, "source", "password=synthetic-token")
+                        .candidates()
+                        .getFirst()
+                        .reference();
+        @NonNull KeysteadVault vault = mock();
+        var capability = new CredentialImportCapabilityImpl(store, vault, new ObjectMapper());
+        var definition =
+                ToolSchemaCompiler.compileNative(new ImportDetectedCredentialTool(capability));
+        var workspace = Workspace.single(directory, PathMode.REAL);
+        var call =
+                new ToolCall(
+                        "import_detected_credential",
+                        Map.of("secret_ref", reference, "service", "github", "label", "Repository"),
+                        "call");
+        assertThrows(
+                SecurityException.class,
+                () -> capability.importDetected(reference, "github", "Repository"));
+
+        installContext(call, definition, workspace, "alice", session, "agent");
+        assertThrows(
+                SecurityException.class,
+                () -> capability.importDetected(reference, "github", "Changed"));
+        assertThrows(
+                SecurityException.class,
+                () -> capability.importDetected(reference, "other-service", "Repository"));
+        assertThrows(
+                SecurityException.class,
+                () -> capability.importDetected("other-reference", "github", "Repository"));
+
+        for (var incompatibleCall :
+                List.of(
+                        new ToolCall("other_import", call.args(), call.callId()),
+                        new ToolCall(
+                                call.toolName(),
+                                Map.of(
+                                        "secret_ref", reference,
+                                        "service", "github",
+                                        "label", "Repository",
+                                        "extra", "not approved"),
+                                call.callId()))) {
+            installContext(incompatibleCall, definition, workspace, "alice", session, "agent");
+            assertThrows(
+                    SecurityException.class,
+                    () -> capability.importDetected(reference, "github", "Repository"));
+        }
+
+        installContext(call, definition, workspace, null, session, "agent");
+        assertThrows(
+                SecurityException.class,
+                () -> capability.importDetected(reference, "github", "Repository"));
+        installContext(call, definition, workspace, "alice", null, "agent");
+        assertThrows(
+                SecurityException.class,
+                () -> capability.importDetected(reference, "github", "Repository"));
+        for (var other :
+                List.of(
+                        new SecretCandidateStore.Scope("bob", session.toString(), "agent"),
+                        new SecretCandidateStore.Scope(
+                                "alice", UUID.randomUUID().toString(), "agent"),
+                        new SecretCandidateStore.Scope("alice", session.toString(), "mate"))) {
+            installContext(
+                    call,
+                    definition,
+                    workspace,
+                    other.owner(),
+                    UUID.fromString(other.session()),
+                    other.agent());
+            assertThrows(
+                    IllegalStateException.class,
+                    () -> capability.importDetected(reference, "github", "Repository"));
+        }
+        verifyNoInteractions(vault);
+        assertEquals(
+                SecretCandidateStore.State.AVAILABLE,
+                store.describe(scope, reference).orElseThrow().state());
+    }
+
+    private static void installContext(
+            @NonNull ToolCall call,
+            @NonNull NativeToolDefinition definition,
+            @NonNull Workspace workspace,
+            String owner,
+            UUID session,
+            @NonNull String agent) {
+        var user = UUID.randomUUID();
+        var permit =
+                ToolExecutionPermit.capture(call, definition, workspace)
+                        .withCaller(agent, user, null, owner, session);
+        ToolCallContextHolder.set(
+                new ToolCallContext(
+                        agent,
+                        user,
+                        null,
+                        owner,
+                        session,
+                        ToolResultPresentationMode.BASIC,
+                        false,
+                        permit));
+        ToolCallContextHolder.setCurrentCallId(call.callId());
     }
 
     @Test

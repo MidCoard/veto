@@ -3,7 +3,6 @@ package top.focess.veto.agent.tool.builtin;
 import java.io.IOException;
 import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.NoSuchFileException;
-import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.capability.WorkspaceWriteCapability;
@@ -100,14 +99,10 @@ public final class MovePathTool implements WorkspaceWriteTool<MovePathTool.Args>
             String kind = source.kind();
             source.moveTo(destination);
             return ToolJson.object(
-                    Map.of(
-                            "status",
+                    new Result(
                             "moved",
-                            "source",
                             args.sourceAbsolutePath(),
-                            "destination",
                             args.destinationAbsolutePath(),
-                            "kind",
                             kind));
         } catch (NoSuchFileException e) {
             return ToolErrors.failure(
@@ -123,4 +118,10 @@ public final class MovePathTool implements WorkspaceWriteTool<MovePathTool.Args>
                     "I/O error: cannot move " + args.sourceAbsolutePath() + " to its destination.");
         }
     }
+
+    public record Result(
+            @NonNull String status,
+            @NonNull String source,
+            @NonNull String destination,
+            @NonNull String kind) {}
 }

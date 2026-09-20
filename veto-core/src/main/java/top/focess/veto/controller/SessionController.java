@@ -1,18 +1,18 @@
 package top.focess.veto.controller;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
+
+import top.focess.veto.agent.RecordTokenCounter;
+import top.focess.veto.agent.RecordUsage;
 import top.focess.veto.agent.SessionAgentRegistry;
 import top.focess.veto.agent.TurnRecord;
 import top.focess.veto.contract.IpcFrame;
+import top.focess.veto.controller.dto.*;
 import top.focess.veto.controller.dto.CreateSessionRequest;
 import top.focess.veto.i18n.Msg;
 import top.focess.veto.llm.core.ToolResultPresentationMode;
@@ -22,6 +22,10 @@ import top.focess.veto.session.SessionRecordService;
 import top.focess.veto.session.SessionService;
 import top.focess.veto.session.SessionService.SessionConfig;
 import top.focess.veto.vault.KeysteadVault;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
 
 /**
  * REST facade over {@link SessionService} for remote UIs (veto-ui).
@@ -88,7 +92,8 @@ public class SessionController {
                 body.name(),
                 roots,
                 rootIndex == null ? 0 : rootIndex,
-                ToolResultPresentationMode.canonicalize(body.toolResultPresentation()));
+                ToolResultPresentationMode.canonicalize(body.toolResultPresentation()),
+                body.pluginIds());
     }
 
     @DeleteMapping("/{name}")
@@ -97,11 +102,8 @@ public class SessionController {
         if (user == null) {
             return ResponseEntity.status(401)
                     .body(
-                            Map.of(
-                                    "status",
-                                    "error",
-                                    "message",
-                                    Msg.get("error.auth.notAuthenticated")));
+                            new StatusMessageResponse(
+                                    "error", Msg.get("error.auth.notAuthenticated")));
         }
         if (!service.delete(user, name)) {
             throw new ResponseStatusException(
@@ -127,22 +129,23 @@ public class SessionController {
         String owner = vault.currentUser();
         if (owner == null) throw new ResponseStatusException(HttpStatus.UNAUTHORIZED);
         String agentId = service.primaryAgentIdFor(name, owner).orElse(null);
-        List<Map<String, @org.jspecify.annotations.Nullable Object>> turns = new ArrayList<>();
+        List<HistoryTurnResponse> turns = new ArrayList<>();
         // The conversation ledger has no agent IDs; keep child streams in /records only.
         if (agentId == null) return ResponseEntity.ok(turns);
         for (TurnRecord turn :
-                top.focess.veto.agent.RecordUsage.contentRecords(
-                        historyLoader.load(cfg.sessionId(), agentId))) {
-            Map<String, @org.jspecify.annotations.Nullable Object> item =
-                    new java.util.LinkedHashMap<>();
-            item.put("turnNumber", turn.turnNumber());
-            item.put("type", turn.type().name());
-            item.put("payload", turn.payload());
-            item.put("timestamp", turn.timestamp().toString());
-            item.put("tokenCount", top.focess.veto.agent.RecordTokenCounter.count(turn.payload()));
-            item.put("usedTokens", top.focess.veto.agent.RecordTokenCounter.count(turn.payload()));
-            item.put("tokenCountSource", turn.payload().get("tokenCountSource"));
-            turns.add(item);
+                RecordUsage.contentRecords(historyLoader.load(cfg.sessionId(), agentId))) {
+            Long count = RecordTokenCounter.count(turn.payload());
+            Object source = turn.payload().get("tokenCountSource");
+            turns.add(
+                    new HistoryTurnResponse(
+                            turn.turnNumber(),
+                            turn.type().name(),
+                            turn.payload(),
+                            turn.timestamp().toString(),
+                            count,
+                            count,
+                            source instanceof String value ? value : null,
+                            turn.llmUsage()));
         }
         return ResponseEntity.ok(turns);
     }

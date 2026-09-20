@@ -1,11 +1,11 @@
 package top.focess.veto.controller;
 
 import java.util.Locale;
-import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import top.focess.veto.controller.dto.*;
 
 /**
  * Host facts for frontends: the server-side OS family + path syntax, so a browser client (which
@@ -17,14 +17,14 @@ import org.springframework.web.bind.annotation.RestController;
 public class SystemController {
 
     @GetMapping("/info")
-    public @NonNull Map<String, Object> info() {
+    public @NonNull SystemInfoResponse info() {
         String osName = System.getProperty("os.name", "unknown");
         boolean windows = osName.toLowerCase(Locale.ROOT).contains("win");
-        return Map.of(
-                "os", osName,
-                "arch", System.getProperty("os.arch", "unknown"),
-                "family", windows ? "windows" : "posix",
-                "pathSeparator", windows ? "\\" : "/",
-                "pathExample", windows ? "D:\\projects\\one" : "/home/user/projects/one");
+        return new SystemInfoResponse(
+                osName,
+                System.getProperty("os.arch", "unknown"),
+                windows ? "windows" : "posix",
+                windows ? "\\" : "/",
+                windows ? "D:\\projects\\one" : "/home/user/projects/one");
     }
 }

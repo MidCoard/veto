@@ -1,0 +1,129 @@
+package top.focess.veto.secret.detection;
+
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import org.jspecify.annotations.NonNull;
+
+/**
+ * Best-effort secret-pattern scrubber. Replaces common secret tokens in tool observation text with
+ * {@code [REDACTED_*]} markers before the observation enters the LLM's context.
+ *
+ * <p>Patterns are deliberately broad to err on the side of scrubbing. The credential vault is the
+ * authoritative secrets boundary; this masker is a second line of defense.
+ *
+ * <p>Stable for testing: every replacement is non-empty and the same input always produces the same
+ * output.
+ */
+public final class SecretMasker {
+
+    /**
+     * The patterns + their replacement tag. Order matters — the first match wins per position. Keep
+     * this list conservative; false positives (over-scrubbing) are preferred to false negatives
+     * (leaking a secret).
+     */
+    private static final @NonNull LinkedHashMap<Pattern, String> PATTERNS = buildPatterns();
+
+    private static @NonNull LinkedHashMap<Pattern, String> buildPatterns() {
+        LinkedHashMap<Pattern, String> m = new LinkedHashMap<>();
+        // AWS access key
+        m.put(Pattern.compile("AKIA[0-9A-Z]{16}"), "[REDACTED_AWS_KEY]");
+        // Private key block
+        m.put(
+                Pattern.compile(
+                        "-----BEGIN (RSA |EC |DSA |OPENSSH |PGP )?PRIVATE KEY-----"
+                                + "[\\s\\S]*?"
+                                + "-----END (RSA |EC |DSA |OPENSSH |PGP )?PRIVATE KEY-----"),
+                "[REDACTED_PRIVATE_KEY]");
+        // DB connection string
+        m.put(
+                Pattern.compile(
+                        "(?i)(jdbc:[a-z]+://[^\\s'\"]+|postgres(?:ql)?://[^\\s'\"]+|mysql://[^\\s'\"]+)"),
+                "[REDACTED_DB_URL]");
+        // password=... or pwd=...
+        m.put(
+                Pattern.compile("(?i)(password|passwd|pwd)\\s*[=:]\\s*[^\\s,'\"}。，；：、]+"),
+                "[REDACTED_PASSWORD]");
+        // token=... (bearer / oauth)
+        m.put(
+                Pattern.compile("(?i)(token|bearer|api[_-]?key)\\s*[=:]\\s*[^\\s,'\"}。，；：、]+"),
+                "[REDACTED_TOKEN]");
+        // GitHub personal access token (ghp_)
+        m.put(Pattern.compile("\\bghp_[A-Za-z0-9]{30,}\\b"), "[REDACTED_GH_TOKEN]");
+        // Slack tokens
+        m.put(Pattern.compile("\\bxox[abpr]-[A-Za-z0-9-]{10,}\\b"), "[REDACTED_SLACK_TOKEN]");
+        // Unprefixed API-key-like token. Require both a letter and a digit: long source-code
+        // identifiers such as Python test method names are not secrets merely because they exceed
+        // 32 characters. Known prefixes and contextual api_key=/token= assignments are handled by
+        // the more precise rules above.
+        m.put(
+                Pattern.compile(
+                        "\\b(?=[A-Za-z0-9_-]{32,}\\b)(?=[A-Za-z0-9_-]*[A-Za-z])"
+                                + "(?=[A-Za-z0-9_-]*[0-9])[A-Za-z0-9_-]{32,}\\b"),
+                "[REDACTED_API_KEY]");
+        return m;
+    }
+
+    private SecretMasker() {}
+
+    /** Original UTF-16 range; deliberately contains no captured secret value. */
+    public record SecretMatch(int start, int end, @NonNull String category) {}
+
+    /**
+     * Finds non-overlapping ranges in the original input, before any replacement changes offsets.
+     * Assignment patterns capture only the value. This exposes the existing deterministic rules,
+     * not a guarantee that arbitrary secrets or encodings will be detected.
+     */
+    public static @NonNull List<SecretMatch> matches(@NonNull String input) {
+        List<SecretMatch> candidates = new ArrayList<>();
+        for (var rule : PATTERNS.entrySet()) {
+            Matcher matcher = rule.getKey().matcher(input);
+            while (matcher.find()) {
+                int start = matcher.start();
+                if (rule.getValue().equals("[REDACTED_PASSWORD]")
+                        || rule.getValue().equals("[REDACTED_TOKEN]")) {
+                    start = matcher.end(1);
+                    while (start < matcher.end() && Character.isWhitespace(input.charAt(start)))
+                        start++;
+                    // Skip '=' or ':' and any whitespace before the value.
+                    do {
+                        start++;
+                    } while (start < matcher.end() && Character.isWhitespace(input.charAt(start)));
+                }
+                if (start < matcher.end())
+                    candidates.add(new SecretMatch(start, matcher.end(), rule.getValue()));
+            }
+        }
+        candidates.sort(
+                Comparator.comparingInt(SecretMatch::start)
+                        .thenComparing(Comparator.comparingInt(SecretMatch::end).reversed()));
+        List<SecretMatch> result = new ArrayList<>();
+        for (SecretMatch candidate : candidates) {
+            if (result.isEmpty() || candidate.start() >= result.getLast().end())
+                result.add(candidate);
+        }
+        return List.copyOf(result);
+    }
+
+    /**
+     * Scrubs secret patterns in the input. Each pattern's first match is replaced with its {@code
+     * [REDACTED_*]} tag. Stable for testing (no randomness).
+     */
+    public static @NonNull String mask(@NonNull String input) {
+        if (input.isEmpty()) {
+            return input;
+        }
+        String out = input;
+        for (Map.Entry<Pattern, String> e : PATTERNS.entrySet()) {
+            Matcher m = e.getKey().matcher(out);
+            if (m.find()) {
+                out = m.replaceAll(Matcher.quoteReplacement(e.getValue()));
+            }
+        }
+        return out;
+    }
+}

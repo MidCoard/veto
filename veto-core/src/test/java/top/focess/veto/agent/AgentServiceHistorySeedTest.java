@@ -149,7 +149,7 @@ class AgentServiceHistorySeedTest {
                 2, count(HistoryProjection.effective(resumed.history()), TurnType.USER_PROMPT));
         assertTrue(
                 resumed.history().stream()
-                        .anyMatch(turn -> turn.payload().containsKey("restored_from_turn")));
+                        .noneMatch(turn -> turn.payload().containsKey("restored_from_turn")));
         VetoRequest request =
                 assertInstanceOf(ToolDocs.nonNullClass(VetoRequest.class), resumedRequest.get());
         assertEquals("system", request.messages().get(0).role());

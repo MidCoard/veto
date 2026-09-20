@@ -5,7 +5,6 @@ import static org.mockito.Mockito.*;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -28,7 +27,8 @@ class FsControllerTest {
         assertEquals(201, response.getStatusCode().value());
         assertTrue(Files.isDirectory(directory.resolve("新工作区")));
         assertEquals(
-                Map.of("path", directory.toRealPath().resolve("新工作区").toString()),
+                new top.focess.veto.controller.dto.DirectoryCreatedResponse(
+                        directory.toRealPath().resolve("新工作区").toString()),
                 response.getBody());
     }
 

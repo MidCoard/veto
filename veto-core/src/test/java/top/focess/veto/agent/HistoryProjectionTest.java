@@ -9,17 +9,21 @@ import org.junit.jupiter.api.Test;
 
 class HistoryProjectionTest {
     @Test
-    void changedConfigurationRestoresEffectiveContentWithProvenance() {
+    void changedConfigurationOnlySupersedesSystemContext() {
         var old =
                 List.of(
                         TurnRecord.agentInit(1, "leader", "old", "test", "test"),
                         TurnRecord.userPrompt(2, "keep this"));
         var additions = HistoryProjection.reinitialize(old, 2, "standalone", "new", "test", "test");
-        assertEquals(TurnType.REWIND, additions.get(0).type());
-        assertEquals("new", additions.get(1).payload().get("system_prompt"));
-        assertEquals(2, additions.get(2).payload().get("restored_from_turn"));
+        assertEquals(1, additions.size());
+        assertEquals(TurnType.AGENT_INIT, additions.getFirst().type());
+        assertEquals("new", additions.getFirst().payload().get("system_prompt"));
+        assertEquals(true, additions.getFirst().payload().get("context_update"));
         var all = new ArrayList<>(old);
         all.addAll(additions);
+        assertSame(old.get(1), HistoryProjection.effective(all).getFirst());
+        assertTrue(HistoryProjection.replay(all).getFirst().superseded());
+        assertEquals(0, HistoryProjection.replay(all).getFirst().removedBy());
         assertTrue(
                 HistoryProjection.reinitialize(all, 5, "standalone", "new", "test", "test")
                         .isEmpty());

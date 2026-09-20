@@ -1,0 +1,32 @@
+{
+  "manifestVersion": 1,
+  "id": "top.focess.fixture",
+  "version": "0.1.0",
+  "apiVersion": 1,
+  "requiresJava": 25,
+  "entryPoint": "top.focess.veto.fixture.FixturePlugin",
+  "artifact": "plugin.jar",
+  "configSchema": "config.schema.json",
+  "extensions": [
+    {
+      "id": "veto:tools",
+      "major": 1
+    },
+    {
+      "id": "veto:tool-categories",
+      "major": 1
+    },
+    {
+      "id": "veto:prompts",
+      "major": 1
+    },
+    {
+      "id": "veto:observation-middleware",
+      "major": 1
+    }
+  ],
+  "promptResources": [
+    "prompts/fixture.md"
+  ],
+  "requiredServices": []
+}

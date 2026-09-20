@@ -96,7 +96,7 @@ class UserQuestionRegistryTest {
         var pending = registry.register("agent", "call", questions);
         questions.clear();
         options.clear();
-        Object exposedQuestions = registry.pendingFor("agent").getFirst().get("questions");
+        Object exposedQuestions = registry.pendingFor("agent").getFirst().questions();
         assertEquals(
                 List.of(
                         new AskUserTool.Question(

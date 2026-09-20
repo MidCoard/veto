@@ -17,13 +17,16 @@ public final class ToolContractValidator {
 
     public static void validate(@NonNull ToolDefinition definition) {
         validateResultFormats(definition);
-        if (!(definition instanceof RemoteToolDefinition)) {
+        if (definition instanceof LocalToolDefinition) {
             validateDocumentation(definition);
             validateExamples(definition);
         }
         switch (definition) {
             case NativeToolDefinition nativeDefinition -> validateNative(nativeDefinition);
             case AgentToolDefinition agentDefinition -> validateAgent(agentDefinition);
+            case PluginToolDefinition ignored -> {
+                // Script descriptors are validated before activation; effects remain unknown.
+            }
             case RemoteToolDefinition ignored -> {
                 // Remote definitions hard-code REMOTE_UNKNOWN and ELEVATED.
             }

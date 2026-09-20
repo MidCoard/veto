@@ -34,7 +34,7 @@ import top.focess.veto.model.tier.ModelTier;
 import top.focess.veto.model.tier.ModelTierRegistry;
 import top.focess.veto.sandbox.*;
 import top.focess.veto.sandbox.BackgroundTaskManager;
-import top.focess.veto.vault.SecretCandidateStore;
+import top.focess.veto.secret.references.SecretCandidateStore;
 
 class GuidedExecutionTest {
     @Test

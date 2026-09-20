@@ -19,6 +19,7 @@ import top.focess.veto.agent.screening.ProtectedSet;
 import top.focess.veto.agent.tool.AgentToolDefinition;
 import top.focess.veto.agent.tool.NativeToolDefinition;
 import top.focess.veto.agent.tool.ParamCategory;
+import top.focess.veto.agent.tool.PluginToolDefinition;
 import top.focess.veto.agent.tool.RemoteToolDefinition;
 import top.focess.veto.agent.tool.ToolCallContext;
 import top.focess.veto.agent.tool.ToolCapability;
@@ -96,8 +97,7 @@ public record ToolExecutionPermit(
             @NonNull Workspace workspace,
             @NonNull DeployerPolicy deployerPolicy,
             @NonNull ProtectedSet protectedSet) {
-        String serverName =
-                definition instanceof RemoteToolDefinition remote ? remote.serverName() : null;
+        String serverName = externalBinding(definition);
         Map<@NonNull String, @NonNull ParamCategory> hints = parameterHints(definition);
         List<Path> roots = workspace.hostRoots();
         Path executionRoot = workspace.currentHostRoot();
@@ -194,17 +194,19 @@ public record ToolExecutionPermit(
                 taskBinding);
     }
 
+    private static String externalBinding(@NonNull ToolDefinition definition) {
+        if (definition instanceof RemoteToolDefinition remote) return remote.serverName();
+        if (definition instanceof PluginToolDefinition plugin) return plugin.bindingId();
+        return null;
+    }
+
     public boolean authorizes(
             @NonNull ToolCall call,
             @NonNull ToolDefinition definition,
             @NonNull ToolCallContext context) {
         return matchesCall(call)
                 && capability == definition.capability()
-                && Objects.equals(
-                        remoteServerName,
-                        definition instanceof RemoteToolDefinition remote
-                                ? remote.serverName()
-                                : null)
+                && Objects.equals(remoteServerName, externalBinding(definition))
                 && authorizesCaller(context);
     }
 
@@ -299,6 +301,7 @@ public record ToolExecutionPermit(
             case NativeToolDefinition nativeDefinition -> nativeDefinition.paramHints();
             case AgentToolDefinition agentDefinition -> agentDefinition.paramHints();
             case RemoteToolDefinition remoteDefinition -> Map.of();
+            case PluginToolDefinition pluginDefinition -> Map.of();
         };
     }
 

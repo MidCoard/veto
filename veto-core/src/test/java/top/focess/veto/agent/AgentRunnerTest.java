@@ -17,6 +17,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.checkerframework.checker.nullness.qual.Nullable;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -94,11 +95,11 @@ import top.focess.veto.monitor.RequestContinuationStore;
 import top.focess.veto.sandbox.BackgroundTaskManager;
 import top.focess.veto.sandbox.SandboxManager;
 import top.focess.veto.sandbox.TestSandboxFactory;
+import top.focess.veto.secret.references.SecretCandidateStore;
 import top.focess.veto.session.SessionHistoryLoader;
 import top.focess.veto.session.SessionService;
 import top.focess.veto.util.Nullness;
 import top.focess.veto.vault.KeysteadVault;
-import top.focess.veto.vault.SecretCandidateStore;
 import top.focess.veto.vault.UserContext;
 
 /**
@@ -255,7 +256,7 @@ class AgentRunnerTest {
             service.submitNow("usage-reference", "New request", binding("System"));
             var agent = requireAgent(service.agent("usage-reference"));
             assertTrue(agent.await(EPISODE_TIMEOUT).success());
-            List<Object> ids = new ArrayList<>();
+            List<@Nullable String> ids = new ArrayList<>();
             assertTrue(
                     agent.history().stream()
                             .anyMatch(
@@ -266,16 +267,13 @@ class AgentRunnerTest {
                                                     && "default-system-prompt"
                                                             .equals(source.get("id"))));
             for (TurnRecord turn : agent.history()) {
-                if (turn.payload().get("llmUsage") instanceof List<?> measurements) {
-                    for (Object value : measurements) {
-                        if (value instanceof Map<?, ?> usage
-                                && usage.get("modelCallId") instanceof String id) ids.add(id);
-                    }
+                for (var usage : turn.llmUsage()) {
+                    ids.add(usage.modelCallId());
                 }
             }
             assertEquals(3, ids.size());
-            assertNotNull(ids.getFirst());
-            assertNotEquals(ids.getFirst(), ids.getLast());
+            String firstId = Nullness.requireNonNull(ids.getFirst());
+            assertNotEquals(firstId, ids.getLast());
             assertTrue(
                     agent.history().stream().noneMatch(turn -> turn.type() == TurnType.TOOL_CALL));
             assertTrue(
@@ -294,7 +292,9 @@ class AgentRunnerTest {
                             .toList();
             assertEquals(2, outputs.size());
             for (TurnRecord output : outputs)
-                assertEquals(ids.getLast(), output.payload().get("model_call_id"));
+                assertEquals(
+                        Nullness.requireNonNull(ids.getLast()),
+                        output.payload().get("model_call_id"));
         } finally {
             service.remove("usage-reference");
         }

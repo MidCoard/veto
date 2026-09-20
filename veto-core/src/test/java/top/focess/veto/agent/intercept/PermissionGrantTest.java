@@ -22,6 +22,7 @@ import top.focess.veto.agent.tool.ToolDocs;
 import top.focess.veto.agent.workspace.PathMode;
 import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.llm.core.ToolCall;
+import top.focess.veto.secret.detection.SecretMasker;
 
 /**
  * Tests for the session-scoped permission-grant system. Covers:

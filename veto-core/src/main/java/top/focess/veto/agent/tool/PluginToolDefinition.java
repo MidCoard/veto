@@ -1,0 +1,51 @@
+package top.focess.veto.agent.tool;
+
+import com.fasterxml.jackson.databind.JsonNode;
+
+import org.jspecify.annotations.NonNull;
+
+import top.focess.veto.agent.screening.Danger;
+import top.focess.veto.extension.contract.ToolContribution;
+import top.focess.veto.plugin.runtime.PluginJson;
+
+import java.util.List;
+
+/**
+ * Operator-installed plugin code has unknown effects and receives ordinary external-tool scrutiny.
+ */
+public record PluginToolDefinition(
+        @NonNull String name,
+        @NonNull String bindingId,
+        @NonNull String pluginId,
+        @NonNull String pluginVersion,
+        @NonNull ToolContribution descriptor)
+        implements ToolDefinition {
+    @Override
+    public @NonNull String description() {
+        return descriptor.description();
+    }
+
+    @Override
+    public @NonNull ToolCapability capability() {
+        return descriptor.effect() == ToolContribution.Effect.CREDENTIAL_IMPORT
+                ? ToolCapability.CREDENTIAL_IMPORT
+                : ToolCapability.REMOTE_UNKNOWN;
+    }
+
+    @Override
+    public @NonNull Danger defaultDanger() {
+        return descriptor.effect() == ToolContribution.Effect.CREDENTIAL_IMPORT
+                ? Danger.DANGEROUS
+                : Danger.ELEVATED;
+    }
+
+    @Override
+    public @NonNull JsonNode inputSchema() {
+        return PluginJson.toNode(descriptor.inputSchema());
+    }
+
+    @Override
+    public @NonNull List<@NonNull ToolResultFormat> resultFormats() {
+        return List.of(ToolResultFormat.JSON);
+    }
+}

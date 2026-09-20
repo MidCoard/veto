@@ -6,6 +6,7 @@ import static org.mockito.Mockito.*;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.command.PromptHandler;
+import top.focess.veto.secret.references.SecretCandidateStore;
 
 class AuthLifecycleManagerTest {
     @Test

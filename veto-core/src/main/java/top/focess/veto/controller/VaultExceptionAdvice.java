@@ -1,11 +1,11 @@
 package top.focess.veto.controller;
 
-import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import top.focess.veto.controller.dto.*;
 import top.focess.veto.i18n.Msg;
 import top.focess.veto.vault.KeysteadVault;
 
@@ -18,8 +18,8 @@ import top.focess.veto.vault.KeysteadVault;
 public class VaultExceptionAdvice {
 
     @ExceptionHandler(KeysteadVault.VaultLockedException.class)
-    public @NonNull ResponseEntity<Map<String, String>> vaultLocked() {
+    public @NonNull ResponseEntity<RestResponse> vaultLocked() {
         return ResponseEntity.status(HttpStatus.LOCKED)
-                .body(Map.of("status", "error", "message", Msg.get("error.vault.locked")));
+                .body(new StatusMessageResponse("error", Msg.get("error.vault.locked")));
     }
 }

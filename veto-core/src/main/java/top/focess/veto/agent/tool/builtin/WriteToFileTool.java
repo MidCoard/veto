@@ -3,7 +3,6 @@ package top.focess.veto.agent.tool.builtin;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.FileAlreadyExistsException;
-import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.capability.WorkspaceWriteCapability;
@@ -127,8 +126,7 @@ public final class WriteToFileTool implements WorkspaceWriteTool<WriteToFileTool
             try (var output = args.overwrite() ? file.openForReplace() : file.openForCreate()) {
                 output.write(bytes);
             }
-            return ToolJson.object(
-                    Map.of("status", "ok", "file", args.absolutePath(), "bytes", bytes.length));
+            return ToolJson.object(new Result("ok", args.absolutePath(), bytes.length));
         } catch (FileAlreadyExistsException e) {
             return ToolErrors.failure(
                     ToolErrorCode.WORKSPACE.ALREADY_EXISTS,
@@ -139,4 +137,6 @@ public final class WriteToFileTool implements WorkspaceWriteTool<WriteToFileTool
                     "I/O error: cannot write file " + args.absolutePath() + ".");
         }
     }
+
+    public record Result(@NonNull String status, @NonNull String file, int bytes) {}
 }

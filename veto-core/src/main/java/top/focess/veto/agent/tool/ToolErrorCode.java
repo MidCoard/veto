@@ -262,6 +262,9 @@ public interface ToolErrorCode {
     /** No more specific aspect applies. */
     enum GENERIC implements ToolErrorCode {
 
+        /** A plugin call failed or its contract was not satisfied. */
+        PLUGIN_CALL_FAILED,
+
         /** Generic tool failure with no more specific code. */
         TOOL_FAILURE
     }

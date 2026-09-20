@@ -7,9 +7,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.stream.Stream;
 import org.jspecify.annotations.NonNull;
 import org.springframework.http.HttpStatus;
@@ -21,6 +19,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
+import top.focess.veto.controller.dto.*;
 import top.focess.veto.i18n.Msg;
 import top.focess.veto.security.HostPathInput;
 import top.focess.veto.vault.KeysteadVault;
@@ -55,13 +54,13 @@ public class FsController {
         String user = vault.currentUser();
         if (user == null) {
             return ResponseEntity.status(401)
-                    .body(Map.of("error", Msg.get("error.auth.notAuthenticated")));
+                    .body(new ErrorResponse(Msg.get("error.auth.notAuthenticated")));
         }
         if (path == null || path.isBlank()) {
-            List<Map<String, String>> roots = new ArrayList<>();
+            List<DirectoryEntryResponse> roots = new ArrayList<>();
             for (Path root : FileSystems.getDefault().getRootDirectories()) {
                 String text = root.toString();
-                roots.add(Map.of("name", text, "path", text));
+                roots.add(new DirectoryEntryResponse(text, text));
             }
             return ResponseEntity.ok(body(null, null, roots));
         }
@@ -78,7 +77,7 @@ public class FsController {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST, Msg.get("error.fs.notDirectory", path));
         }
-        List<Map<String, String>> entries = new ArrayList<>();
+        List<DirectoryEntryResponse> entries = new ArrayList<>();
         try (Stream<Path> children = Files.list(dir)) {
             children.filter(Files::isDirectory)
                     // Dotfiles and Windows system dirs ($RECYCLE.BIN, System Volume Information)
@@ -92,11 +91,8 @@ public class FsController {
                     .forEach(
                             child ->
                                     entries.add(
-                                            Map.of(
-                                                    "name",
-                                                    fileName(child),
-                                                    "path",
-                                                    child.toString())));
+                                            new DirectoryEntryResponse(
+                                                    fileName(child), child.toString())));
         } catch (IOException e) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST,
@@ -114,7 +110,7 @@ public class FsController {
             @RequestBody @NonNull CreateDirectoryRequest request) {
         if (vault.currentUser() == null) {
             return ResponseEntity.status(401)
-                    .body(Map.of("error", Msg.get("error.auth.notAuthenticated")));
+                    .body(new ErrorResponse(Msg.get("error.auth.notAuthenticated")));
         }
         String parentText = request.parent();
         String name = request.name();
@@ -125,7 +121,7 @@ public class FsController {
                 || name.endsWith(".")
                 || name.chars().anyMatch(c -> c < 32 || "/\\:<>\"|?*".indexOf(c) >= 0)) {
             return ResponseEntity.badRequest()
-                    .body(Map.of("error", Msg.get("error.fs.invalidName")));
+                    .body(new ErrorResponse(Msg.get("error.fs.invalidName")));
         }
         Path parent;
         try {
@@ -135,8 +131,7 @@ public class FsController {
         } catch (IllegalArgumentException | IOException e) {
             return ResponseEntity.badRequest()
                     .body(
-                            Map.of(
-                                    "error",
+                            new ErrorResponse(
                                     Msg.get(
                                             "error.fs.notDirectory",
                                             parentText == null ? "" : parentText)));
@@ -144,28 +139,19 @@ public class FsController {
         try {
             Path created = Files.createDirectory(parent.resolve(name));
             return ResponseEntity.status(HttpStatus.CREATED)
-                    .body(Map.of("path", created.toString()));
+                    .body(new DirectoryCreatedResponse(created.toString()));
         } catch (FileAlreadyExistsException e) {
             return ResponseEntity.status(HttpStatus.CONFLICT)
-                    .body(Map.of("error", Msg.get("error.fs.alreadyExists", name)));
+                    .body(new ErrorResponse(Msg.get("error.fs.alreadyExists", name)));
         } catch (IOException | IllegalArgumentException | SecurityException e) {
             return ResponseEntity.badRequest()
-                    .body(Map.of("error", Msg.get("error.fs.cannotCreate", name)));
+                    .body(new ErrorResponse(Msg.get("error.fs.cannotCreate", name)));
         }
     }
 
-    private static @NonNull Map<String, Object> body(
-            String path, String parent, @NonNull List<Map<String, String>> entries) {
-        // LinkedHashMap: Map.of rejects the null path/parent of the root listing.
-        Map<String, Object> body = new LinkedHashMap<>();
-        if (path != null) {
-            body.put("path", path);
-        }
-        if (parent != null) {
-            body.put("parent", parent);
-        }
-        body.put("entries", entries);
-        return body;
+    private static @NonNull DirectoryListingResponse body(
+            String path, String parent, @NonNull List<DirectoryEntryResponse> entries) {
+        return new DirectoryListingResponse(path, parent, entries);
     }
 
     private static @NonNull String fileName(@NonNull Path path) {

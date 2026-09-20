@@ -4,14 +4,7 @@ import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
+
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -20,14 +13,25 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.ApplicationContext;
 import org.springframework.stereotype.Service;
+
 import top.focess.veto.agent.capability.RemoteCallCapability;
 import top.focess.veto.agent.capability.RemoteCallCapabilityImpl;
 import top.focess.veto.agent.mcp.transport.McpJsonRpcClient;
 import top.focess.veto.agent.mcp.transport.McpTransport;
+import top.focess.veto.extension.contract.StandardExtensionPoints;
 import top.focess.veto.llm.config.LlmJacksonConfig;
 import top.focess.veto.llm.core.ToolCall;
+import top.focess.veto.plugin.api.PluginState;
+import top.focess.veto.plugin.runtime.PluginJson;
+import top.focess.veto.plugin.runtime.PluginManager;
+import top.focess.veto.plugin.runtime.PluginSchema;
 import top.focess.veto.sandbox.SandboxSubstrate;
 import top.focess.veto.util.Nullness;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Set;
 
 /**
  * The tool engine implementation — manages server registrations, schema discovery, and tool
@@ -61,13 +65,15 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
     private final @NonNull List<NativeTool<?>> nativeToolBeans;
     private final ApplicationContext applicationContext;
 
-    private final @NonNull Map<String, NativeToolDefinition> nativeDefs = new ConcurrentHashMap<>();
-    private final @NonNull Map<String, NativeTool<?>> nativeByName = new ConcurrentHashMap<>();
-    private final @NonNull Map<String, AgentToolDefinition> agentDefs = new ConcurrentHashMap<>();
-    private final @NonNull Map<String, AgentTool<?>> agentBeans = new LinkedHashMap<>();
-    private final @NonNull Map<String, RemoteToolDefinition> remoteDefs = new ConcurrentHashMap<>();
-    private final @NonNull Map<String, RemoteCallCapability> remoteCapabilities =
-            new ConcurrentHashMap<>();
+    // One volatile publication binds every definition and implementation in a complete snapshot.
+    private volatile @NonNull ToolCatalog catalog = ToolCatalog.empty();
+    private boolean initialized;
+    private top.focess.veto.plugin.runtime.SessionPlugins sessionPlugins;
+
+    @Autowired
+    public void attachSessionPlugins(top.focess.veto.plugin.runtime.@NonNull SessionPlugins value) {
+        sessionPlugins = value;
+    }
 
     @Autowired
     public ToolEngineImpl(
@@ -104,40 +110,43 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
      * Delayed until every singleton exists so agent tools with a dependency back to ToolEngine are
      * visible.
      */
-    void init() {
-        // Register native tools
+    synchronized void init() {
+        if (initialized) throw new IllegalStateException("Tool engine already initialized");
+        List<RegisteredTool> staged = new ArrayList<>();
         for (NativeTool<?> bean : nativeToolBeans) {
-            NativeToolDefinition def = ToolSchemaCompiler.compileNative(bean);
-            ToolContractValidator.validateHandler(bean, def);
-            ensureUniqueName(def.name());
-            nativeDefs.put(def.name(), def);
-            nativeByName.put(def.name(), bean);
-            log.info("ToolEngine: registered native tool '{}'.", def.name());
+            staged.add(new RegisteredTool.Native(ToolSchemaCompiler.compileNative(bean), bean));
         }
-
-        // Discover and register agent tools via Spring
         ApplicationContext context = applicationContext;
         if (context != null) {
             for (AgentTool<?> bean : context.getBeansOfType(AgentTool.class).values()) {
-                String toolName = bean.getName();
-                AgentToolDefinition def =
+                AgentToolDefinition definition =
                         AgentToolDefinition.from(
-                                toolName,
+                                bean.getName(),
                                 bean.getClass(),
                                 bean.getArgsClass(),
                                 bean.getCapability());
-                ToolContractValidator.validateHandler(bean, def);
-                ensureUniqueName(def.name());
-                agentDefs.put(def.name(), def);
-                agentBeans.put(toolName, bean);
-                log.info("ToolEngine: registered agent tool '{}'.", def.name());
+                staged.add(new RegisteredTool.Agent(definition, bean));
             }
         }
-
-        log.info(
-                "ToolEngine: initialized. {} native tool(s), {} agent tool(s).",
-                nativeDefs.size(),
-                agentDefs.size());
+        if (context != null) {
+            for (var manager : context.getBeansOfType(PluginManager.class).values()) {
+                for (var entry : manager.catalog().entries(StandardExtensionPoints.TOOLS)) {
+                    var plugin = manager.plugin(entry.source().namespace());
+                    var definition =
+                            new PluginToolDefinition(
+                                    manager.toolName(entry),
+                                    plugin.bindingId(),
+                                    plugin.identity().id(),
+                                    plugin.identity().version(),
+                                    entry.implementation());
+                    staged.add(new RegisteredTool.Plugin(definition, plugin));
+                }
+            }
+        }
+        // Validation and construction complete before readers can observe any new registration.
+        catalog = catalog.append(staged);
+        initialized = true;
+        log.info("ToolEngine: published {} tools.", staged.size());
     }
 
     /** Discover tools from a remote MCP server via JSON-RPC tools/list and register them. */
@@ -145,24 +154,19 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
             @NonNull McpTransport transport) {
         if (!(transport instanceof McpTransport.SseMcpTransport remote)) {
             throw new IllegalArgumentException(
-                    "This MCP transport has no enforced execution boundary and cannot be registered.");
+                    "This MCP transport has no enforced execution boundary and cannot be"
+                        + " registered.");
         }
         try {
             List<RemoteToolDefinition> tools = remoteClient.discoverTools(transport);
-            Set<String> discoveredNames = new HashSet<>();
-            for (RemoteToolDefinition t : tools) {
-                ToolContractValidator.validate(t);
-                if (!discoveredNames.add(t.name())) {
-                    throw new IllegalArgumentException(
-                            "Remote discovery returned duplicate tool name: " + t.name());
-                }
-                ensureUniqueName(t.name());
+            List<RegisteredTool> staged = new ArrayList<>();
+            for (RemoteToolDefinition definition : tools) {
+                staged.add(
+                        new RegisteredTool.Remote(
+                                definition,
+                                new RemoteCallCapabilityImpl(definition, remote, remoteClient)));
             }
-            for (RemoteToolDefinition t : tools) {
-                remoteCapabilities.put(
-                        t.name(), new RemoteCallCapabilityImpl(t, remote, remoteClient));
-                remoteDefs.put(t.name(), t);
-            }
+            catalog = catalog.append(staged);
             log.info("ToolEngine: discovered {} remote tool(s).", tools.size());
             return tools;
         } catch (IOException e) {
@@ -173,29 +177,18 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
 
     @Override
     public @NonNull List<ToolDefinition> getActiveTools(Set<String> whitelist) {
-        List<ToolDefinition> active = new ArrayList<>();
-        for (NativeToolDefinition def : nativeDefs.values()) {
-            if (whitelist == null || whitelist.contains(def.name())) {
-                active.add(def);
-            }
-        }
-        active.addAll(agentDefs.values()); // agent tools are always-on (included in every agent's
-        // manifest via AgentService.buildPersona)
-        for (RemoteToolDefinition def : remoteDefs.values()) {
-            if (whitelist == null || whitelist.contains(def.name())) {
-                active.add(def);
-            }
-        }
-        return active;
+        return catalog.active(whitelist);
     }
 
     @Override
     public ToolDefinition resolveDefinition(@NonNull String toolName) {
-        ToolDefinition def = nativeDefs.get(toolName);
-        if (def != null) return def;
-        def = agentDefs.get(toolName);
-        if (def != null) return def;
-        return remoteDefs.get(toolName);
+        RegisteredTool registration = catalog.resolve(toolName);
+        return registration == null ? null : registration.definition();
+    }
+
+    /** Snapshot sequence for diagnostics and registration consistency tests. */
+    long catalogGeneration() {
+        return catalog.generation();
     }
 
     @Override
@@ -203,15 +196,21 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
         String callId = call.callId();
         ToolCallContextHolder.setCurrentCallId(callId);
         try {
-            if (def != resolveDefinition(call.toolName())) {
+            RegisteredTool registration = catalog.resolve(call.toolName());
+            if (registration == null || def != registration.definition()) {
                 throw new SecurityException(
                         "Tool definition does not match the registered tool: " + call.toolName());
             }
             ToolResult result =
-                    switch (def) {
-                        case NativeToolDefinition nativeDef -> executeNative(call, nativeDef);
-                        case AgentToolDefinition agentDef -> executeAgent(call, agentDef);
-                        case RemoteToolDefinition remoteDef -> executeRemote(call, remoteDef);
+                    switch (registration) {
+                        case RegisteredTool.Plugin plugin -> executePlugin(call, plugin);
+                        case RegisteredTool.Native nativeTool ->
+                                executeNative(call, nativeTool.definition(), nativeTool.handler());
+                        case RegisteredTool.Agent agentTool ->
+                                executeAgent(call, agentTool.definition(), agentTool.handler());
+                        case RegisteredTool.Remote remoteTool ->
+                                executeRemote(
+                                        call, remoteTool.definition(), remoteTool.capability());
                     };
             return boundResult(result);
         } catch (ToolExecutionException e) {
@@ -254,31 +253,66 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
 
     // ── Implementation-detail API (not on the shared interface) ──────────────
 
-    private void ensureUniqueName(@NonNull String name) {
-        if (nativeDefs.containsKey(name)
-                || agentDefs.containsKey(name)
-                || remoteDefs.containsKey(name)) {
-            throw new IllegalArgumentException("Duplicate tool name: " + name);
-        }
-    }
-
     // ── Flavour dispatch ───────────────────────────────────────────────────────
 
-    private @NonNull ToolResult executeNative(
-            @NonNull ToolCall call, @NonNull NativeToolDefinition def) throws Exception {
-        JsonNode jsonArgs = mapper.valueToTree(call.args());
-        NativeToolArgumentValidator.validate(def.name(), jsonArgs, def.argsClass());
-        requirePermit(call, def);
-        NativeTool<?> bean = nativeByName.get(def.name());
-        if (bean == null) {
+    private @NonNull ToolResult executePlugin(
+            @NonNull ToolCall call, RegisteredTool.@NonNull Plugin registration) {
+        requirePermit(call, registration.definition());
+        var selection = sessionPlugins;
+        if (selection != null) {
+            var context = ToolCallContextHolder.get();
+            var session = context == null ? null : context.sessionId();
+            if (session == null
+                    || !selection.includes(
+                            session.toString(), registration.definition().pluginId()))
+                throw new SecurityException("Plugin is not selected for this session");
+        }
+        try {
+            var descriptor = registration.definition().descriptor();
+            JsonNode arguments = mapper.valueToTree(call.args());
+            PluginSchema.validate(registration.definition().inputSchema(), arguments);
+            var value =
+                    registration
+                            .runtime()
+                            .execute(
+                                    () ->
+                                            descriptor
+                                                    .handler()
+                                                    .invoke(
+                                                            PluginJson.object(arguments),
+                                                            () ->
+                                                                    Thread.currentThread()
+                                                                                    .isInterrupted()
+                                                                            || registration
+                                                                                            .runtime()
+                                                                                            .state()
+                                                                                    != PluginState
+                                                                                            .ACTIVE));
+            JsonNode result = PluginJson.toNode(value);
+            PluginSchema.validate(PluginJson.toNode(descriptor.outputSchema()), result);
             return new ToolResult(
                     call.toolName(),
                     call.callId(),
+                    ToolResultStatus.SUCCESS,
+                    ToolResultFormat.JSON,
+                    mapper.writeValueAsString(result),
+                    null);
+        } catch (Exception e) {
+            // Worker messages and argument values must not enter logs or model-visible errors.
+            throw new ToolExecutionException(
                     ToolResultStatus.FAILURE,
-                    ToolResultFormat.UNKNOWN,
-                    "No bean for native tool: " + def.name(),
-                    ToolErrorCode.GENERIC.TOOL_FAILURE);
+                    ToolResultFormat.PLAINTEXT,
+                    ToolErrorCode.GENERIC.PLUGIN_CALL_FAILED,
+                    "Plugin call failed or its contract was not satisfied.");
         }
+    }
+
+    private @NonNull ToolResult executeNative(
+            @NonNull ToolCall call, @NonNull NativeToolDefinition def, @NonNull NativeTool<?> bean)
+            throws Exception {
+        JsonNode jsonArgs = mapper.valueToTree(call.args());
+        NativeToolArgumentValidator.validate(def.name(), jsonArgs, def.argsClass());
+        requirePermit(call, def);
         String result = executeLocal(bean, jsonArgs);
         return successfulResult(call, def, result);
     }
@@ -290,17 +324,7 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
     }
 
     private @NonNull ToolResult executeAgent(
-            @NonNull ToolCall call, @NonNull AgentToolDefinition def) {
-        AgentTool<?> bean = agentBeans.get(def.name());
-        if (bean == null) {
-            return new ToolResult(
-                    call.toolName(),
-                    call.callId(),
-                    ToolResultStatus.FAILURE,
-                    ToolResultFormat.UNKNOWN,
-                    "Unknown agent tool: " + def.name(),
-                    ToolErrorCode.GENERIC.TOOL_FAILURE);
-        }
+            @NonNull ToolCall call, @NonNull AgentToolDefinition def, @NonNull AgentTool<?> bean) {
         try {
             JsonNode jsonArgs = mapper.valueToTree(call.args());
             NativeToolArgumentValidator.validate(def.name(), jsonArgs, def.argsClass());
@@ -322,13 +346,11 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
 
     /** External tool execution over the transport recorded during MCP discovery. */
     private @NonNull ToolResult executeRemote(
-            @NonNull ToolCall call, @NonNull RemoteToolDefinition def) throws IOException {
+            @NonNull ToolCall call,
+            @NonNull RemoteToolDefinition def,
+            @NonNull RemoteCallCapability capability)
+            throws IOException {
         requirePermit(call, def);
-        RemoteCallCapability capability = remoteCapabilities.get(def.name());
-        if (capability == null) {
-            throw new SecurityException(
-                    "No restricted execution capability is registered for this remote tool.");
-        }
         JsonNode result = capability.call(call);
         boolean success = !result.path("isError").asBoolean(false);
         String content = remoteContent(result);
@@ -346,11 +368,13 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
         ToolCallContext context = ToolCallContextHolder.get();
         if (context == null) {
             throw new SecurityException(
-                    "This tool call is not authorized for the current session; submit a fresh call.");
+                    "This tool call is not authorized for the current session; submit a fresh"
+                        + " call.");
         }
         if (!context.executionPermit().authorizes(call, definition, context)) {
             throw new SecurityException(
-                    "This tool call is not authorized for the current session; submit a fresh call.");
+                    "This tool call is not authorized for the current session; submit a fresh"
+                        + " call.");
         }
         if (definition.capability() == ToolCapability.AGENT_CONTROL) {
             throw new SecurityException("This tool is unavailable; use another available tool.");

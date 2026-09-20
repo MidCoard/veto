@@ -15,6 +15,8 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import top.focess.veto.agent.tool.ToolDocs;
+import top.focess.veto.secret.api.CredentialWriter;
+import top.focess.veto.secret.references.SecretCandidateStore;
 
 /**
  * Verifies {@link KeysteadVault} against the real keystead {@code OneFileVaultStore} crypto: signup
@@ -80,6 +82,7 @@ class KeysteadVaultTest {
             @TempDir @NonNull Path tempDir) {
         var vault = newVault(tempDir);
         var store = new SecretCandidateStore();
+        var writer = credentialWriter(vault);
         var scope = new SecretCandidateStore.Scope("alice", "session", "agent");
         try {
             vault.signup("alice", "p@ssw0rd!");
@@ -88,9 +91,9 @@ class KeysteadVaultTest {
                             .candidates()
                             .getFirst()
                             .reference();
-            var receipt = store.importOnce(scope, reference, "github", "Repository", vault);
+            var receipt = store.importOnce(scope, reference, "github", "Repository", writer);
             assertEquals(
-                    receipt, store.importOnce(scope, reference, "github", "Repository", vault));
+                    receipt, store.importOnce(scope, reference, "github", "Repository", writer));
             assertEquals(1, vault.listTitles().size());
             assertEquals(
                     Optional.of("synthetic-token"), vault.readNoteBody("veto.import." + reference));
@@ -103,11 +106,11 @@ class KeysteadVaultTest {
             var other = new SecretCandidateStore.Scope("alice", "session", "mate");
             assertThrows(
                     IllegalStateException.class,
-                    () -> store.importOnce(other, reference, "github", "Repository", vault));
+                    () -> store.importOnce(other, reference, "github", "Repository", writer));
             store.closeOwner("alice");
             assertThrows(
                     IllegalStateException.class,
-                    () -> store.importOnce(scope, reference, "github", "Repository", vault));
+                    () -> store.importOnce(scope, reference, "github", "Repository", writer));
             assertEquals(1, vault.listTitles().size());
         } finally {
             vault.shutdown();
@@ -181,6 +184,25 @@ class KeysteadVaultTest {
         CredentialVaultConfiguration config = new CredentialVaultConfiguration();
         config.setVaultHome(tempDir.toString());
         return new KeysteadVault(config);
+    }
+
+    private static @NonNull CredentialWriter credentialWriter(@NonNull KeysteadVault vault) {
+        return new CredentialWriter() {
+            @Override
+            public boolean isUnlocked(@NonNull String owner) {
+                return vault.isUnlocked(owner);
+            }
+
+            @Override
+            public @NonNull String createImportedCredential(
+                    @NonNull String owner,
+                    @NonNull String reference,
+                    @NonNull String service,
+                    @NonNull String label,
+                    @NonNull String value) {
+                return vault.createImportedCredential(owner, reference, service, label, value);
+            }
+        };
     }
 
     @Test

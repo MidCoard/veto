@@ -29,15 +29,21 @@ import top.focess.veto.agent.web.*;
 import top.focess.veto.agent.workspace.*;
 import top.focess.veto.llm.core.*;
 import top.focess.veto.sandbox.*;
+import top.focess.veto.secret.references.SecretCandidateStore;
 import top.focess.veto.vault.*;
 
 class CredentialJourneyTest {
     @ParameterizedTest
     @CsvSource({"false,true", "true,true", "false,false", "true,false"})
     void fileImportAndAuthenticatedReadKeepSecretsOutOfModelAndHistory(
-            boolean usePlan, boolean approveUse, @TempDir @NonNull Path root) throws Exception {
+            boolean usePlan, boolean approveUse, @TempDir @NonNull Path directory)
+            throws Exception {
+        // Use the same physical workspace path as tool resolution, including on macOS where
+        // the system temporary directory is reached through a symlink.
+        Path root = directory.toRealPath();
         var mapper = new ObjectMapper();
         String token = "ghp_" + "A1".repeat(18);
+        String pluginToken = "ghp_" + "B2".repeat(18);
         Path file = Files.writeString(root.resolve("config.txt"), "token=" + token);
         var configuration = new CredentialVaultConfiguration();
         configuration.setVaultHome(root.resolve("vault").toString());
@@ -110,6 +116,9 @@ class CredentialJourneyTest {
                                     .map(m -> m.content())
                                     .reduce("", (left, right) -> left + "\n" + right);
                     assertFalse(observed.contains(token));
+                    assertFalse(
+                            observed.contains(pluginToken),
+                            "A plugin's final observation must be protected before the model sees it");
                     int step = calls.getAndIncrement();
                     if (step == 0) {
                         if (!usePlan)
@@ -181,6 +190,38 @@ class CredentialJourneyTest {
         var sandbox = new SandboxManager(TestSandboxFactory.uncontainedSubprocesses());
         var hitl = new HitlRegistry();
         var approvals = new ArrayList<String>();
+        AtomicInteger protectedFileObservations = new AtomicInteger();
+        AtomicInteger protectedNetworkObservations = new AtomicInteger();
+        var observationPlugin =
+                new LoopInterceptor() {
+                    @Override
+                    public boolean preAction(@NonNull String agentId, @NonNull ToolCall call) {
+                        return true;
+                    }
+
+                    @Override
+                    public @NonNull ToolResult postAction(
+                            @NonNull String agentId,
+                            @NonNull ToolCall call,
+                            @NonNull ToolResult result) {
+                        return result;
+                    }
+
+                    @Override
+                    public @NonNull String preObservation(
+                            @NonNull String agentId, @NonNull String rawObservation) {
+                        if (rawObservation.contains("[SECRET_REF:")) {
+                            protectedFileObservations.incrementAndGet();
+                        } else if (rawObservation.contains("\"full_name\"")) {
+                            protectedNetworkObservations.incrementAndGet();
+                        } else {
+                            return rawObservation;
+                        }
+                        // Model-visible output must include the plugin's ordinary text but never
+                        // the secret it introduces, even though the file's registered ref survives.
+                        return rawObservation + "\nPlugin diagnostic: token=" + pluginToken;
+                    }
+                };
         var service =
                 new AgentService(
                         engine,
@@ -189,7 +230,7 @@ class CredentialJourneyTest {
                         compiler,
                         caller,
                         mapper,
-                        List.of(),
+                        List.of(observationPlugin),
                         new RoleToolFilter(engine),
                         "REAL",
                         50,
@@ -277,6 +318,20 @@ class CredentialJourneyTest {
             assertTrue(
                     agent.history().stream()
                             .noneMatch(turn -> turn.payload().toString().contains(token)));
+            assertTrue(
+                    agent.history().stream()
+                            .noneMatch(turn -> turn.payload().toString().contains(pluginToken)),
+                    "Plugin secrets must be removed before the tool result enters history");
+            assertTrue(
+                    agent.history().stream()
+                            .anyMatch(
+                                    turn ->
+                                            turn.payload()
+                                                    .toString()
+                                                    .contains("Plugin diagnostic:")),
+                    "Protect the plugin's result instead of dropping the plugin's output");
+            assertEquals(1, protectedFileObservations.get());
+            assertEquals(approveUse ? 1 : 0, protectedNetworkObservations.get());
             assertEquals("token=" + token, Files.readString(file));
         } finally {
             service.remove(session);

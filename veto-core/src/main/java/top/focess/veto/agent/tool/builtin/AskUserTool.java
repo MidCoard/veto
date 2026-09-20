@@ -1,7 +1,6 @@
 package top.focess.veto.agent.tool.builtin;
 
 import java.util.HashSet;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -163,9 +162,7 @@ public final class AskUserTool implements UserInteractionTool<AskUserTool.Args> 
                     ToolErrorCode.LIFECYCLE.USER_CANCELLED,
                     "Cancelled: the user cancelled the question batch.");
         }
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put("answers", answer.answers());
-        return ToolJson.object(result);
+        return ToolJson.object(new Result(answer.answers()));
     }
 
     private static void validate(@NonNull List<@NonNull Question> questions) {
@@ -244,4 +241,6 @@ public final class AskUserTool implements UserInteractionTool<AskUserTool.Args> 
     private static int length(@NonNull String value) {
         return value.codePointCount(0, value.length());
     }
+
+    public record Result(@NonNull Map<String, String> answers) {}
 }

@@ -3,17 +3,18 @@ package top.focess.veto.agent.intercept;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import java.util.Map;
-import java.util.UUID;
+
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
+
 import top.focess.veto.agent.drift.ReadHistory;
 import top.focess.veto.agent.tool.AgentToolDefinition;
 import top.focess.veto.agent.tool.NativeToolDefinition;
 import top.focess.veto.agent.tool.ParamCategory;
+import top.focess.veto.agent.tool.PluginToolDefinition;
 import top.focess.veto.agent.tool.RemoteToolDefinition;
 import top.focess.veto.agent.tool.ToolCallContextHolder;
 import top.focess.veto.agent.tool.ToolCapability;
@@ -22,8 +23,12 @@ import top.focess.veto.agent.tool.ToolResult;
 import top.focess.veto.agent.web.FinishReadTool;
 import top.focess.veto.agent.web.WebFetchTool;
 import top.focess.veto.llm.core.ToolCall;
+import top.focess.veto.secret.detection.SecretMasker;
+import top.focess.veto.secret.references.SecretCandidateStore;
 import top.focess.veto.util.Nullness;
-import top.focess.veto.vault.SecretCandidateStore;
+
+import java.util.Map;
+import java.util.UUID;
 
 /**
  * Deterministic ingress defense. Frames every observation as untrusted <b>data</b> with an explicit
@@ -219,6 +224,22 @@ public class IngressDefense {
         return RefusalObservation.neutralize(maskedText);
     }
 
+    public @NonNull String frameProtectedFile(
+            @NonNull ToolCall call,
+            @NonNull ToolDefinition def,
+            @NonNull ToolResult result,
+            @NonNull String protectedText) {
+        if (semanticMasker != null) {
+            var assessed =
+                    semanticMasker.maskWithSignal(
+                            result.content(), call, def, ignored -> protectedText);
+            var highRisk = assessed.highRisk();
+            if (highRisk != null) reportHighRisk(highRisk);
+            return RefusalObservation.neutralize(assessed.masked());
+        }
+        return RefusalObservation.neutralize(protectedText);
+    }
+
     private void invalidateWritePath(
             @NonNull ToolCall call, @NonNull ToolDefinition def, @NonNull ReadHistory readHistory) {
         Map<@NonNull String, @NonNull ParamCategory> hints =
@@ -226,6 +247,7 @@ public class IngressDefense {
                     case NativeToolDefinition n -> n.paramHints();
                     case AgentToolDefinition a -> a.paramHints();
                     case RemoteToolDefinition r -> Map.of();
+                    case PluginToolDefinition p -> Map.of();
                 };
         for (var entry : hints.entrySet()) {
             if (entry.getValue() == ParamCategory.FILESYSTEM_PATH) {
