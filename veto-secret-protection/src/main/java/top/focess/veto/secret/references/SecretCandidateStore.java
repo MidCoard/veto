@@ -1,10 +1,5 @@
 package top.focess.veto.secret.references;
 
-import org.jspecify.annotations.NonNull;
-
-import top.focess.veto.secret.api.CredentialWriter;
-import top.focess.veto.secret.detection.SecretMasker;
-
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Duration;
@@ -19,6 +14,9 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Pattern;
+import org.jspecify.annotations.NonNull;
+import top.focess.veto.secret.api.CredentialWriter;
+import top.focess.veto.secret.detection.SecretMasker;
 
 /** Bounded transient captures. No raw-value lookup is exposed to tools or model callers. */
 public final class SecretCandidateStore {

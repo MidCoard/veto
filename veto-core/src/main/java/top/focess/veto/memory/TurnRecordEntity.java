@@ -1,21 +1,17 @@
 package top.focess.veto.memory;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Index;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
-
-import org.jspecify.annotations.NonNull;
-
-import top.focess.veto.agent.TurnRecord;
-
 import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
+import org.jspecify.annotations.NonNull;
+import top.focess.veto.agent.TurnRecord;
 
 /**
  * JPA persistence for a raw {@link TurnRecord} — the durable per-turn audit/replay log (distinct

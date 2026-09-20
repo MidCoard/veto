@@ -69,7 +69,10 @@ public final class ManagedPlugin implements AutoCloseable {
                                             ExtensionFailure.Code.INVALID_CONFIGURATION);
                                 var contributions =
                                         plugin.initialize(
-                                                new PluginContext(context.identity(), this::fail, this::state),
+                                                new PluginContext(
+                                                        context.identity(),
+                                                        this::fail,
+                                                        this::state),
                                                 configuration);
                                 state = PluginState.INITIALIZED;
                                 return contributions;

@@ -6,21 +6,18 @@ import com.fasterxml.jackson.core.StreamReadFeature;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.LinkOption;
+import java.nio.file.Path;
+import java.util.List;
 import org.jspecify.annotations.NonNull;
-
 import top.focess.veto.extension.ExtensionContribution;
 import top.focess.veto.extension.contract.JsonValue;
 import top.focess.veto.plugin.api.AbstractVetoPlugin;
 import top.focess.veto.plugin.api.PluginContext;
 import top.focess.veto.plugin.api.PluginContributions;
 import top.focess.veto.plugin.api.PluginIdentity;
-
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.LinkOption;
-import java.nio.file.Path;
-import java.util.List;
 
 /** Operator-trusted local code, not a sandbox. Only tools are supported in protocol v1. */
 public final class ScriptPlugin extends AbstractVetoPlugin {

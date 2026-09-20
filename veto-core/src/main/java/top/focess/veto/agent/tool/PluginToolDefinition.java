@@ -1,14 +1,11 @@
 package top.focess.veto.agent.tool;
 
 import com.fasterxml.jackson.databind.JsonNode;
-
+import java.util.List;
 import org.jspecify.annotations.NonNull;
-
 import top.focess.veto.agent.screening.Danger;
 import top.focess.veto.extension.contract.ToolContribution;
 import top.focess.veto.plugin.runtime.PluginJson;
-
-import java.util.List;
 
 /**
  * Operator-installed plugin code has unknown effects and receives ordinary external-tool scrutiny.

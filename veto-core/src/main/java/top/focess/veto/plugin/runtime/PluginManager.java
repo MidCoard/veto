@@ -1,9 +1,16 @@
 package top.focess.veto.plugin.runtime;
 
+import java.io.IOException;
+import java.nio.file.Path;
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import org.jspecify.annotations.NonNull;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
-
 import top.focess.veto.extension.ExtensionCatalog;
 import top.focess.veto.extension.ExtensionEntry;
 import top.focess.veto.extension.ExtensionPoint;
@@ -14,15 +21,6 @@ import top.focess.veto.extension.contract.ToolContribution;
 import top.focess.veto.plugin.api.AbstractVetoPlugin;
 import top.focess.veto.plugin.api.PluginContext;
 import top.focess.veto.plugin.api.PluginContributions;
-
-import java.io.IOException;
-import java.nio.file.Path;
-import java.time.Duration;
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
 /**
  * Startup-only operator configuration. All packages must start or the application fails startup.

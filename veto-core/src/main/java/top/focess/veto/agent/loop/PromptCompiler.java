@@ -3,31 +3,6 @@ package top.focess.veto.agent.loop;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-
-import org.jspecify.annotations.NonNull;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.stereotype.Component;
-
-import top.focess.veto.agent.HistoryProjection;
-import top.focess.veto.agent.TurnRecord;
-import top.focess.veto.agent.TurnType;
-import top.focess.veto.agent.identity.AgentPersona;
-import top.focess.veto.agent.identity.SystemPromptResolver;
-import top.focess.veto.agent.intercept.ApprovalReceipt;
-import top.focess.veto.agent.screening.DeployerPolicy;
-import top.focess.veto.agent.tool.ResponseSubmission;
-import top.focess.veto.agent.tool.ToolResultFormat;
-import top.focess.veto.agent.tool.ToolResultStatus;
-import top.focess.veto.agent.translation.CapabilityTranslator;
-import top.focess.veto.agent.workspace.Workspace;
-import top.focess.veto.llm.core.ChatMessage;
-import top.focess.veto.llm.core.NativeToolState;
-import top.focess.veto.llm.core.ToolDefinition;
-import top.focess.veto.llm.core.ToolResultPresentationMode;
-import top.focess.veto.llm.core.ToolResultPresenter;
-import top.focess.veto.llm.core.VetoRequest;
-
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -46,8 +21,7 @@ import top.focess.veto.agent.TurnRecord;
 import top.focess.veto.agent.TurnType;
 import top.focess.veto.agent.identity.AgentPersona;
 import top.focess.veto.agent.identity.SystemPromptResolver;
-import top.focess.veto.agent.intercept.InterceptResolution;
-import top.focess.veto.agent.intercept.VetoOption;
+import top.focess.veto.agent.intercept.ApprovalReceipt;
 import top.focess.veto.agent.screening.DeployerPolicy;
 import top.focess.veto.agent.tool.ToolErrorCode;
 import top.focess.veto.agent.tool.ToolResultFormat;
@@ -565,6 +539,18 @@ public class PromptCompiler {
                 pendingThought = null;
                 pendingReasoning = null;
                 pendingTurns = List.of();
+            }
+            if (turn.type() == TurnType.AGENT_INIT) {
+                pendingTurns = List.of();
+                var systemMessage =
+                        restoreSource(
+                                turn, ChatMessage.system(str(turn.payload(), "system_prompt")));
+                // A context update is appended to history but must lead the compiled view;
+                // an ordinary init stays in history order.
+                if (Boolean.TRUE.equals(turn.payload().get("context_update")))
+                    compiled.add(0, systemMessage);
+                else compiled.add(systemMessage);
+                continue;
             }
             if (turn.type() == TurnType.REWIND) {
                 String recalledContent = str(turn.payload(), "content");

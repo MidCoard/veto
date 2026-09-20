@@ -1,8 +1,7 @@
 package top.focess.veto.plugin.api;
 
-import org.jspecify.annotations.NonNull;
-
 import java.util.function.Supplier;
+import org.jspecify.annotations.NonNull;
 
 /** Host metadata, a live read-only lifecycle view, and a failure signal. */
 public record PluginContext(

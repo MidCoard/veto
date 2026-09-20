@@ -223,7 +223,6 @@ class CredentialImportIntegrationTest {
                         owner,
                         session,
                         ToolResultPresentationMode.BASIC,
-                        false,
                         permit));
         ToolCallContextHolder.setCurrentCallId(call.callId());
     }

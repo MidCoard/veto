@@ -2,10 +2,8 @@ package top.focess.veto.agent;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-
-import org.jspecify.annotations.*;
-
 import java.util.*;
+import org.jspecify.annotations.*;
 
 /** Accounting is record metadata, never model message content. */
 public final class RecordUsage {

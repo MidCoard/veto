@@ -1,9 +1,8 @@
 package top.focess.veto.extension.contract;
 
-import org.jspecify.annotations.NonNull;
-
 import java.util.List;
 import java.util.Map;
+import org.jspecify.annotations.NonNull;
 
 /** Host-neutral, declarative UI primitives. No plugin-specific presentation types. */
 public record PluginView(@NonNull List<Node> content, int resetAfterMillis, boolean resetOnHidden) {

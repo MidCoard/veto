@@ -1,7 +1,7 @@
 package top.focess.veto.memory;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-
+import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -9,13 +9,10 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
-
 import top.focess.veto.agent.TurnRecord;
 import top.focess.veto.agent.TurnType;
 import top.focess.veto.bus.DeltaBroker;
 import top.focess.veto.bus.DeltaFrame;
-
-import java.util.UUID;
 
 /**
  * The raw-turn write-through log. Called from the {@code AgentRunner} after each turn is appended;

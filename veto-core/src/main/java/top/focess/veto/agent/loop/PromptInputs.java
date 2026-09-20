@@ -176,6 +176,7 @@ public final class PromptInputs {
                                                 .toList(),
                                         tool.documentation()))
                 .toList();
+    }
 
     /**
      * Flattens a tool's effective input schema into per-argument rows for the catalogue. The schema

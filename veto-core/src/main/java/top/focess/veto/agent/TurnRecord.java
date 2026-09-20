@@ -1,5 +1,10 @@
 package top.focess.veto.agent;
 
+import java.time.Instant;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import org.checkerframework.checker.nullness.qual.Nullable;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.tool.ToolErrorCode;
 import top.focess.veto.agent.tool.ToolResult;
@@ -7,11 +12,6 @@ import top.focess.veto.agent.tool.ToolResultFormat;
 import top.focess.veto.agent.tool.ToolResultStatus;
 import top.focess.veto.llm.core.ToolCall;
 import top.focess.veto.llm.core.ToolResultPresentationMode;
-
-import java.time.Instant;
-import java.util.Collections;
-import java.util.LinkedHashMap;
-import java.util.Map;
 
 /**
  * One durable event in the agent's turn history — the append-only raw history the {@code
@@ -26,15 +26,20 @@ public record TurnRecord(
         int turnNumber,
         @NonNull TurnType type,
         @NonNull Map<String, Object> payload,
-        Instant timestamp,
+        @Nullable Instant timestamp,
         java.util.@NonNull List<UsageMeasurement> llmUsage) {
 
     public TurnRecord(
             int turnNumber,
             @NonNull TurnType type,
             @NonNull Map<String, Object> payload,
-            Instant timestamp) {
-        this(turnNumber, type, payload, timestamp, RecordUsage.decode(payload.get("llmUsage")));
+            @Nullable Instant timestamp) {
+        this(
+                turnNumber,
+                type,
+                payload,
+                timestamp == null ? Instant.now() : timestamp,
+                RecordUsage.decode(payload.get("llmUsage")));
     }
 
     public TurnRecord {
@@ -70,7 +75,7 @@ public record TurnRecord(
      * otherwise immutable.
      */
     public @NonNull TurnRecord withTurnNumber(int turnNumber) {
-        return new TurnRecord(turnNumber, type, payload, timestamp, llmUsage);
+        return new TurnRecord(turnNumber, type, payload, timestamp(), llmUsage);
     }
 
     /** A user prompt ({@code payload.content}). */

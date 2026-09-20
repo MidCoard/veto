@@ -1,12 +1,10 @@
 package top.focess.veto.agent;
 
 import com.fasterxml.jackson.databind.node.NullNode;
-
-import org.jspecify.annotations.NonNull;
-
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import org.jspecify.annotations.NonNull;
 
 /** Reads only actual measurements; historical estimates are not measurements. */
 public final class RecordTokenCounter {

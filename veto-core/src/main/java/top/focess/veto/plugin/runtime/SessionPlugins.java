@@ -1,16 +1,14 @@
 package top.focess.veto.plugin.runtime;
 
+import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Service;
-
 import top.focess.veto.agent.tool.PluginToolDefinition;
 import top.focess.veto.agent.tool.ToolDefinition;
 import top.focess.veto.model.SessionRepository;
 import top.focess.veto.session.SessionHistoryLoader;
-
-import java.util.List;
-import java.util.Set;
-import java.util.stream.Collectors;
 
 /**
  * Immutable session selection. Installed packages are a catalog, never a global availability

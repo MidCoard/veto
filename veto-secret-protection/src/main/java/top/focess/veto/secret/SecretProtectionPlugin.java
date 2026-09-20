@@ -1,16 +1,14 @@
 package top.focess.veto.secret;
 
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import org.jspecify.annotations.NonNull;
-
 import top.focess.veto.extension.*;
 import top.focess.veto.extension.contract.*;
 import top.focess.veto.extension.contract.JsonValue;
 import top.focess.veto.plugin.api.*;
 import top.focess.veto.secret.references.SecretCandidateStore;
-
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
 
 /** Built-in provider using the same lifecycle and registration contract as installed plugins. */
 public final class SecretProtectionPlugin extends AbstractVetoPlugin {

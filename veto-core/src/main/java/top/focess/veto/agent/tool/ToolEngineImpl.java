@@ -4,7 +4,10 @@ import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Set;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -13,7 +16,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.ApplicationContext;
 import org.springframework.stereotype.Service;
-
 import top.focess.veto.agent.capability.RemoteCallCapability;
 import top.focess.veto.agent.capability.RemoteCallCapabilityImpl;
 import top.focess.veto.agent.mcp.transport.McpJsonRpcClient;
@@ -27,11 +29,6 @@ import top.focess.veto.plugin.runtime.PluginManager;
 import top.focess.veto.plugin.runtime.PluginSchema;
 import top.focess.veto.sandbox.SandboxSubstrate;
 import top.focess.veto.util.Nullness;
-
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Set;
 
 /**
  * The tool engine implementation — manages server registrations, schema discovery, and tool
@@ -155,7 +152,7 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
         if (!(transport instanceof McpTransport.SseMcpTransport remote)) {
             throw new IllegalArgumentException(
                     "This MCP transport has no enforced execution boundary and cannot be"
-                        + " registered.");
+                            + " registered.");
         }
         try {
             List<RemoteToolDefinition> tools = remoteClient.discoverTools(transport);
@@ -369,12 +366,12 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
         if (context == null) {
             throw new SecurityException(
                     "This tool call is not authorized for the current session; submit a fresh"
-                        + " call.");
+                            + " call.");
         }
         if (!context.executionPermit().authorizes(call, definition, context)) {
             throw new SecurityException(
                     "This tool call is not authorized for the current session; submit a fresh"
-                        + " call.");
+                            + " call.");
         }
         if (definition.capability() == ToolCapability.AGENT_CONTROL) {
             throw new SecurityException("This tool is unavailable; use another available tool.");

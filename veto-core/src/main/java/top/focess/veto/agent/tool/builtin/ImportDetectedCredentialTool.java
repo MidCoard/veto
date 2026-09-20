@@ -1,7 +1,6 @@
 package top.focess.veto.agent.tool.builtin;
 
 import org.jspecify.annotations.NonNull;
-import org.springframework.stereotype.Component;
 import top.focess.veto.agent.capability.CredentialImportCapability;
 import top.focess.veto.agent.screening.Danger;
 import top.focess.veto.agent.tool.CredentialImportTool;

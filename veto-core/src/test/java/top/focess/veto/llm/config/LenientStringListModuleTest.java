@@ -30,10 +30,12 @@ class LenientStringListModuleTest {
     @Test
     void nestedArrayHonorsRootTrailingTokenValidation() throws Exception {
         var mapper = llmMapper().enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS);
-        String json = "{\"commands\":[{\"executable\":\"gradle\",\"args\":[\"build\"]}],\"cwd\":\"/abs\"}";
+        String json =
+                "{\"commands\":[{\"executable\":\"gradle\",\"args\":[\"build\"]}],\"cwd\":\"/abs\"}";
         var value = mapper.readValue(json, ToolDocs.nonNullClass(Args.class));
         assertEquals(List.of("build"), value.commands().getFirst().args());
-        assertThrows(com.fasterxml.jackson.core.JsonProcessingException.class,
+        assertThrows(
+                com.fasterxml.jackson.core.JsonProcessingException.class,
                 () -> mapper.readValue(json + " {}", ToolDocs.nonNullClass(Args.class)));
     }
 

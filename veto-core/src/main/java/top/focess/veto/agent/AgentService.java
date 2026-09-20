@@ -1,7 +1,16 @@
 package top.focess.veto.agent;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeoutException;
+import java.util.function.Consumer;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -11,7 +20,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.context.i18n.LocaleContextHolder;
 import org.springframework.stereotype.Service;
-
 import top.focess.veto.agent.drift.ReadHistory;
 import top.focess.veto.agent.identity.AgentPersona;
 import top.focess.veto.agent.identity.Role;
@@ -52,17 +60,6 @@ import top.focess.veto.secret.references.SecretCandidateStore;
 import top.focess.veto.util.Nullness;
 import top.focess.veto.vault.CredentialVaultConfiguration;
 import top.focess.veto.vault.KeysteadVault;
-
-import java.nio.charset.StandardCharsets;
-import java.time.Duration;
-import java.util.Collections;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.TimeoutException;
-import java.util.function.Consumer;
 
 /**
  * The shared agent service ("Multi-Client Unification"). Both the ZMQ terminal ({@code

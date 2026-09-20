@@ -2,15 +2,12 @@ package top.focess.veto.session;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
-
-import org.jspecify.annotations.NonNull;
-
-import top.focess.veto.agent.RecordTokenCounter;
-
 import java.time.Instant;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import org.jspecify.annotations.NonNull;
+import top.focess.veto.agent.RecordTokenCounter;
 
 /** One append-only event annotated with its effective-history state for the records UI. */
 public record SessionRecord(

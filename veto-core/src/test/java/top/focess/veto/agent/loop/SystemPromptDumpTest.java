@@ -447,6 +447,15 @@ class SystemPromptDumpTest {
             int start = catalog.indexOf(heading);
             int end = catalog.indexOf("\n### `", start + heading.length());
             String entry = end < 0 ? catalog.substring(start) : catalog.substring(start, end);
+            if (tool.name().startsWith("plugin_")) {
+                // Plugin tools are third-party contributions: the catalogue renders their
+                // description, arguments, and result formats; Veto-owned documentation sections
+                // exist only for Veto-owned tools.
+                assertTrue(
+                        entry.contains("#### Arguments") && entry.contains("#### Result formats"),
+                        tool.name() + " must render its plugin descriptor contract");
+                continue;
+            }
             assertEquals(
                     List.of(
                             "Arguments",

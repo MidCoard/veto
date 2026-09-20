@@ -142,7 +142,6 @@ class ScriptPluginBootTest {
                         "test-owner",
                         sessionId,
                         ToolResultPresentationMode.BASIC,
-                        false,
                         permit));
         try {
             var result = engine.execute(call, definition);

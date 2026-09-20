@@ -1,12 +1,10 @@
 package top.focess.veto.extension.contract;
 
+import java.util.HashSet;
 import org.jspecify.annotations.NonNull;
-
 import top.focess.veto.extension.ExtensionCatalog;
 import top.focess.veto.extension.ExtensionId;
 import top.focess.veto.extension.ExtensionPoint;
-
-import java.util.HashSet;
 
 /** Initial application contracts. The catalog itself knows none of these types. */
 public final class StandardExtensionPoints {

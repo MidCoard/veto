@@ -1,10 +1,18 @@
 package top.focess.veto.session;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.Instant;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ThreadLocalRandom;
 import org.jspecify.annotations.NonNull;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
 import top.focess.veto.agent.Agent;
 import top.focess.veto.agent.AgentRunner;
 import top.focess.veto.agent.AgentService;
@@ -27,16 +35,6 @@ import top.focess.veto.model.tier.ModelTierRegistry;
 import top.focess.veto.monitor.RequestContinuationStore;
 import top.focess.veto.secret.references.SecretCandidateStore;
 import top.focess.veto.security.UserAdminService;
-
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.time.Instant;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Optional;
-import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ThreadLocalRandom;
 
 /**
  * Owns the session lifecycle: create/list/activate/deactivate, plus the per-terminal active-session

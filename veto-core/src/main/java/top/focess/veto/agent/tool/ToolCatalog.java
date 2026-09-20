@@ -84,7 +84,8 @@ final class ToolCatalog {
         for (RegisteredTool registration : registrations) {
             ToolDefinition definition = registration.definition();
             if (registration instanceof RegisteredTool.Plugin plugin
-                    && (plugin.runtime().state() != top.focess.veto.plugin.api.PluginState.ACTIVE)) continue;
+                    && (plugin.runtime().state() != top.focess.veto.plugin.api.PluginState.ACTIVE))
+                continue;
             if (registration instanceof RegisteredTool.Agent
                     || whitelist == null
                     || whitelist.contains(definition.name())) definitions.add(definition);

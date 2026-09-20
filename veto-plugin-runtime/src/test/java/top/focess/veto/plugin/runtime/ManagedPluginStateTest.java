@@ -2,18 +2,16 @@ package top.focess.veto.plugin.runtime;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
-import org.junit.jupiter.api.Test;
-
-import top.focess.veto.extension.contract.ExtensionFailure;
-import top.focess.veto.extension.contract.JsonValue;
-import top.focess.veto.plugin.api.*;
-
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Executors;
+import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
+import org.junit.jupiter.api.Test;
+import top.focess.veto.extension.contract.ExtensionFailure;
+import top.focess.veto.extension.contract.JsonValue;
+import top.focess.veto.plugin.api.*;
 
 class ManagedPluginStateTest {
     private static final class Observer extends AbstractVetoPlugin {

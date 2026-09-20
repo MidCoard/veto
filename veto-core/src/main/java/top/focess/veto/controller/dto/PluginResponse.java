@@ -1,12 +1,9 @@
 package top.focess.veto.controller.dto;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
-
-import org.jspecify.annotations.*;
-
-import top.focess.veto.plugin.api.PluginState;
-
 import java.util.*;
+import org.jspecify.annotations.*;
+import top.focess.veto.plugin.api.PluginState;
 
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record PluginResponse(

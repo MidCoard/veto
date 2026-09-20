@@ -3,10 +3,8 @@ package top.focess.veto.agent;
 import static org.junit.jupiter.api.Assertions.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-
-import org.junit.jupiter.api.Test;
-
 import java.util.*;
+import org.junit.jupiter.api.Test;
 
 class RecordUsageTest {
     @Test

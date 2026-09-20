@@ -2,13 +2,11 @@ package top.focess.veto.agent;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-import org.jspecify.annotations.NonNull;
-import org.junit.jupiter.api.Test;
-
-import top.focess.veto.llm.core.*;
-
 import java.util.List;
 import java.util.Map;
+import org.jspecify.annotations.NonNull;
+import org.junit.jupiter.api.Test;
+import top.focess.veto.llm.core.*;
 
 class RecordTokenCounterTest {
     private static com.fasterxml.jackson.databind.@NonNull JsonNode json(@NonNull Object value) {

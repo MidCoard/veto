@@ -1,18 +1,15 @@
 package top.focess.veto.controller;
 
 import com.fasterxml.jackson.databind.JsonNode;
-
+import java.util.List;
 import org.jspecify.annotations.NonNull;
 import org.springframework.http.*;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
-
 import top.focess.veto.extension.contract.*;
 import top.focess.veto.model.SessionEntity;
 import top.focess.veto.model.SessionRepository;
 import top.focess.veto.plugin.runtime.*;
-
-import java.util.List;
 
 /** Session-authorized frontend code and actions; separate from model tools and history. */
 @RestController

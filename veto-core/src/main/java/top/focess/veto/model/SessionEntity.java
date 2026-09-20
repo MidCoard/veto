@@ -1,16 +1,13 @@
 package top.focess.veto.model;
 
 import jakarta.persistence.*;
-
+import java.time.Instant;
+import java.util.UUID;
 import org.jspecify.annotations.NonNull;
-
 import top.focess.veto.agent.AgentService;
 import top.focess.veto.llm.core.ToolResultPresentationMode;
 import top.focess.veto.llm.core.ToolResultPresentationModeConverter;
 import top.focess.veto.session.SessionService;
-
-import java.time.Instant;
-import java.util.UUID;
 
 /**
  * A session - the conversation container a terminal/frontend attaches to. Holds a primary agent and

@@ -2,11 +2,9 @@ package top.focess.veto.extension;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-import org.junit.jupiter.api.Test;
-
-import top.focess.veto.extension.contract.*;
-
 import java.util.*;
+import org.junit.jupiter.api.Test;
+import top.focess.veto.extension.contract.*;
 
 class PluginViewTest {
     @Test

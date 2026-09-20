@@ -1,12 +1,14 @@
 package top.focess.veto.controller;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
-
 import top.focess.veto.agent.RecordTokenCounter;
 import top.focess.veto.agent.RecordUsage;
 import top.focess.veto.agent.SessionAgentRegistry;
@@ -22,10 +24,6 @@ import top.focess.veto.session.SessionRecordService;
 import top.focess.veto.session.SessionService;
 import top.focess.veto.session.SessionService.SessionConfig;
 import top.focess.veto.vault.KeysteadVault;
-
-import java.util.ArrayList;
-import java.util.List;
-import java.util.UUID;
 
 /**
  * REST facade over {@link SessionService} for remote UIs (veto-ui).

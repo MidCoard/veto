@@ -1,9 +1,6 @@
 package top.focess.veto.plugin.runtime;
 
 import com.fasterxml.jackson.databind.JsonNode;
-
-import org.jspecify.annotations.NonNull;
-
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -14,6 +11,7 @@ import java.util.ArrayList;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Set;
+import org.jspecify.annotations.NonNull;
 
 /**
  * Validates and snapshots a package without executing it; lifecycle activation belongs to the host.

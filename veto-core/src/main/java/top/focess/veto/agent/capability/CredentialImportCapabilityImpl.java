@@ -4,7 +4,6 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
-import org.springframework.stereotype.Component;
 import top.focess.veto.agent.tool.ToolCapability;
 import top.focess.veto.secret.api.CredentialWriter;
 import top.focess.veto.secret.references.SecretCandidateStore;
@@ -46,7 +45,7 @@ public final class CredentialImportCapabilityImpl implements CredentialImportCap
             @NonNull String reference, @NonNull String service, @NonNull String label) {
         var context =
                 CapabilityAccess.require(
-                        ToolCapability.CREDENTIAL_IMPORT);
+                        ToolCapability.CREDENTIAL_IMPORT, "import_detected_credential");
         String owner = context.owner();
         var session = context.sessionId();
         if (owner == null

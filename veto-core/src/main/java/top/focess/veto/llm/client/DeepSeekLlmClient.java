@@ -2,6 +2,7 @@ package top.focess.veto.llm.client;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -179,6 +180,7 @@ final class DeepSeekLlmClient extends LlmClient {
             }
 
             String summary = "model=" + request.modelName() + ", via=responses-api";
+            Object output = objectMapper.convertValue(response.path("output"), Object.class);
             return NativeToolResponses.completion(
                             objectMapper,
                             summary,

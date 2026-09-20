@@ -1,8 +1,7 @@
 package top.focess.veto.extension.contract;
 
-import org.jspecify.annotations.NonNull;
-
 import java.util.Optional;
+import org.jspecify.annotations.NonNull;
 
 /** A reference mount with plugin-owned initial UI and action handler; never a model tool. */
 public record ReferenceRenderer(

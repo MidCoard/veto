@@ -2,9 +2,8 @@ package top.focess.veto.secret.references;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-import org.junit.jupiter.api.Test;
-
 import java.time.*;
+import org.junit.jupiter.api.Test;
 
 class SecretRevealTest {
     @Test

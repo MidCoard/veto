@@ -71,7 +71,9 @@ class PackagedPluginTest {
                         .define(StandardExtensionPoints.OBSERVATION, middleware -> {})
                         .stage(
                                 new ExtensionSource(
-                                        "top.focess.fixture", "0.1.0", ExtensionSource.Origin.PLUGIN),
+                                        "top.focess.fixture",
+                                        "0.1.0",
+                                        ExtensionSource.Origin.PLUGIN),
                                 contributions.entries())
                         .freeze();
         assertEquals(1, catalog.entries(StandardExtensionPoints.CATEGORIES).size());

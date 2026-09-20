@@ -1,16 +1,14 @@
 package top.focess.veto.controller;
 
+import java.util.List;
 import org.jspecify.annotations.NonNull;
 import org.springframework.http.*;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
-
 import top.focess.veto.extension.contract.*;
 import top.focess.veto.model.SessionEntity;
 import top.focess.veto.model.SessionRepository;
 import top.focess.veto.plugin.runtime.*;
-
-import java.util.List;
 
 /** Authenticated browser extension bridge. Reference values never enter the agent/tool pipeline. */
 @RestController
