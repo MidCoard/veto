@@ -257,7 +257,11 @@ class WebFetchExecutorLoopTest {
                             .sum();
             assertTrue(
                     bytes
-                                    + mapper.writeValueAsBytes(request.tools()).length
+                                    + mapper.writeValueAsBytes(
+                                                    request.tools().stream()
+                                                            .map(ToolDefinition::wireView)
+                                                            .toList())
+                                            .length
                                     + (schema == null ? 4 : mapper.writeValueAsBytes(schema).length)
                             <= 32000,
                     "Each child request stays within its configured input bound");

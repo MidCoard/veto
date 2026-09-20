@@ -470,7 +470,9 @@ public class PromptCompiler {
         // tool definitions, schema, and message framing without assuming English token density.
         try {
             return objectMapper.writeValueAsBytes(messages).length
-                    + objectMapper.writeValueAsBytes(tools).length
+                    + objectMapper.writeValueAsBytes(
+                                    tools.stream().map(ToolDefinition::wireView).toList())
+                            .length
                     + (schema == null ? 4 : objectMapper.writeValueAsBytes(schema).length)
                     + 256L;
         } catch (Exception error) {

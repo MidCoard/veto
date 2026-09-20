@@ -43,6 +43,18 @@ public record ToolDefinition(
         resultFormats = List.copyOf(resultFormats);
     }
 
+    /**
+     * The wire-facing view actually sent to providers: name, description, and input schema.
+     * Prompt-side metadata (examples, documentation, return examples) is excluded, so input-budget
+     * accounting measures what the request really carries.
+     */
+    public static @NonNull Map<String, Object> wireView(@NonNull ToolDefinition tool) {
+        return Map.of(
+                "name", tool.name(),
+                "description", tool.description(),
+                "inputSchema", tool.inputSchema());
+    }
+
     private static @NonNull Map<String, Object> ordered(@NonNull Map<?, ?> source) {
         Map<String, Object> result = new TreeMap<>();
         source.forEach(

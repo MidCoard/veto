@@ -41,6 +41,7 @@ import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.llm.config.LlmJacksonConfig;
 import top.focess.veto.llm.core.LlmOptions;
 import top.focess.veto.llm.core.LlmSystemUsage;
+import top.focess.veto.llm.core.ToolDefinition;
 import top.focess.veto.llm.core.UniformLLMCaller;
 import top.focess.veto.llm.core.VetoRequest;
 import top.focess.veto.memory.TurnLogService;
@@ -192,7 +193,11 @@ public final class WebFetchExecutor {
                         int overhead =
                                 bytes(request.systemPrompt())
                                         + bytes(objective)
-                                        + bytes(json(request.tools()))
+                                        + bytes(
+                                                json(
+                                                        request.tools().stream()
+                                                                .map(ToolDefinition::wireView)
+                                                                .toList()))
                                         + bytes(json(request.responseSchema()))
                                         + PROVIDER_FRAMING_RESERVE;
                         document.setObservationBudget(inputBudget - overhead);
