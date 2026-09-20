@@ -1,5 +1,10 @@
 package top.focess.veto.secret.references;
 
+import org.jspecify.annotations.NonNull;
+
+import top.focess.veto.secret.api.CredentialWriter;
+import top.focess.veto.secret.detection.SecretMasker;
+
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Duration;
@@ -14,9 +19,6 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Pattern;
-import org.jspecify.annotations.NonNull;
-import top.focess.veto.secret.api.CredentialWriter;
-import top.focess.veto.secret.detection.SecretMasker;
 
 /** Bounded transient captures. No raw-value lookup is exposed to tools or model callers. */
 public final class SecretCandidateStore {
@@ -248,6 +250,18 @@ public final class SecretCandidateStore {
         return entry == null || !entry.scope.equals(scope)
                 ? Optional.empty()
                 : Optional.of(entry.descriptor);
+    }
+
+    /** Owner-authorized browser access; no tool or model adapter exposes this operation. */
+    public synchronized @NonNull Optional<String> reveal(
+            @NonNull Scope scope, @NonNull String reference) {
+        expire();
+        Entry entry = entries.get(reference);
+        if (closedOwners.contains(scope.owner())
+                || retiredSessions.contains(new SessionKey(scope.owner(), scope.session()))
+                || entry == null
+                || !entry.scope.equals(scope)) return Optional.empty();
+        return Optional.ofNullable(entry.value);
     }
 
     /** Storage transition only. The trusted caller must validate the execution permit first. */

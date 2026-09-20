@@ -3,17 +3,12 @@ package top.focess.veto.agent.loop;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.stream.Collectors;
+
 import org.jspecify.annotations.NonNull;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
+
 import top.focess.veto.agent.HistoryProjection;
 import top.focess.veto.agent.TurnRecord;
 import top.focess.veto.agent.TurnType;
@@ -32,6 +27,14 @@ import top.focess.veto.llm.core.ToolDefinition;
 import top.focess.veto.llm.core.ToolResultPresentationMode;
 import top.focess.veto.llm.core.ToolResultPresenter;
 import top.focess.veto.llm.core.VetoRequest;
+
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.stream.Collectors;
 
 /**
  * Assembles each outgoing LLM payload from the agent's turn history, persona, and resolved tool
@@ -558,7 +561,8 @@ public class PromptCompiler {
         List<Integer> pendingTurns = List.of();
         for (TurnRecord turn : HistoryProjection.effective(history)) {
             if (turn.type() == TurnType.AGENT_INIT) {
-                compiled.add(0,
+                compiled.add(
+                        0,
                         restoreSource(
                                 turn, ChatMessage.system(str(turn.payload(), "system_prompt"))));
                 continue;
@@ -645,7 +649,8 @@ public class PromptCompiler {
         payload.put(
                 "prompt_source",
                 Map.of("version", 2, "message", message.role(), "spans", message.promptSources()));
-        return new TurnRecord(turn.turnNumber(), turn.type(), payload, turn.timestamp());
+        return new TurnRecord(
+                turn.turnNumber(), turn.type(), payload, turn.timestamp(), turn.llmUsage());
     }
 
     private @NonNull ChatMessage restoreSource(

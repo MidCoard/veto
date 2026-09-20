@@ -3,15 +3,17 @@ package top.focess.veto.plugin.runtime;
 import static org.junit.jupiter.api.Assertions.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+
+import org.jspecify.annotations.NonNull;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Objects;
-import org.jspecify.annotations.NonNull;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
 
 class ScriptPluginTest {
     private static final @NonNull ObjectMapper JSON = new ObjectMapper();
@@ -92,8 +94,6 @@ class ScriptPluginTest {
         top.focess.veto.plugin.api.@NonNull PluginState state() {
             return managed.state();
         }
-
-
 
         <T extends @NonNull Object> @NonNull T execute(
                 ManagedPlugin.@NonNull Operation<T> operation)
@@ -337,7 +337,13 @@ class ScriptPluginTest {
                 () ->
                         assertThrows(
                                 IOException.class,
-                                () -> load(root, node(), Duration.ofMillis(500))));
+                                () -> {
+                                    try (var plugin = load(root, node(), Duration.ofMillis(500))) {
+                                        plugin.invoke(
+                                                plugin.tools().getFirst(),
+                                                JSON.createObjectNode().put("text", "test"));
+                                    }
+                                }));
     }
 
     @Test
@@ -403,7 +409,8 @@ class ScriptPluginTest {
                 Files.readString(file)
                         .replace(
                                 "id: request.id, result",
-                                "id: request.method === 'invoke' ? request.id + 1 : request.id, result"));
+                                "id: request.method === 'invoke' ? request.id + 1 : request.id,"
+                                    + " result"));
         try (var plugin = load(root, node(), Duration.ofSeconds(3))) {
             assertThrows(
                     IOException.class,
@@ -420,7 +427,8 @@ class ScriptPluginTest {
         copy(root);
         behavior(
                 root,
-                "result = ['PATH', 'NODE_OPTIONS', 'VETO_PLUGIN_TEST_SENTINEL'].filter(key => Object.hasOwn(process.env, key)).length;");
+                "result = ['PATH', 'NODE_OPTIONS', 'VETO_PLUGIN_TEST_SENTINEL'].filter(key =>"
+                    + " Object.hasOwn(process.env, key)).length;");
         try (var plugin = load(root, node(), Duration.ofSeconds(3))) {
             assertEquals(
                     0,

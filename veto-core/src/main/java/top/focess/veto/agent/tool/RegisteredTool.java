@@ -8,7 +8,7 @@ import top.focess.veto.plugin.runtime.ManagedPlugin;
 sealed interface RegisteredTool {
     @NonNull ToolDefinition definition();
 
-    record Plugin(@NonNull PluginToolDefinition definition, @NonNull ManagedPlugin runtime)
+    record Plugin(@NonNull PluginToolDefinition definition, @NonNull ManagedP
             implements RegisteredTool {}
 
     record Native(@NonNull NativeToolDefinition definition, @NonNull NativeTool<?> handler)

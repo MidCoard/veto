@@ -1,6 +1,9 @@
 package top.focess.veto.plugin.runtime;
 
 import com.fasterxml.jackson.databind.JsonNode;
+
+import org.jspecify.annotations.NonNull;
+
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -11,16 +14,24 @@ import java.util.ArrayList;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Set;
-import org.jspecify.annotations.NonNull;
 
 /**
  * Validates and snapshots a package without executing it; lifecycle activation belongs to the host.
  */
 public final class ScriptPluginLoader implements PluginLoader<ScriptPlugin> {
     private final @NonNull Path node;
+    private final @org.jspecify.annotations.Nullable ScriptHost host;
     private final @NonNull Duration timeout;
 
     public ScriptPluginLoader(@NonNull Path node, @NonNull Duration timeout) {
+        this(node, timeout, null);
+    }
+
+    public ScriptPluginLoader(
+            @NonNull Path node,
+            @NonNull Duration timeout,
+            @org.jspecify.annotations.Nullable ScriptHost host) {
+        this.host = host;
         this.node = node;
         this.timeout = timeout;
     }
@@ -78,7 +89,16 @@ public final class ScriptPluginLoader implements PluginLoader<ScriptPlugin> {
             Path executable = snapshot.resolve(entry);
             Files.write(executable, script);
             return new ScriptPlugin(
-                    id, version, digest, descriptors, snapshot, node, executable, millis);
+                    id,
+                    version,
+                    digest,
+                    descriptors,
+                    snapshot,
+                    node,
+                    executable,
+                    millis,
+                    host == null ? new ScriptHost(node, millis) : host,
+                    host == null);
         } catch (Exception e) {
             ScriptPlugin.removeSnapshot(snapshot);
             throw new IOException(

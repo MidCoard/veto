@@ -25,7 +25,7 @@ class PackagedPluginTest {
 
     private static final Path PACKAGE = Path.of(require(System.getProperty("fixture.package")));
     private static final PluginContext CONTEXT =
-            new PluginContext(new PluginIdentity("org.veto.fixture", "0.1.0"));
+            new PluginContext(new PluginIdentity("top.focess.fixture", "0.1.0"));
     private static final JsonValue.ObjectValue EMPTY = new JsonValue.ObjectValue(Map.of());
 
     /** Parent exports the real defining SPI loader, never the application/system classpath. */
@@ -71,7 +71,7 @@ class PackagedPluginTest {
                         .define(StandardExtensionPoints.OBSERVATION, middleware -> {})
                         .stage(
                                 new ExtensionSource(
-                                        "org.veto.fixture", "0.1.0", ExtensionSource.Origin.PLUGIN),
+                                        "top.focess.fixture", "0.1.0", ExtensionSource.Origin.PLUGIN),
                                 contributions.entries())
                         .freeze();
         assertEquals(1, catalog.entries(StandardExtensionPoints.CATEGORIES).size());

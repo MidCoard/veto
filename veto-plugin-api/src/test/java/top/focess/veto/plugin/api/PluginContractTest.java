@@ -14,13 +14,13 @@ import top.focess.veto.extension.contract.*;
 class PluginContractTest {
     @Test
     void identitiesRejectRangesTraversalAndAmbiguousVersions() {
-        assertEquals("org.veto.fixture", new PluginIdentity("org.veto.fixture", "0.1.0").id());
-        for (String id : List.of("../fixture", "org/veto", "org.veto..fixture", "ORG.veto"))
+        assertEquals("top.focess.fixture", new PluginIdentity("top.focess.fixture", "0.1.0").id());
+        for (String id : List.of("../fixture", "org/veto", "top.focess.veto..fixture", "ORG.veto"))
             assertThrows(IllegalArgumentException.class, () -> new PluginIdentity(id, "0.1.0"));
         for (String version : List.of("01.0.0", "^1.0.0", "1.0.0-beta", "../1.0.0", "1.0"))
             assertThrows(
                     IllegalArgumentException.class,
-                    () -> new PluginIdentity("org.veto.fixture", version));
+                    () -> new PluginIdentity("top.focess.fixture", version));
     }
 
     @Test

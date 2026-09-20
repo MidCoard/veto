@@ -32,6 +32,7 @@ public final class PluginManager implements AutoCloseable {
     private final @NonNull ExecutorService lifecycle =
             Executors.newSingleThreadExecutor(
                     Thread.ofPlatform().daemon(true).name("veto-plugin-manager").factory());
+    private final @NonNull ScriptHost scriptHost;
     private final @NonNull List<ManagedPlugin> plugins;
     private final @NonNull List<Registration> registrations;
     private final @NonNull ExtensionCatalog catalog;
@@ -47,6 +48,7 @@ public final class PluginManager implements AutoCloseable {
             @Value("${veto.plugins.timeout-ms:5000}") long timeoutMillis,
             @NonNull List<AbstractVetoPlugin> builtins)
             throws IOException {
+        scriptHost = new ScriptHost(Path.of(nodeCommand), timeoutMillis);
         List<ManagedPlugin> staged = new ArrayList<>();
         for (var builtin : builtins) staged.add(new ManagedPlugin(builtin, lifecycle));
         List<Registration> registered = new ArrayList<>();
@@ -55,7 +57,7 @@ public final class PluginManager implements AutoCloseable {
                 if (!trustedCode)
                     throw new IllegalArgumentException(
                             "Configured plugins require veto.plugins.trusted-code=true; local"
-                                + " scripts run as the server user");
+                                    + " scripts run as the server user");
                 var ids = new HashSet<String>();
                 var entries = paths.split(",", -1);
                 if (entries.length > 16)
@@ -66,7 +68,9 @@ public final class PluginManager implements AutoCloseable {
                         throw new IllegalArgumentException("Plugin paths must be absolute");
                     ScriptPlugin plugin =
                             new ScriptPluginLoader(
-                                            Path.of(nodeCommand), Duration.ofMillis(timeoutMillis))
+                                            Path.of(nodeCommand),
+                                            Duration.ofMillis(timeoutMillis),
+                                            scriptHost)
                                     .load(directory);
                     staged.add(new ManagedPlugin(plugin, lifecycle));
                     if (!ids.add(plugin.id()))
@@ -116,6 +120,7 @@ public final class PluginManager implements AutoCloseable {
             registrations = List.copyOf(registered);
         } catch (Exception e) {
             for (var plugin : staged.reversed()) plugin.close();
+            scriptHost.close();
             lifecycle.shutdown();
             throw new IOException("Plugin activation failed", e);
         }
@@ -142,7 +147,7 @@ public final class PluginManager implements AutoCloseable {
 
     public @NonNull ManagedPlugin plugin(@NonNull String id) {
         return plugins.stream()
-                .filter(plugin -> plugin.identity().id().equals(id))
+                .filter(plugin -> plugin.identity().id().equals(PluginBinding.canonicalId(id)))
                 .findFirst()
                 .orElseThrow(() -> new IllegalArgumentException("Unknown plugin identity"));
     }
@@ -161,6 +166,7 @@ public final class PluginManager implements AutoCloseable {
         try {
             plugins.reversed().forEach(ManagedPlugin::close);
         } finally {
+            scriptHost.close();
             lifecycle.shutdown();
         }
     }

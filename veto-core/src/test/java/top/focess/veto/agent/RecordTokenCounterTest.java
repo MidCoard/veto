@@ -2,11 +2,13 @@ package top.focess.veto.agent;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-import java.util.List;
-import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
+
 import top.focess.veto.llm.core.*;
+
+import java.util.List;
+import java.util.Map;
 
 class RecordTokenCounterTest {
     private static com.fasterxml.jackson.databind.@NonNull JsonNode json(@NonNull Object value) {
@@ -28,33 +30,16 @@ class RecordTokenCounterTest {
     }
 
     @Test
-    void retainsContextDeltaAsDiagnosticWithoutAssigningItToAnyRecord() {
-        ContextUsageTracker tracker = new ContextUsageTracker();
-        var first = request(List.of(ChatMessage.user("one")));
-        var second =
-                request(
-                        List.of(
-                                ChatMessage.user("one"),
-                                ChatMessage.assistant("answer"),
-                                ChatMessage.user("two")));
-        assertFalse(
-                json(tracker.measure(first, new LlmSystemUsage.Usage(100, 10))).has("recordDelta"));
-        TurnRecord last = TurnRecord.userPrompt(4, "two");
-        var measurement = tracker.measure(second, new LlmSystemUsage.Usage(125, 8));
-        assertEquals(Long.valueOf(25L), measurement.contextDeltaTokens());
-        assertFalse(json(measurement).has("recordDelta"));
-        assertFalse(json(measurement).has("fromRecordTurn"));
-        TurnRecord updated = RecordUsage.add(last, measurement);
-        assertNull(RecordTokenCounter.count(updated.payload()));
-        assertFalse(updated.payload().containsKey("tokenDeltaFromTurn"));
-        assertNull(RecordTokenCounter.count(TurnRecord.assistantResponse(3, "answer").payload()));
-        updated =
-                RecordUsage.add(updated, tracker.measure(second, new LlmSystemUsage.Usage(125, 9)));
-        assertNull(RecordTokenCounter.count(updated.payload()));
-        assertTrue(updated.payload().get("llmUsage") instanceof List<?> calls && calls.size() == 2);
-        tracker.reset();
-        assertFalse(
-                json(tracker.measure(second, new LlmSystemUsage.Usage(80, 1))).has("recordDelta"));
+    void storesOnlyRawMeasurementsOutsideContent() {
+        var request = request(List.of(ChatMessage.user("one")));
+        var usage =
+                UsageMeasurement.measured(request, new LlmSystemUsage.Usage(125, 8))
+                        .forRequest("call");
+        var turn = RecordUsage.add(TurnRecord.userPrompt(1, "one"), usage);
+        assertEquals(125, turn.llmUsage().getFirst().inputTokens());
+        assertFalse(turn.payload().containsKey("llmUsage"));
+        assertFalse(json(usage).has("contextDeltaTokens"));
+        assertNull(RecordTokenCounter.count(turn.payload()));
     }
 
     @Test

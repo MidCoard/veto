@@ -36,7 +36,7 @@ Run from the repository root:
 ```
 
 The fixture is generated at
-`veto-plugin-fixture/build/plugin/org.veto.fixture/0.1.0/`, with its own README.
+`veto-plugin-fixture/build/plugin/top.focess.fixture/0.1.0/`, with its own README.
 Building or copying this package does not activate it in Veto.
 
 ## Limitations

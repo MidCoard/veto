@@ -323,7 +323,6 @@ public class AgentRunner {
                 : snapshot;
     }
 
-    private final @NonNull ContextUsageTracker contextUsage = new ContextUsageTracker();
     // Set only when the model-call ceiling trips. The next exact "continue" prompt consumes it and
     // carries the prior task into a self-contained resume turn; any other prompt starts a new task.
     private boolean awaitingBreakerContinuation = false;
@@ -1144,9 +1143,7 @@ public class AgentRunner {
         } finally {
             for (LlmSystemUsage.Usage measured : LlmSystemUsage.drain()) {
                 UsageMeasurement data =
-                        new ContextUsageTracker()
-                                .measure(request, measured)
-                                .forCompaction(turnNumber);
+                        UsageMeasurement.measured(request, measured).forCompaction();
                 recordUsage(turnNumber, data);
             }
         }
@@ -1595,8 +1592,6 @@ public class AgentRunner {
         int citationRetries = 0;
         VetoResponse citationCandidate = null;
         String candidateModelCallId = null;
-        ContextUsageTracker.Baseline inputBaseline = null;
-        ContextUsageTracker.Baseline candidateUsage = null;
         MessageCitations.Bound candidateSources = null;
         for (; ; ) {
             VetoResponse response;
@@ -1641,10 +1636,9 @@ public class AgentRunner {
                 } finally {
                     List<LlmSystemUsage.Usage> measurements = LlmSystemUsage.drain();
                     for (LlmSystemUsage.Usage measured : measurements) {
-                        UsageMeasurement measurement = contextUsage.measure(request, measured);
-                        if (inputBaseline == null) inputBaseline = contextUsage.baseline();
+                        UsageMeasurement measurement = UsageMeasurement.measured(request, measured);
                         lastModelCallId = UUID.randomUUID().toString();
-                        measurement = measurement.forRequest(requestThroughTurn, lastModelCallId);
+                        measurement = measurement.forRequest(lastModelCallId);
                         recordUsage(requestThroughTurn, measurement);
                     }
                     if (!measurements.isEmpty()
@@ -1710,7 +1704,6 @@ public class AgentRunner {
                                         Map.of("error", citationError, "items", order));
                         citationCandidate = checked;
                         candidateModelCallId = lastModelCallId;
-                        candidateUsage = contextUsage.baseline();
                         candidateSources = bound;
                         citationRetries++;
                         log.warn(
@@ -1725,10 +1718,6 @@ public class AgentRunner {
                     }
                     lastCitations = bound;
                 }
-                if (inputBaseline != null) {
-                    contextUsage.accept(inputBaseline, contextUsage.baseline());
-                }
-                persistUsageCheckpoint();
                 submissionRequest = request;
                 submissionGeneration = generation != null;
                 return checked;
@@ -1751,12 +1740,8 @@ public class AgentRunner {
                                         "MODEL_RESPONSE_REJECTED"),
                                 null));
                 if (schemaRetries >= MAX_SCHEMA_RETRIES && citationCandidate != null) {
-                    if (inputBaseline != null && candidateUsage != null) {
-                        contextUsage.accept(inputBaseline, candidateUsage);
-                    }
                     lastCitations = candidateSources;
                     lastModelCallId = candidateModelCallId;
-                    persistUsageCheckpoint();
                     return citationCandidate;
                 }
                 schemaRetries++;
@@ -2832,60 +2817,6 @@ public class AgentRunner {
         appendTurn(turn);
     }
 
-    private void persistUsageCheckpoint() {
-        var checkpoint = contextUsage.checkpoint();
-        if (checkpoint == null) return;
-        TurnRecord updated;
-        synchronized (this) {
-            if (history.isEmpty()) return;
-            var last = history.getLast();
-            var payload = new LinkedHashMap<>(last.payload());
-            payload.put("usageCheckpoint", checkpoint);
-            updated = new TurnRecord(last.turnNumber(), last.type(), payload, last.timestamp());
-            history.set(history.size() - 1, updated);
-        }
-        if (turnLogService != null)
-            turnLogService.updateMetadata(updated, sessionId, userId, agentId);
-    }
-
-    private void restoreUsageCheckpoint(@NonNull List<TurnRecord> replayed) {
-        var effective = HistoryProjection.effective(replayed);
-        for (var turn : effective.reversed()) {
-            Object saved = turn.payload().get("usageCheckpoint");
-            if (saved != null) {
-                contextUsage.restore(
-                        objectMapper.convertValue(
-                                saved,
-                                top.focess.veto.agent.tool.ToolDocs.nonNullClass(
-                                        UsageCheckpoint.class)));
-                return;
-            }
-            if (!(turn.payload().get("llmUsage") instanceof List<?> usage) || usage.isEmpty())
-                continue;
-            // Legacy records lack fingerprints. Recover only a single ordinary request whose
-            // recorded boundary and model match the reconstructed historical prompt.
-            if (usage.size() != 1) return;
-            var value = usage.getFirst();
-            if (value == null) return;
-            var measured =
-                    objectMapper.convertValue(
-                            value,
-                            top.focess.veto.agent.tool.ToolDocs.nonNullClass(
-                                    UsageMeasurement.class));
-            var through = measured.throughTurn();
-            if (through == null || Boolean.FALSE.equals(measured.affectsContext())) continue;
-            var prefix = replayed.stream().filter(t -> t.turnNumber() <= through).toList();
-            var request = buildRequest(compilePrompt(prefix, guidedEnabled));
-            if (request.messages().size() != measured.messageCount()
-                    || !request.modelName().equals(measured.model())
-                    || !request.providerType().name().equals(measured.provider())) return;
-            contextUsage.restore(
-                    UsageCheckpoint.capture(
-                            request, measured.inputTokens(), measured.outputTokens()));
-            return;
-        }
-    }
-
     private void recordUsage(int throughTurn, @NonNull UsageMeasurement measurement) {
         TurnRecord updated = null;
         synchronized (this) {
@@ -2927,8 +2858,6 @@ public class AgentRunner {
                 turn.type() == TurnType.MONITOR_EVENT
                         || (turn.type() == TurnType.TOOL_RESPONSE
                                 && waiting == WaitReason.QUESTION);
-        if (turn.type() == TurnType.REWIND || turn.type() == TurnType.AGENT_INIT)
-            contextUsage.reset();
         if (turn.type() == TurnType.AGENT_INIT) {
             Map<String, Object> metadata = new LinkedHashMap<>(turn.payload());
             metadata.put("contextMaxTokens", binding.options().contextWindowOrDefault());
@@ -2948,7 +2877,13 @@ public class AgentRunner {
                                 "spans",
                                 source.sources()));
             }
-            turn = new TurnRecord(turn.turnNumber(), turn.type(), metadata, turn.timestamp());
+            turn =
+                    new TurnRecord(
+                            turn.turnNumber(),
+                            turn.type(),
+                            metadata,
+                            turn.timestamp(),
+                            turn.llmUsage());
         }
         turn = RecordTokenCounter.unmeasured(turn);
         TurnRecord numbered;
@@ -3122,7 +3057,6 @@ public class AgentRunner {
         }
         turnNumber = max;
         recoveredWait = RecordRecovery.requiresExplicitContinuation(replayed);
-        restoreUsageCheckpoint(replayed);
     }
 
     // ── completion ──────────────────────────────────────────────────────────

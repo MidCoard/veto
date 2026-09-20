@@ -2,19 +2,22 @@ package top.focess.veto.session;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
+
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
+
 import top.focess.veto.agent.TurnRecord;
 import top.focess.veto.agent.TurnType;
 import top.focess.veto.memory.TurnRecordEntity;
 import top.focess.veto.memory.TurnRecordRepository;
 import top.focess.veto.util.Nullness;
+
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 
 /**
  * Loads a session's durable conversation log (the existing {@code turn_records} table, written on
@@ -63,7 +66,17 @@ public class SessionHistoryLoader {
                 if ("SYSTEM_PROMPT".equals(row.getType())) {
                     payload = canonicalAgentInitPayload(payload);
                 }
-                out.add(new TurnRecord(row.getTurnNumber(), type, payload, row.getTimestamp()));
+                out.add(
+                        new TurnRecord(
+                                row.getTurnNumber(),
+                                type,
+                                payload,
+                                row.getTimestamp(),
+                                row.getLlmUsage() == null
+                                        ? top.focess.veto.agent.RecordUsage.decode(
+                                                payload.get("llmUsage"))
+                                        : top.focess.veto.agent.RecordUsage.read(
+                                                row.getLlmUsage())));
             } catch (Exception e) {
                 // A single bad row must not abort replay of the rest.
                 log.warn(

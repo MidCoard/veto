@@ -26,7 +26,7 @@ tasks.register<Sync>("pluginPackage") {
     group = "distribution"
     description = "Builds the standalone development lifecycle fixture (not production-installable)."
     dependsOn(tasks.jar)
-    into(layout.buildDirectory.dir("plugin/org.veto.fixture/0.1.0"))
+    into(layout.buildDirectory.dir("plugin/top.focess.fixture/0.1.0"))
     from(tasks.jar) { rename { "plugin.jar" } }
     from("src/package")
 }

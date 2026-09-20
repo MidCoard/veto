@@ -41,11 +41,13 @@ packages outside agent-writable workspaces. The inherited environment is cleared
 including `NODE_OPTIONS` and provider/vault variables; platform-supplied variables
 may still exist. Environment clearing is not filesystem or network isolation.
 
-Startup validates all packages and initializes their workers before tool publication.
-A configured package that cannot start fails Veto startup. There is no automatic
-folder discovery, installation endpoint, hot reload or worker restart. Each package
-has one persistent worker shared across calls; plugin authors must not assume that
-consecutive calls belong to the same user or session.
+Startup validates packages and publishes their tool descriptors without starting Node.
+The manager starts one shared Node host on the first invocation. Each package runs
+in its own JavaScript context within that process; ten packages still use one Node
+process. Calls share a serialized transport. A host crash or timeout fails all its
+plugins, and calls are not automatically retried. There is no automatic folder
+discovery, installation endpoint, hot reload or worker restart. Plugin authors must
+not assume that consecutive calls belong to the same user or session.
 
 ## Package format
 
@@ -127,7 +129,7 @@ as the normal approval permit. Package loading and worker startup follow host co
 If an installed package no longer matches a session's pinned revision, activation fails
 rather than silently changing that session's implementation.
 
-The built-in `org.veto.secret-protection` provider uses this same selection mechanism.
+The built-in `top.focess.secret-protection` provider uses this same selection mechanism.
 It registers the credential-import tool and input, file-capture and file-observation
 protection hooks. Credential import remains subject to host authorization and writes
 through a local encrypted-vault port. Script packages currently support tools only.

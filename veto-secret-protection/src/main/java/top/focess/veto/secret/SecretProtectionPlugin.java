@@ -72,7 +72,7 @@ public final class SecretProtectionPlugin extends AbstractVetoPlugin {
 
     @Override
     public @NonNull PluginIdentity identity() {
-        return new PluginIdentity("org.veto.secret-protection", "1.0.100");
+        return new PluginIdentity("top.focess.secret-protection", "1.0.100");
     }
 
     @Override
@@ -83,6 +83,10 @@ public final class SecretProtectionPlugin extends AbstractVetoPlugin {
         return new PluginContributions(
                 List.of(
                         ExtensionContribution.of(CANDIDATES, "candidates", candidates),
+                        ExtensionContribution.of(
+                                StandardExtensionPoints.FRONTEND,
+                                "frontend",
+                                new FrontendExtension(frontendModule(), this::frontendAction)),
                         ExtensionContribution.of(
                                 StandardExtensionPoints.INPUT_PROTECTION,
                                 "input",
@@ -112,14 +116,42 @@ public final class SecretProtectionPlugin extends AbstractVetoPlugin {
                                 "import_detected_credential",
                                 new ToolContribution(
                                         "Import a registered SECRET_REF from this session into the"
-                                            + " owner's encrypted vault after approval. Use"
-                                            + " secret_ref, service (github), and label. Never"
-                                            + " provide plaintext.",
+                                                + " owner's encrypted vault after approval. Use"
+                                                + " secret_ref, service (github), and label. Never"
+                                                + " provide plaintext.",
                                         schema(true),
                                         schema(false),
                                         ToolContribution.Effect.CREDENTIAL_IMPORT,
                                         Set.of(),
                                         this::importCredential))));
+    }
+
+    private static @NonNull String frontendModule() {
+        try (var stream =
+                SecretProtectionPlugin.class.getResourceAsStream(
+                        "/top/focess/veto/secret/frontend.mjs")) {
+            if (stream == null) throw new IllegalStateException("Missing frontend module");
+            return new String(stream.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+        } catch (java.io.IOException failure) {
+            throw new IllegalStateException("Cannot load frontend module", failure);
+        }
+    }
+
+    private @NonNull JsonValue frontendAction(
+            FrontendExtension.@NonNull Scope scope,
+            @NonNull String action,
+            JsonValue.@NonNull ObjectValue arguments)
+            throws ExtensionFailure {
+        if (!action.equals("show")
+                || !(arguments.values().get("reference") instanceof JsonValue.StringValue ref))
+            throw new ExtensionFailure(ExtensionFailure.Code.INVALID_ARGUMENTS);
+        return candidates
+                .reveal(
+                        new SecretCandidateStore.Scope(
+                                scope.ownerId(), scope.sessionId(), scope.agentId()),
+                        ref.value())
+                .<JsonValue>map(JsonValue.StringValue::new)
+                .orElse(JsonValue.NullValue.INSTANCE);
     }
 
     private @NonNull JsonValue importCredential(

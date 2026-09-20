@@ -40,7 +40,7 @@ tasks.withType<JavaCompile> {
 tasks.withType<Test> {
     useJUnitPlatform()
     dependsOn(":veto-plugin-fixture:pluginPackage")
-    inputs.dir(project(":veto-plugin-fixture").layout.buildDirectory.dir("plugin/org.veto.fixture/0.1.0"))
+    inputs.dir(project(":veto-plugin-fixture").layout.buildDirectory.dir("plugin/top.focess.fixture/0.1.0"))
         .withPropertyName("fixturePackage")
-    systemProperty("fixture.package", project(":veto-plugin-fixture").layout.buildDirectory.dir("plugin/org.veto.fixture/0.1.0").get().asFile.absolutePath)
+    systemProperty("fixture.package", project(":veto-plugin-fixture").layout.buildDirectory.dir("plugin/top.focess.fixture/0.1.0").get().asFile.absolutePath)
 }

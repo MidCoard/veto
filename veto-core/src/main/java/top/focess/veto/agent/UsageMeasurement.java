@@ -1,48 +1,42 @@
 package top.focess.veto.agent;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
-import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 
-/**
- * Immutable accounting for one provider request; request identity is independent of its display
- * anchor.
- */
+import org.jspecify.annotations.*;
+
+import top.focess.veto.llm.core.*;
+
+/** Raw provider measurements. Display differences are derived from the ordered request history. */
 @JsonInclude(JsonInclude.Include.NON_NULL)
+@JsonIgnoreProperties(ignoreUnknown = true)
 public record UsageMeasurement(
+        @Nullable String modelCallId,
         long inputTokens,
         long outputTokens,
         @Nullable Long cacheReadInputTokens,
         @Nullable Long cacheCreationInputTokens,
         long contextMaxTokens,
-        @NonNull String model,
-        @NonNull String provider,
-        int messageCount,
-        boolean baselineReset,
-        @Nullable Long contextDeltaTokens,
-        @Nullable Long inputDeltaTokens,
-        @Nullable String inputDeltaSource,
-        @Nullable Long subtractedOutputTokens,
-        @Nullable Integer fromMessageIndex,
-        @Nullable Integer appendedMessages,
-        @Nullable Integer throughTurn,
-        @Nullable String modelCallId,
-        @Nullable Boolean affectsContext,
+        @Nullable String model,
+        @Nullable String provider,
         @Nullable String purpose) {
-    public @NonNull UsageMeasurement forRequest(int turn, @NonNull String callId) {
-        return copy(turn, callId, null, null);
-    }
-
-    public @NonNull UsageMeasurement forCompaction(int turn) {
-        return copy(turn, null, false, "compaction");
-    }
-
-    private @NonNull UsageMeasurement copy(
-            @Nullable Integer turn,
-            @Nullable String callId,
-            @Nullable Boolean affects,
-            @Nullable String reason) {
+    public static @NonNull UsageMeasurement measured(
+            @NonNull VetoRequest request, LlmSystemUsage.@NonNull Usage usage) {
         return new UsageMeasurement(
+                null,
+                usage.promptTokens(),
+                usage.completionTokens(),
+                usage.cacheReadInputTokens(),
+                usage.cacheCreationInputTokens(),
+                request.options().contextWindowOrDefault(),
+                request.modelName(),
+                request.providerType().name(),
+                null);
+    }
+
+    public @NonNull UsageMeasurement forRequest(@NonNull String callId) {
+        return new UsageMeasurement(
+                callId,
                 inputTokens,
                 outputTokens,
                 cacheReadInputTokens,
@@ -50,17 +44,19 @@ public record UsageMeasurement(
                 contextMaxTokens,
                 model,
                 provider,
-                messageCount,
-                baselineReset,
-                contextDeltaTokens,
-                inputDeltaTokens,
-                inputDeltaSource,
-                subtractedOutputTokens,
-                fromMessageIndex,
-                appendedMessages,
-                turn,
-                callId,
-                affects,
-                reason);
+                null);
+    }
+
+    public @NonNull UsageMeasurement forCompaction() {
+        return new UsageMeasurement(
+                java.util.UUID.randomUUID().toString(),
+                inputTokens,
+                outputTokens,
+                cacheReadInputTokens,
+                cacheCreationInputTokens,
+                contextMaxTokens,
+                model,
+                provider,
+                "compaction");
     }
 }

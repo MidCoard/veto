@@ -9,5 +9,6 @@ public record HistoryTurnResponse(
         @NonNull String timestamp,
         @Nullable Long tokenCount,
         @Nullable Long usedTokens,
-        @Nullable String tokenCountSource)
+        @Nullable String tokenCountSource,
+        java.util.@NonNull List<top.focess.veto.agent.UsageMeasurement> llmUsage)
         implements RestResponse {}

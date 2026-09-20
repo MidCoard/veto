@@ -16,7 +16,7 @@ public final class FixturePlugin extends AbstractVetoPlugin {
 
     @Override
     public @NonNull PluginIdentity identity() {
-        return new PluginIdentity("org.veto.fixture", "0.1.0");
+        return new PluginIdentity("top.focess.fixture", "0.1.0");
     }
 
     @Override
@@ -58,7 +58,7 @@ public final class FixturePlugin extends AbstractVetoPlugin {
                                         input,
                                         output,
                                         ToolContribution.Effect.COMPUTATION,
-                                        Set.of(new ExtensionId("org.veto.fixture:text")),
+                                        Set.of(new ExtensionId("top.focess.fixture:text")),
                                         this::length)),
                         ExtensionContribution.of(
                                 StandardExtensionPoints.CATEGORIES,

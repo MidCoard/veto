@@ -12,6 +12,20 @@ import java.util.HashSet;
 public final class StandardExtensionPoints {
     private StandardExtensionPoints() {}
 
+    public static final @NonNull ExtensionPoint<FrontendExtension> FRONTEND =
+            new ExtensionPoint<>(
+                    new ExtensionId("veto:frontend"),
+                    1,
+                    FrontendExtension.class,
+                    ExtensionPoint.Cardinality.MULTIPLE);
+
+    public static final @NonNull ExtensionPoint<ReferenceRenderer> REFERENCE_RENDERERS =
+            new ExtensionPoint<>(
+                    new ExtensionId("veto:reference-renderers"),
+                    1,
+                    ReferenceRenderer.class,
+                    ExtensionPoint.Cardinality.MULTIPLE);
+
     public static final @NonNull ExtensionPoint<TextProtection> FILE_OBSERVATION =
             new ExtensionPoint<>(
                     new ExtensionId("veto:file-observation"),

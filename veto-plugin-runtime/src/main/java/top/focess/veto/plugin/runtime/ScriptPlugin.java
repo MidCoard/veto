@@ -6,23 +6,21 @@ import com.fasterxml.jackson.core.StreamReadFeature;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.LinkOption;
-import java.nio.file.Path;
-import java.util.List;
-import java.util.Set;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.locks.ReentrantLock;
+
 import org.jspecify.annotations.NonNull;
+
 import top.focess.veto.extension.ExtensionContribution;
 import top.focess.veto.extension.contract.JsonValue;
 import top.focess.veto.plugin.api.AbstractVetoPlugin;
 import top.focess.veto.plugin.api.PluginContext;
 import top.focess.veto.plugin.api.PluginContributions;
 import top.focess.veto.plugin.api.PluginIdentity;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.LinkOption;
+import java.nio.file.Path;
+import java.util.List;
 
 /** Operator-trusted local code, not a sandbox. Only tools are supported in protocol v1. */
 public final class ScriptPlugin extends AbstractVetoPlugin {
@@ -44,12 +42,10 @@ public final class ScriptPlugin extends AbstractVetoPlugin {
     private final @NonNull String digest;
     private final @NonNull List<ScriptTool> descriptors;
     private final @NonNull Path snapshot;
-    private @org.jspecify.annotations.Nullable Process process;
-    private final @NonNull Path node;
+    private final @NonNull ScriptHost host;
+    private final boolean ownsHost;
     private final @NonNull Path executable;
-    private final long timeoutMillis;
-    private final @NonNull ReentrantLock lock = new ReentrantLock();
-    private long sequence;
+
     private @NonNull Runnable failureReporter = () -> {};
 
     ScriptPlugin(
@@ -60,15 +56,17 @@ public final class ScriptPlugin extends AbstractVetoPlugin {
             @NonNull Path snapshot,
             @NonNull Path node,
             @NonNull Path executable,
-            long timeoutMillis) {
+            long timeoutMillis,
+            @NonNull ScriptHost host,
+            boolean ownsHost) {
+        this.host = host;
+        this.ownsHost = ownsHost;
         this.id = id;
         this.version = version;
         this.digest = digest;
         this.descriptors = List.copyOf(descriptors);
         this.snapshot = snapshot;
-        this.node = node;
         this.executable = executable;
-        this.timeoutMillis = timeoutMillis;
     }
 
     @Override
@@ -118,16 +116,7 @@ public final class ScriptPlugin extends AbstractVetoPlugin {
 
     @Override
     protected void onStart() throws IOException {
-        var builder = new ProcessBuilder(node.toString(), executable.toString());
-        builder.directory(snapshot.toFile());
-        builder.environment().clear();
-        builder.redirectError(ProcessBuilder.Redirect.DISCARD);
-        process = builder.start();
-        process.onExit().thenRun(() -> failureReporter.run());
-        JsonNode hello = exchange("initialize", JSON.createObjectNode().put("protocolVersion", 1));
-        PluginSchema.require(
-                hello.path("protocolVersion").isIntegralNumber()
-                        && hello.path("protocolVersion").asInt() == 1);
+        host.register(digest, failureReporter);
     }
 
     @Override
@@ -148,7 +137,7 @@ public final class ScriptPlugin extends AbstractVetoPlugin {
     }
 
     public boolean active() {
-        return process != null && process.isAlive();
+        return host.registered(digest);
     }
 
     public @NonNull List<ScriptTool> tools() {
@@ -161,12 +150,7 @@ public final class ScriptPlugin extends AbstractVetoPlugin {
         if (tools().stream().noneMatch(registered -> registered == tool))
             throw new IOException("Unknown plugin tool");
         PluginSchema.validate(tool.inputSchema(), arguments);
-        JsonNode result =
-                exchange(
-                        "invoke",
-                        JSON.createObjectNode()
-                                .put("handler", tool.handler())
-                                .set("arguments", arguments));
+        JsonNode result = host.invoke(digest, executable, tool.handler(), arguments);
         try {
             PluginSchema.validate(tool.outputSchema(), result);
         } catch (IllegalArgumentException e) {
@@ -174,74 +158,6 @@ public final class ScriptPlugin extends AbstractVetoPlugin {
             throw new IOException("Invalid plugin result");
         }
         return result;
-    }
-
-    private @NonNull JsonNode exchange(@NonNull String method, @NonNull JsonNode params)
-            throws IOException {
-        long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMillis);
-        boolean acquired = false;
-        try {
-            acquired = lock.tryLock(timeoutMillis, TimeUnit.MILLISECONDS);
-            if (!acquired) throw new IOException("Plugin is busy");
-            Process worker = process;
-            if (worker == null || !worker.isAlive()) throw new IOException("Plugin is unavailable");
-            long requestId = ++sequence;
-            byte[] request =
-                    JSON.writeValueAsBytes(
-                            JSON.createObjectNode()
-                                    .put("jsonrpc", "2.0")
-                                    .put("id", requestId)
-                                    .put("method", method)
-                                    .set("params", params));
-            if (request.length > MAX_FRAME) throw new IOException("Plugin request exceeds limit");
-            try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
-                var future =
-                        executor.submit(
-                                () -> {
-                                    worker.getOutputStream().write(request);
-                                    worker.getOutputStream().write('\n');
-                                    worker.getOutputStream().flush();
-                                    var bytes = new ByteArrayOutputStream();
-                                    while (true) {
-                                        int b = worker.getInputStream().read();
-                                        if (b < 0)
-                                            throw new IOException("Plugin closed its channel");
-                                        if (b == '\n') break;
-                                        if (bytes.size() >= MAX_FRAME)
-                                            throw new IOException("Plugin response exceeds limit");
-                                        bytes.write(b);
-                                    }
-                                    JsonNode response = parse(bytes.toByteArray());
-                                    PluginSchema.fields(
-                                            response, Set.of("jsonrpc", "id", "result", "error"));
-                                    PluginSchema.require(
-                                            response.path("jsonrpc").asText().equals("2.0")
-                                                    && response.path("id").isIntegralNumber()
-                                                    && response.path("id").canConvertToLong()
-                                                    && response.path("id").asLong() == requestId
-                                                    && response.has("result")
-                                                    && !response.has("error"));
-                                    return response.path("result");
-                                });
-                try {
-                    return future.get(
-                            Math.max(1, deadline - System.nanoTime()), TimeUnit.NANOSECONDS);
-                } catch (Exception e) {
-                    // Abort transport I/O before waiting for its worker to exit. Lifecycle cleanup
-                    // is queued separately and may be waiting for this startup hook to return.
-                    terminate(worker);
-                    failureReporter.run();
-                    future.cancel(true);
-                    if (e instanceof InterruptedException) Thread.currentThread().interrupt();
-                    throw new IOException("Plugin invocation failed");
-                }
-            }
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new IOException("Plugin invocation cancelled");
-        } finally {
-            if (acquired) lock.unlock();
-        }
     }
 
     static byte @NonNull [] readFile(@NonNull Path path) throws IOException {
@@ -267,20 +183,9 @@ public final class ScriptPlugin extends AbstractVetoPlugin {
 
     @Override
     protected void onClose() {
-        Process worker = process;
-        if (worker != null) terminate(worker);
+        host.unregister(digest);
+        if (ownsHost) host.close();
         removeSnapshot(snapshot);
-    }
-
-    private static void terminate(@NonNull Process worker) {
-        worker.descendants().forEach(ProcessHandle::destroyForcibly);
-        worker.destroyForcibly();
-        try {
-            worker.getInputStream().close();
-            worker.getOutputStream().close();
-        } catch (IOException ignored) {
-            /* Closed channel. */
-        }
     }
 
     static void removeSnapshot(@NonNull Path snapshot) {
