@@ -66,6 +66,7 @@ public final class WebFetchExecutor {
     private final @NonNull UniformLLMCaller caller;
     private final @NonNull ModelTierRegistry models;
     private final @NonNull CapabilityTranslator translator;
+    private final @NonNull IngressDefense ingressDefense;
     private final @NonNull ModelTier tier;
     private final int maxRounds;
     private final int timeoutSeconds;
@@ -79,6 +80,7 @@ public final class WebFetchExecutor {
             @NonNull CapabilityTranslator translator,
             @NonNull SessionAgentRegistry sessionAgents,
             @NonNull TurnLogService turnLogService,
+            @NonNull IngressDefense ingressDefense,
             @Value("${veto.webfetch.model-tier}") @NonNull ModelTier tier,
             @Value("${veto.webfetch.max-rounds}") int maxRounds,
             @Value("${veto.webfetch.timeout-seconds}") int timeoutSeconds,
@@ -92,6 +94,7 @@ public final class WebFetchExecutor {
         this.caller = caller;
         this.models = models;
         this.translator = translator;
+        this.ingressDefense = ingressDefense;
         this.tier = tier;
         this.maxRounds = maxRounds;
         this.timeoutSeconds = timeoutSeconds;
@@ -239,7 +242,7 @@ public final class WebFetchExecutor {
                             engine,
                             gateway,
                             new HitlRegistry(),
-                            new IngressDefense(),
+                            ingressDefense,
                             List.of(),
                             compiler,
                             measured,

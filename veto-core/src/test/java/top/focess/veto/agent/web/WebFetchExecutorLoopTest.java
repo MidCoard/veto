@@ -29,6 +29,7 @@ import top.focess.veto.agent.TurnType;
 import top.focess.veto.agent.VetoAgent;
 import top.focess.veto.agent.capability.NetworkEgressCapabilityImpl;
 import top.focess.veto.agent.capability.WebReadCapability;
+import top.focess.veto.agent.intercept.IngressDefense;
 import top.focess.veto.agent.tool.CapabilityTestCalls;
 import top.focess.veto.agent.tool.ToolCallContextHolder;
 import top.focess.veto.agent.tool.ToolDocs;
@@ -549,6 +550,7 @@ class WebFetchExecutorLoopTest {
                         new DefaultCapabilityTranslator(mapper),
                         registry,
                         turnLog,
+                        new IngressDefense(),
                         ModelTier.LOW,
                         rounds,
                         timeout,

@@ -7,6 +7,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import top.focess.veto.controller.dto.*;
 import top.focess.veto.plugin.api.PluginState;
+import top.focess.veto.plugin.contract.StandardContributionPoints;
 import top.focess.veto.plugin.runtime.PluginManager;
 import top.focess.veto.plugin.runtime.ScriptPlugin;
 
@@ -46,19 +47,13 @@ public class PluginController {
                                             .filter(r -> r.plugin() == plugin)
                                             .flatMap(r -> r.contributions().entries().stream())
                                             .map(e -> e.point().id().value())
-                                            .filter(
-                                                    id ->
-                                                            !id.equals("veto:tools")
-                                                                    && !id.equals(
-                                                                            "veto:secret-candidates"))
+                                            .filter(id -> !id.equals("veto:tools"))
                                             .distinct()
                                             .sorted()
                                             .toList(),
                                     plugins
                                             .catalog()
-                                            .entries(
-                                                    top.focess.veto.extension.contract
-                                                            .StandardExtensionPoints.TOOLS)
+                                            .entries(StandardContributionPoints.TOOLS)
                                             .stream()
                                             .filter(
                                                     entry ->

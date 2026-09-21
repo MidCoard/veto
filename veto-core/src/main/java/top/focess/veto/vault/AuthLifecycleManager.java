@@ -6,7 +6,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import top.focess.veto.command.PromptHandler;
-import top.focess.veto.secret.references.SecretCandidateStore;
+import top.focess.veto.plugin.runtime.PluginLifecycleEvents;
 
 /**
  * Unified service for managing user authentication and vault lifecycle. Ensures that login and
@@ -18,11 +18,11 @@ import top.focess.veto.secret.references.SecretCandidateStore;
  */
 @Service
 public class AuthLifecycleManager {
-    private SecretCandidateStore candidates;
+    private PluginLifecycleEvents lifecycleEvents;
 
     @Autowired
-    public void attachCandidates(@NonNull SecretCandidateStore store) {
-        candidates = store;
+    public void attachLifecycleEvents(@NonNull PluginLifecycleEvents events) {
+        lifecycleEvents = events;
     }
 
     private static final @NonNull Logger log =
@@ -46,7 +46,7 @@ public class AuthLifecycleManager {
     public synchronized void signup(@NonNull String username, @NonNull String password) {
         log.info("AuthLifecycleManager: Signing up user '{}'", username);
         vault.signup(username, password);
-        if (candidates != null) candidates.openOwner(username);
+        if (lifecycleEvents != null) lifecycleEvents.ownerOpened(username);
     }
 
     /**
@@ -58,7 +58,7 @@ public class AuthLifecycleManager {
     public synchronized void login(@NonNull String username, @NonNull String password) {
         log.info("AuthLifecycleManager: Logging in user '{}'", username);
         vault.login(username, password);
-        if (candidates != null) candidates.openOwner(username);
+        if (lifecycleEvents != null) lifecycleEvents.ownerOpened(username);
     }
 
     /**
@@ -69,7 +69,7 @@ public class AuthLifecycleManager {
      */
     public synchronized void logout(@NonNull String username) {
         log.info("AuthLifecycleManager: Logging out user '{}'", username);
-        if (candidates != null) candidates.closeOwner(username);
+        if (lifecycleEvents != null) lifecycleEvents.ownerClosed(username);
         try {
             promptHandler.deactivateUser(username);
         } catch (Exception e) {

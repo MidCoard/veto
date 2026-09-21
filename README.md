@@ -74,7 +74,7 @@ veto/
 |-- veto-plugin-api/ Experimental Java plugin lifecycle binding
 |-- veto-plugin-runtime/ Operator-configured script workers and example package
 |-- veto-plugin-fixture/ Standalone plugin test fixture; not an installable production feature
-|-- veto-secret-protection/ Extracted secret-protection library
+|-- veto-secret-protection/ Self-contained secret-protection plugin (ServiceLoader-discovered built-in)
 |-- RELEASE.md      Release-user guide template
 |-- gradle/          Gradle wrapper support
 |-- qodana.yaml      Qodana inspection configuration
@@ -99,7 +99,7 @@ Important `veto-core` packages:
 | `memory` | In-memory, JPA, vector, and pgvector memory implementations |
 | `group` | Leader/mate groups, DAG coordination, and blackboard state |
 | `vault` | Authentication lifecycle and encrypted per-user notes/credentials |
-| `veto` | llama.cpp bridge, grammar enforcement, redaction, and gateway-level model services |
+| `veto` | llama.cpp bridge, grammar enforcement, the outbound veto gateway, and gateway-level model services |
 | `training` | Training lifecycle and REST endpoints |
 | `controller` | REST API controllers used by veto-ui and benchmark bridges |
 | `terminal` | Backend side of the ZeroMQ terminal protocol |
@@ -352,7 +352,11 @@ through the in-process tool engine and their declared capability boundary.
 
 ## Plugins and extensions — experimental
 
-Veto can activate explicitly configured local JavaScript plugin packages at startup.
+Veto discovers built-in Java plugins through `ServiceLoader` at startup — the
+secret-protection plugin is an ordinary self-contained plugin on this path,
+contributing its tools, text protections, observation masking and lifecycle
+hooks through the shared typed catalog. Veto can additionally activate
+explicitly configured local JavaScript plugin packages at startup.
 The experimental script runtime validates descriptors, starts persistent Node workers,
 and registers namespaced tools through the shared catalog. Plugin calls retain ordinary
 Gateway approval and role restrictions. `GET /api/plugins` provides administrator-only
@@ -360,13 +364,14 @@ status information.
 
 Scripts are trusted local code running as the server user, not sandboxed extensions.
 Activation requires explicit operator configuration; Node and plugin packages are not
-bundled. Model hooks, credential-service access, cross-client adapters and external Java
+bundled. Model hooks, cross-client adapters and external Java
 JAR activation remain unavailable.
 
 - [Script plugin README](veto-plugin-runtime/README.md): configuration, executable example,
   protocol, trust boundaries and tests.
 - [Extension module README](veto-extension/README.md): shared registration behavior.
-- [Java plugin API README](veto-plugin-api/README.md): separate experimental lifecycle fixture.
+- [Java plugin API README](veto-plugin-api/README.md): plugin lifecycle, context and host services.
+- [Secret protection README](veto-secret-protection/README.md): the reference built-in plugin.
 
 These APIs are experimental and are not a stable cross-client compatibility contract.
 

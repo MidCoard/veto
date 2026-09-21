@@ -22,6 +22,7 @@ import top.focess.veto.agent.tool.*;
 import top.focess.veto.agent.tool.builtin.ReadGitHubRepositoryTool;
 import top.focess.veto.agent.workspace.*;
 import top.focess.veto.llm.core.*;
+import top.focess.veto.plugin.runtime.PluginTestSupport;
 import top.focess.veto.vault.*;
 
 class GitHubRepositoryReaderTest {
@@ -34,7 +35,7 @@ class GitHubRepositoryReaderTest {
         @NonNull HttpClient client = mock();
         @NonNull HttpResponse<byte[]> response = mock();
         String token = "synthetic-token";
-        try {
+        try (var plugins = PluginTestSupport.manager()) {
             vault.signup("alice", "test-password");
             String reference =
                     vault.createImportedCredential(
@@ -65,7 +66,7 @@ class GitHubRepositoryReaderTest {
                                                 .orElseThrow());
                                 return response;
                             });
-            var reader = new GitHubRepositoryReader(vault, new ObjectMapper(), client);
+            var reader = new GitHubRepositoryReader(vault, new ObjectMapper(), client, plugins);
             @NonNull SearchProvider provider = mock();
             @NonNull WebFetchExecutor fetch = mock();
             var capability = new NetworkEgressCapabilityImpl(provider, fetch, 15, 1000000, false);

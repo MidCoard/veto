@@ -4,7 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import java.util.List;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.screening.Danger;
-import top.focess.veto.extension.contract.ToolContribution;
+import top.focess.veto.plugin.contract.Tool;
 import top.focess.veto.plugin.runtime.PluginJson;
 
 /**
@@ -15,7 +15,7 @@ public record PluginToolDefinition(
         @NonNull String bindingId,
         @NonNull String pluginId,
         @NonNull String pluginVersion,
-        @NonNull ToolContribution descriptor)
+        @NonNull Tool descriptor)
         implements ToolDefinition {
     @Override
     public @NonNull String description() {
@@ -24,16 +24,14 @@ public record PluginToolDefinition(
 
     @Override
     public @NonNull ToolCapability capability() {
-        return descriptor.effect() == ToolContribution.Effect.CREDENTIAL_IMPORT
-                ? ToolCapability.CREDENTIAL_IMPORT
+        return descriptor.effect() == Tool.Effect.PRIVILEGED
+                ? ToolCapability.PRIVILEGED
                 : ToolCapability.REMOTE_UNKNOWN;
     }
 
     @Override
     public @NonNull Danger defaultDanger() {
-        return descriptor.effect() == ToolContribution.Effect.CREDENTIAL_IMPORT
-                ? Danger.DANGEROUS
-                : Danger.ELEVATED;
+        return descriptor.effect() == Tool.Effect.PRIVILEGED ? Danger.DANGEROUS : Danger.ELEVATED;
     }
 
     @Override

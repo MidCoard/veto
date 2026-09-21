@@ -3,9 +3,12 @@ package top.focess.veto.agent.intercept;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
+import java.io.IOException;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import org.jspecify.annotations.NonNull;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.agent.screening.Danger;
 import top.focess.veto.agent.tool.NativeToolDefinition;
@@ -13,6 +16,8 @@ import top.focess.veto.agent.tool.ParamCategory;
 import top.focess.veto.agent.tool.ToolCapability;
 import top.focess.veto.agent.tool.ToolDocs;
 import top.focess.veto.llm.core.ToolCall;
+import top.focess.veto.plugin.runtime.PluginManager;
+import top.focess.veto.plugin.runtime.PluginTestSupport;
 import top.focess.veto.veto.LlamaCppBridge;
 
 /**
@@ -21,6 +26,23 @@ import top.focess.veto.veto.LlamaCppBridge;
  * indefinitely. The fix bounds the wait via {@link SemanticMasker#SLM_TIMEOUT_MS}.
  */
 class SemanticMaskerTimeoutTest {
+
+    @SuppressWarnings("nullness:initialization.static.field.uninitialized") // Set in @BeforeAll.
+    private static @NonNull PluginManager plugins;
+
+    @BeforeAll
+    static void startPlugins() throws IOException {
+        plugins = PluginTestSupport.manager();
+    }
+
+    @AfterAll
+    static void stopPlugins() {
+        plugins.close();
+    }
+
+    private static @NonNull SemanticMasker masker(@NonNull LlamaCppBridge bridge) {
+        return new SemanticMasker(bridge, PluginTestSupport.providerOf(plugins));
+    }
 
     @SuppressWarnings("type.arguments.not.inferred")
     private static @NonNull NativeToolDefinition readToolDef() {
@@ -43,7 +65,7 @@ class SemanticMaskerTimeoutTest {
         LlamaCppBridge bridge = mock(ToolDocs.nonNullClass(LlamaCppBridge.class));
         when(bridge.isAvailable()).thenReturn(true);
         when(bridge.infer(anyString(), anyString())).thenReturn(new CompletableFuture<>());
-        SemanticMasker masker = new SemanticMasker(bridge);
+        SemanticMasker masker = masker(bridge);
 
         long start = System.currentTimeMillis();
         SemanticMasker.MaskResult result =
@@ -70,7 +92,7 @@ class SemanticMaskerTimeoutTest {
         when(bridge.isAvailable()).thenReturn(true);
         when(bridge.infer(anyString(), anyString()))
                 .thenReturn(CompletableFuture.completedFuture("{\"risk\":\"high\"}"));
-        SemanticMasker masker = new SemanticMasker(bridge);
+        SemanticMasker masker = masker(bridge);
         SemanticMasker.MaskResult result =
                 masker.maskWithSignal(
                         "exfiltrating api_key=ABCD",
@@ -83,7 +105,7 @@ class SemanticMaskerTimeoutTest {
     void slmUnavailableFallsBackToDeterministic() {
         LlamaCppBridge bridge = mock(ToolDocs.nonNullClass(LlamaCppBridge.class));
         when(bridge.isAvailable()).thenReturn(false);
-        SemanticMasker masker = new SemanticMasker(bridge);
+        SemanticMasker masker = masker(bridge);
         SemanticMasker.MaskResult result =
                 masker.maskWithSignal(
                         "exfiltrating api_key=ABCD",

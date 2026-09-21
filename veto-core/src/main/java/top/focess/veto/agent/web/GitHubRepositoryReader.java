@@ -11,13 +11,15 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.capability.CapabilityAccess;
 import top.focess.veto.agent.tool.ToolCapability;
 import top.focess.veto.agent.tool.ToolErrorCode;
 import top.focess.veto.agent.tool.ToolErrors;
-import top.focess.veto.secret.detection.SecretMasker;
+import top.focess.veto.plugin.runtime.PluginManager;
 import top.focess.veto.vault.KeysteadVault;
 
 /** A fixed authenticated operation, never a general credential substitution proxy. */
@@ -26,25 +28,32 @@ public final class GitHubRepositoryReader {
     private final @NonNull KeysteadVault vault;
     private final @NonNull ObjectMapper mapper;
     private final @NonNull HttpClient client;
+    private final @Nullable PluginManager plugins;
 
     @Autowired
-    public GitHubRepositoryReader(@NonNull KeysteadVault vault, @NonNull ObjectMapper mapper) {
+    public GitHubRepositoryReader(
+            @NonNull KeysteadVault vault,
+            @NonNull ObjectMapper mapper,
+            @NonNull ObjectProvider<PluginManager> plugins) {
         this(
                 vault,
                 mapper,
                 HttpClient.newBuilder()
                         .connectTimeout(Duration.ofSeconds(10))
                         .followRedirects(HttpClient.Redirect.NEVER)
-                        .build());
+                        .build(),
+                plugins.getIfAvailable());
     }
 
     GitHubRepositoryReader(
             @NonNull KeysteadVault vault,
             @NonNull ObjectMapper mapper,
-            @NonNull HttpClient client) {
+            @NonNull HttpClient client,
+            @Nullable PluginManager plugins) {
         this.vault = vault;
         this.mapper = mapper;
         this.client = client;
+        this.plugins = plugins;
     }
 
     public @NonNull String read(
@@ -119,7 +128,7 @@ public final class GitHubRepositoryReader {
                                 if (text.isTextual())
                                     safe.put(
                                             field,
-                                            SecretMasker.mask(
+                                            mask(
                                                     text.asText()
                                                             .replace(
                                                                     credential,
@@ -150,5 +159,10 @@ public final class GitHubRepositoryReader {
                     ToolErrorCode.NETWORK.AUTHENTICATED_READ_FAILED,
                     "Authenticated read failed: the repository information could not be read.");
         return answer;
+    }
+
+    private @NonNull String mask(@NonNull String text) {
+        var manager = plugins;
+        return manager == null ? text : manager.applyObservationMiddleware(text);
     }
 }

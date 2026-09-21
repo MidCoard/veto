@@ -6,13 +6,13 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.RejectedExecutionException;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
-import top.focess.veto.extension.contract.ExtensionFailure;
-import top.focess.veto.extension.contract.JsonValue;
 import top.focess.veto.plugin.api.*;
+import top.focess.veto.plugin.contract.JsonValue;
+import top.focess.veto.plugin.contract.PluginFailure;
 
 /** Host-owned state and invocation admission, serialized on the manager control executor. */
 public final class ManagedPlugin implements AutoCloseable {
-    private final @NonNull AbstractVetoPlugin plugin;
+    private final @NonNull VetoPlugin plugin;
     // Published for diagnostics and cooperative cancellation; never used to admit a call.
     private volatile @NonNull PluginState state = PluginState.NEW;
     private final @NonNull ExecutorService lifecycle;
@@ -32,12 +32,12 @@ public final class ManagedPlugin implements AutoCloseable {
         return "plugin:" + identity().id() + ":" + identity().version() + ":" + activationId;
     }
 
-    public ManagedPlugin(@NonNull AbstractVetoPlugin plugin, @NonNull ExecutorService lifecycle) {
+    public ManagedPlugin(@NonNull VetoPlugin plugin, @NonNull ExecutorService lifecycle) {
         this.plugin = plugin;
         this.lifecycle = lifecycle;
     }
 
-    public @NonNull AbstractVetoPlugin implementation() {
+    public @NonNull VetoPlugin implementation() {
         return plugin;
     }
 
@@ -51,12 +51,12 @@ public final class ManagedPlugin implements AutoCloseable {
 
     @FunctionalInterface
     public interface Operation<T extends @NonNull Object> {
-        @NonNull T run() throws ExtensionFailure;
+        @NonNull T run() throws PluginFailure;
     }
 
     public @NonNull PluginContributions initialize(
             @NonNull PluginContext context, JsonValue.@NonNull ObjectValue configuration)
-            throws ExtensionFailure {
+            throws PluginFailure {
         requireExternalControl();
         return await(
                 submit(
@@ -65,14 +65,15 @@ public final class ManagedPlugin implements AutoCloseable {
                             state = PluginState.INITIALIZING;
                             try {
                                 if (!identity().equals(context.identity()))
-                                    throw new ExtensionFailure(
-                                            ExtensionFailure.Code.INVALID_CONFIGURATION);
+                                    throw new PluginFailure(
+                                            PluginFailure.Code.INVALID_CONFIGURATION);
                                 var contributions =
                                         plugin.initialize(
                                                 new PluginContext(
                                                         context.identity(),
                                                         this::fail,
-                                                        this::state),
+                                                        this::state,
+                                                        context.hostServices()),
                                                 configuration);
                                 state = PluginState.INITIALIZED;
                                 return contributions;
@@ -83,7 +84,7 @@ public final class ManagedPlugin implements AutoCloseable {
                         }));
     }
 
-    public void start() throws ExtensionFailure {
+    public void start() throws PluginFailure {
         requireExternalControl();
         await(
                 submit(
@@ -103,9 +104,9 @@ public final class ManagedPlugin implements AutoCloseable {
 
     /** Admission and shutdown are ordered together; the handler runs outside the control thread. */
     public final <T extends @NonNull Object> @NonNull T execute(@NonNull Operation<T> operation)
-            throws ExtensionFailure {
+            throws PluginFailure {
         if (Boolean.TRUE.equals(controlling.get()))
-            throw new ExtensionFailure(ExtensionFailure.Code.NOT_READY);
+            throw new PluginFailure(PluginFailure.Code.NOT_READY);
         // A same-thread nested adapter belongs to the already admitted invocation.
         if (Boolean.TRUE.equals(invoking.get())) return operation.run();
         await(
@@ -134,8 +135,7 @@ public final class ManagedPlugin implements AutoCloseable {
                                 return true;
                             }));
         }
-        if (state == PluginState.FAILED)
-            throw new ExtensionFailure(ExtensionFailure.Code.NOT_READY);
+        if (state == PluginState.FAILED) throw new PluginFailure(PluginFailure.Code.NOT_READY);
         return result;
     }
 
@@ -189,8 +189,8 @@ public final class ManagedPlugin implements AutoCloseable {
         }
     }
 
-    private void require(@NonNull PluginState expected) throws ExtensionFailure {
-        if (state != expected) throw new ExtensionFailure(ExtensionFailure.Code.NOT_READY);
+    private void require(@NonNull PluginState expected) throws PluginFailure {
+        if (state != expected) throw new PluginFailure(PluginFailure.Code.NOT_READY);
     }
 
     private void requireExternalControl() {
@@ -215,24 +215,24 @@ public final class ManagedPlugin implements AutoCloseable {
                         }
                     });
         } catch (RejectedExecutionException closedExecutor) {
-            result.completeExceptionally(new ExtensionFailure(ExtensionFailure.Code.NOT_READY));
+            result.completeExceptionally(new PluginFailure(PluginFailure.Code.NOT_READY));
         }
         return result;
     }
 
     private static <T extends @NonNull Object> @NonNull T await(
-            @NonNull CompletableFuture<T> result) throws ExtensionFailure {
+            @NonNull CompletableFuture<T> result) throws PluginFailure {
         try {
             return result.join();
         } catch (CompletionException failure) {
-            if (failure.getCause() instanceof ExtensionFailure declared) throw declared;
-            throw new ExtensionFailure(ExtensionFailure.Code.INTERNAL_FAILURE);
+            if (failure.getCause() instanceof PluginFailure declared) throw declared;
+            throw new PluginFailure(PluginFailure.Code.INTERNAL_FAILURE);
         }
     }
 
-    private static @NonNull ExtensionFailure safe(@NonNull Throwable failure) {
-        return failure instanceof ExtensionFailure declared
+    private static @NonNull PluginFailure safe(@NonNull Throwable failure) {
+        return failure instanceof PluginFailure declared
                 ? declared
-                : new ExtensionFailure(ExtensionFailure.Code.INTERNAL_FAILURE);
+                : new PluginFailure(PluginFailure.Code.INTERNAL_FAILURE);
     }
 }

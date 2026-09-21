@@ -14,6 +14,7 @@ import top.focess.veto.agent.screening.Danger;
 import top.focess.veto.agent.web.FinishReadTool;
 import top.focess.veto.agent.web.WebFetchTool;
 import top.focess.veto.llm.core.ToolCall;
+import top.focess.veto.plugin.runtime.PluginTestSupport;
 
 class ReaderExecutionMaskingTest {
     @ParameterizedTest
@@ -35,81 +36,83 @@ class ReaderExecutionMaskingTest {
                         Map.of());
         var call = new ToolCall(toolName, Map.of(), "reader-call");
         var mapper = new ObjectMapper();
-        var defense = new IngressDefense();
-        String body =
-                mapper.writeValueAsString(Map.of("execution", Map.of("id", id), "answer", id));
-        try {
-            ToolCallContextHolder.setCurrentCallId(call.callId());
-            ToolCallContextHolder.registerReaderExecution(UUID.fromString(id));
-            String masked =
-                    defense.maskAndFrame(
-                            call,
-                            definition,
-                            ToolResult.success(toolName, call.callId(), body),
-                            true,
-                            new ReadHistory());
-            var parsed = mapper.readTree(masked);
-            assertNotNull(parsed);
-            assertEquals(id, parsed.path("execution").path("id").asText());
-            assertFalse(parsed.path("answer").asText().contains(id));
-            String spoofed = body.replace(id, forged);
-            assertFalse(
-                    defense.maskAndFrame(
-                                    call,
-                                    definition,
-                                    ToolResult.success(toolName, call.callId(), spoofed),
-                                    true,
-                                    new ReadHistory())
-                            .contains(forged));
-            assertFalse(
-                    defense.maskAndFrame(
-                                    new ToolCall(toolName, Map.of(), "next-call"),
-                                    definition,
-                                    ToolResult.success(toolName, "next-call", body),
-                                    true,
-                                    new ReadHistory())
-                            .contains(id));
-            assertFalse(
-                    defense.maskAndFrame(
-                                    call,
-                                    definition,
-                                    ToolResult.failure(
-                                            toolName,
-                                            call.callId(),
-                                            body,
-                                            ToolErrorCode.GENERIC.TOOL_FAILURE),
-                                    true,
-                                    new ReadHistory())
-                            .contains(id));
-            var impostor =
-                    new NativeToolDefinition(
-                            toolName,
-                            "Read",
-                            ToolCapability.NETWORK_EGRESS,
-                            Danger.SAFE,
-                            false,
-                            ToolDocs.nonNullClass(Object.class),
-                            ToolDocs.nonNullClass(Object.class),
-                            Map.of());
-            assertFalse(
-                    defense.maskAndFrame(
-                                    call,
-                                    impostor,
-                                    ToolResult.success(toolName, call.callId(), body),
-                                    true,
-                                    new ReadHistory())
-                            .contains(id));
-        } finally {
-            ToolCallContextHolder.clear();
-        }
-        assertNull(ToolCallContextHolder.readerExecutionId(call.callId()));
-        assertFalse(
-                defense.maskAndFrame(
+        try (var plugins = PluginTestSupport.manager()) {
+            var defense = new IngressDefense(null, PluginTestSupport.providerOf(plugins));
+            String body =
+                    mapper.writeValueAsString(Map.of("execution", Map.of("id", id), "answer", id));
+            try {
+                ToolCallContextHolder.setCurrentCallId(call.callId());
+                ToolCallContextHolder.registerReaderExecution(UUID.fromString(id));
+                String masked =
+                        defense.maskAndFrame(
                                 call,
                                 definition,
                                 ToolResult.success(toolName, call.callId(), body),
                                 true,
-                                new ReadHistory())
-                        .contains(id));
+                                new ReadHistory());
+                var parsed = mapper.readTree(masked);
+                assertNotNull(parsed);
+                assertEquals(id, parsed.path("execution").path("id").asText());
+                assertFalse(parsed.path("answer").asText().contains(id));
+                String spoofed = body.replace(id, forged);
+                assertFalse(
+                        defense.maskAndFrame(
+                                        call,
+                                        definition,
+                                        ToolResult.success(toolName, call.callId(), spoofed),
+                                        true,
+                                        new ReadHistory())
+                                .contains(forged));
+                assertFalse(
+                        defense.maskAndFrame(
+                                        new ToolCall(toolName, Map.of(), "next-call"),
+                                        definition,
+                                        ToolResult.success(toolName, "next-call", body),
+                                        true,
+                                        new ReadHistory())
+                                .contains(id));
+                assertFalse(
+                        defense.maskAndFrame(
+                                        call,
+                                        definition,
+                                        ToolResult.failure(
+                                                toolName,
+                                                call.callId(),
+                                                body,
+                                                ToolErrorCode.GENERIC.TOOL_FAILURE),
+                                        true,
+                                        new ReadHistory())
+                                .contains(id));
+                var impostor =
+                        new NativeToolDefinition(
+                                toolName,
+                                "Read",
+                                ToolCapability.NETWORK_EGRESS,
+                                Danger.SAFE,
+                                false,
+                                ToolDocs.nonNullClass(Object.class),
+                                ToolDocs.nonNullClass(Object.class),
+                                Map.of());
+                assertFalse(
+                        defense.maskAndFrame(
+                                        call,
+                                        impostor,
+                                        ToolResult.success(toolName, call.callId(), body),
+                                        true,
+                                        new ReadHistory())
+                                .contains(id));
+            } finally {
+                ToolCallContextHolder.clear();
+            }
+            assertNull(ToolCallContextHolder.readerExecutionId(call.callId()));
+            assertFalse(
+                    defense.maskAndFrame(
+                                    call,
+                                    definition,
+                                    ToolResult.success(toolName, call.callId(), body),
+                                    true,
+                                    new ReadHistory())
+                            .contains(id));
+        }
     }
 }

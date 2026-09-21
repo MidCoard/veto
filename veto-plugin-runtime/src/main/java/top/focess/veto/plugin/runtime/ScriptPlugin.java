@@ -12,12 +12,13 @@ import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.util.List;
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.extension.ExtensionContribution;
-import top.focess.veto.extension.contract.JsonValue;
 import top.focess.veto.plugin.api.AbstractVetoPlugin;
 import top.focess.veto.plugin.api.PluginContext;
 import top.focess.veto.plugin.api.PluginContributions;
 import top.focess.veto.plugin.api.PluginIdentity;
+import top.focess.veto.plugin.contract.JsonValue;
+import top.focess.veto.plugin.contract.PluginFailure;
+import top.focess.veto.plugin.contribution.Contribution;
 
 /** Operator-trusted local code, not a sandbox. Only tools are supported in protocol v1. */
 public final class ScriptPlugin extends AbstractVetoPlugin {
@@ -73,18 +74,18 @@ public final class ScriptPlugin extends AbstractVetoPlugin {
         PluginSchema.require(configuration.values().isEmpty());
         return new PluginContributions(
                 tools().stream()
-                        .<ExtensionContribution<?>>map(
+                        .<Contribution<?>>map(
                                 tool ->
-                                        ExtensionContribution.of(
-                                                top.focess.veto.extension.contract
-                                                        .StandardExtensionPoints.TOOLS,
+                                        Contribution.of(
+                                                top.focess.veto.plugin.contract
+                                                        .StandardContributionPoints.TOOLS,
                                                 tool.id(),
-                                                new top.focess.veto.extension.contract
+                                                new top.focess.veto.plugin.contract
                                                         .ToolContribution(
                                                         tool.description(),
                                                         PluginJson.object(tool.inputSchema()),
                                                         PluginJson.object(tool.outputSchema()),
-                                                        top.focess.veto.extension.contract
+                                                        top.focess.veto.plugin.contract
                                                                 .ToolContribution.Effect
                                                                 .EXTERNAL_UNKNOWN,
                                                         java.util.Set.of(),
@@ -99,12 +100,8 @@ public final class ScriptPlugin extends AbstractVetoPlugin {
                                                                 cancellation.checkCancelled();
                                                                 return PluginJson.fromNode(result);
                                                             } catch (IOException failure) {
-                                                                throw new top.focess.veto.extension
-                                                                        .contract.ExtensionFailure(
-                                                                        top.focess.veto.extension
-                                                                                .contract
-                                                                                .ExtensionFailure
-                                                                                .Code
+                                                                throw new PluginFailure(
+                                                                        PluginFailure.Code
                                                                                 .INTERNAL_FAILURE);
                                                             }
                                                         })))

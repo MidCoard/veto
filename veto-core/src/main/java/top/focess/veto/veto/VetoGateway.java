@@ -3,18 +3,22 @@ package top.focess.veto.veto;
 import jakarta.annotation.PostConstruct;
 import java.util.concurrent.atomic.AtomicLong;
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 import top.focess.veto.observability.AuditLogger;
+import top.focess.veto.plugin.runtime.PluginManager;
 
 /**
  * gateway Local SLM Veto Gateway - THE CORE OF PROJECT VETO.
  *
  * <p>The absolute choke point for all outbound data. Intercepts all raw data read by mcp (MCP) or
- * sandbox (Sandbox). 1. Extracts structural schemas 2. Redacts sensitive literals (secrets,
- * proprietary physics parameters) 3. Enforces structural constraints before allowing data to flow
- * to bus (Communication Bus)
+ * sandbox (Sandbox). 1. Extracts structural schemas 2. Masks sensitive literals through the
+ * plugin-owned observation-middleware floor (redaction rules live in the secret-protection plugin,
+ * not here) 3. Enforces structural constraints before allowing data to flow to bus (Communication
+ * Bus)
  *
  * <p>Uses llama.cpp (quantized 1B-3B) with GBNF grammar-constrained decoding.
  */
@@ -26,21 +30,30 @@ public class VetoGateway {
 
     private final @NonNull VetoGatewayConfiguration config;
     private final @NonNull LlamaCppBridge llamaCppBridge;
-    private final @NonNull SemanticRedactor semanticRedactor;
+    private final @Nullable PluginManager plugins;
     private final @NonNull AuditLogger auditLogger;
 
     private final @NonNull AtomicLong totalVetoes = new AtomicLong(0);
     private final @NonNull AtomicLong totalPasses = new AtomicLong(0);
     private final @NonNull AtomicLong totalRedactions = new AtomicLong(0);
 
+    @org.springframework.beans.factory.annotation.Autowired
     public VetoGateway(
             @NonNull VetoGatewayConfiguration config,
             @NonNull LlamaCppBridge llamaCppBridge,
-            @NonNull SemanticRedactor semanticRedactor,
+            @NonNull ObjectProvider<PluginManager> plugins,
+            @NonNull AuditLogger auditLogger) {
+        this(config, llamaCppBridge, plugins.getIfAvailable(), auditLogger);
+    }
+
+    VetoGateway(
+            @NonNull VetoGatewayConfiguration config,
+            @NonNull LlamaCppBridge llamaCppBridge,
+            @Nullable PluginManager plugins,
             @NonNull AuditLogger auditLogger) {
         this.config = config;
         this.llamaCppBridge = llamaCppBridge;
-        this.semanticRedactor = semanticRedactor;
+        this.plugins = plugins;
         this.auditLogger = auditLogger;
     }
 
@@ -54,11 +67,13 @@ public class VetoGateway {
 
         if (!llamaCppBridge.isAvailable()) {
             log.warn(
-                    "gateway VetoGateway: SLM not available. Running in deterministic-only redaction mode.");
+                    "gateway VetoGateway: SLM not available. Structural block analysis is skipped;"
+                            + " the masking floor is unaffected.");
         }
 
         log.info(
-                "gateway VetoGateway: Initialized. deterministicRedaction=true, enforceConstraints={}",
+                "gateway VetoGateway: Initialized. masking=plugin-observation-middleware,"
+                        + " enforceConstraints={}",
                 config.isEnforceStructuralConstraints());
     }
 
@@ -87,49 +102,41 @@ public class VetoGateway {
                 componentSource);
 
         try {
-            // Step 1: Deterministic redaction (first pass)
-            SemanticRedactor.RedactionReport deterministicReport =
-                    semanticRedactor.deterministicRedact(payload);
+            // Step 1-2: sensitive-data masking through the plugin observation-middleware chain.
+            // The plugins own the redaction rules; without a plugin the payload passes unmasked.
+            var manager = plugins;
+            String masked = manager == null ? payload : manager.applyObservationMiddleware(payload);
 
-            // Step 2: SLM semantic analysis (for complex structural enforcement)
+            // SLM structural-compliance analysis; only the block decision signal is consumed.
             String slmAnalysis = "";
-            String llmGuidedPayload = deterministicReport.redactedPayload();
-
             if (llamaCppBridge.isAvailable()) {
                 try {
-                    // Ask the SLM to analyze the payload for structural compliance
                     String analysisPrompt =
                             String.format(
-                                    "Analyze the following payload for secrets, proprietary data, and structural compliance:\n%s",
-                                    payload);
+                                    "Analyze the following payload for structural compliance:\n%s",
+                                    masked);
                     slmAnalysis = llamaCppBridge.infer(analysisPrompt, "veto-output").join();
-
-                    // Apply SLM-guided redactions
-                    llmGuidedPayload =
-                            semanticRedactor.semanticRedact(
-                                    deterministicReport.redactedPayload(), slmAnalysis);
                 } catch (Exception e) {
-                    log.error("Local SLM failed (OOM/error); applying deterministic fallback.", e);
-                    llmGuidedPayload = deterministicReport.redactedPayload();
+                    log.error("Local SLM failed (OOM/error); skipping the block analysis.", e);
                 }
             }
 
             // Step 3: Structural constraint enforcement
-            String finalPayload = enforceStructuralConstraints(llmGuidedPayload);
+            String finalPayload = enforceStructuralConstraints(masked);
 
             // Step 4: Determine veto decision
             VetoDecision decision;
             String reason;
-            boolean wasRedacted =
-                    deterministicReport.wasModified() || !payload.equals(finalPayload);
+            boolean wasRedacted = !payload.equals(finalPayload);
+            int changedLines = countChangedLines(payload, finalPayload);
 
             if (wasRedacted || slmAnalysis.contains("\"veto_decision\":\"block\"")) {
                 decision = VetoDecision.REDACT;
                 totalVetoes.incrementAndGet();
                 reason =
-                        "Payload required redaction ("
-                                + deterministicReport.getTotalRedactions()
-                                + " deterministic, SLM analysis)";
+                        "Payload required masking or structural enforcement ("
+                                + changedLines
+                                + " changed lines, SLM analysis)";
                 log.info("gateway VetoGateway: VETO/REDACT applied  - {}", reason);
             } else {
                 decision = VetoDecision.PASS;
@@ -149,18 +156,17 @@ public class VetoGateway {
                     decision == VetoDecision.REDACT);
 
             if (wasRedacted) {
-                totalRedactions.addAndGet(deterministicReport.getTotalRedactions());
+                totalRedactions.addAndGet(changedLines);
             }
 
             long elapsed = System.currentTimeMillis() - startTime;
             log.info(
-                    "gateway VetoGateway: Decision={}, elapsed={}ms, redactions={}",
+                    "gateway VetoGateway: Decision={}, elapsed={}ms, changedLines={}",
                     decision,
                     elapsed,
-                    deterministicReport.getTotalRedactions());
+                    changedLines);
 
-            return new VetoResult(
-                    decision, finalPayload, reason, deterministicReport.getTotalRedactions());
+            return new VetoResult(decision, finalPayload, reason, changedLines);
 
         } catch (Exception e) {
             log.error("gateway VetoGateway: Processing error  - falling back to BLOCK", e);
@@ -194,6 +200,19 @@ public class VetoGateway {
                         "continuous_approx: [ENFORCED_DISCRETE]");
 
         return result;
+    }
+
+    private static int countChangedLines(@NonNull String original, @NonNull String changed) {
+        String[] originalLines = original.split("\n");
+        String[] changedLines = changed.split("\n");
+        int changes = 0;
+        int max = Math.max(originalLines.length, changedLines.length);
+        for (int i = 0; i < max; i++) {
+            String originalLine = i < originalLines.length ? originalLines[i] : "";
+            String changedLine = i < changedLines.length ? changedLines[i] : "";
+            if (!originalLine.equals(changedLine)) changes++;
+        }
+        return changes;
     }
 
     private @NonNull String computeDiff(@NonNull String original, @NonNull String redacted) {
@@ -240,7 +259,10 @@ public class VetoGateway {
         return totalRedactions.get();
     }
 
-    /** The result of processing a payload through the Veto Gateway. */
+    /**
+     * The result of processing a payload through the Veto Gateway. {@code redactionCount} counts
+     * payload lines changed by masking or structural enforcement (0 for a clean pass).
+     */
     public record VetoResult(
             @NonNull VetoDecision decision,
             @NonNull String processedPayload,

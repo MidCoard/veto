@@ -4,9 +4,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.extension.*;
-import top.focess.veto.extension.contract.*;
 import top.focess.veto.plugin.api.*;
+import top.focess.veto.plugin.contract.*;
+import top.focess.veto.plugin.contribution.*;
 
 /** Harmless executable fixture. No Spring, host internals, network or filesystem access. */
 public final class FixturePlugin extends AbstractVetoPlugin {
@@ -22,12 +22,12 @@ public final class FixturePlugin extends AbstractVetoPlugin {
     @Override
     public @NonNull PluginContributions onInitialize(
             @NonNull PluginContext context, JsonValue.@NonNull ObjectValue configuration)
-            throws ExtensionFailure {
+            throws PluginFailure {
         if (!Set.of("failStart").containsAll(configuration.values().keySet()))
-            throw new ExtensionFailure(ExtensionFailure.Code.INVALID_CONFIGURATION);
+            throw new PluginFailure(PluginFailure.Code.INVALID_CONFIGURATION);
         JsonValue option = configuration.values().get("failStart");
         if (option != null && !(option instanceof JsonValue.BooleanValue))
-            throw new ExtensionFailure(ExtensionFailure.Code.INVALID_CONFIGURATION);
+            throw new PluginFailure(PluginFailure.Code.INVALID_CONFIGURATION);
         failStart = option instanceof JsonValue.BooleanValue flag && flag.value();
         var input =
                 new JsonValue.ObjectValue(
@@ -50,53 +50,52 @@ public final class FixturePlugin extends AbstractVetoPlugin {
                 new JsonValue.ObjectValue(Map.of("type", new JsonValue.StringValue("integer")));
         return new PluginContributions(
                 List.of(
-                        ExtensionContribution.of(
-                                StandardExtensionPoints.TOOLS,
+                        Contribution.of(
+                                StandardContributionPoints.TOOLS,
                                 "text_length",
                                 new ToolContribution(
                                         "Count Unicode code points in text without accessing host services.",
                                         input,
                                         output,
-                                        ToolContribution.Effect.COMPUTATION,
-                                        Set.of(new ExtensionId("top.focess.fixture:text")),
+                                        Tool.Effect.COMPUTATION,
+                                        Set.of(new ContributionId("top.focess.fixture:text")),
                                         this::length)),
-                        ExtensionContribution.of(
-                                StandardExtensionPoints.CATEGORIES,
+                        Contribution.of(
+                                StandardContributionPoints.CATEGORIES,
                                 "text",
                                 new ToolCategory("Text", "Local text operations")),
-                        ExtensionContribution.of(
-                                StandardExtensionPoints.PROMPTS,
+                        Contribution.of(
+                                StandardContributionPoints.PROMPTS,
                                 "usage",
                                 new PromptContribution("prompts/fixture.md")),
-                        ExtensionContribution.of(
-                                StandardExtensionPoints.OBSERVATION, "trim", this::trim)));
+                        Contribution.of(
+                                StandardContributionPoints.OBSERVATION, "trim", this::trim)));
     }
 
     private volatile boolean active;
 
     @Override
-    public void onStart() throws ExtensionFailure {
-        if (failStart) throw new ExtensionFailure(ExtensionFailure.Code.INTERNAL_FAILURE);
+    public void onStart() throws PluginFailure {
+        if (failStart) throw new PluginFailure(PluginFailure.Code.INTERNAL_FAILURE);
         active = true;
     }
 
     private synchronized @NonNull JsonValue length(
             JsonValue.@NonNull ObjectValue arguments, @NonNull Cancellation invocation)
-            throws ExtensionFailure {
-        if (!active) throw new ExtensionFailure(ExtensionFailure.Code.NOT_READY);
+            throws PluginFailure {
+        if (!active) throw new PluginFailure(PluginFailure.Code.NOT_READY);
         invocation.checkCancelled();
         if (arguments.values().size() != 1
                 || !(arguments.values().get("text") instanceof JsonValue.StringValue text))
-            throw new ExtensionFailure(ExtensionFailure.Code.INVALID_ARGUMENTS);
+            throw new PluginFailure(PluginFailure.Code.INVALID_ARGUMENTS);
         return new JsonValue.NumberValue(
                 java.math.BigDecimal.valueOf(
                         text.value().codePointCount(0, text.value().length())));
     }
 
     private synchronized @NonNull String trim(
-            @NonNull String observation, @NonNull Cancellation cancellation)
-            throws ExtensionFailure {
-        if (!active) throw new ExtensionFailure(ExtensionFailure.Code.NOT_READY);
+            @NonNull String observation, @NonNull Cancellation cancellation) throws PluginFailure {
+        if (!active) throw new PluginFailure(PluginFailure.Code.NOT_READY);
         cancellation.checkCancelled();
         return observation.strip();
     }

@@ -95,19 +95,6 @@ public class GBNFGrammarEngine {
                 """;
     }
 
-    /** Get the secrets redaction grammar. */
-    public @NonNull String getSecretsRedactionGrammar() {
-        return """
-                root ::= redaction-response
-                redaction-response ::= "{" ws "\\"secrets_found\\"" ws ":" ws boolean ws "," ws "\\"redacted_fields\\"" ws ":" ws redacted-fields ws "," ws "\\"safe_payload\\"" ws ":" ws string ws "}"
-                redacted-fields ::= "[" ws (redacted-field ("," ws redacted-field)*)? ws "]"
-                redacted-field ::= "{" ws "\\"field\\"" ws ":" ws string ws "," ws "\\"type\\"" ws ":" ws string ws "}"
-                boolean ::= "true" | "false"
-                string ::= "\\"" [^"]* "\\""
-                ws ::= [ \\t\\n]*
-                """;
-    }
-
     /** Grammar for the advisory relevance + danger screening contract. */
     public @NonNull String getScreeningGrammar() {
         return """

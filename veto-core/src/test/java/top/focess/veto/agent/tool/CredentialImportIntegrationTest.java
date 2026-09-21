@@ -12,20 +12,30 @@ import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import top.focess.veto.agent.capability.CredentialImportCapabilityImpl;
+import org.springframework.context.ApplicationContext;
 import top.focess.veto.agent.drift.ReadHistory;
 import top.focess.veto.agent.identity.Role;
 import top.focess.veto.agent.identity.RoleToolFilter;
 import top.focess.veto.agent.intercept.*;
 import top.focess.veto.agent.screening.*;
-import top.focess.veto.agent.tool.builtin.ImportDetectedCredentialTool;
 import top.focess.veto.agent.workspace.*;
+import top.focess.veto.plugin.contract.PluginFailure;
+import top.focess.veto.plugin.contract.JsonValue;
+import top.focess.veto.plugin.contract.StandardContributionPoints;
+import top.focess.veto.plugin.contract.TextProtection;
 import top.focess.veto.llm.core.ToolCall;
 import top.focess.veto.llm.core.ToolResultPresentationMode;
-import top.focess.veto.secret.references.SecretCandidateStore;
+import top.focess.veto.plugin.runtime.PluginHostServices;
+import top.focess.veto.plugin.runtime.PluginJson;
+import top.focess.veto.plugin.runtime.PluginManager;
+import top.focess.veto.plugin.runtime.PluginTestSupport;
+import top.focess.veto.plugin.secrets.SecretProtectionConfiguration;
+import top.focess.veto.secret.api.CredentialImportAccess;
 import top.focess.veto.vault.KeysteadVault;
 
 class CredentialImportIntegrationTest {
+    private static final @NonNull String IMPORT_TOOL =
+            "plugin_top_focess_secret_protection__import_detected_credential";
 
     @AfterEach
     void clearContext() {
@@ -37,176 +47,250 @@ class CredentialImportIntegrationTest {
             throws Exception {
         var session = UUID.randomUUID();
         var user = UUID.randomUUID();
-        var scope = new SecretCandidateStore.Scope("alice", session.toString(), "agent");
-        var store = new SecretCandidateStore();
-        var reference =
-                store.capture(scope, "source", "password=synthetic-token")
-                        .candidates()
-                        .getFirst()
-                        .reference();
         @NonNull KeysteadVault vault = mock();
         when(vault.isUnlocked("alice")).thenReturn(true);
-        when(vault.createImportedCredential(
-                        "alice", reference, "github", "Repository", "synthetic-token"))
-                .thenReturn("cred_test");
         var mapper = new ObjectMapper();
-        var tool =
-                new ImportDetectedCredentialTool(
-                        new CredentialImportCapabilityImpl(store, vault, mapper));
-        var engine = ToolEngineImpl.isolated(mapper, List.of(tool));
-        var definition = engine.getActiveTools(null).getFirst();
         var workspace = Workspace.single(directory, PathMode.REAL);
-        var gateway =
-                new Gateway(
-                        workspace,
-                        new DangerComputation(),
-                        SlmScreeningProvider.unavailable(),
-                        DeployerPolicy.FULL_ACCESS,
-                        ProtectedSet.empty(),
-                        new ReadHistory());
-        var call =
-                new ToolCall(
-                        tool.getName(),
-                        Map.of("secret_ref", reference, "service", "github", "label", "Repository"),
-                        "call");
-        var screened =
-                assertInstanceOf(
-                        ToolDocs.nonNullClass(GatewayResult.Screened.class),
-                        gateway.screen(call, definition));
-        assertInstanceOf(
-                ToolDocs.nonNullClass(ApprovalDecision.Prompt.class),
-                new HitlRegistry().decide("agent", call, definition, screened));
-        assertFalse(engine.execute(call, definition).success());
-        verifyNoInteractions(vault);
-        var permit =
-                gateway.revalidateExecution(call, definition, screened.executionPermit())
-                        .withCaller("agent", user, null, "alice", session);
-        ToolCallContextHolder.set(
-                new ToolCallContext(
-                        "mate",
-                        user,
-                        null,
-                        "alice",
-                        session,
-                        ToolResultPresentationMode.BASIC,
-                        permit));
-        assertFalse(engine.execute(call, definition).success());
-        verifyNoInteractions(vault);
-        ToolCallContextHolder.set(
-                new ToolCallContext(
-                        "agent",
-                        user,
-                        null,
-                        "alice",
-                        session,
-                        ToolResultPresentationMode.BASIC,
-                        permit));
-        var changed =
-                new ToolCall(
-                        tool.getName(),
-                        Map.of("secret_ref", reference, "service", "github", "label", "Changed"),
-                        "call");
-        assertFalse(engine.execute(changed, definition).success());
-        verifyNoInteractions(vault);
-        var result = engine.execute(call, definition);
-        assertTrue(result.success(), result.content());
-        assertFalse(result.content().contains("synthetic-token"));
-        assertEquals(
-                "cred_test", mapper.readTree(result.content()).path("credential_ref").asText());
-        assertEquals("created", mapper.readTree(result.content()).path("status").asText());
-        assertTrue(engine.execute(call, definition).success());
-        verify(vault, times(1))
-                .createImportedCredential(
-                        "alice", reference, "github", "Repository", "synthetic-token");
+        try (var plugins = PluginTestSupport.manager(hostServices(vault))) {
+            var scope = new TextProtection.Scope("alice", session.toString(), "agent");
+            String reference = reference(plugins, scope);
+            when(vault.createImportedCredential(
+                            "alice", reference, "github", "Repository", "synthetic-token"))
+                    .thenReturn("cred_test");
+            var engine = engineWith(mapper, plugins);
+            var definition = importTool(engine);
+            var gateway =
+                    new Gateway(
+                            workspace,
+                            new DangerComputation(),
+                            SlmScreeningProvider.unavailable(),
+                            DeployerPolicy.FULL_ACCESS,
+                            ProtectedSet.empty(),
+                            new ReadHistory());
+            var call =
+                    new ToolCall(
+                            IMPORT_TOOL,
+                            Map.of(
+                                    "secret_ref",
+                                    reference,
+                                    "service",
+                                    "github",
+                                    "label",
+                                    "Repository"),
+                            "call");
+            var screened =
+                    assertInstanceOf(
+                            ToolDocs.nonNullClass(GatewayResult.Screened.class),
+                            gateway.screen(call, definition));
+            assertInstanceOf(
+                    ToolDocs.nonNullClass(ApprovalDecision.Prompt.class),
+                    new HitlRegistry().decide("agent", call, definition, screened));
+            assertFalse(engine.execute(call, definition).success());
+            verifyNoInteractions(vault);
+            var permit =
+                    gateway.revalidateExecution(call, definition, screened.executionPermit())
+                            .withCaller("agent", user, null, "alice", session);
+            ToolCallContextHolder.set(
+                    new ToolCallContext(
+                            "mate",
+                            user,
+                            null,
+                            "alice",
+                            session,
+                            ToolResultPresentationMode.BASIC,
+                            permit));
+            assertFalse(engine.execute(call, definition).success());
+            verifyNoInteractions(vault);
+            ToolCallContextHolder.set(
+                    new ToolCallContext(
+                            "agent",
+                            user,
+                            null,
+                            "alice",
+                            session,
+                            ToolResultPresentationMode.BASIC,
+                            permit));
+            var changed =
+                    new ToolCall(
+                            IMPORT_TOOL,
+                            Map.of(
+                                    "secret_ref",
+                                    reference,
+                                    "service",
+                                    "github",
+                                    "label",
+                                    "Changed"),
+                            "call");
+            assertFalse(engine.execute(changed, definition).success());
+            verifyNoInteractions(vault);
+            var result = engine.execute(call, definition);
+            assertTrue(result.success(), result.content());
+            assertFalse(result.content().contains("synthetic-token"));
+            assertEquals(
+                    "cred_test", mapper.readTree(result.content()).path("credential_ref").asText());
+            assertEquals("created", mapper.readTree(result.content()).path("status").asText());
+            assertTrue(engine.execute(call, definition).success());
+            verify(vault, times(1))
+                    .createImportedCredential(
+                            "alice", reference, "github", "Repository", "synthetic-token");
+        }
+    }
+
+    private static @NonNull PluginHostServices hostServices(@NonNull KeysteadVault vault) {
+        return new SecretProtectionConfiguration()
+                .pluginHostServices(
+                        PluginTestSupport.providerOf(vault), PluginTestSupport.providerOf(null));
+    }
+
+    private static @NonNull String reference(
+            @NonNull PluginManager plugins, TextProtection.@NonNull Scope scope)
+            throws PluginFailure {
+        String captured =
+                PluginTestSupport.protect(
+                        plugins,
+                        StandardContributionPoints.INPUT_PROTECTION,
+                        scope,
+                        "source",
+                        "password=synthetic-token");
+        var matcher = java.util.regex.Pattern.compile("s_[a-f0-9]{32}").matcher(captured);
+        if (!matcher.find()) throw new AssertionError("Expected reference is missing");
+        return matcher.group();
+    }
+
+    private static @NonNull ToolEngineImpl engineWith(
+            @NonNull ObjectMapper mapper, @NonNull PluginManager plugins) {
+        var context = mock(ToolDocs.nonNullClass(ApplicationContext.class));
+        when(context.getBeansOfType(PluginManager.class)).thenReturn(Map.of("plugins", plugins));
+        var engine = new ToolEngineImpl(mapper, List.of(), context);
+        engine.afterSingletonsInstantiated();
+        return engine;
+    }
+
+    private static @NonNull ToolDefinition importTool(@NonNull ToolEngineImpl engine) {
+        return engine.getActiveTools(null).stream()
+                .filter(definition -> definition.name().equals(IMPORT_TOOL))
+                .findFirst()
+                .orElseThrow();
     }
 
     @Test
-    void capabilityChecksTheExactOperationAndScopeBeforeInvokingStorage(
-            @TempDir @NonNull Path directory) {
+    void importAccessChecksTheExactOperationAndScopeBeforeInvokingStorage(
+            @TempDir @NonNull Path directory) throws Exception {
         var session = UUID.randomUUID();
-        var store = new SecretCandidateStore();
-        var scope = new SecretCandidateStore.Scope("alice", session.toString(), "agent");
-        String reference =
-                store.capture(scope, "source", "password=synthetic-token")
-                        .candidates()
-                        .getFirst()
-                        .reference();
         @NonNull KeysteadVault vault = mock();
-        var capability = new CredentialImportCapabilityImpl(store, vault, new ObjectMapper());
-        var definition =
-                ToolSchemaCompiler.compileNative(new ImportDetectedCredentialTool(capability));
-        var workspace = Workspace.single(directory, PathMode.REAL);
-        var call =
-                new ToolCall(
-                        "import_detected_credential",
-                        Map.of("secret_ref", reference, "service", "github", "label", "Repository"),
-                        "call");
-        assertThrows(
-                SecurityException.class,
-                () -> capability.importDetected(reference, "github", "Repository"));
-
-        installContext(call, definition, workspace, "alice", session, "agent");
-        assertThrows(
-                SecurityException.class,
-                () -> capability.importDetected(reference, "github", "Changed"));
-        assertThrows(
-                SecurityException.class,
-                () -> capability.importDetected(reference, "other-service", "Repository"));
-        assertThrows(
-                SecurityException.class,
-                () -> capability.importDetected("other-reference", "github", "Repository"));
-
-        for (var incompatibleCall :
-                List.of(
-                        new ToolCall("other_import", call.args(), call.callId()),
-                        new ToolCall(
-                                call.toolName(),
-                                Map.of(
-                                        "secret_ref", reference,
-                                        "service", "github",
-                                        "label", "Repository",
-                                        "extra", "not approved"),
-                                call.callId()))) {
-            installContext(incompatibleCall, definition, workspace, "alice", session, "agent");
+        var services = hostServices(vault);
+        var service = services.services().get(ToolDocs.nonNullClass(CredentialImportAccess.class));
+        if (!(service instanceof CredentialImportAccess access))
+            throw new AssertionError("Import host service missing");
+        try (var plugins = PluginTestSupport.manager(services)) {
+            var scope = new TextProtection.Scope("alice", session.toString(), "agent");
+            String reference = reference(plugins, scope);
+            var engine = engineWith(new ObjectMapper(), plugins);
+            var definition = importTool(engine);
+            var workspace = Workspace.single(directory, PathMode.REAL);
+            var call =
+                    new ToolCall(
+                            IMPORT_TOOL,
+                            Map.of(
+                                    "secret_ref",
+                                    reference,
+                                    "service",
+                                    "github",
+                                    "label",
+                                    "Repository"),
+                            "call");
             assertThrows(
                     SecurityException.class,
-                    () -> capability.importDetected(reference, "github", "Repository"));
-        }
+                    () -> access.authorize(reference, "github", "Repository"));
 
-        installContext(call, definition, workspace, null, session, "agent");
-        assertThrows(
-                SecurityException.class,
-                () -> capability.importDetected(reference, "github", "Repository"));
-        installContext(call, definition, workspace, "alice", null, "agent");
-        assertThrows(
-                SecurityException.class,
-                () -> capability.importDetected(reference, "github", "Repository"));
-        for (var other :
-                List.of(
-                        new SecretCandidateStore.Scope("bob", session.toString(), "agent"),
-                        new SecretCandidateStore.Scope(
-                                "alice", UUID.randomUUID().toString(), "agent"),
-                        new SecretCandidateStore.Scope("alice", session.toString(), "mate"))) {
-            installContext(
-                    call,
-                    definition,
-                    workspace,
-                    other.owner(),
-                    UUID.fromString(other.session()),
-                    other.agent());
+            installContext(call, definition, workspace, "alice", session, "agent");
             assertThrows(
-                    IllegalStateException.class,
-                    () -> capability.importDetected(reference, "github", "Repository"));
+                    SecurityException.class,
+                    () -> access.authorize(reference, "github", "Changed"));
+            assertThrows(
+                    SecurityException.class,
+                    () -> access.authorize(reference, "other-service", "Repository"));
+            assertThrows(
+                    SecurityException.class,
+                    () -> access.authorize("other-reference", "github", "Repository"));
+
+            for (var incompatibleCall :
+                    List.of(
+                            // The tool-name binding is enforced by the engine's registration
+                            // identity check; the host-side authorization pins the exact
+                            // argument set instead (it no longer knows the plugin's tool name).
+                            new ToolCall(
+                                    call.toolName(),
+                                    Map.of(
+                                            "secret_ref",
+                                            reference,
+                                            "service",
+                                            "github",
+                                            "label",
+                                            "Repository",
+                                            "extra",
+                                            "not approved"),
+                                    call.callId()))) {
+                installContext(incompatibleCall, definition, workspace, "alice", session, "agent");
+                assertThrows(
+                        SecurityException.class,
+                        () -> access.authorize(reference, "github", "Repository"));
+            }
+
+            installContext(call, definition, workspace, null, session, "agent");
+            assertThrows(
+                    SecurityException.class,
+                    () -> access.authorize(reference, "github", "Repository"));
+            installContext(call, definition, workspace, "alice", null, "agent");
+            assertThrows(
+                    SecurityException.class,
+                    () -> access.authorize(reference, "github", "Repository"));
+            for (var other :
+                    List.of(
+                            new TextProtection.Scope("bob", session.toString(), "agent"),
+                            new TextProtection.Scope(
+                                    "alice", UUID.randomUUID().toString(), "agent"),
+                            new TextProtection.Scope("alice", session.toString(), "mate"))) {
+                installContext(
+                        call,
+                        definition,
+                        workspace,
+                        other.ownerId(),
+                        UUID.fromString(other.sessionId()),
+                        other.agentId());
+                assertThrows(
+                        IllegalStateException.class,
+                        () -> invokeImport(plugins, reference, "github", "Repository"));
+            }
+            verifyNoInteractions(vault);
+            assertEquals(
+                    "synthetic-token",
+                    PluginTestSupport.reveal(plugins, scope, reference).orElseThrow());
         }
-        verifyNoInteractions(vault);
-        assertEquals(
-                SecretCandidateStore.State.AVAILABLE,
-                store.describe(scope, reference).orElseThrow().state());
+    }
+
+    private static @NonNull JsonValue invokeImport(
+            @NonNull PluginManager plugins,
+            @NonNull String reference,
+            @NonNull String service,
+            @NonNull String label)
+            throws Exception {
+        var entry = plugins.catalog().entries(StandardContributionPoints.TOOLS).getFirst();
+        var arguments =
+                PluginJson.object(
+                        new ObjectMapper()
+                                .valueToTree(
+                                        Map.of(
+                                                "secret_ref", reference,
+                                                "service", service,
+                                                "label", label)));
+        return plugins.plugin(entry.source().namespace())
+                .execute(() -> entry.implementation().handler().invoke(arguments, () -> false));
     }
 
     private static void installContext(
             @NonNull ToolCall call,
-            @NonNull NativeToolDefinition definition,
+            @NonNull ToolDefinition definition,
             @NonNull Workspace workspace,
             String owner,
             UUID session,
@@ -228,33 +312,12 @@ class CredentialImportIntegrationTest {
     }
 
     @Test
-    void rolesAndNativeContractKeepImportWithinItsOwnBoundary() {
+    void rolesKeepImportWithinItsOwnBoundary() {
         assertTrue(
                 RoleToolFilter.capabilitiesFor(Role.STANDALONE)
-                        .contains(ToolCapability.CREDENTIAL_IMPORT));
-        assertTrue(
-                RoleToolFilter.capabilitiesFor(Role.MATE)
-                        .contains(ToolCapability.CREDENTIAL_IMPORT));
+                        .contains(ToolCapability.PRIVILEGED));
+        assertTrue(RoleToolFilter.capabilitiesFor(Role.MATE).contains(ToolCapability.PRIVILEGED));
         assertFalse(
-                RoleToolFilter.capabilitiesFor(Role.LEADER)
-                        .contains(ToolCapability.CREDENTIAL_IMPORT));
-        var tool =
-                new ImportDetectedCredentialTool(
-                        new CredentialImportCapabilityImpl(
-                                new SecretCandidateStore(),
-                                mock(ToolDocs.nonNullClass(KeysteadVault.class)),
-                                new ObjectMapper()));
-        var def = ToolSchemaCompiler.compileNative(tool);
-        var unsafe =
-                new NativeToolDefinition(
-                        def.name(),
-                        def.description(),
-                        def.capability(),
-                        Danger.SAFE,
-                        false,
-                        def.toolClass(),
-                        def.argsClass(),
-                        def.paramHints());
-        assertThrows(IllegalArgumentException.class, () -> ToolContractValidator.validate(unsafe));
+                RoleToolFilter.capabilitiesFor(Role.LEADER).contains(ToolCapability.PRIVILEGED));
     }
 }

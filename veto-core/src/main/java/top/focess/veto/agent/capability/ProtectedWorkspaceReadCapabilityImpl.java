@@ -8,27 +8,22 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.tool.ToolCapability;
-import top.focess.veto.extension.contract.StandardExtensionPoints;
-import top.focess.veto.extension.contract.TextProtection;
+import top.focess.veto.plugin.contract.StandardContributionPoints;
+import top.focess.veto.plugin.contract.TextProtection;
 import top.focess.veto.plugin.runtime.SessionPlugins;
-import top.focess.veto.secret.references.SecretCandidateStore;
 
 /** File capture bound to the screened native file read and its owned session. */
 @Component
 public final class ProtectedWorkspaceReadCapabilityImpl implements WorkspaceReadCapability {
-    private final @NonNull SecretCandidateStore candidates;
     private final @Nullable SessionPlugins plugins;
 
     @Autowired
-    public ProtectedWorkspaceReadCapabilityImpl(
-            @NonNull SecretCandidateStore candidates,
-            @NonNull ObjectProvider<SessionPlugins> plugins) {
-        this.candidates = candidates;
+    public ProtectedWorkspaceReadCapabilityImpl(@NonNull ObjectProvider<SessionPlugins> plugins) {
         this.plugins = plugins.getIfAvailable();
     }
 
-    public ProtectedWorkspaceReadCapabilityImpl(@NonNull SecretCandidateStore candidates) {
-        this.candidates = candidates;
+    /** Detached construction (tests): capture falls back to the unchanged text. */
+    public ProtectedWorkspaceReadCapabilityImpl() {
         this.plugins = null;
     }
 
@@ -49,15 +44,9 @@ public final class ProtectedWorkspaceReadCapabilityImpl implements WorkspaceRead
                     "Protected file reading requires an active owned session");
         if (plugins != null)
             return plugins.protect(
-                    StandardExtensionPoints.FILE_PROTECTION,
+                    StandardContributionPoints.FILE_PROTECTION,
                     new TextProtection.Scope(owner, session.toString(), context.agentId()),
                     input);
-        return candidates
-                .captureFile(
-                        new SecretCandidateStore.Scope(
-                                owner, session.toString(), context.agentId()),
-                        UUID.randomUUID().toString(),
-                        input)
-                .text();
+        return input;
     }
 }

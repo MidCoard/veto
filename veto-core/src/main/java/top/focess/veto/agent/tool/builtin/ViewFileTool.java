@@ -25,7 +25,6 @@ import top.focess.veto.agent.tool.ToolErrors;
 import top.focess.veto.agent.tool.ToolResultFormat;
 import top.focess.veto.agent.tool.ToolSecurity;
 import top.focess.veto.agent.tool.WorkspaceReadTool;
-import top.focess.veto.secret.references.SecretCandidateStore;
 
 /** {@code view_file} — read lines of a text file from the local filesystem. */
 @Component
@@ -96,8 +95,9 @@ public final class ViewFileTool implements WorkspaceReadTool<ViewFileTool.Args> 
         this.protectedFiles = protectedFiles;
     }
 
+    /** Detached construction (tests): reads without session-bound secret capture. */
     public ViewFileTool() {
-        this(new ProtectedWorkspaceReadCapabilityImpl(new SecretCandidateStore()));
+        this(new ProtectedWorkspaceReadCapabilityImpl());
     }
 
     /** Parameter container for {@code view_file}. */

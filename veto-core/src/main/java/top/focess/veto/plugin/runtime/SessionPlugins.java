@@ -2,12 +2,20 @@ package top.focess.veto.plugin.runtime;
 
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 import java.util.stream.Collectors;
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
+import top.focess.veto.agent.TurnType;
 import top.focess.veto.agent.tool.PluginToolDefinition;
 import top.focess.veto.agent.tool.ToolDefinition;
 import top.focess.veto.model.SessionRepository;
+import top.focess.veto.plugin.api.PluginState;
+import top.focess.veto.plugin.contract.PluginFailure;
+import top.focess.veto.plugin.contract.StandardContributionPoints;
+import top.focess.veto.plugin.contract.TextProtection;
+import top.focess.veto.plugin.contribution.ContributionPoint;
 import top.focess.veto.session.SessionHistoryLoader;
 
 /**
@@ -29,8 +37,7 @@ public class SessionPlugins {
         this.history = history;
     }
 
-    public @NonNull List<PluginBinding> selection(
-            @org.jspecify.annotations.Nullable List<String> requested) {
+    public @NonNull List<PluginBinding> selection(@Nullable List<String> requested) {
         var available = manager.plugins();
         var ids =
                 requested == null
@@ -42,7 +49,7 @@ public class SessionPlugins {
                 .map(
                         id -> {
                             var plugin = manager.plugin(id);
-                            if (plugin.state() != top.focess.veto.plugin.api.PluginState.ACTIVE)
+                            if (plugin.state() != PluginState.ACTIVE)
                                 throw new IllegalArgumentException("Plugin is unavailable: " + id);
                             return binding(plugin);
                         })
@@ -68,7 +75,7 @@ public class SessionPlugins {
             var records = history.load(sessionId);
             String original =
                     records.stream()
-                            .filter(t -> t.type() == top.focess.veto.agent.TurnType.AGENT_INIT)
+                            .filter(t -> t.type() == TurnType.AGENT_INIT)
                             .map(t -> String.valueOf(t.payload().get("system_prompt")))
                             .findFirst()
                             .orElse("");
@@ -80,9 +87,7 @@ public class SessionPlugins {
                                                     || manager
                                                             .catalog()
                                                             .entries(
-                                                                    top.focess.veto.extension
-                                                                            .contract
-                                                                            .StandardExtensionPoints
+                                                                    StandardContributionPoints
                                                                             .TOOLS)
                                                             .stream()
                                                             .anyMatch(
@@ -123,10 +128,8 @@ public class SessionPlugins {
     }
 
     public @NonNull String protect(
-            top.focess.veto.extension.@NonNull ExtensionPoint<
-                            top.focess.veto.extension.contract.TextProtection>
-                    point,
-            top.focess.veto.extension.contract.TextProtection.@NonNull Scope scope,
+            @NonNull ContributionPoint<? extends TextProtection> point,
+            TextProtection.@NonNull Scope scope,
             @NonNull String text) {
         var ids =
                 bindings(scope.sessionId()).stream()
@@ -144,20 +147,16 @@ public class SessionPlugins {
                                                 entry.implementation()
                                                         .transform(
                                                                 scope,
-                                                                java.util
-                                                                        .UUID
-                                                                        .randomUUID()
-                                                                        .toString(),
+                                                                UUID.randomUUID().toString(),
                                                                 input));
-            } catch (top.focess.veto.extension.contract.ExtensionFailure failure) {
+            } catch (PluginFailure failure) {
                 throw new IllegalStateException("Session text protection unavailable", failure);
             }
         }
         return result;
     }
 
-    public boolean has(
-            @NonNull String sessionId, top.focess.veto.extension.@NonNull ExtensionPoint<?> point) {
+    public boolean has(@NonNull String sessionId, @NonNull ContributionPoint<?> point) {
         var ids = bindings(sessionId).stream().map(PluginBinding::id).collect(Collectors.toSet());
         return manager.catalog().entries(point).stream()
                 .anyMatch(entry -> ids.contains(entry.source().namespace()));

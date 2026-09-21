@@ -20,10 +20,10 @@ import top.focess.veto.agent.capability.RemoteCallCapability;
 import top.focess.veto.agent.capability.RemoteCallCapabilityImpl;
 import top.focess.veto.agent.mcp.transport.McpJsonRpcClient;
 import top.focess.veto.agent.mcp.transport.McpTransport;
-import top.focess.veto.extension.contract.StandardExtensionPoints;
 import top.focess.veto.llm.config.LlmJacksonConfig;
 import top.focess.veto.llm.core.ToolCall;
 import top.focess.veto.plugin.api.PluginState;
+import top.focess.veto.plugin.contract.StandardContributionPoints;
 import top.focess.veto.plugin.runtime.PluginJson;
 import top.focess.veto.plugin.runtime.PluginManager;
 import top.focess.veto.plugin.runtime.PluginSchema;
@@ -127,7 +127,7 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
         }
         if (context != null) {
             for (var manager : context.getBeansOfType(PluginManager.class).values()) {
-                for (var entry : manager.catalog().entries(StandardExtensionPoints.TOOLS)) {
+                for (var entry : manager.catalog().entries(StandardContributionPoints.TOOLS)) {
                     var plugin = manager.plugin(entry.source().namespace());
                     var definition =
                             new PluginToolDefinition(
@@ -273,18 +273,14 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
                             .runtime()
                             .execute(
                                     () ->
-                                            descriptor
-                                                    .handler()
-                                                    .invoke(
-                                                            PluginJson.object(arguments),
-                                                            () ->
-                                                                    Thread.currentThread()
-                                                                                    .isInterrupted()
-                                                                            || registration
-                                                                                            .runtime()
-                                                                                            .state()
-                                                                                    != PluginState
-                                                                                            .ACTIVE));
+                                            descriptor.invoke(
+                                                    PluginJson.object(arguments),
+                                                    () ->
+                                                            Thread.currentThread().isInterrupted()
+                                                                    || registration
+                                                                                    .runtime()
+                                                                                    .state()
+                                                                            != PluginState.ACTIVE));
             JsonNode result = PluginJson.toNode(value);
             PluginSchema.validate(PluginJson.toNode(descriptor.outputSchema()), result);
             return new ToolResult(

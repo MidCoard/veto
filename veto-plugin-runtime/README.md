@@ -129,7 +129,12 @@ as the normal approval permit. Package loading and worker startup follow host co
 If an installed package no longer matches a session's pinned revision, activation fails
 rather than silently changing that session's implementation.
 
-The built-in `top.focess.secret-protection` provider uses this same selection mechanism.
-It registers the credential-import tool and input, file-capture and file-observation
-protection hooks. Credential import remains subject to host authorization and writes
-through a local encrypted-vault port. Script packages currently support tools only.
+The built-in `top.focess.secret-protection` provider is an ordinary
+ServiceLoader-discovered plugin using this same selection mechanism. It
+registers the credential-import tool (effect `PRIVILEGED`), the typed
+input/file-capture/file-observation protections, the session-less
+`veto:observation-middleware` masking contribution and session-lifecycle
+notifications. It obtains its vault access and its detection model as
+host-granted services through `PluginContext`; without them, credential imports
+fail at call time and detection degrades to its deterministic fallback. Script
+packages currently support tools only.

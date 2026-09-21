@@ -1,33 +1,41 @@
 package top.focess.veto.secret;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.extension.*;
-import top.focess.veto.extension.contract.*;
-import top.focess.veto.extension.contract.JsonValue;
+import org.jspecify.annotations.Nullable;
 import top.focess.veto.plugin.api.*;
+import top.focess.veto.plugin.contract.*;
+import top.focess.veto.plugin.contract.JsonValue;
+import top.focess.veto.plugin.contribution.*;
+import top.focess.veto.secret.api.CredentialImportAccess;
+import top.focess.veto.secret.api.SecretDetectionModel;
+import top.focess.veto.secret.detection.SlmSecretDetector;
 import top.focess.veto.secret.references.SecretCandidateStore;
 
-/** Built-in provider using the same lifecycle and registration contract as installed plugins. */
+/**
+ * Self-contained provider using the same lifecycle and registration contract as installed plugins.
+ */
 public final class SecretProtectionPlugin extends AbstractVetoPlugin {
-    @SuppressWarnings(
-            "nullness") // Checker Framework treats this cross-module class literal as nullable.
-    public static final @NonNull ExtensionPoint<SecretCandidateStore> CANDIDATES =
-            new ExtensionPoint<>(
-                    new ExtensionId("veto:secret-candidates"),
-                    1,
-                    SecretCandidateStore.class,
-                    ExtensionPoint.Cardinality.MULTIPLE);
-
     private final @NonNull SecretCandidateStore candidates;
 
-    private final top.focess.veto.secret.api.@NonNull CredentialImportAccess importer;
+    private @NonNull CredentialImportAccess importer;
+
+    private @Nullable ScheduledExecutorService expiry;
+
+    public SecretProtectionPlugin() {
+        this(new SecretCandidateStore());
+    }
 
     public SecretProtectionPlugin(
-            @NonNull SecretCandidateStore candidates,
-            top.focess.veto.secret.api.@NonNull CredentialImportAccess importer) {
+            @NonNull SecretCandidateStore candidates, @NonNull CredentialImportAccess importer) {
         this.candidates = candidates;
         this.importer = importer;
     }
@@ -41,7 +49,7 @@ public final class SecretProtectionPlugin extends AbstractVetoPlugin {
     }
 
     private static JsonValue.@NonNull ObjectValue schema(boolean input) {
-        var properties = new java.util.HashMap<String, JsonValue>();
+        var properties = new HashMap<String, JsonValue>();
         for (String name :
                 input
                         ? List.of("secret_ref", "service", "label")
@@ -74,54 +82,128 @@ public final class SecretProtectionPlugin extends AbstractVetoPlugin {
     }
 
     @Override
+    @SuppressWarnings(
+            "nullness") // Checker Framework treats this cross-module class literal as nullable.
     protected @NonNull PluginContributions onInitialize(
             @NonNull PluginContext context, JsonValue.@NonNull ObjectValue configuration) {
         if (!configuration.values().isEmpty())
             throw new IllegalArgumentException("Unsupported configuration");
+        importer = context.service(CredentialImportAccess.class).orElse(importer);
+        var detector =
+                new SlmSecretDetector(context.service(SecretDetectionModel.class).orElse(null));
+        candidates.detector(detector);
         return new PluginContributions(
                 List.of(
-                        ExtensionContribution.of(CANDIDATES, "candidates", candidates),
-                        ExtensionContribution.of(
-                                StandardExtensionPoints.FRONTEND,
+                        Contribution.of(
+                                StandardContributionPoints.FRONTEND,
                                 "frontend",
-                                new FrontendExtension(frontendModule(), this::frontendAction)),
-                        ExtensionContribution.of(
-                                StandardExtensionPoints.INPUT_PROTECTION,
+                                new FrontendContribution(frontendModule(), this::frontendAction)),
+                        Contribution.of(
+                                StandardContributionPoints.INPUT_PROTECTION,
                                 "input",
-                                (scope, source, text) ->
-                                        candidates.capture(scope(scope), source, text).text()),
-                        ExtensionContribution.of(
-                                StandardExtensionPoints.FILE_OBSERVATION,
+                                (InputProtection)
+                                        (scope, source, text) ->
+                                                candidates
+                                                        .capture(scope(scope), source, text)
+                                                        .text()),
+                        Contribution.of(
+                                StandardContributionPoints.FILE_OBSERVATION,
                                 "observation",
-                                (scope, source, text) -> {
-                                    var output = new StringBuilder();
-                                    for (var segment :
-                                            candidates.referenceSegments(scope(scope), text))
-                                        output.append(
-                                                segment.reference()
-                                                        ? segment.text()
-                                                        : top.focess.veto.secret.detection
-                                                                .SecretMasker.mask(segment.text()));
-                                    return output.toString();
-                                }),
-                        ExtensionContribution.of(
-                                StandardExtensionPoints.FILE_PROTECTION,
+                                (FileObservation)
+                                        (scope, source, text) -> {
+                                            var output = new StringBuilder();
+                                            for (var segment :
+                                                    candidates.referenceSegments(
+                                                            scope(scope), text))
+                                                output.append(
+                                                        segment.reference()
+                                                                ? segment.text()
+                                                                : detector.mask(segment.text()));
+                                            return output.toString();
+                                        }),
+                        Contribution.of(
+                                StandardContributionPoints.FILE_PROTECTION,
                                 "file",
-                                (scope, source, text) ->
-                                        candidates.captureFile(scope(scope), source, text).text()),
-                        ExtensionContribution.of(
-                                StandardExtensionPoints.TOOLS,
+                                (FileProtection)
+                                        (scope, source, text) ->
+                                                candidates
+                                                        .captureFile(scope(scope), source, text)
+                                                        .text()),
+                        Contribution.of(
+                                StandardContributionPoints.OBSERVATION,
+                                "observation-mask",
+                                (ObservationMiddleware)
+                                        (observation, cancellation) -> detector.mask(observation)),
+                        Contribution.of(
+                                StandardContributionPoints.SESSION_LIFECYCLE,
+                                "lifecycle",
+                                new SessionLifecycle() {
+                                    @Override
+                                    public void onOwnerOpen(@NonNull String ownerId) {
+                                        candidates.openOwner(ownerId);
+                                    }
+
+                                    @Override
+                                    public void onOwnerClosed(@NonNull String ownerId) {
+                                        candidates.closeOwner(ownerId);
+                                    }
+
+                                    @Override
+                                    public void onSessionClosed(
+                                            @NonNull String ownerId, @NonNull String sessionId) {
+                                        candidates.retireSession(ownerId, sessionId);
+                                    }
+
+                                    @Override
+                                    public void onAgentTerminated(
+                                            @NonNull String ownerId,
+                                            @NonNull String sessionId,
+                                            @NonNull String agentId) {
+                                        candidates.discardAgent(
+                                                new SecretCandidateStore.Scope(
+                                                        ownerId, sessionId, agentId));
+                                    }
+                                }),
+                        Contribution.of(
+                                StandardContributionPoints.TOOLS,
                                 "import_detected_credential",
-                                new ToolContribution(
-                                        "Import a registered SECRET_REF from this session into the"
-                                                + " owner's encrypted vault after approval. Use"
-                                                + " secret_ref, service (github), and label. Never"
-                                                + " provide plaintext.",
-                                        schema(true),
-                                        schema(false),
-                                        ToolContribution.Effect.CREDENTIAL_IMPORT,
-                                        Set.of(),
-                                        this::importCredential))));
+                                new ImportDetectedCredentialTool())));
+    }
+
+    /** The import tool as a direct {@link Tool} implementation. */
+    private final class ImportDetectedCredentialTool implements Tool {
+        @Override
+        public @NonNull String description() {
+            return "Import a registered SECRET_REF from this session into the owner's encrypted"
+                    + " vault after approval. Use secret_ref, service (github), and label. Never"
+                    + " provide plaintext.";
+        }
+
+        @Override
+        public JsonValue.@NonNull ObjectValue inputSchema() {
+            return schema(true);
+        }
+
+        @Override
+        public JsonValue.@NonNull ObjectValue outputSchema() {
+            return schema(false);
+        }
+
+        @Override
+        public Tool.@NonNull Effect effect() {
+            return Tool.Effect.PRIVILEGED;
+        }
+
+        @Override
+        public @NonNull Set<@NonNull ContributionId> categories() {
+            return Set.of();
+        }
+
+        @Override
+        public @NonNull JsonValue invoke(
+                JsonValue.@NonNull ObjectValue arguments, @NonNull Cancellation cancellation) {
+            return importCredential(arguments, cancellation);
+        }
     }
 
     private static @NonNull String frontendModule() {
@@ -129,20 +211,20 @@ public final class SecretProtectionPlugin extends AbstractVetoPlugin {
                 SecretProtectionPlugin.class.getResourceAsStream(
                         "/top/focess/veto/secret/frontend.mjs")) {
             if (stream == null) throw new IllegalStateException("Missing frontend module");
-            return new String(stream.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
-        } catch (java.io.IOException failure) {
+            return new String(stream.readAllBytes(), StandardCharsets.UTF_8);
+        } catch (IOException failure) {
             throw new IllegalStateException("Cannot load frontend module", failure);
         }
     }
 
     private @NonNull JsonValue frontendAction(
-            FrontendExtension.@NonNull Scope scope,
+            FrontendContribution.@NonNull Scope scope,
             @NonNull String action,
             JsonValue.@NonNull ObjectValue arguments)
-            throws ExtensionFailure {
+            throws PluginFailure {
         if (!action.equals("show")
                 || !(arguments.values().get("reference") instanceof JsonValue.StringValue ref))
-            throw new ExtensionFailure(ExtensionFailure.Code.INVALID_ARGUMENTS);
+            throw new PluginFailure(PluginFailure.Code.INVALID_ARGUMENTS);
         return candidates
                 .reveal(
                         new SecretCandidateStore.Scope(
@@ -160,7 +242,12 @@ public final class SecretProtectionPlugin extends AbstractVetoPlugin {
         var authorized = importer.authorize(reference, service, label);
         var receipt =
                 candidates.importOnce(
-                        authorized.scope(), reference, service, label, authorized.writer());
+                        new SecretCandidateStore.Scope(
+                                authorized.ownerId(), authorized.sessionId(), authorized.agentId()),
+                        reference,
+                        service,
+                        label,
+                        authorized.writer());
         return new JsonValue.ObjectValue(
                 Map.of(
                         "credential_ref",
@@ -181,10 +268,31 @@ public final class SecretProtectionPlugin extends AbstractVetoPlugin {
     }
 
     @Override
-    protected void onStart() {}
+    protected void onStart() {
+        var executor =
+                Executors.newSingleThreadScheduledExecutor(
+                        Thread.ofPlatform()
+                                .daemon(true)
+                                .name("veto-secret-protection-expiry")
+                                .factory());
+        executor.scheduleAtFixedRate(
+                () -> {
+                    try {
+                        candidates.expire();
+                    } catch (RuntimeException ignored) {
+                        // A failed pass must not cancel future expiry runs.
+                    }
+                },
+                60,
+                60,
+                TimeUnit.SECONDS);
+        expiry = executor;
+    }
 
     @Override
     protected void onClose() {
+        var executor = expiry;
+        if (executor != null) executor.shutdownNow();
         candidates.clear();
     }
 }

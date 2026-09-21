@@ -10,25 +10,25 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.extension.ExtensionCatalog;
-import top.focess.veto.extension.ExtensionContribution;
-import top.focess.veto.extension.ExtensionId;
-import top.focess.veto.extension.ExtensionPoint;
-import top.focess.veto.extension.ExtensionSource;
+import top.focess.veto.plugin.contribution.Contribution;
+import top.focess.veto.plugin.contribution.ContributionCatalog;
+import top.focess.veto.plugin.contribution.ContributionId;
+import top.focess.veto.plugin.contribution.ContributionPoint;
+import top.focess.veto.plugin.contribution.ContributionSource;
 
 /**
  * Immutable host tool view built through the shared extension layer. The private runtime contract
  * preserves existing capability-aware definitions; it is not an exported plugin SPI.
  */
 final class ToolCatalog {
-    private static final @NonNull ExtensionPoint<RegisteredTool> TOOLS =
-            new ExtensionPoint<>(
-                    new ExtensionId("veto:runtime-tools"),
+    private static final @NonNull ContributionPoint<RegisteredTool> TOOLS =
+            new ContributionPoint<>(
+                    new ContributionId("veto:runtime-tools"),
                     1,
                     ToolDocs.nonNullClass(RegisteredTool.class),
-                    ExtensionPoint.Cardinality.MULTIPLE);
-    private static final @NonNull ExtensionSource SOURCE =
-            new ExtensionSource("veto.runtime", "1", ExtensionSource.Origin.BUILTIN);
+                    ContributionPoint.Cardinality.MULTIPLE);
+    private static final @NonNull ContributionSource SOURCE =
+            new ContributionSource("veto.runtime", "1", ContributionSource.Origin.BUILTIN);
 
     private final @NonNull List<RegisteredTool> registrations;
     private final @NonNull Map<String, RegisteredTool> byName;
@@ -36,15 +36,15 @@ final class ToolCatalog {
 
     private ToolCatalog(@NonNull List<RegisteredTool> candidates, long generation) {
         var names = new LinkedHashMap<String, RegisteredTool>();
-        var contributions = new ArrayList<ExtensionContribution<?>>();
+        var contributions = new ArrayList<Contribution<?>>();
         for (RegisteredTool registration : candidates) {
             String name = registration.definition().name();
             if (names.putIfAbsent(name, registration) != null)
                 throw new IllegalArgumentException("Duplicate tool name: " + name);
-            contributions.add(ExtensionContribution.of(TOOLS, internalId(name), registration));
+            contributions.add(Contribution.of(TOOLS, internalId(name), registration));
         }
-        ExtensionCatalog catalog =
-                new ExtensionCatalog.Builder()
+        ContributionCatalog catalog =
+                new ContributionCatalog.Builder()
                         .define(TOOLS, ToolCatalog::validate)
                         .stage(SOURCE, contributions)
                         .freeze();

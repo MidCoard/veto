@@ -5,9 +5,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.Map;
 import java.util.UUID;
+import java.util.function.UnaryOperator;
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.drift.ReadHistory;
@@ -23,8 +26,7 @@ import top.focess.veto.agent.tool.ToolResult;
 import top.focess.veto.agent.web.FinishReadTool;
 import top.focess.veto.agent.web.WebFetchTool;
 import top.focess.veto.llm.core.ToolCall;
-import top.focess.veto.secret.detection.SecretMasker;
-import top.focess.veto.secret.references.SecretCandidateStore;
+import top.focess.veto.plugin.runtime.PluginManager;
 import top.focess.veto.util.Nullness;
 
 /**
@@ -46,25 +48,44 @@ public class IngressDefense {
             LoggerFactory.getLogger("top.focess.veto.agent.intercept.IngressDefense");
 
     /**
-     * The advisory semantic masker, layered over the deterministic {@link SecretMasker} floor. It
-     * consults the local SLM to flag likely-exfiltration observations while always applying the
-     * deterministic redaction regardless of SLM availability. Nullable so the no-arg construction
-     * path (existing tests, no SLM configured) degrades to deterministic-only.
+     * The advisory semantic masker, layered over the session-less {@code
+     * veto:observation-middleware} floor. It consults the local SLM to flag likely-exfiltration
+     * observations while always applying the plugin's redaction regardless of SLM availability.
+     * Nullable so the no-arg construction path (existing tests, no SLM configured) degrades to the
+     * floor only.
      */
     private final SemanticMasker semanticMasker;
 
+    /**
+     * The session-less observation-masking floor ({@link
+     * PluginManager#applyObservationMiddleware}); identity when no plugin manager is bound
+     * (detached construction). The floor is provided by the secret-protection plugin, which ships
+     * on the runtime classpath by default.
+     */
+    private final @NonNull UnaryOperator<@NonNull String> observationFloor;
+
     /** Spring-injected constructor — the SLM-backed masker is optional (degrades if absent). */
     @Autowired
-    public IngressDefense(@Autowired(required = false) SemanticMasker semanticMasker) {
-        this.semanticMasker = semanticMasker;
+    public IngressDefense(
+            @Autowired(required = false) SemanticMasker semanticMasker,
+            @NonNull ObjectProvider<PluginManager> plugins) {
+        this(semanticMasker, plugins.getIfAvailable());
     }
 
     /**
      * No-arg constructor — degrades to deterministic-only masking (the SLM semantic layer is
-     * absent). Kept so existing non-Spring callers and tests compile unchanged.
+     * absent) with an identity floor. Kept so existing non-Spring callers and tests compile
+     * unchanged.
      */
     public IngressDefense() {
-        this(new SemanticMasker());
+        this(new SemanticMasker(), (PluginManager) null);
+    }
+
+    private IngressDefense(
+            @Nullable SemanticMasker semanticMasker, @Nullable PluginManager plugins) {
+        this.semanticMasker = semanticMasker;
+        this.observationFloor =
+                plugins == null ? UnaryOperator.identity() : plugins::applyObservationMiddleware;
     }
 
     /**
@@ -116,7 +137,7 @@ public class IngressDefense {
         // apply accept_and_mask: scrub secrets from read / exec observations before they enter
         // context. Default-on; the caller's flag is authoritative. Writes have no observation
         // content to mask (they return void / success), so we skip them. The SLM semantic masker is
-        // the advisory layer over the deterministic SecretMasker floor — it always
+        // the advisory layer over the session-less observation-middleware floor — it always
         // applies the deterministic redaction and may additionally surface a HighRiskSignal.
         if (maskObservation
                 && (def.capability() == ToolCapability.WORKSPACE_READ
@@ -134,7 +155,7 @@ public class IngressDefense {
                     reportHighRisk(highRisk);
                 }
             } else {
-                body = SecretMasker.mask(body);
+                body = observationFloor.apply(body);
             }
         }
 
@@ -182,43 +203,6 @@ public class IngressDefense {
             @NonNull ReadHistory readHistory) {
         boolean mask = true;
         return maskAndFrame(call, def, result, mask, readHistory);
-    }
-
-    /**
-     * Preserve only scoped runtime references while applying ordinary masking to all other text.
-     */
-    public @NonNull String maskProtectedFileAndFrame(
-            @NonNull ToolCall call,
-            @NonNull ToolDefinition def,
-            @NonNull ToolResult result,
-            boolean maskObservation,
-            @NonNull ReadHistory readHistory,
-            @NonNull SecretCandidateStore candidates,
-            SecretCandidateStore.@NonNull Scope scope) {
-        if (!(def instanceof NativeToolDefinition)
-                || !def.name().equals("view_file")
-                || def.capability() != ToolCapability.WORKSPACE_READ)
-            throw new IllegalArgumentException(
-                    "Protected reference rendering requires native file reading");
-        StringBuilder output = new StringBuilder();
-        for (var segment : candidates.referenceSegments(scope, result.content())) {
-            output.append(
-                    segment.reference() || !maskObservation
-                            ? segment.text()
-                            : SecretMasker.mask(segment.text()));
-        }
-        String maskedText = output.toString();
-        if (maskObservation && semanticMasker != null) {
-            var assessed =
-                    semanticMasker.maskWithSignal(
-                            result.content(), call, def, ignored -> maskedText);
-            var highRisk = assessed.highRisk();
-            if (highRisk != null) {
-                reportHighRisk(highRisk);
-            }
-            return RefusalObservation.neutralize(assessed.masked());
-        }
-        return RefusalObservation.neutralize(maskedText);
     }
 
     public @NonNull String frameProtectedFile(

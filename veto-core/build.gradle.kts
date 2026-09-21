@@ -24,9 +24,13 @@ repositories {
 
 dependencies {
     implementation(project(":veto-protocol"))
-    implementation(project(":veto-extension"))
     implementation(project(":veto-plugin-runtime"))
-    implementation(project(":veto-secret-protection"))
+    // Host-authority bridge (SecretProtectionConfiguration) compiles against the plugin's own API,
+    // but the plugin is a pure runtime plugin: absent jar -> host service simply not granted.
+    compileOnly(project(":veto-secret-protection"))
+    runtimeOnly(project(":veto-secret-protection"))
+    // Tests still exercise the store internals directly.
+    testImplementation(project(":veto-secret-protection"))
 
     // JSpecify nullability contracts are part of normal compilation and reflection metadata.
     implementation("org.jspecify:jspecify:1.0.0")

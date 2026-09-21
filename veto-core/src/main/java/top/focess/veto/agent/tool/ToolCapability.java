@@ -12,7 +12,11 @@ public enum ToolCapability {
     PROCESS_EXECUTION,
     TASK_CONTROL,
     NETWORK_EGRESS,
-    CREDENTIAL_IMPORT,
+    /**
+     * Plugin-declared host-boundary effect: the host gates every call with approval-level danger.
+     * Never valid for native or agent tools.
+     */
+    PRIVILEGED,
     SKILL_READ,
     MEMORY_READ,
     MEMORY_WRITE,

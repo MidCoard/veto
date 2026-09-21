@@ -47,6 +47,8 @@ import top.focess.veto.agent.tool.builtin.FixtureLoopTool;
 import top.focess.veto.agent.tool.builtin.RunTaskTool;
 import top.focess.veto.agent.tool.builtin.UserQuestionRegistry;
 import top.focess.veto.agent.translation.DefaultCapabilityTranslator;
+import top.focess.veto.plugin.contract.StandardContributionPoints;
+import top.focess.veto.plugin.contract.TextProtection;
 import top.focess.veto.group.Blackboard;
 import top.focess.veto.group.DagNode;
 import top.focess.veto.group.ExecutionDag;
@@ -92,10 +94,11 @@ import top.focess.veto.monitor.MonitorService;
 import top.focess.veto.monitor.RequestContinuationEntity;
 import top.focess.veto.monitor.RequestContinuationRepository;
 import top.focess.veto.monitor.RequestContinuationStore;
+import top.focess.veto.plugin.runtime.PluginLifecycleEvents;
+import top.focess.veto.plugin.runtime.PluginTestSupport;
 import top.focess.veto.sandbox.BackgroundTaskManager;
 import top.focess.veto.sandbox.SandboxManager;
 import top.focess.veto.sandbox.TestSandboxFactory;
-import top.focess.veto.secret.references.SecretCandidateStore;
 import top.focess.veto.session.SessionHistoryLoader;
 import top.focess.veto.session.SessionService;
 import top.focess.veto.util.Nullness;
@@ -338,23 +341,23 @@ class AgentRunnerTest {
                             requests.add(request);
                             return new VetoResponse("Processed the safe context.", null, "Done.");
                         });
-        var candidates = new SecretCandidateStore();
-        service.attachSecretCandidates(candidates);
         String session = UUID.randomUUID().toString();
         String agentId = UUID.randomUUID().toString();
-        var agent =
-                service.getOrCreateAgent(
-                        session,
-                        agentId,
-                        binding("You are a helpful assistant."),
-                        List.of(),
-                        UUID.randomUUID(),
-                        "alice",
-                        null,
-                        0,
-                        ToolResultPresentationMode.BASIC);
-        var scope = new SecretCandidateStore.Scope("alice", session, agentId);
-        try {
+        try (var plugins = PluginTestSupport.manager()) {
+            service.attachSessionPlugins(PluginTestSupport.sessionPlugins(plugins));
+            service.attachLifecycleEvents(new PluginLifecycleEvents(plugins));
+            var agent =
+                    service.getOrCreateAgent(
+                            session,
+                            agentId,
+                            binding("You are a helpful assistant."),
+                            List.of(),
+                            UUID.randomUUID(),
+                            "alice",
+                            null,
+                            0,
+                            ToolResultPresentationMode.BASIC);
+            var scope = new TextProtection.Scope("alice", session, agentId);
             agent.submit("Inspect password=synthetic-token");
             assertTrue(agent.await(EPISODE_TIMEOUT).success());
             var userTurn =
@@ -379,21 +382,30 @@ class AgentRunnerTest {
                                     turn -> turn.payload().toString().contains("synthetic-token")));
             agent.submit("Repeat password=synthetic-token");
             assertTrue(agent.await(EPISODE_TIMEOUT).success());
-            String reference =
-                    candidates
-                            .capture(scope, "verification", "password=synthetic-token")
-                            .candidates()
-                            .getFirst()
-                            .reference();
+            String verification =
+                    PluginTestSupport.protect(
+                            plugins,
+                            StandardContributionPoints.INPUT_PROTECTION,
+                            scope,
+                            "verification",
+                            "password=synthetic-token");
+            String reference = extractReference(verification);
             assertTrue(captured.contains(reference));
             assertEquals(2, requests.size());
-            agent.terminate();
             assertEquals(
-                    SecretCandidateStore.State.DISCARDED,
-                    candidates.describe(scope, reference).orElseThrow().state());
+                    "synthetic-token",
+                    PluginTestSupport.reveal(plugins, scope, reference).orElseThrow());
+            agent.terminate();
+            assertTrue(PluginTestSupport.reveal(plugins, scope, reference).isEmpty());
         } finally {
             service.remove(session);
         }
+    }
+
+    private static @NonNull String extractReference(@NonNull String text) {
+        var matcher = java.util.regex.Pattern.compile("s_[a-f0-9]{32}").matcher(text);
+        if (!matcher.find()) throw new AssertionError("Expected reference is missing");
+        return matcher.group();
     }
 
     @Test
@@ -405,18 +417,19 @@ class AgentRunnerTest {
                             calls.incrementAndGet();
                             return new VetoResponse("Safe.", null, "Done.");
                         });
-        service.attachSecretCandidates(new SecretCandidateStore());
         String session = UUID.randomUUID().toString();
-        var agent =
-                service.getOrCreateAgent(
-                        session,
-                        UUID.randomUUID().toString(),
-                        binding("You are a helpful assistant."),
-                        List.of(),
-                        UUID.randomUUID(),
-                        "alice",
-                        null);
-        try {
+        try (var plugins = PluginTestSupport.manager()) {
+            service.attachSessionPlugins(PluginTestSupport.sessionPlugins(plugins));
+            service.attachLifecycleEvents(new PluginLifecycleEvents(plugins));
+            var agent =
+                    service.getOrCreateAgent(
+                            session,
+                            UUID.randomUUID().toString(),
+                            binding("You are a helpful assistant."),
+                            List.of(),
+                            UUID.randomUUID(),
+                            "alice",
+                            null);
             var previousResult = agent.result();
             var rejected =
                     assertThrows(

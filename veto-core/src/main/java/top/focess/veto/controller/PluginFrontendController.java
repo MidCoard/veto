@@ -6,9 +6,9 @@ import org.jspecify.annotations.NonNull;
 import org.springframework.http.*;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
-import top.focess.veto.extension.contract.*;
 import top.focess.veto.model.SessionEntity;
 import top.focess.veto.model.SessionRepository;
+import top.focess.veto.plugin.contract.*;
 import top.focess.veto.plugin.runtime.*;
 
 /** Session-authorized frontend code and actions; separate from model tools and history. */
@@ -54,7 +54,7 @@ public final class PluginFrontendController {
     public @NonNull ResponseEntity<List<Module>> list(@PathVariable @NonNull String name) {
         var ids = ids(session(name));
         var modules =
-                plugins.catalog().entries(StandardExtensionPoints.FRONTEND).stream()
+                plugins.catalog().entries(StandardContributionPoints.FRONTEND).stream()
                         .filter(e -> ids.contains(e.source().namespace()))
                         .map(
                                 e ->
@@ -82,7 +82,7 @@ public final class PluginFrontendController {
                 || !request.arguments().isObject())
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST);
         var entry =
-                plugins.catalog().entries(StandardExtensionPoints.FRONTEND).stream()
+                plugins.catalog().entries(StandardContributionPoints.FRONTEND).stream()
                         .filter(
                                 e ->
                                         ids.contains(e.source().namespace())
@@ -103,7 +103,7 @@ public final class PluginFrontendController {
                                             entry.implementation()
                                                     .handler()
                                                     .handle(
-                                                            new FrontendExtension.Scope(
+                                                            new FrontendContribution.Scope(
                                                                     session.getOwner(),
                                                                     session.getId(),
                                                                     request.agentId()),
@@ -113,9 +113,9 @@ public final class PluginFrontendController {
                     .cacheControl(CacheControl.noStore())
                     .header("Pragma", "no-cache")
                     .body(PluginJson.toNode(value));
-        } catch (ExtensionFailure failure) {
+        } catch (PluginFailure failure) {
             throw new ResponseStatusException(
-                    failure.code() == ExtensionFailure.Code.INVALID_ARGUMENTS
+                    failure.code() == PluginFailure.Code.INVALID_ARGUMENTS
                             ? HttpStatus.BAD_REQUEST
                             : HttpStatus.SERVICE_UNAVAILABLE);
         }

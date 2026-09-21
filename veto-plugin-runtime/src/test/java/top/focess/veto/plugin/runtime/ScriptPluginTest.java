@@ -55,7 +55,7 @@ class ScriptPluginTest {
             managed = new ManagedPlugin(script, executor);
             managed.initialize(
                     new top.focess.veto.plugin.api.PluginContext(script.identity()),
-                    new top.focess.veto.extension.contract.JsonValue.ObjectValue(
+                    new top.focess.veto.plugin.contract.JsonValue.ObjectValue(
                             java.util.Map.of()));
             managed.start();
             return new LoadedScript(script, managed, executor);
@@ -95,7 +95,7 @@ class ScriptPluginTest {
 
         <T extends @NonNull Object> @NonNull T execute(
                 ManagedPlugin.@NonNull Operation<T> operation)
-                throws top.focess.veto.extension.contract.ExtensionFailure {
+                throws top.focess.veto.plugin.contract.PluginFailure {
             return managed.execute(operation);
         }
 
@@ -109,12 +109,12 @@ class ScriptPluginTest {
                             try {
                                 return script.invoke(tool, arguments);
                             } catch (IOException failure) {
-                                throw new top.focess.veto.extension.contract.ExtensionFailure(
-                                        top.focess.veto.extension.contract.ExtensionFailure.Code
+                                throw new top.focess.veto.plugin.contract.PluginFailure(
+                                        top.focess.veto.plugin.contract.PluginFailure.Code
                                                 .INTERNAL_FAILURE);
                             }
                         });
-            } catch (top.focess.veto.extension.contract.ExtensionFailure failure) {
+            } catch (top.focess.veto.plugin.contract.PluginFailure failure) {
                 throw new IOException("Plugin invocation failed", failure);
             }
         }
@@ -136,7 +136,7 @@ class ScriptPluginTest {
             for (var managed : java.util.List.of(first, second)) {
                 managed.initialize(
                         new top.focess.veto.plugin.api.PluginContext(managed.identity()),
-                        new top.focess.veto.extension.contract.JsonValue.ObjectValue(
+                        new top.focess.veto.plugin.contract.JsonValue.ObjectValue(
                                 java.util.Map.of()));
                 managed.start();
             }
@@ -153,8 +153,8 @@ class ScriptPluginTest {
                                                     JSON.createObjectNode().put("text", "a😀b"))
                                             .asInt();
                                 } catch (IOException failure) {
-                                    throw new top.focess.veto.extension.contract.ExtensionFailure(
-                                            top.focess.veto.extension.contract.ExtensionFailure.Code
+                                    throw new top.focess.veto.plugin.contract.PluginFailure(
+                                            top.focess.veto.plugin.contract.PluginFailure.Code
                                                     .INTERNAL_FAILURE);
                                 }
                             }));
@@ -190,10 +190,10 @@ class ScriptPluginTest {
                                                                                                 "a😀b"))
                                                                         .asInt();
                                                     } catch (IOException failure) {
-                                                        throw new top.focess.veto.extension.contract
-                                                                .ExtensionFailure(
-                                                                top.focess.veto.extension.contract
-                                                                        .ExtensionFailure.Code
+                                                        throw new top.focess.veto.plugin.contract
+                                                                .PluginFailure(
+                                                                top.focess.veto.plugin.contract
+                                                                        .PluginFailure.Code
                                                                         .INTERNAL_FAILURE);
                                                     }
                                                     // A plugin must not synchronously close itself
@@ -221,7 +221,7 @@ class ScriptPluginTest {
                 assertEquals(top.focess.veto.plugin.api.PluginState.STOPPING, plugin.state());
                 assertFalse(closing.isDone());
                 assertThrows(
-                        top.focess.veto.extension.contract.ExtensionFailure.class,
+                        top.focess.veto.plugin.contract.PluginFailure.class,
                         () -> plugin.execute(() -> true));
                 release.complete(true);
                 assertEquals(
@@ -230,7 +230,7 @@ class ScriptPluginTest {
                 assertEquals(top.focess.veto.plugin.api.PluginState.CLOSED, plugin.state());
                 plugin.close();
                 assertThrows(
-                        top.focess.veto.extension.contract.ExtensionFailure.class,
+                        top.focess.veto.plugin.contract.PluginFailure.class,
                         plugin.managed()::start);
                 assertEquals(top.focess.veto.plugin.api.PluginState.CLOSED, plugin.state());
             } finally {

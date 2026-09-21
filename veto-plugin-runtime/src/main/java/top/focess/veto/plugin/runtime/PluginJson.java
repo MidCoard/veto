@@ -5,7 +5,7 @@ import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.extension.contract.JsonValue;
+import top.focess.veto.plugin.contract.JsonValue;
 
 /** JSON transport conversion only; plugin contracts do not depend on Jackson. */
 public final class PluginJson {

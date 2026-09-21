@@ -8,8 +8,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
-import top.focess.veto.extension.*;
-import top.focess.veto.extension.contract.*;
+import top.focess.veto.plugin.contract.*;
+import top.focess.veto.plugin.contribution.*;
 
 class PluginContractTest {
     @Test
@@ -72,10 +72,10 @@ class PluginContractTest {
         for (String path :
                 List.of("../secret.md", "/prompts/a.md", "prompts/../a.md", "prompts/a\\b.md"))
             assertThrows(IllegalArgumentException.class, () -> new PromptContribution(path));
-        var registrations = new ArrayList<ExtensionContribution<?>>();
+        var registrations = new ArrayList<Contribution<?>>();
         registrations.add(
-                ExtensionContribution.of(
-                        StandardExtensionPoints.CATEGORIES,
+                Contribution.of(
+                        StandardContributionPoints.CATEGORIES,
                         "text",
                         new ToolCategory("Text", "Text tools")));
         var contributions = new PluginContributions(registrations);
@@ -87,8 +87,8 @@ class PluginContractTest {
     @Test
     void failuresExposeOnlyFixedCodesAndCancellationIsExplicit() {
         Cancellation cancelled = () -> true;
-        var failure = assertThrows(ExtensionFailure.class, cancelled::checkCancelled);
-        assertEquals(ExtensionFailure.Code.CANCELLED, failure.code());
+        var failure = assertThrows(PluginFailure.class, cancelled::checkCancelled);
+        assertEquals(PluginFailure.Code.CANCELLED, failure.code());
         assertEquals("CANCELLED", failure.getMessage());
         assertNull(failure.getCause());
         assertEquals(0, failure.getStackTrace().length);

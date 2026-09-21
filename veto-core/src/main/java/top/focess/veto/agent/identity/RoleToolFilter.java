@@ -42,7 +42,7 @@ public class RoleToolFilter {
                     ToolCapability.PROCESS_EXECUTION,
                     ToolCapability.TASK_CONTROL,
                     ToolCapability.NETWORK_EGRESS,
-                    ToolCapability.CREDENTIAL_IMPORT,
+                    ToolCapability.PRIVILEGED,
                     ToolCapability.SKILL_READ,
                     ToolCapability.MEMORY_READ,
                     ToolCapability.MEMORY_WRITE,
@@ -59,7 +59,7 @@ public class RoleToolFilter {
                     ToolCapability.PROCESS_EXECUTION,
                     ToolCapability.TASK_CONTROL,
                     ToolCapability.NETWORK_EGRESS,
-                    ToolCapability.CREDENTIAL_IMPORT,
+                    ToolCapability.PRIVILEGED,
                     ToolCapability.SKILL_READ,
                     ToolCapability.MEMORY_READ,
                     ToolCapability.LOOP_CONTROL);
@@ -85,9 +85,9 @@ public class RoleToolFilter {
     }
 
     /**
-     * Resolves a narrower manifest inside the role ceiling. This is the extension point for a Mate
-     * specialty or another session-scoped capability selection: selecting a capability can never
-     * grant one forbidden to the role.
+     * Resolves a narrower manifest inside the role ceiling. This is the contribution point for a
+     * Mate specialty or another session-scoped capability selection: selecting a capability can
+     * never grant one forbidden to the role.
      */
     public @NonNull Set<@NonNull ToolDefinition> resolve(
             @NonNull Role role, @NonNull Set<@NonNull ToolCapability> selectedCapabilities) {

@@ -55,8 +55,8 @@ import top.focess.veto.memory.TurnLogService;
 import top.focess.veto.model.tier.ModelTierRegistry;
 import top.focess.veto.monitor.RequestContinuationStore;
 import top.focess.veto.observability.ObservabilityConfiguration;
+import top.focess.veto.plugin.runtime.PluginLifecycleEvents;
 import top.focess.veto.sandbox.BackgroundTaskManager;
-import top.focess.veto.secret.references.SecretCandidateStore;
 import top.focess.veto.util.Nullness;
 import top.focess.veto.vault.CredentialVaultConfiguration;
 import top.focess.veto.vault.KeysteadVault;
@@ -99,19 +99,19 @@ public class AgentService {
     private void configureContinuations(@NonNull AgentRunner runner) {
         var plugins = sessionPlugins;
         if (plugins != null) runner.attachSessionPlugins(plugins);
-        SecretCandidateStore candidates = secretCandidates;
-        if (candidates != null) runner.attachSecretCandidates(candidates);
+        var events = lifecycleEvents;
+        if (events != null) runner.attachLifecycleEvents(events);
         KeysteadVault vault = monitorVault;
         if (vault != null) runner.attachMonitorVault(vault);
         RequestContinuationStore store = continuationStore;
         if (store != null) runner.attachContinuationStore(store);
     }
 
-    private SecretCandidateStore secretCandidates;
+    private PluginLifecycleEvents lifecycleEvents;
 
     @Autowired
-    public void attachSecretCandidates(@NonNull SecretCandidateStore store) {
-        secretCandidates = store;
+    public void attachLifecycleEvents(@NonNull PluginLifecycleEvents events) {
+        lifecycleEvents = events;
     }
 
     @Autowired

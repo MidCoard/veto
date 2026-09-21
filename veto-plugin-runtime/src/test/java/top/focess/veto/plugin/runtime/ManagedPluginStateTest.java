@@ -9,8 +9,8 @@ import java.util.concurrent.Executors;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
-import top.focess.veto.extension.contract.ExtensionFailure;
-import top.focess.veto.extension.contract.JsonValue;
+import top.focess.veto.plugin.contract.PluginFailure;
+import top.focess.veto.plugin.contract.JsonValue;
 import top.focess.veto.plugin.api.*;
 
 class ManagedPluginStateTest {
@@ -88,7 +88,7 @@ class ManagedPluginStateTest {
                 managed.initialize(
                         new PluginContext(observer.identity()),
                         new JsonValue.ObjectValue(Map.of()));
-                assertThrows(ExtensionFailure.class, managed::start);
+                assertThrows(PluginFailure.class, managed::start);
                 assertEquals(PluginState.FAILED, observer.context().state());
                 assertEquals(managed.state(), observer.context().state());
                 assertEquals(

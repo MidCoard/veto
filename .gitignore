@@ -124,6 +124,8 @@ __pycache__/
 CLAUDE.local.md
 
 # Project-specific ignores
+/.codegraph/
+/.kimi-code/
 /work/
 /models/
 /release/

@@ -115,8 +115,11 @@ import top.focess.veto.model.tier.ModelTierRegistry;
 import top.focess.veto.monitor.MonitorRecord;
 import top.focess.veto.monitor.MonitorService;
 import top.focess.veto.monitor.RequestContinuationStore;
+import top.focess.veto.plugin.contract.StandardContributionPoints;
+import top.focess.veto.plugin.contract.TextProtection;
+import top.focess.veto.plugin.runtime.PluginLifecycleEvents;
+import top.focess.veto.plugin.runtime.SessionPlugins;
 import top.focess.veto.sandbox.BackgroundTaskManager;
-import top.focess.veto.secret.references.SecretCandidateStore;
 import top.focess.veto.util.Nullness;
 import top.focess.veto.vault.KeysteadVault;
 import top.focess.veto.vault.UserContext;
@@ -2317,45 +2320,24 @@ public class AgentRunner {
 
             // (g) final ingress defense, immediately before committing the observation to history.
             String observation;
+            var selected = sessionPlugins;
+            String currentOwner = owner;
             if (transformed.success()
                     && def instanceof NativeToolDefinition
-                    && def.name().equals("view_file")) {
-                var selected = sessionPlugins;
-                String currentOwner = owner;
-                if (selected != null
-                        && currentOwner != null
-                        && selected.has(
-                                sessionId.toString(),
-                                top.focess.veto.extension.contract.StandardExtensionPoints
-                                        .FILE_OBSERVATION)) {
-                    String protectedText =
-                            selected.protect(
-                                    top.focess.veto.extension.contract.StandardExtensionPoints
-                                            .FILE_OBSERVATION,
-                                    new top.focess.veto.extension.contract.TextProtection.Scope(
-                                            currentOwner, sessionId.toString(), agentId),
-                                    transformed.content());
-                    observation =
-                            ingressDefense.frameProtectedFile(
-                                    call, def, transformed, protectedText);
-                } else {
-                    // No plugin owns file observations: keep the in-module candidate store path,
-                    // which preserves SECRET_REF markers while masking the surrounding text.
-                    SecretCandidateStore candidates = secretCandidates;
-                    if (candidates == null || currentOwner == null || currentOwner.isBlank())
-                        throw new IllegalStateException(
-                                "Protected file observation is unavailable");
-                    observation =
-                            ingressDefense.maskProtectedFileAndFrame(
-                                    call,
-                                    def,
-                                    transformed,
-                                    true,
-                                    readHistory,
-                                    candidates,
-                                    new SecretCandidateStore.Scope(
-                                            currentOwner, sessionId.toString(), agentId));
-                }
+                    && def.name().equals("view_file")
+                    && selected != null
+                    && currentOwner != null
+                    && selected.has(
+                            sessionId.toString(), StandardContributionPoints.FILE_OBSERVATION)) {
+                // The owning plugin masks plain segments while preserving SECRET_REF markers.
+                String protectedText =
+                        selected.protect(
+                                StandardContributionPoints.FILE_OBSERVATION,
+                                new TextProtection.Scope(
+                                        currentOwner, sessionId.toString(), agentId),
+                                transformed.content());
+                observation =
+                        ingressDefense.frameProtectedFile(call, def, transformed, protectedText);
             } else {
                 observation =
                         ingressDefense.maskAndFrame(call, def, transformed, decision, readHistory);
@@ -3526,9 +3508,9 @@ public class AgentRunner {
      * session, and user stay; only the role-scoped identity changes). The next {@link #callModel}
      * compiles against the new persona.
      */
-    private top.focess.veto.plugin.runtime.SessionPlugins sessionPlugins;
+    private SessionPlugins sessionPlugins;
 
-    public void attachSessionPlugins(top.focess.veto.plugin.runtime.@NonNull SessionPlugins value) {
+    public void attachSessionPlugins(@NonNull SessionPlugins value) {
         sessionPlugins = value;
     }
 
@@ -3693,12 +3675,10 @@ public class AgentRunner {
     public void terminate() {
         synchronized (this) {
             sessionAlive = false;
-            SecretCandidateStore candidates = secretCandidates;
+            var events = lifecycleEvents;
             String currentOwner = owner;
-            if (candidates != null && currentOwner != null)
-                candidates.discardAgent(
-                        new SecretCandidateStore.Scope(
-                                currentOwner, sessionId.toString(), agentId));
+            if (events != null && currentOwner != null)
+                events.agentTerminated(currentOwner, sessionId.toString(), agentId);
         }
         transitionTo(AgentState.TERMINATED);
         resultFuture.complete(
@@ -3711,41 +3691,23 @@ public class AgentRunner {
 
     // ── helpers ──────────────────────────────────────────────────────────────
 
-    private SecretCandidateStore secretCandidates;
+    private PluginLifecycleEvents lifecycleEvents;
 
-    public void attachSecretCandidates(@NonNull SecretCandidateStore candidates) {
-        secretCandidates = candidates;
+    public void attachLifecycleEvents(@NonNull PluginLifecycleEvents events) {
+        lifecycleEvents = events;
     }
 
     private synchronized @NonNull String captureUserPrompt(@NonNull String prompt) {
         var selected = sessionPlugins;
-        if (selected != null) {
-            String currentOwner = owner;
-            if (!sessionAlive || currentOwner == null || currentOwner.isBlank())
-                throw new ProtectedInputException();
-            try {
-                return selected.protect(
-                        top.focess.veto.extension.contract.StandardExtensionPoints.INPUT_PROTECTION,
-                        new top.focess.veto.extension.contract.TextProtection.Scope(
-                                currentOwner, sessionId.toString(), agentId),
-                        prompt);
-            } catch (RuntimeException failure) {
-                throw new ProtectedInputException();
-            }
-        }
-        SecretCandidateStore candidates = secretCandidates;
-        if (candidates == null) return prompt;
+        if (selected == null) return prompt;
         String currentOwner = owner;
         if (!sessionAlive || currentOwner == null || currentOwner.isBlank())
             throw new ProtectedInputException();
         try {
-            return candidates
-                    .capture(
-                            new SecretCandidateStore.Scope(
-                                    currentOwner, sessionId.toString(), agentId),
-                            UUID.randomUUID().toString(),
-                            prompt)
-                    .text();
+            return selected.protect(
+                    StandardContributionPoints.INPUT_PROTECTION,
+                    new TextProtection.Scope(currentOwner, sessionId.toString(), agentId),
+                    prompt);
         } catch (RuntimeException failure) {
             throw new ProtectedInputException();
         }

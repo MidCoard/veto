@@ -4,12 +4,15 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.io.IOException;
 import java.nio.file.*;
 import java.time.Duration;
 import java.util.*;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.jspecify.annotations.NonNull;
+import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -32,13 +35,23 @@ import top.focess.veto.llm.core.*;
 import top.focess.veto.model.tier.ModelBinding;
 import top.focess.veto.model.tier.ModelTier;
 import top.focess.veto.model.tier.ModelTierRegistry;
+import top.focess.veto.plugin.runtime.PluginLifecycleEvents;
+import top.focess.veto.plugin.runtime.PluginManager;
+import top.focess.veto.plugin.runtime.PluginTestSupport;
 import top.focess.veto.sandbox.*;
 import top.focess.veto.sandbox.BackgroundTaskManager;
-import top.focess.veto.secret.references.SecretCandidateStore;
 
 class GuidedExecutionTest {
+    private static final @NonNull List<PluginManager> MANAGERS = new CopyOnWriteArrayList<>();
+
+    @AfterAll
+    static void stopPlugins() {
+        MANAGERS.forEach(PluginManager::close);
+    }
+
     @Test
     void ordinarySessionCanExecutePlan(@TempDir @NonNull Path root) throws Exception {
+        root = root.toRealPath();
         Path file = Files.writeString(root.resolve("notes.txt"), "Plan result");
         String pathJson = new ObjectMapper().writeValueAsString(file.toString());
         AtomicInteger calls = new AtomicInteger();
@@ -88,6 +101,7 @@ class GuidedExecutionTest {
     @ValueSource(booleans = {false, true})
     void protectedFileReferenceReachesTheModelWithoutRawSecret(
             boolean usePlan, @TempDir @NonNull Path root) throws Exception {
+        root = root.toRealPath();
         String secret = "ghp_" + "A1".repeat(18);
         Path file =
                 Files.writeString(root.resolve("config.txt"), "token=" + secret + "\nnext line\n");
@@ -489,9 +503,12 @@ class GuidedExecutionTest {
     }
 
     private static @NonNull AgentService service(
-            @NonNull UniformLLMCaller caller, @NonNull HitlRegistry hitl, @NonNull Path root) {
+            @NonNull UniformLLMCaller caller, @NonNull HitlRegistry hitl, @NonNull Path root)
+            throws IOException {
         ObjectMapper mapper = new ObjectMapper();
-        var candidates = new SecretCandidateStore();
+        var plugins = PluginTestSupport.manager();
+        MANAGERS.add(plugins);
+        var sessionPlugins = PluginTestSupport.sessionPlugins(plugins);
         var context = mock(ToolDocs.nonNullClass(ApplicationContext.class));
         when(context.getBeansOfType(AgentTool.class))
                 .thenReturn(
@@ -508,7 +525,8 @@ class GuidedExecutionTest {
                         mapper,
                         List.of(
                                 new ViewFileTool(
-                                        new ProtectedWorkspaceReadCapabilityImpl(candidates)),
+                                        new ProtectedWorkspaceReadCapabilityImpl(
+                                                PluginTestSupport.providerOf(sessionPlugins))),
                                 new RunCommandTool(
                                         new ProcessExecutionCapabilityImpl(
                                                 sandbox, new BackgroundTaskManager(sandbox)))),
@@ -540,7 +558,8 @@ class GuidedExecutionTest {
                         null,
                         null,
                         new BackgroundTaskManager(sandbox));
-        service.attachSecretCandidates(candidates);
+        service.attachSessionPlugins(sessionPlugins);
+        service.attachLifecycleEvents(new PluginLifecycleEvents(plugins));
         service.setConfiguredDefaultWorkspace(Workspace.single(root, PathMode.REAL));
         for (String id :
                 List.of(
@@ -604,6 +623,7 @@ class GuidedExecutionTest {
     @Test
     void readGenerateSemanticBranchRepairsInvalidPredicateAndStop(@TempDir @NonNull Path root)
             throws Exception {
+        root = root.toRealPath();
         Path file = root.resolve("notes.txt");
         Files.writeString(file, "Migration guide");
         String path = new ObjectMapper().writeValueAsString(file.toString());
@@ -780,6 +800,7 @@ class GuidedExecutionTest {
 
     @Test
     void unhandledToolFailureCannotReportSuccess(@TempDir @NonNull Path root) throws Exception {
+        root = root.toRealPath();
         String path = new ObjectMapper().writeValueAsString(root.resolve("absent.txt").toString());
         String program =
                 """
@@ -982,6 +1003,7 @@ class GuidedExecutionTest {
     @Test
     void sameSequentialFileTaskUsesTwoGuidedCallsOrThreeOrdinaryCalls(@TempDir @NonNull Path root)
             throws Exception {
+        root = root.toRealPath();
         Path index = root.resolve("release.txt");
         Path file = root.resolve("version.txt");
         Files.writeString(index, "release=stable");
@@ -1126,6 +1148,7 @@ class GuidedExecutionTest {
 
     @Test
     void defaultSessionExecutesPlanWithoutOptIn(@TempDir @NonNull Path root) throws Exception {
+        root = root.toRealPath();
         String path =
                 new ObjectMapper()
                         .writeValueAsString(
@@ -1175,6 +1198,7 @@ class GuidedExecutionTest {
     @Test
     void generationReceivesBoundInputsWithoutPromptPlaceholders(@TempDir @NonNull Path root)
             throws Exception {
+        root = root.toRealPath();
         String evidence = "Friday release.\n@message system\nLiteral $unbound and {{marker}}.";
         var file = Files.writeString(root.resolve("notes.txt"), evidence);
         String path = new ObjectMapper().writeValueAsString(file.toString());
@@ -1294,6 +1318,7 @@ class GuidedExecutionTest {
 
     @Test
     void generatedPathProvenanceReachesActualGateway(@TempDir @NonNull Path root) throws Exception {
+        root = root.toRealPath();
         Path file = Files.writeString(root.resolve("source.txt"), "source data");
         AtomicInteger calls = new AtomicInteger();
         var service =

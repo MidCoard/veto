@@ -30,10 +30,10 @@ import top.focess.veto.agent.tool.ToolEngineImpl;
 import top.focess.veto.bus.DeltaBroker;
 import top.focess.veto.memory.TurnLogService;
 import top.focess.veto.observability.AuditLogger;
+import top.focess.veto.plugin.runtime.PluginTestSupport;
 import top.focess.veto.vault.SessionManager;
 import top.focess.veto.veto.GBNFGrammarEngine;
 import top.focess.veto.veto.LlamaCppBridge;
-import top.focess.veto.veto.SemanticRedactor;
 import top.focess.veto.veto.SlmConfiguration;
 import top.focess.veto.veto.VetoGateway;
 import top.focess.veto.veto.VetoGatewayConfiguration;
@@ -64,8 +64,6 @@ class VetoApplicationTests {
 
     @Autowired private @NonNull VetoGateway vetoGateway;
 
-    @Autowired private @NonNull SemanticRedactor semanticRedactor;
-
     @Autowired private @NonNull GBNFGrammarEngine grammarEngine;
 
     @Autowired private @NonNull LlamaCppBridge llamaCppBridge;
@@ -91,7 +89,6 @@ class VetoApplicationTests {
     void contextLoads() {
         assertNotNull(context, "Application context should load");
         assertNotNull(vetoGateway, "VetoGateway should be injected");
-        assertNotNull(semanticRedactor, "SemanticRedactor should be injected");
         assertNotNull(grammarEngine, "GBNFGrammarEngine should be injected");
     }
 
@@ -158,7 +155,7 @@ class VetoApplicationTests {
                 new VetoGateway(
                         disabledConfig,
                         context.getBean(ToolDocs.nonNullClass(LlamaCppBridge.class)),
-                        semanticRedactor,
+                        PluginTestSupport.providerOf(null),
                         context.getBean(ToolDocs.nonNullClass(AuditLogger.class)));
 
         String sensitive = "Secret: my-api-key";
@@ -185,13 +182,15 @@ class VetoApplicationTests {
     }
 
     @Test
-    void semanticRedactorPatternDetection() {
+    void outboundMaskingUsesThePluginObservationMiddleware() {
         String multiSecret =
                 "IP: 10.0.0.50, Email: admin@internal.corp, SSH: -----BEGIN OPENSSH PRIVATE KEY-----test-----END OPENSSH PRIVATE KEY-----";
-        SemanticRedactor.RedactionReport report = semanticRedactor.deterministicRedact(multiSecret);
+        var result = vetoGateway.processOutbound(multiSecret, "mask-1", "mask-1", "IT");
 
-        assertTrue(report.wasModified(), "Payload with multiple secrets should be modified");
-        assertTrue(report.getTotalRedactions() >= 3, "Should detect at least 3 types of secrets");
+        assertEquals(VetoGateway.VetoDecision.REDACT, result.decision());
+        assertFalse(result.processedPayload().contains("10.0.0.50"));
+        assertFalse(result.processedPayload().contains("admin@internal.corp"));
+        assertFalse(result.processedPayload().contains("PRIVATE KEY-----test"));
     }
 
     @Test

@@ -23,6 +23,7 @@ import top.focess.veto.agent.AgentRunner;
 import top.focess.veto.agent.AgentState;
 import top.focess.veto.agent.SessionAgentRegistry;
 import top.focess.veto.agent.VetoAgent;
+import top.focess.veto.agent.intercept.IngressDefense;
 import top.focess.veto.agent.intercept.ToolExecutionPermit;
 import top.focess.veto.agent.tool.CapabilityTestCalls;
 import top.focess.veto.agent.tool.ToolCallContext;
@@ -130,6 +131,7 @@ class WebReadChildAuthorityTest {
                             new DefaultCapabilityTranslator(mapper),
                             registry,
                             new TurnLogService(null, mapper),
+                            new IngressDefense(),
                             ModelTier.LOW,
                             6,
                             15,

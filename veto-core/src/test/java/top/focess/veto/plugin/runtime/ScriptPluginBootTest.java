@@ -191,6 +191,12 @@ class ScriptPluginBootTest {
     void untrustedConfigurationIsRejectedBeforeExecution() {
         assertThrows(
                 IOException.class,
-                () -> new PluginManager("/unused", node(), false, 5000, java.util.List.of()));
+                () ->
+                        new PluginManager(
+                                "/unused",
+                                node(),
+                                false,
+                                5000,
+                                PluginTestSupport.providerOf(null)));
     }
 }

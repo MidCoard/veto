@@ -21,6 +21,8 @@ import top.focess.veto.agent.AgentService;
 import top.focess.veto.agent.TurnRecord;
 import top.focess.veto.agent.TurnType;
 import top.focess.veto.agent.tool.ToolDocs;
+import top.focess.veto.plugin.contract.StandardContributionPoints;
+import top.focess.veto.plugin.contract.TextProtection;
 import top.focess.veto.llm.core.ProviderType;
 import top.focess.veto.llm.core.ToolResultPresentationMode;
 import top.focess.veto.model.AgentEntity;
@@ -31,7 +33,8 @@ import top.focess.veto.model.SessionEntity;
 import top.focess.veto.model.SessionRepository;
 import top.focess.veto.model.tier.ModelBinding;
 import top.focess.veto.model.tier.ModelTierRegistry;
-import top.focess.veto.secret.references.SecretCandidateStore;
+import top.focess.veto.plugin.runtime.PluginLifecycleEvents;
+import top.focess.veto.plugin.runtime.PluginTestSupport;
 
 class SessionServiceTest {
     @Test
@@ -405,7 +408,7 @@ class SessionServiceTest {
     }
 
     @Test
-    void deleteCascadesAndDetachesTerminal() {
+    void deleteCascadesAndDetachesTerminal() throws Exception {
         SessionRepository sessions = mock(ToolDocs.nonNullClass(SessionRepository.class));
         AgentInstanceRepository agents = mock(ToolDocs.nonNullClass(AgentInstanceRepository.class));
         AgentPatternRepository patterns = mock(ToolDocs.nonNullClass(AgentPatternRepository.class));
@@ -439,22 +442,32 @@ class SessionServiceTest {
         service.activate("term-1", "coder", "alice", CWD);
         assertTrue(service.activeSession("term-1").isPresent());
 
-        var candidates = new SecretCandidateStore();
-        service.attachCandidates(candidates);
-        var scope = new SecretCandidateStore.Scope("alice", session.getId(), agent.getId());
-        String secret =
-                candidates
-                        .capture(scope, "source", "password=alpha")
-                        .candidates()
-                        .getFirst()
-                        .reference();
-        boolean removed = service.delete("alice", "coder");
-        assertEquals(
-                SecretCandidateStore.State.DISCARDED,
-                candidates.describe(scope, secret).orElseThrow().state());
-        assertThrows(
-                IllegalStateException.class,
-                () -> candidates.capture(scope, "late", "password=alpha"));
+        boolean removed;
+        var scope = new TextProtection.Scope("alice", session.getId(), agent.getId());
+        try (var plugins = PluginTestSupport.manager()) {
+            service.attachLifecycleEvents(new PluginLifecycleEvents(plugins));
+            String captured =
+                    PluginTestSupport.protect(
+                            plugins,
+                            StandardContributionPoints.INPUT_PROTECTION,
+                            scope,
+                            "source",
+                            "password=alpha");
+            var matcher = java.util.regex.Pattern.compile("s_[a-f0-9]{32}").matcher(captured);
+            assertTrue(matcher.find(), "expected a captured reference");
+            String secret = matcher.group();
+            removed = service.delete("alice", "coder");
+            assertTrue(PluginTestSupport.reveal(plugins, scope, secret).isEmpty());
+            assertThrows(
+                    IllegalStateException.class,
+                    () ->
+                            PluginTestSupport.protect(
+                                    plugins,
+                                    StandardContributionPoints.INPUT_PROTECTION,
+                                    scope,
+                                    "late",
+                                    "password=alpha"));
+        }
         assertTrue(removed, "delete should report the session removed");
 
         verify(agentService).remove(session.getId());

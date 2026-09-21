@@ -221,7 +221,7 @@ public class AuthController {
             return ResponseEntity.ok(new UserCreatedResponse("ok", username, role, "User created"));
         } catch (IllegalArgumentException e) {
             // Duplicate username (UserRegistry.create rejects an existing id).
-            return ResponseEntity.status(409)
+            return ResponseEntity.status(409) // TODO check the security problem
                     .body(error(Msg.get("error.auth.userExists", username)));
         } catch (Exception e) {
             log.error("Failed to create user '{}'", username, e);

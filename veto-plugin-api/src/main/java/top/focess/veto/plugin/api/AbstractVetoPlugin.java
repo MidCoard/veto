@@ -1,17 +1,18 @@
 package top.focess.veto.plugin.api;
 
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.extension.contract.ExtensionFailure;
-import top.focess.veto.extension.contract.JsonValue;
+import top.focess.veto.plugin.contract.JsonValue;
+import top.focess.veto.plugin.contract.PluginFailure;
 
 /** Plugin callbacks only. The host owns scheduling, state, admission and cleanup ordering. */
 public abstract class AbstractVetoPlugin implements VetoPlugin {
+    @Override
     public abstract @NonNull PluginIdentity identity();
 
     @Override
     public final @NonNull PluginContributions initialize(
             @NonNull PluginContext context, JsonValue.@NonNull ObjectValue configuration)
-            throws ExtensionFailure {
+            throws PluginFailure {
         try {
             return onInitialize(context, configuration);
         } catch (Exception failure) {
@@ -20,7 +21,7 @@ public abstract class AbstractVetoPlugin implements VetoPlugin {
     }
 
     @Override
-    public final void start() throws ExtensionFailure {
+    public final void start() throws PluginFailure {
         try {
             onStart();
         } catch (Exception failure) {
@@ -29,7 +30,7 @@ public abstract class AbstractVetoPlugin implements VetoPlugin {
     }
 
     @Override
-    public final void close() throws ExtensionFailure {
+    public final void close() throws PluginFailure {
         try {
             onClose();
         } catch (Exception failure) {
@@ -37,10 +38,10 @@ public abstract class AbstractVetoPlugin implements VetoPlugin {
         }
     }
 
-    private static @NonNull ExtensionFailure safe(@NonNull Exception failure) {
-        return failure instanceof ExtensionFailure declared
+    private static @NonNull PluginFailure safe(@NonNull Exception failure) {
+        return failure instanceof PluginFailure declared
                 ? declared
-                : new ExtensionFailure(ExtensionFailure.Code.INTERNAL_FAILURE);
+                : new PluginFailure(PluginFailure.Code.INTERNAL_FAILURE);
     }
 
     protected abstract @NonNull PluginContributions onInitialize(

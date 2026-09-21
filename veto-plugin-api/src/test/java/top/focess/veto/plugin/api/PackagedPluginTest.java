@@ -13,8 +13,8 @@ import java.util.jar.JarFile;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
-import top.focess.veto.extension.*;
-import top.focess.veto.extension.contract.*;
+import top.focess.veto.plugin.contract.*;
+import top.focess.veto.plugin.contribution.*;
 
 /** Package-level SPI proof, deliberately not a production package validator or loader. */
 class PackagedPluginTest {
@@ -38,7 +38,8 @@ class PackagedPluginTest {
         protected @NonNull Class<?> loadClass(@NonNull String name, boolean resolve)
                 throws ClassNotFoundException {
             if (name.startsWith("top.focess.veto.plugin.api.")
-                    || name.startsWith("top.focess.veto.extension."))
+                    || name.startsWith("top.focess.veto.plugin.contribution.")
+                    || name.startsWith("top.focess.veto.plugin.contract."))
                 return Class.forName(name, false, VetoPlugin.class.getClassLoader());
             return super.loadClass(name, resolve);
         }
@@ -61,29 +62,30 @@ class PackagedPluginTest {
                 .newInstance();
     }
 
-    private static @NonNull ExtensionCatalog catalog(@NonNull PluginContributions contributions) {
+    private static @NonNull ContributionCatalog catalog(
+            @NonNull PluginContributions contributions) {
         var catalog =
-                new ExtensionCatalog.Builder()
-                        .validateWith(StandardExtensionPoints::validateToolCategories)
-                        .define(StandardExtensionPoints.TOOLS, tool -> {})
-                        .define(StandardExtensionPoints.CATEGORIES, category -> {})
-                        .define(StandardExtensionPoints.PROMPTS, prompt -> {})
-                        .define(StandardExtensionPoints.OBSERVATION, middleware -> {})
+                new ContributionCatalog.Builder()
+                        .validateWith(StandardContributionPoints::validateToolCategories)
+                        .define(StandardContributionPoints.TOOLS, tool -> {})
+                        .define(StandardContributionPoints.CATEGORIES, category -> {})
+                        .define(StandardContributionPoints.PROMPTS, prompt -> {})
+                        .define(StandardContributionPoints.OBSERVATION, middleware -> {})
                         .stage(
-                                new ExtensionSource(
+                                new ContributionSource(
                                         "top.focess.fixture",
                                         "0.1.0",
-                                        ExtensionSource.Origin.PLUGIN),
+                                        ContributionSource.Origin.PLUGIN),
                                 contributions.entries())
                         .freeze();
-        assertEquals(1, catalog.entries(StandardExtensionPoints.CATEGORIES).size());
-        assertEquals(1, catalog.entries(StandardExtensionPoints.OBSERVATION).size());
+        assertEquals(1, catalog.entries(StandardContributionPoints.CATEGORIES).size());
+        assertEquals(1, catalog.entries(StandardContributionPoints.OBSERVATION).size());
         return catalog;
     }
 
-    private static @NonNull ToolContribution tool(@NonNull PluginContributions contributions) {
+    private static @NonNull Tool tool(@NonNull PluginContributions contributions) {
         return catalog(contributions)
-                .entries(StandardExtensionPoints.TOOLS)
+                .entries(StandardContributionPoints.TOOLS)
                 .getFirst()
                 .implementation();
     }
@@ -118,28 +120,24 @@ class PackagedPluginTest {
             var tool = tool(contributions);
             var middleware =
                     catalog(contributions)
-                            .entries(StandardExtensionPoints.OBSERVATION)
+                            .entries(StandardContributionPoints.OBSERVATION)
                             .getFirst()
                             .implementation();
-            assertThrows(ExtensionFailure.class, () -> middleware.transform(" text ", () -> false));
+            assertThrows(PluginFailure.class, () -> middleware.transform(" text ", () -> false));
             var arguments =
                     new JsonValue.ObjectValue(Map.of("text", new JsonValue.StringValue("A😀中")));
             assertEquals(
-                    ExtensionFailure.Code.NOT_READY,
-                    assertThrows(
-                                    ExtensionFailure.class,
-                                    () -> tool.handler().invoke(arguments, () -> false))
+                    PluginFailure.Code.NOT_READY,
+                    assertThrows(PluginFailure.class, () -> tool.invoke(arguments, () -> false))
                             .code());
             plugin.start();
             assertEquals("text", middleware.transform(" text ", () -> false));
             assertEquals(
                     new JsonValue.NumberValue(java.math.BigDecimal.valueOf(3)),
-                    tool.handler().invoke(arguments, () -> false));
+                    tool.invoke(arguments, () -> false));
             assertEquals(
-                    ExtensionFailure.Code.CANCELLED,
-                    assertThrows(
-                                    ExtensionFailure.class,
-                                    () -> tool.handler().invoke(arguments, () -> true))
+                    PluginFailure.Code.CANCELLED,
+                    assertThrows(PluginFailure.class, () -> tool.invoke(arguments, () -> true))
                             .code());
         }
     }
@@ -155,16 +153,13 @@ class PackagedPluginTest {
                                     Map.of("failStart", new JsonValue.BooleanValue(true))));
             try {
                 assertEquals(
-                        ExtensionFailure.Code.INTERNAL_FAILURE,
-                        assertThrows(ExtensionFailure.class, plugin::start).code());
+                        PluginFailure.Code.INTERNAL_FAILURE,
+                        assertThrows(PluginFailure.class, plugin::start).code());
                 assertEquals(
-                        ExtensionFailure.Code.NOT_READY,
+                        PluginFailure.Code.NOT_READY,
                         assertThrows(
-                                        ExtensionFailure.class,
-                                        () ->
-                                                tool(contributions)
-                                                        .handler()
-                                                        .invoke(EMPTY, () -> false))
+                                        PluginFailure.class,
+                                        () -> tool(contributions).invoke(EMPTY, () -> false))
                                 .code());
             } finally {
                 plugin.close();
@@ -186,20 +181,20 @@ class PackagedPluginTest {
             first.close();
             var middleware =
                     catalog(contributions)
-                            .entries(StandardExtensionPoints.OBSERVATION)
+                            .entries(StandardContributionPoints.OBSERVATION)
                             .getFirst()
                             .implementation();
             assertEquals(
-                    ExtensionFailure.Code.NOT_READY,
+                    PluginFailure.Code.NOT_READY,
                     assertThrows(
-                                    ExtensionFailure.class,
+                                    PluginFailure.class,
                                     () -> middleware.transform(" text ", () -> false))
                             .code());
             assertEquals(
-                    ExtensionFailure.Code.NOT_READY,
+                    PluginFailure.Code.NOT_READY,
                     assertThrows(
-                                    ExtensionFailure.class,
-                                    () -> tool(contributions).handler().invoke(EMPTY, () -> false))
+                                    PluginFailure.class,
+                                    () -> tool(contributions).invoke(EMPTY, () -> false))
                             .code());
             second.initialize(CONTEXT, EMPTY);
             second.start();
@@ -211,9 +206,9 @@ class PackagedPluginTest {
         try (var loader = loader();
                 var plugin = instantiate(loader)) {
             assertEquals(
-                    ExtensionFailure.Code.INVALID_CONFIGURATION,
+                    PluginFailure.Code.INVALID_CONFIGURATION,
                     assertThrows(
-                                    ExtensionFailure.class,
+                                    PluginFailure.class,
                                     () ->
                                             plugin.initialize(
                                                     CONTEXT,

@@ -9,6 +9,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import top.focess.veto.observability.AuditLogger;
+import top.focess.veto.plugin.runtime.PluginTestSupport;
 
 @ExtendWith(MockitoExtension.class)
 @SuppressWarnings("initialization.field.uninitialized")
@@ -18,7 +19,6 @@ class VetoGatewayTest {
     @Mock private @NonNull AuditLogger auditLogger;
 
     private @NonNull VetoGatewayConfiguration config;
-    private @NonNull SemanticRedactor semanticRedactor;
     private @NonNull VetoGateway vetoGateway;
 
     @BeforeEach
@@ -27,8 +27,10 @@ class VetoGatewayTest {
         config.setEnabled(true);
         config.setEnforceStructuralConstraints(true);
 
-        semanticRedactor = new SemanticRedactor();
-        vetoGateway = new VetoGateway(config, llamaCppBridge, semanticRedactor, auditLogger);
+        // No plugin manager bound: masking degrades to identity.
+        vetoGateway =
+                new VetoGateway(
+                        config, llamaCppBridge, PluginTestSupport.providerOf(null), auditLogger);
     }
 
     @Test
@@ -54,28 +56,48 @@ class VetoGatewayTest {
     }
 
     @Test
-    void testProcessOutboundRedactsIPs() {
+    void testProcessOutboundWithoutPluginsLeavesThePayloadUnmasked() {
         String payload = "Server configured at 10.0.0.50 with SSH key";
         VetoGateway.VetoResult result =
-                vetoGateway.processOutbound(payload, "dag-2", "req-2", "sandbox");
+                vetoGateway.processOutbound(payload, "dag-identity", "req-identity", "sandbox");
 
-        assertEquals(VetoGateway.VetoDecision.REDACT, result.decision());
-        assertTrue(result.isAllowed()); // REDACT is still allowed (safe to send)
-        assertTrue(result.redactionCount() > 0);
-        assertFalse(result.processedPayload().contains("10.0.0.50"));
+        assertEquals(VetoGateway.VetoDecision.PASS, result.decision());
+        assertEquals(payload, result.processedPayload());
     }
 
     @Test
-    void testProcessOutboundWithMultipleRedactions() {
-        String payload =
-                "IP: 192.168.1.1, Email: admin@internal.corp, Key: abcdefghijklmnopqrstuvwxyz0123456789ABCDEF";
-        VetoGateway.VetoResult result =
-                vetoGateway.processOutbound(payload, "dag-3", "req-3", "mcp");
+    void testProcessOutboundRedactsIpsThroughThePluginMiddleware() throws Exception {
+        try (var plugins = PluginTestSupport.manager()) {
+            var gateway = new VetoGateway(config, llamaCppBridge, plugins, auditLogger);
+            String payload = "Server configured at 10.0.0.50 with SSH key";
+            VetoGateway.VetoResult result =
+                    gateway.processOutbound(payload, "dag-2", "req-2", "sandbox");
 
-        assertEquals(VetoGateway.VetoDecision.REDACT, result.decision());
-        assertTrue(result.redactionCount() >= 3);
-        assertFalse(result.processedPayload().contains("192.168.1.1"));
-        assertFalse(result.processedPayload().contains("admin@internal.corp"));
+            assertEquals(VetoGateway.VetoDecision.REDACT, result.decision());
+            assertTrue(result.isAllowed()); // REDACT is still allowed (safe to send)
+            assertEquals(1, result.redactionCount());
+            assertFalse(result.processedPayload().contains("10.0.0.50"));
+        }
+    }
+
+    @Test
+    void testProcessOutboundMasksMultipleSensitiveClassesThroughThePlugin() throws Exception {
+        try (var plugins = PluginTestSupport.manager()) {
+            var gateway = new VetoGateway(config, llamaCppBridge, plugins, auditLogger);
+            String payload =
+                    "IP: 192.168.1.1, Email: admin@internal.corp, Key: abcdefghijklmnopqrstuvwxyz0123456789ABCDEF";
+            VetoGateway.VetoResult result =
+                    gateway.processOutbound(payload, "dag-3", "req-3", "mcp");
+
+            assertEquals(VetoGateway.VetoDecision.REDACT, result.decision());
+            // redactionCount counts changed payload lines, not individual rule hits.
+            assertEquals(1, result.redactionCount());
+            assertFalse(result.processedPayload().contains("192.168.1.1"));
+            assertFalse(result.processedPayload().contains("admin@internal.corp"));
+            assertFalse(
+                    result.processedPayload()
+                            .contains("abcdefghijklmnopqrstuvwxyz0123456789ABCDEF"));
+        }
     }
 
     @Test
@@ -84,7 +106,11 @@ class VetoGatewayTest {
         disabledConfig.setEnabled(false);
 
         VetoGateway disabledGateway =
-                new VetoGateway(disabledConfig, llamaCppBridge, semanticRedactor, auditLogger);
+                new VetoGateway(
+                        disabledConfig,
+                        llamaCppBridge,
+                        PluginTestSupport.providerOf(null),
+                        auditLogger);
 
         String sensitivePayload = "Secret: my-api-key-12345";
         VetoGateway.VetoResult result =

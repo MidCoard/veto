@@ -28,11 +28,17 @@ import top.focess.veto.agent.translation.DefaultCapabilityTranslator;
 import top.focess.veto.agent.web.*;
 import top.focess.veto.agent.workspace.*;
 import top.focess.veto.llm.core.*;
+import top.focess.veto.plugin.runtime.PluginLifecycleEvents;
+import top.focess.veto.plugin.runtime.PluginManager;
+import top.focess.veto.plugin.runtime.PluginTestSupport;
+import top.focess.veto.plugin.secrets.SecretProtectionConfiguration;
 import top.focess.veto.sandbox.*;
-import top.focess.veto.secret.references.SecretCandidateStore;
 import top.focess.veto.vault.*;
 
 class CredentialJourneyTest {
+    private static final @NonNull String IMPORT_TOOL =
+            "plugin_top_focess_secret_protection__import_detected_credential";
+
     @ParameterizedTest
     @CsvSource({"false,true", "true,true", "false,false", "true,false"})
     void fileImportAndAuthenticatedReadKeepSecretsOutOfModelAndHistory(
@@ -49,7 +55,13 @@ class CredentialJourneyTest {
         configuration.setVaultHome(root.resolve("vault").toString());
         var vault = new KeysteadVault(configuration);
         vault.signup("owner", "test-password");
-        var candidates = new SecretCandidateStore();
+        var plugins =
+                PluginTestSupport.manager(
+                        new SecretProtectionConfiguration()
+                                .pluginHostServices(
+                                        PluginTestSupport.providerOf(vault),
+                                        PluginTestSupport.providerOf(null)));
+        var sessionPlugins = PluginTestSupport.sessionPlugins(plugins);
         @NonNull HttpClient client = mock();
         @NonNull HttpResponse<byte[]> response = mock();
         when(response.statusCode()).thenReturn(200);
@@ -75,7 +87,8 @@ class CredentialJourneyTest {
         @NonNull SearchProvider search = mock();
         @NonNull WebFetchExecutor fetch = mock();
         var network = new NetworkEgressCapabilityImpl(search, fetch, 15, 1000000, false);
-        var reader = new GitHubRepositoryReader(vault, mapper);
+        var reader =
+                new GitHubRepositoryReader(vault, mapper, PluginTestSupport.providerOf(plugins));
         ReflectionTestUtils.setField(reader, "client", client);
         network.attachRepositoryReader(reader);
         var toolContext =
@@ -87,15 +100,15 @@ class CredentialJourneyTest {
                                 new top.focess.veto.agent.tool.builtin.SubmitPlanTool(
                                         new top.focess.veto.agent.capability
                                                 .LoopControlCapabilityImpl())));
+        when(toolContext.getBeansOfType(PluginManager.class))
+                .thenReturn(Map.of("plugins", plugins));
         var engine =
                 new ToolEngineImpl(
                         mapper,
                         List.of(
                                 new ViewFileTool(
-                                        new ProtectedWorkspaceReadCapabilityImpl(candidates)),
-                                new ImportDetectedCredentialTool(
-                                        new CredentialImportCapabilityImpl(
-                                                candidates, vault, mapper)),
+                                        new ProtectedWorkspaceReadCapabilityImpl(
+                                                PluginTestSupport.providerOf(sessionPlugins))),
                                 new ReadGitHubRepositoryTool(network)),
                         toolContext);
         engine.afterSingletonsInstantiated();
@@ -127,7 +140,7 @@ class CredentialJourneyTest {
                                 """
                     [{"id":"read","label":"Read","type":"tool","tool":"view_file","inputs":{"absolutePath":PATH},"outputs":{"text":"content"}},
                      {"id":"reference","label":"Extract reference","type":"generate","prompt":"Extract the secret reference from $text","inputs":{"text":"$text"},"outputs":{"ref":"message"}},
-                     {"id":"import","label":"Import","type":"tool","tool":"import_detected_credential","inputs":{"secret_ref":"$ref","service":"github","label":"Repository"},"outputs":{"receipt":"content"}},
+                     {"id":"import","label":"Import","type":"tool","tool":"plugin_top_focess_secret_protection__import_detected_credential","inputs":{"secret_ref":"$ref","service":"github","label":"Repository"},"outputs":{"receipt":"content"}},
                      {"id":"credential","label":"Extract credential reference","type":"generate","prompt":"Extract the credential reference from $receipt","inputs":{"receipt":"$receipt"},"outputs":{"credential":"message"}},
                      {"id":"repository","label":"Read repository","type":"tool","tool":"read_github_repository","inputs":{"credentialRef":"$credential","repositoryOwner":"example","repositoryName":"project"},"outputs":{"repository":"content"}},
                      {"id":"answer","label":"Report","type":"generate","prompt":"Report $repository","inputs":{"repository":"$repository"},"outputs":{"answer":"message"}},
@@ -158,7 +171,7 @@ class CredentialJourneyTest {
                         return usePlan
                                 ? message(ref)
                                 : tool(
-                                        "import_detected_credential",
+                                        IMPORT_TOOL,
                                         Map.of(
                                                 "secret_ref",
                                                 ref,
@@ -226,7 +239,7 @@ class CredentialJourneyTest {
                 new AgentService(
                         engine,
                         hitl,
-                        new IngressDefense(),
+                        new IngressDefense(null, PluginTestSupport.providerOf(plugins)),
                         compiler,
                         caller,
                         mapper,
@@ -240,7 +253,8 @@ class CredentialJourneyTest {
                         null,
                         null,
                         new BackgroundTaskManager(sandbox));
-        service.attachSecretCandidates(candidates);
+        service.attachSessionPlugins(sessionPlugins);
+        service.attachLifecycleEvents(new PluginLifecycleEvents(plugins));
         service.setConfiguredDefaultWorkspace(Workspace.single(root, PathMode.REAL));
         String session = UUID.randomUUID().toString();
         var agent =
@@ -313,8 +327,7 @@ class CredentialJourneyTest {
                     importedReferences.getFirst(),
                     "github",
                     value -> assertEquals(token, new String(value)));
-            assertEquals(
-                    List.of("import_detected_credential", "read_github_repository"), approvals);
+            assertEquals(List.of(IMPORT_TOOL, "read_github_repository"), approvals);
             assertTrue(
                     agent.history().stream()
                             .noneMatch(turn -> turn.payload().toString().contains(token)));
@@ -335,6 +348,7 @@ class CredentialJourneyTest {
             assertEquals("token=" + token, Files.readString(file));
         } finally {
             service.remove(session);
+            plugins.close();
             vault.logoutAll();
         }
     }

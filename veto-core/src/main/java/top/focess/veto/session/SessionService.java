@@ -33,7 +33,7 @@ import top.focess.veto.model.SessionRepository;
 import top.focess.veto.model.tier.ModelBinding;
 import top.focess.veto.model.tier.ModelTierRegistry;
 import top.focess.veto.monitor.RequestContinuationStore;
-import top.focess.veto.secret.references.SecretCandidateStore;
+import top.focess.veto.plugin.runtime.PluginLifecycleEvents;
 import top.focess.veto.security.UserAdminService;
 
 /**
@@ -62,11 +62,11 @@ public class SessionService {
         sessionPlugins = value;
     }
 
-    private SecretCandidateStore candidates;
+    private PluginLifecycleEvents lifecycleEvents;
 
     @Autowired
-    public void attachCandidates(@NonNull SecretCandidateStore store) {
-        candidates = store;
+    public void attachLifecycleEvents(@NonNull PluginLifecycleEvents events) {
+        lifecycleEvents = events;
     }
 
     private RequestContinuationStore continuations;
@@ -476,7 +476,8 @@ public class SessionService {
         }
         for (SessionEntity session : matches) {
             String sessionId = session.getId();
-            if (candidates != null) candidates.retireSession(owner, sessionId);
+            var events = lifecycleEvents;
+            if (events != null) events.sessionClosed(owner, sessionId);
             activeSessions.entrySet().removeIf(e -> sessionId.equals(e.getValue()));
             agentService.remove(sessionId);
             RequestContinuationStore store = continuations;

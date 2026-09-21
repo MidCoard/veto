@@ -6,24 +6,32 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.ServiceConfigurationError;
+import java.util.ServiceLoader;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import org.jspecify.annotations.NonNull;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
-import top.focess.veto.extension.ExtensionCatalog;
-import top.focess.veto.extension.ExtensionEntry;
-import top.focess.veto.extension.ExtensionPoint;
-import top.focess.veto.extension.ExtensionSource;
-import top.focess.veto.extension.contract.JsonValue;
-import top.focess.veto.extension.contract.StandardExtensionPoints;
-import top.focess.veto.extension.contract.ToolContribution;
-import top.focess.veto.plugin.api.AbstractVetoPlugin;
 import top.focess.veto.plugin.api.PluginContext;
 import top.focess.veto.plugin.api.PluginContributions;
+import top.focess.veto.plugin.api.PluginState;
+import top.focess.veto.plugin.api.VetoPlugin;
+import top.focess.veto.plugin.contract.JsonValue;
+import top.focess.veto.plugin.contract.PluginFailure;
+import top.focess.veto.plugin.contract.StandardContributionPoints;
+import top.focess.veto.plugin.contract.Tool;
+import top.focess.veto.plugin.contribution.ContributionCatalog;
+import top.focess.veto.plugin.contribution.ContributionEntry;
+import top.focess.veto.plugin.contribution.ContributionPoint;
+import top.focess.veto.plugin.contribution.ContributionSource;
 
 /**
  * Startup-only operator configuration. All packages must start or the application fails startup.
+ * Built-in plugins are discovered through {@link ServiceLoader}; installed script packages come
+ * from operator configuration.
  */
 @Component
 public final class PluginManager implements AutoCloseable {
@@ -33,7 +41,7 @@ public final class PluginManager implements AutoCloseable {
     private final @NonNull ScriptHost scriptHost;
     private final @NonNull List<ManagedPlugin> plugins;
     private final @NonNull List<Registration> registrations;
-    private final @NonNull ExtensionCatalog catalog;
+    private final @NonNull ContributionCatalog catalog;
 
     public record Registration(
             @NonNull ManagedPlugin plugin, @NonNull PluginContributions contributions) {}
@@ -44,13 +52,16 @@ public final class PluginManager implements AutoCloseable {
             @Value("${veto.plugins.node-command:}") @NonNull String nodeCommand,
             @Value("${veto.plugins.trusted-code:false}") boolean trustedCode,
             @Value("${veto.plugins.timeout-ms:5000}") long timeoutMillis,
-            @NonNull List<AbstractVetoPlugin> builtins)
+            @NonNull ObjectProvider<PluginHostServices> hostServices)
             throws IOException {
         scriptHost = new ScriptHost(Path.of(nodeCommand), timeoutMillis);
+        var granted = hostServices.getIfAvailable();
+        var services = granted == null ? Map.<Class<?>, Object>of() : granted.services();
         List<ManagedPlugin> staged = new ArrayList<>();
-        for (var builtin : builtins) staged.add(new ManagedPlugin(builtin, lifecycle));
-        List<Registration> registered = new ArrayList<>();
         try {
+            // Provider failures are fatal: a broken built-in must not silently drop its points.
+            for (var discovered : ServiceLoader.load(VetoPlugin.class))
+                staged.add(new ManagedPlugin(discovered, lifecycle));
             if (!paths.isBlank()) {
                 if (!trustedCode)
                     throw new IllegalArgumentException(
@@ -76,6 +87,7 @@ public final class PluginManager implements AutoCloseable {
                 }
             }
             var allIds = new HashSet<String>();
+            List<Registration> registered = new ArrayList<>();
             for (var plugin : staged) {
                 if (!allIds.add(plugin.identity().id()))
                     throw new IllegalArgumentException("Duplicate plugin identity");
@@ -83,20 +95,20 @@ public final class PluginManager implements AutoCloseable {
                         new Registration(
                                 plugin,
                                 plugin.initialize(
-                                        new PluginContext(plugin.identity()),
-                                        new JsonValue.ObjectValue(java.util.Map.of()))));
+                                        new PluginContext(plugin.identity(), services),
+                                        new JsonValue.ObjectValue(Map.of()))));
             }
-            var builder = new ExtensionCatalog.Builder();
-            var points = new java.util.HashSet<ExtensionPoint<?>>();
-            points.add(StandardExtensionPoints.TOOLS);
-            points.add(StandardExtensionPoints.CATEGORIES);
+            var builder = new ContributionCatalog.Builder();
+            var points = new java.util.HashSet<ContributionPoint<?>>();
+            points.add(StandardContributionPoints.TOOLS);
+            points.add(StandardContributionPoints.CATEGORIES);
             builder.define(
-                    StandardExtensionPoints.TOOLS,
+                    StandardContributionPoints.TOOLS,
                     tool -> {
                         PluginSchema.check(PluginJson.toNode(tool.inputSchema()));
                         PluginSchema.check(PluginJson.toNode(tool.outputSchema()));
                     });
-            builder.define(StandardExtensionPoints.CATEGORIES, ignored -> {});
+            builder.define(StandardContributionPoints.CATEGORIES, ignored -> {});
             for (var registration : registered) {
                 for (var contribution : registration.contributions().entries()) {
                     if (points.add(contribution.point()))
@@ -106,17 +118,19 @@ public final class PluginManager implements AutoCloseable {
             for (var registration : registered) {
                 var identity = registration.plugin().identity();
                 builder.stage(
-                        new ExtensionSource(
-                                identity.id(), identity.version(), ExtensionSource.Origin.PLUGIN),
+                        new ContributionSource(
+                                identity.id(),
+                                identity.version(),
+                                ContributionSource.Origin.PLUGIN),
                         registration.contributions().entries());
             }
             var validatedCatalog = builder.freeze();
-            StandardExtensionPoints.validateToolCategories(validatedCatalog);
+            StandardContributionPoints.validateToolCategories(validatedCatalog);
             for (var plugin : staged) plugin.start();
             catalog = validatedCatalog;
             plugins = List.copyOf(staged);
             registrations = List.copyOf(registered);
-        } catch (Exception e) {
+        } catch (Exception | ServiceConfigurationError e) {
             for (var plugin : staged.reversed()) plugin.close();
             scriptHost.close();
             lifecycle.shutdown();
@@ -128,7 +142,7 @@ public final class PluginManager implements AutoCloseable {
         return plugins;
     }
 
-    public @NonNull ExtensionCatalog catalog() {
+    public @NonNull ContributionCatalog catalog() {
         return catalog;
     }
 
@@ -150,13 +164,43 @@ public final class PluginManager implements AutoCloseable {
                 .orElseThrow(() -> new IllegalArgumentException("Unknown plugin identity"));
     }
 
-    public @NonNull String toolName(@NonNull ExtensionEntry<ToolContribution> entry) {
+    public @NonNull String toolName(@NonNull ContributionEntry<Tool> entry) {
         String qualified = entry.id().value();
         String local = qualified.substring(qualified.indexOf(':') + 1);
         return "plugin_"
                 + entry.source().namespace().replace('.', '_').replace('-', '_')
                 + "__"
                 + local;
+    }
+
+    /**
+     * Session-less observation masking: threads the text through every ACTIVE plugin's {@code
+     * veto:observation-middleware} contribution in catalog order, regardless of session bindings.
+     * With no contributor the text is returned unchanged; the floor ships on the runtime classpath
+     * as the secret-protection plugin.
+     */
+    public @NonNull String applyObservationMiddleware(@NonNull String text) {
+        String result = text;
+        for (var entry : catalog.entries(StandardContributionPoints.OBSERVATION)) {
+            var plugin = plugin(entry.source().namespace());
+            if (plugin.state() != PluginState.ACTIVE) continue;
+            String input = result;
+            try {
+                result =
+                        plugin.execute(
+                                () ->
+                                        entry.implementation()
+                                                .transform(
+                                                        input,
+                                                        () ->
+                                                                Thread.currentThread()
+                                                                        .isInterrupted()));
+            } catch (PluginFailure failure) {
+                throw new IllegalStateException(
+                        "Session-less observation masking is unavailable", failure);
+            }
+        }
+        return result;
     }
 
     @Override

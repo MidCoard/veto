@@ -7,29 +7,30 @@ import java.util.function.UnaryOperator;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.tool.ToolDefinition;
 import top.focess.veto.llm.core.ToolCall;
-import top.focess.veto.secret.detection.SecretMasker;
+import top.focess.veto.plugin.runtime.PluginManager;
 import top.focess.veto.veto.LlamaCppBridge;
 
 /**
  * Advisory semantic masker. Asks the local SLM (via {@link LlamaCppBridge}) whether the agent's
- * emitted call is likely to exfiltrate a secret. This semantic check complements {@link
- * SecretMasker}, the deterministic pattern-based scrubber.
+ * emitted call is likely to exfiltrate a secret. This semantic check complements the secret
+ * scrubbing contributed as the {@code veto:observation-middleware} floor.
  *
  * <p>The SLM returns a structured JSON verdict: {@code {"risk": "high|medium|low", "reason":
- * "..."}}. On any verdict (high, medium, low) the masker applies {@link SecretMasker} as the
- * redaction — a prior version returned the <b>original</b> observation on "high" risk, which
- * defeated the masking purpose entirely (an exfil attempt that the SLM correctly flagged as
- * high-risk was passed through unmasked to the agent's context). The high-risk signal is now
- * surfaced via {@link HighRiskSignal} so the caller can still reject the call independently of the
- * redaction.
+ * "..."}}. On any verdict (high, medium, low) the masker applies the floor as the redaction — a
+ * prior version returned the <b>original</b> observation on "high" risk, which defeated the masking
+ * purpose entirely (an exfil attempt that the SLM correctly flagged as high-risk was passed through
+ * unmasked to the agent's context). The high-risk signal is now surfaced via {@link HighRiskSignal}
+ * so the caller can still reject the call independently of the redaction.
  *
- * <p>When the SLM is unavailable, the masker falls back to {@link SecretMasker} — the deterministic
+ * <p>When the SLM is unavailable, the masker falls back to the observation-middleware floor — the
  * floor is the authoritative layer.
  */
 @Component
@@ -40,8 +41,8 @@ public class SemanticMasker {
 
     /**
      * Maximum time to wait for the local SLM to score a tool observation. A wedged bridge (native
-     * crash, deadlock) must not stall the calling virtual thread indefinitely — fall back to
-     * deterministic masking on timeout so the agent's tool cycle keeps moving.
+     * crash, deadlock) must not stall the calling virtual thread indefinitely — fall back to the
+     * masking floor on timeout so the agent's tool cycle keeps moving.
      */
     static final long SLM_TIMEOUT_MS = 2_000L;
 
@@ -52,14 +53,23 @@ public class SemanticMasker {
                     "(?i)\\b(secret|token|password|api[_-]?key|credential|private[_-]?key)\\b");
 
     private final LlamaCppBridge bridge;
+    private final @Nullable PluginManager plugins;
 
     public SemanticMasker() {
-        this(null);
+        this(null, (PluginManager) null);
     }
 
     @Autowired
-    public SemanticMasker(@Autowired(required = false) LlamaCppBridge bridge) {
+    public SemanticMasker(
+            @Autowired(required = false) LlamaCppBridge bridge,
+            @NonNull ObjectProvider<PluginManager> plugins) {
         this.bridge = bridge;
+        this.plugins = plugins.getIfAvailable();
+    }
+
+    private SemanticMasker(@Nullable LlamaCppBridge bridge, @Nullable PluginManager plugins) {
+        this.bridge = bridge;
+        this.plugins = plugins;
     }
 
     /** A signal returned alongside the masked observation when the SLM rated the call high-risk. */
@@ -67,46 +77,51 @@ public class SemanticMasker {
 
     /**
      * Apply semantic masking: ask the SLM whether the call is a likely exfiltration vector. Returns
-     * the (always) SecretMasker-scrubbed observation. A non-null {@link HighRiskSignal} on the
+     * the (always) floor-scrubbed observation. A non-null {@link HighRiskSignal} on the
      * side-channel means the SLM said "high" — the caller can still reject the call independently
      * of the redaction.
      */
     public @NonNull MaskResult maskWithSignal(
             @NonNull String observation, @NonNull ToolCall call, @NonNull ToolDefinition def) {
-        return maskWithSignal(observation, call, def, SecretMasker::mask);
+        return maskWithSignal(observation, call, def, this::maskFloor);
+    }
+
+    private @NonNull String maskFloor(@NonNull String text) {
+        var manager = plugins;
+        return manager == null ? text : manager.applyObservationMiddleware(text);
     }
 
     @NonNull MaskResult maskWithSignal(
             @NonNull String observation,
             @NonNull ToolCall call,
             @NonNull ToolDefinition def,
-            @NonNull UnaryOperator<@NonNull String> deterministicMask) {
+            @NonNull UnaryOperator<@NonNull String> maskFloor) {
         if (observation.isBlank()) {
             return new MaskResult(observation, null);
         }
         // 1. Fast path: no obvious secret keywords → skip the SLM call.
         if (!EXFIL_PATTERN.matcher(observation).find()) {
-            return new MaskResult(deterministicMask.apply(observation), null);
+            return new MaskResult(maskFloor.apply(observation), null);
         }
-        // 2. SLM unavailable → fall back to deterministic masking.
+        // 2. SLM unavailable → fall back to the masking floor.
         if (bridge == null || !bridge.isAvailable()) {
-            return new MaskResult(deterministicMask.apply(observation), null);
+            return new MaskResult(maskFloor.apply(observation), null);
         }
         try {
             String prompt = buildPrompt(observation, call, def);
             // Bound the wait: a wedged bridge must not stall the calling virtual thread.
-            // On timeout / interrupt / execution failure, fall back to deterministic masking
-            // (the deterministic floor is authoritative per the Trust Model).
+            // On timeout / interrupt / execution failure, fall back to the masking floor
+            // (the floor is authoritative per the Trust Model).
             String response =
                     bridge.infer(prompt, "veto-semantic-mask")
                             .get(SLM_TIMEOUT_MS, TimeUnit.MILLISECONDS);
             Matcher m = RISK_PATTERN.matcher(response);
             if (!m.find()) {
-                return new MaskResult(deterministicMask.apply(observation), null);
+                return new MaskResult(maskFloor.apply(observation), null);
             }
             String riskGroup = m.group(1);
             if (riskGroup == null) {
-                return new MaskResult(deterministicMask.apply(observation), null);
+                return new MaskResult(maskFloor.apply(observation), null);
             }
             String risk = riskGroup.toLowerCase();
             if ("high".equals(risk)) {
@@ -117,29 +132,28 @@ public class SemanticMasker {
                 // Redact the observation AND surface the signal. The previous version returned
                 // the original unmasked text here, leaking the secret to the agent's context.
                 return new MaskResult(
-                        deterministicMask.apply(observation),
+                        maskFloor.apply(observation),
                         new HighRiskSignal(call.toolName(), "slm-rated-high"));
             }
-            return new MaskResult(deterministicMask.apply(observation), null);
+            return new MaskResult(maskFloor.apply(observation), null);
         } catch (TimeoutException e) {
             log.warn(
-                    "SemanticMasker: SLM exceeded {}ms — falling back to deterministic masking",
+                    "SemanticMasker: SLM exceeded {}ms — falling back to the masking floor",
                     SLM_TIMEOUT_MS);
-            return new MaskResult(deterministicMask.apply(observation), null);
+            return new MaskResult(maskFloor.apply(observation), null);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            log.warn(
-                    "SemanticMasker: SLM call interrupted — falling back to deterministic masking");
-            return new MaskResult(deterministicMask.apply(observation), null);
+            log.warn("SemanticMasker: SLM call interrupted — falling back to the masking floor");
+            return new MaskResult(maskFloor.apply(observation), null);
         } catch (ExecutionException e) {
             log.debug(
                     "SemanticMasker: SLM inference failed ({}), falling back",
                     safe(e.getCause() == null ? e.getMessage() : e.getCause().getMessage()));
-            return new MaskResult(deterministicMask.apply(observation), null);
+            return new MaskResult(maskFloor.apply(observation), null);
         } catch (Exception e) {
             log.debug(
                     "SemanticMasker: SLM inference failed, falling back: {}", safe(e.getMessage()));
-            return new MaskResult(deterministicMask.apply(observation), null);
+            return new MaskResult(maskFloor.apply(observation), null);
         }
     }
 

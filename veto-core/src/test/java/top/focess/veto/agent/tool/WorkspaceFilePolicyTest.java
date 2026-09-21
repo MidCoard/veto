@@ -28,9 +28,10 @@ import top.focess.veto.agent.tool.builtin.ViewFileTool;
 import top.focess.veto.agent.tool.builtin.WriteToFileTool;
 import top.focess.veto.agent.workspace.PathMode;
 import top.focess.veto.agent.workspace.Workspace;
+import top.focess.veto.plugin.contract.TextProtection;
 import top.focess.veto.llm.core.ToolCall;
 import top.focess.veto.llm.core.ToolResultPresentationMode;
-import top.focess.veto.secret.references.SecretCandidateStore;
+import top.focess.veto.plugin.runtime.PluginTestSupport;
 
 class WorkspaceFilePolicyTest {
     private static final @NonNull UUID USER = UUID.randomUUID();
@@ -43,27 +44,31 @@ class WorkspaceFilePolicyTest {
         Path file =
                 Files.writeString(
                         root.resolve("credential.txt"), "first\r\n" + key + "\r\nlast\r\n");
-        var candidates = new SecretCandidateStore();
-        var tool = new ViewFileTool(new ProtectedWorkspaceReadCapabilityImpl(candidates));
-        bind(tool, Map.of("absolutePath", file.toString()), root, Set.of());
-        var capability =
-                CapabilityResolver.require(ToolDocs.nonNullClass(WorkspaceReadCapability.class));
-        String result =
-                tool.execute(new ViewFileTool.Args(file.toString(), null, null), capability);
-        assertTrue(result.startsWith("1: first\n2: [SECRET_REF:s_"), result);
-        assertTrue(result.endsWith("3: \n4: \n5: last\n"), result);
-        assertFalse(result.contains("synthetic-material"));
-        String reference = result.substring(result.indexOf("s_"), result.indexOf(']'));
-        var descriptor =
-                candidates
-                        .describe(
-                                new SecretCandidateStore.Scope(
-                                        "owner", SESSION.toString(), "agent"),
-                                reference)
-                        .orElseThrow();
-        assertEquals(7, descriptor.start());
-        assertEquals(7 + key.length(), descriptor.end());
-        assertEquals("first\r\n" + key + "\r\nlast\r\n", Files.readString(file));
+        try (var plugins = PluginTestSupport.manager()) {
+            var tool =
+                    new ViewFileTool(
+                            new ProtectedWorkspaceReadCapabilityImpl(
+                                    PluginTestSupport.providerOf(
+                                            PluginTestSupport.sessionPlugins(plugins))));
+            bind(tool, Map.of("absolutePath", file.toString()), root, Set.of());
+            var capability =
+                    CapabilityResolver.require(
+                            ToolDocs.nonNullClass(WorkspaceReadCapability.class));
+            String result =
+                    tool.execute(new ViewFileTool.Args(file.toString(), null, null), capability);
+            assertTrue(result.startsWith("1: first\n2: [SECRET_REF:s_"), result);
+            assertTrue(result.endsWith("3: \n4: \n5: last\n"), result);
+            assertFalse(result.contains("synthetic-material"));
+            String reference = result.substring(result.indexOf("s_"), result.indexOf(']'));
+            assertEquals(
+                    key,
+                    PluginTestSupport.reveal(
+                                    plugins,
+                                    new TextProtection.Scope("owner", SESSION.toString(), "agent"),
+                                    reference)
+                            .orElseThrow());
+            assertEquals("first\r\n" + key + "\r\nlast\r\n", Files.readString(file));
+        }
     }
 
     @AfterEach
@@ -74,24 +79,26 @@ class WorkspaceFilePolicyTest {
     @Test
     void lookupRefusesProtectedAndUnapprovedResources(@TempDir @NonNull Path root)
             throws Exception {
-        Path file = Files.writeString(root.resolve("secret.txt"), "secret");
-        bind(new ViewFileTool(), Map.of("absolutePath", file.toString()), root, Set.of(file));
-        var workspace =
+        Path workspace = root.toRealPath();
+        Path file = Files.writeString(workspace.resolve("secret.txt"), "secret");
+        bind(new ViewFileTool(), Map.of("absolutePath", file.toString()), workspace, Set.of(file));
+        var workspaceCapability =
                 CapabilityResolver.require(ToolDocs.nonNullClass(WorkspaceReadCapability.class));
         var refusal =
                 assertThrows(
                         ToolDocs.nonNullClass(ToolExecutionException.class),
-                        () -> workspace.file(file.toString()));
+                        () -> workspaceCapability.file(file.toString()));
         assertEquals(ToolErrorCode.POLICY.PATH_PROTECTED, refusal.errorCode());
         assertThrows(
                 ToolDocs.nonNullClass(SecurityException.class),
-                () -> workspace.file(root.resolve("unapproved.txt").toString()));
+                () -> workspaceCapability.file(workspace.resolve("unapproved.txt").toString()));
         assertEquals("secret", Files.readString(file));
     }
 
     @Test
     void writableDirectoryLookupRefusesProtectedDescendantsBeforeTraversal(
             @TempDir @NonNull Path root) throws Exception {
+        root = root.toRealPath();
         Path directory = Files.createDirectory(root.resolve("tree"));
         Path ordinary = Files.writeString(directory.resolve("ordinary.txt"), "keep");
         Path secret = Files.writeString(directory.resolve("secret.txt"), "secret");

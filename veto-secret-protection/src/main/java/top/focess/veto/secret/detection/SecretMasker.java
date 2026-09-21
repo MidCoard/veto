@@ -5,6 +5,7 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.NonNull;
@@ -65,7 +66,71 @@ public final class SecretMasker {
                         "\\b(?=[A-Za-z0-9_-]{32,}\\b)(?=[A-Za-z0-9_-]*[A-Za-z])"
                                 + "(?=[A-Za-z0-9_-]*[0-9])[A-Za-z0-9_-]{32,}\\b"),
                 "[REDACTED_API_KEY]");
+
+        // Mask-only sensitive-data classes (moved from veto-core's removed SemanticRedactor).
+        // These protect outbound data but never become SECRET_REF candidates.
+        m.put(Pattern.compile("\\b(?:\\d{1,3}\\.){3}\\d{1,3}\\b"), "[REDACTED_IP]");
+        m.put(Pattern.compile("\\b(?:[0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}\\b"), "[REDACTED_IPV6]");
+        m.put(Pattern.compile("\\b[A-Za-z0-9+/=]{32,}\\b"), "[REDACTED_KEY]");
+        m.put(
+                Pattern.compile(
+                        "\\b(?:[a-zA-Z0-9-]+\\.)*(?:internal|local|private|corp|intranet)\\.[a-zA-Z]{2,}\\b",
+                        Pattern.CASE_INSENSITIVE),
+                "[REDACTED_INTERNAL_HOST]");
+        m.put(
+                Pattern.compile(
+                        "\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}\\b",
+                        Pattern.CASE_INSENSITIVE),
+                "[REDACTED_EMAIL]");
+        m.put(Pattern.compile("https?://[^:]+:[^@]+@"), "[REDACTED_CREDENTIAL_URL]");
+        m.put(
+                Pattern.compile(
+                        "(?i)(?<![A-Za-z0-9_.-])(?:"
+                                + "(?:(?:~|[A-Za-z]:)?[\\\\/])?"
+                                + "(?:[^\\\\/\\s]+[\\\\/])*"
+                                + "(?:\\.ssh|\\.aws|credentials|secrets|keys)"
+                                + "[\\\\/][^\\\\/\\s]+(?:[\\\\/][^\\\\/\\s]+)*"
+                                + "|(?:~|[A-Za-z]:)?[\\\\/]etc[\\\\/]"
+                                + "(?:passwd|shadow))"),
+                "[REDACTED_CREDENTIAL_PATH]");
+        m.put(
+                Pattern.compile(
+                        "(?i)\\b(?:norm|peak|magnitude|amplitude|frequency|phase)_(?:max|min|avg|offset|val|value)\\s*[:=]\\s*[-+]?\\d+(?:\\.\\d+)?(?:e[+-]?\\d+)?\\b"),
+                "[REDACTED_PROPRIETARY_PARAM]");
+        m.put(
+                Pattern.compile(
+                        "(?i)\\b(?:array|grid|topology|mesh)_\\w+_(?:config|params|data|setup)\\s*[:=]\\s*\\{.*?}",
+                        Pattern.DOTALL),
+                "[REDACTED_PROPRIETARY_PARAM]");
         return m;
+    }
+
+    /**
+     * Categories whose matches become SECRET_REF candidates (credential classes plus model
+     * detections). Every other category is mask-only: masked in observations, never captured.
+     */
+    private static final @NonNull Set<@NonNull String> CAPTURE_WORTHY =
+            Set.of(
+                    "[REDACTED_AWS_KEY]",
+                    "[REDACTED_PRIVATE_KEY]",
+                    "[REDACTED_DB_URL]",
+                    "[REDACTED_PASSWORD]",
+                    "[REDACTED_TOKEN]",
+                    "[REDACTED_GH_TOKEN]",
+                    "[REDACTED_SLACK_TOKEN]",
+                    "[REDACTED_API_KEY]",
+                    "slm-detected");
+
+    /** Whether matches of this category may become SECRET_REF candidates. */
+    public static boolean captureWorthy(@NonNull String category) {
+        return CAPTURE_WORTHY.contains(category);
+    }
+
+    /** Deterministic matches restricted to capture-worthy credential categories. */
+    public static @NonNull List<SecretMatch> credentialMatches(@NonNull String input) {
+        List<SecretMatch> result = new ArrayList<>();
+        for (var match : matches(input)) if (captureWorthy(match.category())) result.add(match);
+        return List.copyOf(result);
     }
 
     private SecretMasker() {}
@@ -125,5 +190,30 @@ public final class SecretMasker {
             }
         }
         return out;
+    }
+
+    /**
+     * Replaces the given original-input spans with their category markers. A category that is not
+     * already a {@code [REDACTED_*]} marker maps to {@code [REDACTED_<CATEGORY>]}.
+     */
+    public static @NonNull String mask(@NonNull String input, @NonNull List<SecretMatch> matches) {
+        List<SecretMatch> ordered = new ArrayList<>(matches);
+        ordered.sort(
+                Comparator.comparingInt(SecretMatch::start)
+                        .thenComparing(Comparator.comparingInt(SecretMatch::end).reversed()));
+        var output = new StringBuilder();
+        int end = 0;
+        for (var match : ordered) {
+            if (match.start() < end || match.end() > input.length()) continue;
+            output.append(input, end, match.start()).append(tag(match.category()));
+            end = match.end();
+        }
+        output.append(input, end, input.length());
+        return output.toString();
+    }
+
+    private static @NonNull String tag(@NonNull String category) {
+        if (category.startsWith("[REDACTED_")) return category;
+        return "[REDACTED_" + category.toUpperCase(java.util.Locale.ROOT).replace('-', '_') + "]";
     }
 }

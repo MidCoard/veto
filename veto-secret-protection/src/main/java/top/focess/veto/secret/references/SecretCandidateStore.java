@@ -16,6 +16,7 @@ import java.util.UUID;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.secret.api.CredentialWriter;
+import top.focess.veto.secret.detection.SecretDetector;
 import top.focess.veto.secret.detection.SecretMasker;
 
 /** Bounded transient captures. No raw-value lookup is exposed to tools or model callers. */
@@ -88,6 +89,7 @@ public final class SecretCandidateStore {
     private final int maxCount;
     private final int maxBytes;
     private final int maxValueBytes;
+    private volatile @NonNull SecretDetector detector;
 
     public SecretCandidateStore() {
         this(Clock.systemUTC(), Duration.ofMinutes(30), 64, 256 * 1024, 16 * 1024);
@@ -99,6 +101,16 @@ public final class SecretCandidateStore {
             int maxCount,
             int maxBytes,
             int maxValueBytes) {
+        this(clock, ttl, maxCount, maxBytes, maxValueBytes, SecretDetector.deterministic());
+    }
+
+    public SecretCandidateStore(
+            @NonNull Clock clock,
+            @NonNull Duration ttl,
+            int maxCount,
+            int maxBytes,
+            int maxValueBytes,
+            @NonNull SecretDetector detector) {
         if (ttl.isNegative() || ttl.isZero() || maxCount < 1 || maxBytes < 1 || maxValueBytes < 1)
             throw new IllegalArgumentException("Invalid candidate store limits");
         this.clock = clock;
@@ -106,6 +118,12 @@ public final class SecretCandidateStore {
         this.maxCount = maxCount;
         this.maxBytes = maxBytes;
         this.maxValueBytes = maxValueBytes;
+        this.detector = detector;
+    }
+
+    /** Replaces the detection engine (e.g. once the host grants a detection model). */
+    public void detector(@NonNull SecretDetector value) {
+        detector = value;
     }
 
     public synchronized @NonNull Capture capture(
@@ -139,7 +157,11 @@ public final class SecretCandidateStore {
                 throw new IllegalStateException("Secret reference is unavailable");
             references.add(new int[] {referenceMatcher.start(), referenceMatcher.end()});
         }
-        List<SecretMasker.SecretMatch> matches = new ArrayList<>(SecretMasker.matches(input));
+        // Mask-only categories (IPs, emails, internal hosts, …) never become importable
+        // SECRET_REF candidates; only credential-class matches are captured.
+        List<SecretMasker.SecretMatch> matches = new ArrayList<>();
+        for (var match : detector.detect(input))
+            if (SecretMasker.captureWorthy(match.category())) matches.add(match);
         Map<String, Entry> known = new LinkedHashMap<>();
         for (Entry entry : entries.values()) {
             String value = entry.value;

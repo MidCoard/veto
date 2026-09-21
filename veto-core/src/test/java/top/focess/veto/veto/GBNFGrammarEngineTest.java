@@ -38,15 +38,6 @@ class GBNFGrammarEngineTest {
     }
 
     @Test
-    void testSecretsRedactionGrammar() {
-        String grammar = grammarEngine.getSecretsRedactionGrammar();
-        assertNotNull(grammar);
-        assertTrue(grammar.contains("redaction-response"));
-        assertTrue(grammar.contains("\"\\\"secrets_found\\\"\""));
-        assertTrue(grammar.contains("\"\\\"redacted_fields\\\"\""));
-    }
-
-    @Test
     void screeningGrammarConstrainsBothClassifiers() {
         String grammar = grammarEngine.resolveGrammar("veto-screening");
         assertTrue(grammar.contains("relevance"));
