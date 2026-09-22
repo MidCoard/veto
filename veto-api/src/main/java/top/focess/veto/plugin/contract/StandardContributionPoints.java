@@ -3,6 +3,8 @@ package top.focess.veto.plugin.contract;
 import java.util.HashSet;
 import java.util.List;
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.agent.tool.CapabilityTool;
+import top.focess.veto.agent.tool.ToolDocs;
 import top.focess.veto.plugin.contribution.ContributionCatalog;
 import top.focess.veto.plugin.contribution.ContributionId;
 import top.focess.veto.plugin.contribution.ContributionPoint;
@@ -59,6 +61,27 @@ public final class StandardContributionPoints {
                     1,
                     Tool.class,
                     ContributionPoint.Cardinality.MULTIPLE);
+
+    /**
+     * In-process JAR plugin tools authored exactly like core native tools: a {@link CapabilityTool}
+     * over a typed argument record. The host reflects the record into the input schema, registers
+     * it through the internal tool state, and executes {@code execute(args)} on the caller thread —
+     * no out-of-process runtime binding. Out-of-process script plugins cannot use this point (they
+     * have no Java record) and stay on {@link #TOOLS}.
+     */
+    public static final @NonNull ContributionPoint<CapabilityTool<?>> NATIVE_TOOLS =
+            nativeToolsPoint();
+
+    @SuppressWarnings("unchecked") // CapabilityTool.class is Class<CapabilityTool>, widened to <?>.
+    private static @NonNull ContributionPoint<CapabilityTool<?>> nativeToolsPoint() {
+        Class<CapabilityTool<?>> raw = (Class<CapabilityTool<?>>) (Class<?>) CapabilityTool.class;
+        return new ContributionPoint<>(
+                new ContributionId("veto:native-tools"),
+                1,
+                ToolDocs.nonNullClass(raw),
+                ContributionPoint.Cardinality.MULTIPLE);
+    }
+
     public static final @NonNull ContributionPoint<ToolCategory> CATEGORIES =
             new ContributionPoint<>(
                     new ContributionId("veto:tool-categories"),
@@ -90,6 +113,7 @@ public final class StandardContributionPoints {
                     FILE_PROTECTION,
                     SESSION_LIFECYCLE,
                     TOOLS,
+                    NATIVE_TOOLS,
                     CATEGORIES,
                     PROMPTS,
                     OBSERVATION);

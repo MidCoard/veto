@@ -16,6 +16,7 @@ import top.focess.veto.plugin.contribution.ContributionCatalog;
 import top.focess.veto.plugin.contribution.ContributionId;
 import top.focess.veto.plugin.contribution.ContributionPoint;
 import top.focess.veto.plugin.contribution.ContributionSource;
+import top.focess.veto.plugin.runtime.ManagedPlugin;
 import top.focess.veto.plugin.runtime.ScriptPlugin;
 
 /**
@@ -85,8 +86,10 @@ final class ToolCatalog {
         List<ToolDefinition> definitions = new ArrayList<>();
         for (RegisteredTool registration : registrations) {
             ToolDefinition definition = registration.definition();
-            if (registration instanceof RegisteredTool.Plugin plugin && !pluginAvailable(plugin))
-                continue;
+            if (registration instanceof RegisteredTool.Plugin plugin
+                    && !pluginAvailable(plugin.runtime())) continue;
+            if (registration instanceof RegisteredTool.Capability capability
+                    && !pluginAvailable(capability.runtime())) continue;
             if (registration instanceof RegisteredTool.Agent
                     || whitelist == null
                     || whitelist.contains(definition.name())) definitions.add(definition);
@@ -98,10 +101,9 @@ final class ToolCatalog {
      * A plugin tool is advertised only while its lifecycle state is ACTIVE and, for script plugins,
      * the backing host process is still alive — matching {@code PluginController}'s liveness view.
      */
-    private static boolean pluginAvailable(RegisteredTool.@NonNull Plugin plugin) {
-        if (plugin.runtime().state() != PluginState.ACTIVE) return false;
-        return !(plugin.runtime().implementation() instanceof ScriptPlugin script)
-                || script.active();
+    private static boolean pluginAvailable(@NonNull ManagedPlugin runtime) {
+        if (runtime.state() != PluginState.ACTIVE) return false;
+        return !(runtime.implementation() instanceof ScriptPlugin script) || script.active();
     }
 
     private static void validate(@NonNull RegisteredTool registration) {
@@ -112,6 +114,9 @@ final class ToolCatalog {
             case RegisteredTool.Agent agentTool ->
                     ToolContractValidator.validateHandler(
                             agentTool.handler(), agentTool.definition());
+            case RegisteredTool.Capability capability ->
+                    ToolContractValidator.validatePluginHandler(
+                            capability.handler(), capability.definition());
             case RegisteredTool.Plugin plugin ->
                     ToolContractValidator.validate(plugin.definition());
             case RegisteredTool.Remote remoteTool ->

@@ -4,17 +4,17 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.Map;
-import java.util.Objects;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
+import top.focess.veto.agent.tool.CapabilityTool;
 import top.focess.veto.agent.tool.ToolDocs;
 import top.focess.veto.plugin.api.PluginState;
 import top.focess.veto.plugin.contract.PluginFailure;
 import top.focess.veto.plugin.contract.StandardContributionPoints;
 import top.focess.veto.plugin.contract.TextProtection;
-import top.focess.veto.plugin.contract.Tool;
 import top.focess.veto.secret.api.CredentialImportAccess;
 import top.focess.veto.secret.api.CredentialWriter;
+import top.focess.veto.util.Nullness;
 
 /**
  * Host-side plugin integration: ServiceLoader discovery, host-service delivery through {@code
@@ -38,7 +38,8 @@ class PluginManagerDiscoveryTest {
                     plugins.catalog()
                             .entries(StandardContributionPoints.SESSION_LIFECYCLE)
                             .isEmpty());
-            assertFalse(plugins.catalog().entries(StandardContributionPoints.TOOLS).isEmpty());
+            assertFalse(
+                    plugins.catalog().entries(StandardContributionPoints.NATIVE_TOOLS).isEmpty());
         }
     }
 
@@ -87,10 +88,10 @@ class PluginManagerDiscoveryTest {
                                         access)))) {
             var scope = new TextProtection.Scope("owner", "session", "agent");
             String reference = capture(plugins, scope);
-            var receipt = invokeImport(plugins, reference, "github", "Repository");
+            String receipt = invokeImport(plugins, reference, "github", "Repository");
             assertEquals(
                     "cred_test",
-                    new ObjectMapper().valueToTree(receipt).path("credential_ref").asText());
+                    new ObjectMapper().readTree(receipt).path("credential_ref").asText());
         }
     }
 
@@ -139,25 +140,25 @@ class PluginManagerDiscoveryTest {
         return matcher.group();
     }
 
-    private static @NonNull Object invokeImport(
+    @SuppressWarnings({"unchecked", "rawtypes"}) // The contributed handler is a CapabilityTool<?>.
+    private static @NonNull String invokeImport(
             @NonNull PluginManager plugins,
             @NonNull String reference,
             @NonNull String service,
             @NonNull String label)
             throws Exception {
-        var entry = plugins.catalog().entries(StandardContributionPoints.TOOLS).getFirst();
-        var record = (Tool.RecordTool) entry.implementation();
+        var entry = plugins.catalog().entries(StandardContributionPoints.NATIVE_TOOLS).getFirst();
+        CapabilityTool<?> tool = entry.implementation();
         var mapper = new ObjectMapper();
         @NonNull Object args =
-                Objects.requireNonNull(
+                Nullness.requireNonNull(
                         mapper.treeToValue(
                                 mapper.valueToTree(
                                         Map.of(
                                                 "secret_ref", reference,
                                                 "service", service,
                                                 "label", label)),
-                                record.argsType()));
-        return plugins.plugin(entry.source().namespace())
-                .execute(() -> record.invoke(args, () -> false));
+                                tool.getArgsClass()));
+        return ((CapabilityTool) tool).execute(args);
     }
 }

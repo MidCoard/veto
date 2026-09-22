@@ -27,7 +27,6 @@ import top.focess.veto.plugin.api.PluginState;
 import top.focess.veto.plugin.contract.Cancellation;
 import top.focess.veto.plugin.contract.JsonValue;
 import top.focess.veto.plugin.contract.StandardContributionPoints;
-import top.focess.veto.plugin.contract.Tool;
 import top.focess.veto.plugin.runtime.PluginJson;
 import top.focess.veto.plugin.runtime.PluginManager;
 import top.focess.veto.plugin.runtime.PluginSchema;
@@ -144,6 +143,20 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
                                     entry.implementation());
                     staged.add(new RegisteredTool.Plugin(definition, plugin));
                 }
+                for (var entry :
+                        manager.catalog().entries(StandardContributionPoints.NATIVE_TOOLS)) {
+                    var plugin = manager.plugin(entry.source().namespace());
+                    CapabilityTool<?> tool = entry.implementation();
+                    PluginNativeToolDefinition definition =
+                            ToolSchemaCompiler.compilePluginNative(
+                                    tool,
+                                    manager.toolName(
+                                            entry.source().namespace(), entry.id().value()),
+                                    plugin.bindingId(),
+                                    plugin.identity().id(),
+                                    plugin.identity().version());
+                    staged.add(new RegisteredTool.Capability(definition, tool, plugin));
+                }
             }
         }
         // Validation and construction complete before readers can observe any new registration.
@@ -207,6 +220,8 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
             ToolResult result =
                     switch (registration) {
                         case RegisteredTool.Plugin plugin -> executePlugin(call, plugin);
+                        case RegisteredTool.Capability capability ->
+                                executeCapability(call, capability);
                         case RegisteredTool.Native nativeTool ->
                                 executeNative(call, nativeTool.definition(), nativeTool.handler());
                         case RegisteredTool.Agent agentTool ->
@@ -278,33 +293,15 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
                     () ->
                             Thread.currentThread().isInterrupted()
                                     || registration.runtime().state() != PluginState.ACTIVE;
-            JsonNode result =
-                    switch (descriptor) {
-                        case Tool.RecordTool record -> {
-                            @NonNull Object args =
-                                    Nullness.requireNonNull(
-                                            mapper.treeToValue(arguments, record.argsType()),
-                                            "Plugin arguments deserialized to null");
-                            Object value =
-                                    registration
-                                            .runtime()
-                                            .execute(() -> record.invoke(args, cancellation));
-                            yield mapper.valueToTree(value);
-                        }
-                        case Tool.SchemaTool schema -> {
-                            JsonValue value =
-                                    registration
-                                            .runtime()
-                                            .execute(
-                                                    () ->
-                                                            schema.invoke(
-                                                                    PluginJson.object(arguments),
-                                                                    cancellation));
-                            JsonNode node = PluginJson.toNode(value);
-                            PluginSchema.validate(PluginJson.toNode(schema.outputSchema()), node);
-                            yield node;
-                        }
-                    };
+            JsonValue value =
+                    registration
+                            .runtime()
+                            .execute(
+                                    () ->
+                                            descriptor.invoke(
+                                                    PluginJson.object(arguments), cancellation));
+            JsonNode result = PluginJson.toNode(value);
+            PluginSchema.validate(PluginJson.toNode(descriptor.outputSchema()), result);
             return new ToolResult(
                     call.toolName(),
                     call.callId(),
@@ -320,6 +317,33 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
                     ToolErrorCode.GENERIC.PLUGIN_CALL_FAILED,
                     "Plugin call failed or its contract was not satisfied.");
         }
+    }
+
+    /**
+     * Executes a plugin-contributed {@link CapabilityTool} through the host's internal tool state,
+     * exactly like a core native tool. Provenance gating still applies: the owning plugin must be
+     * ACTIVE and selected for the current session before the handler runs.
+     */
+    private @NonNull ToolResult executeCapability(
+            @NonNull ToolCall call, RegisteredTool.@NonNull Capability registration)
+            throws Exception {
+        PluginNativeToolDefinition definition = registration.definition();
+        if (registration.runtime().state() != PluginState.ACTIVE) {
+            throw new SecurityException("Plugin is not active for this session");
+        }
+        var selection = sessionPlugins;
+        if (selection != null) {
+            var context = ToolCallContextHolder.get();
+            var session = context == null ? null : context.sessionId();
+            if (session == null || !selection.includes(session.toString(), definition.pluginId())) {
+                throw new SecurityException("Plugin is not selected for this session");
+            }
+        }
+        JsonNode jsonArgs = mapper.valueToTree(call.args());
+        NativeToolArgumentValidator.validate(definition.name(), jsonArgs, definition.argsClass());
+        requirePermit(call, definition);
+        String result = executeLocal(registration.handler(), jsonArgs);
+        return successfulResult(call, definition, result);
     }
 
     private @NonNull ToolResult executeNative(

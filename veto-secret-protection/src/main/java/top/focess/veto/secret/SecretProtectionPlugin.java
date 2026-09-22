@@ -1,14 +1,22 @@
 package top.focess.veto.secret;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
-import java.util.Set;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
+import top.focess.veto.agent.screening.Danger;
+import top.focess.veto.agent.tool.CapabilityTool;
+import top.focess.veto.agent.tool.Doc;
+import top.focess.veto.agent.tool.ToolCapability;
+import top.focess.veto.agent.tool.ToolDoc;
+import top.focess.veto.agent.tool.ToolDocs;
+import top.focess.veto.agent.tool.ToolResultFormat;
+import top.focess.veto.agent.tool.ToolSecurity;
 import top.focess.veto.plugin.api.*;
 import top.focess.veto.plugin.contract.*;
 import top.focess.veto.plugin.contract.JsonValue;
@@ -22,6 +30,8 @@ import top.focess.veto.secret.references.SecretCandidateStore;
  * Self-contained provider using the same lifecycle and registration contract as installed plugins.
  */
 public final class SecretProtectionPlugin extends AbstractVetoPlugin {
+    private static final @NonNull ObjectMapper RESULTS = new ObjectMapper();
+
     private final @NonNull SecretCandidateStore candidates;
 
     private @NonNull CredentialImportAccess importer;
@@ -139,23 +149,95 @@ public final class SecretProtectionPlugin extends AbstractVetoPlugin {
                                     }
                                 }),
                         Contribution.of(
-                                StandardContributionPoints.TOOLS,
+                                StandardContributionPoints.NATIVE_TOOLS,
                                 "import_detected_credential",
-                                new RecordToolContribution<
-                                        ImportCredentialArgs, ImportCredentialResult>(
-                                        "Import a registered SECRET_REF from this session into the"
-                                                + " owner's encrypted vault after approval. Use"
-                                                + " secret_ref, service (github), and label. Never"
-                                                + " provide plaintext.",
-                                        ImportCredentialArgs.class,
-                                        Tool.Effect.PRIVILEGED,
-                                        Set.of(),
-                                        this::importCredential))));
+                                new ImportCredentialTool())));
+    }
+
+    /**
+     * In-process plugin tool executed through the host's internal tool state exactly like a core
+     * native tool: the host reflects {@link ImportCredentialArgs} into the input schema, validates
+     * and deserializes the call, and invokes {@link #execute}. The PRIVILEGED effect keeps every
+     * call behind approval-level Gateway screening.
+     */
+    @ToolSecurity(
+            capability = ToolCapability.PRIVILEGED,
+            defaultDanger = Danger.DANGEROUS,
+            requiresSemanticScreening = true)
+    @ToolDoc(
+            resultFormats = {ToolResultFormat.JSON},
+            description =
+                    "Import a session-registered SECRET_REF into the owner's encrypted vault after"
+                            + " approval.",
+            behavior =
+                    """
+                    Resolves the referenced secret candidate captured earlier in this session, asks \
+                    the host to authorize the import, and writes the credential into the owner's \
+                    encrypted vault exactly once. The plaintext secret never passes through the \
+                    model or the tool arguments; only the opaque reference, target service, and a \
+                    human label are supplied.""",
+            whenToUse =
+                    """
+                    Use it when the user has explicitly approved persisting a detected credential \
+                    that was masked as a SECRET_REF during this session, so it can be reused later \
+                    without re-exposing the plaintext.""",
+            whenNotToUse =
+                    """
+                    Do not use it to store a secret the user pasted in plaintext, to import a \
+                    reference the user has not approved, or as a general key-value store. Leave \
+                    unapproved candidates masked.""",
+            resultContract =
+                    """
+                    Success returns JSON with `credential_ref` (the stable vault handle), `service`, \
+                    `label`, and `status` (`created`). Failures return a plaintext diagnostic \
+                    without echoing the secret value.""",
+            errorsAndEdgeCases =
+                    """
+                    Import is idempotent per reference: re-importing the same SECRET_REF returns the \
+                    existing vault handle rather than duplicating it. An unknown, expired, or \
+                    cross-session reference is refused, and a missing import host surfaces as a \
+                    failure. Cancellation before the irreversible vault write aborts the import.""",
+            security =
+                    "Crosses the host trust boundary and writes to the encrypted vault; every call requires explicit approval. Never accepts plaintext secret material, only an opaque session-scoped reference.",
+            examples = {
+                "{\"secret_ref\":\"SECRET_REF_1\",\"service\":\"github\",\"label\":\"ci-token\"}",
+                "{\"secret_ref\":\"SECRET_REF_2\",\"service\":\"aws\",\"label\":\"deploy-key\"}",
+                "{\"secret_ref\":\"SECRET_REF_3\",\"service\":\"github\",\"label\":\"webhook-secret\"}"
+            },
+            returnExamples = {
+                "{\"credential_ref\":\"cred_01HXX\",\"service\":\"github\",\"label\":\"ci-token\",\"status\":\"created\"}",
+                "{\"credential_ref\":\"cred_01HXY\",\"service\":\"aws\",\"label\":\"deploy-key\",\"status\":\"created\"}",
+                "{\"credential_ref\":\"cred_01HXZ\",\"service\":\"github\",\"label\":\"webhook-secret\",\"status\":\"created\"}"
+            })
+    final class ImportCredentialTool implements CapabilityTool<ImportCredentialArgs> {
+        @Override
+        public @NonNull ToolCapability getCapability() {
+            return ToolCapability.PRIVILEGED;
+        }
+
+        @Override
+        public @NonNull String getName() {
+            return "import_detected_credential";
+        }
+
+        @Override
+        public @NonNull Class<ImportCredentialArgs> getArgsClass() {
+            return ToolDocs.nonNullClass(ImportCredentialArgs.class);
+        }
+
+        @Override
+        public @NonNull String execute(@NonNull ImportCredentialArgs args) throws Exception {
+            return RESULTS.writeValueAsString(importCredential(args));
+        }
     }
 
     /** Tool arguments; the host reflects this record into the input schema. */
     record ImportCredentialArgs(
-            @NonNull String secret_ref, @NonNull String service, @NonNull String label) {}
+            @NonNull @Doc("Opaque SECRET_REF captured earlier in this session; never plaintext.")
+                    String secret_ref,
+            @NonNull @Doc("Target service the credential belongs to, e.g. github or aws.")
+                    String service,
+            @NonNull @Doc("Human-readable label stored alongside the vault entry.") String label) {}
 
     /** Tool result; the host serializes this record back to JSON. */
     record ImportCredentialResult(
@@ -192,14 +274,12 @@ public final class SecretProtectionPlugin extends AbstractVetoPlugin {
                 .orElse(JsonValue.NullValue.INSTANCE);
     }
 
-    private @NonNull ImportCredentialResult importCredential(
-            @NonNull ImportCredentialArgs args, @NonNull Cancellation cancellation)
-            throws PluginFailure {
-        cancellation.checkCancelled();
+    private @NonNull ImportCredentialResult importCredential(@NonNull ImportCredentialArgs args) {
         var authorized = importer.authorize(args.secret_ref(), args.service(), args.label());
         // Re-check after the (potentially blocking) host authorization so a caller that cancelled
         // while awaiting approval does not reach the irreversible vault write.
-        cancellation.checkCancelled();
+        if (Thread.currentThread().isInterrupted())
+            throw new IllegalStateException("Credential import cancelled");
         var receipt =
                 candidates.importOnce(
                         new SecretCandidateStore.Scope(

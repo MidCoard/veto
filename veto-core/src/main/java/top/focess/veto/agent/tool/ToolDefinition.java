@@ -28,6 +28,7 @@ public sealed interface ToolDefinition
     default @NonNull String origin() {
         return switch (this) {
             case PluginToolDefinition ignored -> "plugin";
+            case PluginNativeToolDefinition ignored -> "plugin";
             case NativeToolDefinition ignored -> "native";
             case AgentToolDefinition ignored -> "agent_loop";
             case RemoteToolDefinition ignored -> "external_mcp";

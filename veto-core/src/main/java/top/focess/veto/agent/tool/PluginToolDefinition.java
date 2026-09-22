@@ -16,7 +16,7 @@ public record PluginToolDefinition(
         @NonNull String pluginId,
         @NonNull String pluginVersion,
         @NonNull Tool descriptor)
-        implements ToolDefinition {
+        implements ToolDefinition, PluginSourced {
     @Override
     public @NonNull String description() {
         return descriptor.description();
@@ -36,10 +36,7 @@ public record PluginToolDefinition(
 
     @Override
     public @NonNull JsonNode inputSchema() {
-        return switch (descriptor) {
-            case Tool.RecordTool record -> ToolSchemaCompiler.compileFromRecord(record.argsType());
-            case Tool.SchemaTool schema -> PluginJson.toNode(schema.inputSchema());
-        };
+        return PluginJson.toNode(descriptor.inputSchema());
     }
 
     @Override

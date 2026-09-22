@@ -6,7 +6,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.TreeMap;
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.agent.tool.PluginToolDefinition;
+import top.focess.veto.agent.tool.PluginSourced;
 import top.focess.veto.agent.tool.ToolDefinition;
 
 /** Safe provenance for tools available to an agent or included in its latest model request. */
@@ -17,11 +17,10 @@ public record PluginContextSnapshot(
 
     public static @NonNull PluginContextSnapshot from(
             @NonNull Collection<? extends ToolDefinition> tools, boolean lastRequest) {
-        var grouped = new TreeMap<@NonNull String, @NonNull List<@NonNull PluginToolDefinition>>();
+        var grouped = new TreeMap<@NonNull String, @NonNull List<@NonNull ToolDefinition>>();
         for (var tool : tools) {
-            if (tool instanceof PluginToolDefinition plugin) {
-                grouped.computeIfAbsent(plugin.pluginId(), ignored -> new ArrayList<>())
-                        .add(plugin);
+            if (tool instanceof PluginSourced plugin) {
+                grouped.computeIfAbsent(plugin.pluginId(), ignored -> new ArrayList<>()).add(tool);
             }
         }
         var plugins =
@@ -30,9 +29,10 @@ public record PluginContextSnapshot(
                                 entry ->
                                         new Participant(
                                                 entry.getKey(),
-                                                entry.getValue().getFirst().pluginVersion(),
+                                                ((PluginSourced) entry.getValue().getFirst())
+                                                        .pluginVersion(),
                                                 entry.getValue().stream()
-                                                        .map(PluginToolDefinition::name)
+                                                        .map(ToolDefinition::name)
                                                         .distinct()
                                                         .sorted()
                                                         .toList()))

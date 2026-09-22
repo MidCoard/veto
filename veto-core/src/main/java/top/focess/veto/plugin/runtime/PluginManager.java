@@ -110,16 +110,13 @@ public final class PluginManager implements AutoCloseable {
                     builder.define(
                             StandardContributionPoints.TOOLS,
                             tool -> {
-                                switch (tool) {
-                                    case Tool.RecordTool record ->
-                                            ToolSchemaCompiler.compileFromRecord(record.argsType());
-                                    case Tool.SchemaTool schema -> {
-                                        PluginSchema.check(PluginJson.toNode(schema.inputSchema()));
-                                        PluginSchema.check(
-                                                PluginJson.toNode(schema.outputSchema()));
-                                    }
-                                }
+                                PluginSchema.check(PluginJson.toNode(tool.inputSchema()));
+                                PluginSchema.check(PluginJson.toNode(tool.outputSchema()));
                             });
+                else if (point == StandardContributionPoints.NATIVE_TOOLS)
+                    builder.define(
+                            StandardContributionPoints.NATIVE_TOOLS,
+                            tool -> ToolSchemaCompiler.compileFromRecord(tool.getArgsClass()));
                 else builder.define(point, ignored -> {});
             }
             var points = new HashSet<ContributionPoint<?>>(StandardContributionPoints.ALL);
@@ -179,12 +176,16 @@ public final class PluginManager implements AutoCloseable {
     }
 
     public @NonNull String toolName(@NonNull ContributionEntry<Tool> entry) {
-        String qualified = entry.id().value();
-        String local = qualified.substring(qualified.indexOf(':') + 1);
-        return "plugin_"
-                + entry.source().namespace().replace('.', '_').replace('-', '_')
-                + "__"
-                + local;
+        return toolName(entry.source().namespace(), entry.id().value());
+    }
+
+    /**
+     * Stable tool name for any plugin contribution: {@code plugin_<namespace>__<local>}. Shared by
+     * schema tools and internal capability tools so both surface the same provenance-prefixed name.
+     */
+    public @NonNull String toolName(@NonNull String namespace, @NonNull String qualifiedId) {
+        String local = qualifiedId.substring(qualifiedId.indexOf(':') + 1);
+        return "plugin_" + namespace.replace('.', '_').replace('-', '_') + "__" + local;
     }
 
     /**

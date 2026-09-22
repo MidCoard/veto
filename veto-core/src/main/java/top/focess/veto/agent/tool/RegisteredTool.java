@@ -11,6 +11,12 @@ sealed interface RegisteredTool {
     record Plugin(@NonNull PluginToolDefinition definition, @NonNull ManagedPlugin runtime)
             implements RegisteredTool {}
 
+    record Capability(
+            @NonNull PluginNativeToolDefinition definition,
+            @NonNull CapabilityTool<?> handler,
+            @NonNull ManagedPlugin runtime)
+            implements RegisteredTool {}
+
     record Native(@NonNull NativeToolDefinition definition, @NonNull NativeTool<?> handler)
             implements RegisteredTool {}
 

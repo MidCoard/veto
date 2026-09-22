@@ -8,7 +8,7 @@ import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
 import top.focess.veto.agent.TurnType;
-import top.focess.veto.agent.tool.PluginToolDefinition;
+import top.focess.veto.agent.tool.PluginSourced;
 import top.focess.veto.agent.tool.ToolDefinition;
 import top.focess.veto.model.SessionRepository;
 import top.focess.veto.plugin.api.PluginState;
@@ -170,7 +170,7 @@ public class SessionPlugins {
             @NonNull String sessionId, @NonNull Set<ToolDefinition> tools) {
         var ids = bindings(sessionId).stream().map(PluginBinding::id).collect(Collectors.toSet());
         return tools.stream()
-                .filter(t -> !(t instanceof PluginToolDefinition p) || ids.contains(p.pluginId()))
+                .filter(t -> !(t instanceof PluginSourced p) || ids.contains(p.pluginId()))
                 .collect(Collectors.toUnmodifiableSet());
     }
 }

@@ -70,7 +70,7 @@ veto/
 |-- veto-protocol/   Shared frames, transports, client-session state, and serialization contracts
 |-- veto-core/       Spring Boot backend, agent runtime, security gateway, persistence, and tools
 |-- veto-terminal/   JLine/Mordant terminal application; depends on veto-protocol, not veto-core
-|-- veto-plugin-api/ Plugin contract: contribution registration model, standard contract interfaces, and the experimental Java plugin lifecycle
+|-- veto-api/        Shared authoring contract: tool/capability annotations, contribution registration model, standard contract interfaces, and the experimental Java plugin lifecycle
 |-- veto-plugin-runtime/ Operator-configured script workers and example package
 |-- veto-plugin-fixture/ Standalone plugin test fixture; not an installable production feature
 |-- veto-secret-protection/ Self-contained secret-protection plugin (ServiceLoader-discovered built-in)
@@ -368,8 +368,8 @@ JAR activation remain unavailable.
 
 - [Script plugin README](veto-plugin-runtime/README.md): configuration, executable example,
   protocol, trust boundaries and tests.
-- [Java plugin API README](veto-plugin-api/README.md): contribution registration model,
-  plugin lifecycle, context and host services.
+- [Veto API README](veto-api/README.md): shared tool-authoring contract, contribution
+  registration model, plugin lifecycle, context and host services.
 - [Secret protection README](veto-secret-protection/README.md): the reference built-in plugin.
 
 These APIs are experimental and are not a stable cross-client compatibility contract.

@@ -11,7 +11,7 @@ classloader checks API sharing; classloader separation is not a security sandbox
 From a Veto source checkout, run:
 
 ```sh
-./gradlew :veto-plugin-fixture:pluginPackage :veto-plugin-api:test
+./gradlew :veto-plugin-fixture:pluginPackage :veto-api:test
 ```
 
 The package contains `plugin.jar`, an experimental manifest, a configuration schema

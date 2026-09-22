@@ -7,7 +7,7 @@ import org.jspecify.annotations.NonNull;
 
 /** Tool-class documentation and independent argument schemas for local tools. */
 public sealed interface LocalToolDefinition extends ToolDefinition
-        permits NativeToolDefinition, AgentToolDefinition {
+        permits NativeToolDefinition, AgentToolDefinition, PluginNativeToolDefinition {
     @NonNull Class<?> argsClass();
 
     @NonNull Class<?> toolClass();

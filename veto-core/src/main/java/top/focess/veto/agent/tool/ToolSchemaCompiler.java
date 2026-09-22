@@ -61,6 +61,33 @@ public final class ToolSchemaCompiler {
     }
 
     /**
+     * Compiles a plugin-contributed {@link CapabilityTool} instance into a {@link
+     * PluginNativeToolDefinition}. The plugin tool executes through the host's internal tool state
+     * exactly like a core native tool, so the definition only carries provenance (binding, plugin
+     * id/version) alongside the reflected schema and security hints. The tool class supplies the
+     * {@link ToolSecurity} contract and the args record supplies the input schema.
+     */
+    public static @NonNull PluginNativeToolDefinition compilePluginNative(
+            @NonNull CapabilityTool<?> tool,
+            @NonNull String name,
+            @NonNull String bindingId,
+            @NonNull String pluginId,
+            @NonNull String pluginVersion) {
+        ToolSecurity security = securityOf(tool.getClass());
+        Class<?> argsClass = tool.getArgsClass();
+        return new PluginNativeToolDefinition(
+                name,
+                bindingId,
+                pluginId,
+                pluginVersion,
+                tool.getCapability(),
+                security.defaultDanger(),
+                tool.getClass(),
+                argsClass,
+                hintsOf(argsClass));
+    }
+
+    /**
      * Reflects {@link SecurityHint} annotations off an args record's components into a map of
      * parameter name to {@link ParamCategory}. Extracted from {@link #compileNative}'s inline loop
      * so it can be reused by {@link AgentToolDefinition#from(String, Class, Class,

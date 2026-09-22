@@ -23,6 +23,8 @@ public final class ToolContractValidator {
         switch (definition) {
             case NativeToolDefinition nativeDefinition -> validateNative(nativeDefinition);
             case AgentToolDefinition agentDefinition -> validateAgent(agentDefinition);
+            case PluginNativeToolDefinition pluginNativeDefinition ->
+                    validatePluginNative(pluginNativeDefinition);
             case PluginToolDefinition ignored -> {
                 // Script descriptors are validated before activation; effects remain unknown.
             }
@@ -30,6 +32,27 @@ public final class ToolContractValidator {
                 // Remote definitions hard-code REMOTE_UNKNOWN and ELEVATED.
             }
         }
+    }
+
+    /**
+     * Validates an in-process JAR plugin tool against its definition. The handler is a portable
+     * {@link CapabilityTool}, not one of the sealed native/agent boundary interfaces, so this
+     * checks definition coherence (capability and argument record) and the shared documentation,
+     * example, and result-format contracts — but not the native field-restriction rule, which
+     * assumes a caller-scoped capability injection that plugin code does not use. The PRIVILEGED
+     * effect keeps every call behind approval-level Gateway screening.
+     */
+    public static void validatePluginHandler(
+            @NonNull CapabilityTool<?> tool, @NonNull PluginNativeToolDefinition definition) {
+        require(
+                definition,
+                tool.getCapability() == definition.capability(),
+                "handler capability does not match definition");
+        require(
+                definition,
+                tool.getArgsClass().equals(definition.argsClass()),
+                "handler argument record does not match definition");
+        validate(definition);
     }
 
     /**
@@ -266,6 +289,25 @@ public final class ToolContractValidator {
                             "agent tool uses a native/plugin/remote execution capability: "
                                     + definition.capability());
         }
+    }
+
+    private static void validatePluginNative(@NonNull PluginNativeToolDefinition definition) {
+        require(
+                definition,
+                definition.capability() == ToolCapability.PRIVILEGED,
+                "an in-process plugin tool crosses the host trust boundary and must declare"
+                        + " PRIVILEGED");
+        boolean namesExternalResource =
+                definition.paramHints().values().stream()
+                        .anyMatch(
+                                category ->
+                                        category == ParamCategory.FILESYSTEM_PATH
+                                                || category == ParamCategory.SHELL_COMMAND
+                                                || category == ParamCategory.URL);
+        require(
+                definition,
+                !namesExternalResource,
+                "a PRIVILEGED plugin tool must not accept host path, command, or URL arguments");
     }
 
     private static void require(

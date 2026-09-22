@@ -8,7 +8,8 @@ import org.jspecify.annotations.NonNull;
 
 /**
  * LLM-facing description for a native tool parameter record component. Reflected at load time by
- * {@link ToolSchemaCompiler} into the parameter's {@code description} in the generated JSON Schema.
+ * the host's tool-schema compiler into the parameter's {@code description} in the generated JSON
+ * Schema.
  *
  * <p>Declared as a top-level type so it can be applied ergonomically to record components.
  */

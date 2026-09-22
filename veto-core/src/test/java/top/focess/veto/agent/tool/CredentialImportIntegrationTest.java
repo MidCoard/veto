@@ -7,7 +7,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.AfterEach;
@@ -25,12 +24,12 @@ import top.focess.veto.llm.core.ToolResultPresentationMode;
 import top.focess.veto.plugin.contract.PluginFailure;
 import top.focess.veto.plugin.contract.StandardContributionPoints;
 import top.focess.veto.plugin.contract.TextProtection;
-import top.focess.veto.plugin.contract.Tool;
 import top.focess.veto.plugin.runtime.PluginHostServices;
 import top.focess.veto.plugin.runtime.PluginManager;
 import top.focess.veto.plugin.runtime.PluginTestSupport;
 import top.focess.veto.plugin.secrets.SecretProtectionConfiguration;
 import top.focess.veto.secret.api.CredentialImportAccess;
+import top.focess.veto.util.Nullness;
 import top.focess.veto.vault.KeysteadVault;
 
 class CredentialImportIntegrationTest {
@@ -269,26 +268,26 @@ class CredentialImportIntegrationTest {
         }
     }
 
-    private static @NonNull Object invokeImport(
+    @SuppressWarnings({"unchecked", "rawtypes"}) // The contributed handler is a CapabilityTool<?>.
+    private static @NonNull String invokeImport(
             @NonNull PluginManager plugins,
             @NonNull String reference,
             @NonNull String service,
             @NonNull String label)
             throws Exception {
-        var entry = plugins.catalog().entries(StandardContributionPoints.TOOLS).getFirst();
-        var record = (Tool.RecordTool) entry.implementation();
+        var entry = plugins.catalog().entries(StandardContributionPoints.NATIVE_TOOLS).getFirst();
+        CapabilityTool<?> tool = entry.implementation();
         var mapper = new ObjectMapper();
         @NonNull Object args =
-                Objects.requireNonNull(
+                Nullness.requireNonNull(
                         mapper.treeToValue(
                                 mapper.valueToTree(
                                         Map.of(
                                                 "secret_ref", reference,
                                                 "service", service,
                                                 "label", label)),
-                                record.argsType()));
-        return plugins.plugin(entry.source().namespace())
-                .execute(() -> record.invoke(args, () -> false));
+                                tool.getArgsClass()));
+        return ((CapabilityTool) tool).execute(args);
     }
 
     private static void installContext(

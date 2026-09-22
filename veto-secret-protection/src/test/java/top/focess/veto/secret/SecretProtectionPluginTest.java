@@ -8,6 +8,7 @@ import java.util.ServiceLoader;
 import java.util.stream.Collectors;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
+import top.focess.veto.agent.tool.CapabilityTool;
 import top.focess.veto.plugin.api.PluginContext;
 import top.focess.veto.plugin.api.VetoPlugin;
 import top.focess.veto.plugin.contract.InputProtection;
@@ -16,7 +17,6 @@ import top.focess.veto.plugin.contract.ObservationMiddleware;
 import top.focess.veto.plugin.contract.PluginFailure;
 import top.focess.veto.plugin.contract.SessionLifecycle;
 import top.focess.veto.plugin.contract.TextProtection;
-import top.focess.veto.plugin.contract.Tool;
 import top.focess.veto.plugin.contribution.Contribution;
 import top.focess.veto.secret.api.CredentialImportAccess;
 import top.focess.veto.secret.api.CredentialWriter;
@@ -63,12 +63,12 @@ class SecretProtectionPluginTest {
                         "veto:file-protection",
                         "veto:observation-middleware",
                         "veto:session-lifecycle",
-                        "veto:tools"),
+                        "veto:native-tools"),
                 byPoint.keySet());
         assertInstanceOf(InputProtection.class, byPoint.get("veto:input-protection"));
         assertInstanceOf(ObservationMiddleware.class, byPoint.get("veto:observation-middleware"));
         assertInstanceOf(SessionLifecycle.class, byPoint.get("veto:session-lifecycle"));
-        assertInstanceOf(Tool.class, byPoint.get("veto:tools"));
+        assertInstanceOf(CapabilityTool.class, byPoint.get("veto:native-tools"));
     }
 
     @Test
@@ -114,7 +114,7 @@ class SecretProtectionPluginTest {
         var entries = initialize(new SecretProtectionPlugin(), Map.of());
         var input = contribution(entries, InputProtection.class);
         String reference = reference(input.transform(SCOPE, "user", "password=synthetic-token"));
-        var tool = contribution(entries, Tool.class);
+        var tool = contribution(entries, CapabilityTool.class);
         var failure =
                 assertThrows(
                         IllegalStateException.class, () -> invoke(tool, reference, "Repository"));
@@ -149,11 +149,10 @@ class SecretProtectionPluginTest {
                         new SecretProtectionPlugin(), Map.of(CredentialImportAccess.class, access));
         var input = contribution(entries, InputProtection.class);
         String reference = reference(input.transform(SCOPE, "user", "password=synthetic-token"));
-        var receipt = invoke(contribution(entries, Tool.class), reference, "Repository");
-        assertTrue(
-                receipt instanceof SecretProtectionPlugin.ImportCredentialResult result
-                        && result.credential_ref().equals("cred_test"),
-                String.valueOf(receipt));
+        String receipt =
+                invoke(contribution(entries, CapabilityTool.class), reference, "Repository");
+        assertTrue(receipt.contains("\"credential_ref\":\"cred_test\""), receipt);
+        assertTrue(receipt.contains("\"status\":\"created\""), receipt);
     }
 
     private static <T extends @NonNull Object> @NonNull T contribution(
@@ -163,13 +162,14 @@ class SecretProtectionPluginTest {
         throw new AssertionError("Contribution missing: " + type.getSimpleName());
     }
 
-    private static @NonNull Object invoke(
-            @NonNull Tool tool, @NonNull String reference, @NonNull String label)
-            throws PluginFailure {
-        var record = (Tool.RecordTool) tool;
-        return record.invoke(
-                new SecretProtectionPlugin.ImportCredentialArgs(reference, "github", label),
-                () -> false);
+    @SuppressWarnings({"unchecked", "rawtypes"}) // The contributed handler is a CapabilityTool<?>.
+    private static @NonNull String invoke(
+            @NonNull CapabilityTool<?> tool, @NonNull String reference, @NonNull String label)
+            throws Exception {
+        return ((CapabilityTool) tool)
+                .execute(
+                        new SecretProtectionPlugin.ImportCredentialArgs(
+                                reference, "github", label));
     }
 
     private static @NonNull String reference(@NonNull String captured) {

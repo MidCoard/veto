@@ -1,10 +1,13 @@
-# Veto plugin API — experimental
+# Veto API — experimental
 
 For building and running Veto, start with the [project README](../README.md).
-This module is the plugin contract: the contribution registration model plus
-the generic Java plugin lifecycle (the former veto-extension module is merged
-into it). External Java-JAR activation is not available. For working script
-plugins, use the separate [script runtime](../veto-plugin-runtime/README.md).
+This module is the shared authoring contract that both `veto-core` and every
+plugin compile against: the in-process tool-authoring surface
+(`CapabilityTool`, `ToolCapability`, the `@ToolSecurity`/`@ToolDoc`/`@Doc`
+annotations and their supporting types), the contribution registration model,
+and the generic Java plugin lifecycle (the former veto-extension module is
+merged into it). External Java-JAR activation is not available. For working
+script plugins, use the separate [script runtime](../veto-plugin-runtime/README.md).
 
 ## Implemented behavior
 
@@ -73,19 +76,22 @@ are session-less: observation transforms carry text and a cancellation signal,
 and lifecycle notifications carry plain owner/session/agent IDs. Masking
 semantics belong to the contributing plugin; there is no shared mask contract.
 
-`Tool` is a sealed contract with two authoring shapes, mirroring how the host
-models its own tools:
+Plugins author tools in one of two ways, mirroring how the host models its own
+tools:
 
-- `Tool.RecordTool` — an in-process Java plugin declares its arguments as a
-  plain Java record (`argsType()`) and the host reflects it into the input
-  schema, validates the call, deserializes the arguments, and serializes the
-  typed result back to JSON. This is the same record-authored shape built-in
-  native tools use, so no hand-written JSON schema is involved.
-  `RecordToolContribution` is the stock carrier.
-- `Tool.SchemaTool` — a portable or out-of-process plugin declares explicit
-  `inputSchema()`/`outputSchema()` JSON and exchanges `JsonValue`; this is the
-  only form a non-Java host process (the script runtime) can consume.
-  `ToolContribution` is the stock carrier.
+- In-process JAR plugins contribute a `CapabilityTool<T>` (from
+  `top.focess.veto.agent.tool`) through the `veto:native-tools` point. The tool
+  declares its arguments as a plain Java record (`getArgsClass()`) and carries
+  the same `@ToolSecurity`/`@ToolDoc` annotations a built-in native tool uses.
+  The host reflects the record into the input schema, validates the call,
+  deserializes the arguments, and executes the handler through its internal tool
+  state exactly like a core native tool — no hand-written JSON schema and no
+  out-of-process hop. Such a tool must declare the `PRIVILEGED` capability, so
+  every call stays behind approval-level screening.
+- Portable or out-of-process plugins contribute a `Tool` through the
+  `veto:tools` point. `Tool` declares explicit `inputSchema()`/`outputSchema()`
+  JSON and exchanges `JsonValue`; this is the only form a non-Java host process
+  (the script runtime) can consume. `ToolContribution` is the stock carrier.
 
 `Tool.Effect` is generic: `PRIVILEGED` marks a tool that crosses a
 host trust boundary (the host gates every call with explicit approval; no
@@ -144,7 +150,7 @@ stays.
 Run from the repository root:
 
 ```sh
-./gradlew :veto-plugin-api:test
+./gradlew :veto-api:test
 ./gradlew :veto-plugin-fixture:pluginPackage
 ```
 

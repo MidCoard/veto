@@ -19,6 +19,8 @@ import top.focess.veto.agent.screening.ProtectedSet;
 import top.focess.veto.agent.tool.AgentToolDefinition;
 import top.focess.veto.agent.tool.NativeToolDefinition;
 import top.focess.veto.agent.tool.ParamCategory;
+import top.focess.veto.agent.tool.PluginNativeToolDefinition;
+import top.focess.veto.agent.tool.PluginSourced;
 import top.focess.veto.agent.tool.PluginToolDefinition;
 import top.focess.veto.agent.tool.RemoteToolDefinition;
 import top.focess.veto.agent.tool.ToolCallContext;
@@ -196,7 +198,7 @@ public record ToolExecutionPermit(
 
     private static String externalBinding(@NonNull ToolDefinition definition) {
         if (definition instanceof RemoteToolDefinition remote) return remote.serverName();
-        if (definition instanceof PluginToolDefinition plugin) return plugin.bindingId();
+        if (definition instanceof PluginSourced plugin) return plugin.bindingId();
         return null;
     }
 
@@ -300,6 +302,8 @@ public record ToolExecutionPermit(
         return switch (definition) {
             case NativeToolDefinition nativeDefinition -> nativeDefinition.paramHints();
             case AgentToolDefinition agentDefinition -> agentDefinition.paramHints();
+            case PluginNativeToolDefinition pluginNativeDefinition ->
+                    pluginNativeDefinition.paramHints();
             case RemoteToolDefinition remoteDefinition -> Map.of();
             case PluginToolDefinition pluginDefinition -> Map.of();
         };

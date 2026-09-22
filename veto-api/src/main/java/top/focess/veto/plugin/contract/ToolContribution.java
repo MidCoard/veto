@@ -4,7 +4,7 @@ import java.util.Set;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.plugin.contribution.ContributionId;
 
-/** Stock schema-authored {@link Tool.SchemaTool}; its qualified identity comes from the catalog. */
+/** Stock schema-authored {@link Tool}; its qualified identity comes from the catalog. */
 public record ToolContribution(
         @NonNull String description,
         JsonValue.@NonNull ObjectValue inputSchema,
@@ -12,7 +12,7 @@ public record ToolContribution(
         @NonNull Effect effect,
         @NonNull Set<@NonNull ContributionId> categories,
         @NonNull ToolHandler handler)
-        implements Tool.SchemaTool {
+        implements Tool {
     public ToolContribution {
         categories = Set.copyOf(categories);
         if (description.isBlank() || description.length() > 4096) {

@@ -16,7 +16,7 @@ repositories {
 }
 
 dependencies {
-    api(project(":veto-plugin-api"))
+    api(project(":veto-api"))
     api("com.fasterxml.jackson.core:jackson-databind:${rootProject.extra["jacksonVersion"]}")
     api("org.jspecify:jspecify:1.0.0")
     testImplementation("org.junit.jupiter:junit-jupiter:5.10.2")

@@ -10,7 +10,7 @@ cleared in `onClose`). No Spring wiring, no host-shared store.
 ## Contributions
 
 All through the typed catalog points (see the
-[plugin API README](../veto-plugin-api/README.md)):
+[Veto API README](../veto-api/README.md)):
 
 - `veto:input-protection` / `veto:file-protection` — capture detected secrets as
   scoped SECRET_REF markers before text enters history.
@@ -22,9 +22,10 @@ All through the typed catalog points (see the
   boundaries (`openOwner`/`closeOwner`/`retireSession`/`discardAgent`).
 - `veto:frontend` — the browser reveal component (`show` action reads a live
   reference for its owning scope only).
-- `veto:tools` — `import_detected_credential`: imports a session SECRET_REF into
-  the owner's encrypted vault after approval (effect `PRIVILEGED`, contributed
-  as a direct `Tool` implementation).
+- `veto:native-tools` — `import_detected_credential`: imports a session
+  SECRET_REF into the owner's encrypted vault after approval (capability
+  `PRIVILEGED`, contributed as an in-process `CapabilityTool` that the host
+  executes through its internal tool state like a built-in native tool).
 
 ## SLM-driven detection, degraded mode
 

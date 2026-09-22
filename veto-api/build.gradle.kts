@@ -17,8 +17,10 @@ repositories {
 
 dependencies {
     api("org.jspecify:jspecify:1.0.0")
+    // The extracted tool authoring surface (ToolSchemaCompiler, InputSchemaSource, ToolInputSchema)
+    // reflects records into Jackson JsonNode schemas, so Jackson is part of the API contract.
+    api("com.fasterxml.jackson.core:jackson-databind:${rootProject.extra["jacksonVersion"]}")
     testImplementation("org.junit.jupiter:junit-jupiter:5.10.2")
-    testImplementation("com.fasterxml.jackson.core:jackson-databind:${rootProject.extra["jacksonVersion"]}")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.10.2")
 }
 
