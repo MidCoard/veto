@@ -1,7 +1,8 @@
 # Script plugins — experimental
 
 This module runs operator-configured JavaScript plugins through a bounded local
-process protocol. It depends on the shared extension layer and Jackson, not Spring
+process protocol. It depends on the shared plugin contract module
+([veto-plugin-api](../veto-plugin-api/README.md)) and Jackson, not Spring
 or Veto core. The Veto adapter supplies startup configuration, tool registration,
 approval checks and administrator diagnostics.
 

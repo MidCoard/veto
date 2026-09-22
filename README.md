@@ -70,8 +70,7 @@ veto/
 |-- veto-protocol/   Shared frames, transports, client-session state, and serialization contracts
 |-- veto-core/       Spring Boot backend, agent runtime, security gateway, persistence, and tools
 |-- veto-terminal/   JLine/Mordant terminal application; depends on veto-protocol, not veto-core
-|-- veto-extension/  Shared registration layer and experimental extension architecture
-|-- veto-plugin-api/ Experimental Java plugin lifecycle binding
+|-- veto-plugin-api/ Plugin contract: contribution registration model, standard contract interfaces, and the experimental Java plugin lifecycle
 |-- veto-plugin-runtime/ Operator-configured script workers and example package
 |-- veto-plugin-fixture/ Standalone plugin test fixture; not an installable production feature
 |-- veto-secret-protection/ Self-contained secret-protection plugin (ServiceLoader-discovered built-in)
@@ -350,7 +349,7 @@ same `ToolDefinition` abstraction used by built-in tools. The Gateway screens re
 dispatch. Only external tools cross an MCP transport; native and agent-control tools execute
 through the in-process tool engine and their declared capability boundary.
 
-## Plugins and extensions — experimental
+## Plugins — experimental
 
 Veto discovers built-in Java plugins through `ServiceLoader` at startup — the
 secret-protection plugin is an ordinary self-contained plugin on this path,
@@ -362,15 +361,15 @@ and registers namespaced tools through the shared catalog. Plugin calls retain o
 Gateway approval and role restrictions. `GET /api/plugins` provides administrator-only
 status information.
 
-Scripts are trusted local code running as the server user, not sandboxed extensions.
+Scripts are trusted local code running as the server user, not sandboxed plugins.
 Activation requires explicit operator configuration; Node and plugin packages are not
 bundled. Model hooks, cross-client adapters and external Java
 JAR activation remain unavailable.
 
 - [Script plugin README](veto-plugin-runtime/README.md): configuration, executable example,
   protocol, trust boundaries and tests.
-- [Extension module README](veto-extension/README.md): shared registration behavior.
-- [Java plugin API README](veto-plugin-api/README.md): plugin lifecycle, context and host services.
+- [Java plugin API README](veto-plugin-api/README.md): contribution registration model,
+  plugin lifecycle, context and host services.
 - [Secret protection README](veto-secret-protection/README.md): the reference built-in plugin.
 
 These APIs are experimental and are not a stable cross-client compatibility contract.

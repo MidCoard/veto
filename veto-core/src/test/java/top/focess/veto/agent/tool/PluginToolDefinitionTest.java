@@ -8,14 +8,14 @@ import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.agent.screening.Danger;
 import top.focess.veto.plugin.contract.JsonValue;
+import top.focess.veto.plugin.contract.Tool;
 import top.focess.veto.plugin.contract.ToolContribution;
 
 /** Effect-to-capability/danger mapping for plugin-contributed tool descriptors. */
 class PluginToolDefinitionTest {
     private record Empty() {}
 
-    private static @NonNull PluginToolDefinition definition(
-            ToolContribution.@NonNull Effect effect) {
+    private static @NonNull PluginToolDefinition definition(Tool.@NonNull Effect effect) {
         var schema = new JsonValue.ObjectValue(Map.of("type", new JsonValue.StringValue("object")));
         return new PluginToolDefinition(
                 "plugin_fixture__tool",
@@ -41,9 +41,7 @@ class PluginToolDefinitionTest {
     @Test
     void otherEffectsStayRemoteUnknownWithElevatedDanger() {
         for (var effect :
-                new Tool.Effect[] {
-                    Tool.Effect.COMPUTATION, Tool.Effect.EXTERNAL_UNKNOWN
-                }) {
+                new Tool.Effect[] {Tool.Effect.COMPUTATION, Tool.Effect.EXTERNAL_UNKNOWN}) {
             var definition = definition(effect);
             assertEquals(ToolCapability.REMOTE_UNKNOWN, definition.capability());
             assertEquals(Danger.ELEVATED, definition.defaultDanger());

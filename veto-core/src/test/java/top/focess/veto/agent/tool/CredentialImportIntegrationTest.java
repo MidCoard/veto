@@ -19,12 +19,12 @@ import top.focess.veto.agent.identity.RoleToolFilter;
 import top.focess.veto.agent.intercept.*;
 import top.focess.veto.agent.screening.*;
 import top.focess.veto.agent.workspace.*;
-import top.focess.veto.plugin.contract.PluginFailure;
-import top.focess.veto.plugin.contract.JsonValue;
-import top.focess.veto.plugin.contract.StandardContributionPoints;
-import top.focess.veto.plugin.contract.TextProtection;
 import top.focess.veto.llm.core.ToolCall;
 import top.focess.veto.llm.core.ToolResultPresentationMode;
+import top.focess.veto.plugin.contract.JsonValue;
+import top.focess.veto.plugin.contract.PluginFailure;
+import top.focess.veto.plugin.contract.StandardContributionPoints;
+import top.focess.veto.plugin.contract.TextProtection;
 import top.focess.veto.plugin.runtime.PluginHostServices;
 import top.focess.veto.plugin.runtime.PluginJson;
 import top.focess.veto.plugin.runtime.PluginManager;
@@ -285,7 +285,7 @@ class CredentialImportIntegrationTest {
                                                 "service", service,
                                                 "label", label)));
         return plugins.plugin(entry.source().namespace())
-                .execute(() -> entry.implementation().handler().invoke(arguments, () -> false));
+                .execute(() -> entry.implementation().invoke(arguments, () -> false));
     }
 
     private static void installContext(

@@ -13,7 +13,7 @@ public record Contribution<T extends @NonNull Object>(
     public Contribution {
         new ContributionId("local:" + localId);
         if (!point.contract().isInstance(implementation))
-            throw new IllegalArgumentException("Extension contract mismatch");
+            throw new IllegalArgumentException("Contribution contract mismatch");
         before = Set.copyOf(before);
         after = Set.copyOf(after);
         if (before.size() + after.size() > 128)

@@ -12,17 +12,17 @@ import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
-import top.focess.veto.plugin.contribution.ContributionCatalog;
-import top.focess.veto.plugin.contribution.Contribution;
-import top.focess.veto.plugin.contribution.ContributionSource;
-import top.focess.veto.plugin.contract.PluginFailure;
-import top.focess.veto.plugin.contract.JsonValue;
-import top.focess.veto.plugin.contract.ObservationMiddleware;
-import top.focess.veto.plugin.contract.StandardContributionPoints;
 import top.focess.veto.plugin.api.AbstractVetoPlugin;
 import top.focess.veto.plugin.api.PluginContext;
 import top.focess.veto.plugin.api.PluginContributions;
 import top.focess.veto.plugin.api.PluginIdentity;
+import top.focess.veto.plugin.contract.JsonValue;
+import top.focess.veto.plugin.contract.ObservationMiddleware;
+import top.focess.veto.plugin.contract.PluginFailure;
+import top.focess.veto.plugin.contract.StandardContributionPoints;
+import top.focess.veto.plugin.contribution.Contribution;
+import top.focess.veto.plugin.contribution.ContributionCatalog;
+import top.focess.veto.plugin.contribution.ContributionSource;
 
 /**
  * The session-less {@code veto:observation-middleware} chain in {@link
@@ -132,8 +132,7 @@ class ApplyObservationMiddlewareTest {
                         new MiddlewarePlugin(
                                 "fixture.failing",
                                 (observation, cancellation) -> {
-                                    throw new PluginFailure(
-                                            PluginFailure.Code.INTERNAL_FAILURE);
+                                    throw new PluginFailure(PluginFailure.Code.INTERNAL_FAILURE);
                                 }))) {
             assertThrows(
                     IllegalStateException.class,

@@ -8,16 +8,16 @@ import java.util.ServiceLoader;
 import java.util.stream.Collectors;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
-import top.focess.veto.plugin.contribution.Contribution;
-import top.focess.veto.plugin.contract.PluginFailure;
+import top.focess.veto.plugin.api.PluginContext;
+import top.focess.veto.plugin.api.VetoPlugin;
 import top.focess.veto.plugin.contract.InputProtection;
 import top.focess.veto.plugin.contract.JsonValue;
 import top.focess.veto.plugin.contract.ObservationMiddleware;
+import top.focess.veto.plugin.contract.PluginFailure;
 import top.focess.veto.plugin.contract.SessionLifecycle;
 import top.focess.veto.plugin.contract.TextProtection;
-import top.focess.veto.plugin.contract.ToolContribution;
-import top.focess.veto.plugin.api.PluginContext;
-import top.focess.veto.plugin.api.VetoPlugin;
+import top.focess.veto.plugin.contract.Tool;
+import top.focess.veto.plugin.contribution.Contribution;
 import top.focess.veto.secret.api.CredentialImportAccess;
 import top.focess.veto.secret.api.CredentialWriter;
 
@@ -68,7 +68,7 @@ class SecretProtectionPluginTest {
         assertInstanceOf(InputProtection.class, byPoint.get("veto:input-protection"));
         assertInstanceOf(ObservationMiddleware.class, byPoint.get("veto:observation-middleware"));
         assertInstanceOf(SessionLifecycle.class, byPoint.get("veto:session-lifecycle"));
-        assertInstanceOf(ToolContribution.class, byPoint.get("veto:tools"));
+        assertInstanceOf(Tool.class, byPoint.get("veto:tools"));
     }
 
     @Test
@@ -114,7 +114,7 @@ class SecretProtectionPluginTest {
         var entries = initialize(new SecretProtectionPlugin(), Map.of());
         var input = contribution(entries, InputProtection.class);
         String reference = reference(input.transform(SCOPE, "user", "password=synthetic-token"));
-        var tool = contribution(entries, ToolContribution.class);
+        var tool = contribution(entries, Tool.class);
         var failure =
                 assertThrows(
                         IllegalStateException.class, () -> invoke(tool, reference, "Repository"));
@@ -149,8 +149,7 @@ class SecretProtectionPluginTest {
                         new SecretProtectionPlugin(), Map.of(CredentialImportAccess.class, access));
         var input = contribution(entries, InputProtection.class);
         String reference = reference(input.transform(SCOPE, "user", "password=synthetic-token"));
-        var receipt =
-                invoke(contribution(entries, ToolContribution.class), reference, "Repository");
+        var receipt = invoke(contribution(entries, Tool.class), reference, "Repository");
         assertTrue(
                 receipt instanceof JsonValue.ObjectValue object
                         && object.values().get("credential_ref")
@@ -167,19 +166,18 @@ class SecretProtectionPluginTest {
     }
 
     private static @NonNull JsonValue invoke(
-            @NonNull ToolContribution tool, @NonNull String reference, @NonNull String label)
+            @NonNull Tool tool, @NonNull String reference, @NonNull String label)
             throws PluginFailure {
-        return tool.handler()
-                .invoke(
-                        new JsonValue.ObjectValue(
-                                Map.of(
-                                        "secret_ref",
-                                        new JsonValue.StringValue(reference),
-                                        "service",
-                                        new JsonValue.StringValue("github"),
-                                        "label",
-                                        new JsonValue.StringValue(label))),
-                        () -> false);
+        return tool.invoke(
+                new JsonValue.ObjectValue(
+                        Map.of(
+                                "secret_ref",
+                                new JsonValue.StringValue(reference),
+                                "service",
+                                new JsonValue.StringValue("github"),
+                                "label",
+                                new JsonValue.StringValue(label))),
+                () -> false);
     }
 
     private static @NonNull String reference(@NonNull String captured) {

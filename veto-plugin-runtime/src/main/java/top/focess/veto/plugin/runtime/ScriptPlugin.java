@@ -11,6 +11,7 @@ import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Set;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.plugin.api.AbstractVetoPlugin;
 import top.focess.veto.plugin.api.PluginContext;
@@ -18,6 +19,9 @@ import top.focess.veto.plugin.api.PluginContributions;
 import top.focess.veto.plugin.api.PluginIdentity;
 import top.focess.veto.plugin.contract.JsonValue;
 import top.focess.veto.plugin.contract.PluginFailure;
+import top.focess.veto.plugin.contract.StandardContributionPoints;
+import top.focess.veto.plugin.contract.Tool;
+import top.focess.veto.plugin.contract.ToolContribution;
 import top.focess.veto.plugin.contribution.Contribution;
 
 /** Operator-trusted local code, not a sandbox. Only tools are supported in protocol v1. */
@@ -77,18 +81,14 @@ public final class ScriptPlugin extends AbstractVetoPlugin {
                         .<Contribution<?>>map(
                                 tool ->
                                         Contribution.of(
-                                                top.focess.veto.plugin.contract
-                                                        .StandardContributionPoints.TOOLS,
+                                                StandardContributionPoints.TOOLS,
                                                 tool.id(),
-                                                new top.focess.veto.plugin.contract
-                                                        .ToolContribution(
+                                                new ToolContribution(
                                                         tool.description(),
                                                         PluginJson.object(tool.inputSchema()),
                                                         PluginJson.object(tool.outputSchema()),
-                                                        top.focess.veto.plugin.contract
-                                                                .ToolContribution.Effect
-                                                                .EXTERNAL_UNKNOWN,
-                                                        java.util.Set.of(),
+                                                        Tool.Effect.EXTERNAL_UNKNOWN,
+                                                        Set.of(),
                                                         (arguments, cancellation) -> {
                                                             cancellation.checkCancelled();
                                                             try {
@@ -103,6 +103,15 @@ public final class ScriptPlugin extends AbstractVetoPlugin {
                                                                 throw new PluginFailure(
                                                                         PluginFailure.Code
                                                                                 .INTERNAL_FAILURE);
+                                                            } catch (
+                                                                    IllegalArgumentException
+                                                                            failure) {
+                                                                // Invalid tool arguments must
+                                                                // surface as a contract failure,
+                                                                // not a raw runtime exception.
+                                                                throw new PluginFailure(
+                                                                        PluginFailure.Code
+                                                                                .INVALID_ARGUMENTS);
                                                             }
                                                         })))
                         .toList());

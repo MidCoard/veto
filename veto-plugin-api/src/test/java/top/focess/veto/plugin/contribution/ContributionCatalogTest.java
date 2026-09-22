@@ -253,7 +253,7 @@ class ContributionCatalogTest {
                         "Example",
                         schema,
                         schema,
-                        ToolContribution.Effect.COMPUTATION,
+                        Tool.Effect.COMPUTATION,
                         Set.of(new ContributionId("veto.core:missing")),
                         (args, cancellation) -> JsonValue.NullValue.INSTANCE);
         var builder =

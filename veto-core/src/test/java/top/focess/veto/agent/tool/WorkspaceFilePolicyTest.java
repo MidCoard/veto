@@ -28,9 +28,9 @@ import top.focess.veto.agent.tool.builtin.ViewFileTool;
 import top.focess.veto.agent.tool.builtin.WriteToFileTool;
 import top.focess.veto.agent.workspace.PathMode;
 import top.focess.veto.agent.workspace.Workspace;
-import top.focess.veto.plugin.contract.TextProtection;
 import top.focess.veto.llm.core.ToolCall;
 import top.focess.veto.llm.core.ToolResultPresentationMode;
+import top.focess.veto.plugin.contract.TextProtection;
 import top.focess.veto.plugin.runtime.PluginTestSupport;
 
 class WorkspaceFilePolicyTest {

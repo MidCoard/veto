@@ -29,7 +29,7 @@ public class PluginController {
 
     @GetMapping
     public @NonNull List<PluginResponse> list() {
-        authorization.requireUser();
+        authorization.requireAdmin();
         return plugins.plugins().stream()
                 .map(
                         plugin -> {

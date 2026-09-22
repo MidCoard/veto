@@ -15,14 +15,14 @@ import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.NoSuchBeanDefinitionException;
 import org.springframework.beans.factory.ObjectProvider;
 import top.focess.veto.agent.tool.ToolDocs;
-import top.focess.veto.plugin.contribution.ContributionPoint;
-import top.focess.veto.plugin.contract.PluginFailure;
-import top.focess.veto.plugin.contract.FrontendContribution;
-import top.focess.veto.plugin.contract.JsonValue;
-import top.focess.veto.plugin.contract.StandardContributionPoints;
-import top.focess.veto.plugin.contract.TextProtection;
 import top.focess.veto.model.SessionEntity;
 import top.focess.veto.model.SessionRepository;
+import top.focess.veto.plugin.contract.FrontendContribution;
+import top.focess.veto.plugin.contract.JsonValue;
+import top.focess.veto.plugin.contract.PluginFailure;
+import top.focess.veto.plugin.contract.StandardContributionPoints;
+import top.focess.veto.plugin.contract.TextProtection;
+import top.focess.veto.plugin.contribution.ContributionPoint;
 import top.focess.veto.session.SessionHistoryLoader;
 
 /** Shared wiring for plugin-backed tests: provider stubs plus real ServiceLoader discovery. */

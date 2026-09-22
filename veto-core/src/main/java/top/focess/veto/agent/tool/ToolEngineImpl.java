@@ -9,6 +9,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.SmartInitializingSingleton;
@@ -27,6 +28,7 @@ import top.focess.veto.plugin.contract.StandardContributionPoints;
 import top.focess.veto.plugin.runtime.PluginJson;
 import top.focess.veto.plugin.runtime.PluginManager;
 import top.focess.veto.plugin.runtime.PluginSchema;
+import top.focess.veto.plugin.runtime.SessionPlugins;
 import top.focess.veto.sandbox.SandboxSubstrate;
 import top.focess.veto.util.Nullness;
 
@@ -65,10 +67,11 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
     // One volatile publication binds every definition and implementation in a complete snapshot.
     private volatile @NonNull ToolCatalog catalog = ToolCatalog.empty();
     private boolean initialized;
-    private top.focess.veto.plugin.runtime.SessionPlugins sessionPlugins;
+    // Injected after construction and read from worker threads; volatile for safe publication.
+    private volatile @Nullable SessionPlugins sessionPlugins;
 
     @Autowired
-    public void attachSessionPlugins(top.focess.veto.plugin.runtime.@NonNull SessionPlugins value) {
+    public void attachSessionPlugins(@NonNull SessionPlugins value) {
         sessionPlugins = value;
     }
 

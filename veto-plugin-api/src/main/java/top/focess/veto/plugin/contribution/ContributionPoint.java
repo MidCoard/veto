@@ -14,6 +14,6 @@ public record ContributionPoint<T extends @NonNull Object>(
     }
 
     public ContributionPoint {
-        if (major < 1) throw new IllegalArgumentException("Invalid extension contract version");
+        if (major < 1) throw new IllegalArgumentException("Invalid contribution contract version");
     }
 }

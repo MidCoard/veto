@@ -10,15 +10,17 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.plugin.api.PluginState;
 import top.focess.veto.plugin.contribution.Contribution;
 import top.focess.veto.plugin.contribution.ContributionCatalog;
 import top.focess.veto.plugin.contribution.ContributionId;
 import top.focess.veto.plugin.contribution.ContributionPoint;
 import top.focess.veto.plugin.contribution.ContributionSource;
+import top.focess.veto.plugin.runtime.ScriptPlugin;
 
 /**
- * Immutable host tool view built through the shared extension layer. The private runtime contract
- * preserves existing capability-aware definitions; it is not an exported plugin SPI.
+ * Immutable host tool view built through the shared contribution layer. The private runtime
+ * contract preserves existing capability-aware definitions; it is not an exported plugin SPI.
  */
 final class ToolCatalog {
     private static final @NonNull ContributionPoint<RegisteredTool> TOOLS =
@@ -83,14 +85,23 @@ final class ToolCatalog {
         List<ToolDefinition> definitions = new ArrayList<>();
         for (RegisteredTool registration : registrations) {
             ToolDefinition definition = registration.definition();
-            if (registration instanceof RegisteredTool.Plugin plugin
-                    && (plugin.runtime().state() != top.focess.veto.plugin.api.PluginState.ACTIVE))
+            if (registration instanceof RegisteredTool.Plugin plugin && !pluginAvailable(plugin))
                 continue;
             if (registration instanceof RegisteredTool.Agent
                     || whitelist == null
                     || whitelist.contains(definition.name())) definitions.add(definition);
         }
         return List.copyOf(definitions);
+    }
+
+    /**
+     * A plugin tool is advertised only while its lifecycle state is ACTIVE and, for script plugins,
+     * the backing host process is still alive — matching {@code PluginController}'s liveness view.
+     */
+    private static boolean pluginAvailable(RegisteredTool.@NonNull Plugin plugin) {
+        if (plugin.runtime().state() != PluginState.ACTIVE) return false;
+        return !(plugin.runtime().implementation() instanceof ScriptPlugin script)
+                || script.active();
     }
 
     private static void validate(@NonNull RegisteredTool registration) {
@@ -109,7 +120,7 @@ final class ToolCatalog {
     }
 
     /**
-     * MCP wire names need not follow extension-id syntax; preserve them verbatim in definitions.
+     * MCP wire names need not follow contribution-id syntax; preserve them verbatim in definitions.
      */
     private static @NonNull String internalId(@NonNull String name) {
         try {

@@ -1,6 +1,7 @@
 package top.focess.veto.plugin.contract;
 
 import java.util.HashSet;
+import java.util.List;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.plugin.contribution.ContributionCatalog;
 import top.focess.veto.plugin.contribution.ContributionId;
@@ -76,4 +77,20 @@ public final class StandardContributionPoints {
                     1,
                     ObservationMiddleware.class,
                     ContributionPoint.Cardinality.MULTIPLE);
+
+    /**
+     * Every standard point in a stable order. The host defines all of them so that querying an
+     * unpopulated point returns an empty list instead of failing registration.
+     */
+    public static final @NonNull List<@NonNull ContributionPoint<?>> ALL =
+            List.of(
+                    FRONTEND,
+                    FILE_OBSERVATION,
+                    INPUT_PROTECTION,
+                    FILE_PROTECTION,
+                    SESSION_LIFECYCLE,
+                    TOOLS,
+                    CATEGORIES,
+                    PROMPTS,
+                    OBSERVATION);
 }

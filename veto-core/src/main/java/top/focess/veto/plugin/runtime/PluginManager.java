@@ -99,16 +99,22 @@ public final class PluginManager implements AutoCloseable {
                                         new JsonValue.ObjectValue(Map.of()))));
             }
             var builder = new ContributionCatalog.Builder();
-            var points = new java.util.HashSet<ContributionPoint<?>>();
-            points.add(StandardContributionPoints.TOOLS);
-            points.add(StandardContributionPoints.CATEGORIES);
-            builder.define(
-                    StandardContributionPoints.TOOLS,
-                    tool -> {
-                        PluginSchema.check(PluginJson.toNode(tool.inputSchema()));
-                        PluginSchema.check(PluginJson.toNode(tool.outputSchema()));
-                    });
-            builder.define(StandardContributionPoints.CATEGORIES, ignored -> {});
+            // Define every standard point up front so an unpopulated point yields an empty entry
+            // list rather than a registration error. The "no contributor -> unchanged" contract
+            // (see applyObservationMiddleware) and lifecycle dispatch depend on this: the floor
+            // secret-protection plugin normally populates them, but the host must not break when a
+            // deployment runs without it.
+            for (var point : StandardContributionPoints.ALL) {
+                if (point == StandardContributionPoints.TOOLS)
+                    builder.define(
+                            StandardContributionPoints.TOOLS,
+                            tool -> {
+                                PluginSchema.check(PluginJson.toNode(tool.inputSchema()));
+                                PluginSchema.check(PluginJson.toNode(tool.outputSchema()));
+                            });
+                else builder.define(point, ignored -> {});
+            }
+            var points = new HashSet<ContributionPoint<?>>(StandardContributionPoints.ALL);
             for (var registration : registered) {
                 for (var contribution : registration.contributions().entries()) {
                     if (points.add(contribution.point()))

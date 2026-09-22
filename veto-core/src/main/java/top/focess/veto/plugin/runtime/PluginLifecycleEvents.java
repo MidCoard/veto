@@ -53,7 +53,9 @@ public class PluginLifecycleEvents {
                             notification.accept(entry.implementation());
                             return true;
                         });
-            } catch (PluginFailure failure) {
+            } catch (PluginFailure | RuntimeException failure) {
+                // Best-effort: a failing plugin must never break logout, session deletion, or
+                // agent termination. Runtime exceptions from the notification itself are included.
                 log.warn(
                         "Plugin lifecycle notification failed for {}",
                         plugin.identity().id(),

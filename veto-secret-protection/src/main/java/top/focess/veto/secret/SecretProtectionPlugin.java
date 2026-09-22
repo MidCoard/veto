@@ -201,7 +201,8 @@ public final class SecretProtectionPlugin extends AbstractVetoPlugin {
 
         @Override
         public @NonNull JsonValue invoke(
-                JsonValue.@NonNull ObjectValue arguments, @NonNull Cancellation cancellation) {
+                JsonValue.@NonNull ObjectValue arguments, @NonNull Cancellation cancellation)
+                throws PluginFailure {
             return importCredential(arguments, cancellation);
         }
     }
@@ -235,11 +236,16 @@ public final class SecretProtectionPlugin extends AbstractVetoPlugin {
     }
 
     private @NonNull JsonValue importCredential(
-            JsonValue.@NonNull ObjectValue arguments, @NonNull Cancellation cancellation) {
+            JsonValue.@NonNull ObjectValue arguments, @NonNull Cancellation cancellation)
+            throws PluginFailure {
         String reference = string(arguments, "secret_ref"),
                 service = string(arguments, "service"),
                 label = string(arguments, "label");
+        cancellation.checkCancelled();
         var authorized = importer.authorize(reference, service, label);
+        // Re-check after the (potentially blocking) host authorization so a caller that cancelled
+        // while awaiting approval does not reach the irreversible vault write.
+        cancellation.checkCancelled();
         var receipt =
                 candidates.importOnce(
                         new SecretCandidateStore.Scope(
@@ -261,10 +267,10 @@ public final class SecretProtectionPlugin extends AbstractVetoPlugin {
     }
 
     private static @NonNull String string(
-            JsonValue.@NonNull ObjectValue arguments, @NonNull String key) {
+            JsonValue.@NonNull ObjectValue arguments, @NonNull String key) throws PluginFailure {
         if (arguments.values().get(key) instanceof JsonValue.StringValue value)
             return value.value();
-        throw new IllegalArgumentException("Invalid credential import arguments");
+        throw new PluginFailure(PluginFailure.Code.INVALID_ARGUMENTS);
     }
 
     @Override

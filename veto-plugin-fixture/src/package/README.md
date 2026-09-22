@@ -1,6 +1,6 @@
 # Veto lifecycle fixture — development only
 
-This package tests the experimental Java plugin lifecycle and shared extension
+This package tests the experimental Java plugin lifecycle and shared contribution
 contracts. It is not a production plugin installer, and copying it into a Veto
 directory does not activate it.
 

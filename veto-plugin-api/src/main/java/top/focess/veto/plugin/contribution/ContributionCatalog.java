@@ -58,10 +58,12 @@ public final class ContributionCatalog {
             @NonNull Contribution<?> contribution) {}
 
     private static @NonNull IllegalArgumentException invalid() {
-        return new IllegalArgumentException("Invalid extension registration");
+        return new IllegalArgumentException("Invalid contribution registration");
     }
 
-    /** Single-threaded bootstrap only. Do not expose this builder to extension implementations. */
+    /**
+     * Single-threaded bootstrap only. Do not expose this builder to contribution implementations.
+     */
     public static final class Builder {
         private final Map<ContributionId, Definition<?>> definitions = new LinkedHashMap<>();
         private final Map<ContributionId, Staged> staged = new LinkedHashMap<>();
@@ -193,7 +195,7 @@ public final class ContributionCatalog {
         }
 
         private void mutable() {
-            if (frozen) throw new IllegalStateException("Extension catalog already frozen");
+            if (frozen) throw new IllegalStateException("Contribution catalog already frozen");
         }
     }
 }

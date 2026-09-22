@@ -115,11 +115,13 @@ public final class ScriptHost implements AutoCloseable {
 
     private @NonNull JsonNode exchange(@NonNull String method, @NonNull JsonNode params)
             throws IOException {
-        long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMillis);
         boolean acquired = false;
         try {
             acquired = lock.tryLock(timeoutMillis, TimeUnit.MILLISECONDS);
             if (!acquired) throw new IOException("Plugin is busy");
+            // Measure the invocation budget only after admission, so waiting for a busy host does
+            // not consume the time available to actually talk to it.
+            long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMillis);
             ensureStarted();
             Process worker = process;
             if (worker == null || !worker.isAlive()) throw new IOException("Plugin is unavailable");

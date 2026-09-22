@@ -68,7 +68,11 @@ class AuthLifecycleManagerTest {
             throws PluginFailure {
         String captured =
                 PluginTestSupport.protect(
-                        plugins, StandardContributionPoints.INPUT_PROTECTION, scope, "source", text);
+                        plugins,
+                        StandardContributionPoints.INPUT_PROTECTION,
+                        scope,
+                        "source",
+                        text);
         var matcher = java.util.regex.Pattern.compile("s_[a-f0-9]{32}").matcher(captured);
         if (!matcher.find()) throw new AssertionError("Expected reference is missing");
         return matcher.group();

@@ -9,9 +9,9 @@ import java.util.concurrent.Executors;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
-import top.focess.veto.plugin.contract.PluginFailure;
-import top.focess.veto.plugin.contract.JsonValue;
 import top.focess.veto.plugin.api.*;
+import top.focess.veto.plugin.contract.JsonValue;
+import top.focess.veto.plugin.contract.PluginFailure;
 
 class ManagedPluginStateTest {
     private static final class Observer extends AbstractVetoPlugin {

@@ -8,7 +8,7 @@ public record ContributionId(@NonNull String value) implements Comparable<Contri
         if (value.length() > 192
                 || !value.matches(
                         "[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*:[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*"))
-            throw new IllegalArgumentException("Invalid extension identity");
+            throw new IllegalArgumentException("Invalid contribution identity");
     }
 
     @Override

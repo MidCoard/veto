@@ -55,8 +55,7 @@ class ScriptPluginTest {
             managed = new ManagedPlugin(script, executor);
             managed.initialize(
                     new top.focess.veto.plugin.api.PluginContext(script.identity()),
-                    new top.focess.veto.plugin.contract.JsonValue.ObjectValue(
-                            java.util.Map.of()));
+                    new top.focess.veto.plugin.contract.JsonValue.ObjectValue(java.util.Map.of()));
             managed.start();
             return new LoadedScript(script, managed, executor);
         } catch (Exception failure) {

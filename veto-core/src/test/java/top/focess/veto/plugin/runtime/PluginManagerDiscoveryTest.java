@@ -7,11 +7,11 @@ import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.agent.tool.ToolDocs;
-import top.focess.veto.plugin.contract.PluginFailure;
+import top.focess.veto.plugin.api.PluginState;
 import top.focess.veto.plugin.contract.JsonValue;
+import top.focess.veto.plugin.contract.PluginFailure;
 import top.focess.veto.plugin.contract.StandardContributionPoints;
 import top.focess.veto.plugin.contract.TextProtection;
-import top.focess.veto.plugin.api.PluginState;
 import top.focess.veto.secret.api.CredentialImportAccess;
 import top.focess.veto.secret.api.CredentialWriter;
 
@@ -28,10 +28,15 @@ class PluginManagerDiscoveryTest {
             var plugin = plugins.plugin("top.focess.secret-protection");
             assertEquals(PluginState.ACTIVE, plugin.state());
             assertFalse(
-                    plugins.catalog().entries(StandardContributionPoints.INPUT_PROTECTION).isEmpty());
-            assertFalse(plugins.catalog().entries(StandardContributionPoints.OBSERVATION).isEmpty());
+                    plugins.catalog()
+                            .entries(StandardContributionPoints.INPUT_PROTECTION)
+                            .isEmpty());
             assertFalse(
-                    plugins.catalog().entries(StandardContributionPoints.SESSION_LIFECYCLE).isEmpty());
+                    plugins.catalog().entries(StandardContributionPoints.OBSERVATION).isEmpty());
+            assertFalse(
+                    plugins.catalog()
+                            .entries(StandardContributionPoints.SESSION_LIFECYCLE)
+                            .isEmpty());
             assertFalse(plugins.catalog().entries(StandardContributionPoints.TOOLS).isEmpty());
         }
     }
@@ -152,6 +157,6 @@ class PluginManagerDiscoveryTest {
                                                 "service", service,
                                                 "label", label)));
         return plugins.plugin(entry.source().namespace())
-                .execute(() -> entry.implementation().handler().invoke(arguments, () -> false));
+                .execute(() -> entry.implementation().invoke(arguments, () -> false));
     }
 }

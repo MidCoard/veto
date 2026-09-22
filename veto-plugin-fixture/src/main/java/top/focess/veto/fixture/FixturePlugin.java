@@ -28,7 +28,7 @@ public final class FixturePlugin extends AbstractVetoPlugin {
         JsonValue option = configuration.values().get("failStart");
         if (option != null && !(option instanceof JsonValue.BooleanValue))
             throw new PluginFailure(PluginFailure.Code.INVALID_CONFIGURATION);
-        failStart = option instanceof JsonValue.BooleanValue flag && flag.value();
+        failStart = option instanceof JsonValue.BooleanValue(boolean value) && value;
         var input =
                 new JsonValue.ObjectValue(
                         Map.of(
