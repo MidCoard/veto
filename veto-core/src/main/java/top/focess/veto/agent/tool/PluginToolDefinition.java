@@ -36,7 +36,10 @@ public record PluginToolDefinition(
 
     @Override
     public @NonNull JsonNode inputSchema() {
-        return PluginJson.toNode(descriptor.inputSchema());
+        return switch (descriptor) {
+            case Tool.RecordTool record -> ToolSchemaCompiler.compileFromRecord(record.argsType());
+            case Tool.SchemaTool schema -> PluginJson.toNode(schema.inputSchema());
+        };
     }
 
     @Override

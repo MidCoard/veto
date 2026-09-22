@@ -83,11 +83,12 @@ class PackagedPluginTest {
         return catalog;
     }
 
-    private static @NonNull Tool tool(@NonNull PluginContributions contributions) {
-        return catalog(contributions)
-                .entries(StandardContributionPoints.TOOLS)
-                .getFirst()
-                .implementation();
+    private static Tool.@NonNull SchemaTool tool(@NonNull PluginContributions contributions) {
+        return (Tool.SchemaTool)
+                catalog(contributions)
+                        .entries(StandardContributionPoints.TOOLS)
+                        .getFirst()
+                        .implementation();
     }
 
     @Test

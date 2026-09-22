@@ -151,10 +151,8 @@ class SecretProtectionPluginTest {
         String reference = reference(input.transform(SCOPE, "user", "password=synthetic-token"));
         var receipt = invoke(contribution(entries, Tool.class), reference, "Repository");
         assertTrue(
-                receipt instanceof JsonValue.ObjectValue object
-                        && object.values().get("credential_ref")
-                                instanceof JsonValue.StringValue ref
-                        && ref.value().equals("cred_test"),
+                receipt instanceof SecretProtectionPlugin.ImportCredentialResult result
+                        && result.credential_ref().equals("cred_test"),
                 String.valueOf(receipt));
     }
 
@@ -165,18 +163,12 @@ class SecretProtectionPluginTest {
         throw new AssertionError("Contribution missing: " + type.getSimpleName());
     }
 
-    private static @NonNull JsonValue invoke(
+    private static @NonNull Object invoke(
             @NonNull Tool tool, @NonNull String reference, @NonNull String label)
             throws PluginFailure {
-        return tool.invoke(
-                new JsonValue.ObjectValue(
-                        Map.of(
-                                "secret_ref",
-                                new JsonValue.StringValue(reference),
-                                "service",
-                                new JsonValue.StringValue("github"),
-                                "label",
-                                new JsonValue.StringValue(label))),
+        var record = (Tool.RecordTool) tool;
+        return record.invoke(
+                new SecretProtectionPlugin.ImportCredentialArgs(reference, "github", label),
                 () -> false);
     }
 

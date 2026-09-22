@@ -15,6 +15,7 @@ import org.jspecify.annotations.NonNull;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
+import top.focess.veto.agent.tool.ToolSchemaCompiler;
 import top.focess.veto.plugin.api.PluginContext;
 import top.focess.veto.plugin.api.PluginContributions;
 import top.focess.veto.plugin.api.PluginState;
@@ -109,8 +110,15 @@ public final class PluginManager implements AutoCloseable {
                     builder.define(
                             StandardContributionPoints.TOOLS,
                             tool -> {
-                                PluginSchema.check(PluginJson.toNode(tool.inputSchema()));
-                                PluginSchema.check(PluginJson.toNode(tool.outputSchema()));
+                                switch (tool) {
+                                    case Tool.RecordTool record ->
+                                            ToolSchemaCompiler.compileFromRecord(record.argsType());
+                                    case Tool.SchemaTool schema -> {
+                                        PluginSchema.check(PluginJson.toNode(schema.inputSchema()));
+                                        PluginSchema.check(
+                                                PluginJson.toNode(schema.outputSchema()));
+                                    }
+                                }
                             });
                 else builder.define(point, ignored -> {});
             }

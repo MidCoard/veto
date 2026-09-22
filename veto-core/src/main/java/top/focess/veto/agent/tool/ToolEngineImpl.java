@@ -24,7 +24,10 @@ import top.focess.veto.agent.mcp.transport.McpTransport;
 import top.focess.veto.llm.config.LlmJacksonConfig;
 import top.focess.veto.llm.core.ToolCall;
 import top.focess.veto.plugin.api.PluginState;
+import top.focess.veto.plugin.contract.Cancellation;
+import top.focess.veto.plugin.contract.JsonValue;
 import top.focess.veto.plugin.contract.StandardContributionPoints;
+import top.focess.veto.plugin.contract.Tool;
 import top.focess.veto.plugin.runtime.PluginJson;
 import top.focess.veto.plugin.runtime.PluginManager;
 import top.focess.veto.plugin.runtime.PluginSchema;
@@ -271,21 +274,37 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
             var descriptor = registration.definition().descriptor();
             JsonNode arguments = mapper.valueToTree(call.args());
             PluginSchema.validate(registration.definition().inputSchema(), arguments);
-            var value =
-                    registration
-                            .runtime()
-                            .execute(
-                                    () ->
-                                            descriptor.invoke(
-                                                    PluginJson.object(arguments),
+            @NonNull Cancellation cancellation =
+                    () ->
+                            Thread.currentThread().isInterrupted()
+                                    || registration.runtime().state() != PluginState.ACTIVE;
+            JsonNode result =
+                    switch (descriptor) {
+                        case Tool.RecordTool record -> {
+                            @NonNull Object args =
+                                    Nullness.requireNonNull(
+                                            mapper.treeToValue(arguments, record.argsType()),
+                                            "Plugin arguments deserialized to null");
+                            Object value =
+                                    registration
+                                            .runtime()
+                                            .execute(() -> record.invoke(args, cancellation));
+                            yield mapper.valueToTree(value);
+                        }
+                        case Tool.SchemaTool schema -> {
+                            JsonValue value =
+                                    registration
+                                            .runtime()
+                                            .execute(
                                                     () ->
-                                                            Thread.currentThread().isInterrupted()
-                                                                    || registration
-                                                                                    .runtime()
-                                                                                    .state()
-                                                                            != PluginState.ACTIVE));
-            JsonNode result = PluginJson.toNode(value);
-            PluginSchema.validate(PluginJson.toNode(descriptor.outputSchema()), result);
+                                                            schema.invoke(
+                                                                    PluginJson.object(arguments),
+                                                                    cancellation));
+                            JsonNode node = PluginJson.toNode(value);
+                            PluginSchema.validate(PluginJson.toNode(schema.outputSchema()), node);
+                            yield node;
+                        }
+                    };
             return new ToolResult(
                     call.toolName(),
                     call.callId(),

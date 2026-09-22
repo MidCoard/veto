@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.AfterEach;
@@ -21,12 +22,11 @@ import top.focess.veto.agent.screening.*;
 import top.focess.veto.agent.workspace.*;
 import top.focess.veto.llm.core.ToolCall;
 import top.focess.veto.llm.core.ToolResultPresentationMode;
-import top.focess.veto.plugin.contract.JsonValue;
 import top.focess.veto.plugin.contract.PluginFailure;
 import top.focess.veto.plugin.contract.StandardContributionPoints;
 import top.focess.veto.plugin.contract.TextProtection;
+import top.focess.veto.plugin.contract.Tool;
 import top.focess.veto.plugin.runtime.PluginHostServices;
-import top.focess.veto.plugin.runtime.PluginJson;
 import top.focess.veto.plugin.runtime.PluginManager;
 import top.focess.veto.plugin.runtime.PluginTestSupport;
 import top.focess.veto.plugin.secrets.SecretProtectionConfiguration;
@@ -269,23 +269,26 @@ class CredentialImportIntegrationTest {
         }
     }
 
-    private static @NonNull JsonValue invokeImport(
+    private static @NonNull Object invokeImport(
             @NonNull PluginManager plugins,
             @NonNull String reference,
             @NonNull String service,
             @NonNull String label)
             throws Exception {
         var entry = plugins.catalog().entries(StandardContributionPoints.TOOLS).getFirst();
-        var arguments =
-                PluginJson.object(
-                        new ObjectMapper()
-                                .valueToTree(
+        var record = (Tool.RecordTool) entry.implementation();
+        var mapper = new ObjectMapper();
+        @NonNull Object args =
+                Objects.requireNonNull(
+                        mapper.treeToValue(
+                                mapper.valueToTree(
                                         Map.of(
                                                 "secret_ref", reference,
                                                 "service", service,
-                                                "label", label)));
+                                                "label", label)),
+                                record.argsType()));
         return plugins.plugin(entry.source().namespace())
-                .execute(() -> entry.implementation().invoke(arguments, () -> false));
+                .execute(() -> record.invoke(args, () -> false));
     }
 
     private static void installContext(

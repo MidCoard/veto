@@ -56,7 +56,7 @@ own points, but the host never invokes a point it does not define.
 
 | Point | Contract type | Contribution |
 |---|---|---|
-| `veto:tools` | `Tool` | Tool object: description, schemas, effect, categories, invocation |
+| `veto:tools` | `Tool` | Tool object: description, effect, categories, and either a record- or schema-authored invocation |
 | `veto:tool-categories` | `ToolCategory` | Display label and description |
 | `veto:prompts` | `PromptContribution` | Static package resource path (reserved; fixture-only consumer today) |
 | `veto:frontend` | `FrontendContribution` | Browser ESM activation, React registrations and scoped JSON actions |
@@ -72,6 +72,20 @@ to exactly one invocation site. `ObservationMiddleware` and `SessionLifecycle`
 are session-less: observation transforms carry text and a cancellation signal,
 and lifecycle notifications carry plain owner/session/agent IDs. Masking
 semantics belong to the contributing plugin; there is no shared mask contract.
+
+`Tool` is a sealed contract with two authoring shapes, mirroring how the host
+models its own tools:
+
+- `Tool.RecordTool` — an in-process Java plugin declares its arguments as a
+  plain Java record (`argsType()`) and the host reflects it into the input
+  schema, validates the call, deserializes the arguments, and serializes the
+  typed result back to JSON. This is the same record-authored shape built-in
+  native tools use, so no hand-written JSON schema is involved.
+  `RecordToolContribution` is the stock carrier.
+- `Tool.SchemaTool` — a portable or out-of-process plugin declares explicit
+  `inputSchema()`/`outputSchema()` JSON and exchanges `JsonValue`; this is the
+  only form a non-Java host process (the script runtime) can consume.
+  `ToolContribution` is the stock carrier.
 
 `Tool.Effect` is generic: `PRIVILEGED` marks a tool that crosses a
 host trust boundary (the host gates every call with explicit approval; no

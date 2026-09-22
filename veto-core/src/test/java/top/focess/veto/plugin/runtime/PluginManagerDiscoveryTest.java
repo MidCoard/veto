@@ -4,14 +4,15 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.Map;
+import java.util.Objects;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.agent.tool.ToolDocs;
 import top.focess.veto.plugin.api.PluginState;
-import top.focess.veto.plugin.contract.JsonValue;
 import top.focess.veto.plugin.contract.PluginFailure;
 import top.focess.veto.plugin.contract.StandardContributionPoints;
 import top.focess.veto.plugin.contract.TextProtection;
+import top.focess.veto.plugin.contract.Tool;
 import top.focess.veto.secret.api.CredentialImportAccess;
 import top.focess.veto.secret.api.CredentialWriter;
 
@@ -87,12 +88,9 @@ class PluginManagerDiscoveryTest {
             var scope = new TextProtection.Scope("owner", "session", "agent");
             String reference = capture(plugins, scope);
             var receipt = invokeImport(plugins, reference, "github", "Repository");
-            assertTrue(
-                    receipt instanceof JsonValue.ObjectValue object
-                            && object.values().get("credential_ref")
-                                    instanceof JsonValue.StringValue ref
-                            && ref.value().equals("cred_test"),
-                    String.valueOf(receipt));
+            assertEquals(
+                    "cred_test",
+                    new ObjectMapper().valueToTree(receipt).path("credential_ref").asText());
         }
     }
 
@@ -141,22 +139,25 @@ class PluginManagerDiscoveryTest {
         return matcher.group();
     }
 
-    private static @NonNull JsonValue invokeImport(
+    private static @NonNull Object invokeImport(
             @NonNull PluginManager plugins,
             @NonNull String reference,
             @NonNull String service,
             @NonNull String label)
             throws Exception {
         var entry = plugins.catalog().entries(StandardContributionPoints.TOOLS).getFirst();
-        var arguments =
-                PluginJson.object(
-                        new ObjectMapper()
-                                .valueToTree(
+        var record = (Tool.RecordTool) entry.implementation();
+        var mapper = new ObjectMapper();
+        @NonNull Object args =
+                Objects.requireNonNull(
+                        mapper.treeToValue(
+                                mapper.valueToTree(
                                         Map.of(
                                                 "secret_ref", reference,
                                                 "service", service,
-                                                "label", label)));
+                                                "label", label)),
+                                record.argsType()));
         return plugins.plugin(entry.source().namespace())
-                .execute(() -> entry.implementation().invoke(arguments, () -> false));
+                .execute(() -> record.invoke(args, () -> false));
     }
 }

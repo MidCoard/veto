@@ -2,9 +2,7 @@ package top.focess.veto.secret;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -46,30 +44,6 @@ public final class SecretProtectionPlugin extends AbstractVetoPlugin {
                 (reference, service, label) -> {
                     throw new IllegalStateException("Import host is unavailable");
                 });
-    }
-
-    private static JsonValue.@NonNull ObjectValue schema(boolean input) {
-        var properties = new HashMap<String, JsonValue>();
-        for (String name :
-                input
-                        ? List.of("secret_ref", "service", "label")
-                        : List.of("credential_ref", "service", "label", "status"))
-            properties.put(
-                    name,
-                    new JsonValue.ObjectValue(Map.of("type", new JsonValue.StringValue("string"))));
-        return new JsonValue.ObjectValue(
-                Map.of(
-                        "type",
-                        new JsonValue.StringValue("object"),
-                        "properties",
-                        new JsonValue.ObjectValue(properties),
-                        "required",
-                        new JsonValue.ArrayValue(
-                                properties.keySet().stream()
-                                        .map(n -> (JsonValue) new JsonValue.StringValue(n))
-                                        .toList()),
-                        "additionalProperties",
-                        new JsonValue.BooleanValue(false)));
     }
 
     private static SecretCandidateStore.@NonNull Scope scope(TextProtection.@NonNull Scope value) {
@@ -167,45 +141,28 @@ public final class SecretProtectionPlugin extends AbstractVetoPlugin {
                         Contribution.of(
                                 StandardContributionPoints.TOOLS,
                                 "import_detected_credential",
-                                new ImportDetectedCredentialTool())));
+                                new RecordToolContribution<
+                                        ImportCredentialArgs, ImportCredentialResult>(
+                                        "Import a registered SECRET_REF from this session into the"
+                                                + " owner's encrypted vault after approval. Use"
+                                                + " secret_ref, service (github), and label. Never"
+                                                + " provide plaintext.",
+                                        ImportCredentialArgs.class,
+                                        Tool.Effect.PRIVILEGED,
+                                        Set.of(),
+                                        this::importCredential))));
     }
 
-    /** The import tool as a direct {@link Tool} implementation. */
-    private final class ImportDetectedCredentialTool implements Tool {
-        @Override
-        public @NonNull String description() {
-            return "Import a registered SECRET_REF from this session into the owner's encrypted"
-                    + " vault after approval. Use secret_ref, service (github), and label. Never"
-                    + " provide plaintext.";
-        }
+    /** Tool arguments; the host reflects this record into the input schema. */
+    record ImportCredentialArgs(
+            @NonNull String secret_ref, @NonNull String service, @NonNull String label) {}
 
-        @Override
-        public JsonValue.@NonNull ObjectValue inputSchema() {
-            return schema(true);
-        }
-
-        @Override
-        public JsonValue.@NonNull ObjectValue outputSchema() {
-            return schema(false);
-        }
-
-        @Override
-        public Tool.@NonNull Effect effect() {
-            return Tool.Effect.PRIVILEGED;
-        }
-
-        @Override
-        public @NonNull Set<@NonNull ContributionId> categories() {
-            return Set.of();
-        }
-
-        @Override
-        public @NonNull JsonValue invoke(
-                JsonValue.@NonNull ObjectValue arguments, @NonNull Cancellation cancellation)
-                throws PluginFailure {
-            return importCredential(arguments, cancellation);
-        }
-    }
+    /** Tool result; the host serializes this record back to JSON. */
+    record ImportCredentialResult(
+            @NonNull String credential_ref,
+            @NonNull String service,
+            @NonNull String label,
+            @NonNull String status) {}
 
     private static @NonNull String frontendModule() {
         try (var stream =
@@ -235,14 +192,11 @@ public final class SecretProtectionPlugin extends AbstractVetoPlugin {
                 .orElse(JsonValue.NullValue.INSTANCE);
     }
 
-    private @NonNull JsonValue importCredential(
-            JsonValue.@NonNull ObjectValue arguments, @NonNull Cancellation cancellation)
+    private @NonNull ImportCredentialResult importCredential(
+            @NonNull ImportCredentialArgs args, @NonNull Cancellation cancellation)
             throws PluginFailure {
-        String reference = string(arguments, "secret_ref"),
-                service = string(arguments, "service"),
-                label = string(arguments, "label");
         cancellation.checkCancelled();
-        var authorized = importer.authorize(reference, service, label);
+        var authorized = importer.authorize(args.secret_ref(), args.service(), args.label());
         // Re-check after the (potentially blocking) host authorization so a caller that cancelled
         // while awaiting approval does not reach the irreversible vault write.
         cancellation.checkCancelled();
@@ -250,27 +204,12 @@ public final class SecretProtectionPlugin extends AbstractVetoPlugin {
                 candidates.importOnce(
                         new SecretCandidateStore.Scope(
                                 authorized.ownerId(), authorized.sessionId(), authorized.agentId()),
-                        reference,
-                        service,
-                        label,
+                        args.secret_ref(),
+                        args.service(),
+                        args.label(),
                         authorized.writer());
-        return new JsonValue.ObjectValue(
-                Map.of(
-                        "credential_ref",
-                        new JsonValue.StringValue(receipt.credentialRef()),
-                        "service",
-                        new JsonValue.StringValue(receipt.service()),
-                        "label",
-                        new JsonValue.StringValue(receipt.label()),
-                        "status",
-                        new JsonValue.StringValue("created")));
-    }
-
-    private static @NonNull String string(
-            JsonValue.@NonNull ObjectValue arguments, @NonNull String key) throws PluginFailure {
-        if (arguments.values().get(key) instanceof JsonValue.StringValue value)
-            return value.value();
-        throw new PluginFailure(PluginFailure.Code.INVALID_ARGUMENTS);
+        return new ImportCredentialResult(
+                receipt.credentialRef(), receipt.service(), receipt.label(), "created");
     }
 
     @Override
