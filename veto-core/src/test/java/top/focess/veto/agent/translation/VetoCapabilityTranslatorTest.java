@@ -11,14 +11,14 @@ import org.junit.jupiter.api.Test;
 import top.focess.veto.agent.tool.AgentToolDefinition;
 import top.focess.veto.agent.tool.NativeToolDefinition;
 import top.focess.veto.agent.tool.ToolSchemaCompiler;
-import top.focess.veto.agent.tool.builtin.AnswerWithCitationsTool;
-import top.focess.veto.agent.tool.builtin.LoadSkillTool;
-import top.focess.veto.agent.tool.builtin.SubmitPlanTool;
 import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.tool.ParamCategory;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.llm.ToolDefinition;
+import top.focess.veto.builtin.planning.AnswerWithCitationsTool;
+import top.focess.veto.builtin.planning.SubmitPlanTool;
+import top.focess.veto.builtin.tools.LoadSkillTool;
 import top.focess.veto.builtin.workspace.ViewFileTool;
 
 /**

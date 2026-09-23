@@ -5,7 +5,7 @@ import java.util.Set;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.tool.ToolDefinition;
 import top.focess.veto.agent.tool.ToolEngine;
-import top.focess.veto.agent.tool.ToolResult;
+import top.focess.veto.api.agent.tool.ToolResult;
 import top.focess.veto.api.llm.ToolCall;
 
 /** Empty tool registry for agent-loop unit tests that do not exercise tool dispatch. */

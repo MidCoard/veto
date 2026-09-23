@@ -25,7 +25,6 @@ repositories {
 dependencies {
     implementation(project(":veto-protocol"))
     implementation(project(":veto-plugin-runtime"))
-    runtimeOnly(project(":veto-web-search"))
     runtimeOnly(project(":veto-builtin"))
     runtimeOnly(project(":veto-llm-providers"))
     testImplementation(project(":veto-llm-providers"))

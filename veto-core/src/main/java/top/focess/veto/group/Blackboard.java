@@ -10,6 +10,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BooleanSupplier;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
+import top.focess.veto.api.group.BlackboardMessage;
 
 /**
  * The append-only group message log. Strict hub-and-spoke: a Mate can only post to {@code

@@ -7,6 +7,7 @@ import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.tool.ToolCallContext;
 import top.focess.veto.agent.workspace.Workspace;
+import top.focess.veto.api.group.GroupState;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
 
 /**
@@ -42,13 +43,6 @@ public record Group(
 
     public Group {
         mates = Map.copyOf(mates);
-    }
-
-    public enum GroupState {
-        RECOVERING,
-        ACTIVE,
-        COMPLETED,
-        DISBANDED
     }
 
     public static @NonNull Group create(

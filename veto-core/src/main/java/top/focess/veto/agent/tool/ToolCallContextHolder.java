@@ -4,10 +4,16 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.UnaryOperator;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import top.focess.veto.agent.AgentRunner;
 import top.focess.veto.agent.TurnRecord;
+import top.focess.veto.agent.loop.MessageCitations;
+import top.focess.veto.api.agent.workflow.ActionsProgram;
+import top.focess.veto.api.agent.workflow.PlanExecution;
+import top.focess.veto.api.agent.workflow.ResponseRequest;
+import top.focess.veto.api.llm.VetoResponse;
 
 /**
  * Thread-local execution context installed by {@link AgentRunner} and consumed by restricted
@@ -48,27 +54,23 @@ public final class ToolCallContextHolder {
 
     /** Validated control flow, separate from the model's text/tool-call result. */
     public sealed interface ResponseDirective {
-        record Plan(top.focess.veto.agent.loop.@NonNull ActionsProgram program)
+        record Plan(@NonNull ActionsProgram program, @NonNull PlanExecution execution)
                 implements ResponseDirective {}
 
-        record Answer(
-                top.focess.veto.api.llm.@NonNull VetoResponse response,
-                top.focess.veto.agent.loop.MessageCitations.Bound citations)
+        record Answer(@NonNull VetoResponse response, MessageCitations.Bound citations)
                 implements ResponseDirective {}
     }
 
     @FunctionalInterface
     public interface ResponseHandler {
-        @NonNull ResponseDirective validate(
-                top.focess.veto.agent.loop.@NonNull ResponseRequest response) throws Exception;
+        @NonNull ResponseDirective validate(@NonNull ResponseRequest response) throws Exception;
     }
 
     public static void setResponseHandler(@NonNull ResponseHandler handler) {
         state().responseHandler = handler;
     }
 
-    public static void requestResponse(top.focess.veto.agent.loop.@NonNull ResponseRequest response)
-            throws Exception {
+    public static void requestResponse(@NonNull ResponseRequest response) throws Exception {
         var state = state();
         var handler = state.responseHandler;
         if (handler == null)
@@ -77,6 +79,13 @@ public final class ToolCallContextHolder {
         if (state.response != null)
             throw new IllegalStateException("Only one response submission is allowed per call");
         state.response = handler.validate(response);
+    }
+
+    public static void guardPlanExecution(@NonNull UnaryOperator<PlanExecution> guard) {
+        var current = state();
+        if (current.response instanceof ResponseDirective.Plan plan)
+            current.response =
+                    new ResponseDirective.Plan(plan.program(), guard.apply(plan.execution()));
     }
 
     public static ResponseDirective drainResponse() {

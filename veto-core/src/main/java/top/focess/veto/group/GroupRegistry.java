@@ -8,6 +8,7 @@ import java.util.concurrent.ConcurrentMap;
 import org.jspecify.annotations.NonNull;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
+import top.focess.veto.api.group.GroupState;
 import top.focess.veto.bus.SessionInvalidations;
 
 /**
@@ -60,7 +61,7 @@ public class GroupRegistry {
         if (g == null) {
             return;
         }
-        put(g.withState(Group.GroupState.DISBANDED, when));
+        put(g.withState(GroupState.DISBANDED, when));
     }
 
     public boolean remove(@NonNull UUID groupId) {

@@ -2,6 +2,7 @@ package top.focess.veto.agent;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -28,7 +29,6 @@ import top.focess.veto.agent.tool.AgentToolDefinition;
 import top.focess.veto.agent.tool.ToolCallContextHolder;
 import top.focess.veto.agent.tool.ToolDefinition;
 import top.focess.veto.agent.tool.ToolEngine;
-import top.focess.veto.agent.tool.ToolResult;
 import top.focess.veto.agent.translation.DefaultCapabilityTranslator;
 import top.focess.veto.agent.workspace.PathMode;
 import top.focess.veto.agent.workspace.Workspace;
@@ -36,11 +36,16 @@ import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.ToolErrorCode;
+import top.focess.veto.api.agent.tool.ToolResult;
+import top.focess.veto.api.agent.workflow.ResponseRequest;
 import top.focess.veto.api.llm.LlmOptions;
 import top.focess.veto.api.llm.ProviderType;
 import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.api.llm.VetoResponse;
+import top.focess.veto.builtin.planning.ActionsProgramParser;
+import top.focess.veto.builtin.planning.GuidedProgram;
+import top.focess.veto.builtin.planning.ProgramValidator;
 import top.focess.veto.llm.core.UniformLLMCaller;
 import top.focess.veto.sandbox.BackgroundTaskManager;
 import top.focess.veto.sandbox.SandboxManager;
@@ -558,7 +563,7 @@ class AgentEndToEndTest {
                         java.util.List.of(
                                 new ToolCall(
                                         "submit_plan",
-                                        java.util.Map.of(
+                                        Map.of(
                                                 "actions",
                                                 mapper.readTree(
                                                         """
@@ -572,7 +577,7 @@ class AgentEndToEndTest {
                         java.util.List.of(
                                 new ToolCall(
                                         "submit_plan",
-                                        java.util.Map.of(
+                                        Map.of(
                                                 "actions",
                                                 mapper.readTree(
                                                         """
@@ -702,11 +707,11 @@ class AgentEndToEndTest {
     private static final class TransformToolEngine implements ToolEngine {
         static @NonNull AgentToolDefinition planDefinition() {
             var tool =
-                    new top.focess.veto.agent.tool.builtin.SubmitPlanTool(
+                    new top.focess.veto.builtin.planning.SubmitPlanTool(
                             new top.focess.veto.agent.capability.LoopControlCapabilityImpl());
             return AgentToolDefinition.from(
                     tool.getName(),
-                    ToolDocs.nonNullClass(top.focess.veto.agent.tool.builtin.SubmitPlanTool.class),
+                    ToolDocs.nonNullClass(top.focess.veto.builtin.planning.SubmitPlanTool.class),
                     tool.getArgsClass(),
                     tool.getCapability());
         }
@@ -754,9 +759,13 @@ class AgentEndToEndTest {
                 try {
                     Object actions = call.args().get("actions");
                     if (actions == null) throw new IllegalArgumentException("Missing actions");
+                    ObjectMapper mapper = new ObjectMapper();
+                    JsonNode raw = mapper.valueToTree(actions);
+                    var parsed = ActionsProgramParser.parse(raw);
+                    ProgramValidator.validate(parsed);
+                    ProgramValidator.validateInputs(parsed);
                     ToolCallContextHolder.requestResponse(
-                            new top.focess.veto.agent.loop.ResponseRequest.Plan(
-                                    new ObjectMapper().valueToTree(actions)));
+                            new ResponseRequest.Plan(raw, parsed, new GuidedProgram(mapper)));
                     return ToolResult.success(call.toolName(), call.callId(), "accepted");
                 } catch (Exception e) {
                     return ToolResult.failure(

@@ -22,8 +22,10 @@ import top.focess.veto.agent.tool.CapabilityTestCalls;
 import top.focess.veto.agent.tool.ToolCallContext;
 import top.focess.veto.agent.tool.ToolCallContextHolder;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
+import top.focess.veto.api.process.Command;
+import top.focess.veto.api.process.TaskInfo;
+import top.focess.veto.builtin.tools.InputTaskTool;
 import top.focess.veto.sandbox.BackgroundTaskManager;
-import top.focess.veto.sandbox.Command;
 import top.focess.veto.sandbox.SandboxManager;
 import top.focess.veto.sandbox.TestSandboxFactory;
 
@@ -65,7 +67,7 @@ class InputTaskToolTest {
         String executable =
                 Path.of(systemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
                         .toString();
-        BackgroundTaskManager.TaskInfo task =
+        TaskInfo task =
                 manager.start(
                         "agent-input",
                         new Command(

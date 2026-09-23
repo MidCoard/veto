@@ -7,7 +7,6 @@ import java.io.BufferedInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.file.Path;
-import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -32,6 +31,10 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import top.focess.veto.agent.AgentRunner;
+import top.focess.veto.api.process.Command;
+import top.focess.veto.api.process.InputResult;
+import top.focess.veto.api.process.InputStatus;
+import top.focess.veto.api.process.TaskInfo;
 
 /**
  * Owns the lifecycle of detached ("background") processes launched by {@code run_task}. A
@@ -663,59 +666,6 @@ public class BackgroundTaskManager {
         }
     }
 
-    /**
-     * A task's status, surfaced to the model as JSON via the LLM mapper. {@code exitCode} and
-     * {@code finishedAt} are null while the task is still running.
-     */
-    public record TaskInfo(
-            @NonNull String taskId,
-            @NonNull String agentId,
-            @NonNull String command,
-            @NonNull String cwd,
-            @NonNull Instant startedAt,
-            boolean alive,
-            Integer exitCode,
-            long pid,
-            Instant finishedAt,
-            UUID sessionId,
-            @NonNull UUID taskInstanceId,
-            String requestId) {
-
-        public TaskInfo(
-                @NonNull String taskId,
-                @NonNull String agentId,
-                @NonNull String command,
-                @NonNull String cwd,
-                @NonNull Instant startedAt,
-                boolean alive,
-                Integer exitCode,
-                long pid,
-                Instant finishedAt,
-                UUID sessionId,
-                @NonNull UUID taskInstanceId) {
-            this(
-                    taskId,
-                    agentId,
-                    command,
-                    cwd,
-                    startedAt,
-                    alive,
-                    exitCode,
-                    pid,
-                    finishedAt,
-                    sessionId,
-                    taskInstanceId,
-                    null);
-        }
-
-        /** Convenience: elapsed seconds since start (0 if somehow negative). */
-        public long uptimeSeconds() {
-            Instant end = finishedAt != null ? finishedAt : Instant.now();
-            long seconds = Duration.between(startedAt, end).toSeconds();
-            return Math.max(0, seconds);
-        }
-    }
-
     /** Security-relevant context of the exact task instance targeted by input_task. */
     public record InputTaskSnapshot(
             @NonNull String taskId,
@@ -758,24 +708,5 @@ public class BackgroundTaskManager {
             @NonNull ExitCause cause) {}
 
     /** Immediate queueing result returned to the input_task tool. */
-    public record InputResult(@NonNull InputStatus status, int bytes, boolean closeQueued) {
-        static @NonNull InputResult failure(@NonNull InputStatus status) {
-            return new InputResult(status, 0, false);
-        }
-
-        public boolean queued() {
-            return status == InputStatus.QUEUED;
-        }
-    }
-
-    public enum InputStatus {
-        QUEUED,
-        TASK_NOT_FOUND,
-        TASK_NOT_RUNNING,
-        STDIN_CLOSED,
-        INPUT_TOO_LARGE,
-        INPUT_QUEUE_FULL
-    }
-
     private record PendingInput(byte @NonNull [] bytes, boolean closeStdin) {}
 }

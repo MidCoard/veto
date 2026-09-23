@@ -21,8 +21,9 @@ before input protection; output hooks precede final observation protection. Fail
 stop the operation with a safe host error. Script workers do not support Java hooks.
 
 Search providers now implement `top.focess.veto.api.search.SearchProvider` and register
-through `StandardContributionPoints.SEARCH_PROVIDERS`. The bundled `veto-web-search`
-plugin demonstrates this with no core dependency. The host selects by provider name,
+through `StandardContributionPoints.SEARCH_PROVIDERS`. DuckDuckGo and Brave ship automatically in `veto-builtin`, which demonstrates
+this registration with no core dependency. Other plugins register additional providers
+through the same API. The host selects by provider name,
 checks session bindings and invokes under plugin lifecycle admission.
 
 Model-provider, storage and other feature contracts still in core are migration gaps; this
@@ -77,7 +78,7 @@ and releases the plugin's resources once. The manager shuts down the shared exec
 after closing all handles.
 
 The shipped implementations are [secret protection](../veto-secret-protection/README.md)
-and [web search](../veto-web-search/README.md), plus the
+and [builtin tools and search providers](../veto-builtin/README.md), plus the
 [built-in workspace tools](../veto-builtin/README.md). They register through ServiceLoader;
 their tests exercise the actual plugin implementations. Web search compiles and runs
 its module tests without core on the classpath. `veto-builtin` also depends only on
@@ -193,7 +194,7 @@ The veto-ui repository contains the loader and its tests; this backend milestone
 Run from the repository root:
 
 ```sh
-./gradlew :veto-api:test :veto-plugin-runtime:test :veto-secret-protection:test :veto-web-search:test
+./gradlew :veto-api:test :veto-plugin-runtime:test :veto-secret-protection:test :veto-builtin:test
 ```
 
 The built-in plugin JARs are packaged as dependencies in `:veto-core:bootJar`.
@@ -215,3 +216,24 @@ Model tiers, local inference and gateway policy remain host responsibilities.
 `DelegationCapability` and `DelegationTool` support agent tools through the same
 plugin registration path. The built-in `create_group` implementation calls this
 API; core supplies the authorized capability and owns the role transition.
+
+## Plugin-authored planning
+
+`api.agent.workflow` exposes the program/value contracts and `PlanExecution`
+continuation callbacks. The built-in plugin owns parsing, plan-language validation
+and interpretation; API-only plugins can supply their own continuation. Runtime
+callbacks preserve host tool authorization, model budgets and cancellation.
+`LoopControlTool` receives a host `LoopControlCapability` to submit a plan or a
+cited answer. `ResponseSubmission` declares exclusive submission semantics by
+metadata rather than a hard-coded tool name. `ContextualInputSchemaSource` supports
+tool-owned schemas specialized against the live model-visible manifest.
+
+## Complete tool capability surface
+
+`HostCapabilityTool<T,C>` supports typed host injection for process execution,
+background tasks, network egress, skills, user interaction, memory, monitors and
+group control. Their contracts and shared process, interaction, group, memory and
+skill values are API types. Plugins own execution behavior and use these ports for
+authorized host effects. `ReaderSession.Factory` supplies plugin-owned private
+reader tools and document state while the host runs the shared child-agent lifecycle.
+`ReaderExecutionResult` marks outputs eligible to carry host-issued child identities.

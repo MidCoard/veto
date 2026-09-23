@@ -13,6 +13,8 @@ import top.focess.veto.agent.VetoAgent;
 import top.focess.veto.agent.identity.Role;
 import top.focess.veto.agent.identity.RoleToolFilter;
 import top.focess.veto.agent.workspace.Workspace;
+import top.focess.veto.api.group.DagNode;
+import top.focess.veto.api.group.GroupState;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.session.SessionHistoryLoader;
 import top.focess.veto.util.Nullness;
@@ -82,7 +84,7 @@ public class GroupRecoveryService {
                             new ExecutionDag(id, nodes),
                             board,
                             mates,
-                            Group.GroupState.RECOVERING,
+                            GroupState.RECOVERING,
                             saved.createdAt(),
                             null,
                             owner,
@@ -95,12 +97,12 @@ public class GroupRecoveryService {
                 || !owner.equals(group.owner())
                 || !leader.id().equals(group.leaderId()))
             throw new SecurityException("Team recovery scope mismatch");
-        if (group.state() == Group.GroupState.RECOVERING) {
+        if (group.state() == GroupState.RECOVERING) {
             var identities = new LinkedHashMap<String, SessionAgentRegistry.AgentSummary>();
             for (var identity : agents.records(session)) identities.put(identity.id(), identity);
             spawner.restoreMates(group, turns, identities);
             leader.restoreLeader(id, binding, tools.resolve(Role.LEADER));
-            groups.put(group.withState(Group.GroupState.ACTIVE, Instant.now()));
+            groups.put(group.withState(GroupState.ACTIVE, Instant.now()));
         } else {
             leader.restoreLeader(id, binding, tools.resolve(Role.LEADER));
         }
@@ -113,7 +115,7 @@ public class GroupRecoveryService {
             if (owner != null
                     && group.leaderId().equals(leader.id())
                     && leader.sessionId().equals(group.sessionId())
-                    && group.state() != Group.GroupState.DISBANDED) {
+                    && group.state() != GroupState.DISBANDED) {
                 leader.restoreLeader(
                         group.groupId(), leaders.binding(owner), tools.resolve(Role.LEADER));
                 return true;

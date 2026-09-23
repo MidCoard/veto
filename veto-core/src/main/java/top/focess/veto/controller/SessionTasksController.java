@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import top.focess.veto.api.process.TaskInfo;
 import top.focess.veto.controller.dto.*;
 import top.focess.veto.i18n.Msg;
 import top.focess.veto.sandbox.BackgroundTaskManager;
@@ -51,9 +52,9 @@ public class SessionTasksController {
     @GetMapping("/{name}/tasks")
     public @NonNull ResponseEntity<RestResponse> list(@PathVariable @NonNull String name) {
         String agentId = RequestAuthorization.requireAgentId(name, sessionService, vault);
-        List<BackgroundTaskManager.TaskInfo> tasks = taskManager.list(agentId);
+        List<TaskInfo> tasks = taskManager.list(agentId);
         List<BackgroundTaskResponse> rows = new ArrayList<>(tasks.size());
-        for (BackgroundTaskManager.TaskInfo task : tasks) {
+        for (TaskInfo task : tasks) {
             rows.add(
                     toResponse(
                             task,
@@ -77,11 +78,7 @@ public class SessionTasksController {
     public @NonNull ResponseEntity<RestResponse> stopOrRemove(
             @PathVariable @NonNull String name, @PathVariable @NonNull String taskId) {
         String agentId = RequestAuthorization.requireAgentId(name, sessionService, vault);
-        boolean alive =
-                taskManager
-                        .status(agentId, taskId)
-                        .map(BackgroundTaskManager.TaskInfo::alive)
-                        .orElse(false);
+        boolean alive = taskManager.status(agentId, taskId).map(TaskInfo::alive).orElse(false);
         // Try the state-matching action; if the task flipped state meanwhile (exit landed between
         // the check and the action), the other action applies.
         Optional<TaskAction> result =
@@ -119,11 +116,10 @@ public class SessionTasksController {
                                                         Msg.get("error.task.notFound", taskId))));
     }
 
-    private record TaskAction(
-            @NonNull String status, BackgroundTaskManager.@NonNull TaskInfo task) {}
+    private record TaskAction(@NonNull String status, @NonNull TaskInfo task) {}
 
     private @NonNull BackgroundTaskResponse toResponse(
-            BackgroundTaskManager.@NonNull TaskInfo task, String recentOutput) {
+            @NonNull TaskInfo task, String recentOutput) {
         Instant finishedAt = task.finishedAt();
         long uptimeSeconds =
                 finishedAt != null

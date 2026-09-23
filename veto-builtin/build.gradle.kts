@@ -17,6 +17,9 @@ repositories {
 
 dependencies {
     api(project(":veto-api"))
+    implementation("org.jsoup:jsoup:1.18.3")
+    implementation("org.slf4j:slf4j-api:2.0.17")
+    implementation("com.fasterxml.jackson.datatype:jackson-datatype-jsr310:${rootProject.extra["jacksonVersion"]}")
     api("org.jspecify:jspecify:1.0.0")
     testImplementation("org.junit.jupiter:junit-jupiter:5.10.2")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.10.2")

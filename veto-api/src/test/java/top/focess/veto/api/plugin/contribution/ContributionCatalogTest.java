@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
@@ -254,7 +255,7 @@ class ContributionCatalogTest {
 
     @Test
     void toolsCannotReferenceAnUnregisteredCategory() {
-        var schema = new JsonValue.ObjectValue(java.util.Map.of());
+        var schema = new JsonValue.ObjectValue(Map.of());
         var tool =
                 new ToolContribution(
                         "Example",

@@ -2,6 +2,7 @@ package top.focess.veto.llm.config;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
@@ -35,7 +36,7 @@ class LenientStringListModuleTest {
         var value = mapper.readValue(json, ToolDocs.nonNullClass(Args.class));
         assertEquals(List.of("build"), value.commands().getFirst().args());
         assertThrows(
-                com.fasterxml.jackson.core.JsonProcessingException.class,
+                JsonProcessingException.class,
                 () -> mapper.readValue(json + " {}", ToolDocs.nonNullClass(Args.class)));
     }
 

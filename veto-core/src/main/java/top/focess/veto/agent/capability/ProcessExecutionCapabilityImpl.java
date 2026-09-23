@@ -5,11 +5,13 @@ import java.util.List;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.intercept.ToolExecutionPermit;
+import top.focess.veto.api.agent.capability.ProcessExecutionCapability;
 import top.focess.veto.api.agent.tool.ToolCapability;
+import top.focess.veto.api.process.ChainMode;
+import top.focess.veto.api.process.Command;
+import top.focess.veto.api.process.CommandResult;
+import top.focess.veto.api.process.TaskInfo;
 import top.focess.veto.sandbox.BackgroundTaskManager;
-import top.focess.veto.sandbox.ChainMode;
-import top.focess.veto.sandbox.Command;
-import top.focess.veto.sandbox.CommandResult;
 import top.focess.veto.sandbox.SandboxManager;
 import top.focess.veto.sandbox.SandboxProfile;
 
@@ -44,8 +46,7 @@ public final class ProcessExecutionCapabilityImpl implements ProcessExecutionCap
     }
 
     @Override
-    public BackgroundTaskManager.@NonNull TaskInfo start(
-            @NonNull Command command, int timeoutSeconds, boolean network) {
+    public @NonNull TaskInfo start(@NonNull Command command, int timeoutSeconds, boolean network) {
         var context = CapabilityAccess.require(ToolCapability.PROCESS_EXECUTION, "run_task");
         var permit = context.executionPermit();
         return taskManager.start(

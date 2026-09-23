@@ -8,9 +8,6 @@ import java.util.HashMap;
 import java.util.List;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
-import top.focess.veto.agent.tool.builtin.RunCommandTool;
-import top.focess.veto.agent.tool.builtin.RunTaskTool;
-import top.focess.veto.agent.tool.builtin.ViewTaskTool;
 import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.tool.ParamCategory;
 import top.focess.veto.api.agent.tool.Required;
@@ -21,9 +18,13 @@ import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.ToolErrorCode;
 import top.focess.veto.api.agent.tool.ToolExecutionException;
 import top.focess.veto.api.agent.tool.ToolSecurity;
+import top.focess.veto.api.interaction.Question;
+import top.focess.veto.builtin.memory.MemoryTools;
+import top.focess.veto.builtin.tools.RunCommandTool;
+import top.focess.veto.builtin.tools.RunTaskTool;
+import top.focess.veto.builtin.tools.ViewTaskTool;
 import top.focess.veto.builtin.workspace.DeletePathTool;
 import top.focess.veto.builtin.workspace.FindFilesTool;
-import top.focess.veto.memory.MemoryTools;
 
 /**
  * Validates {@link ToolSchemaCompiler#compileFromRecord}, in particular that nested record
@@ -36,7 +37,7 @@ class ToolSchemaCompilerTest {
         var schema =
                 ToolSchemaCompiler.compileFromRecord(
                         ToolDocs.nonNullClass(
-                                top.focess.veto.agent.tool.builtin.AskUserTool.Args.class));
+                                top.focess.veto.builtin.tools.AskUserTool.Args.class));
         var questions = schema.path("properties").path("questions");
         assertEquals(1, questions.path("minItems").asInt());
         assertEquals(10, questions.path("maxItems").asInt());
@@ -59,10 +60,7 @@ class ToolSchemaCompilerTest {
     @Test
     void advertisesQuestionTextConstraints() {
         var properties =
-                ToolSchemaCompiler.compileFromRecord(
-                                ToolDocs.nonNullClass(
-                                        top.focess.veto.agent.tool.builtin.AskUserTool.Question
-                                                .class))
+                ToolSchemaCompiler.compileFromRecord(ToolDocs.nonNullClass(Question.class))
                         .path("properties");
         assertEquals(12, properties.path("header").path("maxLength").asInt());
         assertEquals(1, properties.path("header").path("minLength").asInt());

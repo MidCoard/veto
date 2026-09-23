@@ -5,7 +5,6 @@ include(
     "veto-secret-protection",
     "veto-api",
     "veto-builtin",
-    "veto-web-search",
     "veto-plugin-runtime",
     "veto-core",
     "veto-terminal",

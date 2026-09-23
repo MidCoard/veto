@@ -3,6 +3,7 @@ package top.focess.veto.memory;
 import java.util.List;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.api.memory.MemoryTier;
 
 /**
  * A query against the {@link MemoryStore}. Carries the query text (to be embedded at search time),

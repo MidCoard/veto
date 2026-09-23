@@ -7,9 +7,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
-import top.focess.veto.agent.tool.builtin.SubmitPlanTool;
 import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.ToolExecutionException;
+import top.focess.veto.builtin.planning.SubmitPlanTool;
 
 class NativeToolArgumentValidatorTest {
     private final @NonNull ObjectMapper mapper = new ObjectMapper();

@@ -6,10 +6,21 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.*;
 import java.util.regex.Pattern;
 import org.junit.jupiter.api.Test;
-import top.focess.veto.agent.tool.ToolResult;
 import top.focess.veto.api.agent.tool.ToolDocs;
+import top.focess.veto.api.agent.tool.ToolResult;
 import top.focess.veto.api.agent.tool.ToolResultFormat;
 import top.focess.veto.api.agent.tool.ToolResultStatus;
+import top.focess.veto.api.agent.workflow.ActionsProgram;
+import top.focess.veto.api.agent.workflow.Check;
+import top.focess.veto.api.agent.workflow.ConditionalGotoAction;
+import top.focess.veto.api.agent.workflow.GenerateAction;
+import top.focess.veto.api.agent.workflow.GotoAction;
+import top.focess.veto.api.agent.workflow.Scope;
+import top.focess.veto.api.agent.workflow.StopAction;
+import top.focess.veto.api.agent.workflow.ToolAction;
+import top.focess.veto.builtin.planning.ActionsProgramParser;
+import top.focess.veto.builtin.planning.CheckEvaluator;
+import top.focess.veto.builtin.planning.ProgramValidator;
 import top.focess.veto.util.Nullness;
 
 class GuidedBindingsTest {
@@ -139,7 +150,7 @@ class GuidedBindingsTest {
                         "submit_plan",
                         json,
                         ToolDocs.nonNullClass(
-                                top.focess.veto.agent.tool.builtin.SubmitPlanTool.Args.class));
+                                top.focess.veto.builtin.planning.SubmitPlanTool.Args.class));
                 count++;
             }
         }

@@ -18,8 +18,11 @@ import top.focess.veto.agent.tool.ToolCallContextHolder;
 import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.ToolErrors;
 import top.focess.veto.api.agent.tool.ToolExecutionException;
+import top.focess.veto.api.group.DagNode;
+import top.focess.veto.api.group.NodeEdit;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
-import top.focess.veto.group.GroupOrchestrator.NodeEdit;
+import top.focess.veto.builtin.group.CollaborationTools;
+import top.focess.veto.builtin.group.DagTools;
 
 /** Tests for the Leader's execution-DAG node-authoring tools. */
 @SuppressWarnings("initialization.field.uninitialized")

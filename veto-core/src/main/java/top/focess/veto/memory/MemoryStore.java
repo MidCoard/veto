@@ -4,6 +4,9 @@ import java.util.List;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.TurnRecord;
+import top.focess.veto.api.memory.Memory;
+import top.focess.veto.api.memory.MemoryId;
+import top.focess.veto.api.memory.ScoredMemory;
 
 /**
  * The memory storage and query interface. All memory backends — pgvector, graph/entity,
@@ -45,5 +48,4 @@ public interface MemoryStore {
      * A search result: the memory + its similarity score (1.0 = identical embedding, 0.0 =
      * orthogonal).
      */
-    record ScoredMemory(@NonNull Memory memory, float score) {}
 }

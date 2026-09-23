@@ -4,8 +4,8 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
-import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeoutException;
@@ -41,6 +41,10 @@ import top.focess.veto.api.llm.LlmOptions;
 import top.focess.veto.api.llm.LlmSystemUsage;
 import top.focess.veto.api.llm.ToolDefinition;
 import top.focess.veto.api.llm.VetoRequest;
+import top.focess.veto.api.web.*;
+import top.focess.veto.api.web.Execution;
+import top.focess.veto.api.web.FetchedPage;
+import top.focess.veto.api.web.ReaderSession;
 import top.focess.veto.llm.config.LlmJacksonConfig;
 import top.focess.veto.llm.core.UniformLLMCaller;
 import top.focess.veto.memory.TurnLogService;
@@ -55,8 +59,6 @@ import top.focess.veto.vault.UserContext;
 public final class WebFetchExecutor {
     private static final @NonNull Logger log =
             LoggerFactory.getLogger("top.focess.veto.agent.web.WebFetchExecutor");
-    private static final int MAX_EVIDENCE = 8;
-    private static final int MAX_ANSWER_CHARS = 4000;
     private static final int PROVIDER_FRAMING_RESERVE = 2048;
     private static final @NonNull String SYSTEM =
             PromptCompiler.compileText("web-fetch-system-prompt");
@@ -102,22 +104,10 @@ public final class WebFetchExecutor {
         this.maxOutputTokens = maxOutputTokens;
     }
 
-    public record Execution(
-            @NonNull String id,
-            @NonNull String model,
-            long durationMs,
-            int modelCalls,
-            long promptTokens,
-            long completionTokens) {}
-
-    public record Result(
-            @NonNull String outcome,
-            @NonNull String answer,
-            @NonNull List<WebReadDocument.@NonNull Evidence> evidence,
-            @NonNull List<@NonNull String> limitations,
-            @NonNull Execution execution) {}
-
-    public @NonNull String read(@NonNull String objective, @NonNull WebReadCapability access) {
+    public @NonNull String read(
+            @NonNull String objective,
+            @NonNull WebReadCapability access,
+            ReaderSession.@NonNull Factory factory) {
         var parent = CapabilityAccess.require(ToolCapability.NETWORK_EGRESS, "web_fetch");
         String owner = parent.owner();
         UUID sessionId = parent.sessionId();
@@ -125,10 +115,6 @@ public final class WebFetchExecutor {
             return ToolErrors.refused(
                     ToolErrorCode.READER.READER_IDENTITY,
                     "Reader identity: an authenticated session owner is required.");
-        if (objective.length() > MAX_ANSWER_CHARS)
-            return ToolErrors.failure(
-                    ToolErrorCode.VALIDATION.INVALID_ARGUMENTS,
-                    "Invalid arguments: the reading objective exceeds 4000 characters.");
         var model = resolveModel(owner, tier);
         long start = System.nanoTime();
         long deadline = start + Duration.ofSeconds(timeoutSeconds).toNanos();
@@ -137,30 +123,41 @@ public final class WebFetchExecutor {
         AtomicLong input = new AtomicLong();
         AtomicLong output = new AtomicLong();
         access.bindReader(id);
-        try (WebReadSession document =
-                new WebReadSession(
-                        mapper,
-                        access,
-                        id,
-                        parent,
-                        sessionId,
-                        deadline,
-                        () ->
-                                new Execution(
+        try (ReaderSession document =
+                factory.open(
+                        new ReaderSession.Runtime() {
+                            public void authorize(@NonNull String operation) {
+                                checkDeadline(deadline);
+                                var context =
+                                        CapabilityAccess.require(
+                                                ToolCapability.NETWORK_EGRESS, operation);
+                                if (!id.equals(context.agentId())
+                                        || !parent.userId().equals(context.userId())
+                                        || !Objects.equals(parent.owner(), context.owner())
+                                        || !sessionId.equals(context.sessionId()))
+                                    throw new SecurityException(
+                                            "This document belongs to another reader invocation");
+                            }
+
+                            public @NonNull FetchedPage fetch() {
+                                return access.fetch(deadline);
+                            }
+
+                            public @NonNull Execution execution() {
+                                return new Execution(
                                         id,
                                         model.model(),
                                         Duration.ofNanos(System.nanoTime() - start).toMillis(),
                                         calls.get(),
                                         input.get(),
-                                        output.get()))) {
-            var engine =
-                    ToolEngineImpl.isolated(
-                            mapper,
-                            List.of(
-                                    new FetchPageTool(document),
-                                    new ReadSectionsTool(document),
-                                    new FindSectionsTool(document),
-                                    new FinishReadTool(document)));
+                                        output.get());
+                            }
+
+                            public void completed() {
+                                ToolCallContextHolder.registerReaderExecution(UUID.fromString(id));
+                            }
+                        })) {
+            var engine = ToolEngineImpl.isolated(mapper, document.tools());
             var persona =
                     new AgentPersona(
                             id,
@@ -383,54 +380,5 @@ public final class WebFetchExecutor {
                     ToolErrorCode.READER.READER_OUTPUT,
                     "Reader output: the reader result could not be encoded.");
         }
-    }
-
-    static @NonNull Result finish(
-            FinishReadTool.@NonNull Args value,
-            @NonNull WebReadDocument document,
-            @NonNull Execution execution) {
-        List<String> errors = new ArrayList<>();
-        if (!List.of("complete", "partial", "not_found").contains(value.outcome()))
-            errors.add("outcome must be complete, partial, or not_found.");
-        if (value.answer().isBlank()) errors.add("answer must be nonblank.");
-        if (value.answer().length() > MAX_ANSWER_CHARS)
-            errors.add(
-                    "answer exceeds 4000 characters (received " + value.answer().length() + ").");
-        if (value.evidenceIds().size() > MAX_EVIDENCE)
-            errors.add(
-                    "evidenceIds must contain at most 8 IDs (received "
-                            + value.evidenceIds().size()
-                            + ").");
-        if (value.limitations().size() > 8)
-            errors.add(
-                    "limitations must contain at most 8 entries (received "
-                            + value.limitations().size()
-                            + ").");
-        if (value.limitations().stream().anyMatch(s -> s.length() > 500))
-            errors.add("Each limitations entry must be at most 500 characters.");
-        if (!errors.isEmpty())
-            return ToolErrors.failure(
-                    ToolErrorCode.VALIDATION.INVALID_ARGUMENTS,
-                    "Invalid arguments: "
-                            + String.join(" ", errors)
-                            + " Correct all listed fields together. Choose supporting evidence and keep the answer within its scope; exact quotations are attached from evidenceIds. Combine related limitations.");
-        var evidence = value.evidenceIds().stream().distinct().map(document::evidence).toList();
-        if (value.outcome().equals("complete") && evidence.isEmpty())
-            return ToolErrors.failure(
-                    ToolErrorCode.VALIDATION.INVALID_ARGUMENTS,
-                    "Invalid arguments: complete answers need read evidence.");
-        String outcome = value.outcome();
-        List<String> limitations = new ArrayList<>(value.limitations());
-        if (outcome.equals("not_found") && !document.fullyRead()) {
-            outcome = "partial";
-            limitations.add(
-                    "Information was not found in the inspected sections; coverage is incomplete.");
-        }
-        if (document.truncated()) {
-            outcome = "partial";
-            limitations.add(
-                    "The retrieved document was truncated; relevant information may be missing.");
-        }
-        return new Result(outcome, value.answer(), evidence, limitations, execution);
     }
 }

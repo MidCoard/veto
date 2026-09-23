@@ -9,6 +9,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.function.Predicate;
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.api.group.DagNode;
 
 /**
  * The plan for a group's work: an ordered list of {@link DagNode}s with explicit dependencies. The

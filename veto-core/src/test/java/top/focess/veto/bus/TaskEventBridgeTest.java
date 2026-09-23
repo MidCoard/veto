@@ -11,6 +11,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.agent.SessionAgentRegistry;
+import top.focess.veto.api.process.TaskInfo;
 import top.focess.veto.group.GroupRegistry;
 import top.focess.veto.model.SessionEntity;
 import top.focess.veto.model.SessionRepository;
@@ -37,7 +38,7 @@ class TaskEventBridgeTest {
         UUID instance = UUID.randomUUID();
         Instant start = Instant.now();
         var running =
-                new BackgroundTaskManager.TaskInfo(
+                new TaskInfo(
                         "bg-1",
                         "agent",
                         "work",
@@ -51,7 +52,7 @@ class TaskEventBridgeTest {
                         instance,
                         "origin");
         var exited =
-                new BackgroundTaskManager.TaskInfo(
+                new TaskInfo(
                         "bg-1",
                         "agent",
                         "work",
@@ -100,7 +101,7 @@ class TaskEventBridgeTest {
                 .thenReturn(Optional.empty());
         var bridge = new TaskEventBridge(tasks, broker, sessions, monitor);
         var exited =
-                new BackgroundTaskManager.TaskInfo(
+                new TaskInfo(
                         "bg-1",
                         "agent",
                         "work",

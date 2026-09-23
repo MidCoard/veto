@@ -3,9 +3,10 @@ package top.focess.veto.agent.capability;
 import java.util.Optional;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
-import top.focess.veto.agent.skills.Skill;
 import top.focess.veto.agent.skills.SkillRegistry;
+import top.focess.veto.api.agent.capability.SkillReadCapability;
 import top.focess.veto.api.agent.tool.ToolCapability;
+import top.focess.veto.api.skills.Skill;
 
 @Component
 public final class SkillReadCapabilityImpl implements SkillReadCapability {

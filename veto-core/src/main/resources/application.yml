@@ -85,7 +85,35 @@ veto:
 
   plugins:
     tool-names:
+      "[top.focess.builtin:post_message]": post_message
+      "[top.focess.builtin:remove_node]": remove_node
+      "[top.focess.builtin:run_command]": run_command
+      "[top.focess.builtin:run_task]": run_task
+      "[top.focess.builtin:view_task]": view_task
+      "[top.focess.builtin:input_task]": input_task
+      "[top.focess.builtin:stop_task]": stop_task
+      "[top.focess.builtin:load_skill]": load_skill
+      "[top.focess.builtin:ask_user]": ask_user
+      "[top.focess.builtin:read_github_repository]": read_github_repository
+      "[top.focess.builtin:web_search]": web_search
+      "[top.focess.builtin:web_fetch]": web_fetch
+      "[top.focess.builtin:disband_group]": disband_group
+      "[top.focess.builtin:inspect_group]": inspect_group
+      "[top.focess.builtin:create_mate]": create_mate
+      "[top.focess.builtin:create_task]": create_task
+      "[top.focess.builtin:cancel_group_task]": cancel_group_task
+      "[top.focess.builtin:remove_mate]": remove_mate
+      "[top.focess.builtin:recall_memory]": recall_memory
+      "[top.focess.builtin:write_memory]": write_memory
+      "[top.focess.builtin:forget_memory]": forget_memory
+      "[top.focess.builtin:create_monitor]": create_monitor
+      "[top.focess.builtin:inspect_monitor]": inspect_monitor
+      "[top.focess.builtin:pause_monitor]": pause_monitor
+      "[top.focess.builtin:resume_monitor]": resume_monitor
+      "[top.focess.builtin:cancel_monitor]": cancel_monitor
       "[top.focess.builtin:create_group]": create_group
+      "[top.focess.builtin:submit_plan]": submit_plan
+      "[top.focess.builtin:answer_with_citations]": answer_with_citations
       "[top.focess.builtin:view_file]": view_file
       "[top.focess.builtin:list_dir]": list_dir
       "[top.focess.builtin:find_files]": find_files
@@ -95,7 +123,7 @@ veto:
       "[top.focess.builtin:move_path]": move_path
       "[top.focess.builtin:delete_path]": delete_path
     configuration:
-      "[top.focess.web-search]":
+      "[top.focess.builtin]":
         brave-api-key: ${veto.websearch.brave.api-key:}
 
   websearch:

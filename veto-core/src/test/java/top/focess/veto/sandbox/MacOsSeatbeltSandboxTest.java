@@ -16,6 +16,9 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledOnOs;
 import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
+import top.focess.veto.api.process.ChainMode;
+import top.focess.veto.api.process.Command;
+import top.focess.veto.api.process.CommandResult;
 
 class MacOsSeatbeltSandboxTest {
 

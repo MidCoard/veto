@@ -15,10 +15,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import top.focess.veto.agent.AgentService;
 import top.focess.veto.agent.drift.ReadHistory;
-import top.focess.veto.agent.loop.ActionsProgram;
 import top.focess.veto.agent.loop.PromptCompiler;
-import top.focess.veto.agent.loop.Scope;
-import top.focess.veto.agent.loop.ToolAction;
 import top.focess.veto.agent.screening.DangerComputation;
 import top.focess.veto.agent.screening.DeployerPolicy;
 import top.focess.veto.agent.screening.ProtectedSet;
@@ -32,10 +29,14 @@ import top.focess.veto.agent.tool.NativeToolArgumentValidator;
 import top.focess.veto.agent.tool.NativeToolDefinition;
 import top.focess.veto.agent.tool.ToolDefinition;
 import top.focess.veto.agent.tool.ToolEngine;
-import top.focess.veto.agent.tool.ToolSchemaReferences;
 import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.tool.ToolCapability;
+import top.focess.veto.api.agent.tool.ToolSchemaReferences;
+import top.focess.veto.api.agent.workflow.ActionsProgram;
+import top.focess.veto.api.agent.workflow.GuidedStepContext;
+import top.focess.veto.api.agent.workflow.Scope;
+import top.focess.veto.api.agent.workflow.ToolAction;
 import top.focess.veto.api.llm.ToolCall;
 
 /**

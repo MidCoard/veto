@@ -23,10 +23,10 @@ import top.focess.veto.agent.tool.CapabilityTestCalls;
 import top.focess.veto.agent.tool.ToolContractValidator;
 import top.focess.veto.agent.tool.ToolSchemaCompiler;
 import top.focess.veto.agent.web.WebFetchExecutor;
-import top.focess.veto.agent.web.WebFetchTool;
 import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.ToolExecutionException;
 import top.focess.veto.api.search.SearchProvider;
+import top.focess.veto.builtin.web.WebFetchTool;
 
 class NetworkWebReadCapabilityTest {
     private final @NonNull WebFetchExecutor reader =
@@ -283,7 +283,7 @@ class NetworkWebReadCapabilityTest {
 
     private @NonNull WebFetchTool tool(
             @NonNull NetworkEgressCapabilityImpl network, @NonNull Answer<String> action) {
-        when(reader.read(anyString(), any(ToolDocs.nonNullClass(WebReadCapability.class))))
+        when(reader.read(anyString(), any(ToolDocs.nonNullClass(WebReadCapability.class)), any()))
                 .thenAnswer(action);
         return new WebFetchTool(network);
     }

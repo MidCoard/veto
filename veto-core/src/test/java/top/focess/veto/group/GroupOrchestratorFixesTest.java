@@ -11,6 +11,8 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
+import top.focess.veto.api.group.DagNode;
+import top.focess.veto.api.group.GroupState;
 
 /**
  * Regression tests for the F1+F2+F4+F11+F13 batch of fixes in {@link GroupOrchestrator} and {@link
@@ -146,7 +148,7 @@ class GroupOrchestratorFixesTest {
                         "F4: group must still exist in registry after concurrent ticks");
         assertEquals(1, finalG.dag().nodes().size());
         assertEquals(
-                Group.GroupState.COMPLETED,
+                GroupState.COMPLETED,
                 finalG.state(),
                 "F4: group must be COMPLETED after the ACCEPT was processed");
         assertEquals(
@@ -155,10 +157,7 @@ class GroupOrchestratorFixesTest {
                 "F4: n1 must be VERIFIED — not RUNNING (a re-dispatch would race the lock)");
         // A follow-up tick on the COMPLETED group must be a no-op (early return).
         Group after = requireGroup(orch.tick(groupId), "F4: post-DISBAND tick must return group");
-        assertEquals(
-                Group.GroupState.COMPLETED,
-                after.state(),
-                "F4: post-COMPLETE tick must be a no-op");
+        assertEquals(GroupState.COMPLETED, after.state(), "F4: post-COMPLETE tick must be a no-op");
     }
 
     @Test
@@ -181,7 +180,7 @@ class GroupOrchestratorFixesTest {
         orch.tick(groupId);
         Group ticked = requireGroup(registry.get(groupId), "F11: group must remain registered");
         assertEquals(
-                Group.GroupState.ACTIVE,
+                GroupState.ACTIVE,
                 ticked.state(),
                 "F11: empty-DAG group must stay ACTIVE (Leader hasn't authored yet)");
     }

@@ -5,15 +5,19 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Service;
 import top.focess.veto.agent.tool.LocalToolDefinition;
-import top.focess.veto.agent.tool.ResponseSubmission;
+import top.focess.veto.agent.tool.ResponseSubmissions;
 import top.focess.veto.agent.tool.ToolDefinition;
-import top.focess.veto.agent.tool.builtin.PlanProgramSchema;
+import top.focess.veto.api.agent.tool.ContextualInputSchemaSource;
+import top.focess.veto.api.agent.tool.ResponseSubmission;
+import top.focess.veto.api.agent.tool.ToolDocs;
+import top.focess.veto.api.agent.tool.ToolInputSchema;
 
 /** Produces native tool definitions from the runtime capability manifest. */
 @Service
@@ -25,15 +29,9 @@ public class VetoCapabilityTranslator implements CapabilityTranslator {
     public @NonNull List<top.focess.veto.api.llm.ToolDefinition> translateTools(
             List<ToolDefinition> manifest) {
         List<top.focess.veto.api.llm.ToolDefinition> flat = new ArrayList<>();
-        List<top.focess.veto.api.llm.ToolDefinition> planTools = new ArrayList<>();
+        var submissions = new HashMap<String, ResponseSubmission.Kind>();
         var javaRecordTools = new HashSet<String>();
         if (manifest == null) return flat;
-        boolean citationsAvailable =
-                manifest.stream()
-                        .anyMatch(
-                                def ->
-                                        ResponseSubmission.Metadata.kindOf(def)
-                                                == ResponseSubmission.Kind.ANSWER);
         for (ToolDefinition def : manifest) {
             Map<String, Object> inputSchema = inputSchemaOf(def);
             var translated =
@@ -46,14 +44,25 @@ public class VetoCapabilityTranslator implements CapabilityTranslator {
                             def.returnExamples(),
                             def.resultFormats());
             flat.add(translated);
-            if (ResponseSubmission.Metadata.kindOf(def) == null) planTools.add(translated);
+            var kind = ResponseSubmissions.kindOf(def);
+            if (kind != null) submissions.put(def.name(), kind);
             if (def instanceof LocalToolDefinition) javaRecordTools.add(def.name());
         }
-        // Plan steps execute only capabilities in this request's manifest. Binding here keeps
-        // the native schema and the prompt catalogue on the same session-specific contract.
+        var context = new ContextualInputSchemaSource.Context(flat, javaRecordTools, submissions);
         for (int i = 0; i < manifest.size(); i++) {
-            if (ResponseSubmission.Metadata.kindOf(manifest.get(i)) != ResponseSubmission.Kind.PLAN)
-                continue;
+            if (!(manifest.get(i) instanceof LocalToolDefinition local)) continue;
+            var annotation =
+                    local.argsClass().getAnnotation(ToolDocs.nonNullClass(ToolInputSchema.class));
+            if (annotation == null) continue;
+            ContextualInputSchemaSource schemaSource;
+            try {
+                var source = annotation.value().getDeclaredConstructor().newInstance();
+                if (!(source instanceof ContextualInputSchemaSource contextual)) continue;
+                schemaSource = contextual;
+            } catch (ReflectiveOperationException error) {
+                throw new IllegalArgumentException(
+                        "Cannot construct contextual tool schema", error);
+            }
             var plan = flat.get(i);
             flat.set(
                     i,
@@ -61,8 +70,7 @@ public class VetoCapabilityTranslator implements CapabilityTranslator {
                             plan.name(),
                             plan.description(),
                             MAPPER.convertValue(
-                                    PlanProgramSchema.create(
-                                            planTools, javaRecordTools, citationsAvailable),
+                                    schemaSource.schema(context),
                                     new TypeReference<Map<String, Object>>() {}),
                             plan.examples(),
                             plan.documentation(),

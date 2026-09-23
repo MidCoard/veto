@@ -5,11 +5,11 @@ import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.identity.Role;
 import top.focess.veto.agent.screening.DeployerPolicy;
-import top.focess.veto.agent.skills.Skill;
 import top.focess.veto.agent.workspace.PathMode;
 import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.api.llm.ToolDefinition;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
+import top.focess.veto.api.skills.Skill;
 
 /** Fragment fixtures exercise production MDC sources, without a second renderer. */
 final class PromptBlocks {

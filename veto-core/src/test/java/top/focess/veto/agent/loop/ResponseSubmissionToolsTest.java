@@ -8,9 +8,16 @@ import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.agent.capability.LoopControlCapabilityImpl;
 import top.focess.veto.agent.tool.*;
+import top.focess.veto.agent.tool.ResponseSubmissions;
 import top.focess.veto.agent.tool.builtin.*;
+import top.focess.veto.api.agent.tool.ResponseSubmission;
 import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.ToolExecutionException;
+import top.focess.veto.api.agent.workflow.ActionsProgram;
+import top.focess.veto.api.agent.workflow.ResponseRequest;
+import top.focess.veto.builtin.planning.AnswerWithCitationsTool;
+import top.focess.veto.builtin.planning.GuidedProgram;
+import top.focess.veto.builtin.planning.SubmitPlanTool;
 
 class ResponseSubmissionToolsTest {
     private final @NonNull ObjectMapper mapper = new ObjectMapper();
@@ -25,7 +32,7 @@ class ResponseSubmissionToolsTest {
                         tool.getArgsClass(),
                         tool.getCapability());
         assertEquals(List.of(definition), PromptCompiler.availableTools(List.of(definition), true));
-        assertEquals(ResponseSubmission.Kind.PLAN, ResponseSubmission.Metadata.kindOf(definition));
+        assertEquals(ResponseSubmission.Kind.PLAN, ResponseSubmissions.kindOf(definition));
     }
 
     @Test
@@ -78,7 +85,12 @@ class ResponseSubmissionToolsTest {
         var capability = new LoopControlCapabilityImpl();
         assertThrows(
                 ToolDocs.nonNullClass(SecurityException.class),
-                () -> capability.submitPlan(mapper.createArrayNode()));
+                () ->
+                        capability.submitPlan(
+                                new ResponseRequest.Plan(
+                                        mapper.createArrayNode(),
+                                        new ActionsProgram(List.of()),
+                                        new GuidedProgram(mapper))));
         assertThrows(
                 ToolDocs.nonNullClass(SecurityException.class),
                 () ->

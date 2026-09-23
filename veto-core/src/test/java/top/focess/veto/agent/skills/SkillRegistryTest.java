@@ -8,6 +8,8 @@ import java.nio.file.Path;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import top.focess.veto.api.skills.Skill;
+import top.focess.veto.api.skills.SkillSourceType;
 
 class SkillRegistryTest {
 

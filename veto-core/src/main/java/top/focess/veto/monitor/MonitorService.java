@@ -21,8 +21,10 @@ import org.springframework.context.annotation.Lazy;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import top.focess.veto.agent.SessionAgentRegistry;
+import top.focess.veto.api.group.DagNode;
+import top.focess.veto.api.group.GroupState;
+import top.focess.veto.api.process.TaskInfo;
 import top.focess.veto.bus.SessionInvalidations;
-import top.focess.veto.group.DagNode;
 import top.focess.veto.group.Group;
 import top.focess.veto.group.GroupRegistry;
 import top.focess.veto.monitor.MonitorRecord.ActivationState;
@@ -299,10 +301,7 @@ public class MonitorService {
 
     public boolean hasGroupWork(@NonNull String agentId, String requestId) {
         return groups.snapshot().values().stream()
-                .filter(
-                        g ->
-                                g.leaderId().equals(agentId)
-                                        && g.state() != Group.GroupState.DISBANDED)
+                .filter(g -> g.leaderId().equals(agentId) && g.state() != GroupState.DISBANDED)
                 .anyMatch(g -> g.dag().hasUnfinishedWork(requestId));
     }
 
@@ -376,7 +375,7 @@ public class MonitorService {
     /** Process identity includes its instance UUID, so restarted task counters cannot collide. */
     public synchronized void observeProcess(
             @NonNull String owner,
-            BackgroundTaskManager.@NonNull TaskInfo info,
+            @NonNull TaskInfo info,
             BackgroundTaskManager.@NonNull ExitCause cause) {
         if (terminatedAgents.contains(info.agentId())) return;
         UUID session = info.sessionId();
@@ -432,7 +431,7 @@ public class MonitorService {
         UUID session = group.sessionId();
         String owner = group.owner();
         if (session == null || owner == null) return;
-        if (group.state() == Group.GroupState.RECOVERING) return;
+        if (group.state() == GroupState.RECOVERING) return;
         String id = "group:" + group.groupId();
         MonitorRecord r = records.get(id);
         if (r == null)
@@ -451,7 +450,7 @@ public class MonitorService {
                             List.of(),
                             Instant.now());
         if (r.state().equals("CANCELLED")) return;
-        if (group.state() == Group.GroupState.DISBANDED) {
+        if (group.state() == GroupState.DISBANDED) {
             save(r.update("CANCELLED", r.seen(), List.of()));
             return;
         }

@@ -187,9 +187,7 @@ class CompactionSupportTest {
 
     @Test
     void compactionInstructionsDoNotTreatSourceRecordsAsAssignments() {
-        var prompt =
-                PromptLibrary.message(
-                        "runtime-compaction", java.util.Map.of("index", 1, "count", 2));
+        var prompt = PromptLibrary.message("runtime-compaction", Map.of("index", 1, "count", 2));
         assertEquals("system", prompt.role());
         assertTrue(prompt.content().contains("not new user permission"));
         assertTrue(prompt.content().contains("cancelled work is not pending"));

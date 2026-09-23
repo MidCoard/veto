@@ -16,8 +16,6 @@ import org.junit.jupiter.params.provider.CsvSource;
 import top.focess.veto.agent.tool.AgentToolDefinition;
 import top.focess.veto.agent.tool.RemoteToolDefinition;
 import top.focess.veto.agent.tool.ToolSchemaCompiler;
-import top.focess.veto.agent.tool.builtin.AskUserTool;
-import top.focess.veto.agent.tool.builtin.SubmitPlanTool;
 import top.focess.veto.agent.translation.VetoCapabilityTranslator;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.agent.tool.ToolDocs;
@@ -30,6 +28,8 @@ import top.focess.veto.api.llm.ResolvedRequest;
 import top.focess.veto.api.llm.ToolDefinition;
 import top.focess.veto.api.llm.VetoRequest;
 import top.focess.veto.api.llm.exceptions.ModelSchemaException;
+import top.focess.veto.builtin.planning.SubmitPlanTool;
+import top.focess.veto.builtin.tools.AskUserTool;
 import top.focess.veto.llm.core.*;
 
 /** Verifies real SDK serialization and native response decoding without a remote model or key. */

@@ -14,10 +14,10 @@ import org.junit.jupiter.api.Test;
 import top.focess.veto.agent.tool.AgentToolDefinition;
 import top.focess.veto.agent.tool.ToolDefinition;
 import top.focess.veto.agent.tool.ToolEngine;
-import top.focess.veto.agent.tool.ToolResult;
 import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.agent.tool.ToolDocs;
+import top.focess.veto.api.agent.tool.ToolResult;
 import top.focess.veto.api.llm.ToolCall;
 
 class RoleToolFilterTest {

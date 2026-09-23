@@ -17,6 +17,9 @@ import top.focess.veto.agent.SessionAgentRegistry;
 import top.focess.veto.agent.VetoAgent;
 import top.focess.veto.agent.identity.RoleToolFilter;
 import top.focess.veto.agent.workspace.Workspace;
+import top.focess.veto.api.group.DagNode;
+import top.focess.veto.api.group.GroupState;
+import top.focess.veto.api.group.NodeEdit;
 import top.focess.veto.api.llm.LlmOptions;
 import top.focess.veto.api.llm.ProviderType;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
@@ -102,10 +105,10 @@ class GroupRecoveryServiceTest {
                 .when(spawner)
                 .restoreMates(any(), any(), any());
         assertThrows(IllegalStateException.class, this::activate);
-        assertEquals(Group.GroupState.RECOVERING, Nullness.requireNonNull(groups.get(id)).state());
+        assertEquals(GroupState.RECOVERING, Nullness.requireNonNull(groups.get(id)).state());
         var orchestrator = new GroupOrchestrator(groups, new Blackboard());
         assertInstanceOf(
-                Nullness.requireNonNull(GroupOrchestrator.NodeEdit.Rejected.class),
+                Nullness.requireNonNull(NodeEdit.Rejected.class),
                 orchestrator.addNode(id, "premature", "work", "review", Set.of(), "mate", false));
         assertThrows(
                 IllegalStateException.class,
@@ -113,7 +116,7 @@ class GroupRecoveryServiceTest {
         verify(leader, never()).restoreLeader(any(), any(), any());
         activate();
         Group restored = Nullness.requireNonNull(groups.get(id));
-        assertEquals(Group.GroupState.ACTIVE, restored.state());
+        assertEquals(GroupState.ACTIVE, restored.state());
         assertEquals(saved.mates(), restored.mates());
         assertEquals(1, groups.snapshot().size());
         activate();

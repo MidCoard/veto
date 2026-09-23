@@ -11,6 +11,9 @@ import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import top.focess.veto.api.process.ChainMode;
+import top.focess.veto.api.process.Command;
+import top.focess.veto.api.process.CommandResult;
 
 /**
  * The wall-clock cap must actually bound the blocking wait. Regression anchor: a {@code dir /b /s}

@@ -12,6 +12,8 @@ import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.TurnRecord;
 import top.focess.veto.agent.TurnType;
 import top.focess.veto.api.agent.tool.ToolResultStatus;
+import top.focess.veto.api.agent.workflow.PlanExecution;
+import top.focess.veto.api.agent.workflow.ResponseRequest;
 import top.focess.veto.api.llm.ChatMessage;
 import top.focess.veto.api.llm.ProviderMessages;
 import top.focess.veto.api.llm.VetoRequest;
@@ -31,7 +33,8 @@ public final class MessageCitations {
             @NonNull String provider,
             @NonNull String model,
             int messageCount,
-            @NonNull List<@NonNull Check> checks) {}
+            @NonNull List<@NonNull Check> checks)
+            implements PlanExecution.Source {}
 
     /**
      * Locate exact evidence in the same request that produced the call, without model-side

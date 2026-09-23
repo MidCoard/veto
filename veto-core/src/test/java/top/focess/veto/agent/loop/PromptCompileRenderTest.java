@@ -19,7 +19,6 @@ import top.focess.veto.agent.identity.SystemPromptResolver;
 import top.focess.veto.agent.screening.DeployerPolicy;
 import top.focess.veto.agent.tool.AgentToolDefinition;
 import top.focess.veto.agent.tool.ToolSchemaCompiler;
-import top.focess.veto.agent.tool.builtin.RunCommandTool;
 import top.focess.veto.agent.translation.VetoCapabilityTranslator;
 import top.focess.veto.agent.workspace.PathMode;
 import top.focess.veto.agent.workspace.Workspace;
@@ -29,8 +28,9 @@ import top.focess.veto.api.agent.tool.ToolDocumentation;
 import top.focess.veto.api.agent.tool.ToolResultFormat;
 import top.focess.veto.api.llm.ToolDefinition;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
+import top.focess.veto.builtin.memory.MemoryTools;
+import top.focess.veto.builtin.tools.RunCommandTool;
 import top.focess.veto.builtin.workspace.GrepSearchTool;
-import top.focess.veto.memory.MemoryTools;
 
 /**
  * Renders the compiled system prompt for sample personas (STANDALONE/LEADER/MATE across deployer

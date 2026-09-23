@@ -12,6 +12,10 @@ import org.jspecify.annotations.NonNull;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.TurnRecord;
+import top.focess.veto.api.memory.Memory;
+import top.focess.veto.api.memory.MemoryId;
+import top.focess.veto.api.memory.MemoryTier;
+import top.focess.veto.api.memory.ScoredMemory;
 import top.focess.veto.memory.embedder.Embedder;
 
 /**

@@ -4,13 +4,14 @@ import java.util.Objects;
 import java.util.function.LongFunction;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.tool.ToolCallContext;
-import top.focess.veto.agent.web.FetchedPage;
 import top.focess.veto.agent.web.WebFetchExecutor;
-import top.focess.veto.api.agent.capability.Capability;
 import top.focess.veto.api.agent.tool.ToolCapability;
+import top.focess.veto.api.web.FetchedPage;
+import top.focess.veto.api.web.ReaderSession;
 
 /** Invocation-local authority to fetch one approved document. No arbitrary URL operation exists. */
-public final class WebReadCapability implements Capability, AutoCloseable {
+public final class WebReadCapability
+        implements top.focess.veto.api.agent.capability.WebReadCapability {
     private final @NonNull LongFunction<@NonNull FetchedPage> fetch;
     private final @NonNull ToolCallContext parent;
     private final @NonNull WebFetchExecutor reader;
@@ -27,10 +28,10 @@ public final class WebReadCapability implements Capability, AutoCloseable {
         this.reader = reader;
     }
 
-    public @NonNull String read(@NonNull String objective) {
+    public @NonNull String read(@NonNull String objective, ReaderSession.@NonNull Factory factory) {
         if (closed) throw new SecurityException("Reader invocation has ended.");
         authorizeParent();
-        return reader.read(objective, this);
+        return reader.read(objective, this, factory);
     }
 
     /** Binds the approved destination to one child without transferring the parent's permit. */

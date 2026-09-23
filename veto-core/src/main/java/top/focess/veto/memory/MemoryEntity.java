@@ -8,6 +8,9 @@ import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.api.memory.Memory;
+import top.focess.veto.api.memory.MemoryId;
+import top.focess.veto.api.memory.MemoryTier;
 import top.focess.veto.util.Nullness;
 
 /**

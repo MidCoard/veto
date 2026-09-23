@@ -20,6 +20,7 @@ import top.focess.veto.agent.Agent;
 import top.focess.veto.agent.AgentResult;
 import top.focess.veto.agent.identity.AgentPersona;
 import top.focess.veto.agent.loop.PromptCompiler;
+import top.focess.veto.api.group.DagNode;
 
 /**
  * LLM-backed Leader that wraps an {@link Agent}. It authors the DAG, assigns Mates, reasons over

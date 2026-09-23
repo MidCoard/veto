@@ -11,6 +11,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.time.Duration;
 import java.util.*;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -31,12 +32,14 @@ import top.focess.veto.agent.web.*;
 import top.focess.veto.agent.workspace.*;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.agent.tool.ToolDocs;
+import top.focess.veto.api.agent.tool.ToolResult;
 import top.focess.veto.api.llm.LlmOptions;
 import top.focess.veto.api.llm.ProviderType;
 import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.api.llm.VetoResponse;
 import top.focess.veto.api.search.SearchProvider;
+import top.focess.veto.builtin.tools.ReadGitHubRepositoryTool;
 import top.focess.veto.llm.core.*;
 import top.focess.veto.plugin.runtime.PluginConfigurations;
 import top.focess.veto.plugin.runtime.PluginLifecycleEvents;
@@ -116,7 +119,7 @@ class CredentialJourneyTest {
                 .thenReturn(
                         Map.of(
                                 "submit_plan",
-                                new top.focess.veto.agent.tool.builtin.SubmitPlanTool(
+                                new top.focess.veto.builtin.planning.SubmitPlanTool(
                                         new top.focess.veto.agent.capability
                                                 .LoopControlCapabilityImpl())));
         when(toolContext.getBeansOfType(PluginManager.class))
@@ -166,7 +169,7 @@ class CredentialJourneyTest {
                                     java.util.List.of(
                                             new ToolCall(
                                                     "submit_plan",
-                                                    java.util.Map.of(
+                                                    Map.of(
                                                             "actions",
                                                             mapper.readTree(
                                                                     program.replace(

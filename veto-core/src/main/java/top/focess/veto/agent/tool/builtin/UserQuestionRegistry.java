@@ -8,6 +8,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import org.jspecify.annotations.NonNull;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import top.focess.veto.api.interaction.AnswerBatch;
+import top.focess.veto.api.interaction.Question;
 import top.focess.veto.bus.SessionInvalidations;
 
 /** In-memory rendezvous between ask_user tool calls and authenticated UI responses. */
@@ -23,15 +25,13 @@ public final class UserQuestionRegistry {
     private final @NonNull ConcurrentHashMap<Key, Pending> pending = new ConcurrentHashMap<>();
 
     public @NonNull CompletableFuture<AnswerBatch> register(
-            @NonNull String agentId,
-            @NonNull String callId,
-            @NonNull List<AskUserTool.Question> questions) {
+            @NonNull String agentId, @NonNull String callId, @NonNull List<Question> questions) {
         CompletableFuture<AnswerBatch> future = new CompletableFuture<>();
-        List<AskUserTool.Question> snapshot =
+        List<Question> snapshot =
                 questions.stream()
                         .map(
                                 question ->
-                                        new AskUserTool.Question(
+                                        new Question(
                                                 question.header(),
                                                 question.id(),
                                                 question.question(),
@@ -50,8 +50,7 @@ public final class UserQuestionRegistry {
         return future;
     }
 
-    public record PendingQuestionBatch(
-            @NonNull String callId, @NonNull List<AskUserTool.Question> questions) {
+    public record PendingQuestionBatch(@NonNull String callId, @NonNull List<Question> questions) {
         public PendingQuestionBatch {
             questions = List.copyOf(questions);
         }
@@ -80,10 +79,10 @@ public final class UserQuestionRegistry {
     }
 
     private static boolean validAnswers(
-            @NonNull List<AskUserTool.Question> questions,
+            @NonNull List<Question> questions,
             @NonNull Map<@NonNull String, @NonNull String> answers) {
         if (answers.size() != questions.size()) return false;
-        for (AskUserTool.Question question : questions) {
+        for (Question question : questions) {
             String answer = answers.get(question.id());
             if (answer == null
                     || answer.isBlank()
@@ -101,9 +100,6 @@ public final class UserQuestionRegistry {
     private record Pending(
             @NonNull String agentId,
             @NonNull String callId,
-            @NonNull List<AskUserTool.Question> questions,
+            @NonNull List<Question> questions,
             @NonNull CompletableFuture<AnswerBatch> future) {}
-
-    public record AnswerBatch(
-            @NonNull Map<@NonNull String, @NonNull String> answers, boolean cancelled) {}
 }

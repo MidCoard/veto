@@ -24,6 +24,8 @@ import top.focess.veto.agent.identity.AgentPersona;
 import top.focess.veto.agent.identity.Role;
 import top.focess.veto.agent.loop.PromptCompiler;
 import top.focess.veto.agent.workspace.Workspace;
+import top.focess.veto.api.group.DagNode;
+import top.focess.veto.api.group.NodeEdit;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.model.tier.ModelTier;
 import top.focess.veto.session.SessionHistoryLoader;
@@ -452,8 +454,7 @@ public class GroupSpawner implements GroupOrchestrator.MateProvisioner {
     }
 
     /** Remove only an idle member after its execution has actually stopped. */
-    public GroupOrchestrator.@NonNull NodeEdit removeMate(
-            @NonNull UUID groupId, @NonNull String mateId) {
+    public @NonNull NodeEdit removeMate(@NonNull UUID groupId, @NonNull String mateId) {
         return orchestrator.removeMate(groupId, mateId, this);
     }
 

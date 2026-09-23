@@ -17,9 +17,11 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import top.focess.veto.agent.SessionAgentRegistry;
 import top.focess.veto.api.agent.tool.ToolDocs;
+import top.focess.veto.api.group.DagNode;
+import top.focess.veto.api.group.GroupState;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
+import top.focess.veto.api.process.TaskInfo;
 import top.focess.veto.group.Blackboard;
-import top.focess.veto.group.DagNode;
 import top.focess.veto.group.ExecutionDag;
 import top.focess.veto.group.Group;
 import top.focess.veto.group.GroupHistoryView;
@@ -303,10 +305,10 @@ class MonitorServiceTest {
         restored.restore();
         assertEquals("INTERRUPTED", restored.list("owner", session).getFirst().state());
         assertTrue(restored.pending("leader", session).isEmpty());
-        restoredGroups.put(group.withState(Group.GroupState.RECOVERING, Instant.now()));
+        restoredGroups.put(group.withState(GroupState.RECOVERING, Instant.now()));
         restored.tickAt(Instant.now());
         assertTrue(restored.pending("leader", session).isEmpty());
-        restoredGroups.put(group.withState(Group.GroupState.ACTIVE, Instant.now()));
+        restoredGroups.put(group.withState(GroupState.ACTIVE, Instant.now()));
         restored.tickAt(Instant.now());
         assertEquals(List.of(event), restored.pending("leader", session));
         assertEquals(saved.seen(), restored.list("owner", session).getFirst().seen());
@@ -354,7 +356,7 @@ class MonitorServiceTest {
                         new ExecutionDag(id, List.of(oldNode, newNode)),
                         new Blackboard(),
                         Map.of("mate", "review"),
-                        Group.GroupState.ACTIVE,
+                        GroupState.ACTIVE,
                         Instant.now(),
                         null,
                         "owner",
@@ -435,7 +437,7 @@ class MonitorServiceTest {
         UUID instance = UUID.randomUUID();
         Instant started = Instant.now().minusSeconds(2);
         var exited =
-                new BackgroundTaskManager.TaskInfo(
+                new TaskInfo(
                         "bg-1",
                         "agent",
                         "echo done",
@@ -450,7 +452,7 @@ class MonitorServiceTest {
         service.observeProcess("owner", exited, BackgroundTaskManager.ExitCause.USER_STOP);
         service.observeProcess(
                 "owner",
-                new BackgroundTaskManager.TaskInfo(
+                new TaskInfo(
                         "bg-1",
                         "agent",
                         "echo done",
@@ -480,7 +482,7 @@ class MonitorServiceTest {
         for (int i = 0; i < 2; i++) {
             service.observeProcess(
                     "owner",
-                    new BackgroundTaskManager.TaskInfo(
+                    new TaskInfo(
                             "bg-1",
                             "agent",
                             "echo done",
@@ -588,7 +590,7 @@ class MonitorServiceTest {
                         new ExecutionDag(id, List.of(node)),
                         new Blackboard(),
                         Map.of("mate", "arbitrary responsibility"),
-                        Group.GroupState.COMPLETED,
+                        GroupState.COMPLETED,
                         Instant.now(),
                         null,
                         "owner",

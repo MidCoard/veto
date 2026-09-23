@@ -42,6 +42,8 @@ import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.api.llm.ToolDefinition;
 import top.focess.veto.api.llm.VetoRequest;
 import top.focess.veto.api.llm.VetoResponse;
+import top.focess.veto.api.web.FetchedPage;
+import top.focess.veto.builtin.web.WebFetchTool;
 import top.focess.veto.llm.core.UniformLLMCaller;
 import top.focess.veto.memory.TurnLogService;
 import top.focess.veto.model.tier.ModelBinding;
@@ -378,7 +380,7 @@ class WebFetchExecutorLoopTest {
                     name);
             verify(access).fetch(anyLong());
             verify(access).close();
-            verify(access).read("Find timeout units.");
+            verify(access).read(eq("Find timeout units."), any());
             verify(access).bindReader(anyString());
             verifyNoMoreInteractions(access);
         }
@@ -556,7 +558,7 @@ class WebFetchExecutorLoopTest {
                         timeout,
                         maxInputTokens,
                         2048);
-        when(access.read(anyString()))
+        when(access.read(anyString(), any()))
                 .thenAnswer(
                         invocation -> {
                             String objective = invocation.getArgument(0);
@@ -571,7 +573,7 @@ class WebFetchExecutorLoopTest {
                             when(parent.state()).thenReturn(AgentState.RUNNING);
                             registry.register(sessionId, parent);
                             try {
-                                return reader.read(objective, access);
+                                return reader.read(objective, access, invocation.getArgument(1));
                             } finally {
                                 assertEquals(1, registry.agents(sessionId).size());
                                 registry.stopSession(sessionId);

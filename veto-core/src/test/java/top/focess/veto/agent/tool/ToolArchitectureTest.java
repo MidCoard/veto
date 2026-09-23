@@ -8,63 +8,51 @@ import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.ApplicationContext;
 import top.focess.veto.api.agent.tool.AgentTool;
 import top.focess.veto.api.agent.tool.CapabilityTool;
 import top.focess.veto.api.agent.tool.NativeTool;
 import top.focess.veto.api.agent.tool.ToolDoc;
 import top.focess.veto.api.agent.tool.ToolDocs;
+import top.focess.veto.api.plugin.contract.StandardContributionPoints;
+import top.focess.veto.plugin.runtime.PluginManager;
 
 /** Checks that registered tools expose coherent authoring contracts. */
 @SpringBootTest
 @SuppressWarnings("initialization.field.uninitialized")
 class ToolArchitectureTest {
-    @Autowired private @NonNull List<NativeTool<?>> nativeTools;
-    @Autowired private @NonNull List<AgentTool<?>> agentTools;
+    @Autowired private @NonNull PluginManager plugins;
+    @Autowired private @NonNull ApplicationContext context;
     @Autowired private @NonNull ToolEngine engine;
 
     @Test
-    void workspaceToolsArePluginContributionsWithTheirOriginalPublicNames() {
-        for (String name :
-                List.of(
-                        "create_group",
-                        "view_file",
-                        "list_dir",
-                        "find_files",
-                        "grep_search",
-                        "write_to_file",
-                        "replace_file_content",
-                        "move_path",
-                        "delete_path")) {
+    void allBuiltinToolsArePluginContributionsWithTheirOriginalPublicNames() {
+        var entries =
+                plugins.catalog().entries(StandardContributionPoints.NATIVE_TOOLS).stream()
+                        .filter(entry -> entry.source().namespace().equals("top.focess.builtin"))
+                        .toList();
+        assertEquals(37, entries.size());
+        assertTrue(context.getBeansOfType(NativeTool.class).isEmpty());
+        assertTrue(context.getBeansOfType(AgentTool.class).isEmpty());
+        for (var entry : entries) {
+            String name = entry.implementation().getName();
             var definition = engine.resolveDefinition(name);
             if (definition == null) throw new AssertionError("Missing built-in: " + name);
             var provenance = definition.provenance();
             if (provenance == null) throw new AssertionError("Not contributed by plugin: " + name);
             assertEquals("top.focess.builtin", provenance.pluginId());
-            assertTrue(nativeTools.stream().noneMatch(tool -> tool.getName().equals(name)));
         }
     }
 
     @Test
     void everyRegisteredToolHasACoherentContract() {
         List<CapabilityTool<?>> tools = new ArrayList<>();
-        tools.addAll(nativeTools);
-        tools.addAll(agentTools);
+        for (var entry : plugins.catalog().entries(StandardContributionPoints.NATIVE_TOOLS))
+            tools.add(entry.implementation());
         assertFalse(tools.isEmpty());
         for (CapabilityTool<?> tool : tools) {
             ToolDefinition definition =
-                    switch (tool) {
-                        case NativeTool<?> nativeTool ->
-                                ToolSchemaCompiler.compileNative(nativeTool);
-                        case AgentTool<?> agentTool ->
-                                AgentToolDefinition.from(
-                                        agentTool.getName(),
-                                        agentTool.getClass(),
-                                        agentTool.getArgsClass(),
-                                        agentTool.getCapability());
-                        default ->
-                                throw new AssertionError(
-                                        "Unexpected registered handler " + tool.getName());
-                    };
+                    ToolRegistration.local(tool, tool.getName(), null).definition();
             assertDoesNotThrow(
                     () -> ToolContractValidator.validateHandler(tool, definition), tool.getName());
             ToolDoc documentation = ToolDocs.toolDocOf(tool.getClass());

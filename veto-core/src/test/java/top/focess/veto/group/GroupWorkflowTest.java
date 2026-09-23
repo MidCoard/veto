@@ -9,6 +9,9 @@ import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import top.focess.veto.api.group.BlackboardMessage;
+import top.focess.veto.api.group.DagNode;
+import top.focess.veto.api.group.GroupState;
 
 /** Tests for the group workflow core (Group, ExecutionDag, Blackboard, GroupRegistry). */
 @SuppressWarnings("initialization.field.uninitialized")
@@ -160,10 +163,10 @@ class GroupWorkflowTest {
         ExecutionDag dag = ExecutionDag.linear(groupId, List.of("n1"));
         Group g = Group.create("Leader-1", "user-1", "build feature X", blackboard, dag);
         registry.put(g);
-        assertEquals(Group.GroupState.ACTIVE, requireGroup(registry.get(g.groupId())).state());
+        assertEquals(GroupState.ACTIVE, requireGroup(registry.get(g.groupId())).state());
 
         registry.disband(g.groupId(), Instant.now());
-        assertEquals(Group.GroupState.DISBANDED, requireGroup(registry.get(g.groupId())).state());
+        assertEquals(GroupState.DISBANDED, requireGroup(registry.get(g.groupId())).state());
     }
 
     @Test

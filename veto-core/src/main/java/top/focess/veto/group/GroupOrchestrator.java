@@ -19,6 +19,12 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
+import top.focess.veto.api.group.BlackboardMessage;
+import top.focess.veto.api.group.DagNode;
+import top.focess.veto.api.group.GroupSnapshot;
+import top.focess.veto.api.group.GroupState;
+import top.focess.veto.api.group.Inspection;
+import top.focess.veto.api.group.NodeEdit;
 
 /**
  * Drives a {@link Group} through its leader-and-mate lifecycle:
@@ -121,20 +127,6 @@ public class GroupOrchestrator {
         @NonNull String provision(@NonNull UUID groupId, @NonNull String skillset);
     }
 
-    /**
-     * The outcome of a {@code create_node} / {@code remove_node} structural edit. The orchestrator
-     * is the DAG's single authoritative writer: every edit is one atomic, validated change, and the
-     * tool routes on this return value (never on a state snapshot captured before the call).
-     */
-    public sealed interface NodeEdit {
-
-        /** The edit was applied. */
-        record Applied() implements NodeEdit {}
-
-        /** The edit was rejected; {@code reason} explains why and what to do next. */
-        record Rejected(@NonNull String reason) implements NodeEdit {}
-    }
-
     /** Run {@code op} under the per-group lock (shared with {@link #tick}). */
     private <T> T withGroupLock(@NonNull UUID groupId, @NonNull Supplier<T> op) {
         ReentrantLock lock = tickLocks.computeIfAbsent(groupId, k -> new ReentrantLock());
@@ -198,8 +190,8 @@ public class GroupOrchestrator {
                     if (group == null) {
                         return new NodeEdit.Rejected("group not found: " + groupId);
                     }
-                    if (group.state() == Group.GroupState.DISBANDED
-                            || group.state() == Group.GroupState.RECOVERING) {
+                    if (group.state() == GroupState.DISBANDED
+                            || group.state() == GroupState.RECOVERING) {
                         return new NodeEdit.Rejected("group is no longer active");
                     }
                     if (nodeId.isBlank()) {
@@ -277,7 +269,7 @@ public class GroupOrchestrator {
                     next.add(node);
                     registry.put(
                             group.withDag(dag.withNodes(next))
-                                    .withState(Group.GroupState.ACTIVE, Instant.now()));
+                                    .withState(GroupState.ACTIVE, Instant.now()));
                     return new NodeEdit.Applied();
                 });
     }
@@ -293,8 +285,8 @@ public class GroupOrchestrator {
                 () -> {
                     Group group = registry.get(groupId);
                     if (group == null
-                            || group.state() == Group.GroupState.DISBANDED
-                            || group.state() == Group.GroupState.RECOVERING)
+                            || group.state() == GroupState.DISBANDED
+                            || group.state() == GroupState.RECOVERING)
                         throw new IllegalStateException("Group is no longer available");
                     if (name.isBlank() || responsibility.isBlank())
                         throw new IllegalArgumentException(
@@ -313,8 +305,8 @@ public class GroupOrchestrator {
                 () -> {
                     Group group = registry.get(groupId);
                     if (group == null
-                            || group.state() == Group.GroupState.DISBANDED
-                            || group.state() == Group.GroupState.RECOVERING)
+                            || group.state() == GroupState.DISBANDED
+                            || group.state() == GroupState.RECOVERING)
                         return new NodeEdit.Rejected("Group unavailable");
                     DagNode node =
                             group.dag().nodes().stream()
@@ -399,8 +391,8 @@ public class GroupOrchestrator {
                 () -> {
                     Group group = registry.get(groupId);
                     if (group == null
-                            || group.state() == Group.GroupState.DISBANDED
-                            || group.state() == Group.GroupState.RECOVERING)
+                            || group.state() == GroupState.DISBANDED
+                            || group.state() == GroupState.RECOVERING)
                         return new NodeEdit.Rejected("Group is unavailable");
                     if (!group.mates().containsKey(mateId))
                         return new NodeEdit.Rejected("Unknown Mate in this group: " + mateId);
@@ -555,9 +547,6 @@ public class GroupOrchestrator {
                                     .toList());
                 });
     }
-
-    public record Inspection(
-            @NonNull GroupSnapshot group, @NonNull List<@NonNull BlackboardMessage> messages) {}
 
     /** Inner tick logic — called under the per-group lock. */
     private Group tickInner(@NonNull UUID groupId) {
@@ -928,7 +917,7 @@ public class GroupOrchestrator {
         }
         // Finished work leaves the group and its Mates available for follow-up tasks.
         log.info("GroupOrchestrator: group {} complete (all nodes VERIFIED)", group.groupId());
-        return group.withState(Group.GroupState.COMPLETED, Instant.now());
+        return group.withState(GroupState.COMPLETED, Instant.now());
     }
 
     /** Records completion of an explicitly disbanded group. */

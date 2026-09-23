@@ -12,6 +12,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import top.focess.veto.api.skills.Skill;
+import top.focess.veto.api.skills.SkillSourceType;
 
 /**
  * The skill registry — lookup + SHA-256 integrity verification. Returns the full {@code SKILL.md}

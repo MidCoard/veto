@@ -7,6 +7,8 @@ import java.util.Set;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
+import top.focess.veto.api.group.BlackboardMessage;
+import top.focess.veto.api.group.DagNode;
 
 /** Tests for the LlmLeader + Strategic Pivot triggers. */
 class LlmLeaderTest {

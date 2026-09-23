@@ -5,22 +5,21 @@ import java.util.List;
 import java.util.Set;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.intercept.Gateway;
-import top.focess.veto.agent.loop.ActionsProgramParser;
-import top.focess.veto.agent.loop.GenerateAction;
 import top.focess.veto.agent.loop.MessageCitations;
-import top.focess.veto.agent.loop.ProgramValidator;
 import top.focess.veto.agent.loop.ResponseEnforcer;
-import top.focess.veto.agent.loop.ResponseRequest;
-import top.focess.veto.agent.loop.ToolAction;
 import top.focess.veto.agent.tool.LocalToolDefinition;
 import top.focess.veto.agent.tool.NativeToolArgumentValidator;
-import top.focess.veto.agent.tool.ResponseSubmission;
+import top.focess.veto.agent.tool.ResponseSubmissions;
 import top.focess.veto.agent.tool.ToolCallContextHolder;
 import top.focess.veto.agent.tool.ToolEngine;
+import top.focess.veto.api.agent.tool.ResponseSubmission;
 import top.focess.veto.api.agent.tool.ToolErrorCode;
 import top.focess.veto.api.agent.tool.ToolExecutionException;
 import top.focess.veto.api.agent.tool.ToolResultFormat;
 import top.focess.veto.api.agent.tool.ToolResultStatus;
+import top.focess.veto.api.agent.workflow.GenerateAction;
+import top.focess.veto.api.agent.workflow.ResponseRequest;
+import top.focess.veto.api.agent.workflow.ToolAction;
 import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.api.llm.VetoRequest;
 import top.focess.veto.api.llm.VetoResponse;
@@ -70,9 +69,7 @@ final class ResponseValidator {
                         planDefinition.name(),
                         objectMapper.createObjectNode().set("actions", plan.actions()),
                         objectMapper.valueToTree(planDefinition.inputSchema()));
-                var program = ActionsProgramParser.parse(plan.actions());
-                ProgramValidator.validate(program);
-                ProgramValidator.validateInputs(program);
+                var program = plan.program();
                 gateway.validateProgram(program, toolEngine, whitelistedTools, objectMapper);
                 for (var action : program.actions()) {
                     if (action instanceof GenerateAction gen
@@ -90,8 +87,8 @@ final class ResponseValidator {
                                 "Response submission tools cannot be nested as plan tool steps; use"
                                         + " generate for a cited answer and STOP to finish");
                 }
-                return new ToolCallContextHolder.ResponseDirective.Plan(program);
-            } catch (IllegalArgumentException | ProgramValidator.InvalidProgramException error) {
+                return new ToolCallContextHolder.ResponseDirective.Plan(program, plan.execution());
+            } catch (IllegalArgumentException error) {
                 throw new ToolExecutionException(
                         ToolResultStatus.FAILURE,
                         ToolResultFormat.PLAINTEXT,
@@ -133,7 +130,7 @@ final class ResponseValidator {
     }
 
     ResponseSubmission.Kind submissionKind(@NonNull String name) {
-        return ResponseSubmission.Metadata.kindOf(toolEngine.resolveDefinition(name));
+        return ResponseSubmissions.kindOf(toolEngine.resolveDefinition(name));
     }
 
     void validateLocalCallArguments(@NonNull VetoResponse response) {

@@ -10,6 +10,10 @@ import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.agent.TurnRecord;
+import top.focess.veto.api.memory.Memory;
+import top.focess.veto.api.memory.MemoryId;
+import top.focess.veto.api.memory.MemoryTier;
+import top.focess.veto.api.memory.ScoredMemory;
 import top.focess.veto.memory.embedder.HashEmbedder;
 
 @SuppressWarnings("initialization.field.uninitialized")
@@ -33,7 +37,7 @@ class InMemoryMemoryStoreTest {
     void addAndSearch() {
         @NonNull MemoryId id =
                 store.add(buildMemory("the quick brown fox", MemoryTier.CROSS_SESSION));
-        @NonNull List<MemoryStore.ScoredMemory> results =
+        @NonNull List<ScoredMemory> results =
                 store.search(MemoryQuery.crossSession("quick fox", alice));
         assertEquals(1, results.size());
         assertEquals(id, requireValue(results.get(0), "expected search result").memory().id());
@@ -42,9 +46,9 @@ class InMemoryMemoryStoreTest {
     @Test
     void tenantIsolation() {
         store.add(buildMemory("alice's private insight", MemoryTier.CROSS_SESSION));
-        @NonNull List<MemoryStore.ScoredMemory> aliceResults =
+        @NonNull List<ScoredMemory> aliceResults =
                 store.search(MemoryQuery.crossSession("alice insight", alice));
-        @NonNull List<MemoryStore.ScoredMemory> bobResults =
+        @NonNull List<ScoredMemory> bobResults =
                 store.search(MemoryQuery.crossSession("alice insight", bob));
         assertEquals(1, aliceResults.size());
         assertEquals(0, bobResults.size(), "Bob must not see Alice's memories");
@@ -54,7 +58,7 @@ class InMemoryMemoryStoreTest {
     void scoreFloorFiltersLowSimilarity() {
         store.add(
                 buildMemory("completely different text about gardening", MemoryTier.CROSS_SESSION));
-        @NonNull List<MemoryStore.ScoredMemory> results =
+        @NonNull List<ScoredMemory> results =
                 store.search(
                         new MemoryQuery(
                                 "fox jumping over dog",
@@ -72,7 +76,7 @@ class InMemoryMemoryStoreTest {
         for (int i = 0; i < 10; i++) {
             store.add(buildMemory("fox " + i, MemoryTier.CROSS_SESSION));
         }
-        @NonNull List<MemoryStore.ScoredMemory> results =
+        @NonNull List<ScoredMemory> results =
                 store.search(
                         new MemoryQuery(
                                 "fox",
@@ -150,7 +154,7 @@ class InMemoryMemoryStoreTest {
     @Test
     void identicalTextsScoreHigh() {
         store.add(buildMemory("foo bar baz", MemoryTier.CROSS_SESSION));
-        @NonNull List<MemoryStore.ScoredMemory> results =
+        @NonNull List<ScoredMemory> results =
                 store.search(
                         new MemoryQuery(
                                 "foo bar baz",

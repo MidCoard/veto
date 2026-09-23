@@ -5,11 +5,12 @@ import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.tool.ToolCallContext;
+import top.focess.veto.api.agent.capability.MemoryWriteCapability;
 import top.focess.veto.api.agent.tool.ToolCapability;
-import top.focess.veto.memory.Memory;
-import top.focess.veto.memory.MemoryId;
+import top.focess.veto.api.memory.Memory;
+import top.focess.veto.api.memory.MemoryId;
+import top.focess.veto.api.memory.MemoryTier;
 import top.focess.veto.memory.MemoryStore;
-import top.focess.veto.memory.MemoryTier;
 import top.focess.veto.memory.embedder.Embedder;
 
 @Component

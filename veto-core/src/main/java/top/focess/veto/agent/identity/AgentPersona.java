@@ -3,8 +3,8 @@ package top.focess.veto.agent.identity;
 import java.util.List;
 import java.util.Set;
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.agent.skills.Skill;
 import top.focess.veto.agent.tool.ToolDefinition;
+import top.focess.veto.api.skills.Skill;
 
 /** An agent identity with its role-scoped tool catalog and discoverable skills. */
 public record AgentPersona(

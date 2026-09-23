@@ -70,6 +70,7 @@ public final class CreateGroup implements DelegationTool<CreateGroup.Args> {
     public @NonNull DelegationCapability delegationCapability() {
         if (capability == null)
             throw new SecurityException("Host must supply an authorized delegation capability");
+        if (capability == null) throw new SecurityException("Host must supply tool capability");
         return capability;
     }
 

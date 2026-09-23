@@ -1,0 +1,87 @@
+package top.focess.veto.builtin.planning;
+
+import java.util.regex.Pattern;
+import org.jspecify.annotations.NonNull;
+import top.focess.veto.api.agent.workflow.Check;
+import top.focess.veto.api.agent.workflow.Scope;
+
+/**
+ * Evaluates a {@link Check} over {@link Scope} vars deterministically, with zero LLM calls. {@link
+ * Check.Llm} is the single exception — one model call — and is not evaluated here (the loop handles
+ * it).
+ */
+public final class CheckEvaluator {
+
+    private CheckEvaluator() {}
+
+    /**
+     * Evaluates a non-{@link Check.Llm} check to a boolean. {@link Check.Llm} throws (loop-owned).
+     */
+    public static boolean evaluate(@NonNull Check check, @NonNull Scope scope, int currentSteps) {
+        scope.put("CURRENT_STEPS", currentSteps);
+        return switch (check) {
+            case Check.Equals e -> stringOf(scope.get(e.var())).equals(e.value());
+            case Check.NotEquals e -> !stringOf(scope.get(e.var())).equals(e.value());
+            case Check.Contains c -> stringOf(scope.get(c.var())).contains(c.substring());
+            case Check.Matches m ->
+                    Pattern.compile(m.regex()).matcher(stringOf(scope.get(m.var()))).find();
+            case Check.Empty e -> {
+                Object v = scope.get(e.var());
+                yield v == Scope.UNDEFINED || stringOf(v).isEmpty();
+            }
+            case Check.NotEmpty e -> {
+                Object v = scope.get(e.var());
+                yield v != Scope.UNDEFINED && !stringOf(v).isEmpty();
+            }
+            case Check.Numeric n -> numericCompare(scope.get(n.var()), n.op(), n.value());
+            case Check.ExitOk e -> exitOk(scope, e.stepId());
+            case Check.Llm l ->
+                    throw new UnsupportedOperationException(
+                            "llm check is loop-owned (one model call); not evaluated by CheckEvaluator");
+        };
+    }
+
+    private static boolean exitOk(@NonNull Scope scope, @NonNull String stepId) {
+        Object ok = scope.get("step_ok:" + stepId);
+        if (ok instanceof Boolean b) {
+            return b;
+        }
+        Object code = scope.get("exit_code:" + stepId);
+        if (code instanceof Number n) {
+            return n.intValue() == 0;
+        }
+        return false;
+    }
+
+    private static boolean numericCompare(
+            @NonNull Object lhs, @NonNull String op, @NonNull String rhs) {
+        double a = toDouble(lhs);
+        double b = toDouble(rhs);
+        return switch (op) {
+            case "gt" -> a > b;
+            case "lt" -> a < b;
+            case "eq" -> a == b;
+            case "gte" -> a >= b;
+            case "lte" -> a <= b;
+            default -> false;
+        };
+    }
+
+    private static double toDouble(@NonNull Object o) {
+        if (o instanceof Number n) {
+            return n.doubleValue();
+        }
+        try {
+            return Double.parseDouble(stringOf(o));
+        } catch (NumberFormatException e) {
+            return Double.NaN;
+        }
+    }
+
+    private static @NonNull String stringOf(@NonNull Object o) {
+        if (o == Scope.UNDEFINED) {
+            return "";
+        }
+        return o.toString();
+    }
+}

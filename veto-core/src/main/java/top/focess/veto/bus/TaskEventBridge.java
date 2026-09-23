@@ -9,6 +9,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
+import top.focess.veto.api.process.TaskInfo;
 import top.focess.veto.model.SessionRepository;
 import top.focess.veto.monitor.MonitorService;
 import top.focess.veto.sandbox.BackgroundTaskManager;
@@ -31,8 +32,7 @@ public class TaskEventBridge implements BackgroundTaskManager.TaskListener {
     private final @NonNull MonitorService monitors;
 
     private record Observation(
-            BackgroundTaskManager.@NonNull TaskInfo info,
-            BackgroundTaskManager.@NonNull ExitCause cause) {}
+            @NonNull TaskInfo info, BackgroundTaskManager.@NonNull ExitCause cause) {}
 
     private final @NonNull ConcurrentHashMap<UUID, Observation> observations =
             new ConcurrentHashMap<>();
@@ -54,26 +54,25 @@ public class TaskEventBridge implements BackgroundTaskManager.TaskListener {
     }
 
     @Override
-    public void onTaskStarted(BackgroundTaskManager.@NonNull TaskInfo info) {
+    public void onTaskStarted(@NonNull TaskInfo info) {
         observe(info, BackgroundTaskManager.ExitCause.NATURAL);
         publish(DeltaFrame.Kind.TASK_STARTED, info);
     }
 
     @Override
-    public void onTaskExited(BackgroundTaskManager.@NonNull TaskInfo info) {
+    public void onTaskExited(@NonNull TaskInfo info) {
         onTaskExited(info, BackgroundTaskManager.ExitCause.NATURAL);
     }
 
     @Override
     public void onTaskExited(
-            BackgroundTaskManager.@NonNull TaskInfo info,
-            BackgroundTaskManager.@NonNull ExitCause cause) {
+            @NonNull TaskInfo info, BackgroundTaskManager.@NonNull ExitCause cause) {
         observe(info, cause);
         publish(DeltaFrame.Kind.TASK_EXITED, info);
     }
 
     @Override
-    public void onTaskRemoved(BackgroundTaskManager.@NonNull TaskInfo info) {
+    public void onTaskRemoved(@NonNull TaskInfo info) {
         UUID sessionId = info.sessionId();
         if (sessionId == null) return;
         broker.publish(
@@ -88,9 +87,7 @@ public class TaskEventBridge implements BackgroundTaskManager.TaskListener {
                         .build());
     }
 
-    private void observe(
-            BackgroundTaskManager.@NonNull TaskInfo info,
-            BackgroundTaskManager.@NonNull ExitCause cause) {
+    private void observe(@NonNull TaskInfo info, BackgroundTaskManager.@NonNull ExitCause cause) {
         UUID session = info.sessionId();
         if (session == null) return;
         observations.compute(
@@ -126,8 +123,7 @@ public class TaskEventBridge implements BackgroundTaskManager.TaskListener {
         }
     }
 
-    private void publish(
-            DeltaFrame.@NonNull Kind kind, BackgroundTaskManager.@NonNull TaskInfo info) {
+    private void publish(DeltaFrame.@NonNull Kind kind, @NonNull TaskInfo info) {
         UUID sessionId = info.sessionId();
         if (sessionId == null) {
             // A task without a session (standalone / test) has no session-scoped subscriber to

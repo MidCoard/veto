@@ -10,6 +10,8 @@ import java.util.Optional;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import top.focess.veto.api.skills.Skill;
+import top.focess.veto.api.skills.SkillSourceType;
 
 /** Validates {@link MarkdownSkillLoader} parsing + SHA-256 integrity verification. */
 class MarkdownSkillLoaderTest {

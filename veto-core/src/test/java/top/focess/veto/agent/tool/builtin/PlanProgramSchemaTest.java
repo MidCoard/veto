@@ -15,6 +15,7 @@ import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.ToolDocumentation;
 import top.focess.veto.api.agent.tool.ToolExecutionException;
 import top.focess.veto.api.llm.ToolDefinition;
+import top.focess.veto.builtin.planning.PlanProgramSchema;
 
 class PlanProgramSchemaTest {
     private static final @NonNull ObjectMapper MAPPER = new ObjectMapper();

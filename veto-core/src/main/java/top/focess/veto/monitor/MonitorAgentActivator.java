@@ -4,7 +4,7 @@ import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Service;
 import top.focess.veto.agent.SessionAgentRegistry;
-import top.focess.veto.group.Group;
+import top.focess.veto.api.group.GroupState;
 import top.focess.veto.group.GroupRegistry;
 import top.focess.veto.session.SessionService;
 import top.focess.veto.vault.KeysteadVault;
@@ -49,8 +49,7 @@ public class MonitorAgentActivator {
                 .anyMatch(
                         group ->
                                 session.equals(group.sessionId())
-                                        && group.state() == Group.GroupState.RECOVERING))
-            return false;
+                                        && group.state() == GroupState.RECOVERING)) return false;
         for (SessionAgentRegistry.Entry entry : agents.agents(session)) {
             if (entry.agent().id().equals(agentId)) {
                 entry.agent().signalMonitor();

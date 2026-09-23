@@ -25,6 +25,7 @@ import top.focess.veto.agent.AgentResult;
 import top.focess.veto.agent.AgentState;
 import top.focess.veto.agent.TurnRecord;
 import top.focess.veto.agent.loop.LoopBreaker;
+import top.focess.veto.api.group.BlackboardMessage;
 
 /**
  * Consumes {@code TASK_DISPATCH} messages from the Blackboard, runs the underlying {@link Agent},

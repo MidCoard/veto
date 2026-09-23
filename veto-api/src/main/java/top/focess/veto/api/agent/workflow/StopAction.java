@@ -1,0 +1,15 @@
+package top.focess.veto.api.agent.workflow;
+
+import org.jspecify.annotations.NonNull;
+
+/**
+ * The terminal action — the sole valid program exit ( {@code STOP}). Multiple allowed (early
+ * exits).
+ */
+public record StopAction(@NonNull String id, @NonNull String label, String resultBinding)
+        implements Action {
+    public StopAction {
+        if (resultBinding != null && resultBinding.startsWith("$"))
+            resultBinding = resultBinding.substring(1);
+    }
+}

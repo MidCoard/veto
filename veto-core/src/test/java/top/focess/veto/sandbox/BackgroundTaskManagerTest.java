@@ -15,6 +15,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledOnOs;
 import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
+import top.focess.veto.api.process.Command;
+import top.focess.veto.api.process.TaskInfo;
 
 /**
  * Validates {@link BackgroundTaskManager}: non-blocking start, exit detection + output capture,
@@ -51,7 +53,7 @@ class BackgroundTaskManagerTest {
             assertTrue(manager.awaitExit("other", task.taskId()).isEmpty());
             assertTrue(manager.awaitExit("owner", "missing").isEmpty());
             var waiting =
-                    new FutureTask<Optional<BackgroundTaskManager.TaskInfo>>(
+                    new FutureTask<Optional<TaskInfo>>(
                             () -> manager.awaitExit("owner", task.taskId()));
             Thread thread = Thread.ofVirtual().start(waiting);
             try {
@@ -83,13 +85,13 @@ class BackgroundTaskManagerTest {
     @Test
     void startReturnsImmediatelyAndCapturesExit(@TempDir @NonNull Path tempDir) {
         BackgroundTaskManager mgr = newManager();
-        BackgroundTaskManager.TaskInfo info = mgr.start("agent-a", javaVersion(), tempDir, 0, null);
+        TaskInfo info = mgr.start("agent-a", javaVersion(), tempDir, 0, null);
         assertEquals("agent-a", info.agentId());
         assertNotNull(info.taskId());
         assertTrue(info.pid() > 0);
 
         assertTrue(waitForExit(mgr, "agent-a", info.taskId(), Duration.ofSeconds(20)));
-        Optional<BackgroundTaskManager.TaskInfo> status = mgr.status("agent-a", info.taskId());
+        Optional<TaskInfo> status = mgr.status("agent-a", info.taskId());
         assertTrue(status.isPresent());
         assertFalse(status.get().alive(), "task should be done");
         assertEquals(0, requireExitCode(status.get().exitCode()), "java -version exits 0");
@@ -113,9 +115,9 @@ class BackgroundTaskManagerTest {
 
     private void stopKillsRunningTask(@NonNull Path tempDir) {
         BackgroundTaskManager mgr = newManager();
-        BackgroundTaskManager.TaskInfo info = mgr.start("agent-b", longRunning(), tempDir, 0, null);
+        TaskInfo info = mgr.start("agent-b", longRunning(), tempDir, 0, null);
         assertTrue(info.alive(), "long-running task is alive right after start");
-        Optional<BackgroundTaskManager.TaskInfo> stopped =
+        Optional<TaskInfo> stopped =
                 mgr.stop("agent-b", info.taskId(), BackgroundTaskManager.ExitCause.AGENT_STOP);
         assertTrue(stopped.isPresent());
         assertTrue(waitForExit(mgr, "agent-b", info.taskId(), Duration.ofSeconds(5)));
@@ -125,8 +127,7 @@ class BackgroundTaskManagerTest {
     void exitNoticesCarryTheCause(@TempDir @NonNull Path tempDir) {
         BackgroundTaskManager mgr = newManager();
         // Natural exit → NATURAL.
-        BackgroundTaskManager.TaskInfo natural =
-                mgr.start("agent-n", javaVersion(), tempDir, 0, null);
+        TaskInfo natural = mgr.start("agent-n", javaVersion(), tempDir, 0, null);
         assertTrue(waitForExit(mgr, "agent-n", natural.taskId(), Duration.ofSeconds(20)));
         BackgroundTaskManager.TaskExitNotice naturalNotice =
                 waitForNotice(mgr, "agent-n", Duration.ofSeconds(5));
@@ -134,8 +135,7 @@ class BackgroundTaskManagerTest {
         assertEquals(0, naturalNotice.exitCode());
 
         // Explicit stop → the caller's cause rides the notice.
-        BackgroundTaskManager.TaskInfo stopped =
-                mgr.start("agent-n", longRunning(), tempDir, 0, null);
+        TaskInfo stopped = mgr.start("agent-n", longRunning(), tempDir, 0, null);
         mgr.stop("agent-n", stopped.taskId(), BackgroundTaskManager.ExitCause.USER_STOP);
         assertTrue(waitForExit(mgr, "agent-n", stopped.taskId(), Duration.ofSeconds(5)));
         BackgroundTaskManager.TaskExitNotice stopNotice =
@@ -146,7 +146,7 @@ class BackgroundTaskManagerTest {
     @Test
     void perAgentIsolation(@TempDir @NonNull Path tempDir) {
         BackgroundTaskManager mgr = newManager();
-        BackgroundTaskManager.TaskInfo a = mgr.start("agent-a", longRunning(), tempDir, 0, null);
+        TaskInfo a = mgr.start("agent-a", longRunning(), tempDir, 0, null);
         // agent-b cannot see or stop agent-a's task.
         assertTrue(mgr.status("agent-b", a.taskId()).isEmpty());
         assertTrue(
@@ -160,8 +160,8 @@ class BackgroundTaskManagerTest {
     @Test
     void stopAllKillsEveryOwnedTask(@TempDir @NonNull Path tempDir) {
         BackgroundTaskManager mgr = newManager();
-        BackgroundTaskManager.TaskInfo t1 = mgr.start("agent-c", longRunning(), tempDir, 0, null);
-        BackgroundTaskManager.TaskInfo t2 = mgr.start("agent-c", longRunning(), tempDir, 0, null);
+        TaskInfo t1 = mgr.start("agent-c", longRunning(), tempDir, 0, null);
+        TaskInfo t2 = mgr.start("agent-c", longRunning(), tempDir, 0, null);
         assertEquals(2, mgr.list("agent-c").size());
         mgr.stopAll("agent-c");
         assertTrue(waitForExit(mgr, "agent-c", t1.taskId(), Duration.ofSeconds(5)));
@@ -198,7 +198,7 @@ class BackgroundTaskManagerTest {
             @NonNull Duration timeout) {
         long deadline = System.currentTimeMillis() + timeout.toMillis();
         while (System.currentTimeMillis() < deadline) {
-            Optional<BackgroundTaskManager.TaskInfo> s = mgr.status(agentId, taskId);
+            Optional<TaskInfo> s = mgr.status(agentId, taskId);
             if (s.isPresent() && !s.get().alive()) return true;
             try {
                 Thread.sleep(50);

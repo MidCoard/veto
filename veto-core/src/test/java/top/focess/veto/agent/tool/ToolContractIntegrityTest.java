@@ -11,6 +11,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.ArrayList;
 import java.util.List;
 import org.jspecify.annotations.NonNull;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -23,6 +24,8 @@ import top.focess.veto.api.agent.tool.ToolExecutionException;
 import top.focess.veto.api.agent.tool.ToolSecurity;
 import top.focess.veto.api.agent.tool.WorkspaceReadTool;
 import top.focess.veto.api.agent.tool.WorkspaceWriteTool;
+import top.focess.veto.api.plugin.contract.StandardContributionPoints;
+import top.focess.veto.plugin.runtime.PluginManager;
 
 /**
  * Cross-checks every documented call example against the tool's real runtime argument validator.
@@ -31,8 +34,24 @@ import top.focess.veto.api.agent.tool.WorkspaceWriteTool;
 @SuppressWarnings("initialization.field.uninitialized")
 class ToolContractIntegrityTest {
 
-    @Autowired private @NonNull List<NativeTool<?>> nativeTools;
-    @Autowired private @NonNull List<AgentTool<?>> agentTools;
+    @Autowired private @NonNull PluginManager plugins;
+    private @NonNull List<NativeTool<?>> nativeTools = List.of();
+    private @NonNull List<AgentTool<?>> agentTools = List.of();
+
+    @BeforeEach
+    void readProductionPluginCatalog() {
+        var natives = new ArrayList<NativeTool<?>>();
+        var agents = new ArrayList<AgentTool<?>>();
+        for (var entry : plugins.catalog().entries(StandardContributionPoints.NATIVE_TOOLS)) {
+            var tool = entry.implementation();
+            if (tool instanceof NativeTool<?> nativeTool) natives.add(nativeTool);
+            if (tool instanceof AgentTool<?> agentTool) agents.add(agentTool);
+        }
+        nativeTools = List.copyOf(natives);
+        agentTools = List.copyOf(agents);
+        assertTrue(nativeTools.size() >= 16, "all native tools must be covered");
+        assertTrue(agentTools.size() >= 21, "all agent tools must be covered");
+    }
 
     private final @NonNull ObjectMapper mapper = new ObjectMapper();
 

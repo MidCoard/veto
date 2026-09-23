@@ -10,10 +10,10 @@ import org.junit.jupiter.api.Test;
 import top.focess.veto.agent.tool.ToolCallContextHolder;
 import top.focess.veto.agent.web.WebFetchExecutor;
 import top.focess.veto.api.agent.tool.ToolDocs;
+import top.focess.veto.api.process.ChainMode;
 import top.focess.veto.api.search.SearchOptions;
 import top.focess.veto.api.search.SearchProvider;
 import top.focess.veto.sandbox.BackgroundTaskManager;
-import top.focess.veto.sandbox.ChainMode;
 import top.focess.veto.sandbox.SandboxManager;
 
 class NativeCapabilityBoundaryTest {

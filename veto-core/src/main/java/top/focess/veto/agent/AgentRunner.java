@@ -34,7 +34,6 @@ import top.focess.veto.agent.intercept.ApprovalDecision;
 import top.focess.veto.agent.intercept.ApprovalReceipt;
 import top.focess.veto.agent.intercept.Gateway;
 import top.focess.veto.agent.intercept.GatewayResult;
-import top.focess.veto.agent.intercept.GuidedStepContext;
 import top.focess.veto.agent.intercept.HitlRegistry;
 import top.focess.veto.agent.intercept.IngressDefense;
 import top.focess.veto.agent.intercept.InterceptResolution;
@@ -46,28 +45,30 @@ import top.focess.veto.agent.intercept.VetoOption;
 import top.focess.veto.agent.intercept.VetoPrompt;
 import top.focess.veto.agent.intercept.VetoScenario;
 import top.focess.veto.agent.loop.CompiledPrompt;
-import top.focess.veto.agent.loop.GenerateAction;
 import top.focess.veto.agent.loop.LoopBreaker;
 import top.focess.veto.agent.loop.MessageCitations;
 import top.focess.veto.agent.loop.PromptCompiler;
 import top.focess.veto.agent.loop.PromptSource;
-import top.focess.veto.agent.loop.ResponseRequest;
 import top.focess.veto.agent.tool.AgentToolDefinition;
 import top.focess.veto.agent.tool.LocalToolDefinition;
 import top.focess.veto.agent.tool.NativeToolArgumentValidator;
 import top.focess.veto.agent.tool.NativeToolDefinition;
-import top.focess.veto.agent.tool.ResponseSubmission;
 import top.focess.veto.agent.tool.ToolCallContext;
 import top.focess.veto.agent.tool.ToolCallContextHolder;
 import top.focess.veto.agent.tool.ToolDefinition;
 import top.focess.veto.agent.tool.ToolEngine;
-import top.focess.veto.agent.tool.ToolResult;
 import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.tool.ParamCategory;
+import top.focess.veto.api.agent.tool.ResponseSubmission;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.agent.tool.ToolErrorCode;
+import top.focess.veto.api.agent.tool.ToolResult;
 import top.focess.veto.api.agent.tool.ToolResultFormat;
 import top.focess.veto.api.agent.tool.ToolResultStatus;
+import top.focess.veto.api.agent.workflow.GenerateAction;
+import top.focess.veto.api.agent.workflow.GuidedStepContext;
+import top.focess.veto.api.agent.workflow.PlanExecution;
+import top.focess.veto.api.agent.workflow.ResponseRequest;
 import top.focess.veto.api.llm.ChatMessage;
 import top.focess.veto.api.llm.LlmOptions;
 import top.focess.veto.api.llm.LlmSystemUsage;
@@ -101,6 +102,7 @@ import top.focess.veto.plugin.runtime.PluginJson;
 import top.focess.veto.plugin.runtime.PluginLifecycleEvents;
 import top.focess.veto.plugin.runtime.SessionPlugins;
 import top.focess.veto.sandbox.BackgroundTaskManager;
+import top.focess.veto.util.Nullness;
 import top.focess.veto.vault.KeysteadVault;
 import top.focess.veto.vault.UserContext;
 
@@ -212,11 +214,13 @@ public class AgentRunner {
     }
 
     private int turnNumber = 0;
-    private final @NonNull GuidedProgram program;
+    private PlanExecution program;
+    private int maxGuidedSteps;
     private ModelTierRegistry guidedTierRegistry;
 
     void configureGuided(ModelTierRegistry registry, int maxSteps) {
-        program.configure(maxSteps);
+        if (maxSteps < 1) throw new IllegalArgumentException("guided max-steps must be positive");
+        maxGuidedSteps = maxSteps;
         this.guidedTierRegistry = registry;
     }
 
@@ -338,7 +342,6 @@ public class AgentRunner {
         this.breaker = new LoopBreaker(maxCallsPerEpisode);
         this.readHistory = gateway.readHistory();
         this.binding = binding;
-        this.program = new GuidedProgram(objectMapper);
         // agentId is the persona id (a UUID string — see AgentService.createAgent); derive the
         // per-session frame key once. Fail-fast if a non-UUID id ever reaches here.
         this.sessionId = UUID.fromString(agentId);
@@ -567,7 +570,7 @@ public class AgentRunner {
                                     + first.content();
                     if (first.kind().equals("TIME_ONCE")) breaker.newEpisode();
                 }
-                program.reset();
+                program = null;
                 handlingDirectUserPrompt = false;
             }
             if (resultFuture.isDone() && !handlingDirectUserPrompt) {
@@ -584,7 +587,7 @@ public class AgentRunner {
             boolean inserted = injectMonitorEvents();
             if (!inserted) return;
             preparedFirstPrompt = null;
-            program.reset();
+            program = null;
             completionToolFinished = false;
             pendingResponse = null;
             submissionRequest = null;
@@ -805,7 +808,7 @@ public class AgentRunner {
                                 : TurnRecord.userPrompt(++turnNumber, prompt)));
         TaskCancellation cancellation = activeCancellation;
         if (cancellation != null) cancellation.requestId = activeRequestId;
-        program.reset();
+        program = null;
         breaker.newEpisode();
 
         runAutonomous();
@@ -1016,9 +1019,12 @@ public class AgentRunner {
             if (accepted instanceof ToolCallContextHolder.ResponseDirective.Plan plan) {
                 pendingResponse = null;
                 checkTaskCancellation();
-                program.install(plan.program(), lastModelCallId);
+                PlanExecution acceptedProgram = plan.execution();
+                acceptedProgram.configure(maxGuidedSteps);
+                acceptedProgram.install(plan.program(), lastModelCallId);
+                program = acceptedProgram;
                 AgentPersona programPersona = persona;
-                runGuided();
+                runSubmittedPlan();
                 if (persona != programPersona) continue;
                 return;
             }
@@ -1054,25 +1060,28 @@ public class AgentRunner {
         }
     }
 
-    // ── Guided loop (drives the actions program IR) ─────────────────────────
+    // ── Plugin plan continuation (host callbacks retain execution authority)
+    // ─────────────────────────
 
     private GuidedStepContext currentGuidedStep;
 
-    private void runGuided() {
-        var runtime = guidedRuntime();
-        while (state == AgentState.RUNNING && program.active()) {
+    private void runSubmittedPlan() {
+        PlanExecution active = program;
+        if (active == null) return;
+        var runtime = planRuntime(active);
+        while (state == AgentState.RUNNING && program == active && active.active()) {
             checkTaskCancellation();
             injectPendingTaskExitNotices();
             injectMonitorEvents();
-            program.step(runtime);
+            active.step(runtime);
         }
     }
 
-    private GuidedProgram.@NonNull Runtime guidedRuntime() {
-        return new GuidedProgram.Runtime() {
+    private PlanExecution.@NonNull Runtime planRuntime(@NonNull PlanExecution active) {
+        return new PlanExecution.Runtime() {
             @Override
             public boolean running() {
-                return state == AgentState.RUNNING;
+                return state == AgentState.RUNNING && program == active;
             }
 
             @Override
@@ -1089,19 +1098,29 @@ public class AgentRunner {
             }
 
             @Override
-            public GuidedProgram.@NonNull Generated generate(
+            public PlanExecution.@NonNull Generated generate(
                     @NonNull GenerateAction action, @NonNull ResponseContract contract) {
                 VetoResponse response = callGenerate(action, contract);
-                return new GuidedProgram.Generated(response, lastCitations, lastModelCallId);
+                return new PlanExecution.Generated(response, lastCitations, lastModelCallId);
             }
 
             @Override
             public void message(
                     @NonNull String text,
-                    MessageCitations.Bound citations,
+                    PlanExecution.Source citations,
                     String callId,
                     boolean forwarded) {
-                emitMessage(text, citations, callId, forwarded);
+                emitMessage(
+                        text,
+                        citations instanceof MessageCitations.Bound bound ? bound : null,
+                        callId,
+                        forwarded);
+            }
+
+            @Override
+            public @NonNull String prompt(
+                    @NonNull String source, @NonNull Map<String, Object> data) {
+                return PromptCompiler.compileText(source, data);
             }
 
             @Override
@@ -1156,7 +1175,12 @@ public class AgentRunner {
         }
         VetoRequest request = requests().buildRequest(compiled).withResponseContract(contract);
         if (generation != null)
-            request = requests().generationRequest(request, generation, program.scope());
+            request =
+                    requests()
+                            .generationRequest(
+                                    request,
+                                    generation,
+                                    Nullness.requireNonNull(program, "No active plan").scope());
         try {
             var result =
                     new ModelExchange(agentId, responses)
@@ -2681,7 +2705,7 @@ public class AgentRunner {
         appendTurn(
                 PromptCompiler.sourcedUserPrompt(
                         ++turnNumber, prompt, Map.of("task", activeUserTask, "brief", brief)));
-        program.reset();
+        program = null;
         breaker.newEpisode();
     }
 

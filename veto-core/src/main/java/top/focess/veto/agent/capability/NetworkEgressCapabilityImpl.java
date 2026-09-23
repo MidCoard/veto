@@ -23,10 +23,10 @@ import org.jspecify.annotations.NonNull;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
-import top.focess.veto.agent.web.FetchedPage;
 import top.focess.veto.agent.web.GitHubRepositoryReader;
 import top.focess.veto.agent.web.WebFetchExecutor;
 import top.focess.veto.agent.web.WebProxySelector;
+import top.focess.veto.api.agent.capability.NetworkEgressCapability;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.agent.tool.ToolErrorCode;
 import top.focess.veto.api.agent.tool.ToolErrors;
@@ -34,6 +34,7 @@ import top.focess.veto.api.agent.tool.ToolExecutionException;
 import top.focess.veto.api.search.SearchOptions;
 import top.focess.veto.api.search.SearchProvider;
 import top.focess.veto.api.search.SearchResult;
+import top.focess.veto.api.web.FetchedPage;
 
 @Component
 public final class NetworkEgressCapabilityImpl implements NetworkEgressCapability {

@@ -14,12 +14,8 @@ import org.junit.jupiter.api.io.TempDir;
 import top.focess.veto.agent.identity.AgentPersona;
 import top.focess.veto.agent.identity.Role;
 import top.focess.veto.agent.screening.DeployerPolicy;
-import top.focess.veto.agent.skills.Skill;
 import top.focess.veto.agent.tool.AgentToolDefinition;
 import top.focess.veto.agent.tool.ToolSchemaCompiler;
-import top.focess.veto.agent.tool.builtin.AnswerWithCitationsTool;
-import top.focess.veto.agent.tool.builtin.AskUserTool;
-import top.focess.veto.agent.tool.builtin.SubmitPlanTool;
 import top.focess.veto.agent.translation.VetoCapabilityTranslator;
 import top.focess.veto.agent.workspace.PathMode;
 import top.focess.veto.agent.workspace.TrustMarker;
@@ -30,6 +26,10 @@ import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.ToolDocumentation;
 import top.focess.veto.api.llm.ToolDefinition;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
+import top.focess.veto.api.skills.Skill;
+import top.focess.veto.builtin.planning.AnswerWithCitationsTool;
+import top.focess.veto.builtin.planning.SubmitPlanTool;
+import top.focess.veto.builtin.tools.AskUserTool;
 
 class PromptCapabilityContractTest {
     @Test

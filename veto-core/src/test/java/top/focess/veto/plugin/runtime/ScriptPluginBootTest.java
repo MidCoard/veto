@@ -126,7 +126,29 @@ class ScriptPluginBootTest {
         assertEquals(1, agentOnlySnapshot.plugins().size());
         assertEquals("top.focess.builtin", agentOnlySnapshot.plugins().getFirst().id());
         assertEquals(
-                java.util.List.of("create_group"), agentOnlySnapshot.plugins().getFirst().tools());
+                java.util.List.of(
+                        "answer_with_citations",
+                        "ask_user",
+                        "cancel_group_task",
+                        "cancel_monitor",
+                        "create_group",
+                        "create_mate",
+                        "create_monitor",
+                        "create_task",
+                        "disband_group",
+                        "forget_memory",
+                        "inspect_group",
+                        "inspect_monitor",
+                        "load_skill",
+                        "pause_monitor",
+                        "post_message",
+                        "recall_memory",
+                        "remove_mate",
+                        "remove_node",
+                        "resume_monitor",
+                        "submit_plan",
+                        "write_memory"),
+                agentOnlySnapshot.plugins().getFirst().tools());
         var call = new ToolCall(definition.name(), Map.of("text", "a😀b"), "plugin-boot-call");
         assertEquals(ToolResultStatus.FAILURE, engine.execute(call, definition).status());
         UUID user = UUID.randomUUID();

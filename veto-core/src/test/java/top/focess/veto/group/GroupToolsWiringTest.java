@@ -18,19 +18,22 @@ import top.focess.veto.agent.tool.ToolCallContext;
 import top.focess.veto.agent.tool.ToolCallContextHolder;
 import top.focess.veto.agent.tool.ToolDefinition;
 import top.focess.veto.agent.tool.ToolEngine;
-import top.focess.veto.agent.tool.ToolResult;
 import top.focess.veto.agent.workspace.PathMode;
 import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.ToolErrors;
 import top.focess.veto.api.agent.tool.ToolExecutionException;
+import top.focess.veto.api.agent.tool.ToolResult;
+import top.focess.veto.api.group.BlackboardMessage;
+import top.focess.veto.api.group.GroupState;
 import top.focess.veto.api.llm.ProviderType;
 import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.builtin.agent.CreateGroup;
-import top.focess.veto.group.GroupTools.DisbandGroup;
-import top.focess.veto.group.GroupTools.InspectGroup;
-import top.focess.veto.group.GroupTools.PostMessage;
+import top.focess.veto.builtin.group.CollaborationTools;
+import top.focess.veto.builtin.group.GroupTools.DisbandGroup;
+import top.focess.veto.builtin.group.GroupTools.InspectGroup;
+import top.focess.veto.builtin.group.GroupTools.PostMessage;
 import top.focess.veto.model.tier.ModelBinding;
 import top.focess.veto.model.tier.ModelTier;
 import top.focess.veto.model.tier.ModelTierRegistry;
@@ -206,7 +209,7 @@ class GroupToolsWiringTest {
                     parentSession,
                     g.withMate("test-mate", "review")
                             .withDag(g.dag())
-                            .withState(Group.GroupState.COMPLETED, g.createdAt())
+                            .withState(GroupState.COMPLETED, g.createdAt())
                             .withoutMate("test-mate")
                             .sessionId());
             assertEquals(
@@ -287,7 +290,7 @@ class GroupToolsWiringTest {
                     "the reverse-transform brief carries the outcome");
 
             assertEquals(
-                    Group.GroupState.DISBANDED,
+                    GroupState.DISBANDED,
                     requireGroup(registry.get(g.groupId())).state(),
                     "disband flips the group to DISBANDED");
         } finally {

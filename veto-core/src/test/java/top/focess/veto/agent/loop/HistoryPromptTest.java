@@ -118,7 +118,7 @@ class HistoryPromptTest {
                 new ObjectMapper()
                         .registerModule(new com.fasterxml.jackson.datatype.jsr310.JavaTimeModule());
         var state = new NativeToolState("test", "batch", "signed-parts", 0);
-        var call = new ToolCall("read", java.util.Map.of()).withNativeState(state);
+        var call = new ToolCall("read", Map.of()).withNativeState(state);
         var turn = TurnRecord.toolCall(2, call);
         var restored =
                 mapper.readValue(

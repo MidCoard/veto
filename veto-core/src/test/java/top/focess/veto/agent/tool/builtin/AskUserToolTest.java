@@ -29,6 +29,9 @@ import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.ToolErrorCode;
 import top.focess.veto.api.agent.tool.ToolExecutionException;
 import top.focess.veto.api.agent.tool.ToolResultStatus;
+import top.focess.veto.api.interaction.Option;
+import top.focess.veto.api.interaction.Question;
+import top.focess.veto.builtin.tools.AskUserTool;
 import top.focess.veto.util.Nullness;
 
 @Timeout(10)
@@ -37,9 +40,8 @@ class AskUserToolTest {
     @ParameterizedTest
     @ValueSource(ints = {2, 4, 5})
     void acceptsPlainLabelsAndTwoToFiveOptions(int count) throws Exception {
-        var options = new ArrayList<AskUserTool.Option>();
-        for (int i = 0; i < count; i++)
-            options.add(new AskUserTool.Option("Choice " + i, "Description " + i));
+        var options = new ArrayList<Option>();
+        for (int i = 0; i < count; i++) options.add(new Option("Choice " + i, "Description " + i));
         try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
             var result =
                     executor.submit(
@@ -48,7 +50,7 @@ class AskUserToolTest {
                                             tool,
                                             new AskUserTool.Args(
                                                     List.of(
-                                                            new AskUserTool.Question(
+                                                            new Question(
                                                                     "Scope",
                                                                     "scope",
                                                                     "Choose scope",
@@ -72,17 +74,17 @@ class AskUserToolTest {
     void identifiesSixOptionQuestionAndNeverPublishesAPartialBatch() {
         var valid = question("language");
         var invalid =
-                new AskUserTool.Question(
+                new Question(
                         "Scope",
                         "scope",
                         "Choose the scope",
                         List.of(
                                 valid.options().getFirst(),
                                 valid.options().getLast(),
-                                new AskUserTool.Option("Third", "Third choice"),
-                                new AskUserTool.Option("Fourth", "Fourth choice"),
-                                new AskUserTool.Option("Fifth", "Fifth choice"),
-                                new AskUserTool.Option("Sixth", "Sixth choice")));
+                                new Option("Third", "Third choice"),
+                                new Option("Fourth", "Fourth choice"),
+                                new Option("Fifth", "Fifth choice"),
+                                new Option("Sixth", "Sixth choice")));
         var error =
                 assertThrows(
                         ToolDocs.nonNullClass(ToolExecutionException.class),
@@ -134,61 +136,51 @@ class AskUserToolTest {
     void rejectsInvalidQuestionsBeforeRegistering() {
         var valid = question("question_0");
         assertInvalid(List.of(valid, valid));
+        assertInvalid(List.of(new Question(" ", valid.id(), valid.question(), valid.options())));
         assertInvalid(
                 List.of(
-                        new AskUserTool.Question(
-                                " ", valid.id(), valid.question(), valid.options())));
-        assertInvalid(
-                List.of(
-                        new AskUserTool.Question(
+                        new Question(
                                 "x".repeat(13), valid.id(), valid.question(), valid.options())));
         assertInvalid(
-                List.of(
-                        new AskUserTool.Question(
-                                valid.header(), "Bad-ID", valid.question(), valid.options())));
+                List.of(new Question(valid.header(), "Bad-ID", valid.question(), valid.options())));
+        assertInvalid(List.of(new Question(valid.header(), valid.id(), " ", valid.options())));
         assertInvalid(
                 List.of(
-                        new AskUserTool.Question(
-                                valid.header(), valid.id(), " ", valid.options())));
-        assertInvalid(
-                List.of(
-                        new AskUserTool.Question(
+                        new Question(
                                 valid.header(), valid.id(), "x".repeat(301), valid.options())));
         assertInvalid(
                 List.of(
-                        new AskUserTool.Question(
+                        new Question(
                                 valid.header(),
                                 valid.id(),
                                 valid.question(),
                                 List.of(valid.options().getFirst()))));
         assertInvalid(
                 List.of(
-                        new AskUserTool.Question(
+                        new Question(
                                 valid.header(),
                                 valid.id(),
                                 valid.question(),
                                 List.of(
-                                        new AskUserTool.Option("Other", "Reserved choice"),
+                                        new Option("Other", "Reserved choice"),
                                         valid.options().getLast()))));
         assertInvalid(
                 List.of(
-                        new AskUserTool.Question(
+                        new Question(
                                 valid.header(),
                                 valid.id(),
                                 valid.question(),
                                 List.of(
                                         valid.options().getFirst(),
-                                        new AskUserTool.Option(" second ", "Duplicate"),
-                                        new AskUserTool.Option("SECOND", "Duplicate")))));
+                                        new Option(" second ", "Duplicate"),
+                                        new Option("SECOND", "Duplicate")))));
         assertInvalid(
                 List.of(
-                        new AskUserTool.Question(
+                        new Question(
                                 valid.header(),
                                 valid.id(),
                                 valid.question(),
-                                List.of(
-                                        valid.options().getFirst(),
-                                        new AskUserTool.Option("Second", " ")))));
+                                List.of(valid.options().getFirst(), new Option("Second", " ")))));
     }
 
     @Test
@@ -260,14 +252,13 @@ class AskUserToolTest {
     @Test
     void overlongRecommendationIdentifiesTheQuestionAndIncludesSuffixInLimit() {
         var question =
-                new AskUserTool.Question(
+                new Question(
                         "Project",
                         "project",
                         "Create the project?",
                         List.of(
-                                new AskUserTool.Option(
-                                        "😀".repeat(107) + " (Recommended)", "Create files."),
-                                new AskUserTool.Option("Show code", "Show the code first.")));
+                                new Option("😀".repeat(107) + " (Recommended)", "Create files."),
+                                new Option("Show code", "Show the code first.")));
         var error =
                 assertThrows(
                         ToolDocs.nonNullClass(ToolExecutionException.class),
@@ -288,13 +279,13 @@ class AskUserToolTest {
         String label =
                 example.equals("unicode-boundary") ? "😀".repeat(106) + " (Recommended)" : example;
         var question =
-                new AskUserTool.Question(
+                new Question(
                         "Project",
                         "project",
                         "Create the project?",
                         List.of(
-                                new AskUserTool.Option(label, "Create files."),
-                                new AskUserTool.Option("Show code", "Show code first.")));
+                                new Option(label, "Create files."),
+                                new Option("Show code", "Show code first.")));
         var executor = Executors.newVirtualThreadPerTaskExecutor();
         try {
             var result =
@@ -315,7 +306,7 @@ class AskUserToolTest {
         }
     }
 
-    private void assertInvalid(@NonNull List<AskUserTool.Question> questions) {
+    private void assertInvalid(@NonNull List<Question> questions) {
         assertTimeoutPreemptively(
                 Duration.ofSeconds(2),
                 () -> {
@@ -340,19 +331,19 @@ class AskUserToolTest {
         throw new AssertionError("Tool did not register its question batch");
     }
 
-    private static @NonNull List<AskUserTool.Question> questions(int count) {
-        List<AskUserTool.Question> result = new ArrayList<>();
+    private static @NonNull List<Question> questions(int count) {
+        List<Question> result = new ArrayList<>();
         for (int i = 0; i < count; i++) result.add(question("question_" + i));
         return result;
     }
 
-    private static AskUserTool.@NonNull Question question(@NonNull String id) {
-        return new AskUserTool.Question(
+    private static @NonNull Question question(@NonNull String id) {
+        return new Question(
                 "Choice",
                 id,
                 "Which option?",
                 List.of(
-                        new AskUserTool.Option("First (Recommended)", "The default choice."),
-                        new AskUserTool.Option("Second", "The alternative.")));
+                        new Option("First (Recommended)", "The default choice."),
+                        new Option("Second", "The alternative.")));
     }
 }

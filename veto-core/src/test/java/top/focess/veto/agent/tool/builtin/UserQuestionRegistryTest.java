@@ -15,20 +15,22 @@ import java.util.concurrent.TimeUnit;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.api.agent.tool.ToolDocs;
+import top.focess.veto.api.interaction.Option;
+import top.focess.veto.api.interaction.Question;
 
 class UserQuestionRegistryTest {
 
     @Test
     void publishesAndResolvesOneQuestionBatch() {
         UserQuestionRegistry registry = new UserQuestionRegistry();
-        AskUserTool.Question question =
-                new AskUserTool.Question(
+        Question question =
+                new Question(
                         "Format",
                         "format",
                         "Which format?",
                         List.of(
-                                new AskUserTool.Option("Markdown", "Formatted output."),
-                                new AskUserTool.Option("Text", "Plain output.")));
+                                new Option("Markdown", "Formatted output."),
+                                new Option("Text", "Plain output.")));
         var answer = registry.register("agent", "call-1", List.of(question));
 
         assertEquals(1, registry.pendingFor("agent").size());
@@ -90,17 +92,14 @@ class UserQuestionRegistryTest {
     void snapshotsQuestionsOptionsAndCompletedAnswers() {
         UserQuestionRegistry registry = new UserQuestionRegistry();
         var options = new ArrayList<>(question().options());
-        List<AskUserTool.Question> questions =
-                new ArrayList<>(
-                        List.of(new AskUserTool.Question("Choice", "choice", "Which?", options)));
+        List<Question> questions =
+                new ArrayList<>(List.of(new Question("Choice", "choice", "Which?", options)));
         var pending = registry.register("agent", "call", questions);
         questions.clear();
         options.clear();
         Object exposedQuestions = registry.pendingFor("agent").getFirst().questions();
         assertEquals(
-                List.of(
-                        new AskUserTool.Question(
-                                "Choice", "choice", "Which?", question().options())),
+                List.of(new Question("Choice", "choice", "Which?", question().options())),
                 exposedQuestions);
         assertFalse(registry.answer("agent", "call", Map.of()));
         Map<String, String> answers = new LinkedHashMap<>(Map.of("choice", "Custom"));
@@ -147,13 +146,13 @@ class UserQuestionRegistryTest {
         }
     }
 
-    private static AskUserTool.@NonNull Question question() {
-        return new AskUserTool.Question(
+    private static @NonNull Question question() {
+        return new Question(
                 "Choice",
                 "choice",
                 "Which option?",
                 List.of(
-                        new AskUserTool.Option("First (Recommended)", "Default."),
-                        new AskUserTool.Option("Second", "Alternative.")));
+                        new Option("First (Recommended)", "Default."),
+                        new Option("Second", "Alternative.")));
     }
 }

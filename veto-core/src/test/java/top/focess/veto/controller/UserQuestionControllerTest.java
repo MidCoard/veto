@@ -16,9 +16,10 @@ import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
-import top.focess.veto.agent.tool.builtin.AskUserTool;
 import top.focess.veto.agent.tool.builtin.UserQuestionRegistry;
 import top.focess.veto.api.agent.tool.ToolDocs;
+import top.focess.veto.api.interaction.Option;
+import top.focess.veto.api.interaction.Question;
 import top.focess.veto.session.SessionService;
 import top.focess.veto.vault.KeysteadVault;
 
@@ -36,17 +37,17 @@ class UserQuestionControllerTest {
         when(sessions.primaryAgentIdFor("session", user)).thenReturn(Optional.of(agent));
     }
 
-    private static @NonNull List<AskUserTool.@NonNull Question> questions(int count) {
+    private static @NonNull List<@NonNull Question> questions(int count) {
         return IntStream.range(0, count)
                 .mapToObj(
                         index ->
-                                new AskUserTool.Question(
+                                new Question(
                                         "Choice",
                                         "q_" + index,
                                         "Which option?",
                                         List.of(
-                                                new AskUserTool.Option("A (Recommended)", "First."),
-                                                new AskUserTool.Option("B", "Second."))))
+                                                new Option("A (Recommended)", "First."),
+                                                new Option("B", "Second."))))
                 .toList();
     }
 

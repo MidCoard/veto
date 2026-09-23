@@ -17,6 +17,7 @@ import org.junit.jupiter.api.Timeout;
 import top.focess.veto.agent.Agent;
 import top.focess.veto.agent.AgentResult;
 import top.focess.veto.api.agent.tool.ToolDocs;
+import top.focess.veto.api.group.BlackboardMessage;
 
 @Timeout(10)
 class MateAgentLifecycleTest {

@@ -1,29 +1,37 @@
 package top.focess.veto.agent.capability;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
+import top.focess.veto.agent.loop.PromptCompiler;
 import top.focess.veto.agent.tool.ToolCallContext;
 import top.focess.veto.agent.tool.ToolCallContextHolder;
+import top.focess.veto.api.agent.capability.GroupControlCapability;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.agent.tool.ToolErrorCode;
 import top.focess.veto.api.agent.tool.ToolErrors;
+import top.focess.veto.api.group.BlackboardMessage;
+import top.focess.veto.api.group.BlackboardMessage.MessageType;
+import top.focess.veto.api.group.GroupSnapshot;
+import top.focess.veto.api.group.GroupState;
+import top.focess.veto.api.group.Inspection;
+import top.focess.veto.api.group.NodeEdit;
 import top.focess.veto.group.Blackboard;
-import top.focess.veto.group.BlackboardMessage;
-import top.focess.veto.group.BlackboardMessage.MessageType;
 import top.focess.veto.group.Group;
-import top.focess.veto.group.Group.GroupState;
 import top.focess.veto.group.GroupOrchestrator;
-import top.focess.veto.group.GroupOrchestrator.NodeEdit;
 import top.focess.veto.group.GroupRegistry;
-import top.focess.veto.group.GroupSnapshot;
 import top.focess.veto.group.GroupSpawner;
 
 @Component
 public final class GroupControlCapabilityImpl implements GroupControlCapability {
+    public @NonNull String prompt(@NonNull String source, @NonNull Map<String, Object> data) {
+        return PromptCompiler.compileText(source, data);
+    }
+
     private final @NonNull GroupSpawner spawner;
     private final @NonNull GroupRegistry registry;
     private final @NonNull Blackboard blackboard;
@@ -57,7 +65,7 @@ public final class GroupControlCapabilityImpl implements GroupControlCapability 
     }
 
     @Override
-    public GroupOrchestrator.Inspection inspect(long since) {
+    public Inspection inspect(long since) {
         var ctx = CapabilityAccess.require(ToolCapability.GROUP_CONTROL, "inspect_group");
         requireLeader(ctx);
         UUID id = ctx.groupId();
@@ -148,6 +156,7 @@ public final class GroupControlCapabilityImpl implements GroupControlCapability 
             @NonNull String id,
             @NonNull String description,
             @NonNull String mateId,
+            @NonNull String responsibility,
             @NonNull Set<String> dependencies) {
         var ctx = CapabilityAccess.require(ToolCapability.GROUP_CONTROL, "create_task");
         requireLeader(ctx);
@@ -157,9 +166,6 @@ public final class GroupControlCapabilityImpl implements GroupControlCapability 
             return ToolErrors.failure(
                     ToolErrorCode.GROUP.NO_ACTIVE_GROUP,
                     "Task not created: no active group in your context. create_task is a Leader tool inside a group.");
-        String responsibility = group.mates().get(mateId);
-        if (responsibility == null)
-            return new NodeEdit.Rejected("Unknown Mate in this group: " + mateId);
         return orchestrator.addNode(
                 group.groupId(),
                 id,

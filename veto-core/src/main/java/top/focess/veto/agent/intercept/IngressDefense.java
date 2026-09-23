@@ -19,11 +19,11 @@ import top.focess.veto.agent.tool.NativeToolDefinition;
 import top.focess.veto.agent.tool.RemoteToolDefinition;
 import top.focess.veto.agent.tool.ToolCallContextHolder;
 import top.focess.veto.agent.tool.ToolDefinition;
-import top.focess.veto.agent.tool.ToolResult;
-import top.focess.veto.agent.web.FinishReadTool;
-import top.focess.veto.agent.web.WebFetchTool;
 import top.focess.veto.api.agent.tool.ParamCategory;
+import top.focess.veto.api.agent.tool.ReaderExecutionResult;
 import top.focess.veto.api.agent.tool.ToolCapability;
+import top.focess.veto.api.agent.tool.ToolDocs;
+import top.focess.veto.api.agent.tool.ToolResult;
 import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.plugin.runtime.PluginManager;
 import top.focess.veto.util.Nullness;
@@ -111,8 +111,9 @@ public class IngressDefense {
         if (readerId != null
                 && result.success()
                 && def instanceof NativeToolDefinition nativeDef
-                && (nativeDef.toolClass() == WebFetchTool.class
-                        || nativeDef.toolClass() == FinishReadTool.class)
+                && nativeDef
+                        .toolClass()
+                        .isAnnotationPresent(ToolDocs.nonNullClass(ReaderExecutionResult.class))
                 && def.capability() == ToolCapability.NETWORK_EGRESS) {
             try {
                 var root = JSON.readTree(body);

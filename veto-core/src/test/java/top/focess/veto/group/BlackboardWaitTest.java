@@ -9,6 +9,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
+import top.focess.veto.api.group.GroupState;
 
 class BlackboardWaitTest {
     @Test
@@ -60,7 +61,7 @@ class BlackboardWaitTest {
                                             checked.countDown();
                                             var current = registry.get(group.groupId());
                                             return current == null
-                                                    || current.state() != Group.GroupState.ACTIVE;
+                                                    || current.state() != GroupState.ACTIVE;
                                         },
                                         TimeUnit.SECONDS.toNanos(30));
                                 return true;

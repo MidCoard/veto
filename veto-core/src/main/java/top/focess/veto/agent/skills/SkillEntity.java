@@ -9,6 +9,8 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.api.skills.Skill;
+import top.focess.veto.api.skills.SkillSourceType;
 
 /**
  * JPA persistence for a skill's integrity hash. The hash is the tamper-evidence anchor — the body

@@ -4,6 +4,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.api.group.BlackboardMessage;
 
 final class GroupTestMessages {
 

@@ -25,32 +25,36 @@ import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.context.ApplicationContext;
-import top.focess.veto.agent.capability.LoopControlCapability;
 import top.focess.veto.agent.capability.LoopControlCapabilityImpl;
 import top.focess.veto.agent.capability.ProcessExecutionCapabilityImpl;
 import top.focess.veto.agent.capability.TaskControlCapabilityImpl;
 import top.focess.veto.agent.intercept.ToolExecutionPermit;
 import top.focess.veto.agent.mcp.transport.McpTransport;
-import top.focess.veto.agent.tool.builtin.RunCommandTool;
-import top.focess.veto.agent.tool.builtin.RunTaskTool;
-import top.focess.veto.agent.tool.builtin.StopTaskTool;
-import top.focess.veto.agent.tool.builtin.ViewTaskTool;
 import top.focess.veto.agent.workspace.PathMode;
 import top.focess.veto.agent.workspace.TrustMarker;
 import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.agent.workspace.WorkspaceRoot;
+import top.focess.veto.api.agent.capability.LoopControlCapability;
+import top.focess.veto.api.agent.capability.ProcessExecutionCapability;
 import top.focess.veto.api.agent.tool.AgentTool;
+import top.focess.veto.api.agent.tool.LoopControlTool;
 import top.focess.veto.api.agent.tool.NativeTool;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.agent.tool.ToolDoc;
 import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.ToolErrorCode;
 import top.focess.veto.api.agent.tool.ToolErrors;
+import top.focess.veto.api.agent.tool.ToolResult;
 import top.focess.veto.api.agent.tool.ToolResultFormat;
 import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
 import top.focess.veto.api.plugin.contribution.Contribution;
+import top.focess.veto.api.process.CommandResult;
+import top.focess.veto.builtin.tools.RunCommandTool;
+import top.focess.veto.builtin.tools.RunTaskTool;
+import top.focess.veto.builtin.tools.StopTaskTool;
+import top.focess.veto.builtin.tools.ViewTaskTool;
 import top.focess.veto.builtin.workspace.GrepSearchTool;
 import top.focess.veto.builtin.workspace.ListDirTool;
 import top.focess.veto.builtin.workspace.ReplaceFileContentTool;
@@ -97,6 +101,45 @@ class ToolEngineImplTest {
             assertFalse(executeAuthorized(engine, call, definition, root).success());
             fixture.runtime.close();
             assertTrue(engine.getActiveTools(null).isEmpty());
+        }
+    }
+
+    @Test
+    void pluginProcessToolReceivesHostCapabilityOnlyAfterAuthorization(@TempDir @NonNull Path root)
+            throws Exception {
+        var contribution =
+                Contribution.of(
+                        StandardContributionPoints.NATIVE_TOOLS,
+                        "run_command",
+                        new RunCommandTool());
+        try (var fixture = new WorkflowPluginFixture(List.of(contribution))) {
+            var context = mock(ToolDocs.nonNullClass(ApplicationContext.class));
+            var processes = mock(ToolDocs.nonNullClass(ProcessExecutionCapability.class));
+            when(context.getBeansOfType(PluginManager.class))
+                    .thenReturn(Map.of("plugins", fixture.manager));
+            when(context.getBean(ToolDocs.nonNullClass(ProcessExecutionCapability.class)))
+                    .thenReturn(processes);
+            when(processes.run(anyList(), any(), any(), anyBoolean()))
+                    .thenReturn(new CommandResult(0, "plugin executed", "", List.of(0)));
+            var engine = new ToolEngineImpl(new ObjectMapper(), List.of(), context);
+            engine.attachSessionPlugins(fixture.sessions);
+            engine.init();
+            String name = "plugin_fixture_workflow__run_command";
+            var definition = definition(engine, name);
+            var call =
+                    new ToolCall(
+                            name,
+                            Map.of(
+                                    "commands",
+                                    List.of(Map.of("executable", "example", "args", List.of())),
+                                    "timeout",
+                                    1));
+            assertFalse(engine.execute(call, definition).success());
+            verifyNoInteractions(processes);
+            var result = executeAuthorized(engine, call, definition, root);
+            assertTrue(result.success(), result.content());
+            assertEquals("plugin executed", result.content());
+            verify(processes).run(anyList(), any(), any(), eq(false));
         }
     }
 

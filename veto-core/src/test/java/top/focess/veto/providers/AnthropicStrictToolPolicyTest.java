@@ -8,7 +8,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.List;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
-import top.focess.veto.agent.tool.builtin.PlanProgramSchema;
+import top.focess.veto.builtin.planning.PlanProgramSchema;
 
 class AnthropicStrictToolPolicyTest {
     private final @NonNull ObjectMapper mapper = new ObjectMapper();

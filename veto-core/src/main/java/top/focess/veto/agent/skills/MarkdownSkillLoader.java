@@ -15,6 +15,8 @@ import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import top.focess.veto.api.agent.tool.ToolDocs;
+import top.focess.veto.api.skills.Skill;
+import top.focess.veto.api.skills.SkillSourceType;
 
 /**
  * Scans the filesystem for {@code SKILL.md} files, parses the YAML frontmatter boundary, reads the

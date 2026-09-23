@@ -10,6 +10,10 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import top.focess.veto.api.group.BlackboardMessage;
+import top.focess.veto.api.group.DagNode;
+import top.focess.veto.api.group.GroupState;
+import top.focess.veto.api.group.NodeEdit;
 
 /** Tests for the leader-and-mate group orchestration lifecycle. */
 @SuppressWarnings("initialization.field.uninitialized")
@@ -129,7 +133,7 @@ class GroupOrchestratorTest {
         Group t3 = requireGroup(orchestrator.tick(g.groupId()));
 
         // Step 4: group is complete but remains inspectable until the Leader disbands it.
-        assertEquals(Group.GroupState.COMPLETED, t3.state());
+        assertEquals(GroupState.COMPLETED, t3.state());
     }
 
     @Test
@@ -141,7 +145,7 @@ class GroupOrchestratorTest {
         orchestrator.tick(group.groupId());
         GroupTestMessages.accept(blackboard, group.groupId(), "Mate-B", "n2");
         Group completed = requireGroup(orchestrator.tick(group.groupId()));
-        assertEquals(Group.GroupState.COMPLETED, completed.state());
+        assertEquals(GroupState.COMPLETED, completed.state());
         assertEquals(group.mates(), completed.mates());
         assertNull(completed.disbandedAt());
 
@@ -152,9 +156,9 @@ class GroupOrchestratorTest {
                                 "Continue the work",
                                 "coding",
                                 Set.of("n2"))
-                        instanceof GroupOrchestrator.NodeEdit.Applied);
+                        instanceof NodeEdit.Applied);
         Group resumed = requireGroup(orchestrator.tick(group.groupId()));
-        assertEquals(Group.GroupState.ACTIVE, resumed.state());
+        assertEquals(GroupState.ACTIVE, resumed.state());
         assertEquals(group.groupId(), resumed.groupId());
         assertEquals(group.mates(), resumed.mates());
         assertEquals(DagNode.NodeState.VERIFIED, findNode(resumed, "n2").state());
@@ -163,12 +167,11 @@ class GroupOrchestratorTest {
         if (followUpMate == null) throw new AssertionError("Follow-up task must have a Mate");
         GroupTestMessages.accept(blackboard, group.groupId(), "Mate-A", "n1");
         Group afterLateReport = requireGroup(orchestrator.tick(group.groupId()));
-        assertEquals(Group.GroupState.ACTIVE, afterLateReport.state());
+        assertEquals(GroupState.ACTIVE, afterLateReport.state());
         assertEquals(DagNode.NodeState.RUNNING, findNode(afterLateReport, "follow-up").state());
         GroupTestMessages.accept(blackboard, group.groupId(), followUpMate, "follow-up");
         assertEquals(
-                Group.GroupState.COMPLETED,
-                requireGroup(orchestrator.tick(group.groupId())).state());
+                GroupState.COMPLETED, requireGroup(orchestrator.tick(group.groupId())).state());
 
         registry.disband(group.groupId(), Instant.now());
         assertTrue(
@@ -178,7 +181,7 @@ class GroupOrchestratorTest {
                                 "Must not run",
                                 "coding",
                                 Set.of())
-                        instanceof GroupOrchestrator.NodeEdit.Rejected);
+                        instanceof NodeEdit.Rejected);
     }
 
     @Test
@@ -209,7 +212,7 @@ class GroupOrchestratorTest {
                                 Set.of("source"),
                                 null,
                                 true)
-                        instanceof GroupOrchestrator.NodeEdit.Applied);
+                        instanceof NodeEdit.Applied);
         Group dispatched = requireGroup(withProvisioning.tick(group.groupId()));
         assertEquals("new-1", findNode(dispatched, "review").assignedMateId());
         assertEquals("new-2", findNode(dispatched, "source").assignedMateId());
@@ -235,7 +238,7 @@ class GroupOrchestratorTest {
                                 Set.of("n1"),
                                 null,
                                 true)
-                        instanceof GroupOrchestrator.NodeEdit.Applied);
+                        instanceof NodeEdit.Applied);
         Group registered = requireGroup(registry.get(group.groupId()));
         assertEquals("independent-reviewer", findNode(registered, "independent").assignedMateId());
         assertEquals(3, registered.mates().size());
@@ -249,7 +252,7 @@ class GroupOrchestratorTest {
                                 Set.of(),
                                 "Mate-A",
                                 true)
-                        instanceof GroupOrchestrator.NodeEdit.Rejected);
+                        instanceof NodeEdit.Rejected);
         assertFalse(
                 requireGroup(registry.get(group.groupId())).dag().nodeIds().contains("ambiguous"));
     }
@@ -267,7 +270,7 @@ class GroupOrchestratorTest {
                                 "different-label",
                                 Set.of("n1"),
                                 "Mate-B")
-                        instanceof GroupOrchestrator.NodeEdit.Applied);
+                        instanceof NodeEdit.Applied);
         assertTrue(
                 orchestrator.addNode(
                                 group.groupId(),
@@ -276,7 +279,7 @@ class GroupOrchestratorTest {
                                 "coding",
                                 Set.of(),
                                 "outsider")
-                        instanceof GroupOrchestrator.NodeEdit.Rejected);
+                        instanceof NodeEdit.Rejected);
         GroupTestMessages.accept(blackboard, group.groupId(), "Mate-A", "n1");
         Group busy = requireGroup(orchestrator.tick(group.groupId()));
         assertEquals(DagNode.NodeState.RUNNING, findNode(busy, "n2").state());
@@ -307,9 +310,7 @@ class GroupOrchestratorTest {
         orchestrator.tick(group.groupId());
         GroupTestMessages.accept(blackboard, group.groupId(), "Mate-A", "n1");
         orchestrator.tick(group.groupId());
-        assertTrue(
-                orchestrator.removeNode(group.groupId(), "n2")
-                        instanceof GroupOrchestrator.NodeEdit.Rejected);
+        assertTrue(orchestrator.removeNode(group.groupId(), "n2") instanceof NodeEdit.Rejected);
         assertEquals(
                 DagNode.NodeState.RUNNING,
                 findNode(requireGroup(registry.get(group.groupId())), "n2").state());

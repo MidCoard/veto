@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
 import org.jspecify.annotations.NonNull;
@@ -55,7 +56,7 @@ class SessionInvalidationsTest {
         var pending = questions.register("agent", "call", List.of());
         verify(changes).agentChanged("agent", "interactions");
         clearInvocations(changes);
-        assertFalse(questions.answer("agent", "missing", java.util.Map.of()));
+        assertFalse(questions.answer("agent", "missing", Map.of()));
         verifyNoInteractions(changes);
         pending.completeExceptionally(new IllegalStateException("interrupted"));
         assertTrue(questions.pendingFor("agent").isEmpty());

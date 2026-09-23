@@ -5,8 +5,8 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
-import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -112,29 +112,10 @@ public final class GitHubRepositoryReader {
                                 httpError.set(response.statusCode());
                                 return;
                             }
-                            var body = mapper.readTree(response.body());
-                            if (body == null
-                                    || !body.isObject()
-                                    || !body.path("id").isIntegralNumber()
-                                    || !body.path("full_name").isTextual()
-                                    || !body.path("private").isBoolean())
-                                throw new IllegalArgumentException("Invalid repository response");
-                            Map<String, Object> safe = new LinkedHashMap<>();
-                            safe.put("id", body.path("id").longValue());
-                            safe.put("private", body.path("private").booleanValue());
-                            for (String field :
-                                    new String[] {"full_name", "description", "default_branch"}) {
-                                var text = body.path(field);
-                                if (text.isTextual())
-                                    safe.put(
-                                            field,
-                                            mask(
-                                                    text.asText()
-                                                            .replace(
-                                                                    credential,
-                                                                    "[REDACTED_CREDENTIAL]")));
-                            }
-                            result.set(mapper.writeValueAsString(safe));
+                            result.set(
+                                    mask(
+                                            new String(response.body(), StandardCharsets.UTF_8)
+                                                    .replace(credential, "[REDACTED_CREDENTIAL]")));
                         } catch (InterruptedException interrupted) {
                             Thread.currentThread().interrupt();
                         } catch (Exception failure) {

@@ -75,7 +75,6 @@ veto/
 |-- veto-llm-providers/  Cloud LLM SDK adapters, registered through veto-api
 |-- veto-plugin-runtime/ Operator-configured script workers and example package
 |-- veto-secret-protection/ Self-contained secret-protection plugin (ServiceLoader-discovered built-in)
-|-- veto-web-search/ DuckDuckGo and Brave search providers, registered through veto-api
 |-- RELEASE.md      Release-user guide template
 |-- gradle/          Gradle wrapper support
 |-- qodana.yaml      Qodana inspection configuration

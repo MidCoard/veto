@@ -30,7 +30,6 @@ import top.focess.veto.agent.screening.ProtectedSet;
 import top.focess.veto.agent.tool.NativeToolDefinition;
 import top.focess.veto.agent.tool.ToolDefinition;
 import top.focess.veto.agent.tool.ToolEngine;
-import top.focess.veto.agent.tool.ToolResult;
 import top.focess.veto.agent.translation.DefaultCapabilityTranslator;
 import top.focess.veto.agent.workspace.PathMode;
 import top.focess.veto.agent.workspace.Workspace;
@@ -38,14 +37,15 @@ import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.tool.ParamCategory;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.agent.tool.ToolDocs;
+import top.focess.veto.api.agent.tool.ToolResult;
 import top.focess.veto.api.llm.LlmOptions;
 import top.focess.veto.api.llm.ProviderType;
 import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.api.llm.VetoResponse;
 import top.focess.veto.api.llm.exceptions.LlmException;
+import top.focess.veto.api.process.Command;
 import top.focess.veto.llm.core.UniformLLMCaller;
 import top.focess.veto.sandbox.BackgroundTaskManager;
-import top.focess.veto.sandbox.Command;
 import top.focess.veto.sandbox.SandboxManager;
 
 @SuppressWarnings("initialization.field.uninitialized")

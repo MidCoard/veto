@@ -1,8 +1,8 @@
 package top.focess.veto.agent.tool.builtin;
 
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.agent.capability.LoopControlCapability;
-import top.focess.veto.agent.tool.LoopControlTool;
+import top.focess.veto.api.agent.capability.LoopControlCapability;
+import top.focess.veto.api.agent.tool.LoopControlTool;
 import top.focess.veto.api.agent.tool.ToolDoc;
 import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.ToolResultFormat;

@@ -15,7 +15,6 @@ import org.springframework.boot.context.properties.source.MapConfigurationProper
 import top.focess.veto.agent.capability.NetworkEgressCapabilityImpl;
 import top.focess.veto.agent.tool.CapabilityTestCalls;
 import top.focess.veto.agent.web.WebFetchExecutor;
-import top.focess.veto.agent.web.WebSearchTool;
 import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.ToolExecutionException;
 import top.focess.veto.api.plugin.PluginState;
@@ -25,6 +24,7 @@ import top.focess.veto.api.plugin.contribution.Contribution;
 import top.focess.veto.api.search.SearchOptions;
 import top.focess.veto.api.search.SearchProvider;
 import top.focess.veto.api.search.SearchResult;
+import top.focess.veto.builtin.web.WebSearchTool;
 
 class PluginSearchProviderTest {
     @Test
@@ -102,11 +102,11 @@ class PluginSearchProviderTest {
     }
 
     @Test
-    void bundledSearchPluginIsDiscoveredAndConfigurationIsScoped() throws Exception {
+    void builtinSearchProvidersAreDiscoveredAndConfigurationIsScoped() throws Exception {
         var source =
                 new MapConfigurationPropertySource(
                         Map.of(
-                                "veto.plugins.configuration[top.focess.web-search].brave-api-key",
+                                "veto.plugins.configuration[top.focess.builtin].brave-api-key",
                                         "synthetic-key",
                                 "veto.plugins.configuration[another.plugin].other", "isolated"));
         var config =
@@ -115,12 +115,12 @@ class PluginSearchProviderTest {
                         .get();
         assertEquals(
                 Map.of("brave-api-key", new JsonValue.StringValue("synthetic-key")),
-                config.forPlugin("top.focess.web-search").values());
+                config.forPlugin("top.focess.builtin").values());
         assertTrue(config.forPlugin("absent").values().isEmpty());
         try (var manager =
                 new PluginManager(
                         "", "", false, 5000, PluginTestSupport.providerOf(null), config)) {
-            assertEquals(PluginState.ACTIVE, manager.plugin("top.focess.web-search").state());
+            assertEquals(PluginState.ACTIVE, manager.plugin("top.focess.builtin").state());
             assertEquals(
                     List.of("brave", "duckduckgo"),
                     manager.catalog().entries(StandardContributionPoints.SEARCH_PROVIDERS).stream()

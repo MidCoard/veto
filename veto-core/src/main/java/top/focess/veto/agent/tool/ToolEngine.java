@@ -3,6 +3,7 @@ package top.focess.veto.agent.tool;
 import java.util.List;
 import java.util.Set;
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.api.agent.tool.ToolResult;
 import top.focess.veto.api.llm.ToolCall;
 
 /**

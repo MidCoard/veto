@@ -4,9 +4,11 @@ import java.util.List;
 import java.util.concurrent.ExecutionException;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
-import top.focess.veto.agent.tool.builtin.AskUserTool.Question;
 import top.focess.veto.agent.tool.builtin.UserQuestionRegistry;
+import top.focess.veto.api.agent.capability.UserInteractionCapability;
 import top.focess.veto.api.agent.tool.ToolCapability;
+import top.focess.veto.api.interaction.AnswerBatch;
+import top.focess.veto.api.interaction.Question;
 
 @Component
 public final class UserInteractionCapabilityImpl implements UserInteractionCapability {
@@ -17,7 +19,7 @@ public final class UserInteractionCapabilityImpl implements UserInteractionCapab
     }
 
     @Override
-    public UserQuestionRegistry.@NonNull AnswerBatch ask(@NonNull List<@NonNull Question> questions)
+    public @NonNull AnswerBatch ask(@NonNull List<@NonNull Question> questions)
             throws InterruptedException {
         var context = CapabilityAccess.require(ToolCapability.USER_INTERACTION, "ask_user");
         var pending =

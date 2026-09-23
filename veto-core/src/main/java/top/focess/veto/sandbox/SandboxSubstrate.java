@@ -4,6 +4,9 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.api.process.ChainMode;
+import top.focess.veto.api.process.Command;
+import top.focess.veto.api.process.CommandResult;
 
 /**
  * The process-execution substrate. It performs <b>no policy decisions</b>: path and command policy

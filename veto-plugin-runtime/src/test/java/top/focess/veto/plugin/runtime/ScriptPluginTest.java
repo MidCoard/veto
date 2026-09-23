@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.Map;
 import java.util.Objects;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
@@ -56,8 +57,7 @@ class ScriptPluginTest {
             managed = new ManagedPlugin(script, executor);
             managed.initialize(
                     new top.focess.veto.api.plugin.PluginContext(script.identity()),
-                    new top.focess.veto.api.plugin.contract.JsonValue.ObjectValue(
-                            java.util.Map.of()));
+                    new top.focess.veto.api.plugin.contract.JsonValue.ObjectValue(Map.of()));
             managed.start();
             return new LoadedScript(script, managed, executor);
         } catch (Exception failure) {
@@ -137,8 +137,7 @@ class ScriptPluginTest {
             for (var managed : java.util.List.of(first, second)) {
                 managed.initialize(
                         new top.focess.veto.api.plugin.PluginContext(managed.identity()),
-                        new top.focess.veto.api.plugin.contract.JsonValue.ObjectValue(
-                                java.util.Map.of()));
+                        new top.focess.veto.api.plugin.contract.JsonValue.ObjectValue(Map.of()));
                 managed.start();
             }
             first.close();

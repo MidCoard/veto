@@ -37,9 +37,7 @@ import top.focess.veto.agent.intercept.VetoOption;
 import top.focess.veto.agent.loop.PromptCompiler;
 import top.focess.veto.agent.tool.ToolEngineImpl;
 import top.focess.veto.agent.translation.DefaultCapabilityTranslator;
-import top.focess.veto.agent.web.FetchedPage;
 import top.focess.veto.agent.web.WebFetchExecutor;
-import top.focess.veto.agent.web.WebFetchTool;
 import top.focess.veto.api.agent.tool.AgentTool;
 import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.llm.LlmOptions;
@@ -48,6 +46,8 @@ import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.api.llm.VetoRequest;
 import top.focess.veto.api.llm.VetoResponse;
+import top.focess.veto.api.web.FetchedPage;
+import top.focess.veto.builtin.web.WebFetchTool;
 import top.focess.veto.llm.core.UniformLLMCaller;
 import top.focess.veto.memory.TurnLogService;
 import top.focess.veto.memory.TurnRecordEntity;
@@ -159,13 +159,13 @@ class WebReadAgentIntegrationTest {
                                 "<main><p>Timeout is 30 seconds.</p><p>RAW_CHILD_PAGE_SENTINEL</p></main>",
                                 false,
                                 10000));
-        when(access.read(anyString()))
+        when(access.read(anyString(), any()))
                 .thenAnswer(
                         invocation -> {
                             String objective = invocation.getArgument(0);
                             if (objective == null)
                                 throw new AssertionError("Missing reader objective");
-                            return reader.read(objective, access);
+                            return reader.read(objective, access, invocation.getArgument(1));
                         });
         var network = mock(ToolDocs.nonNullClass(NetworkEgressCapabilityImpl.class));
         when(network.openReader(any())).thenReturn(access);
@@ -174,7 +174,7 @@ class WebReadAgentIntegrationTest {
                 .thenReturn(
                         Map.of(
                                 "submit_plan",
-                                new top.focess.veto.agent.tool.builtin.SubmitPlanTool(
+                                new top.focess.veto.builtin.planning.SubmitPlanTool(
                                         new top.focess.veto.agent.capability
                                                 .LoopControlCapabilityImpl())));
         ToolEngineImpl engine =
@@ -205,7 +205,7 @@ class WebReadAgentIntegrationTest {
                                 java.util.List.of(
                                         new ToolCall(
                                                 "submit_plan",
-                                                java.util.Map.of(
+                                                Map.of(
                                                         "actions",
                                                         mapper.readTree(
                                                                 """
@@ -441,12 +441,12 @@ class WebReadAgentIntegrationTest {
                         32000,
                         2048);
         var access = mock(ToolDocs.nonNullClass(WebReadCapability.class));
-        when(access.read(anyString()))
+        when(access.read(anyString(), any()))
                 .thenAnswer(
                         invocation -> {
                             String objective = invocation.getArgument(0);
                             if (objective == null) throw new AssertionError("Missing objective");
-                            return reader.read(objective, access);
+                            return reader.read(objective, access, invocation.getArgument(1));
                         });
         doAnswer(
                         invocation -> {
@@ -462,7 +462,7 @@ class WebReadAgentIntegrationTest {
                 .thenReturn(
                         Map.of(
                                 "submit_plan",
-                                new top.focess.veto.agent.tool.builtin.SubmitPlanTool(
+                                new top.focess.veto.builtin.planning.SubmitPlanTool(
                                         new top.focess.veto.agent.capability
                                                 .LoopControlCapabilityImpl())));
         ToolEngineImpl engine =

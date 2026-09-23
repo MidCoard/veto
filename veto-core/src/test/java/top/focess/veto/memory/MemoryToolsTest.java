@@ -27,6 +27,11 @@ import top.focess.veto.agent.tool.ToolCallContext;
 import top.focess.veto.agent.tool.ToolCallContextHolder;
 import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
+import top.focess.veto.api.memory.Memory;
+import top.focess.veto.api.memory.MemoryId;
+import top.focess.veto.api.memory.MemoryTier;
+import top.focess.veto.api.memory.ScoredMemory;
+import top.focess.veto.builtin.memory.MemoryTools;
 import top.focess.veto.memory.embedder.Embedder;
 import top.focess.veto.util.Nullness;
 
@@ -39,7 +44,7 @@ class MemoryToolsTest {
         ToolCallContextHolder.clear();
         assertThrows(
                 ToolDocs.nonNullClass(SecurityException.class),
-                () -> capability.search("query", 5, 0.5f));
+                () -> capability.search("query", MemoryTier.SESSION, 5, 0.5f));
         verifyNoInteractions(store);
     }
 
@@ -111,8 +116,8 @@ class MemoryToolsTest {
                                             invocation.getArgument(0),
                                             "Mockito must pass the captured memory query");
                             return query.tiers().contains(MemoryTier.SESSION)
-                                    ? List.of(new MemoryStore.ScoredMemory(sessionMemory, 0.7f))
-                                    : List.of(new MemoryStore.ScoredMemory(insight, 0.9f));
+                                    ? List.of(new ScoredMemory(sessionMemory, 0.7f))
+                                    : List.of(new ScoredMemory(insight, 0.9f));
                         });
         ToolCallContextHolder.set(
                 new ToolCallContext(

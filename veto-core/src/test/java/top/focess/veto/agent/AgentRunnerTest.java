@@ -37,16 +37,16 @@ import top.focess.veto.agent.tool.AgentToolDefinition;
 import top.focess.veto.agent.tool.NativeToolDefinition;
 import top.focess.veto.agent.tool.ToolEngine;
 import top.focess.veto.agent.tool.ToolEngineImpl;
-import top.focess.veto.agent.tool.ToolResult;
-import top.focess.veto.agent.tool.builtin.AskUserTool;
 import top.focess.veto.agent.tool.builtin.FixtureLoopTool;
-import top.focess.veto.agent.tool.builtin.RunTaskTool;
 import top.focess.veto.agent.tool.builtin.UserQuestionRegistry;
 import top.focess.veto.agent.translation.DefaultCapabilityTranslator;
 import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.tool.AgentTool;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.agent.tool.ToolDocs;
+import top.focess.veto.api.agent.tool.ToolResult;
+import top.focess.veto.api.group.DagNode;
+import top.focess.veto.api.group.GroupState;
 import top.focess.veto.api.llm.ChatMessage;
 import top.focess.veto.api.llm.LlmOptions;
 import top.focess.veto.api.llm.LlmSystemUsage;
@@ -61,8 +61,9 @@ import top.focess.veto.api.plugin.contract.StandardContributionPoints;
 import top.focess.veto.api.plugin.contract.TextProtection;
 import top.focess.veto.api.plugin.contract.WorkflowHook;
 import top.focess.veto.api.plugin.contribution.Contribution;
+import top.focess.veto.builtin.tools.AskUserTool;
+import top.focess.veto.builtin.tools.RunTaskTool;
 import top.focess.veto.group.Blackboard;
-import top.focess.veto.group.DagNode;
 import top.focess.veto.group.ExecutionDag;
 import top.focess.veto.group.Group;
 import top.focess.veto.group.GroupHistoryEntity;
@@ -1247,7 +1248,7 @@ class AgentRunnerTest {
             assertEquals(DagNode.NodeState.INTERRUPTED, restored.dag().nodes().getFirst().state());
             orchestrator.tick(old.groupId());
             assertEquals(
-                    Group.GroupState.ACTIVE,
+                    GroupState.ACTIVE,
                     Nullness.requireNonNull(registry.get(old.groupId())).state());
             assertTrue(requests.isEmpty(), "Recovery must not execute interrupted work");
             var mate =

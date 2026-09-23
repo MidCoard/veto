@@ -3,6 +3,7 @@ package top.focess.veto.agent.loop;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -862,10 +863,7 @@ public class PromptCompiler {
             for (var message : messages) {
                 var state = message.nativeState();
                 if (state != null)
-                    bytes +=
-                            state.partsJson()
-                                    .getBytes(java.nio.charset.StandardCharsets.UTF_8)
-                                    .length;
+                    bytes += state.partsJson().getBytes(StandardCharsets.UTF_8).length;
             }
         } catch (Exception error) {
             throw new IllegalStateException("Could not measure model input", error);

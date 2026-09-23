@@ -20,6 +20,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
+import top.focess.veto.api.process.ChainMode;
+import top.focess.veto.api.process.Command;
+import top.focess.veto.api.process.CommandResult;
 
 /**
  * The Veto-orchestrated local-default substrate.
