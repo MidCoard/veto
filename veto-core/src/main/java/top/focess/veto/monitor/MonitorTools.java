@@ -3,10 +3,10 @@ package top.focess.veto.monitor;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.capability.MonitorCapability;
-import top.focess.veto.agent.tool.Doc;
 import top.focess.veto.agent.tool.MonitorTool;
-import top.focess.veto.agent.tool.ToolDoc;
-import top.focess.veto.agent.tool.ToolResultFormat;
+import top.focess.veto.api.agent.tool.Doc;
+import top.focess.veto.api.agent.tool.ToolDoc;
+import top.focess.veto.api.agent.tool.ToolResultFormat;
 
 public final class MonitorTools {
     private MonitorTools() {}

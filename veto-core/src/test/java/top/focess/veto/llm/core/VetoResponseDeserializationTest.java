@@ -10,7 +10,7 @@ import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
-import top.focess.veto.agent.tool.ToolDocs;
+import top.focess.veto.api.agent.tool.ToolDocs;
 
 /**
  * Guards the snake_case binding of the universal {@link VetoResponse} ({@code veto_pulse}) schema —

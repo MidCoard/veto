@@ -5,7 +5,7 @@ import top.focess.command.CommandArgument;
 import top.focess.command.DataCollection;
 import top.focess.command.DataConverter;
 import top.focess.command.data.DataBuffer;
-import top.focess.veto.agent.tool.ToolDocs;
+import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.command.data.ObjectBuffer;
 import top.focess.veto.model.tier.ModelTier;
 

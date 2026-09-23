@@ -2,8 +2,10 @@ package top.focess.veto.agent.tool;
 
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.capability.DelegationCapability;
+import top.focess.veto.api.agent.tool.AgentTool;
+import top.focess.veto.api.agent.tool.ToolCapability;
 
-public non-sealed interface DelegationTool<T> extends AgentTool<T> {
+public interface DelegationTool<T> extends AgentTool<T> {
     @NonNull DelegationCapability delegationCapability();
 
     @NonNull String execute(@NonNull T args, @NonNull DelegationCapability capability);

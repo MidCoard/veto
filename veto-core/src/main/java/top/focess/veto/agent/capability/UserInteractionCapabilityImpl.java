@@ -4,9 +4,9 @@ import java.util.List;
 import java.util.concurrent.ExecutionException;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
-import top.focess.veto.agent.tool.ToolCapability;
 import top.focess.veto.agent.tool.builtin.AskUserTool.Question;
 import top.focess.veto.agent.tool.builtin.UserQuestionRegistry;
+import top.focess.veto.api.agent.tool.ToolCapability;
 
 @Component
 public final class UserInteractionCapabilityImpl implements UserInteractionCapability {

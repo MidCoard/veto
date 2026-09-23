@@ -16,7 +16,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import top.focess.veto.agent.SessionAgentRegistry;
-import top.focess.veto.agent.tool.ToolDocs;
+import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.group.Blackboard;
 import top.focess.veto.group.DagNode;
 import top.focess.veto.group.ExecutionDag;

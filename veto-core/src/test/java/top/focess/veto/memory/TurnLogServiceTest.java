@@ -11,7 +11,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import top.focess.veto.agent.TurnRecord;
-import top.focess.veto.agent.tool.ToolDocs;
+import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.bus.DeltaBroker;
 import top.focess.veto.llm.core.ToolCall;
 

@@ -1,6 +1,7 @@
 package top.focess.veto.agent.tool;
 
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.api.agent.tool.ToolResultFormat;
 
 /** Expected tool-level failure returned with {@code success=false} and a diagnostic body. */
 public final class ToolExecutionException extends RuntimeException {

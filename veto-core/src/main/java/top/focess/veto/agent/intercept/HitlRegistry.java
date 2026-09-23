@@ -14,18 +14,19 @@ import org.jspecify.annotations.NonNull;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.AgentService;
-import top.focess.veto.agent.screening.Danger;
 import top.focess.veto.agent.screening.Relevance;
 import top.focess.veto.agent.screening.Screening;
 import top.focess.veto.agent.screening.ScreeningMode;
 import top.focess.veto.agent.screening.ScreeningOutcome;
 import top.focess.veto.agent.tool.AgentToolDefinition;
 import top.focess.veto.agent.tool.NativeToolDefinition;
-import top.focess.veto.agent.tool.ParamCategory;
-import top.focess.veto.agent.tool.ToolCapability;
 import top.focess.veto.agent.tool.ToolDefinition;
 import top.focess.veto.agent.workspace.Resolution;
 import top.focess.veto.agent.workspace.Workspace;
+import top.focess.veto.api.agent.screening.Danger;
+import top.focess.veto.api.agent.tool.ParamCategory;
+import top.focess.veto.api.agent.tool.ToolCapability;
+import top.focess.veto.api.plugin.contract.WorkflowHook;
 import top.focess.veto.bus.SessionInvalidations;
 import top.focess.veto.i18n.Msg;
 import top.focess.veto.llm.core.ToolCall;
@@ -50,9 +51,9 @@ import top.focess.veto.util.Nullness;
  *       VetoScenario}; {@link #optionsFor} returns that scenario's option list.
  * </ol>
  *
- * <p>This is <b>not</b> the {@code LoopInterceptor} plugin chain — HITL is a dedicated mechanism,
- * not signaled through plugins. {@code agentId} is passed explicitly so grants are scoped per-agent
- * without a thread-local indirection.
+ * <p>HITL owns authorization independently from observation interceptors. A workflow hook may
+ * require explicit approval or reject a call, but cannot relax the host's screening decision.
+ * {@code agentId} is passed explicitly so grants are scoped per-agent.
  */
 @Component
 public class HitlRegistry {
@@ -193,7 +194,24 @@ public class HitlRegistry {
             @NonNull ToolCall call,
             ToolDefinition def,
             @NonNull GatewayResult result) {
+        return decide(agentId, call, def, result, WorkflowHook.Decision.CONTINUE);
+    }
+
+    /**
+     * Hook requirements can only tighten host policy; explicit approval is required even when a
+     * saved grant exists.
+     */
+    public @NonNull ApprovalDecision decide(
+            @NonNull String agentId,
+            @NonNull ToolCall call,
+            ToolDefinition def,
+            @NonNull GatewayResult result,
+            WorkflowHook.@NonNull Decision requirement) {
+        if (requirement == WorkflowHook.Decision.REJECT)
+            return new ApprovalDecision.Refused("Blocked by workflow hook");
+        boolean approval = requirement == WorkflowHook.Decision.REQUIRE_APPROVAL;
         if (result instanceof GatewayResult.NotScreened) {
+            if (approval) return hookApproval(null, null);
             record(agentId, call.callId(), "AUTO", "APPROVE", "NOT_SCREENED", null);
             return ApprovalDecision.AUTO_APPROVE;
         }
@@ -205,6 +223,7 @@ public class HitlRegistry {
         ScreeningOutcome outcome = screeningMode.cell(screening.relevance(), screening.danger());
         return switch (outcome) {
             case APPROVE -> {
+                if (approval) yield hookApproval(screening.danger(), screening.relevance());
                 record(agentId, call.callId(), "AUTO", "APPROVE", "SCREENING_POLICY", null);
                 yield ApprovalDecision.AUTO_APPROVE;
             }
@@ -216,6 +235,7 @@ public class HitlRegistry {
                                     call.toolName(),
                                     !call.args().isEmpty() ? " " + call.args() : ""));
             case ASK -> {
+                if (approval) yield hookApproval(screening.danger(), screening.relevance());
                 VetoScenario scenario = scenarioFor(call, def, screening);
                 if (grantCovers(agentId, call, def, screening)) {
                     yield ApprovalDecision.AUTO_APPROVE;
@@ -224,6 +244,15 @@ public class HitlRegistry {
                         scenario, optionsFor(scenario), screening.danger(), screening.relevance());
             }
         };
+    }
+
+    private static ApprovalDecision.@NonNull Prompt hookApproval(
+            Danger danger, Relevance relevance) {
+        return new ApprovalDecision.Prompt(
+                VetoScenario.GENERIC,
+                List.of(VetoOption.ACCEPT_GENERIC, VetoOption.GENERIC_DECLINE),
+                danger,
+                relevance);
     }
 
     /** Sets the screening matrix (called by {@link AgentService}). */

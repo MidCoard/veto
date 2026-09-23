@@ -2,8 +2,8 @@ package top.focess.veto.agent.intercept;
 
 import java.util.List;
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.agent.screening.Danger;
 import top.focess.veto.agent.screening.Relevance;
+import top.focess.veto.api.agent.screening.Danger;
 
 /**
  * The {@link HitlRegistry}'s decision for one tool call, computed from the {@link GatewayResult}
@@ -18,7 +18,8 @@ import top.focess.veto.agent.screening.Relevance;
  *       offered options).
  *   <li>{@link AutoBlock} — refuse outright (synthesized error observation; continue to next call).
  *   <li>{@link Refused} — refuse without an approval path; ordinary execution holds the batch until
- *       declined, while GUIDE execution fails immediately.
+ *       declined, while GUIDE execution fails immediately. // todo description here, has problem,
+ *       it should say not "GUIDE"
  * </ul>
  */
 public sealed interface ApprovalDecision

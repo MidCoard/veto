@@ -2,7 +2,12 @@ package top.focess.veto.agent.tool;
 
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.agent.screening.Danger;
+import top.focess.veto.api.agent.screening.Danger;
+import top.focess.veto.api.agent.tool.ParamCategory;
+import top.focess.veto.api.agent.tool.SecurityHint;
+import top.focess.veto.api.agent.tool.ToolCapability;
+import top.focess.veto.api.agent.tool.ToolDoc;
+import top.focess.veto.api.agent.tool.ToolDocs;
 
 /**
  * An agent-internal control/meta tool — used directly inside the agent loop or workflows, not a
@@ -27,11 +32,23 @@ public record AgentToolDefinition(
         @NonNull Danger defaultDanger,
         @NonNull Class<?> toolClass,
         @NonNull Class<?> argsClass,
-        @NonNull Map<@NonNull String, @NonNull ParamCategory> paramHints)
+        @NonNull Map<@NonNull String, @NonNull ParamCategory> paramHints,
+        Provenance provenance)
         implements LocalToolDefinition {
 
     public AgentToolDefinition {
         paramHints = Map.copyOf(paramHints);
+    }
+
+    public AgentToolDefinition(
+            @NonNull String name,
+            @NonNull String description,
+            @NonNull ToolCapability capability,
+            @NonNull Danger defaultDanger,
+            @NonNull Class<?> toolClass,
+            @NonNull Class<?> argsClass,
+            @NonNull Map<@NonNull String, @NonNull ParamCategory> paramHints) {
+        this(name, description, capability, defaultDanger, toolClass, argsClass, paramHints, null);
     }
 
     /** Factory with an explicit name and effect capability supplied by the handler bean. */

@@ -6,9 +6,14 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.RejectedExecutionException;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
-import top.focess.veto.plugin.api.*;
-import top.focess.veto.plugin.contract.JsonValue;
-import top.focess.veto.plugin.contract.PluginFailure;
+import top.focess.veto.api.plugin.*;
+import top.focess.veto.api.plugin.PluginContext;
+import top.focess.veto.api.plugin.PluginContributions;
+import top.focess.veto.api.plugin.PluginIdentity;
+import top.focess.veto.api.plugin.PluginState;
+import top.focess.veto.api.plugin.VetoPlugin;
+import top.focess.veto.api.plugin.contract.JsonValue;
+import top.focess.veto.api.plugin.contract.PluginFailure;
 
 /** Host-owned state and invocation admission, serialized on the manager control executor. */
 public final class ManagedPlugin implements AutoCloseable {

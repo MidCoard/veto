@@ -19,7 +19,7 @@ import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.test.util.ReflectionTestUtils;
-import top.focess.veto.agent.tool.ToolDocs;
+import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.llm.core.*;
 import top.focess.veto.llm.exceptions.ModelSchemaException;
 import top.focess.veto.util.Nullness;

@@ -2,8 +2,10 @@ package top.focess.veto.agent.tool;
 
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.capability.MemoryReadCapability;
+import top.focess.veto.api.agent.tool.AgentTool;
+import top.focess.veto.api.agent.tool.ToolCapability;
 
-public non-sealed interface MemoryReadTool<T> extends AgentTool<T> {
+public interface MemoryReadTool<T> extends AgentTool<T> {
     @NonNull MemoryReadCapability memoryReadCapability();
 
     @NonNull String execute(@NonNull T args, @NonNull MemoryReadCapability capability);

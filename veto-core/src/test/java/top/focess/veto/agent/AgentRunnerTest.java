@@ -33,12 +33,8 @@ import top.focess.veto.agent.identity.SystemPromptResolver;
 import top.focess.veto.agent.intercept.HitlRegistry;
 import top.focess.veto.agent.intercept.IngressDefense;
 import top.focess.veto.agent.loop.PromptCompiler;
-import top.focess.veto.agent.screening.Danger;
-import top.focess.veto.agent.tool.AgentTool;
 import top.focess.veto.agent.tool.AgentToolDefinition;
 import top.focess.veto.agent.tool.NativeToolDefinition;
-import top.focess.veto.agent.tool.ToolCapability;
-import top.focess.veto.agent.tool.ToolDocs;
 import top.focess.veto.agent.tool.ToolEngine;
 import top.focess.veto.agent.tool.ToolEngineImpl;
 import top.focess.veto.agent.tool.ToolResult;
@@ -47,6 +43,14 @@ import top.focess.veto.agent.tool.builtin.FixtureLoopTool;
 import top.focess.veto.agent.tool.builtin.RunTaskTool;
 import top.focess.veto.agent.tool.builtin.UserQuestionRegistry;
 import top.focess.veto.agent.translation.DefaultCapabilityTranslator;
+import top.focess.veto.api.agent.screening.Danger;
+import top.focess.veto.api.agent.tool.AgentTool;
+import top.focess.veto.api.agent.tool.ToolCapability;
+import top.focess.veto.api.agent.tool.ToolDocs;
+import top.focess.veto.api.plugin.contract.StandardContributionPoints;
+import top.focess.veto.api.plugin.contract.TextProtection;
+import top.focess.veto.api.plugin.contract.WorkflowHook;
+import top.focess.veto.api.plugin.contribution.Contribution;
 import top.focess.veto.group.Blackboard;
 import top.focess.veto.group.DagNode;
 import top.focess.veto.group.ExecutionDag;
@@ -92,10 +96,9 @@ import top.focess.veto.monitor.MonitorService;
 import top.focess.veto.monitor.RequestContinuationEntity;
 import top.focess.veto.monitor.RequestContinuationRepository;
 import top.focess.veto.monitor.RequestContinuationStore;
-import top.focess.veto.plugin.contract.StandardContributionPoints;
-import top.focess.veto.plugin.contract.TextProtection;
 import top.focess.veto.plugin.runtime.PluginLifecycleEvents;
 import top.focess.veto.plugin.runtime.PluginTestSupport;
+import top.focess.veto.plugin.runtime.WorkflowPluginFixture;
 import top.focess.veto.sandbox.BackgroundTaskManager;
 import top.focess.veto.sandbox.SandboxManager;
 import top.focess.veto.sandbox.TestSandboxFactory;
@@ -113,6 +116,74 @@ import top.focess.veto.vault.UserContext;
  * history.
  */
 class AgentRunnerTest {
+    @Test
+    void installedHooksTransformInputAndModelOutputInTheRealLoop() throws Exception {
+        List<String> events = new CopyOnWriteArrayList<>();
+        List<VetoRequest> requests = new CopyOnWriteArrayList<>();
+        WorkflowHook hook =
+                new WorkflowHook() {
+                    @Override
+                    public @NonNull String beforeInput(
+                            @NonNull Context context, @NonNull String text) {
+                        events.add("input");
+                        return "hook supplied task";
+                    }
+
+                    @Override
+                    public void beforeModel(@NonNull Context context, @NonNull ModelCall call) {
+                        events.add("before-model");
+                    }
+
+                    @Override
+                    public @NonNull ModelOutput afterModel(
+                            @NonNull Context context,
+                            @NonNull ModelCall call,
+                            @NonNull ModelOutput output) {
+                        events.add("after-model");
+                        return new ModelOutput("hook supplied answer");
+                    }
+                };
+        var service =
+                serviceWith(
+                        request -> {
+                            requests.add(request);
+                            return new VetoResponse(null, null, "original answer");
+                        });
+        String session = UUID.randomUUID().toString();
+        try (var fixture =
+                new WorkflowPluginFixture(
+                        List.of(
+                                Contribution.of(
+                                        StandardContributionPoints.WORKFLOW, "callbacks", hook)))) {
+            service.attachSessionPlugins(fixture.sessions);
+            var agent =
+                    service.getOrCreateAgent(
+                            session,
+                            UUID.randomUUID().toString(),
+                            binding("System"),
+                            List.of(),
+                            UUID.randomUUID(),
+                            "owner",
+                            null,
+                            0,
+                            ToolResultPresentationMode.BASIC);
+            try {
+                agent.submit("original task");
+                assertTrue(agent.await(EPISODE_TIMEOUT).success());
+                assertEquals(List.of("input", "before-model", "after-model"), events);
+                assertTrue(
+                        requests.getFirst().messages().stream()
+                                .anyMatch(
+                                        message ->
+                                                message.content().contains("hook supplied task")));
+                assertFalse(agent.history().toString().contains("original task"));
+                assertTrue(agent.history().toString().contains("hook supplied answer"));
+            } finally {
+                service.remove(session);
+            }
+        }
+    }
+
     @ParameterizedTest
     @CsvSource({
         "0,false,true",

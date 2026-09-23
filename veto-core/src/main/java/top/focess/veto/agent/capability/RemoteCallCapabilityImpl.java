@@ -6,7 +6,7 @@ import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.mcp.transport.McpJsonRpcClient;
 import top.focess.veto.agent.mcp.transport.McpTransport.SseMcpTransport;
 import top.focess.veto.agent.tool.RemoteToolDefinition;
-import top.focess.veto.agent.tool.ToolCapability;
+import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.llm.core.ToolCall;
 
 /** A registered endpoint cannot be supplied or changed by a tool call. */

@@ -4,8 +4,8 @@ import com.fasterxml.jackson.databind.*;
 import com.fasterxml.jackson.databind.node.*;
 import java.util.*;
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.agent.tool.InputSchemaSource;
 import top.focess.veto.agent.tool.ToolSchemaReferences;
+import top.focess.veto.api.agent.tool.InputSchemaSource;
 import top.focess.veto.util.Nullness;
 
 /**

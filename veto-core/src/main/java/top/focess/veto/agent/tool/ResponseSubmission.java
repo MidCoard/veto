@@ -1,6 +1,7 @@
 package top.focess.veto.agent.tool;
 
 import java.lang.annotation.*;
+import top.focess.veto.api.agent.tool.ToolDocs;
 
 /** Declares an exclusive loop-control submission independently of the tool's name. */
 @Retention(RetentionPolicy.RUNTIME)

@@ -4,9 +4,9 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
-import top.focess.veto.agent.tool.ToolCapability;
 import top.focess.veto.agent.tool.ToolDefinition;
 import top.focess.veto.agent.tool.ToolEngine;
+import top.focess.veto.api.agent.tool.ToolCapability;
 
 /**
  * Resolves the role-scoped tool manifest for an {@link AgentPersona}. The raw {@link

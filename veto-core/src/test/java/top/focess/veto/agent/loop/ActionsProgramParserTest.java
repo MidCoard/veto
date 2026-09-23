@@ -7,7 +7,7 @@ import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
-import top.focess.veto.agent.tool.ToolDocs;
+import top.focess.veto.api.agent.tool.ToolDocs;
 
 class ActionsProgramParserTest {
     private static final @NonNull ObjectMapper MAPPER = new ObjectMapper();

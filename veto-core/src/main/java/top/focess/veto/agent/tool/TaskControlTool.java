@@ -2,8 +2,9 @@ package top.focess.veto.agent.tool;
 
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.capability.TaskControlCapability;
+import top.focess.veto.api.agent.tool.NativeTool;
 
-public non-sealed interface TaskControlTool<T> extends NativeTool<T> {
+public interface TaskControlTool<T> extends NativeTool<T> {
     @NonNull TaskControlCapability taskControlCapability();
 
     @NonNull String execute(@NonNull T args, @NonNull TaskControlCapability capability);

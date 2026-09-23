@@ -14,7 +14,7 @@ import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import top.focess.veto.agent.tool.ToolDocs;
+import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.secret.api.CredentialWriter;
 import top.focess.veto.secret.references.SecretCandidateStore;
 

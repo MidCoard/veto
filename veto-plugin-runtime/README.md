@@ -1,3 +1,25 @@
+## Workflow-core API (2026-09-23)
+
+Shared Java contracts now live under `top.focess.veto.api.*`. Plugin authors depend
+on `veto-api`, never on `veto-core`. Java tools may implement `NativeTool` or
+`AgentTool` and contribute through `StandardContributionPoints.NATIVE_TOOLS`.
+All Java tools share registration and execution. Capabilities describe the operation;
+plugin origin does not require PRIVILEGED or prohibit path/command/URL arguments.
+Registration checks contract coherence, not handler fields. Java plugins are trusted
+code; authority is enforced by call permits and scoped host services, not a Java sandbox.
+
+`StandardContributionPoints.WORKFLOW` accepts `WorkflowHook`: input transformation,
+before/after model callbacks, tool rejection/explicit approval, result transformation,
+and observation transformation. Hooks run in catalog order for the selected pinned
+session, with lifecycle admission and cooperative cancellation. A hook cannot override
+a host refusal; requested approval is per call. Model callbacks expose model metadata
+and response text, not provider secrets or mutable native-call state. Input hooks run
+before input protection; output hooks precede final observation protection. Failures
+stop the operation with a safe host error. Script workers do not support Java hooks.
+
+Provider, storage and other feature contracts still in core are migration gaps; this
+release does not yet make every feature implementable through the API alone.
+
 # Script plugins — experimental
 
 This module runs operator-configured JavaScript plugins through a bounded local

@@ -10,7 +10,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import top.focess.veto.agent.capability.CapabilityAccess;
-import top.focess.veto.agent.tool.ToolCapability;
+import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.plugin.runtime.PluginHostServices;
 import top.focess.veto.secret.api.CredentialImportAccess;
 import top.focess.veto.secret.api.CredentialWriter;

@@ -16,18 +16,18 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.tool.ToolSchemaCompiler;
-import top.focess.veto.plugin.api.PluginContext;
-import top.focess.veto.plugin.api.PluginContributions;
-import top.focess.veto.plugin.api.PluginState;
-import top.focess.veto.plugin.api.VetoPlugin;
-import top.focess.veto.plugin.contract.JsonValue;
-import top.focess.veto.plugin.contract.PluginFailure;
-import top.focess.veto.plugin.contract.StandardContributionPoints;
-import top.focess.veto.plugin.contract.Tool;
-import top.focess.veto.plugin.contribution.ContributionCatalog;
-import top.focess.veto.plugin.contribution.ContributionEntry;
-import top.focess.veto.plugin.contribution.ContributionPoint;
-import top.focess.veto.plugin.contribution.ContributionSource;
+import top.focess.veto.api.plugin.PluginContext;
+import top.focess.veto.api.plugin.PluginContributions;
+import top.focess.veto.api.plugin.PluginState;
+import top.focess.veto.api.plugin.VetoPlugin;
+import top.focess.veto.api.plugin.contract.JsonValue;
+import top.focess.veto.api.plugin.contract.PluginFailure;
+import top.focess.veto.api.plugin.contract.StandardContributionPoints;
+import top.focess.veto.api.plugin.contract.Tool;
+import top.focess.veto.api.plugin.contribution.ContributionCatalog;
+import top.focess.veto.api.plugin.contribution.ContributionEntry;
+import top.focess.veto.api.plugin.contribution.ContributionPoint;
+import top.focess.veto.api.plugin.contribution.ContributionSource;
 
 /**
  * Startup-only operator configuration. All packages must start or the application fails startup.

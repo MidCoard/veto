@@ -17,11 +17,12 @@ import top.focess.veto.agent.intercept.GatewayResult;
 import top.focess.veto.agent.intercept.GuidedStepContext;
 import top.focess.veto.agent.tool.AgentToolDefinition;
 import top.focess.veto.agent.tool.NativeToolDefinition;
-import top.focess.veto.agent.tool.ParamCategory;
-import top.focess.veto.agent.tool.ToolCapability;
-import top.focess.veto.agent.tool.ToolDocs;
 import top.focess.veto.agent.workspace.PathMode;
 import top.focess.veto.agent.workspace.Workspace;
+import top.focess.veto.api.agent.screening.Danger;
+import top.focess.veto.api.agent.tool.ParamCategory;
+import top.focess.veto.api.agent.tool.ToolCapability;
+import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.llm.core.ToolCall;
 
 @SuppressWarnings("initialization.field.uninitialized")

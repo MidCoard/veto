@@ -9,6 +9,7 @@ import java.util.Locale;
 import java.util.regex.Pattern;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.agent.loop.PromptLibrary;
+import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.group.GroupTools.CreateGroup.Args;
 import top.focess.veto.util.Nullness;
 

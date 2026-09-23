@@ -6,6 +6,12 @@ import org.springframework.stereotype.Component;
 import top.focess.veto.agent.capability.LoopControlCapability;
 import top.focess.veto.agent.loop.ResponseRequest;
 import top.focess.veto.agent.tool.*;
+import top.focess.veto.api.agent.tool.ArraySize;
+import top.focess.veto.api.agent.tool.Doc;
+import top.focess.veto.api.agent.tool.StringConstraint;
+import top.focess.veto.api.agent.tool.ToolDoc;
+import top.focess.veto.api.agent.tool.ToolDocs;
+import top.focess.veto.api.agent.tool.ToolResultFormat;
 
 @Component
 @ResponseSubmission(ResponseSubmission.Kind.ANSWER)

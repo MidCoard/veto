@@ -3,7 +3,7 @@ package top.focess.veto.plugin.runtime;
 import java.io.IOException;
 import java.nio.file.Path;
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.plugin.api.VetoPlugin;
+import top.focess.veto.api.plugin.VetoPlugin;
 
 /**
  * Loading prepares an inactive instance; initialization/start/publication are host

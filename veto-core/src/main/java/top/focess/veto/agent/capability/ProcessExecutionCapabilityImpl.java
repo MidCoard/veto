@@ -5,7 +5,7 @@ import java.util.List;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.intercept.ToolExecutionPermit;
-import top.focess.veto.agent.tool.ToolCapability;
+import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.sandbox.BackgroundTaskManager;
 import top.focess.veto.sandbox.ChainMode;
 import top.focess.veto.sandbox.Command;

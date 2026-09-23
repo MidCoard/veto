@@ -1,6 +1,7 @@
 package top.focess.veto.agent.tool;
 
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.api.agent.tool.ToolResultFormat;
 
 /** Helpers for the special plaintext tool-failure channel. */
 public final class ToolErrors {

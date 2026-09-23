@@ -8,8 +8,13 @@ import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import top.focess.veto.api.agent.tool.AgentTool;
+import top.focess.veto.api.agent.tool.CapabilityTool;
+import top.focess.veto.api.agent.tool.NativeTool;
+import top.focess.veto.api.agent.tool.ToolDoc;
+import top.focess.veto.api.agent.tool.ToolDocs;
 
-/** Checks actual registered tools so a new tool cannot bypass the restricted execution boundary. */
+/** Checks that registered tools expose coherent authoring contracts. */
 @SpringBootTest
 @SuppressWarnings("initialization.field.uninitialized")
 class ToolArchitectureTest {
@@ -17,7 +22,7 @@ class ToolArchitectureTest {
     @Autowired private @NonNull List<AgentTool<?>> agentTools;
 
     @Test
-    void everyRegisteredToolUsesItsDeclaredBoundaryAndOnlyRestrictedDependencies() {
+    void everyRegisteredToolHasACoherentContract() {
         List<CapabilityTool<?>> tools = new ArrayList<>();
         tools.addAll(nativeTools);
         tools.addAll(agentTools);

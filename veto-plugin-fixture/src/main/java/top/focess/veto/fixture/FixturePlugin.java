@@ -4,9 +4,23 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.plugin.api.*;
-import top.focess.veto.plugin.contract.*;
-import top.focess.veto.plugin.contribution.*;
+import top.focess.veto.api.plugin.*;
+import top.focess.veto.api.plugin.AbstractVetoPlugin;
+import top.focess.veto.api.plugin.PluginContext;
+import top.focess.veto.api.plugin.PluginContributions;
+import top.focess.veto.api.plugin.PluginIdentity;
+import top.focess.veto.api.plugin.contract.*;
+import top.focess.veto.api.plugin.contract.Cancellation;
+import top.focess.veto.api.plugin.contract.JsonValue;
+import top.focess.veto.api.plugin.contract.PluginFailure;
+import top.focess.veto.api.plugin.contract.PromptContribution;
+import top.focess.veto.api.plugin.contract.StandardContributionPoints;
+import top.focess.veto.api.plugin.contract.Tool;
+import top.focess.veto.api.plugin.contract.ToolCategory;
+import top.focess.veto.api.plugin.contract.ToolContribution;
+import top.focess.veto.api.plugin.contribution.*;
+import top.focess.veto.api.plugin.contribution.Contribution;
+import top.focess.veto.api.plugin.contribution.ContributionId;
 
 /** Harmless executable fixture. No Spring, host internals, network or filesystem access. */
 public final class FixturePlugin extends AbstractVetoPlugin {

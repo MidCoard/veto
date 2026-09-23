@@ -14,10 +14,10 @@ import top.focess.veto.agent.capability.WebDocumentCapability;
 import top.focess.veto.agent.capability.WebReadCapability;
 import top.focess.veto.agent.tool.ToolCallContext;
 import top.focess.veto.agent.tool.ToolCallContextHolder;
-import top.focess.veto.agent.tool.ToolCapability;
 import top.focess.veto.agent.tool.ToolErrorCode;
 import top.focess.veto.agent.tool.ToolErrors;
 import top.focess.veto.agent.tool.ToolExecutionException;
+import top.focess.veto.api.agent.tool.ToolCapability;
 
 /** Document state and effect boundary owned by exactly one reader AgentRunner. */
 final class WebReadSession implements WebDocumentCapability, AutoCloseable {

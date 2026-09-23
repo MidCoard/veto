@@ -3,9 +3,9 @@ package top.focess.veto.agent.tool.builtin;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.capability.LoopControlCapability;
 import top.focess.veto.agent.tool.LoopControlTool;
-import top.focess.veto.agent.tool.ToolDoc;
-import top.focess.veto.agent.tool.ToolDocs;
-import top.focess.veto.agent.tool.ToolResultFormat;
+import top.focess.veto.api.agent.tool.ToolDoc;
+import top.focess.veto.api.agent.tool.ToolDocs;
+import top.focess.veto.api.agent.tool.ToolResultFormat;
 
 /** Test-only operation used to exercise call budgets without registering a production no-op. */
 @ToolDoc(

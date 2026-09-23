@@ -11,7 +11,7 @@ import org.mockito.ArgumentCaptor;
 import top.focess.veto.agent.AgentResult;
 import top.focess.veto.agent.AgentRunner;
 import top.focess.veto.agent.AgentService;
-import top.focess.veto.agent.tool.ToolDocs;
+import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.command.PromptHandler;
 import top.focess.veto.command.VetoCommandSender;
 import top.focess.veto.controller.dto.SubmitPromptRequest;

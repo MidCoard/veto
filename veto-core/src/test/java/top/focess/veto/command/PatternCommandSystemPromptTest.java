@@ -9,7 +9,7 @@ import top.focess.command.CommandManager;
 import top.focess.command.CommandPermission;
 import top.focess.command.CommandResult;
 import top.focess.command.ExecutionResult;
-import top.focess.veto.agent.tool.ToolDocs;
+import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.command.commands.PatternCommand;
 import top.focess.veto.llm.core.ProviderType;
 import top.focess.veto.model.AgentPatternEntity;

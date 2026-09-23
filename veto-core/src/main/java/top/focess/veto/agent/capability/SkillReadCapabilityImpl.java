@@ -5,7 +5,7 @@ import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.skills.Skill;
 import top.focess.veto.agent.skills.SkillRegistry;
-import top.focess.veto.agent.tool.ToolCapability;
+import top.focess.veto.api.agent.tool.ToolCapability;
 
 @Component
 public final class SkillReadCapabilityImpl implements SkillReadCapability {

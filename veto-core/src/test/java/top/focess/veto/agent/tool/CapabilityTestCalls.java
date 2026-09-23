@@ -6,6 +6,7 @@ import java.util.Map;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.intercept.ToolExecutionPermit;
+import top.focess.veto.api.agent.tool.CapabilityTool;
 import top.focess.veto.llm.core.ToolCall;
 import top.focess.veto.llm.core.ToolResultPresentationMode;
 

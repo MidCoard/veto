@@ -8,7 +8,7 @@ import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
-import top.focess.veto.agent.tool.ToolDocs;
+import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.model.tier.ModelTierProfileEntity;
 import top.focess.veto.model.tier.ModelTierProfileService;
 import top.focess.veto.vault.KeysteadVault;

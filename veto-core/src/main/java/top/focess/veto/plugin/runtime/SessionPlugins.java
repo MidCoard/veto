@@ -9,12 +9,13 @@ import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
 import top.focess.veto.agent.TurnType;
 import top.focess.veto.agent.tool.ToolDefinition;
+import top.focess.veto.api.plugin.PluginState;
+import top.focess.veto.api.plugin.contract.PluginFailure;
+import top.focess.veto.api.plugin.contract.StandardContributionPoints;
+import top.focess.veto.api.plugin.contract.TextProtection;
+import top.focess.veto.api.plugin.contract.WorkflowHook;
+import top.focess.veto.api.plugin.contribution.ContributionPoint;
 import top.focess.veto.model.SessionRepository;
-import top.focess.veto.plugin.api.PluginState;
-import top.focess.veto.plugin.contract.PluginFailure;
-import top.focess.veto.plugin.contract.StandardContributionPoints;
-import top.focess.veto.plugin.contract.TextProtection;
-import top.focess.veto.plugin.contribution.ContributionPoint;
 import top.focess.veto.session.SessionHistoryLoader;
 
 /**
@@ -124,6 +125,46 @@ public class SessionPlugins {
                         "Session requires the pinned plugin revision: " + binding.id());
         }
         return bindings;
+    }
+
+    @FunctionalInterface
+    public interface WorkflowOperation<T extends @NonNull Object> {
+        @NonNull T apply(@NonNull WorkflowHook hook, @NonNull T current) throws PluginFailure;
+    }
+
+    /** Selected, pinned hooks execute in contribution order with lifecycle admission. */
+    public <T extends @NonNull Object> @NonNull T workflow(
+            WorkflowHook.@NonNull Context scope,
+            @NonNull T initial,
+            @NonNull WorkflowOperation<T> operation) {
+        var entries = manager.catalog().entries(StandardContributionPoints.WORKFLOW);
+        if (entries.isEmpty()) return initial;
+        var ids =
+                bindings(scope.sessionId()).stream()
+                        .map(PluginBinding::id)
+                        .collect(Collectors.toSet());
+        T result = initial;
+        for (var entry : entries) {
+            if (!ids.contains(entry.source().namespace())) continue;
+            T current = result;
+            try {
+                scope.cancellation().checkCancelled();
+                result =
+                        manager.plugin(entry.source().namespace())
+                                .execute(
+                                        () -> {
+                                            T transformed =
+                                                    operation.apply(
+                                                            entry.implementation(), current);
+                                            scope.cancellation().checkCancelled();
+                                            return transformed;
+                                        });
+            } catch (PluginFailure | RuntimeException failure) {
+                // Plugin messages may contain raw inputs. Do not propagate them into history.
+                throw new IllegalStateException("Workflow hook unavailable");
+            }
+        }
+        return result;
     }
 
     public @NonNull String protect(

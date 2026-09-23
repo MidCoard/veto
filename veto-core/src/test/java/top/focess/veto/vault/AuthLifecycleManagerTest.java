@@ -5,10 +5,10 @@ import static org.mockito.Mockito.*;
 
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
+import top.focess.veto.api.plugin.contract.PluginFailure;
+import top.focess.veto.api.plugin.contract.StandardContributionPoints;
+import top.focess.veto.api.plugin.contract.TextProtection;
 import top.focess.veto.command.PromptHandler;
-import top.focess.veto.plugin.contract.PluginFailure;
-import top.focess.veto.plugin.contract.StandardContributionPoints;
-import top.focess.veto.plugin.contract.TextProtection;
 import top.focess.veto.plugin.runtime.PluginLifecycleEvents;
 import top.focess.veto.plugin.runtime.PluginManager;
 import top.focess.veto.plugin.runtime.PluginTestSupport;

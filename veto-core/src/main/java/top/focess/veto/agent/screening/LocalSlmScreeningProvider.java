@@ -12,6 +12,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.loop.PromptLibrary;
 import top.focess.veto.agent.tool.ToolDefinition;
+import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.llm.core.ToolCall;
 import top.focess.veto.veto.LlamaCppBridge;
 

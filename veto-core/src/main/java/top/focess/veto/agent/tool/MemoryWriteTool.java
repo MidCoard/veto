@@ -2,8 +2,10 @@ package top.focess.veto.agent.tool;
 
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.capability.MemoryWriteCapability;
+import top.focess.veto.api.agent.tool.AgentTool;
+import top.focess.veto.api.agent.tool.ToolCapability;
 
-public non-sealed interface MemoryWriteTool<T> extends AgentTool<T> {
+public interface MemoryWriteTool<T> extends AgentTool<T> {
     @NonNull MemoryWriteCapability memoryWriteCapability();
 
     @NonNull String execute(@NonNull T args, @NonNull MemoryWriteCapability capability);

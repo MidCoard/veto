@@ -4,7 +4,9 @@ import com.fasterxml.jackson.databind.JsonNode;
 import java.util.List;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
-import top.focess.veto.agent.screening.Danger;
+import top.focess.veto.api.agent.screening.Danger;
+import top.focess.veto.api.agent.tool.ToolCapability;
+import top.focess.veto.api.agent.tool.ToolResultFormat;
 
 /**
  * An out-of-process tool carrying a raw JSON Schema. The Gateway applies maximum scrutiny because

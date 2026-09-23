@@ -10,7 +10,7 @@ import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
-import top.focess.veto.agent.tool.ToolDocs;
+import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.plugin.runtime.PluginHostServices;
 import top.focess.veto.secret.api.CredentialImportAccess;
 import top.focess.veto.secret.api.SecretDetectionModel;

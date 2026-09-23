@@ -7,12 +7,13 @@ import java.util.Map;
 import java.util.Set;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.intercept.ToolExecutionPermit;
-import top.focess.veto.agent.tool.ToolCapability;
 import top.focess.veto.agent.tool.ToolDefinition;
 import top.focess.veto.agent.workspace.Resolution;
 import top.focess.veto.agent.workspace.TrustMarker;
 import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.agent.workspace.WorkspaceRoot;
+import top.focess.veto.api.agent.screening.Danger;
+import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.llm.core.ToolCall;
 
 /**

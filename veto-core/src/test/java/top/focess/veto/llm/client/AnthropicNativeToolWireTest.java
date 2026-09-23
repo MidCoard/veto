@@ -15,13 +15,13 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import top.focess.veto.agent.tool.AgentToolDefinition;
 import top.focess.veto.agent.tool.RemoteToolDefinition;
-import top.focess.veto.agent.tool.ToolCapability;
-import top.focess.veto.agent.tool.ToolDocs;
-import top.focess.veto.agent.tool.ToolDocumentation;
 import top.focess.veto.agent.tool.ToolSchemaCompiler;
 import top.focess.veto.agent.tool.builtin.AskUserTool;
 import top.focess.veto.agent.tool.builtin.SubmitPlanTool;
 import top.focess.veto.agent.translation.VetoCapabilityTranslator;
+import top.focess.veto.api.agent.tool.ToolCapability;
+import top.focess.veto.api.agent.tool.ToolDocs;
+import top.focess.veto.api.agent.tool.ToolDocumentation;
 import top.focess.veto.llm.core.*;
 import top.focess.veto.llm.exceptions.ModelSchemaException;
 

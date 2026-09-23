@@ -7,9 +7,9 @@ import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
-import top.focess.veto.agent.tool.ToolCapability;
-import top.focess.veto.plugin.contract.StandardContributionPoints;
-import top.focess.veto.plugin.contract.TextProtection;
+import top.focess.veto.api.agent.tool.ToolCapability;
+import top.focess.veto.api.plugin.contract.StandardContributionPoints;
+import top.focess.veto.api.plugin.contract.TextProtection;
 import top.focess.veto.plugin.runtime.SessionPlugins;
 
 /** File capture bound to the screened native file read and its owned session. */
@@ -36,7 +36,7 @@ public final class ProtectedWorkspaceReadCapabilityImpl implements WorkspaceRead
 
     @Override
     public @NonNull String captureFileText(@NonNull String input) {
-        var context = CapabilityAccess.require(ToolCapability.WORKSPACE_READ, "view_file");
+        var context = CapabilityAccess.require(ToolCapability.WORKSPACE_READ);
         String owner = context.owner();
         UUID session = context.sessionId();
         if (owner == null || owner.isBlank() || session == null)

@@ -13,10 +13,10 @@ import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.identity.AgentPersona;
 import top.focess.veto.agent.screening.DeployerPolicy;
 import top.focess.veto.agent.tool.ResponseSubmission;
-import top.focess.veto.agent.tool.ToolDocumentation;
 import top.focess.veto.agent.workspace.PathMode;
 import top.focess.veto.agent.workspace.VetoMdResolver;
 import top.focess.veto.agent.workspace.Workspace;
+import top.focess.veto.api.agent.tool.ToolDocumentation;
 import top.focess.veto.llm.core.ToolDefinition;
 import top.focess.veto.llm.core.ToolResultPresentationMode;
 

@@ -10,12 +10,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.plugin.api.PluginState;
-import top.focess.veto.plugin.contribution.Contribution;
-import top.focess.veto.plugin.contribution.ContributionCatalog;
-import top.focess.veto.plugin.contribution.ContributionId;
-import top.focess.veto.plugin.contribution.ContributionPoint;
-import top.focess.veto.plugin.contribution.ContributionSource;
+import top.focess.veto.api.agent.tool.ToolDocs;
+import top.focess.veto.api.plugin.PluginState;
+import top.focess.veto.api.plugin.contribution.Contribution;
+import top.focess.veto.api.plugin.contribution.ContributionCatalog;
+import top.focess.veto.api.plugin.contribution.ContributionId;
+import top.focess.veto.api.plugin.contribution.ContributionPoint;
+import top.focess.veto.api.plugin.contribution.ContributionSource;
 import top.focess.veto.plugin.runtime.ManagedPlugin;
 import top.focess.veto.plugin.runtime.ScriptPlugin;
 
@@ -88,9 +89,10 @@ final class ToolCatalog {
             ToolDefinition definition = registration.definition();
             if (registration instanceof RegisteredTool.Plugin plugin
                     && !pluginAvailable(plugin.runtime())) continue;
-            if (registration instanceof RegisteredTool.Capability capability
-                    && !pluginAvailable(capability.runtime())) continue;
-            if (registration instanceof RegisteredTool.Agent
+            if (registration instanceof RegisteredTool.Local local
+                    && local.runtime() != null
+                    && !pluginAvailable(local.runtime())) continue;
+            if (definition instanceof AgentToolDefinition
                     || whitelist == null
                     || whitelist.contains(definition.name())) definitions.add(definition);
         }
@@ -108,15 +110,8 @@ final class ToolCatalog {
 
     private static void validate(@NonNull RegisteredTool registration) {
         switch (registration) {
-            case RegisteredTool.Native nativeTool ->
-                    ToolContractValidator.validateHandler(
-                            nativeTool.handler(), nativeTool.definition());
-            case RegisteredTool.Agent agentTool ->
-                    ToolContractValidator.validateHandler(
-                            agentTool.handler(), agentTool.definition());
-            case RegisteredTool.Capability capability ->
-                    ToolContractValidator.validatePluginHandler(
-                            capability.handler(), capability.definition());
+            case RegisteredTool.Local local ->
+                    ToolContractValidator.validateHandler(local.handler(), local.definition());
             case RegisteredTool.Plugin plugin ->
                     ToolContractValidator.validate(plugin.definition());
             case RegisteredTool.Remote remoteTool ->

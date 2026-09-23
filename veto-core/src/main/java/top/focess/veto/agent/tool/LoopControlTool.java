@@ -2,9 +2,11 @@ package top.focess.veto.agent.tool;
 
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.capability.LoopControlCapability;
+import top.focess.veto.api.agent.tool.AgentTool;
+import top.focess.veto.api.agent.tool.ToolCapability;
 
 /** Tool execution through the restricted LoopControl operations. */
-public non-sealed interface LoopControlTool<T> extends AgentTool<T> {
+public interface LoopControlTool<T> extends AgentTool<T> {
     @NonNull LoopControlCapability loopControlCapability();
 
     @Override

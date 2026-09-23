@@ -4,9 +4,9 @@ import java.util.Objects;
 import java.util.function.LongFunction;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.tool.ToolCallContext;
-import top.focess.veto.agent.tool.ToolCapability;
 import top.focess.veto.agent.web.FetchedPage;
 import top.focess.veto.agent.web.WebFetchExecutor;
+import top.focess.veto.api.agent.tool.ToolCapability;
 
 /** Invocation-local authority to fetch one approved document. No arbitrary URL operation exists. */
 public final class WebReadCapability implements Capability, AutoCloseable {

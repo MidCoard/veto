@@ -7,16 +7,17 @@ import java.util.Map;
 import java.util.Set;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
-import top.focess.veto.agent.screening.Danger;
-import top.focess.veto.plugin.contract.JsonValue;
-import top.focess.veto.plugin.contract.Tool;
-import top.focess.veto.plugin.contract.ToolContribution;
+import top.focess.veto.agent.tool.builtin.FixtureLoopTool;
+import top.focess.veto.api.agent.screening.Danger;
+import top.focess.veto.api.agent.tool.ToolCapability;
+import top.focess.veto.api.agent.tool.ToolDocs;
+import top.focess.veto.api.plugin.contract.JsonValue;
+import top.focess.veto.api.plugin.contract.Tool;
+import top.focess.veto.api.plugin.contract.ToolContribution;
 import top.focess.veto.util.Nullness;
 
 /** Effect-to-capability/danger mapping for plugin-contributed tool definitions. */
 class PluginScriptToolDefinitionTest {
-    private record Empty() {}
-
     private static @NonNull RemoteToolDefinition scriptDefinition(Tool.@NonNull Effect effect) {
         var schema = new JsonValue.ObjectValue(Map.of("type", new JsonValue.StringValue("object")));
         return ToolSchemaCompiler.compilePluginScript(
@@ -56,7 +57,7 @@ class PluginScriptToolDefinitionTest {
 
     @Test
     @SuppressWarnings("type.arguments.not.inferred")
-    void privilegedCapabilityIsRejectedForNativeAndAgentTools() {
+    void privilegedNativeToolsAreAllowedButCannotEarlyRouteAsAgentTools() {
         var nativeDefinition =
                 new NativeToolDefinition(
                         "native_fixture",
@@ -64,17 +65,15 @@ class PluginScriptToolDefinitionTest {
                         ToolCapability.PRIVILEGED,
                         Danger.DANGEROUS,
                         false,
-                        Object.class,
-                        ToolDocs.nonNullClass(Void.class),
+                        ToolDocs.nonNullClass(FixtureLoopTool.class),
+                        ToolDocs.nonNullClass(FixtureLoopTool.Args.class),
                         Map.of());
-        assertThrows(
-                IllegalArgumentException.class,
-                () -> ToolContractValidator.validate(nativeDefinition));
+        assertDoesNotThrow(() -> ToolContractValidator.validate(nativeDefinition));
         var agentDefinition =
                 AgentToolDefinition.from(
                         "agent_fixture",
-                        ToolDocs.nonNullClass(PluginScriptToolDefinitionTest.class),
-                        ToolDocs.nonNullClass(Empty.class),
+                        ToolDocs.nonNullClass(FixtureLoopTool.class),
+                        ToolDocs.nonNullClass(FixtureLoopTool.Args.class),
                         ToolCapability.PRIVILEGED);
         assertThrows(
                 IllegalArgumentException.class,

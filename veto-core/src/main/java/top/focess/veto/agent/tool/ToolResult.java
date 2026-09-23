@@ -1,6 +1,7 @@
 package top.focess.veto.agent.tool;
 
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.api.agent.tool.ToolResultFormat;
 
 /**
  * The result of executing a tool through the {@link ToolEngine}.

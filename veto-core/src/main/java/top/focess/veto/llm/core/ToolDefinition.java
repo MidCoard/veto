@@ -6,8 +6,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.agent.tool.ToolDocumentation;
-import top.focess.veto.agent.tool.ToolResultFormat;
+import top.focess.veto.api.agent.tool.ToolDocumentation;
+import top.focess.veto.api.agent.tool.ToolResultFormat;
 
 /**
  * Represents a tool definition with its schema.

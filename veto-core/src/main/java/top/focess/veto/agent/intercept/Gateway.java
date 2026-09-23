@@ -19,7 +19,6 @@ import top.focess.veto.agent.loop.ActionsProgram;
 import top.focess.veto.agent.loop.PromptCompiler;
 import top.focess.veto.agent.loop.Scope;
 import top.focess.veto.agent.loop.ToolAction;
-import top.focess.veto.agent.screening.Danger;
 import top.focess.veto.agent.screening.DangerComputation;
 import top.focess.veto.agent.screening.DeployerPolicy;
 import top.focess.veto.agent.screening.ProtectedSet;
@@ -31,11 +30,12 @@ import top.focess.veto.agent.tool.AgentToolDefinition;
 import top.focess.veto.agent.tool.LocalToolDefinition;
 import top.focess.veto.agent.tool.NativeToolArgumentValidator;
 import top.focess.veto.agent.tool.NativeToolDefinition;
-import top.focess.veto.agent.tool.ToolCapability;
 import top.focess.veto.agent.tool.ToolDefinition;
 import top.focess.veto.agent.tool.ToolEngine;
 import top.focess.veto.agent.tool.ToolSchemaReferences;
 import top.focess.veto.agent.workspace.Workspace;
+import top.focess.veto.api.agent.screening.Danger;
+import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.llm.core.ToolCall;
 
 /**

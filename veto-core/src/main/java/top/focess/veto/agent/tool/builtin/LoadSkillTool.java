@@ -3,13 +3,13 @@ package top.focess.veto.agent.tool.builtin;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.capability.SkillReadCapability;
-import top.focess.veto.agent.tool.Doc;
 import top.focess.veto.agent.tool.SkillReadTool;
-import top.focess.veto.agent.tool.ToolDoc;
-import top.focess.veto.agent.tool.ToolDocs;
 import top.focess.veto.agent.tool.ToolErrorCode;
 import top.focess.veto.agent.tool.ToolErrors;
-import top.focess.veto.agent.tool.ToolResultFormat;
+import top.focess.veto.api.agent.tool.Doc;
+import top.focess.veto.api.agent.tool.ToolDoc;
+import top.focess.veto.api.agent.tool.ToolDocs;
+import top.focess.veto.api.agent.tool.ToolResultFormat;
 
 /**
  * {@code load_skill} — load a skill's full instructions into context as an observation, so the

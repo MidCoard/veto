@@ -2,9 +2,11 @@ package top.focess.veto.agent.tool;
 
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.capability.SkillReadCapability;
+import top.focess.veto.api.agent.tool.AgentTool;
+import top.focess.veto.api.agent.tool.ToolCapability;
 
 /** Tool execution through the restricted SkillRead operations. */
-public non-sealed interface SkillReadTool<T> extends AgentTool<T> {
+public interface SkillReadTool<T> extends AgentTool<T> {
     @NonNull SkillReadCapability skillReadCapability();
 
     @Override

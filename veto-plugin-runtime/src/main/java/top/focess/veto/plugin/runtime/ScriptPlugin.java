@@ -13,16 +13,16 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Set;
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.plugin.api.AbstractVetoPlugin;
-import top.focess.veto.plugin.api.PluginContext;
-import top.focess.veto.plugin.api.PluginContributions;
-import top.focess.veto.plugin.api.PluginIdentity;
-import top.focess.veto.plugin.contract.JsonValue;
-import top.focess.veto.plugin.contract.PluginFailure;
-import top.focess.veto.plugin.contract.StandardContributionPoints;
-import top.focess.veto.plugin.contract.Tool;
-import top.focess.veto.plugin.contract.ToolContribution;
-import top.focess.veto.plugin.contribution.Contribution;
+import top.focess.veto.api.plugin.AbstractVetoPlugin;
+import top.focess.veto.api.plugin.PluginContext;
+import top.focess.veto.api.plugin.PluginContributions;
+import top.focess.veto.api.plugin.PluginIdentity;
+import top.focess.veto.api.plugin.contract.JsonValue;
+import top.focess.veto.api.plugin.contract.PluginFailure;
+import top.focess.veto.api.plugin.contract.StandardContributionPoints;
+import top.focess.veto.api.plugin.contract.Tool;
+import top.focess.veto.api.plugin.contract.ToolContribution;
+import top.focess.veto.api.plugin.contribution.Contribution;
 
 /** Operator-trusted local code, not a sandbox. Only tools are supported in protocol v1. */
 public final class ScriptPlugin extends AbstractVetoPlugin {

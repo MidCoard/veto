@@ -3,6 +3,7 @@ package top.focess.veto.agent.screening;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.intercept.HitlRegistry;
 import top.focess.veto.agent.intercept.VetoScenario;
+import top.focess.veto.api.agent.screening.Danger;
 
 /**
  * The effective screening result for one native/remote tool call. {@code slmEvaluated}

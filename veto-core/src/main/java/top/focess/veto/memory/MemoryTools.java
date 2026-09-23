@@ -8,17 +8,17 @@ import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.capability.MemoryReadCapability;
 import top.focess.veto.agent.capability.MemoryWriteCapability;
-import top.focess.veto.agent.tool.Doc;
 import top.focess.veto.agent.tool.MemoryReadTool;
 import top.focess.veto.agent.tool.MemoryWriteTool;
-import top.focess.veto.agent.tool.ParamCategory;
-import top.focess.veto.agent.tool.RequiredWhen;
-import top.focess.veto.agent.tool.SecurityHint;
-import top.focess.veto.agent.tool.ToolDoc;
-import top.focess.veto.agent.tool.ToolDocs;
 import top.focess.veto.agent.tool.ToolErrorCode;
 import top.focess.veto.agent.tool.ToolErrors;
-import top.focess.veto.agent.tool.ToolResultFormat;
+import top.focess.veto.api.agent.tool.Doc;
+import top.focess.veto.api.agent.tool.ParamCategory;
+import top.focess.veto.api.agent.tool.RequiredWhen;
+import top.focess.veto.api.agent.tool.SecurityHint;
+import top.focess.veto.api.agent.tool.ToolDoc;
+import top.focess.veto.api.agent.tool.ToolDocs;
+import top.focess.veto.api.agent.tool.ToolResultFormat;
 import top.focess.veto.util.Nullness;
 
 /**

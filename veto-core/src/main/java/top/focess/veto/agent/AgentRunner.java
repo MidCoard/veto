@@ -69,23 +69,26 @@ import top.focess.veto.agent.loop.ResponseRequest;
 import top.focess.veto.agent.loop.Scope;
 import top.focess.veto.agent.loop.StopAction;
 import top.focess.veto.agent.loop.ToolAction;
-import top.focess.veto.agent.screening.Danger;
 import top.focess.veto.agent.tool.AgentToolDefinition;
 import top.focess.veto.agent.tool.LocalToolDefinition;
 import top.focess.veto.agent.tool.NativeToolArgumentValidator;
 import top.focess.veto.agent.tool.NativeToolDefinition;
-import top.focess.veto.agent.tool.ParamCategory;
 import top.focess.veto.agent.tool.ResponseSubmission;
 import top.focess.veto.agent.tool.ToolCallContext;
 import top.focess.veto.agent.tool.ToolCallContextHolder;
-import top.focess.veto.agent.tool.ToolCapability;
 import top.focess.veto.agent.tool.ToolDefinition;
 import top.focess.veto.agent.tool.ToolEngine;
 import top.focess.veto.agent.tool.ToolErrorCode;
 import top.focess.veto.agent.tool.ToolExecutionException;
 import top.focess.veto.agent.tool.ToolResult;
-import top.focess.veto.agent.tool.ToolResultFormat;
 import top.focess.veto.agent.tool.ToolResultStatus;
+import top.focess.veto.api.agent.screening.Danger;
+import top.focess.veto.api.agent.tool.ParamCategory;
+import top.focess.veto.api.agent.tool.ToolCapability;
+import top.focess.veto.api.agent.tool.ToolResultFormat;
+import top.focess.veto.api.plugin.contract.StandardContributionPoints;
+import top.focess.veto.api.plugin.contract.TextProtection;
+import top.focess.veto.api.plugin.contract.WorkflowHook;
 import top.focess.veto.bus.DeltaBroker;
 import top.focess.veto.bus.DeltaFrame;
 import top.focess.veto.i18n.Msg;
@@ -114,8 +117,7 @@ import top.focess.veto.model.tier.ModelTierRegistry;
 import top.focess.veto.monitor.MonitorRecord;
 import top.focess.veto.monitor.MonitorService;
 import top.focess.veto.monitor.RequestContinuationStore;
-import top.focess.veto.plugin.contract.StandardContributionPoints;
-import top.focess.veto.plugin.contract.TextProtection;
+import top.focess.veto.plugin.runtime.PluginJson;
 import top.focess.veto.plugin.runtime.PluginLifecycleEvents;
 import top.focess.veto.plugin.runtime.SessionPlugins;
 import top.focess.veto.sandbox.BackgroundTaskManager;
@@ -808,7 +810,10 @@ public class AgentRunner {
     // ── Episode setup + autonomous loop ─────────────────────────────────────
 
     private void processUserPrompt(@NonNull String prompt) {
-        prompt = captureUserPrompt(prompt);
+        prompt =
+                captureUserPrompt(
+                        workflow(
+                                prompt, (hook, text) -> hook.beforeInput(workflowContext(), text)));
         if (recoveredWait) {
             appendTurn(
                     new TurnRecord(
@@ -1129,7 +1134,7 @@ public class AgentRunner {
         LlmSystemUsage.begin();
         try {
             checkTaskCancellation();
-            response = caller.call(request);
+            response = callModelWithHooks(request);
             checkTaskCancellation();
         } finally {
             for (LlmSystemUsage.Usage measured : LlmSystemUsage.drain()) {
@@ -1621,7 +1626,7 @@ public class AgentRunner {
                                                                     ::name)
                                                     .collect(Collectors.toSet())),
                                     true);
-                    response = caller.call(request);
+                    response = callModelWithHooks(request);
                     checkTaskCancellation();
                 } finally {
                     List<LlmSystemUsage.Usage> measurements = LlmSystemUsage.drain();
@@ -2103,20 +2108,21 @@ public class AgentRunner {
             boolean hasRefused = false;
             for (ToolCall call : calls) {
                 ToolDefinition def = toolEngine.resolveDefinition(call.toolName());
-                if (def == null || def instanceof AgentToolDefinition) {
-                    if (def != null) hitlRegistry.recordInternalApproval(agentId, call);
+                if (def == null) {
                     decisions.add(ApprovalDecision.AUTO_APPROVE);
                     executionPermits.add(ToolExecutionPermit.empty());
                 } else {
-                    var result = screenToolCall(call, def, thought);
+                    var hookDecision = beforeToolHooks(call);
+                    var result =
+                            def instanceof AgentToolDefinition
+                                    ? new GatewayResult.NotScreened()
+                                    : screenToolCall(call, def, thought);
                     executionPermits.add(result.executionPermit());
-                    ApprovalDecision decision = hitlRegistry.decide(agentId, call, def, result);
+                    ApprovalDecision decision =
+                            hitlRegistry.decide(agentId, call, def, result, hookDecision);
                     decisions.add(decision);
-                    if (decision instanceof ApprovalDecision.Prompt) {
-                        hasVeto = true;
-                    } else if (decision instanceof ApprovalDecision.Refused) {
-                        hasRefused = true;
-                    }
+                    if (decision instanceof ApprovalDecision.Prompt) hasVeto = true;
+                    else if (decision instanceof ApprovalDecision.Refused) hasRefused = true;
                 }
             }
 
@@ -2306,12 +2312,28 @@ public class AgentRunner {
             if (waitsForAnswer) saveExecutionWait(WaitReason.QUESTION);
             ToolResult transformed = toolEngine.execute(call, def);
             checkTaskCancellation();
+            ToolResult actualResult = transformed;
+            String hookContent =
+                    workflow(
+                            actualResult.content(),
+                            (hook, content) ->
+                                    hook.afterTool(
+                                            workflowContext(),
+                                            hookInvocation(call),
+                                            new WorkflowHook.Output(
+                                                    content,
+                                                    actualResult.format(),
+                                                    actualResult.success())));
+            transformed = transformed.withContent(hookContent);
             for (LoopInterceptor plugin : interceptors) {
                 transformed = plugin.postAction(agentId, call, transformed);
             }
 
             // (f) plugin observation transformations are untrusted input to the final defense.
-            String pluginObservation = transformed.content();
+            String pluginObservation =
+                    workflow(
+                            transformed.content(),
+                            (hook, text) -> hook.beforeObservation(workflowContext(), text));
             for (LoopInterceptor plugin : interceptors) {
                 pluginObservation = plugin.preObservation(agentId, pluginObservation);
             }
@@ -2323,7 +2345,7 @@ public class AgentRunner {
             String currentOwner = owner;
             if (transformed.success()
                     && def instanceof NativeToolDefinition
-                    && def.name().equals("view_file")
+                    && def.capability() == ToolCapability.WORKSPACE_READ
                     && selected != null
                     && currentOwner != null
                     && selected.has(
@@ -2392,14 +2414,14 @@ public class AgentRunner {
             NativeToolArgumentValidator.validate(
                     local.name(), objectMapper.valueToTree(call.args()), local.argsClass());
 
-        // (a) early-route agent tools past the Gateway + HITL.
-        ApprovalDecision decision = ApprovalDecision.AUTO_APPROVE;
-        ToolExecutionPermit executionPermit = ToolExecutionPermit.empty();
-        if (def instanceof AgentToolDefinition) hitlRegistry.recordInternalApproval(agentId, call);
-        if (!(def instanceof AgentToolDefinition)) {
-            var result = screenToolCall(call, def, null);
-            executionPermit = result.executionPermit();
-            decision = hitlRegistry.decide(agentId, call, def, result);
+        var hookDecision = beforeToolHooks(call);
+        var result =
+                def instanceof AgentToolDefinition
+                        ? new GatewayResult.NotScreened()
+                        : screenToolCall(call, def, null);
+        ToolExecutionPermit executionPermit = result.executionPermit();
+        ApprovalDecision decision = hitlRegistry.decide(agentId, call, def, result, hookDecision);
+        {
             if (decision instanceof ApprovalDecision.AutoBlock ab) {
                 appendToolCall(call);
                 appendObservation(call.toolName(), "Blocked: " + ab.reason());
@@ -3690,6 +3712,58 @@ public class AgentRunner {
     }
 
     // ── helpers ──────────────────────────────────────────────────────────────
+
+    private WorkflowHook.@NonNull Context workflowContext() {
+        return new WorkflowHook.Context(
+                owner, sessionId.toString(), agentId, () -> Thread.currentThread().isInterrupted());
+    }
+
+    private <T extends @NonNull Object> @NonNull T workflow(
+            @NonNull T initial, SessionPlugins.@NonNull WorkflowOperation<T> operation) {
+        var selected = sessionPlugins;
+        if (selected == null
+                || !selected.has(sessionId.toString(), StandardContributionPoints.WORKFLOW))
+            return initial;
+        checkTaskCancellation();
+        T result = selected.workflow(workflowContext(), initial, operation);
+        checkTaskCancellation();
+        return result;
+    }
+
+    private WorkflowHook.@NonNull Invocation hookInvocation(@NonNull ToolCall call) {
+        return new WorkflowHook.Invocation(
+                call.toolName(),
+                call.callId(),
+                PluginJson.object(objectMapper.valueToTree(call.args())));
+    }
+
+    private WorkflowHook.@NonNull Decision beforeToolHooks(@NonNull ToolCall call) {
+        return workflow(
+                WorkflowHook.Decision.CONTINUE,
+                (hook, previous) -> {
+                    if (previous == WorkflowHook.Decision.REJECT) return previous;
+                    var next = hook.beforeTool(workflowContext(), hookInvocation(call));
+                    return next.ordinal() > previous.ordinal() ? next : previous;
+                });
+    }
+
+    private @NonNull VetoResponse callModelWithHooks(@NonNull VetoRequest request) {
+        var model = new WorkflowHook.ModelCall(request.providerType().name(), request.modelName());
+        workflow(
+                model,
+                (hook, current) -> {
+                    hook.beforeModel(workflowContext(), current);
+                    return current;
+                });
+        VetoResponse response = caller.call(request);
+        checkTaskCancellation();
+        var transformed =
+                workflow(
+                        new WorkflowHook.ModelOutput(response.message()),
+                        (hook, output) -> hook.afterModel(workflowContext(), model, output));
+        return new VetoResponse(
+                response.thought(), response.calls(), transformed.message(), response.citations());
+    }
 
     private PluginLifecycleEvents lifecycleEvents;
 

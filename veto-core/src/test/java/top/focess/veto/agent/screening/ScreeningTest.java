@@ -7,8 +7,9 @@ import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.agent.intercept.VetoScenario;
 import top.focess.veto.agent.tool.AgentToolDefinition;
-import top.focess.veto.agent.tool.ToolCapability;
-import top.focess.veto.agent.tool.ToolDocs;
+import top.focess.veto.api.agent.screening.Danger;
+import top.focess.veto.api.agent.tool.ToolCapability;
+import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.llm.core.ToolCall;
 
 class ScreeningTest {

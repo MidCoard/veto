@@ -44,8 +44,18 @@ import top.focess.veto.agent.workspace.PathMode;
 import top.focess.veto.agent.workspace.TrustMarker;
 import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.agent.workspace.WorkspaceRoot;
+import top.focess.veto.api.agent.tool.AgentTool;
+import top.focess.veto.api.agent.tool.NativeTool;
+import top.focess.veto.api.agent.tool.ToolCapability;
+import top.focess.veto.api.agent.tool.ToolDoc;
+import top.focess.veto.api.agent.tool.ToolDocs;
+import top.focess.veto.api.agent.tool.ToolResultFormat;
+import top.focess.veto.api.plugin.contract.StandardContributionPoints;
+import top.focess.veto.api.plugin.contribution.Contribution;
 import top.focess.veto.llm.core.ToolCall;
 import top.focess.veto.llm.core.ToolResultPresentationMode;
+import top.focess.veto.plugin.runtime.PluginManager;
+import top.focess.veto.plugin.runtime.WorkflowPluginFixture;
 import top.focess.veto.sandbox.BackgroundTaskManager;
 import top.focess.veto.sandbox.SandboxManager;
 import top.focess.veto.sandbox.TestSandboxFactory;
@@ -55,6 +65,39 @@ import top.focess.veto.sandbox.TestSandboxFactory;
  * arguments, {@code run_command} routing through the no-shell substrate, and agent-tool dispatch.
  */
 class ToolEngineImplTest {
+    @Test
+    void pluginFileToolUsesTheOrdinaryPermitAndSessionBoundary(@TempDir @NonNull Path root)
+            throws Exception {
+        var contribution =
+                Contribution.of(
+                        StandardContributionPoints.NATIVE_TOOLS, "view_file", new ViewFileTool());
+        try (var fixture = new WorkflowPluginFixture(List.of(contribution))) {
+            var context = mock(ToolDocs.nonNullClass(ApplicationContext.class));
+            when(context.getBeansOfType(PluginManager.class))
+                    .thenReturn(Map.of("plugins", fixture.manager));
+            var engine = new ToolEngineImpl(new ObjectMapper(), List.of(), context);
+            engine.attachSessionPlugins(fixture.sessions);
+            engine.init();
+            String name = "plugin_fixture_workflow__view_file";
+            var definition = definition(engine, name);
+            assertEquals(ToolCapability.WORKSPACE_READ, definition.capability());
+            assertEquals("plugin", definition.origin());
+            Path file = root.resolve("sample.txt");
+            Files.writeString(file, "plugin read through workspace permit");
+            var call = new ToolCall(name, Map.of("absolutePath", file.toString()));
+            assertFalse(engine.execute(call, definition).success());
+            var approved = executeAuthorized(engine, call, definition, root);
+            assertTrue(approved.success(), approved.content());
+            assertTrue(approved.content().contains("plugin read through workspace permit"));
+            var none = spy(fixture.sessions);
+            doReturn(false).when(none).includes(anyString(), anyString());
+            engine.attachSessionPlugins(none);
+            assertFalse(executeAuthorized(engine, call, definition, root).success());
+            fixture.runtime.close();
+            assertTrue(engine.getActiveTools(null).isEmpty());
+        }
+    }
+
     private static final @NonNull UUID TEST_USER = UUID.randomUUID();
 
     private record FailingAgentArgs(@NonNull String reason) {}
@@ -144,9 +187,17 @@ class ToolEngineImplTest {
     }
 
     @Test
-    void registrationRejectsWrongCapabilityIntermediate() {
-        var failure = registrationFailure(new WrongBoundaryAgentTool());
-        assertTrue(String.valueOf(failure.getMessage()).contains("capability boundary"));
+    void registrationAcceptsTrustedHandlersWithoutCapabilityMarkerInterfaces() {
+        var tool = new WrongBoundaryAgentTool();
+        assertDoesNotThrow(
+                () ->
+                        ToolContractValidator.validateHandler(
+                                tool,
+                                AgentToolDefinition.from(
+                                        tool.getName(),
+                                        tool.getClass(),
+                                        tool.getArgsClass(),
+                                        tool.getCapability())));
     }
 
     @Test
@@ -167,10 +218,17 @@ class ToolEngineImplTest {
     }
 
     @Test
-    void registrationRejectsRawServiceFields() {
-        var failure = registrationFailure(new RawDependencyAgentTool());
-        assertTrue(
-                String.valueOf(failure.getMessage()).contains("unrestricted instance dependency"));
+    void registrationDoesNotPretendToSandboxTrustedHandlerFields() {
+        var tool = new RawDependencyAgentTool();
+        assertDoesNotThrow(
+                () ->
+                        ToolContractValidator.validateHandler(
+                                tool,
+                                AgentToolDefinition.from(
+                                        tool.getName(),
+                                        tool.getClass(),
+                                        tool.getArgsClass(),
+                                        tool.getCapability())));
     }
 
     private static @NonNull IllegalArgumentException registrationFailure(

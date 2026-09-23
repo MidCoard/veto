@@ -2,8 +2,10 @@ package top.focess.veto.agent.tool;
 
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.capability.GroupControlCapability;
+import top.focess.veto.api.agent.tool.AgentTool;
+import top.focess.veto.api.agent.tool.ToolCapability;
 
-public non-sealed interface GroupControlTool<T> extends AgentTool<T> {
+public interface GroupControlTool<T> extends AgentTool<T> {
     @NonNull GroupControlCapability groupControlCapability();
 
     @NonNull String execute(@NonNull T args, @NonNull GroupControlCapability capability);

@@ -13,8 +13,22 @@ import java.util.List;
 import java.util.Map;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.agent.screening.Danger;
-import top.focess.veto.plugin.contract.Tool;
+import top.focess.veto.api.agent.screening.Danger;
+import top.focess.veto.api.agent.tool.ArraySize;
+import top.focess.veto.api.agent.tool.CapabilityTool;
+import top.focess.veto.api.agent.tool.Doc;
+import top.focess.veto.api.agent.tool.NativeTool;
+import top.focess.veto.api.agent.tool.ParamCategory;
+import top.focess.veto.api.agent.tool.Required;
+import top.focess.veto.api.agent.tool.RequiredWhen;
+import top.focess.veto.api.agent.tool.SecurityHint;
+import top.focess.veto.api.agent.tool.StringConstraint;
+import top.focess.veto.api.agent.tool.ToolCapability;
+import top.focess.veto.api.agent.tool.ToolDocs;
+import top.focess.veto.api.agent.tool.ToolInputSchema;
+import top.focess.veto.api.agent.tool.ToolResultFormat;
+import top.focess.veto.api.agent.tool.ToolSecurity;
+import top.focess.veto.api.plugin.contract.Tool;
 
 /**
  * Compiles annotated Java parameter records into tool definitions and JSON Schema.

@@ -3,7 +3,7 @@ package top.focess.veto.controller.dto;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import java.util.*;
 import org.jspecify.annotations.*;
-import top.focess.veto.plugin.api.PluginState;
+import top.focess.veto.api.plugin.PluginState;
 
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record PluginResponse(

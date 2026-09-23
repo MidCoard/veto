@@ -18,14 +18,14 @@ import top.focess.veto.agent.screening.DeployerPolicy;
 import top.focess.veto.agent.screening.ProtectedSet;
 import top.focess.veto.agent.tool.AgentToolDefinition;
 import top.focess.veto.agent.tool.NativeToolDefinition;
-import top.focess.veto.agent.tool.ParamCategory;
 import top.focess.veto.agent.tool.Provenance;
 import top.focess.veto.agent.tool.RemoteToolDefinition;
 import top.focess.veto.agent.tool.ToolCallContext;
-import top.focess.veto.agent.tool.ToolCapability;
 import top.focess.veto.agent.tool.ToolDefinition;
 import top.focess.veto.agent.workspace.Resolution;
 import top.focess.veto.agent.workspace.Workspace;
+import top.focess.veto.api.agent.tool.ParamCategory;
+import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.llm.core.ToolCall;
 
 /**

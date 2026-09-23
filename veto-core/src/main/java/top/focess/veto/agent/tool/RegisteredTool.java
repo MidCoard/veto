@@ -2,7 +2,8 @@ package top.focess.veto.agent.tool;
 
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.capability.RemoteCallCapability;
-import top.focess.veto.plugin.contract.Tool;
+import top.focess.veto.api.agent.tool.CapabilityTool;
+import top.focess.veto.api.plugin.contract.Tool;
 import top.focess.veto.plugin.runtime.ManagedPlugin;
 
 /** Host-only adapters: bind each definition to its exact execution implementation. */
@@ -16,17 +17,11 @@ sealed interface RegisteredTool {
             @NonNull ManagedPlugin runtime)
             implements RegisteredTool {}
 
-    /** An in-process JAR plugin tool, executed through the internal tool state. */
-    record Capability(
-            @NonNull NativeToolDefinition definition,
+    /** One execution binding for every record-authored tool, irrespective of origin. */
+    record Local(
+            @NonNull LocalToolDefinition definition,
             @NonNull CapabilityTool<?> handler,
-            @NonNull ManagedPlugin runtime)
-            implements RegisteredTool {}
-
-    record Native(@NonNull NativeToolDefinition definition, @NonNull NativeTool<?> handler)
-            implements RegisteredTool {}
-
-    record Agent(@NonNull AgentToolDefinition definition, @NonNull AgentTool<?> handler)
+            ManagedPlugin runtime)
             implements RegisteredTool {}
 
     record Remote(

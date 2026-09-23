@@ -21,12 +21,12 @@ import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.intercept.ToolExecutionPermit;
 import top.focess.veto.agent.intercept.ToolExecutionPermit.FileIdentity;
 import top.focess.veto.agent.screening.DeployerPolicy;
-import top.focess.veto.agent.tool.ToolCapability;
 import top.focess.veto.agent.tool.ToolErrorCode;
 import top.focess.veto.agent.tool.ToolErrors;
 import top.focess.veto.agent.tool.ToolExecutionException;
-import top.focess.veto.agent.tool.ToolResultFormat;
 import top.focess.veto.agent.tool.ToolResultStatus;
+import top.focess.veto.api.agent.tool.ToolCapability;
+import top.focess.veto.api.agent.tool.ToolResultFormat;
 
 /** Private resource binding shared by read and write handles. */
 final class WorkspaceFileAccess {

@@ -12,8 +12,8 @@ import java.util.TreeMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.agent.tool.ToolDocs;
 import top.focess.veto.agent.tool.ToolResult;
+import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.llm.core.VetoResponse;
 
 /**

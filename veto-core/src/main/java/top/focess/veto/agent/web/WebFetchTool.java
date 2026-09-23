@@ -4,17 +4,17 @@ import java.net.URI;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.capability.NetworkEgressCapability;
-import top.focess.veto.agent.screening.Danger;
-import top.focess.veto.agent.tool.Doc;
 import top.focess.veto.agent.tool.NetworkEgressTool;
-import top.focess.veto.agent.tool.ParamCategory;
-import top.focess.veto.agent.tool.SecurityHint;
-import top.focess.veto.agent.tool.ToolCapability;
-import top.focess.veto.agent.tool.ToolDoc;
 import top.focess.veto.agent.tool.ToolErrorCode;
 import top.focess.veto.agent.tool.ToolErrors;
-import top.focess.veto.agent.tool.ToolResultFormat;
-import top.focess.veto.agent.tool.ToolSecurity;
+import top.focess.veto.api.agent.screening.Danger;
+import top.focess.veto.api.agent.tool.Doc;
+import top.focess.veto.api.agent.tool.ParamCategory;
+import top.focess.veto.api.agent.tool.SecurityHint;
+import top.focess.veto.api.agent.tool.ToolCapability;
+import top.focess.veto.api.agent.tool.ToolDoc;
+import top.focess.veto.api.agent.tool.ToolResultFormat;
+import top.focess.veto.api.agent.tool.ToolSecurity;
 
 @Component
 @ToolSecurity(capability = ToolCapability.NETWORK_EGRESS, defaultDanger = Danger.ELEVATED)

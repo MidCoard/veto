@@ -3,9 +3,11 @@ package top.focess.veto.agent.tool;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.capability.CapabilityResolver;
 import top.focess.veto.agent.capability.WorkspaceReadCapability;
+import top.focess.veto.api.agent.tool.NativeTool;
+import top.focess.veto.api.agent.tool.ToolDocs;
 
 /** A native tool whose filesystem operations use a call-scoped workspace-read capability. */
-public non-sealed interface WorkspaceReadTool<T> extends NativeTool<T> {
+public interface WorkspaceReadTool<T> extends NativeTool<T> {
 
     @NonNull String execute(@NonNull T args, @NonNull WorkspaceReadCapability capability)
             throws Exception;

@@ -6,10 +6,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.*;
 import java.util.regex.Pattern;
 import org.junit.jupiter.api.Test;
-import top.focess.veto.agent.tool.ToolDocs;
 import top.focess.veto.agent.tool.ToolResult;
-import top.focess.veto.agent.tool.ToolResultFormat;
 import top.focess.veto.agent.tool.ToolResultStatus;
+import top.focess.veto.api.agent.tool.ToolDocs;
+import top.focess.veto.api.agent.tool.ToolResultFormat;
 import top.focess.veto.util.Nullness;
 
 class GuidedBindingsTest {

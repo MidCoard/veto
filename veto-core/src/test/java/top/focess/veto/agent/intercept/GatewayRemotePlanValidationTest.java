@@ -12,6 +12,7 @@ import top.focess.veto.agent.loop.ActionsProgramParser;
 import top.focess.veto.agent.screening.*;
 import top.focess.veto.agent.tool.*;
 import top.focess.veto.agent.workspace.Workspace;
+import top.focess.veto.api.agent.tool.ToolDocs;
 
 class GatewayRemotePlanValidationTest {
     private static final @NonNull ObjectMapper MAPPER = new ObjectMapper();

@@ -5,7 +5,7 @@ import java.util.Optional;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
-import top.focess.veto.agent.tool.ToolCapability;
+import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.sandbox.BackgroundTaskManager;
 
 @Component

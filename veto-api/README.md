@@ -1,3 +1,28 @@
+## Workflow-core API (2026-09-23)
+
+Shared Java contracts now live under `top.focess.veto.api.*`. This is a Java binary/source
+compatibility change: rebuild existing Java plugins with the new imports and rename
+the ServiceLoader descriptor to
+`META-INF/services/top.focess.veto.api.plugin.VetoPlugin`. Plugin authors depend
+on `veto-api`, never on `veto-core`. Java tools may implement `NativeTool` or
+`AgentTool` and contribute through `StandardContributionPoints.NATIVE_TOOLS`.
+All Java tools share registration and execution. Capabilities describe the operation;
+plugin origin does not require PRIVILEGED or prohibit path/command/URL arguments.
+Registration checks contract coherence, not handler fields. Java plugins are trusted
+code; authority is enforced by call permits and scoped host services, not a Java sandbox.
+
+`StandardContributionPoints.WORKFLOW` accepts `WorkflowHook`: input transformation,
+before/after model callbacks, tool rejection/explicit approval, result transformation,
+and observation transformation. Hooks run in catalog order for the selected pinned
+session, with lifecycle admission and cooperative cancellation. A hook cannot override
+a host refusal; requested approval is per call. Model callbacks expose model metadata
+and response text, not provider secrets or mutable native-call state. Input hooks run
+before input protection; output hooks precede final observation protection. Failures
+stop the operation with a safe host error. Script workers do not support Java hooks.
+
+Provider, storage and other feature contracts still in core are migration gaps; this
+release does not yet make every feature implementable through the API alone.
+
 # Veto API — experimental
 
 For building and running Veto, start with the [project README](../README.md).
@@ -80,22 +105,20 @@ Plugins author tools in one of two ways, mirroring how the host models its own
 tools:
 
 - In-process JAR plugins contribute a `CapabilityTool<T>` (from
-  `top.focess.veto.agent.tool`) through the `veto:native-tools` point. The tool
+  `top.focess.veto.api.agent.tool`) through the `veto:native-tools` point. The tool
   declares its arguments as a plain Java record (`getArgsClass()`) and carries
   the same `@ToolSecurity`/`@ToolDoc` annotations a built-in native tool uses.
   The host reflects the record into the input schema, validates the call,
   deserializes the arguments, and executes the handler through its internal tool
   state exactly like a core native tool — no hand-written JSON schema and no
-  out-of-process hop. Such a tool must declare the `PRIVILEGED` capability, so
-  every call stays behind approval-level screening.
+  out-of-process hop. Its declared capability selects the ordinary execution authorization boundary.
 - Portable or out-of-process plugins contribute a `Tool` through the
   `veto:tools` point. `Tool` declares explicit `inputSchema()`/`outputSchema()`
   JSON and exchanges `JsonValue`; this is the only form a non-Java host process
   (the script runtime) can consume. `ToolContribution` is the stock carrier.
 
 `Tool.Effect` is generic: `PRIVILEGED` marks a tool that crosses a
-host trust boundary (the host gates every call with explicit approval; no
-path/command/URL arguments), `COMPUTATION` and `EXTERNAL_UNKNOWN` stay ordinary
+host trust boundary (the host applies approval-level screening), `COMPUTATION` and `EXTERNAL_UNKNOWN` stay ordinary
 external effects.
 
 `Cancellation` carries a cancellation signal, not an approved invocation.
@@ -115,7 +138,7 @@ caller and full-call authorization checks.
 `RegisteredTool` and the private `veto:runtime-tools` point are host implementation
 details, not public plugin contracts. The [script runtime](../veto-plugin-runtime/README.md) adds operator-configured plugin
 tools through this catalog. Host-granted services reach plugins through
-`PluginContext`; generic model hooks are not implemented.
+`PluginContext`; `WorkflowHook` supplies the session-scoped model/tool callbacks described above.
 
 ## Executable browser plugins
 
@@ -142,8 +165,7 @@ not a sandbox, and must use the supplied React instance instead of bundling its
 own. Other dependencies must be bundled; relative/bare module imports are not
 resolved. Secret protection uses this executable frontend API for its own reveal
 component and keeps its reveal/reset behavior in the plugin's JavaScript resource.
-The veto-ui plugin loader for this surface is still pending; the Java contract
-stays.
+The veto-ui repository contains the loader and its tests; this backend milestone does not claim browser acceptance.
 
 ## Build and verify
 
@@ -160,7 +182,6 @@ Building or copying this package does not activate it in Veto.
 
 ## Limitations
 
-The manifest and Java SPI are experimental. Java package activation, portable model hooks and cross-client adapters are not
-implemented by this module. The separate script runtime supports a different
+The manifest and Java SPI are experimental. This module does not install Java packages or provide adapters for other agent clients. The separate script runtime supports a different
 manifest and validates its own descriptors and messages. The fixture demonstrates lifecycle and registration mechanics,
 not production protection or plugin installation.

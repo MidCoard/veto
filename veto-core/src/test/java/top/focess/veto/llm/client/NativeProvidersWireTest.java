@@ -17,9 +17,9 @@ import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 import top.focess.veto.agent.TurnRecord;
-import top.focess.veto.agent.tool.ToolDocs;
-import top.focess.veto.agent.tool.ToolDocumentation;
 import top.focess.veto.agent.translation.VetoCapabilityTranslator;
+import top.focess.veto.api.agent.tool.ToolDocs;
+import top.focess.veto.api.agent.tool.ToolDocumentation;
 import top.focess.veto.llm.core.*;
 import top.focess.veto.llm.exceptions.ModelSchemaException;
 

@@ -5,9 +5,9 @@ import org.jspecify.annotations.NonNull;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import top.focess.veto.api.plugin.PluginState;
+import top.focess.veto.api.plugin.contract.StandardContributionPoints;
 import top.focess.veto.controller.dto.*;
-import top.focess.veto.plugin.api.PluginState;
-import top.focess.veto.plugin.contract.StandardContributionPoints;
 import top.focess.veto.plugin.runtime.PluginManager;
 import top.focess.veto.plugin.runtime.ScriptPlugin;
 

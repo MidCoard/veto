@@ -31,6 +31,8 @@ import top.focess.veto.agent.tool.builtin.*;
 import top.focess.veto.agent.tool.builtin.FixtureLoopTool;
 import top.focess.veto.agent.translation.DefaultCapabilityTranslator;
 import top.focess.veto.agent.workspace.*;
+import top.focess.veto.api.agent.tool.AgentTool;
+import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.llm.core.*;
 import top.focess.veto.model.tier.ModelBinding;
 import top.focess.veto.model.tier.ModelTier;

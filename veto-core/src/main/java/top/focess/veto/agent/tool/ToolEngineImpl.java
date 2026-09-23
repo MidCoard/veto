@@ -21,13 +21,18 @@ import top.focess.veto.agent.capability.RemoteCallCapability;
 import top.focess.veto.agent.capability.RemoteCallCapabilityImpl;
 import top.focess.veto.agent.mcp.transport.McpJsonRpcClient;
 import top.focess.veto.agent.mcp.transport.McpTransport;
+import top.focess.veto.api.agent.tool.AgentTool;
+import top.focess.veto.api.agent.tool.CapabilityTool;
+import top.focess.veto.api.agent.tool.NativeTool;
+import top.focess.veto.api.agent.tool.ToolCapability;
+import top.focess.veto.api.agent.tool.ToolResultFormat;
+import top.focess.veto.api.plugin.PluginState;
+import top.focess.veto.api.plugin.contract.Cancellation;
+import top.focess.veto.api.plugin.contract.JsonValue;
+import top.focess.veto.api.plugin.contract.StandardContributionPoints;
+import top.focess.veto.api.plugin.contract.Tool;
 import top.focess.veto.llm.config.LlmJacksonConfig;
 import top.focess.veto.llm.core.ToolCall;
-import top.focess.veto.plugin.api.PluginState;
-import top.focess.veto.plugin.contract.Cancellation;
-import top.focess.veto.plugin.contract.JsonValue;
-import top.focess.veto.plugin.contract.StandardContributionPoints;
-import top.focess.veto.plugin.contract.Tool;
 import top.focess.veto.plugin.runtime.PluginJson;
 import top.focess.veto.plugin.runtime.PluginManager;
 import top.focess.veto.plugin.runtime.PluginSchema;
@@ -117,18 +122,12 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
         if (initialized) throw new IllegalStateException("Tool engine already initialized");
         List<RegisteredTool> staged = new ArrayList<>();
         for (NativeTool<?> bean : nativeToolBeans) {
-            staged.add(new RegisteredTool.Native(ToolSchemaCompiler.compileNative(bean), bean));
+            staged.add(ToolRegistration.local(bean, bean.getName(), null));
         }
         ApplicationContext context = applicationContext;
         if (context != null) {
             for (AgentTool<?> bean : context.getBeansOfType(AgentTool.class).values()) {
-                AgentToolDefinition definition =
-                        AgentToolDefinition.from(
-                                bean.getName(),
-                                bean.getClass(),
-                                bean.getArgsClass(),
-                                bean.getCapability());
-                staged.add(new RegisteredTool.Agent(definition, bean));
+                staged.add(ToolRegistration.local(bean, bean.getName(), null));
             }
         }
         if (context != null) {
@@ -150,15 +149,12 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
                         manager.catalog().entries(StandardContributionPoints.NATIVE_TOOLS)) {
                     var plugin = manager.plugin(entry.source().namespace());
                     CapabilityTool<?> tool = entry.implementation();
-                    NativeToolDefinition definition =
-                            ToolSchemaCompiler.compilePluginNative(
+                    staged.add(
+                            ToolRegistration.local(
                                     tool,
                                     manager.toolName(
                                             entry.source().namespace(), entry.id().value()),
-                                    plugin.bindingId(),
-                                    plugin.identity().id(),
-                                    plugin.identity().version());
-                    staged.add(new RegisteredTool.Capability(definition, tool, plugin));
+                                    plugin));
                 }
             }
         }
@@ -223,12 +219,7 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
             ToolResult result =
                     switch (registration) {
                         case RegisteredTool.Plugin plugin -> executePlugin(call, plugin);
-                        case RegisteredTool.Capability capability ->
-                                executeCapability(call, capability);
-                        case RegisteredTool.Native nativeTool ->
-                                executeNative(call, nativeTool.definition(), nativeTool.handler());
-                        case RegisteredTool.Agent agentTool ->
-                                executeAgent(call, agentTool.definition(), agentTool.handler());
+                        case RegisteredTool.Local local -> executeLocalCall(call, local);
                         case RegisteredTool.Remote remoteTool ->
                                 executeRemote(
                                         call, remoteTool.definition(), remoteTool.capability());
@@ -323,70 +314,49 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
         }
     }
 
-    /**
-     * Executes a plugin-contributed {@link CapabilityTool} through the host's internal tool state,
-     * exactly like a core native tool. Provenance gating still applies: the owning plugin must be
-     * ACTIVE and selected for the current session before the handler runs.
-     */
-    private @NonNull ToolResult executeCapability(
-            @NonNull ToolCall call, RegisteredTool.@NonNull Capability registration)
-            throws Exception {
-        NativeToolDefinition definition = registration.definition();
-        if (registration.runtime().state() != PluginState.ACTIVE) {
-            throw new SecurityException("Plugin is not active for this session");
-        }
-        var selection = sessionPlugins;
-        if (selection != null) {
-            var context = ToolCallContextHolder.get();
-            var session = context == null ? null : context.sessionId();
-            if (session == null
-                    || !selection.includes(
-                            session.toString(), registration.runtime().identity().id())) {
-                throw new SecurityException("Plugin is not selected for this session");
+    private @NonNull ToolResult executeLocalCall(
+            @NonNull ToolCall call, RegisteredTool.@NonNull Local registration) throws Exception {
+        LocalToolDefinition definition = registration.definition();
+        var runtime = registration.runtime();
+        if (runtime != null) {
+            if (runtime.state() != PluginState.ACTIVE)
+                throw new SecurityException("Plugin is not active for this session");
+            var selection = sessionPlugins;
+            if (selection != null) {
+                var context = ToolCallContextHolder.get();
+                var session = context == null ? null : context.sessionId();
+                if (session == null
+                        || !selection.includes(session.toString(), runtime.identity().id()))
+                    throw new SecurityException("Plugin is not selected for this session");
             }
         }
         JsonNode jsonArgs = mapper.valueToTree(call.args());
         NativeToolArgumentValidator.validate(definition.name(), jsonArgs, definition.argsClass());
         requirePermit(call, definition);
-        String result = executeLocal(registration.handler(), jsonArgs);
-        return successfulResult(call, definition, result);
+        if (runtime == null)
+            return successfulResult(
+                    call, definition, executeLocal(registration.handler(), jsonArgs));
+        LocalOutcome outcome =
+                runtime.execute(
+                        () -> {
+                            try {
+                                return new LocalOutcome(
+                                        executeLocal(registration.handler(), jsonArgs), null);
+                            } catch (Exception failure) {
+                                return new LocalOutcome(null, failure);
+                            }
+                        });
+        Exception failure = outcome.failure();
+        if (failure != null) throw failure;
+        return successfulResult(call, definition, Nullness.requireNonNull(outcome.content()));
     }
 
-    private @NonNull ToolResult executeNative(
-            @NonNull ToolCall call, @NonNull NativeToolDefinition def, @NonNull NativeTool<?> bean)
-            throws Exception {
-        JsonNode jsonArgs = mapper.valueToTree(call.args());
-        NativeToolArgumentValidator.validate(def.name(), jsonArgs, def.argsClass());
-        requirePermit(call, def);
-        String result = executeLocal(bean, jsonArgs);
-        return successfulResult(call, def, result);
-    }
+    private record LocalOutcome(String content, Exception failure) {}
 
     private <T> @NonNull String executeLocal(
             @NonNull CapabilityTool<T> tool, @NonNull JsonNode jsonArgs) throws Exception {
         T args = mapper.treeToValue(jsonArgs, tool.getArgsClass());
         return tool.execute(Nullness.requireNonNull(args, "Tool arguments deserialized to null"));
-    }
-
-    private @NonNull ToolResult executeAgent(
-            @NonNull ToolCall call, @NonNull AgentToolDefinition def, @NonNull AgentTool<?> bean) {
-        try {
-            JsonNode jsonArgs = mapper.valueToTree(call.args());
-            NativeToolArgumentValidator.validate(def.name(), jsonArgs, def.argsClass());
-            requirePermit(call, def);
-            String result = executeLocal(bean, jsonArgs);
-            return successfulResult(call, def, result);
-        } catch (ToolExecutionException e) {
-            throw e;
-        } catch (Exception e) {
-            return new ToolResult(
-                    call.toolName(),
-                    call.callId(),
-                    ToolResultStatus.FAILURE,
-                    ToolResultFormat.UNKNOWN,
-                    "Agent tool error: " + ToolErrors.normalize(e.getMessage()),
-                    ToolErrorCode.GENERIC.TOOL_FAILURE);
-        }
     }
 
     /** External tool execution over the transport recorded during MCP discovery. */

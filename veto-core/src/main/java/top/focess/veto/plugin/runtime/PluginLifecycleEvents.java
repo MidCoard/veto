@@ -5,10 +5,10 @@ import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
-import top.focess.veto.plugin.api.PluginState;
-import top.focess.veto.plugin.contract.PluginFailure;
-import top.focess.veto.plugin.contract.SessionLifecycle;
-import top.focess.veto.plugin.contract.StandardContributionPoints;
+import top.focess.veto.api.plugin.PluginState;
+import top.focess.veto.api.plugin.contract.PluginFailure;
+import top.focess.veto.api.plugin.contract.SessionLifecycle;
+import top.focess.veto.api.plugin.contract.StandardContributionPoints;
 
 /**
  * Dispatches owner/session/agent lifecycle transitions to every ACTIVE plugin's {@code

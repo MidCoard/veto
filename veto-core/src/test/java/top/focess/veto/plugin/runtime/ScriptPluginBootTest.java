@@ -24,10 +24,11 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import top.focess.veto.VetoApplication;
 import top.focess.veto.agent.intercept.ToolExecutionPermit;
-import top.focess.veto.agent.screening.Danger;
 import top.focess.veto.agent.tool.*;
 import top.focess.veto.agent.workspace.PathMode;
 import top.focess.veto.agent.workspace.Workspace;
+import top.focess.veto.api.agent.screening.Danger;
+import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.llm.core.ToolCall;
 import top.focess.veto.llm.core.ToolResultPresentationMode;
 

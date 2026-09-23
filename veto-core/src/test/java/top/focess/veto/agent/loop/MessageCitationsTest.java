@@ -74,7 +74,7 @@ class MessageCitationsTest {
                                 ChatMessage.user("runtime correction")));
         var error =
                 assertThrows(
-                        top.focess.veto.agent.tool.ToolDocs.nonNullClass(
+                        top.focess.veto.api.agent.tool.ToolDocs.nonNullClass(
                                 IllegalArgumentException.class),
                         () ->
                                 MessageCitations.resolve(
@@ -91,7 +91,7 @@ class MessageCitationsTest {
         assertTrue(String.valueOf(error.getMessage()).contains("[0, 1]"));
         for (String quote : List.of("Missing", "runtime correction"))
             assertThrows(
-                    top.focess.veto.agent.tool.ToolDocs.nonNullClass(
+                    top.focess.veto.api.agent.tool.ToolDocs.nonNullClass(
                             IllegalArgumentException.class),
                     () ->
                             MessageCitations.resolve(
@@ -460,7 +460,7 @@ class MessageCitationsTest {
                                             .withSourceTurns(List.of(4))));
             var error =
                     assertThrows(
-                            top.focess.veto.agent.tool.ToolDocs.nonNullClass(
+                            top.focess.veto.api.agent.tool.ToolDocs.nonNullClass(
                                     IllegalArgumentException.class),
                             () ->
                                     MessageCitations.resolve(
@@ -487,7 +487,7 @@ class MessageCitationsTest {
                         ChatMessage.user("Launch Friday."))) {
             var request = request(ProviderType.OPENAI, List.of(message));
             assertThrows(
-                    top.focess.veto.agent.tool.ToolDocs.nonNullClass(
+                    top.focess.veto.api.agent.tool.ToolDocs.nonNullClass(
                             IllegalArgumentException.class),
                     () -> MessageCitations.resolve(request, answer(0, "Launch Friday.")));
         }
@@ -510,7 +510,7 @@ class MessageCitationsTest {
                 assertEquals(Boolean.FALSE, repaired.getFirst().toolSuccess());
                 assertEquals(List.of(5), repaired.getFirst().sourceTurns());
                 assertThrows(
-                        top.focess.veto.agent.tool.ToolDocs.nonNullClass(
+                        top.focess.veto.api.agent.tool.ToolDocs.nonNullClass(
                                 IllegalArgumentException.class),
                         () ->
                                 MessageCitations.resolve(
@@ -561,7 +561,7 @@ class MessageCitationsTest {
                                         .withSourceTurns(List.of(2))));
         var error =
                 assertThrows(
-                        top.focess.veto.agent.tool.ToolDocs.nonNullClass(
+                        top.focess.veto.api.agent.tool.ToolDocs.nonNullClass(
                                 top.focess.veto.llm.exceptions.ModelSchemaException.class),
                         () ->
                                 MessageCitations.resolve(
@@ -572,7 +572,8 @@ class MessageCitationsTest {
         assertTrue(String.valueOf(error.getMessage()).contains("ordinary text"));
         assertFalse(String.valueOf(error.getMessage()).contains("matches several"));
         assertThrows(
-                top.focess.veto.agent.tool.ToolDocs.nonNullClass(IllegalArgumentException.class),
+                top.focess.veto.api.agent.tool.ToolDocs.nonNullClass(
+                        IllegalArgumentException.class),
                 () ->
                         MessageCitations.resolve(
                                 request, new ResponseRequest.Answer("Launch Friday.", List.of())));

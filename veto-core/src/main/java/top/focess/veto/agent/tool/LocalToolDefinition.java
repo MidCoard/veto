@@ -4,6 +4,10 @@ import com.fasterxml.jackson.databind.JsonNode;
 import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.api.agent.tool.ParamCategory;
+import top.focess.veto.api.agent.tool.ToolDocs;
+import top.focess.veto.api.agent.tool.ToolDocumentation;
+import top.focess.veto.api.agent.tool.ToolResultFormat;
 
 /** Tool-class documentation and independent argument schemas for local tools. */
 public sealed interface LocalToolDefinition extends ToolDefinition

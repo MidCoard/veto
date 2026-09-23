@@ -27,6 +27,7 @@ import top.focess.veto.agent.tool.builtin.*;
 import top.focess.veto.agent.translation.DefaultCapabilityTranslator;
 import top.focess.veto.agent.web.*;
 import top.focess.veto.agent.workspace.*;
+import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.llm.core.*;
 import top.focess.veto.plugin.runtime.PluginLifecycleEvents;
 import top.focess.veto.plugin.runtime.PluginManager;
@@ -93,7 +94,7 @@ class CredentialJourneyTest {
         network.attachRepositoryReader(reader);
         var toolContext =
                 mock(ToolDocs.nonNullClass(org.springframework.context.ApplicationContext.class));
-        when(toolContext.getBeansOfType(top.focess.veto.agent.tool.AgentTool.class))
+        when(toolContext.getBeansOfType(top.focess.veto.api.agent.tool.AgentTool.class))
                 .thenReturn(
                         Map.of(
                                 "submit_plan",

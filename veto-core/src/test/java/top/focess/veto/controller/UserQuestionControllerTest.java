@@ -16,9 +16,9 @@ import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
-import top.focess.veto.agent.tool.ToolDocs;
 import top.focess.veto.agent.tool.builtin.AskUserTool;
 import top.focess.veto.agent.tool.builtin.UserQuestionRegistry;
+import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.session.SessionService;
 import top.focess.veto.vault.KeysteadVault;
 

@@ -1,11 +1,13 @@
 package top.focess.veto.agent.tool;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import java.lang.reflect.Modifier;
 import java.util.stream.Stream;
 import org.jspecify.annotations.NonNull;
-import org.springframework.aop.support.AopUtils;
-import top.focess.veto.agent.capability.*;
+import top.focess.veto.api.agent.tool.CapabilityTool;
+import top.focess.veto.api.agent.tool.ParamCategory;
+import top.focess.veto.api.agent.tool.ToolDocs;
+import top.focess.veto.api.agent.tool.ToolDocumentation;
+import top.focess.veto.api.agent.tool.ToolResultFormat;
 
 /**
  * Validates that tool flavour, capability, danger, and parameter hints describe one coherent tool.
@@ -21,13 +23,7 @@ public final class ToolContractValidator {
             validateExamples(definition);
         }
         switch (definition) {
-            case NativeToolDefinition nativeDefinition -> {
-                if (nativeDefinition.provenance() != null) {
-                    validatePluginNative(nativeDefinition);
-                } else {
-                    validateNative(nativeDefinition);
-                }
-            }
+            case NativeToolDefinition nativeDefinition -> validateNative(nativeDefinition);
             case AgentToolDefinition agentDefinition -> validateAgent(agentDefinition);
             case RemoteToolDefinition ignored -> {
                 // Remote definitions carry no compile-time security annotations. An MCP tool
@@ -37,30 +33,7 @@ public final class ToolContractValidator {
         }
     }
 
-    /**
-     * Validates an in-process JAR plugin tool against its definition. The handler is a portable
-     * {@link CapabilityTool}, not one of the sealed native/agent boundary interfaces, so this
-     * checks definition coherence (capability and argument record) and the shared documentation,
-     * example, and result-format contracts — but not the native field-restriction rule, which
-     * assumes a caller-scoped capability injection that plugin code does not use. The PRIVILEGED
-     * effect keeps every call behind approval-level Gateway screening.
-     */
-    public static void validatePluginHandler(
-            @NonNull CapabilityTool<?> tool, @NonNull NativeToolDefinition definition) {
-        require(
-                definition,
-                tool.getCapability() == definition.capability(),
-                "handler capability does not match definition");
-        require(
-                definition,
-                tool.getArgsClass().equals(definition.argsClass()),
-                "handler argument record does not match definition");
-        validate(definition);
-    }
-
-    /**
-     * Rejects handlers that bypass their declared effect boundary before they enter the registry.
-     */
+    /** Structural contract checks, shared by bundled and installed trusted Java tools. */
     public static void validateHandler(
             @NonNull CapabilityTool<?> tool, @NonNull ToolDefinition definition) {
         require(
@@ -70,73 +43,17 @@ public final class ToolContractValidator {
         validate(definition);
         require(
                 definition,
-                tool.getName().equals(definition.name()),
+                definition.provenance() != null || tool.getName().equals(definition.name()),
                 "handler name does not match definition");
         require(
                 definition,
                 tool.getCapability() == definition.capability(),
                 "handler capability does not match definition");
-        boolean correctBoundary =
-                switch (definition.capability()) {
-                    case WORKSPACE_READ -> tool instanceof WorkspaceReadTool<?>;
-                    case WORKSPACE_WRITE -> tool instanceof WorkspaceWriteTool<?>;
-                    case PROCESS_EXECUTION -> tool instanceof ProcessExecutionTool<?>;
-                    case TASK_CONTROL -> tool instanceof TaskControlTool<?>;
-                    case NETWORK_EGRESS ->
-                            tool instanceof NetworkEgressTool<?>
-                                    || tool instanceof WebDocumentTool<?>;
-                    case MEMORY_READ -> tool instanceof MemoryReadTool<?>;
-                    case MEMORY_WRITE -> tool instanceof MemoryWriteTool<?>;
-                    case DELEGATION -> tool instanceof DelegationTool<?>;
-                    case GROUP_CONTROL -> tool instanceof GroupControlTool<?>;
-                    case MONITOR_CONTROL -> tool instanceof MonitorTool<?>;
-                    case LOOP_CONTROL -> tool instanceof LoopControlTool<?>;
-                    case SKILL_READ -> tool instanceof SkillReadTool<?>;
-                    case USER_INTERACTION -> tool instanceof UserInteractionTool<?>;
-                    default -> false;
-                };
         require(
                 definition,
-                correctBoundary,
-                "handler does not implement the declared capability boundary");
-        Class<?> capability =
-                switch (definition.capability()) {
-                    case WORKSPACE_READ -> ToolDocs.nonNullClass(WorkspaceReadCapability.class);
-                    case WORKSPACE_WRITE -> ToolDocs.nonNullClass(WorkspaceWriteCapability.class);
-                    case PROCESS_EXECUTION ->
-                            ToolDocs.nonNullClass(ProcessExecutionCapability.class);
-                    case TASK_CONTROL -> ToolDocs.nonNullClass(TaskControlCapability.class);
-                    case NETWORK_EGRESS ->
-                            tool instanceof WebDocumentTool<?>
-                                    ? ToolDocs.nonNullClass(WebDocumentCapability.class)
-                                    : ToolDocs.nonNullClass(NetworkEgressCapability.class);
-                    case MEMORY_READ -> ToolDocs.nonNullClass(MemoryReadCapability.class);
-                    case MEMORY_WRITE -> ToolDocs.nonNullClass(MemoryWriteCapability.class);
-                    case DELEGATION -> ToolDocs.nonNullClass(DelegationCapability.class);
-                    case GROUP_CONTROL -> ToolDocs.nonNullClass(GroupControlCapability.class);
-                    case MONITOR_CONTROL -> ToolDocs.nonNullClass(MonitorCapability.class);
-                    case LOOP_CONTROL -> ToolDocs.nonNullClass(LoopControlCapability.class);
-                    case SKILL_READ -> ToolDocs.nonNullClass(SkillReadCapability.class);
-                    case USER_INTERACTION -> ToolDocs.nonNullClass(UserInteractionCapability.class);
-                    default -> throw invalid(definition, "handler has no restricted capability");
-                };
-        Class<?> type = AopUtils.getTargetClass(tool);
-        for (Class<?> current = type;
-                current != null && current != Object.class;
-                current = current.getSuperclass()) {
-            for (var field : current.getDeclaredFields()) {
-                if (Modifier.isStatic(field.getModifiers())) continue;
-                require(
-                        definition,
-                        field.getType().isInterface()
-                                && capability.isAssignableFrom(field.getType()),
-                        "handler holds unrestricted instance dependency '"
-                                + field.getName()
-                                + "' ("
-                                + field.getType().getName()
-                                + ")");
-            }
-        }
+                definition instanceof LocalToolDefinition local
+                        && tool.getArgsClass().equals(local.argsClass()),
+                "handler argument record does not match definition");
     }
 
     private static void validateResultFormats(@NonNull ToolDefinition definition) {
@@ -232,7 +149,7 @@ public final class ToolContractValidator {
                             definition,
                             !hasPath && !hasCommand,
                             "TASK_CONTROL must not accept host path/command arguments");
-            case NETWORK_EGRESS -> {
+            case NETWORK_EGRESS, PRIVILEGED -> {
                 // URL arguments are optional because some network tools use deployer-fixed hosts.
             }
             case SKILL_READ,
@@ -244,7 +161,6 @@ public final class ToolContractValidator {
                     MONITOR_CONTROL,
                     USER_INTERACTION,
                     AGENT_CONTROL,
-                    PRIVILEGED,
                     REMOTE_UNKNOWN ->
                     throw invalid(
                             definition,
@@ -292,25 +208,6 @@ public final class ToolContractValidator {
                             "agent tool uses a native/plugin/remote execution capability: "
                                     + definition.capability());
         }
-    }
-
-    private static void validatePluginNative(@NonNull NativeToolDefinition definition) {
-        require(
-                definition,
-                definition.capability() == ToolCapability.PRIVILEGED,
-                "an in-process plugin tool crosses the host trust boundary and must declare"
-                        + " PRIVILEGED");
-        boolean namesExternalResource =
-                definition.paramHints().values().stream()
-                        .anyMatch(
-                                category ->
-                                        category == ParamCategory.FILESYSTEM_PATH
-                                                || category == ParamCategory.SHELL_COMMAND
-                                                || category == ParamCategory.URL);
-        require(
-                definition,
-                !namesExternalResource,
-                "a PRIVILEGED plugin tool must not accept host path, command, or URL arguments");
     }
 
     private static void require(

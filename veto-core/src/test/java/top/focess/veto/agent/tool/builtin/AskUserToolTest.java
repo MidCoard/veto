@@ -25,10 +25,10 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import top.focess.veto.agent.capability.UserInteractionCapabilityImpl;
 import top.focess.veto.agent.tool.CapabilityTestCalls;
-import top.focess.veto.agent.tool.ToolDocs;
 import top.focess.veto.agent.tool.ToolErrorCode;
 import top.focess.veto.agent.tool.ToolExecutionException;
 import top.focess.veto.agent.tool.ToolResultStatus;
+import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.util.Nullness;
 
 @Timeout(10)

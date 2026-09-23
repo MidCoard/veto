@@ -12,6 +12,10 @@ import java.util.Iterator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.api.agent.tool.RequiredWhen;
+import top.focess.veto.api.agent.tool.ToolDocs;
+import top.focess.veto.api.agent.tool.ToolInputSchema;
+import top.focess.veto.api.agent.tool.ToolResultFormat;
 
 /** Validates native-tool arguments against the same record schema advertised to the model. */
 public final class NativeToolArgumentValidator {

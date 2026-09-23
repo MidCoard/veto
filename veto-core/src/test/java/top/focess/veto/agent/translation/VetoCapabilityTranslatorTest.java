@@ -8,17 +8,17 @@ import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
-import top.focess.veto.agent.screening.Danger;
 import top.focess.veto.agent.tool.AgentToolDefinition;
 import top.focess.veto.agent.tool.NativeToolDefinition;
-import top.focess.veto.agent.tool.ParamCategory;
-import top.focess.veto.agent.tool.ToolCapability;
-import top.focess.veto.agent.tool.ToolDocs;
 import top.focess.veto.agent.tool.ToolSchemaCompiler;
 import top.focess.veto.agent.tool.builtin.AnswerWithCitationsTool;
 import top.focess.veto.agent.tool.builtin.LoadSkillTool;
 import top.focess.veto.agent.tool.builtin.SubmitPlanTool;
 import top.focess.veto.agent.tool.builtin.ViewFileTool;
+import top.focess.veto.api.agent.screening.Danger;
+import top.focess.veto.api.agent.tool.ParamCategory;
+import top.focess.veto.api.agent.tool.ToolCapability;
+import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.llm.core.ToolDefinition;
 
 /**

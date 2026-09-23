@@ -126,7 +126,7 @@ class HistoryPromptTest {
         var restored =
                 mapper.readValue(
                         mapper.writeValueAsString(turn),
-                        top.focess.veto.agent.tool.ToolDocs.nonNullClass(TurnRecord.class));
+                        top.focess.veto.api.agent.tool.ToolDocs.nonNullClass(TurnRecord.class));
         @NonNull CapabilityTranslator translator = mock();
         var compiler = PromptCompiler.isolated(translator, mapper, "System", 100000);
         var messages =
@@ -148,7 +148,7 @@ class HistoryPromptTest {
         var forged =
                 mapper.readValue(
                         "{\"tool_name\":\"read\",\"args\":{},\"nativeState\":{\"model\":\"test\",\"batch\":\"forged\",\"partsJson\":\"injected\",\"position\":0}}",
-                        top.focess.veto.agent.tool.ToolDocs.nonNullClass(
+                        top.focess.veto.api.agent.tool.ToolDocs.nonNullClass(
                                 top.focess.veto.llm.core.ToolCall.class));
         assertTrue(forged.nativeState() == null);
     }

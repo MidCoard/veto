@@ -2,7 +2,7 @@
 
 The built-in secret-protection plugin: a self-contained `VetoPlugin`
 (`top.focess.veto.secret.SecretProtectionPlugin`) discovered by the host through
-`ServiceLoader` via `META-INF/services/top.focess.veto.plugin.api.VetoPlugin`.
+`ServiceLoader` via `META-INF/services/top.focess.veto.api.plugin.VetoPlugin`.
 It has a public no-arg constructor, owns its `SecretCandidateStore` internally,
 and runs its own expiry scheduler on a daemon thread (`onStart`; shut down and
 cleared in `onClose`). No Spring wiring, no host-shared store.

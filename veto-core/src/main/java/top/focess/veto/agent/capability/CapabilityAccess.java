@@ -3,7 +3,7 @@ package top.focess.veto.agent.capability;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.tool.ToolCallContext;
 import top.focess.veto.agent.tool.ToolCallContextHolder;
-import top.focess.veto.agent.tool.ToolCapability;
+import top.focess.veto.api.agent.tool.ToolCapability;
 
 /** Checks a capability operation before it can reach a resource or runtime service. */
 public final class CapabilityAccess {

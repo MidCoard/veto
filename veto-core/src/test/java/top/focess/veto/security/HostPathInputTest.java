@@ -7,7 +7,7 @@ import java.nio.file.Path;
 import java.util.Objects;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
-import top.focess.veto.agent.tool.ToolDocs;
+import top.focess.veto.api.agent.tool.ToolDocs;
 
 class HostPathInputTest {
 

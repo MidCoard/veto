@@ -3,7 +3,9 @@ package top.focess.veto.agent.tool;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
-import top.focess.veto.agent.screening.Danger;
+import top.focess.veto.api.agent.screening.Danger;
+import top.focess.veto.api.agent.tool.ParamCategory;
+import top.focess.veto.api.agent.tool.ToolCapability;
 
 /**
  * An in-process tool defined by a Java class annotated with {@code @ToolSecurity}. It carries both

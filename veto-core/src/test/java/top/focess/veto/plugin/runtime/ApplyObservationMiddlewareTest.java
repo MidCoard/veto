@@ -12,17 +12,17 @@ import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
-import top.focess.veto.plugin.api.AbstractVetoPlugin;
-import top.focess.veto.plugin.api.PluginContext;
-import top.focess.veto.plugin.api.PluginContributions;
-import top.focess.veto.plugin.api.PluginIdentity;
-import top.focess.veto.plugin.contract.JsonValue;
-import top.focess.veto.plugin.contract.ObservationMiddleware;
-import top.focess.veto.plugin.contract.PluginFailure;
-import top.focess.veto.plugin.contract.StandardContributionPoints;
-import top.focess.veto.plugin.contribution.Contribution;
-import top.focess.veto.plugin.contribution.ContributionCatalog;
-import top.focess.veto.plugin.contribution.ContributionSource;
+import top.focess.veto.api.plugin.AbstractVetoPlugin;
+import top.focess.veto.api.plugin.PluginContext;
+import top.focess.veto.api.plugin.PluginContributions;
+import top.focess.veto.api.plugin.PluginIdentity;
+import top.focess.veto.api.plugin.contract.JsonValue;
+import top.focess.veto.api.plugin.contract.ObservationMiddleware;
+import top.focess.veto.api.plugin.contract.PluginFailure;
+import top.focess.veto.api.plugin.contract.StandardContributionPoints;
+import top.focess.veto.api.plugin.contribution.Contribution;
+import top.focess.veto.api.plugin.contribution.ContributionCatalog;
+import top.focess.veto.api.plugin.contribution.ContributionSource;
 
 /**
  * The session-less {@code veto:observation-middleware} chain in {@link
