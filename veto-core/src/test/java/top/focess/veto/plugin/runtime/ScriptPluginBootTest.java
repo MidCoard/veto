@@ -103,7 +103,7 @@ class ScriptPluginBootTest {
         assertTrue(plugins.scriptPlugins().getFirst().active());
         var definition =
                 assertInstanceOf(
-                        ToolDocs.nonNullClass(PluginToolDefinition.class),
+                        ToolDocs.nonNullClass(RemoteToolDefinition.class),
                         top.focess.veto.util.Nullness.requireNonNull(
                                 engine.resolveDefinition("plugin_text__length")));
         assertEquals(Danger.ELEVATED, definition.defaultDanger());
@@ -156,13 +156,20 @@ class ScriptPluginBootTest {
                                             call.callId()),
                                     definition)
                             .status());
+            var provenance = top.focess.veto.util.Nullness.requireNonNull(definition.provenance());
             var otherActivation =
-                    new PluginToolDefinition(
+                    new RemoteToolDefinition(
                             definition.name(),
-                            "different-activation",
-                            definition.pluginId(),
-                            definition.pluginVersion(),
-                            definition.descriptor());
+                            definition.description(),
+                            definition.serverName(),
+                            definition.capability(),
+                            definition.defaultDanger(),
+                            definition.resultFormats(),
+                            definition.inputSchema(),
+                            new Provenance(
+                                    provenance.pluginId(),
+                                    "different-activation",
+                                    provenance.pluginVersion()));
             assertFalse(
                     permit.authorizes(
                             call,

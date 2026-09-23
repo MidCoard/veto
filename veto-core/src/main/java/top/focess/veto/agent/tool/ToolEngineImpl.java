@@ -27,6 +27,7 @@ import top.focess.veto.plugin.api.PluginState;
 import top.focess.veto.plugin.contract.Cancellation;
 import top.focess.veto.plugin.contract.JsonValue;
 import top.focess.veto.plugin.contract.StandardContributionPoints;
+import top.focess.veto.plugin.contract.Tool;
 import top.focess.veto.plugin.runtime.PluginJson;
 import top.focess.veto.plugin.runtime.PluginManager;
 import top.focess.veto.plugin.runtime.PluginSchema;
@@ -134,20 +135,22 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
             for (var manager : context.getBeansOfType(PluginManager.class).values()) {
                 for (var entry : manager.catalog().entries(StandardContributionPoints.TOOLS)) {
                     var plugin = manager.plugin(entry.source().namespace());
-                    var definition =
-                            new PluginToolDefinition(
+                    Tool descriptor = entry.implementation();
+                    RemoteToolDefinition definition =
+                            ToolSchemaCompiler.compilePluginScript(
+                                    descriptor,
                                     manager.toolName(entry),
+                                    PluginJson.toNode(descriptor.inputSchema()),
                                     plugin.bindingId(),
                                     plugin.identity().id(),
-                                    plugin.identity().version(),
-                                    entry.implementation());
-                    staged.add(new RegisteredTool.Plugin(definition, plugin));
+                                    plugin.identity().version());
+                    staged.add(new RegisteredTool.Plugin(definition, descriptor, plugin));
                 }
                 for (var entry :
                         manager.catalog().entries(StandardContributionPoints.NATIVE_TOOLS)) {
                     var plugin = manager.plugin(entry.source().namespace());
                     CapabilityTool<?> tool = entry.implementation();
-                    PluginNativeToolDefinition definition =
+                    NativeToolDefinition definition =
                             ToolSchemaCompiler.compilePluginNative(
                                     tool,
                                     manager.toolName(
@@ -275,20 +278,21 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
 
     private @NonNull ToolResult executePlugin(
             @NonNull ToolCall call, RegisteredTool.@NonNull Plugin registration) {
-        requirePermit(call, registration.definition());
+        RemoteToolDefinition definition = registration.definition();
+        requirePermit(call, definition);
         var selection = sessionPlugins;
         if (selection != null) {
             var context = ToolCallContextHolder.get();
             var session = context == null ? null : context.sessionId();
             if (session == null
                     || !selection.includes(
-                            session.toString(), registration.definition().pluginId()))
+                            session.toString(), registration.runtime().identity().id()))
                 throw new SecurityException("Plugin is not selected for this session");
         }
         try {
-            var descriptor = registration.definition().descriptor();
+            var descriptor = registration.descriptor();
             JsonNode arguments = mapper.valueToTree(call.args());
-            PluginSchema.validate(registration.definition().inputSchema(), arguments);
+            PluginSchema.validate(definition.inputSchema(), arguments);
             @NonNull Cancellation cancellation =
                     () ->
                             Thread.currentThread().isInterrupted()
@@ -327,7 +331,7 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
     private @NonNull ToolResult executeCapability(
             @NonNull ToolCall call, RegisteredTool.@NonNull Capability registration)
             throws Exception {
-        PluginNativeToolDefinition definition = registration.definition();
+        NativeToolDefinition definition = registration.definition();
         if (registration.runtime().state() != PluginState.ACTIVE) {
             throw new SecurityException("Plugin is not active for this session");
         }
@@ -335,7 +339,9 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
         if (selection != null) {
             var context = ToolCallContextHolder.get();
             var session = context == null ? null : context.sessionId();
-            if (session == null || !selection.includes(session.toString(), definition.pluginId())) {
+            if (session == null
+                    || !selection.includes(
+                            session.toString(), registration.runtime().identity().id())) {
                 throw new SecurityException("Plugin is not selected for this session");
             }
         }

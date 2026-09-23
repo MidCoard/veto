@@ -9,9 +9,12 @@ import java.lang.reflect.RecordComponent;
 import java.lang.reflect.Type;
 import java.util.Collection;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.agent.screening.Danger;
+import top.focess.veto.plugin.contract.Tool;
 
 /**
  * Compiles annotated Java parameter records into tool definitions and JSON Schema.
@@ -61,13 +64,13 @@ public final class ToolSchemaCompiler {
     }
 
     /**
-     * Compiles a plugin-contributed {@link CapabilityTool} instance into a {@link
-     * PluginNativeToolDefinition}. The plugin tool executes through the host's internal tool state
-     * exactly like a core native tool, so the definition only carries provenance (binding, plugin
-     * id/version) alongside the reflected schema and security hints. The tool class supplies the
-     * {@link ToolSecurity} contract and the args record supplies the input schema.
+     * Compiles a plugin-contributed {@link CapabilityTool} instance into an ordinary {@link
+     * NativeToolDefinition} that carries {@link Provenance}. The plugin tool executes through the
+     * host's internal tool state exactly like a core native tool, so the definition is the same
+     * shape — the reflected schema, the {@link ToolSecurity} contract, and the provenance that
+     * keeps it session-scoped and revision-pinned.
      */
-    public static @NonNull PluginNativeToolDefinition compilePluginNative(
+    public static @NonNull NativeToolDefinition compilePluginNative(
             @NonNull CapabilityTool<?> tool,
             @NonNull String name,
             @NonNull String bindingId,
@@ -75,16 +78,41 @@ public final class ToolSchemaCompiler {
             @NonNull String pluginVersion) {
         ToolSecurity security = securityOf(tool.getClass());
         Class<?> argsClass = tool.getArgsClass();
-        return new PluginNativeToolDefinition(
+        return new NativeToolDefinition(
                 name,
-                bindingId,
-                pluginId,
-                pluginVersion,
+                ToolDocs.descriptionOf(tool.getClass()),
                 tool.getCapability(),
                 security.defaultDanger(),
+                security.requiresSemanticScreening(),
                 tool.getClass(),
                 argsClass,
-                hintsOf(argsClass));
+                hintsOf(argsClass),
+                new Provenance(pluginId, bindingId, pluginVersion));
+    }
+
+    /**
+     * Compiles an out-of-process script plugin's {@link Tool} descriptor into a {@link
+     * RemoteToolDefinition} that carries {@link Provenance}. A script tool has no Java record, so
+     * it keeps the raw JSON Schema and the remote execution shape; the declared effect selects the
+     * capability and danger (a PRIVILEGED script tool crosses the host trust boundary).
+     */
+    public static @NonNull RemoteToolDefinition compilePluginScript(
+            @NonNull Tool descriptor,
+            @NonNull String name,
+            @NonNull JsonNode inputSchema,
+            @NonNull String bindingId,
+            @NonNull String pluginId,
+            @NonNull String pluginVersion) {
+        boolean privileged = descriptor.effect() == Tool.Effect.PRIVILEGED;
+        return new RemoteToolDefinition(
+                name,
+                descriptor.description(),
+                pluginId,
+                privileged ? ToolCapability.PRIVILEGED : ToolCapability.REMOTE_UNKNOWN,
+                privileged ? Danger.DANGEROUS : Danger.ELEVATED,
+                List.of(ToolResultFormat.JSON),
+                inputSchema,
+                new Provenance(pluginId, bindingId, pluginVersion));
     }
 
     /**

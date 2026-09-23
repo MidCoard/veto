@@ -3,10 +3,10 @@ package top.focess.veto.agent;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.TreeMap;
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.agent.tool.PluginSourced;
+import top.focess.veto.agent.tool.Provenance;
 import top.focess.veto.agent.tool.ToolDefinition;
 
 /** Safe provenance for tools available to an agent or included in its latest model request. */
@@ -16,12 +16,16 @@ public record PluginContextSnapshot(
             @NonNull String id, @NonNull String version, @NonNull List<@NonNull String> tools) {}
 
     public static @NonNull PluginContextSnapshot from(
-            @NonNull Collection<? extends ToolDefinition> tools, boolean lastRequest) {
-        var grouped = new TreeMap<@NonNull String, @NonNull List<@NonNull ToolDefinition>>();
+            @NonNull Collection<? extends @NonNull ToolDefinition> tools, boolean lastRequest) {
+        var grouped = new LinkedHashMap<@NonNull String, @NonNull Group>();
         for (var tool : tools) {
-            if (tool instanceof PluginSourced plugin) {
-                grouped.computeIfAbsent(plugin.pluginId(), ignored -> new ArrayList<>()).add(tool);
-            }
+            Provenance provenance = tool.provenance();
+            if (provenance == null) continue;
+            grouped.computeIfAbsent(
+                            provenance.pluginId(),
+                            ignored -> new Group(provenance.pluginVersion(), new ArrayList<>()))
+                    .tools()
+                    .add(tool);
         }
         var plugins =
                 grouped.entrySet().stream()
@@ -29,9 +33,8 @@ public record PluginContextSnapshot(
                                 entry ->
                                         new Participant(
                                                 entry.getKey(),
-                                                ((PluginSourced) entry.getValue().getFirst())
-                                                        .pluginVersion(),
-                                                entry.getValue().stream()
+                                                entry.getValue().version(),
+                                                entry.getValue().tools().stream()
                                                         .map(ToolDefinition::name)
                                                         .distinct()
                                                         .sorted()
@@ -40,4 +43,6 @@ public record PluginContextSnapshot(
                         .toList();
         return new PluginContextSnapshot(lastRequest, plugins);
     }
+
+    private record Group(@NonNull String version, @NonNull List<@NonNull ToolDefinition> tools) {}
 }

@@ -3,6 +3,7 @@ package top.focess.veto.agent.tool;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.util.List;
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import top.focess.veto.agent.screening.Danger;
 
 /**
@@ -11,24 +12,36 @@ import top.focess.veto.agent.screening.Danger;
  * Gateway reads these properties to select the security boundary and screen each call without
  * hard-coding per-tool-name logic.
  *
- * <p>Definition flavours:
+ * <p>Definition flavours describe how a tool executes, not where it came from:
  *
  * <ul>
- *   <li>{@link NativeToolDefinition} — a shipped tool backed by a Java record.
- *   <li>{@link PluginToolDefinition} — an operator-configured local script tool.
- *   <li>{@link RemoteToolDefinition} — an external MCP tool with raw JSON Schema.
+ *   <li>{@link NativeToolDefinition} — an in-process tool backed by a Java record.
  *   <li>{@link AgentToolDefinition} — an engine-provided control/meta tool used directly inside the
  *       agent loop or workflows ({@code create_group}, {@code load_skill}).
+ *   <li>{@link RemoteToolDefinition} — an out-of-process tool carrying a raw JSON Schema, executed
+ *       through an MCP transport or a script plugin runtime.
  * </ul>
+ *
+ * <p>Origin is orthogonal data: {@link #provenance()} is non-null exactly when an installed plugin
+ * contributed the definition, which makes it session-scoped and revision-pinned. There is no
+ * plugin-specific definition subtype.
  */
-public sealed interface ToolDefinition
-        permits LocalToolDefinition, RemoteToolDefinition, PluginToolDefinition {
+public sealed interface ToolDefinition permits LocalToolDefinition, RemoteToolDefinition {
+
+    /**
+     * Plugin provenance, or null for a host-shipped tool. Independent of the security/effect
+     * capability and of the execution flavour.
+     */
+    default @Nullable Provenance provenance() {
+        return null;
+    }
 
     /** Registration provenance, independent of the security/effect capability. */
     default @NonNull String origin() {
+        if (provenance() != null) {
+            return "plugin";
+        }
         return switch (this) {
-            case PluginToolDefinition ignored -> "plugin";
-            case PluginNativeToolDefinition ignored -> "plugin";
             case NativeToolDefinition ignored -> "native";
             case AgentToolDefinition ignored -> "agent_loop";
             case RemoteToolDefinition ignored -> "external_mcp";

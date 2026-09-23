@@ -75,7 +75,6 @@ import top.focess.veto.agent.tool.LocalToolDefinition;
 import top.focess.veto.agent.tool.NativeToolArgumentValidator;
 import top.focess.veto.agent.tool.NativeToolDefinition;
 import top.focess.veto.agent.tool.ParamCategory;
-import top.focess.veto.agent.tool.PluginSourced;
 import top.focess.veto.agent.tool.ResponseSubmission;
 import top.focess.veto.agent.tool.ToolCallContext;
 import top.focess.veto.agent.tool.ToolCallContextHolder;
@@ -2867,8 +2866,9 @@ public class AgentRunner {
         ToolDefinition definition = toolEngine.resolveDefinition(call.toolName());
         if (definition != null) {
             payload.put("tool_origin", definition.origin());
-            if (definition instanceof PluginSourced plugin) {
-                payload.put("plugin_id", plugin.pluginId());
+            var provenance = definition.provenance();
+            if (provenance != null) {
+                payload.put("plugin_id", provenance.pluginId());
             }
         }
         turn = new TurnRecord(turn.turnNumber(), turn.type(), payload, turn.timestamp());

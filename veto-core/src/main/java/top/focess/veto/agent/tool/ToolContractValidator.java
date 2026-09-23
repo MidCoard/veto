@@ -21,15 +21,18 @@ public final class ToolContractValidator {
             validateExamples(definition);
         }
         switch (definition) {
-            case NativeToolDefinition nativeDefinition -> validateNative(nativeDefinition);
-            case AgentToolDefinition agentDefinition -> validateAgent(agentDefinition);
-            case PluginNativeToolDefinition pluginNativeDefinition ->
-                    validatePluginNative(pluginNativeDefinition);
-            case PluginToolDefinition ignored -> {
-                // Script descriptors are validated before activation; effects remain unknown.
+            case NativeToolDefinition nativeDefinition -> {
+                if (nativeDefinition.provenance() != null) {
+                    validatePluginNative(nativeDefinition);
+                } else {
+                    validateNative(nativeDefinition);
+                }
             }
+            case AgentToolDefinition agentDefinition -> validateAgent(agentDefinition);
             case RemoteToolDefinition ignored -> {
-                // Remote definitions hard-code REMOTE_UNKNOWN and ELEVATED.
+                // Remote definitions carry no compile-time security annotations. An MCP tool
+                // hard-codes REMOTE_UNKNOWN/ELEVATED; a script descriptor is validated before
+                // activation and its effect remains unknown.
             }
         }
     }
@@ -43,7 +46,7 @@ public final class ToolContractValidator {
      * effect keeps every call behind approval-level Gateway screening.
      */
     public static void validatePluginHandler(
-            @NonNull CapabilityTool<?> tool, @NonNull PluginNativeToolDefinition definition) {
+            @NonNull CapabilityTool<?> tool, @NonNull NativeToolDefinition definition) {
         require(
                 definition,
                 tool.getCapability() == definition.capability(),
@@ -291,7 +294,7 @@ public final class ToolContractValidator {
         }
     }
 
-    private static void validatePluginNative(@NonNull PluginNativeToolDefinition definition) {
+    private static void validatePluginNative(@NonNull NativeToolDefinition definition) {
         require(
                 definition,
                 definition.capability() == ToolCapability.PRIVILEGED,
