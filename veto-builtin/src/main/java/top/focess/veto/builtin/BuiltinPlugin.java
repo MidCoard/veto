@@ -10,6 +10,7 @@ import top.focess.veto.api.plugin.PluginIdentity;
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
 import top.focess.veto.api.plugin.contribution.Contribution;
+import top.focess.veto.builtin.agent.CreateGroup;
 import top.focess.veto.builtin.workspace.*;
 
 /** Built-in tool implementations registered through the same API as third-party plugins. */
@@ -24,6 +25,7 @@ public final class BuiltinPlugin extends AbstractVetoPlugin {
             @NonNull PluginContext context, JsonValue.@NonNull ObjectValue configuration) {
         List<CapabilityTool<?>> tools =
                 List.of(
+                        new CreateGroup(),
                         new ViewFileTool(),
                         new ListDirTool(),
                         new FindFilesTool(),

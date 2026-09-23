@@ -6,6 +6,11 @@ import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
+import top.focess.veto.api.llm.ChatMessage;
+import top.focess.veto.api.llm.LlmOptions;
+import top.focess.veto.api.llm.LlmSystemUsage;
+import top.focess.veto.api.llm.ProviderType;
+import top.focess.veto.api.llm.VetoRequest;
 import top.focess.veto.llm.core.*;
 
 class RecordTokenCounterTest {

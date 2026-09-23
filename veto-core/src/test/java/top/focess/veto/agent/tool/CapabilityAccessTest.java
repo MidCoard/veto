@@ -24,10 +24,10 @@ import top.focess.veto.api.agent.capability.WritableWorkspaceFile;
 import top.focess.veto.api.agent.tool.NativeTool;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.agent.tool.ToolDocs;
+import top.focess.veto.api.llm.ToolCall;
+import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.builtin.workspace.ViewFileTool;
 import top.focess.veto.builtin.workspace.WriteToFileTool;
-import top.focess.veto.llm.core.ToolCall;
-import top.focess.veto.llm.core.ToolResultPresentationMode;
 
 class CapabilityAccessTest {
     private static final @NonNull UUID USER = UUID.randomUUID();

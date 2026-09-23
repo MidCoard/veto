@@ -1,7 +1,7 @@
 package top.focess.veto.controller.dto;
 
 import java.util.List;
-import top.focess.veto.llm.core.ToolResultPresentationMode;
+import top.focess.veto.api.llm.ToolResultPresentationMode;
 
 public record CreateSessionRequest(
         String pattern,

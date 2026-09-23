@@ -10,7 +10,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.agent.tool.ToolDefinition;
-import top.focess.veto.llm.core.ToolCall;
+import top.focess.veto.api.llm.ToolCall;
 
 /**
  * Tests for {@link HitlRegistry}'s park/resolve path after the structural stash fix: {@code

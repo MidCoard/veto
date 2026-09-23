@@ -13,7 +13,7 @@ import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.api.agent.tool.ToolDocs;
-import top.focess.veto.llm.core.ToolResultPresentationMode;
+import top.focess.veto.api.llm.ToolResultPresentationMode;
 
 class GroupHistoryStoreTest {
     @Test

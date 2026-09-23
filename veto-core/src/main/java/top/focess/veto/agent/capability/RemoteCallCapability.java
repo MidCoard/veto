@@ -4,7 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import java.io.IOException;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.agent.capability.Capability;
-import top.focess.veto.llm.core.ToolCall;
+import top.focess.veto.api.llm.ToolCall;
 
 /** Calls only the remote tool and endpoint bound at registration, for the authorized caller. */
 public sealed interface RemoteCallCapability extends Capability permits RemoteCallCapabilityImpl {

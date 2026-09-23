@@ -3,7 +3,7 @@ package top.focess.veto.agent.tool;
 import java.util.List;
 import java.util.Set;
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.llm.core.ToolCall;
+import top.focess.veto.api.llm.ToolCall;
 
 /**
  * The tool engine — manages server registrations, schema discovery, and tool dispatching. The loop

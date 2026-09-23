@@ -23,6 +23,9 @@ import top.focess.veto.agent.loop.PromptCompiler;
 import top.focess.veto.agent.loop.PromptLibrary;
 import top.focess.veto.agent.tool.ToolEngine;
 import top.focess.veto.api.agent.tool.ToolDocs;
+import top.focess.veto.api.llm.LlmOptions;
+import top.focess.veto.api.llm.ProviderType;
+import top.focess.veto.api.llm.VetoResponse;
 import top.focess.veto.llm.core.*;
 
 class CompactionRuntimeTest {

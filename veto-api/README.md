@@ -203,3 +203,15 @@ The built-in plugin JARs are packaged as dependencies in `:veto-core:bootJar`.
 The manifest and Java SPI are experimental. This module does not install Java packages or provide adapters for other agent clients. The separate script runtime supports a different
 manifest and validates its own descriptors and messages. Java plugins are currently
 discovered from the application classpath; this is not an external JAR installer.
+
+## LLM and delegation contracts
+
+`top.focess.veto.api.llm` holds provider requests/results, messages, options,
+provider adapters and the host MDC rendering port. Implement `LlmProvider` and
+contribute it through `StandardContributionPoints.LLM_PROVIDERS` without a core
+dependency. The production example is [veto-llm-providers](../veto-llm-providers/README.md).
+Model tiers, local inference and gateway policy remain host responsibilities.
+
+`DelegationCapability` and `DelegationTool` support agent tools through the same
+plugin registration path. The built-in `create_group` implementation calls this
+API; core supplies the authorized capability and owns the role transition.

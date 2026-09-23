@@ -4,8 +4,8 @@ import java.util.HashSet;
 import java.util.Set;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.llm.core.VetoResponse;
-import top.focess.veto.llm.exceptions.ModelSchemaException;
+import top.focess.veto.api.llm.VetoResponse;
+import top.focess.veto.api.llm.exceptions.ModelSchemaException;
 
 /** Runtime enforcement of the response contract, independent of provider schema support. */
 public final class ResponseEnforcer {

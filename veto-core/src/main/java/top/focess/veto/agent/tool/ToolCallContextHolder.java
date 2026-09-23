@@ -52,7 +52,7 @@ public final class ToolCallContextHolder {
                 implements ResponseDirective {}
 
         record Answer(
-                top.focess.veto.llm.core.@NonNull VetoResponse response,
+                top.focess.veto.api.llm.@NonNull VetoResponse response,
                 top.focess.veto.agent.loop.MessageCitations.Bound citations)
                 implements ResponseDirective {}
     }

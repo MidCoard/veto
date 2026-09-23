@@ -1,7 +1,9 @@
 package top.focess.veto.llm.core;
 
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.llm.exceptions.LlmException;
+import top.focess.veto.api.llm.VetoRequest;
+import top.focess.veto.api.llm.VetoResponse;
+import top.focess.veto.api.llm.exceptions.LlmException;
 
 /**
  * The main entry point for the Veto agent loop to call an LLM. Implementations resolve credentials,

@@ -1,8 +1,5 @@
 package top.focess.veto.agent;
 
-import static top.focess.veto.util.LogValues.safe;
-
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Duration;
 import java.time.Instant;
@@ -20,7 +17,6 @@ import java.util.UUID;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
@@ -49,25 +45,13 @@ import top.focess.veto.agent.intercept.ToolExecutionPermit.TaskBinding;
 import top.focess.veto.agent.intercept.VetoOption;
 import top.focess.veto.agent.intercept.VetoPrompt;
 import top.focess.veto.agent.intercept.VetoScenario;
-import top.focess.veto.agent.loop.ActionsProgram;
-import top.focess.veto.agent.loop.ActionsProgramParser;
-import top.focess.veto.agent.loop.Check;
-import top.focess.veto.agent.loop.CheckEvaluator;
-import top.focess.veto.agent.loop.CompactionSupport;
 import top.focess.veto.agent.loop.CompiledPrompt;
-import top.focess.veto.agent.loop.ConditionalGotoAction;
 import top.focess.veto.agent.loop.GenerateAction;
-import top.focess.veto.agent.loop.GotoAction;
 import top.focess.veto.agent.loop.LoopBreaker;
 import top.focess.veto.agent.loop.MessageCitations;
-import top.focess.veto.agent.loop.ProgramValidator;
 import top.focess.veto.agent.loop.PromptCompiler;
 import top.focess.veto.agent.loop.PromptSource;
-import top.focess.veto.agent.loop.ResponseEnforcer;
 import top.focess.veto.agent.loop.ResponseRequest;
-import top.focess.veto.agent.loop.Scope;
-import top.focess.veto.agent.loop.StopAction;
-import top.focess.veto.agent.loop.ToolAction;
 import top.focess.veto.agent.tool.AgentToolDefinition;
 import top.focess.veto.agent.tool.LocalToolDefinition;
 import top.focess.veto.agent.tool.NativeToolArgumentValidator;
@@ -82,36 +66,33 @@ import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.tool.ParamCategory;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.agent.tool.ToolErrorCode;
-import top.focess.veto.api.agent.tool.ToolExecutionException;
 import top.focess.veto.api.agent.tool.ToolResultFormat;
 import top.focess.veto.api.agent.tool.ToolResultStatus;
+import top.focess.veto.api.llm.ChatMessage;
+import top.focess.veto.api.llm.LlmOptions;
+import top.focess.veto.api.llm.LlmSystemUsage;
+import top.focess.veto.api.llm.ProviderType;
+import top.focess.veto.api.llm.ResponseContract;
+import top.focess.veto.api.llm.ToolCall;
+import top.focess.veto.api.llm.ToolResultPresentationMode;
+import top.focess.veto.api.llm.VetoRequest;
+import top.focess.veto.api.llm.VetoResponse;
+import top.focess.veto.api.llm.exceptions.CredentialException;
+import top.focess.veto.api.llm.exceptions.LlmAuthException;
+import top.focess.veto.api.llm.exceptions.LlmException;
+import top.focess.veto.api.llm.exceptions.LlmRateLimitException;
+import top.focess.veto.api.llm.exceptions.LlmTimeoutException;
+import top.focess.veto.api.llm.exceptions.ModelCapabilityException;
+import top.focess.veto.api.llm.exceptions.ModelSchemaException;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
 import top.focess.veto.api.plugin.contract.TextProtection;
 import top.focess.veto.api.plugin.contract.WorkflowHook;
 import top.focess.veto.bus.DeltaBroker;
 import top.focess.veto.bus.DeltaFrame;
 import top.focess.veto.i18n.Msg;
-import top.focess.veto.llm.core.ChatMessage;
-import top.focess.veto.llm.core.LlmOptions;
-import top.focess.veto.llm.core.LlmSystemUsage;
-import top.focess.veto.llm.core.ProviderMessages;
-import top.focess.veto.llm.core.ProviderType;
-import top.focess.veto.llm.core.ResponseContract;
-import top.focess.veto.llm.core.ToolCall;
-import top.focess.veto.llm.core.ToolResultPresentationMode;
 import top.focess.veto.llm.core.ToolResultPresenter;
 import top.focess.veto.llm.core.UniformLLMCaller;
-import top.focess.veto.llm.core.VetoRequest;
-import top.focess.veto.llm.core.VetoResponse;
-import top.focess.veto.llm.exceptions.CredentialException;
-import top.focess.veto.llm.exceptions.LlmAuthException;
-import top.focess.veto.llm.exceptions.LlmException;
-import top.focess.veto.llm.exceptions.LlmRateLimitException;
-import top.focess.veto.llm.exceptions.LlmTimeoutException;
-import top.focess.veto.llm.exceptions.ModelCapabilityException;
-import top.focess.veto.llm.exceptions.ModelSchemaException;
 import top.focess.veto.memory.TurnLogService;
-import top.focess.veto.model.tier.ModelTier;
 import top.focess.veto.model.tier.ModelTierRegistry;
 import top.focess.veto.monitor.MonitorRecord;
 import top.focess.veto.monitor.MonitorService;
@@ -120,7 +101,6 @@ import top.focess.veto.plugin.runtime.PluginJson;
 import top.focess.veto.plugin.runtime.PluginLifecycleEvents;
 import top.focess.veto.plugin.runtime.SessionPlugins;
 import top.focess.veto.sandbox.BackgroundTaskManager;
-import top.focess.veto.util.Nullness;
 import top.focess.veto.vault.KeysteadVault;
 import top.focess.veto.vault.UserContext;
 
@@ -137,9 +117,6 @@ public class AgentRunner {
 
     private static final @NonNull Logger log =
             LoggerFactory.getLogger("top.focess.veto.agent.AgentRunner");
-    private static final int MAX_SCHEMA_RETRIES = 2;
-    private static final int MAX_CITATION_RETRIES = 2;
-    private static final int MAX_CITATION_ORDER_ITEMS = 64;
 
     // --- identity / deps ---
     private final @NonNull String agentId;
@@ -150,6 +127,7 @@ public class AgentRunner {
     private volatile @NonNull AgentPersona persona;
     private volatile @NonNull Set<String> whitelistedTools;
     private final @NonNull ToolEngine toolEngine;
+    private final @NonNull ResponseValidator responses;
     private final @NonNull Gateway gateway;
     private final @NonNull HitlRegistry hitlRegistry;
     private final @NonNull IngressDefense ingressDefense;
@@ -163,14 +141,14 @@ public class AgentRunner {
     private final @NonNull LoopBreaker breaker;
     private final @NonNull ReadHistory readHistory;
     // When configured, loop emissions are published as per-session DeltaFrames for streaming.
-    private final DeltaBroker deltaBroker;
+    private final @NonNull AgentEvents events;
     // The session this agent's turns belong to. Defaults to the agent's own id (a UUID) at
     // construction; the DB-backed create path overrides it with the real session id so the
     // turn_records.session_id column groups a session's 1+N agent streams correctly. Volatile: set
     // once at creation before the loop processes any turn.
     private volatile @NonNull UUID sessionId;
     // When configured, every in-memory turn is also persisted for audit and replay.
-    private final TurnLogService turnLogService;
+    private final @NonNull AgentHistory journal;
     private final @NonNull UUID userId;
     private final BackgroundTaskManager backgroundTaskManager;
     // The session owner (username) whose model-tier profile resolves this agent's tier. Threaded
@@ -233,22 +211,15 @@ public class AgentRunner {
         checkTaskCancellation();
     }
 
-    private final @NonNull List<TurnRecord> history = new ArrayList<>();
     private int turnNumber = 0;
-    private boolean guided;
-    private int maxGuidedSteps;
+    private final @NonNull GuidedProgram program;
     private ModelTierRegistry guidedTierRegistry;
 
     void configureGuided(ModelTierRegistry registry, int maxSteps) {
-        if (maxSteps < 1) throw new IllegalArgumentException("guided max-steps must be positive");
+        program.configure(maxSteps);
         this.guidedTierRegistry = registry;
-        this.maxGuidedSteps = maxSteps;
     }
 
-    private ActionsProgram activeProgram = null;
-    private int programCounter = 0;
-    private int currentSteps = 0;
-    private @NonNull Scope scope;
     private volatile @NonNull CompletableFuture<AgentResult> resultFuture =
             new CompletableFuture<>();
     private Consumer<AgentResult> callback;
@@ -331,44 +302,6 @@ public class AgentRunner {
     // retry is answered locally instead of bothering the user with the same approval again.
     private final @NonNull Set<String> declinedCallSignatures = new HashSet<>();
 
-    // User-facing message listeners (the emission seam). emitMessage notifies these so a
-    // transport (the terminal PromptHandler) can forward each assistantResponse to its client as a
-    // Delta while the loop runs. A JVM EventBus + ZmqServer Delta-frame broker will sit between
-    // this
-    // seam and the wire; until then the listener is the direct handoff.
-    private final @NonNull CopyOnWriteArrayList<Consumer<String>> messageListeners =
-            new CopyOnWriteArrayList<>();
-
-    // Interim-thought listeners (parallel to messageListeners). emitThought notifies these so a
-    // transport can forward each assistantThought to its client as a thought-kind Delta - rendered
-    // distinct (muted/dim) from the user-facing message. Thoughts stream before the matching
-    // message because appendThought runs before emitMessage in the loop.
-    private final @NonNull CopyOnWriteArrayList<Consumer<String>> thoughtListeners =
-            new CopyOnWriteArrayList<>();
-
-    // HITL veto listeners (the veto emission seam, parallel to messageListeners). emitVetoRequired
-    // notifies these with a domain VetoPrompt so a transport can render a picker and route the
-    // user's reply back to resolve the parked veto. The agent parks in HitlRegistry regardless; the
-    // listener only advertises the prompt.
-    private final @NonNull CopyOnWriteArrayList<Consumer<VetoPrompt>> vetoListeners =
-            new CopyOnWriteArrayList<>();
-
-    // Tool-call listeners (the transparency emission seam, parallel to messageListeners).
-    // emitToolCall notifies these with a domain ToolCallEvent so a transport (the terminal
-    // PromptHandler) can forward each tool call the agent is about to execute - analogous to
-    // Claude Code's per-tool operation indicator. Fires on the agent's virtual thread inside
-    // appendTurn after the durable TOOL_CALL turn is persisted, so listeners never see a turn the
-    // audit log lost.
-    private final @NonNull CopyOnWriteArrayList<Consumer<ToolCallEvent>> toolCallListeners =
-            new CopyOnWriteArrayList<>();
-
-    // Tool-result listeners (parallel to toolCallListeners). emitToolResult forwards a domain
-    // ToolResultEvent (the framed observation the model actually sees) so the terminal can render
-    // the body and the user can verify exactly what was fed back to the agent. Fires after the
-    // durable TOOL_RESPONSE turn is persisted.
-    private final @NonNull CopyOnWriteArrayList<Consumer<ToolResultEvent>> toolResultListeners =
-            new CopyOnWriteArrayList<>();
-
     public AgentRunner(
             @NonNull String agentId,
             @NonNull AgentPersona persona,
@@ -393,6 +326,7 @@ public class AgentRunner {
                         .map(ToolDefinition::name)
                         .collect(Collectors.toUnmodifiableSet());
         this.toolEngine = toolEngine;
+        this.responses = new ResponseValidator(toolEngine, objectMapper);
         this.gateway = gateway;
         this.hitlRegistry = hitlRegistry;
         this.ingressDefense = ingressDefense;
@@ -404,14 +338,14 @@ public class AgentRunner {
         this.breaker = new LoopBreaker(maxCallsPerEpisode);
         this.readHistory = gateway.readHistory();
         this.binding = binding;
-        this.scope = new Scope(objectMapper);
-        this.deltaBroker = deltaBroker;
+        this.program = new GuidedProgram(objectMapper);
         // agentId is the persona id (a UUID string — see AgentService.createAgent); derive the
         // per-session frame key once. Fail-fast if a non-UUID id ever reaches here.
         this.sessionId = UUID.fromString(agentId);
+        this.events = new AgentEvents(agentId, objectMapper, deltaBroker, () -> sessionId);
         hitlRegistry.setSession(agentId, this.sessionId);
         this.userId = userId;
-        this.turnLogService = turnLogService;
+        this.journal = new AgentHistory(turnLogService, () -> sessionId, userId, agentId);
         this.backgroundTaskManager = backgroundTaskManager;
     }
 
@@ -633,7 +567,7 @@ public class AgentRunner {
                                     + first.content();
                     if (first.kind().equals("TIME_ONCE")) breaker.newEpisode();
                 }
-                scope = new Scope(objectMapper);
+                program.reset();
                 handlingDirectUserPrompt = false;
             }
             if (resultFuture.isDone() && !handlingDirectUserPrompt) {
@@ -650,8 +584,7 @@ public class AgentRunner {
             boolean inserted = injectMonitorEvents();
             if (!inserted) return;
             preparedFirstPrompt = null;
-            activeProgram = null;
-            guided = false;
+            program.reset();
             completionToolFinished = false;
             pendingResponse = null;
             submissionRequest = null;
@@ -859,7 +792,7 @@ public class AgentRunner {
                         : TurnRecord.userPrompt(turnNumber + 1, prompt);
         List<TurnRecord> prospectiveHistory;
         synchronized (this) {
-            prospectiveHistory = new ArrayList<>(history);
+            prospectiveHistory = new ArrayList<>(history());
         }
         prospectiveUserTurn = withRequestId(prospectiveUserTurn);
         prospectiveHistory.add(prospectiveUserTurn);
@@ -872,17 +805,10 @@ public class AgentRunner {
                                 : TurnRecord.userPrompt(++turnNumber, prompt)));
         TaskCancellation cancellation = activeCancellation;
         if (cancellation != null) cancellation.requestId = activeRequestId;
-        this.guided = false;
-        this.activeProgram = null;
-        this.programCounter = 0;
-        this.breaker.newEpisode();
-        this.scope = new Scope(objectMapper);
+        program.reset();
+        breaker.newEpisode();
 
-        if (activeProgram != null) {
-            runGuided();
-        } else {
-            runAutonomous();
-        }
+        runAutonomous();
     }
 
     private @NonNull TurnRecord withRequestId(@NonNull TurnRecord turn) {
@@ -894,20 +820,19 @@ public class AgentRunner {
     }
 
     private String latestUserTaskContext() {
-        synchronized (history) {
-            for (int i = history.size() - 1; i >= 0; i--) {
-                TurnRecord turn = history.get(i);
-                if (turn.type() != TurnType.USER_PROMPT) {
-                    continue;
-                }
-                Object resumed = turn.payload().get("resume_context");
-                if (resumed instanceof String text && !text.isBlank()) {
-                    return text;
-                }
-                Object content = turn.payload().get("content");
-                if (content instanceof String text && !text.isBlank()) {
-                    return text;
-                }
+        List<TurnRecord> history = history();
+        for (int i = history.size() - 1; i >= 0; i--) {
+            TurnRecord turn = history.get(i);
+            if (turn.type() != TurnType.USER_PROMPT) {
+                continue;
+            }
+            Object resumed = turn.payload().get("resume_context");
+            if (resumed instanceof String text && !text.isBlank()) {
+                return text;
+            }
+            Object content = turn.payload().get("content");
+            if (content instanceof String text && !text.isBlank()) {
+                return text;
             }
         }
         return null;
@@ -964,25 +889,22 @@ public class AgentRunner {
 
     private void processCompaction() {
         int lastInitIndex = -1;
-        synchronized (history) {
-            for (int i = history.size() - 1; i >= 0; i--) {
-                if (history.get(i).type() == TurnType.AGENT_INIT) {
-                    lastInitIndex = i;
-                    break;
-                }
+        List<TurnRecord> history = history();
+        for (int i = history.size() - 1; i >= 0; i--) {
+            if (history.get(i).type() == TurnType.AGENT_INIT) {
+                lastInitIndex = i;
+                break;
             }
         }
         int anchorIndex = lastInitIndex != -1 ? lastInitIndex : 0;
 
         List<TurnRecord> workTurns = new ArrayList<>();
-        synchronized (history) {
-            if (anchorIndex >= history.size() - 1) {
-                emitMessage(Msg.get(locale, "error.agent.compactNothing"));
-                return;
-            }
-            for (int i = anchorIndex + 1; i < history.size(); i++) {
-                workTurns.add(history.get(i));
-            }
+        if (anchorIndex >= history.size() - 1) {
+            emitMessage(Msg.get(locale, "error.agent.compactNothing"));
+            return;
+        }
+        for (int i = anchorIndex + 1; i < history.size(); i++) {
+            workTurns.add(history.get(i));
         }
 
         String finalSummary = computeCompactionSummary(workTurns);
@@ -1017,86 +939,11 @@ public class AgentRunner {
      * summarize; never null.
      */
     private @NonNull String computeCompactionSummary(@NonNull List<TurnRecord> workTurns) {
-        if (workTurns.isEmpty()) {
-            return "{}";
-        }
-        List<JsonNode> records = new ArrayList<>();
-        for (TurnRecord turn : HistoryProjection.effective(workTurns)) {
-            if (turn.type() == TurnType.AGENT_INIT || turn.type() == TurnType.TOKEN_USAGE) continue;
-            var record = objectMapper.createObjectNode();
-            record.put("number", turn.turnNumber());
-            record.put("type", turn.type().name());
-            record.set("payload", objectMapper.valueToTree(turn.payload()));
-            record.put("origin", CompactionSupport.sourceOrigin(record));
-            records.add(record);
-        }
-        if (records.isEmpty()) return "{}";
-        Map<Integer, String> originalOrigins =
-                CompactionSupport.sourceOrigins(objectMapper.valueToTree(records));
-        List<JsonNode> chunks;
-        try {
-            // Keep each source's type, number and payload together. A source too large for one
-            // bounded input leaves the original history in place instead of losing provenance.
-            // There cannot be more chunks than records, so these index/count values bound the
-            // rendered header. Include the provider's response wrapper in the actual overhead.
-            var largestHeader =
-                    PromptCompiler.compileMessage(
-                            "runtime-compaction",
-                            Map.of("index", records.size(), "count", records.size()));
-            var emptyRecords =
-                    ChatMessage.user(
-                            PromptCompiler.compileText(
-                                    "runtime-compaction-records", Map.of("records", List.of())));
-            int overhead = compactionInputChars(compactionRequest(largestHeader, emptyRecords)) - 2;
-            chunks =
-                    CompactionSupport.chunks(records, CompactionSupport.MAX_INPUT_CHARS - overhead);
-        } catch (IllegalArgumentException oversized) {
-            log.warn("Compaction not performed: {}", safe(oversized.getMessage()));
-            return "{}";
-        }
-        List<JsonNode> summaries = new ArrayList<>();
-        for (int i = 0; i < chunks.size(); i++) {
-            JsonNode chunk = chunks.get(i);
-            Map<Integer, String> sources = CompactionSupport.sourceOrigins(chunk);
-            ChatMessage systemPrompt =
-                    PromptCompiler.compileMessage(
-                            "runtime-compaction", Map.of("index", i + 1, "count", chunks.size()));
-            String rawSummary =
-                    callCompactor(
-                            systemPrompt,
-                            ChatMessage.user(
-                                    PromptCompiler.compileText(
-                                            "runtime-compaction-records",
-                                            Map.of("records", chunk))),
-                            sources);
-            // Any failed chunk aborts compaction. Never merge a missing chunk away and rewind.
-            if ("{}".equals(rawSummary)) return "{}";
-            summaries.add(CompactionSupport.validate(rawSummary, sources));
-        }
-        // Pairwise merge keeps each request bounded even for many source chunks. Each accepted
-        // summary is capped at 20k characters, so two fit within the 60k input allowance.
-        while (summaries.size() > 1) {
-            List<JsonNode> merged = new ArrayList<>();
-            for (int i = 0; i < summaries.size(); i += 2) {
-                if (i + 1 == summaries.size()) {
-                    merged.add(summaries.get(i));
-                    continue;
-                }
-                List<JsonNode> pair = List.of(summaries.get(i), summaries.get(i + 1));
-                Map<Integer, String> sources =
-                        CompactionSupport.summaryOrigins(pair, originalOrigins);
-                String raw =
-                        callCompactor(
-                                PromptCompiler.compileMessage("runtime-compaction-merge", Map.of()),
-                                PromptCompiler.compileMessage(
-                                        "runtime-compaction-input", Map.of("summaries", pair)),
-                                sources);
-                if ("{}".equals(raw)) return "{}";
-                merged.add(CompactionSupport.validate(raw, sources));
-            }
-            summaries = merged;
-        }
-        return summaries.getFirst().toString();
+        return new HistoryCompactor(
+                        objectMapper,
+                        (system, user) -> requests().compactionRequest(system, user),
+                        this::performCompactionCall)
+                .summarize(workTurns);
     }
 
     private static void clearTaskInterrupt() {
@@ -1105,30 +952,7 @@ public class AgentRunner {
         }
     }
 
-    private @NonNull VetoRequest compactionRequest(
-            @NonNull ChatMessage systemPrompt, @NonNull ChatMessage userPrompt) {
-        return new VetoRequest(
-                systemPrompt.content(),
-                userPrompt.content(),
-                List.of(),
-                binding.provider(),
-                binding.model(),
-                binding.credentialKey(),
-                binding.options(),
-                List.of(systemPrompt, userPrompt),
-                null,
-                binding.baseUrl());
-    }
-
-    private @NonNull String callCompactor(
-            @NonNull ChatMessage systemPrompt,
-            @NonNull ChatMessage userPrompt,
-            @NonNull Map<Integer, String> sourceOrigins) {
-        VetoRequest request = compactionRequest(systemPrompt, userPrompt);
-        if (compactionInputChars(request) > CompactionSupport.MAX_INPUT_CHARS) {
-            log.warn("Compaction input exceeds its rendered size limit; original history retained");
-            return "{}";
-        }
+    private @NonNull VetoResponse performCompactionCall(@NonNull VetoRequest request) {
         VetoResponse response;
         LlmSystemUsage.begin();
         try {
@@ -1142,24 +966,7 @@ public class AgentRunner {
                 recordUsage(turnNumber, data);
             }
         }
-        String message = response.message();
-        if (message == null || message.isBlank()) return "{}";
-        try {
-            return CompactionSupport.validate(message, sourceOrigins).toString();
-        } catch (IllegalArgumentException invalid) {
-            log.warn(
-                    "Compactor returned an invalid summary; original history will not be compacted: {}",
-                    safe(invalid.getMessage()));
-            return "{}";
-        }
-    }
-
-    private int compactionInputChars(@NonNull VetoRequest request) {
-        var data =
-                new LinkedHashMap<String, Object>(request.responseContract().promptData(request));
-        data.put("system", request.systemPrompt());
-        return PromptCompiler.compileDocument("provider-native", data).text().length()
-                + request.userPrompt().length();
+        return response;
     }
 
     private VetoRequest submissionRequest;
@@ -1175,99 +982,18 @@ public class AgentRunner {
 
     private ToolCallContextHolder.@NonNull ResponseDirective validateSubmission(
             @NonNull ResponseRequest submission) throws Exception {
-        var request = submissionRequest;
-        if (request == null)
-            throw new IllegalStateException("No active model request for response submission");
-        if (completionTool != null)
-            throw new IllegalArgumentException("This agent must finish through " + completionTool);
-        if (submission instanceof ResponseRequest.Plan plan) {
-            try {
-                if (submissionGeneration)
-                    throw new IllegalArgumentException(
-                            "Plan submission is unavailable in this context");
-                var planDefinition =
-                        request.tools().stream()
-                                .filter(
-                                        tool ->
-                                                submissionKind(tool.name())
-                                                        == top.focess.veto.agent.tool
-                                                                .ResponseSubmission.Kind.PLAN)
-                                .findFirst()
-                                .orElseThrow(
-                                        () ->
-                                                new IllegalArgumentException(
-                                                        "Plan tool was not available in the current"
-                                                                + " request"));
-                NativeToolArgumentValidator.validateAgainstSchema(
-                        planDefinition.name(),
-                        objectMapper.createObjectNode().set("actions", plan.actions()),
-                        objectMapper.valueToTree(planDefinition.inputSchema()));
-                var program = ActionsProgramParser.parse(plan.actions());
-                ProgramValidator.validate(program);
-                ProgramValidator.validateInputs(program);
-                gateway.validateProgram(program, toolEngine, whitelistedTools, objectMapper);
-                for (var action : program.actions()) {
-                    if (action instanceof GenerateAction gen
-                            && gen.responseMode() == GenerateAction.ResponseMode.CITATIONS
-                            && request.tools().stream()
-                                    .noneMatch(
-                                            t ->
-                                                    submissionKind(t.name())
-                                                            == top.focess.veto.agent.tool
-                                                                    .ResponseSubmission.Kind
-                                                                    .ANSWER))
-                        throw new IllegalArgumentException(
-                                "CITATIONS generation requires an available answer submission"
-                                        + " tool");
-                    if (action instanceof ToolAction tool && submissionKind(tool.tool()) != null)
-                        throw new IllegalArgumentException(
-                                "Response submission tools cannot be nested as plan tool steps; use"
-                                        + " generate for a cited answer and STOP to finish");
-                }
-                return new ToolCallContextHolder.ResponseDirective.Plan(program);
-            } catch (IllegalArgumentException | ProgramValidator.InvalidProgramException error) {
-                throw new ToolExecutionException(
-                        ToolResultStatus.FAILURE,
-                        ToolResultFormat.PLAINTEXT,
-                        ToolErrorCode.VALIDATION.INVALID_PLAN,
-                        "Plan rejected before execution: " + error.getMessage());
-            }
-        }
-        try {
-            var answer = (ResponseRequest.Answer) submission;
-            VetoResponse response = MessageCitations.resolve(request, answer);
-            ResponseEnforcer.enforce(response, whitelistedTools);
-            MessageCitations.Bound bound = null;
-            var citations = response.citations();
-            if (citations != null) {
-                bound = MessageCitations.bind(request, response, List.copyOf(history));
-                for (var check : bound.checks()) {
-                    for (var reference : check.references()) {
-                        if (!reference.status().equals("matched"))
-                            throw new IllegalArgumentException(
-                                    "Citation "
-                                            + check.id()
-                                            + " could not match the exact quote in input message "
-                                            + reference.messageIndex()
-                                            + "; omit message_index and provide an exact quote from"
-                                            + " a successful source. If the runtime returns"
-                                            + " ambiguous candidates, select one of those"
-                                            + " indices.");
-                    }
-                }
-            }
-            return new ToolCallContextHolder.ResponseDirective.Answer(response, bound);
-        } catch (IllegalArgumentException | ModelSchemaException error) {
-            throw new ToolExecutionException(
-                    ToolResultStatus.FAILURE,
-                    ToolResultFormat.PLAINTEXT,
-                    ToolErrorCode.VALIDATION.INVALID_CITATION,
-                    "Citation rejected: " + error.getMessage());
-        }
+        return responses.validateSubmission(
+                submission,
+                submissionRequest,
+                submissionGeneration,
+                completionTool,
+                whitelistedTools,
+                history(),
+                gateway);
     }
 
     private ResponseSubmission.Kind submissionKind(@NonNull String name) {
-        return ResponseSubmission.Metadata.kindOf(toolEngine.resolveDefinition(name));
+        return responses.submissionKind(name);
     }
 
     private void runAutonomous() {
@@ -1290,7 +1016,7 @@ public class AgentRunner {
             if (accepted instanceof ToolCallContextHolder.ResponseDirective.Plan plan) {
                 pendingResponse = null;
                 checkTaskCancellation();
-                installProgram(plan.program());
+                program.install(plan.program(), lastModelCallId);
                 AgentPersona programPersona = persona;
                 runGuided();
                 if (persona != programPersona) continue;
@@ -1331,183 +1057,58 @@ public class AgentRunner {
     // ── Guided loop (drives the actions program IR) ─────────────────────────
 
     private GuidedStepContext currentGuidedStep;
-    private final @NonNull Map<String, String> guidedSources = new HashMap<>();
 
-    @SuppressWarnings(
-            "ConstantValue") // The role can replace the active program during a tool call.
     private void runGuided() {
-        while (state == AgentState.RUNNING) {
+        var runtime = guidedRuntime();
+        while (state == AgentState.RUNNING && program.active()) {
             checkTaskCancellation();
-            ActionsProgram program = activeProgram;
-            if (program == null) {
-                return;
-            }
-            // Same mid-episode task-lifecycle drain as the autonomous loop.
             injectPendingTaskExitNotices();
             injectMonitorEvents();
-            if (programCounter < 0 || programCounter >= program.actions().size()) {
-                escapeToAutonomous("program counter out of bounds");
-                return;
-            }
-            var action = program.actions().get(programCounter);
-            if (++currentSteps > maxGuidedSteps) {
-                escapeToAutonomous("step limit exceeded");
-                throw new IllegalStateException("Guided program exceeded its execution step limit");
-            }
-            scope.put("CURRENT_STEPS", currentSteps);
-
-            switch (action) {
-                case ToolAction tool -> {
-                    ToolCall call = new ToolCall(tool.tool(), tool.resolveInputs(scope));
-                    ToolResult result;
-                    currentToolModelCallId = programModelCallId;
-                    Map<String, String> sources =
-                            GuidedStepContext.sources(objectMapper, tool.inputs(), guidedSources);
-                    currentGuidedStep =
-                            new GuidedStepContext(
-                                    programModelCallId,
-                                    tool.id(),
-                                    programCounter,
-                                    tool.label(),
-                                    sources);
-                    try {
-                        result = executeOneCall(call);
-                    } finally {
-                        currentToolModelCallId = null;
-                        currentGuidedStep = null;
-                    }
-                    if (activeProgram != program) {
-                        return; // The tool replaced the role and cleared this program and scope.
-                    }
-                    scope.put("step_ok:" + tool.id(), result.success());
-                    scope.bindTool(tool.outputs(), result);
-                    tool.outputs()
-                            .keySet()
-                            .forEach(
-                                    key -> guidedSources.put(key, tool.id() + ":" + call.callId()));
-                    if (tool.outputs() != null)
-                        tool.outputs().keySet().forEach(generatedCitations::remove);
-                    programCounter++;
-                    if (!result.success() && state == AgentState.RUNNING) {
-                        boolean handled =
-                                programCounter < program.actions().size()
-                                        && program.actions().get(programCounter)
-                                                instanceof ConditionalGotoAction next
-                                        && next.check() instanceof Check.ExitOk check
-                                        && check.stepId().equals(tool.id());
-                        if (!handled)
-                            throw new IllegalStateException(
-                                    "Guided tool failed: " + tool.tool() + ": " + result.content());
-                    }
-                }
-                case GenerateAction gen -> {
-                    if (breaker.shouldTrip()) {
-                        tripBreaker();
-                        throw new BreakerTripException();
-                    }
-                    VetoResponse response = callGenerate(gen);
-                    scope.bindGenerate(gen.outputs(), response);
-                    gen.outputs()
-                            .keySet()
-                            .forEach(
-                                    key ->
-                                            guidedSources.put(
-                                                    key, gen.id() + ":" + lastModelCallId));
-                    String generatedMessage = response.message();
-                    MessageCitations.Bound generatedSources = lastCitations;
-                    if (gen.outputs() != null) {
-                        for (Map.Entry<String, String> output : gen.outputs().entrySet()) {
-                            generatedCitations.remove(output.getKey());
-                            if ("message".equals(output.getValue()) && generatedMessage != null)
-                                generatedCitations.put(
-                                        output.getKey(),
-                                        new GeneratedCitation(
-                                                scope,
-                                                generatedMessage,
-                                                generatedSources,
-                                                lastModelCallId));
-                        }
-                    }
-                    scope.put("step_ok:" + gen.id(), true);
-                    programCounter++;
-                }
-                case GotoAction gt -> programCounter = gt.index();
-                case ConditionalGotoAction cg -> {
-                    boolean passed;
-                    if (cg.check() instanceof Check.Llm check) {
-                        GenerateAction judgment =
-                                new GenerateAction(
-                                        cg.id(),
-                                        cg.label(),
-                                        PromptCompiler.compileText(
-                                                "runtime-judgment",
-                                                Map.of("prompt", check.prompt())),
-                                        Map.of(
-                                                "judgment_input",
-                                                "$" + check.var().replaceFirst("^\\$", "")),
-                                        Map.of(),
-                                        false,
-                                        null,
-                                        0.0);
-                        String answer =
-                                callGenerate(judgment, ResponseContract.predicate()).message();
-                        if (answer == null
-                                || !(answer.strip().equals("true")
-                                        || answer.strip().equals("false")))
-                            throw new IllegalArgumentException(
-                                    "Semantic check must return true or false");
-                        passed = Boolean.parseBoolean(answer.strip());
-                    } else passed = CheckEvaluator.evaluate(cg.check(), scope, currentSteps);
-                    programCounter = cg.nextPc(passed, programCounter + 1);
-                }
-                case StopAction stop -> {
-                    String resultBinding = stop.resultBinding();
-                    String result =
-                            resultBinding != null
-                                    ? scope.opt(resultBinding)
-                                            .map(Object::toString)
-                                            .orElseThrow(
-                                                    () ->
-                                                            new IllegalArgumentException(
-                                                                    "Unbound STOP result: "
-                                                                            + resultBinding))
-                                    : scope.synthesize();
-                    GeneratedCitation citation =
-                            resultBinding == null ? null : generatedCitations.get(resultBinding);
-                    emitMessage(
-                            result,
-                            citation != null
-                                            && citation.scope() == scope
-                                            && citation.message().equals(result)
-                                    ? citation.bound()
-                                    : null,
-                            citation != null
-                                            && citation.scope() == scope
-                                            && citation.message().equals(result)
-                                    ? citation.modelCallId()
-                                    : null,
-                            citation == null);
-                    generatedCitations.clear();
-                    activeProgram = null;
-                    programCounter = 0;
-                    guided = false;
-                    return;
-                }
-                default -> {
-                    escapeToAutonomous("unknown action: " + action);
-                    return;
-                }
-            }
-
-            if (!guided) {
-                escapeToAutonomous("agent voluntary deviation");
-                return;
-            }
+            program.step(runtime);
         }
     }
 
-    private @NonNull VetoResponse callGenerate(@NonNull GenerateAction gen) {
-        return callGenerate(gen, ResponseContract.generation());
+    private GuidedProgram.@NonNull Runtime guidedRuntime() {
+        return new GuidedProgram.Runtime() {
+            @Override
+            public boolean running() {
+                return state == AgentState.RUNNING;
+            }
+
+            @Override
+            public @NonNull ToolResult tool(
+                    @NonNull ToolCall call, @NonNull GuidedStepContext context) {
+                currentToolModelCallId = context.programModelCallId();
+                currentGuidedStep = context;
+                try {
+                    return executeOneCall(call);
+                } finally {
+                    currentToolModelCallId = null;
+                    currentGuidedStep = null;
+                }
+            }
+
+            @Override
+            public GuidedProgram.@NonNull Generated generate(
+                    @NonNull GenerateAction action, @NonNull ResponseContract contract) {
+                VetoResponse response = callGenerate(action, contract);
+                return new GuidedProgram.Generated(response, lastCitations, lastModelCallId);
+            }
+
+            @Override
+            public void message(
+                    @NonNull String text,
+                    MessageCitations.Bound citations,
+                    String callId,
+                    boolean forwarded) {
+                emitMessage(text, citations, callId, forwarded);
+            }
+
+            @Override
+            public void escaped(@NonNull String reason) {
+                appendObservation("guided_escape", reason);
+            }
+        };
     }
 
     private @NonNull VetoResponse callGenerate(
@@ -1533,31 +1134,6 @@ public class AgentRunner {
         return response;
     }
 
-    /** Acceptance compiled and validated this exact program before any step could run. */
-    private void installProgram(@NonNull ActionsProgram program) {
-        scope = new Scope(objectMapper);
-        generatedCitations.clear();
-        guidedSources.clear();
-        activeProgram = program;
-        programModelCallId = lastModelCallId;
-        programCounter = 0;
-        currentSteps = 0;
-        guided = true;
-    }
-
-    private void escapeToAutonomous(@NonNull String reason) {
-        this.activeProgram = null;
-        this.programCounter = 0;
-        this.guided = false;
-        appendObservation(
-                "guided_escape",
-                "Guided mode exited: "
-                        + reason
-                        + ". Scope preserved with "
-                        + scope.size()
-                        + " bindings.");
-    }
-
     // ── The model call (compile + dispatch + enforce, with schema retry) ────
 
     private @NonNull VetoResponse callModel() {
@@ -1576,148 +1152,64 @@ public class AgentRunner {
         preparedFirstPrompt = null;
         if (compiled == null) {
             refreshSystemHistory();
-            compiled = compilePrompt(List.copyOf(history), generation != null);
+            compiled = compilePrompt(history(), generation != null);
         }
-        long estimatedTokens;
-        double estimateFactor = correctionFactor;
-        VetoRequest request = buildRequest(compiled).withResponseContract(contract);
-        if (generation != null) request = generationRequest(request, generation);
-        int schemaRetries = 0;
-        VetoRequest correctionBase = request;
-        int citationRetries = 0;
-        VetoResponse citationCandidate = null;
-        String candidateModelCallId = null;
-        MessageCitations.Bound candidateSources = null;
-        for (; ; ) {
-            VetoResponse response;
-            try {
-                if (breaker.shouldTrip()) {
-                    tripBreaker();
-                    throw new BreakerTripException();
-                }
-                checkExecutionBoundary();
-                if (completionOnly(breaker.count())) {
-                    request = completionRequest(request);
-                    correctionBase = completionRequest(correctionBase);
-                }
-                reserveRequestCall();
-                request = promptCompiler.fitRequest(request, correctionFactor);
-                estimatedTokens = promptCompiler.estimateRequest(request, estimateFactor);
-                log.debug(
-                        "Agent {} input: model={}, messages={}, estimatedTokens={},"
-                                + " correctionFactor={}",
-                        agentId,
-                        request.modelName(),
-                        request.messages().size(),
-                        estimatedTokens,
-                        correctionFactor);
-                int requestThroughTurn = turnNumber;
-                lastModelCallId = UUID.randomUUID().toString();
-                LlmSystemUsage.begin();
-                try {
-                    checkTaskCancellation();
-                    lastPluginContext =
-                            PluginContextSnapshot.from(
-                                    toolEngine.getActiveTools(
-                                            request.tools().stream()
-                                                    .map(
-                                                            top.focess.veto.llm.core.ToolDefinition
-                                                                    ::name)
-                                                    .collect(Collectors.toSet())),
-                                    true);
-                    response = callModelWithHooks(request);
-                    checkTaskCancellation();
-                } finally {
-                    List<LlmSystemUsage.Usage> measurements = LlmSystemUsage.drain();
-                    for (LlmSystemUsage.Usage measured : measurements) {
-                        UsageMeasurement measurement = UsageMeasurement.measured(request, measured);
-                        lastModelCallId = UUID.randomUUID().toString();
-                        measurement = measurement.forRequest(lastModelCallId);
-                        recordUsage(requestThroughTurn, measurement);
-                    }
-                    if (!measurements.isEmpty()
-                            && estimatedTokens > 0
-                            && measurements.getLast().promptTokens() > 0) {
-                        double rawRatio =
-                                measurements.getLast().promptTokens()
-                                        * estimateFactor
-                                        / estimatedTokens;
-                        this.correctionFactor = 0.9 * correctionFactor + 0.1 * rawRatio;
-                    }
-                }
-
-                VetoResponse checked = ResponseEnforcer.enforce(response, whitelistedTools);
-                validateResponseMode(checked, request);
-                validateLocalCallArguments(checked);
-                var declaredCitations = checked.citations();
-                if (declaredCitations != null && !declaredCitations.isEmpty()) {
-                    var bound = MessageCitations.bind(request, checked, List.copyOf(history));
-                    String citationError = null;
-                    var messageGroups = ProviderMessages.groups(request);
-                    for (var check : bound.checks()) {
-                        for (var reference : check.references()) {
-                            if (reference.status().equals("not_found") && citationError == null) {
-                                int index = reference.messageIndex();
-                                String selected =
-                                        index >= 0 && index < messageGroups.size()
-                                                ? messageGroups.get(index).getFirst().role()
-                                                : "";
-                                citationError =
-                                        PromptCompiler.compileText(
-                                                "runtime-citation",
-                                                Map.of(
-                                                        "id",
-                                                        check.id(),
-                                                        "index",
-                                                        reference.messageIndex(),
-                                                        "selected",
-                                                        selected,
-                                                        "count",
-                                                        bound.messageCount()));
-                            }
-                        }
-                    }
-                    if (citationError != null && citationRetries < MAX_CITATION_RETRIES) {
-                        List<CitationMessage> order = new ArrayList<>();
-                        for (int index =
-                                        Math.max(
-                                                0, messageGroups.size() - MAX_CITATION_ORDER_ITEMS);
-                                index < messageGroups.size();
-                                index++) {
-                            var item = messageGroups.get(index).getFirst();
-                            order.add(
-                                    new CitationMessage(
-                                            index, item.role(), item.toolName() != null));
-                        }
-                        citationError =
-                                PromptCompiler.compileText(
-                                        "runtime-citation-order",
-                                        Map.of("error", citationError, "items", order));
-                        citationCandidate = checked;
-                        candidateModelCallId = lastModelCallId;
-                        candidateSources = bound;
-                        citationRetries++;
-                        log.warn(
-                                "Agent {} citation correction {}: {}",
-                                agentId,
-                                citationRetries,
-                                citationError);
-                        request =
-                                injectSchemaRejection(
-                                        request, new ModelSchemaException(citationError));
-                        continue;
-                    }
-                    lastCitations = bound;
-                }
-                submissionRequest = request;
+        VetoRequest request = requests().buildRequest(compiled).withResponseContract(contract);
+        if (generation != null)
+            request = requests().generationRequest(request, generation, program.scope());
+        try {
+            var result =
+                    new ModelExchange(agentId, responses)
+                            .complete(
+                                    request,
+                                    requests(),
+                                    whitelistedTools,
+                                    this::history,
+                                    modelRuntime(),
+                                    correctionFactor);
+            lastCitations = result.citations();
+            lastModelCallId = result.modelCallId();
+            if (result.accepted()) {
+                submissionRequest = result.request();
                 submissionGeneration = generation != null;
-                return checked;
-            } catch (ModelSchemaException e) {
-                log.warn(
-                        "Agent {} schema violation (attempt {}): {}",
-                        agentId,
-                        schemaRetries + 1,
-                        safe(e.getMessage()));
+            }
+            return result.response();
+        } catch (LlmException e) {
+            // LLM failure → record error, break the loop ( table: LLM Error → IDLE).
+            TaskCancellation cancellation = activeCancellation;
+            if (cancellation == null || !cancellation.cancelled) {
+                appendObservation(
+                        "llm_error",
+                        e.getMessage() == null
+                                ? "LLM call failed without a message"
+                                : e.getMessage());
+            }
+            transitionTo(AgentState.IDLE);
+            throw e;
+        }
+    }
+
+    private ModelExchange.@NonNull Runtime modelRuntime() {
+        return new ModelExchange.Runtime() {
+            @Override
+            public @NonNull VetoRequest prepare(@NonNull VetoRequest request) {
+                return completionOnly(breaker.count())
+                        ? requests()
+                                .completionRequest(
+                                        request,
+                                        completionTool,
+                                        breaker.maxCallsPerEpisode() - breaker.count())
+                        : request;
+            }
+
+            @Override
+            public ModelExchange.@NonNull Attempt invoke(
+                    @NonNull VetoRequest request, double estimateFactor) {
+                return performModelCall(request, estimateFactor);
+            }
+
+            @Override
+            public void rejected(@NonNull ModelSchemaException e) {
                 appendTurn(
                         new TurnRecord(
                                 ++turnNumber,
@@ -1730,39 +1222,62 @@ public class AgentRunner {
                                         "errorCode",
                                         "MODEL_RESPONSE_REJECTED"),
                                 null));
-                if (schemaRetries >= MAX_SCHEMA_RETRIES && citationCandidate != null) {
-                    lastCitations = candidateSources;
-                    lastModelCallId = candidateModelCallId;
-                    return citationCandidate;
-                }
-                schemaRetries++;
-                // Inject an ephemeral rejection message so the model knows what to fix on retry.
-                request = injectSchemaRejection(correctionBase, e);
-            } catch (LlmException e) {
-                // LLM failure → record error, break the loop ( table: LLM Error → IDLE).
-                TaskCancellation cancellation = activeCancellation;
-                if (cancellation == null || !cancellation.cancelled) {
-                    appendObservation(
-                            "llm_error",
-                            e.getMessage() == null
-                                    ? "LLM call failed without a message"
-                                    : e.getMessage());
-                }
-                transitionTo(AgentState.IDLE);
-                throw e;
             }
-        }
+        };
     }
 
-    private void validateResponseMode(@NonNull VetoResponse checked, @NonNull VetoRequest request) {
-        var calls = checked.calls();
-        request.responseContract()
-                .validate(
-                        request,
-                        checked.message(),
-                        calls == null
-                                ? List.of()
-                                : calls.stream().map(ToolCall::toolName).toList());
+    private ModelExchange.@NonNull Attempt performModelCall(
+            @NonNull VetoRequest request, double estimateFactor) {
+        long estimatedTokens;
+        VetoResponse response;
+        if (breaker.shouldTrip()) {
+            tripBreaker();
+            throw new BreakerTripException();
+        }
+        checkExecutionBoundary();
+        reserveRequestCall();
+        request = promptCompiler.fitRequest(request, correctionFactor);
+        estimatedTokens = promptCompiler.estimateRequest(request, estimateFactor);
+        log.debug(
+                "Agent {} input: model={}, messages={}, estimatedTokens={},"
+                        + " correctionFactor={}",
+                agentId,
+                request.modelName(),
+                request.messages().size(),
+                estimatedTokens,
+                correctionFactor);
+        int requestThroughTurn = turnNumber;
+        lastModelCallId = UUID.randomUUID().toString();
+        LlmSystemUsage.begin();
+        try {
+            checkTaskCancellation();
+            lastPluginContext =
+                    PluginContextSnapshot.from(
+                            toolEngine.getActiveTools(
+                                    request.tools().stream()
+                                            .map(top.focess.veto.api.llm.ToolDefinition::name)
+                                            .collect(Collectors.toSet())),
+                            true);
+            response = callModelWithHooks(request);
+            checkTaskCancellation();
+        } finally {
+            List<LlmSystemUsage.Usage> measurements = LlmSystemUsage.drain();
+            for (LlmSystemUsage.Usage measured : measurements) {
+                UsageMeasurement measurement = UsageMeasurement.measured(request, measured);
+                lastModelCallId = UUID.randomUUID().toString();
+                measurement = measurement.forRequest(lastModelCallId);
+                recordUsage(requestThroughTurn, measurement);
+            }
+            if (!measurements.isEmpty()
+                    && estimatedTokens > 0
+                    && measurements.getLast().promptTokens() > 0) {
+                double rawRatio =
+                        measurements.getLast().promptTokens() * estimateFactor / estimatedTokens;
+                this.correctionFactor = 0.9 * correctionFactor + 0.1 * rawRatio;
+            }
+        }
+
+        return new ModelExchange.Attempt(request, response, lastModelCallId);
     }
 
     private boolean completionOnly(long completedCalls) {
@@ -1772,150 +1287,21 @@ public class AgentRunner {
                 && completedCalls >= limit - (limit >= 4 ? 2 : 1);
     }
 
-    /** Finalization and its optional correction consume the existing call budget. */
-    private @NonNull VetoRequest completionRequest(@NonNull VetoRequest request) {
-        String tool = completionTool;
-        if (tool == null) return request;
-        List<ChatMessage> messages = new ArrayList<>(request.messages());
-        messages.removeIf(
-                message ->
-                        message.promptSources().stream()
-                                .anyMatch(
-                                        source ->
-                                                source.source().equals("runtime-completion.mdc")));
-        messages.add(
-                PromptCompiler.compileMessage(
-                        "runtime-completion",
-                        Map.of(
-                                "tool",
-                                tool,
-                                "remaining",
-                                breaker.maxCallsPerEpisode() - breaker.count())));
-        VetoRequest scoped =
-                new VetoRequest(
-                        request.systemPrompt(),
-                        request.userPrompt(),
-                        request.tools().stream()
-                                .filter(definition -> definition.name().equals(tool))
-                                .toList(),
-                        request.providerType(),
-                        request.modelName(),
-                        request.credentialKey(),
-                        request.options(),
-                        messages,
-                        request.responseSchema(),
-                        request.baseUrl(),
-                        request.nativeToolsEnabled(),
-                        ResponseContract.completion(tool, true));
-        return scopeResponseRequest(scoped);
-    }
-
-    private @NonNull VetoRequest generationRequest(
-            @NonNull VetoRequest original, @NonNull GenerateAction generation) {
-        LlmBinding selected = binding;
-        String tier = generation.modelTier();
-        if (tier != null) {
-            var registry = guidedTierRegistry;
-            String username = owner;
-            if (registry == null || username == null)
-                throw new IllegalStateException(
-                        "Model tier override requires the session owner's model profile");
-            var model =
-                    registry.resolve(username, Nullness.requireNonNull(ModelTier.valueOf(tier)));
-            selected =
-                    new LlmBinding(
-                            model.provider(),
-                            model.model(),
-                            model.credentialKey(),
-                            new LlmOptions(
-                                    model.temperature(),
-                                    null,
-                                    model.maxOutputTokens(),
-                                    binding.options().timeout(),
-                                    model.contextWindowTokens()),
-                            binding.systemPromptBase(),
-                            model.baseUrl());
-        }
-        LlmOptions options = selected.options();
-        Double temperature = generation.temperature();
-        if (temperature != null)
-            options =
-                    new LlmOptions(
-                            temperature,
-                            options.topP(),
-                            options.maxTokens(),
-                            options.timeout(),
-                            options.contextWindowTokens());
-        List<ChatMessage> messages = new ArrayList<>(original.messages());
-        ChatMessage generated =
-                PromptCompiler.compileMessage(
-                        "runtime-generation",
-                        Map.of(
-                                "prompt",
-                                generation.resolvePrompt(scope),
-                                "inputs",
-                                generation.resolveInputs(scope)));
-        String prompt = generated.content();
-        messages.add(generated);
-        boolean predicate = original.responseContract().mode() == ResponseContract.Mode.PREDICATE;
-        boolean cited =
-                !predicate && generation.responseMode() == GenerateAction.ResponseMode.CITATIONS;
-        var tools =
-                original.tools().stream()
-                        .filter(
-                                t ->
-                                        cited
-                                                && submissionKind(t.name())
-                                                        == top.focess.veto.agent.tool
-                                                                .ResponseSubmission.Kind.ANSWER)
-                        .toList();
-        if (cited && tools.isEmpty())
-            throw new IllegalStateException(
-                    "Citation generation requires an available answer submission tool");
-        VetoRequest scoped =
-                new VetoRequest(
-                        original.systemPrompt(),
-                        prompt,
-                        tools,
-                        selected.provider(),
-                        selected.model(),
-                        selected.credentialKey(),
-                        options,
-                        messages,
-                        original.responseSchema(),
-                        selected.baseUrl(),
-                        cited,
-                        original.responseContract());
-        return scopeResponseRequest(scoped);
-    }
-
-    private @NonNull VetoRequest scopeResponseRequest(@NonNull VetoRequest request) {
-        return promptCompiler.scopeRequest(
-                request,
-                persona,
+    private @NonNull ModelRequests requests() {
+        return new ModelRequests(
+                promptCompiler,
                 gateway.workspace(),
-                binding.systemPromptBase(),
-                toolResultPresentation);
+                persona,
+                binding,
+                toolResultPresentation,
+                owner,
+                guidedTierRegistry,
+                responses);
     }
 
     private @NonNull CompiledPrompt compilePrompt(
-            @NonNull List<TurnRecord> sourceHistory, boolean scopedInvocation) {
-        // Generation/predicate calls first assemble history, then rebuild the system with their
-        // restricted tool manifest. The dispatch guard budgets that final request and selected
-        // model; budgeting this temporary full manifest could reject an otherwise fitting call.
-        Long inputBudgetOverride = null;
-        if (scopedInvocation) inputBudgetOverride = Long.MAX_VALUE;
-        else if (binding.options().contextWindowTokens() != null)
-            inputBudgetOverride = binding.options().inputBudget();
-        return promptCompiler.compile(
-                persona,
-                gateway.workspace(),
-                binding.systemPromptBase(),
-                sourceHistory,
-                this.correctionFactor,
-                toolResultPresentation,
-                inputBudgetOverride,
-                recoveryContext);
+            @NonNull List<TurnRecord> history, boolean scoped) {
+        return requests().compilePrompt(history, scoped, correctionFactor, recoveryContext);
     }
 
     private PromptSource.Rendered currentSystemSource;
@@ -1934,16 +1320,15 @@ public class AgentRunner {
     /** Record configuration changes explicitly rather than silently recompiling an old init. */
     private void refreshSystemHistory() {
         List<TurnRecord> additions;
-        synchronized (history) {
-            additions =
-                    HistoryProjection.reinitialize(
-                            history,
-                            turnNumber,
-                            persona.role().name(),
-                            linkCurrentSystemMessage(),
-                            binding.provider().name(),
-                            binding.model());
-        }
+        List<TurnRecord> history = history();
+        additions =
+                HistoryProjection.reinitialize(
+                        history,
+                        turnNumber,
+                        persona.role().name(),
+                        linkCurrentSystemMessage(),
+                        binding.provider().name(),
+                        binding.model());
         for (TurnRecord record : additions) {
             turnNumber = record.turnNumber();
             appendTurn(record);
@@ -1958,16 +1343,15 @@ public class AgentRunner {
      */
     private void rewindAndRestoreHistory() {
         List<TurnRecord> additions;
-        synchronized (history) {
-            additions =
-                    HistoryProjection.reinitializeWithRewind(
-                            history,
-                            turnNumber,
-                            persona.role().name(),
-                            linkCurrentSystemMessage(),
-                            binding.provider().name(),
-                            binding.model());
-        }
+        List<TurnRecord> history = history();
+        additions =
+                HistoryProjection.reinitializeWithRewind(
+                        history,
+                        turnNumber,
+                        persona.role().name(),
+                        linkCurrentSystemMessage(),
+                        binding.provider().name(),
+                        binding.model());
         for (TurnRecord record : additions) {
             turnNumber = record.turnNumber();
             appendTurn(record);
@@ -1984,82 +1368,6 @@ public class AgentRunner {
                         systemPrompt,
                         current.provider().name(),
                         current.model()));
-    }
-
-    private @NonNull VetoRequest buildRequest(@NonNull CompiledPrompt compiled) {
-        List<ChatMessage> messages = new ArrayList<>(compiled.messages());
-        LlmBinding b = binding;
-        return new VetoRequest(
-                compiled.systemMessage(),
-                messages.get(messages.size() - 1).content(),
-                compiled.tools(),
-                b.provider(),
-                b.model(),
-                b.credentialKey(),
-                b.options(),
-                messages,
-                compiled.responseSchema(),
-                b.baseUrl());
-    }
-
-    /**
-     * Injects an ephemeral rejection message for a schema-violation retry. The rejection is added
-     * only to the {@link VetoRequest} for the next attempt — it is never appended to {@link
-     * #history}, so a crash after a successful retry loses it (acceptable). All binding fields
-     * (provider/model/credential/options/schema) are preserved verbatim.
-     */
-    private @NonNull VetoRequest injectSchemaRejection(
-            @NonNull VetoRequest request, @NonNull ModelSchemaException e) {
-        List<ChatMessage> augmented = new ArrayList<>(request.messages());
-        augmented.add(
-                PromptCompiler.compileMessage(
-                        "runtime-schema-rejection",
-                        Map.of(
-                                "error",
-                                String.valueOf(e.getMessage()),
-                                "expected",
-                                getExpectedDescription(request))));
-        return new VetoRequest(
-                request.systemPrompt(),
-                request.userPrompt(),
-                request.tools(),
-                request.providerType(),
-                request.modelName(),
-                request.credentialKey(),
-                request.options(),
-                augmented,
-                request.responseSchema(),
-                request.baseUrl(),
-                request.nativeToolsEnabled(),
-                request.responseContract());
-    }
-
-    /** Rejects malformed local arguments before any call in the batch is screened or executed. */
-    private void validateLocalCallArguments(@NonNull VetoResponse response) {
-        var calls = response.calls();
-        if (calls == null) return;
-        for (var call : calls) {
-            if (submissionKind(call.toolName()) != null) continue;
-            if (toolEngine.resolveDefinition(call.toolName())
-                    instanceof LocalToolDefinition local) {
-                try {
-                    NativeToolArgumentValidator.validate(
-                            local.name(), objectMapper.valueToTree(call.args()), local.argsClass());
-                } catch (ToolExecutionException invalid) {
-                    throw new ModelSchemaException(
-                            "native tool arguments must match the advertised argument schema for "
-                                    + local.name()
-                                    + ": "
-                                    + invalid.getMessage());
-                }
-            }
-        }
-    }
-
-    /** Describes the response correction required for the bounded schema retry. */
-    private @NonNull String getExpectedDescription(@NonNull VetoRequest request) {
-        return PromptCompiler.compileText(
-                "runtime-expected", request.responseContract().promptData(request));
     }
 
     // ── executeToolCalls — the canonical chain ─────────────────────
@@ -2480,13 +1788,6 @@ public class AgentRunner {
         }
     }
 
-    /**
-     * Parks on a veto's resolution future and, when the user's decision arrives, publishes {@link
-     * DeltaFrame.Kind#VETO_RESOLVED} so subscribers can drop the prompt without polling. The single
-     * wait-and-announce point shared by every veto await site.
-     */
-    private record CitationMessage(int index, @NonNull String role, boolean toolCall) {}
-
     private final @NonNull Map<String, ApprovalReceipt> approvalReceipts = new HashMap<>();
 
     private @NonNull InterceptResolution awaitResolution(@NonNull String callId) {
@@ -2617,54 +1918,7 @@ public class AgentRunner {
             @NonNull ToolCall call,
             ApprovalDecision.@NonNull Prompt p,
             @NonNull List<VetoOption> offered) {
-        String callId = call.callId();
-        log.info(
-                "VETO_REQUIRED agent={} callId={} tool={} scenario={} options={}",
-                agentId,
-                callId,
-                call.toolName(),
-                p.scenario(),
-                offered);
-        // Notify the veto emission seam: a transport renders a picker (a Prompt with a
-        // VetoPayload) and routes the user's reply back to resolve the parked veto. The agent
-        // parks in HitlRegistry regardless; a throwing listener is logged, not propagated.
-        if (!vetoListeners.isEmpty()) {
-            VetoPrompt vp =
-                    new VetoPrompt(
-                            agentId,
-                            callId,
-                            call.toolName(),
-                            p.scenario(),
-                            offered,
-                            call.args(),
-                            p.danger());
-            for (Consumer<VetoPrompt> listener : vetoListeners) {
-                try {
-                    listener.accept(vp);
-                } catch (RuntimeException e) {
-                    log.warn("Agent {} veto listener threw", agentId, e);
-                }
-            }
-        }
-        // Domain event: a veto is parked and waiting for the user's decision. Subscribers (the web
-        // UI, the terminal adapter) render a prompt from this instead of polling; the user's reply
-        // still goes through the authenticated resolve path.
-        DeltaFrame.Builder frame =
-                DeltaFrame.builder()
-                        .sessionId(sessionId)
-                        .kind(DeltaFrame.Kind.VETO_REQUIRED)
-                        .attr("agentId", agentId)
-                        .attr("callId", callId)
-                        .attr("toolName", call.toolName())
-                        .attr("scenario", p.scenario().name())
-                        .attr("options", objectMapper.valueToTree(offered))
-                        .attr("args", objectMapper.valueToTree(call.args()));
-        // Danger rides the frame so the UI can warn prominently on DANGEROUS/CRITICAL calls.
-        var danger = p.danger();
-        if (danger != null) {
-            frame.attr("danger", danger.name());
-        }
-        publishFrame(frame.text(call.toolName()).build());
+        events.emitVetoRequired(call, p, offered);
     }
 
     // ── Turn history + messaging ────────────────────────────────────────────
@@ -2691,14 +1945,6 @@ public class AgentRunner {
     private MessageCitations.Bound lastCitations;
     private String lastModelCallId;
     private String currentToolModelCallId;
-    private String programModelCallId;
-    private final @NonNull Map<String, GeneratedCitation> generatedCitations = new HashMap<>();
-
-    private record GeneratedCitation(
-            @NonNull Scope scope,
-            @NonNull String message,
-            MessageCitations.Bound bound,
-            String modelCallId) {}
 
     private void emitMessage(@NonNull String message) {
         emitMessage(message, null);
@@ -2736,27 +1982,7 @@ public class AgentRunner {
             payload.put("citation_context", citations);
         appendTurn(new TurnRecord(++turnNumber, TurnType.ASSISTANT_RESPONSE, payload, null));
         lastMessage = message;
-        // emission seam: forward each user-facing message to subscribed transports so they
-        // stream it while the loop runs (the terminal PromptHandler forwards as a Delta). Part
-        // 8's JVM EventBus + ZmqServer broker will sit between this seam and the wire.
-        if (!messageListeners.isEmpty()) {
-            for (Consumer<String> listener : messageListeners) {
-                try {
-                    listener.accept(message);
-                } catch (RuntimeException e) {
-                    log.warn("Agent {} message listener threw", agentId, e);
-                }
-            }
-        }
-        // Publish each user-facing message to the transport event stream. The broker assigns the
-        // per-session sequence; the frame text is the message verbatim.
-        publishFrame(
-                DeltaFrame.builder()
-                        .sessionId(sessionId)
-                        .kind(DeltaFrame.Kind.ASSISTANT_MESSAGE)
-                        .attr("turnNumber", turnNumber)
-                        .text(message)
-                        .build());
+        events.message(message, turnNumber);
     }
 
     /**
@@ -2767,23 +1993,7 @@ public class AgentRunner {
      * is already recorded by {@link #appendThought} before calling here.
      */
     private void emitThought(@NonNull String thought) {
-        if (thought.isBlank()) return;
-        if (!thoughtListeners.isEmpty()) {
-            for (Consumer<String> listener : thoughtListeners) {
-                try {
-                    listener.accept(thought);
-                } catch (RuntimeException e) {
-                    log.warn("Agent {} thought listener threw", agentId, e);
-                }
-            }
-        }
-        publishFrame(
-                DeltaFrame.builder()
-                        .sessionId(sessionId)
-                        .kind(DeltaFrame.Kind.ASSISTANT_THOUGHT)
-                        .attr("turnNumber", turnNumber)
-                        .text(thought)
-                        .build());
+        events.thought(thought, turnNumber);
     }
 
     /**
@@ -2792,24 +2002,7 @@ public class AgentRunner {
      * subscribers, not load-bearing control flow, so emitting one must never break the loop.
      */
     private void publishFrame(@NonNull DeltaFrame frame) {
-        if (deltaBroker == null) {
-            return;
-        }
-        try {
-            Map<String, JsonNode> attributes = new HashMap<>(frame.attrs());
-            attributes.put(
-                    "agentId", com.fasterxml.jackson.databind.node.TextNode.valueOf(agentId));
-            deltaBroker.publish(
-                    new DeltaFrame(
-                            frame.sessionId(),
-                            frame.sequence(),
-                            frame.emittedAt(),
-                            frame.kind(),
-                            frame.text(),
-                            attributes));
-        } catch (RuntimeException e) {
-            log.warn("Agent {} delta-broker publish failed (kind={})", agentId, frame.kind(), e);
-        }
+        events.publishFrame(frame);
     }
 
     /**
@@ -2863,21 +2056,7 @@ public class AgentRunner {
     }
 
     private void recordUsage(int throughTurn, @NonNull UsageMeasurement measurement) {
-        TurnRecord updated = null;
-        synchronized (this) {
-            for (int i = history.size() - 1; i >= 0; i--) {
-                TurnRecord candidate = history.get(i);
-                if (candidate.turnNumber() <= throughTurn
-                        && candidate.type() != TurnType.TOKEN_USAGE) {
-                    updated = RecordUsage.add(candidate, measurement);
-                    history.set(i, updated);
-                    break;
-                }
-            }
-        }
-        if (updated == null) return;
-        if (turnLogService != null)
-            turnLogService.updateMetadata(updated, sessionId, userId, agentId);
+        journal.recordUsage(throughTurn, measurement);
     }
 
     private void appendToolCall(@NonNull ToolCall call) {
@@ -2932,91 +2111,9 @@ public class AgentRunner {
                             turn.llmUsage());
         }
         turn = RecordTokenCounter.unmeasured(turn);
-        TurnRecord numbered;
-        synchronized (this) {
-            // turn_number is the durable unique key (uk_turn_records_agent_turn on
-            // session_id, agent_id, turn_number). The in-memory history's high-water mark is the
-            // allocation authority, not the turnNumber counter: a caller's ++turnNumber
-            // side-effect leaves the counter equal to the passed number whether the caller
-            // incremented or forgot, so the counter cannot distinguish a correct advance from a
-            // reuse. If the passed number does not advance past the last recorded turn, allocate
-            // the next one so a duplicate is never persisted (the DB would reject it and leave the
-            // durable log inconsistent with the in-memory history). history only grows, so its
-            // last element carries the max turn_number.
-            int highWater = history.isEmpty() ? 0 : history.get(history.size() - 1).turnNumber();
-            numbered = turn.turnNumber() <= highWater ? turn.withTurnNumber(highWater + 1) : turn;
-            turnNumber = numbered.turnNumber();
-            if (required && turnLogService != null) {
-                turnLogService.logRequired(numbered, sessionId, userId, agentId);
-            }
-            history.add(numbered);
-        }
-        // Persist the turn to the raw-turn audit/replay log (session resume, Leader
-        // reconstruction). Best-effort — done outside the history lock so a DB write doesn't
-        // block history readers, and the service swallows failures so the loop is never affected.
-        if (turnLogService != null && !required) {
-            try {
-                turnLogService.log(numbered, sessionId, userId, agentId);
-            } catch (RuntimeException e) {
-                log.warn("Agent {} turn log failed", agentId, e);
-            }
-        }
-        // Transparency emission seam: forward tool calls + observations to subscribed transports
-        // so the terminal can render a Claude-Code-style indicator. Emitted AFTER the DB persist
-        // so listeners never see a turn the durable log lost. Only the two types whose wire
-        // representation carries call/result fields are routed; other types (USER_PROMPT,
-        // ASSISTANT_THOUGHT, ASSISTANT_RESPONSE) are already handled by the message/thought seams.
-        switch (numbered.type()) {
-            case TOOL_CALL -> {
-                Object name = numbered.payload().get("tool_name");
-                Object args = numbered.payload().get("args");
-                Object callId = numbered.payload().get("call_id");
-                if (name instanceof String toolName) {
-                    @SuppressWarnings("unchecked")
-                    Map<String, Object> argMap =
-                            args instanceof Map ? (Map<String, Object>) args : Map.of();
-                    emitToolCall(new ToolCallEvent(toolName, argMap));
-                    // Domain event for every subscriber (web, terminal adapter): the call the agent
-                    // is about to run. Carries the authoritative turnNumber + callId so a client
-                    // can
-                    // apply it incrementally and pair the later result without refetching history.
-                    DeltaFrame.Builder b =
-                            DeltaFrame.builder()
-                                    .sessionId(sessionId)
-                                    .kind(DeltaFrame.Kind.TOOL_CALL)
-                                    .attr("turnNumber", numbered.turnNumber())
-                                    .attr("toolName", toolName)
-                                    .attr("args", objectMapper.valueToTree(argMap))
-                                    .text(toolName);
-                    if (callId instanceof String c) {
-                        b.attr("callId", c);
-                    }
-                    publishFrame(b.build());
-                }
-            }
-            case TOOL_RESPONSE -> {
-                Object content = numbered.payload().get("content");
-                Object success = numbered.payload().get("success");
-                Object callId = numbered.payload().get("call_id");
-                if (content instanceof String body) {
-                    emitToolResult(new ToolResultEvent(body, Boolean.TRUE.equals(success)));
-                    DeltaFrame.Builder b =
-                            DeltaFrame.builder()
-                                    .sessionId(sessionId)
-                                    .kind(DeltaFrame.Kind.TOOL_RESULT)
-                                    .attr("turnNumber", numbered.turnNumber())
-                                    .attr("success", Boolean.TRUE.equals(success))
-                                    .text(body);
-                    if (callId instanceof String c) {
-                        b.attr("callId", c);
-                    }
-                    publishFrame(b.build());
-                }
-            }
-            default -> {
-                // no-op: message/thought seams already cover the other types
-            }
-        }
+        TurnRecord numbered = journal.append(turn, required);
+        turnNumber = numbered.turnNumber();
+        events.turn(numbered);
     }
 
     /**
@@ -3031,44 +2128,6 @@ public class AgentRunner {
      * self-describing {@code IngressDefense.maskAndFrame} body) plus success.
      */
     public record ToolResultEvent(@NonNull String body, boolean success) {}
-
-    /**
-     * Emission seam for tool calls. Notifies each subscribed transport (the terminal renders a
-     * compact indicator) by handing it a domain {@link ToolCallEvent}. Best-effort: a listener that
-     * throws is logged and skipped so one bad subscriber can't break the loop.
-     */
-    private void emitToolCall(@NonNull ToolCallEvent call) {
-        if (toolCallListeners.isEmpty()) {
-            return;
-        }
-        for (Consumer<ToolCallEvent> listener : toolCallListeners) {
-            try {
-                listener.accept(call);
-            } catch (RuntimeException e) {
-                log.warn("Agent {} tool-call listener threw", agentId, e);
-            }
-        }
-    }
-
-    /**
-     * Emission seam for tool results. Notifies each subscribed transport with the framed
-     * observation text (the exact string the model sees). The {@code body} is self-describing
-     * thanks to {@code IngressDefense.maskAndFrame} which prefixes the call's args, so the terminal
-     * can render a single result and the user can verify the call it belongs to without tracking
-     * pairs.
-     */
-    private void emitToolResult(@NonNull ToolResultEvent result) {
-        if (toolResultListeners.isEmpty()) {
-            return;
-        }
-        for (Consumer<ToolResultEvent> listener : toolResultListeners) {
-            try {
-                listener.accept(result);
-            } catch (RuntimeException e) {
-                log.warn("Agent {} tool-result listener threw", agentId, e);
-            }
-        }
-    }
 
     private volatile @NonNull ChatMessage recoveryContext = ChatMessage.user("");
 
@@ -3088,20 +2147,8 @@ public class AgentRunner {
      * second get-or-create on an already-live agent does not duplicate turns.
      */
     public synchronized void seedHistory(@NonNull List<TurnRecord> replayed) {
-        if (!history.isEmpty() || replayed.isEmpty()) {
-            return;
-        }
-        history.addAll(replayed);
-        // Advance the turn counter past the replayed turns so the next live turn does not reuse a
-        // replayed turn number. Turn number is the durable key in turn_records, so a collision
-        // would violate the unique constraint or shadow the replayed turn.
-        int max = 0;
-        for (TurnRecord t : replayed) {
-            if (t.turnNumber() > max) {
-                max = t.turnNumber();
-            }
-        }
-        turnNumber = max;
+        if (!journal.snapshot().isEmpty() || replayed.isEmpty()) return;
+        turnNumber = journal.seed(replayed);
         recoveredWait = RecordRecovery.requiresExplicitContinuation(replayed);
     }
 
@@ -3347,12 +2394,12 @@ public class AgentRunner {
      * #emitMessage}).
      */
     public void addMessageListener(@NonNull Consumer<String> listener) {
-        messageListeners.add(listener);
+        events.messages.add(listener);
     }
 
     /** Unsubscribes a user-facing-message listener. */
     public void removeMessageListener(@NonNull Consumer<String> listener) {
-        messageListeners.remove(listener);
+        events.messages.remove(listener);
     }
 
     /**
@@ -3361,12 +2408,12 @@ public class AgentRunner {
      * runs before {@link #emitMessage} in the loop.
      */
     public void addThoughtListener(@NonNull Consumer<String> listener) {
-        thoughtListeners.add(listener);
+        events.thoughts.add(listener);
     }
 
     /** Unsubscribes an interim-thought listener. */
     public void removeThoughtListener(@NonNull Consumer<String> listener) {
-        thoughtListeners.remove(listener);
+        events.thoughts.remove(listener);
     }
 
     /**
@@ -3374,40 +2421,40 @@ public class AgentRunner {
      * #emitVetoRequired}). Fires on the agent's virtual thread when a tool call parks for approval.
      */
     public void addVetoListener(@NonNull Consumer<VetoPrompt> listener) {
-        vetoListeners.add(listener);
+        events.vetoes.add(listener);
     }
 
     /** Unsubscribes a HITL-veto listener. */
     public void removeVetoListener(@NonNull Consumer<VetoPrompt> listener) {
-        vetoListeners.remove(listener);
+        events.vetoes.remove(listener);
     }
 
     /**
      * Subscribes a tool-call listener (the transparency emission seam; forwarded in {@link
-     * #emitToolCall}). Fires on the agent's virtual thread when a TOOL_CALL turn is appended — i.e.
-     * immediately before the model receives the tool result for that call.
+     * AgentEvents#turn}). Fires on the agent's virtual thread when a TOOL_CALL turn is appended —
+     * i.e. immediately before the model receives the tool result for that call.
      */
     public void addToolCallListener(@NonNull Consumer<ToolCallEvent> listener) {
-        toolCallListeners.add(listener);
+        events.calls.add(listener);
     }
 
     /** Unsubscribes a tool-call listener. */
     public void removeToolCallListener(@NonNull Consumer<ToolCallEvent> listener) {
-        toolCallListeners.remove(listener);
+        events.calls.remove(listener);
     }
 
     /**
      * Subscribes a tool-result listener (the transparency emission seam; forwarded in {@link
-     * #emitToolResult}). Fires on the agent's virtual thread when a TOOL_RESPONSE turn is appended
+     * AgentEvents#turn}). Fires on the agent's virtual thread when a TOOL_RESPONSE turn is appended
      * — i.e. immediately after the model receives the observation.
      */
     public void addToolResultListener(@NonNull Consumer<ToolResultEvent> listener) {
-        toolResultListeners.add(listener);
+        events.results.add(listener);
     }
 
     /** Unsubscribes a tool-result listener. */
     public void removeToolResultListener(@NonNull Consumer<ToolResultEvent> listener) {
-        toolResultListeners.remove(listener);
+        events.results.remove(listener);
     }
 
     public @NonNull AgentResult await(@NonNull Duration timeout)
@@ -3432,8 +2479,8 @@ public class AgentRunner {
         return state;
     }
 
-    public synchronized @NonNull List<TurnRecord> history() {
-        return List.copyOf(history);
+    public @NonNull List<TurnRecord> history() {
+        return journal.snapshot();
     }
 
     public @NonNull ReadHistory readHistory() {
@@ -3563,23 +2610,7 @@ public class AgentRunner {
      * record describes the agent that will actually receive the next request.
      */
     private void transformToLeader(ToolCallContextHolder.@NonNull TransformDirective directive) {
-        // Compaction summary of the prior standalone turns (defensive: a compactor failure yields
-        // an
-        // empty summary rather than aborting the transform).
-        List<TurnRecord> priorTurns;
-        synchronized (history) {
-            priorTurns = new ArrayList<>(history);
-        }
-        String summary;
-        try {
-            summary = computeCompactionSummary(priorTurns);
-        } catch (RuntimeException e) {
-            log.warn(
-                    "Agent {} transform compaction failed; preserving original history",
-                    agentId,
-                    e);
-            summary = "{}";
-        }
+        String summary = summarizeForRoleChange();
 
         // Stash the pre-transform STANDALONE persona + binding so disband_group can restore them,
         // then adopt the Leader persona + tool set + top-tier binding + group stamp.
@@ -3589,28 +2620,7 @@ public class AgentRunner {
         bind(directive.leaderBinding());
         setGroupId(directive.groupId());
 
-        if (!summary.isBlank() && !"{}".equals(summary)) {
-            appendTurn(TurnRecord.rewind(++turnNumber, 0));
-            appendAgentInit(linkCurrentSystemMessage());
-            appendTurn(TurnRecord.compactionSummary(++turnNumber, summary));
-        } else {
-            // The role/tool change already happened. Preserve the full conversation when no
-            // valid summary exists, recording the boundary REWIND for the new role.
-            rewindAndRestoreHistory();
-        }
-        appendTurn(
-                PromptCompiler.sourcedUserPrompt(
-                        ++turnNumber,
-                        "runtime-leader",
-                        Map.of("task", activeUserTask, "brief", directive.brief())));
-
-        // Fresh reasoning episode from the brief: clear guided state + program, reset the breaker
-        // and scope so prior standalone state does not leak into the Leader's planning.
-        this.guided = false;
-        this.activeProgram = null;
-        this.programCounter = 0;
-        this.breaker.newEpisode();
-        this.scope = new Scope(objectMapper);
+        restartAfterRoleChange(summary, "runtime-leader", directive.brief());
         log.info(
                 "Agent {} transformed into Leader of group {} (Leader model={})",
                 agentId,
@@ -3628,20 +2638,7 @@ public class AgentRunner {
      * next provider request cannot disagree.
      */
     private void transformToStandalone(@NonNull String brief) {
-        List<TurnRecord> priorTurns;
-        synchronized (history) {
-            priorTurns = new ArrayList<>(history);
-        }
-        String summary;
-        try {
-            summary = computeCompactionSummary(priorTurns);
-        } catch (RuntimeException e) {
-            log.warn(
-                    "Agent {} reverse-transform compaction failed; preserving original history",
-                    agentId,
-                    e);
-            summary = "{}";
-        }
+        String summary = summarizeForRoleChange();
 
         // Restore the stashed STANDALONE persona + binding. Null-safe: if no transform was stashed
         // (the agent never led a group), flip the role back to STANDALONE on the current persona.
@@ -3656,27 +2653,36 @@ public class AgentRunner {
         this.preTransformPersona = null;
         this.preTransformBinding = null;
 
+        restartAfterRoleChange(summary, "runtime-disband", brief);
+        log.info("Agent {} reversed transform back to STANDALONE (group disbanded)", agentId);
+    }
+
+    private @NonNull String summarizeForRoleChange() {
+        try {
+            return computeCompactionSummary(history());
+        } catch (RuntimeException error) {
+            log.warn(
+                    "Agent {} role-change compaction failed; preserving original history",
+                    agentId,
+                    error);
+            return "{}";
+        }
+    }
+
+    private void restartAfterRoleChange(
+            @NonNull String summary, @NonNull String prompt, @NonNull String brief) {
         if (!summary.isBlank() && !"{}".equals(summary)) {
             appendTurn(TurnRecord.rewind(++turnNumber, 0));
             appendAgentInit(linkCurrentSystemMessage());
             appendTurn(TurnRecord.compactionSummary(++turnNumber, summary));
         } else {
-            // The role/tool change already happened. Preserve the full conversation when no
-            // valid summary exists, recording the boundary REWIND for the restored role.
             rewindAndRestoreHistory();
         }
         appendTurn(
                 PromptCompiler.sourcedUserPrompt(
-                        ++turnNumber,
-                        "runtime-disband",
-                        Map.of("task", activeUserTask, "brief", brief)));
-
-        this.guided = false;
-        this.activeProgram = null;
-        this.programCounter = 0;
-        this.breaker.newEpisode();
-        this.scope = new Scope(objectMapper);
-        log.info("Agent {} reversed transform back to STANDALONE (group disbanded)", agentId);
+                        ++turnNumber, prompt, Map.of("task", activeUserTask, "brief", brief)));
+        program.reset();
+        breaker.newEpisode();
     }
 
     private volatile Runnable terminationCallback;

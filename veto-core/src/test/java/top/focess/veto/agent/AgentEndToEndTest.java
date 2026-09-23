@@ -36,12 +36,12 @@ import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.ToolErrorCode;
-import top.focess.veto.llm.core.LlmOptions;
-import top.focess.veto.llm.core.ProviderType;
-import top.focess.veto.llm.core.ToolCall;
-import top.focess.veto.llm.core.ToolResultPresentationMode;
+import top.focess.veto.api.llm.LlmOptions;
+import top.focess.veto.api.llm.ProviderType;
+import top.focess.veto.api.llm.ToolCall;
+import top.focess.veto.api.llm.ToolResultPresentationMode;
+import top.focess.veto.api.llm.VetoResponse;
 import top.focess.veto.llm.core.UniformLLMCaller;
-import top.focess.veto.llm.core.VetoResponse;
 import top.focess.veto.sandbox.BackgroundTaskManager;
 import top.focess.veto.sandbox.SandboxManager;
 import top.focess.veto.sandbox.TestSandboxFactory;
@@ -556,7 +556,7 @@ class AgentEndToEndTest {
                 new VetoResponse(
                         null,
                         java.util.List.of(
-                                new top.focess.veto.llm.core.ToolCall(
+                                new ToolCall(
                                         "submit_plan",
                                         java.util.Map.of(
                                                 "actions",
@@ -570,7 +570,7 @@ class AgentEndToEndTest {
                 new VetoResponse(
                         null,
                         java.util.List.of(
-                                new top.focess.veto.llm.core.ToolCall(
+                                new ToolCall(
                                         "submit_plan",
                                         java.util.Map.of(
                                                 "actions",

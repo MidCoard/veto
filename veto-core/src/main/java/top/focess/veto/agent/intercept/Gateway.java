@@ -36,7 +36,7 @@ import top.focess.veto.agent.tool.ToolSchemaReferences;
 import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.tool.ToolCapability;
-import top.focess.veto.llm.core.ToolCall;
+import top.focess.veto.api.llm.ToolCall;
 
 /**
  * The tool-call security screen. Screens every native/remote tool call into a typed {@link

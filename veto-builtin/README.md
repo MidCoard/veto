@@ -1,6 +1,6 @@
 # Built-in tools plugin
 
-`BuiltinPlugin` contributes eight workspace tools through the ordinary Java plugin
+`BuiltinPlugin` contributes eight workspace tools and the `create_group` agent tool through the ordinary Java plugin
 API: `view_file`, `list_dir`, `find_files`, `grep_search`, `write_to_file`,
 `replace_file_content`, `move_path`, and `delete_path`.
 
@@ -20,4 +20,4 @@ duplicate names are rejected when the tool catalog is published.
 New sessions select installed plugins by default. Existing pinned sessions need a
 new session with this plugin selected. Other built-in tools and feature families
 remain in core and are pending extraction; this module currently owns workspace
-tools only.
+tools plus `create_group`.

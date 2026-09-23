@@ -12,13 +12,13 @@ import org.junit.jupiter.params.provider.EnumSource;
 import top.focess.veto.agent.TurnRecord;
 import top.focess.veto.agent.TurnType;
 import top.focess.veto.agent.translation.VetoCapabilityTranslator;
-import top.focess.veto.llm.core.ChatMessage;
-import top.focess.veto.llm.core.LlmOptions;
-import top.focess.veto.llm.core.ProviderMessages;
-import top.focess.veto.llm.core.ProviderType;
-import top.focess.veto.llm.core.ToolResultPresentationMode;
-import top.focess.veto.llm.core.VetoRequest;
-import top.focess.veto.llm.core.VetoResponse;
+import top.focess.veto.api.llm.ChatMessage;
+import top.focess.veto.api.llm.LlmOptions;
+import top.focess.veto.api.llm.ProviderMessages;
+import top.focess.veto.api.llm.ProviderType;
+import top.focess.veto.api.llm.ToolResultPresentationMode;
+import top.focess.veto.api.llm.VetoRequest;
+import top.focess.veto.api.llm.VetoResponse;
 
 class MessageCitationsTest {
     @ParameterizedTest
@@ -562,7 +562,7 @@ class MessageCitationsTest {
         var error =
                 assertThrows(
                         top.focess.veto.api.agent.tool.ToolDocs.nonNullClass(
-                                top.focess.veto.llm.exceptions.ModelSchemaException.class),
+                                top.focess.veto.api.llm.exceptions.ModelSchemaException.class),
                         () ->
                                 MessageCitations.resolve(
                                         request,

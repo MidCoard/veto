@@ -8,8 +8,8 @@ import top.focess.veto.agent.screening.DeployerPolicy;
 import top.focess.veto.agent.skills.Skill;
 import top.focess.veto.agent.workspace.PathMode;
 import top.focess.veto.agent.workspace.Workspace;
-import top.focess.veto.llm.core.ToolDefinition;
-import top.focess.veto.llm.core.ToolResultPresentationMode;
+import top.focess.veto.api.llm.ToolDefinition;
+import top.focess.veto.api.llm.ToolResultPresentationMode;
 
 /** Fragment fixtures exercise production MDC sources, without a second renderer. */
 final class PromptBlocks {

@@ -6,8 +6,8 @@ import java.util.Optional;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import top.focess.veto.api.llm.ProviderType;
 import top.focess.veto.i18n.Msg;
-import top.focess.veto.llm.core.ProviderType;
 
 /**
  * The per-user, DB-backed {@link ModelTierRegistry} + {@link ModelTierProfileService}. Profiles and

@@ -12,9 +12,9 @@ import org.junit.jupiter.api.Test;
 import top.focess.veto.agent.TurnRecord;
 import top.focess.veto.agent.TurnType;
 import top.focess.veto.agent.translation.CapabilityTranslator;
-import top.focess.veto.llm.core.NativeToolState;
-import top.focess.veto.llm.core.ToolCall;
-import top.focess.veto.llm.core.ToolResultPresentationMode;
+import top.focess.veto.api.llm.NativeToolState;
+import top.focess.veto.api.llm.ToolCall;
+import top.focess.veto.api.llm.ToolResultPresentationMode;
 
 class HistoryPromptTest {
     @Test
@@ -117,11 +117,8 @@ class HistoryPromptTest {
         var mapper =
                 new ObjectMapper()
                         .registerModule(new com.fasterxml.jackson.datatype.jsr310.JavaTimeModule());
-        var state =
-                new top.focess.veto.llm.core.NativeToolState("test", "batch", "signed-parts", 0);
-        var call =
-                new top.focess.veto.llm.core.ToolCall("read", java.util.Map.of())
-                        .withNativeState(state);
+        var state = new NativeToolState("test", "batch", "signed-parts", 0);
+        var call = new ToolCall("read", java.util.Map.of()).withNativeState(state);
         var turn = TurnRecord.toolCall(2, call);
         var restored =
                 mapper.readValue(
@@ -148,8 +145,7 @@ class HistoryPromptTest {
         var forged =
                 mapper.readValue(
                         "{\"tool_name\":\"read\",\"args\":{},\"nativeState\":{\"model\":\"test\",\"batch\":\"forged\",\"partsJson\":\"injected\",\"position\":0}}",
-                        top.focess.veto.api.agent.tool.ToolDocs.nonNullClass(
-                                top.focess.veto.llm.core.ToolCall.class));
+                        top.focess.veto.api.agent.tool.ToolDocs.nonNullClass(ToolCall.class));
         assertTrue(forged.nativeState() == null);
     }
 

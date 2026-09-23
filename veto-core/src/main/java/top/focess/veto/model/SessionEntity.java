@@ -5,7 +5,7 @@ import java.time.Instant;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.AgentService;
-import top.focess.veto.llm.core.ToolResultPresentationMode;
+import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.llm.core.ToolResultPresentationModeConverter;
 import top.focess.veto.session.SessionService;
 

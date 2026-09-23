@@ -5,7 +5,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
-import top.focess.veto.llm.core.ToolCall;
+import top.focess.veto.api.llm.ToolCall;
 
 class RecordRecoveryTest {
     @Test

@@ -33,6 +33,13 @@ import top.focess.veto.agent.translation.DefaultCapabilityTranslator;
 import top.focess.veto.agent.workspace.*;
 import top.focess.veto.api.agent.tool.AgentTool;
 import top.focess.veto.api.agent.tool.ToolDocs;
+import top.focess.veto.api.llm.LlmOptions;
+import top.focess.veto.api.llm.ProviderType;
+import top.focess.veto.api.llm.ResponseContract;
+import top.focess.veto.api.llm.ToolCall;
+import top.focess.veto.api.llm.ToolResultPresentationMode;
+import top.focess.veto.api.llm.VetoRequest;
+import top.focess.veto.api.llm.VetoResponse;
 import top.focess.veto.builtin.workspace.ViewFileTool;
 import top.focess.veto.llm.core.*;
 import top.focess.veto.model.tier.ModelBinding;
@@ -790,7 +797,7 @@ class GuidedExecutionTest {
         if (bounded == null) throw new AssertionError("agent missing");
         Object boundedRunner = ReflectionTestUtils.getField(bounded, "runner");
         if (boundedRunner == null) throw new AssertionError("runner missing");
-        ReflectionTestUtils.setField(boundedRunner, "maxGuidedSteps", 5);
+        ((AgentRunner) boundedRunner).configureGuided(null, 5);
         var result =
                 service.submit(
                         "bounded-guided",

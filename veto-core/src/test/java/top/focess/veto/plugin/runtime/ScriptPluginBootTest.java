@@ -30,8 +30,8 @@ import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.ToolResultStatus;
-import top.focess.veto.llm.core.ToolCall;
-import top.focess.veto.llm.core.ToolResultPresentationMode;
+import top.focess.veto.api.llm.ToolCall;
+import top.focess.veto.api.llm.ToolResultPresentationMode;
 
 /**
  * Starts the real Veto application and HTTP listener, then dispatches through its real tool engine.
@@ -120,11 +120,13 @@ class ScriptPluginBootTest {
         assertEquals("0.1.0", snapshot.plugins().getFirst().version());
         assertEquals(
                 java.util.List.of("plugin_text__length"), snapshot.plugins().getFirst().tools());
-        assertTrue(
+        var agentOnlySnapshot =
                 top.focess.veto.agent.PluginContextSnapshot.from(
-                                engine.getActiveTools(Set.of()), false)
-                        .plugins()
-                        .isEmpty());
+                        engine.getActiveTools(Set.of()), false);
+        assertEquals(1, agentOnlySnapshot.plugins().size());
+        assertEquals("top.focess.builtin", agentOnlySnapshot.plugins().getFirst().id());
+        assertEquals(
+                java.util.List.of("create_group"), agentOnlySnapshot.plugins().getFirst().tools());
         var call = new ToolCall(definition.name(), Map.of("text", "a😀b"), "plugin-boot-call");
         assertEquals(ToolResultStatus.FAILURE, engine.execute(call, definition).status());
         UUID user = UUID.randomUUID();
@@ -147,7 +149,10 @@ class ScriptPluginBootTest {
                         permit));
         try {
             var result = engine.execute(call, definition);
-            assertEquals(ToolResultStatus.SUCCESS, result.status());
+            assertEquals(
+                    ToolResultStatus.SUCCESS,
+                    result.status(),
+                    result.content() + " interrupted=" + Thread.currentThread().isInterrupted());
             assertEquals("3", result.content());
             assertEquals(
                     ToolResultStatus.FAILURE,

@@ -1,8 +1,8 @@
 package top.focess.veto.session;
 
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.llm.core.LlmOptions;
-import top.focess.veto.llm.core.ProviderType;
+import top.focess.veto.api.llm.LlmOptions;
+import top.focess.veto.api.llm.ProviderType;
 
 /**
  * Resolved LLM configuration for an active session's primary agent: the provider, model,

@@ -3,6 +3,8 @@ package top.focess.veto.agent;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import org.jspecify.annotations.*;
+import top.focess.veto.api.llm.LlmSystemUsage;
+import top.focess.veto.api.llm.VetoRequest;
 import top.focess.veto.llm.core.*;
 
 /** Raw provider measurements. Display differences are derived from the ordered request history. */

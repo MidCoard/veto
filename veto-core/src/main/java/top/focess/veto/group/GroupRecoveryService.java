@@ -13,7 +13,7 @@ import top.focess.veto.agent.VetoAgent;
 import top.focess.veto.agent.identity.Role;
 import top.focess.veto.agent.identity.RoleToolFilter;
 import top.focess.veto.agent.workspace.Workspace;
-import top.focess.veto.llm.core.ToolResultPresentationMode;
+import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.session.SessionHistoryLoader;
 import top.focess.veto.util.Nullness;
 

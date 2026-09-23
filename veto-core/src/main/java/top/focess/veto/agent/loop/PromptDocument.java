@@ -16,7 +16,8 @@ import java.util.Set;
 import java.util.TreeMap;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.llm.core.ChatMessage;
+import top.focess.veto.api.llm.ChatMessage;
+import top.focess.veto.api.llm.PromptSpan;
 
 /** Compiles trusted MDC sources. Bound values are data, never executable template source. */
 public final class PromptDocument {
@@ -26,7 +27,7 @@ public final class PromptDocument {
 
     public record Result(
             @NonNull String text,
-            @NonNull List<PromptSource.Span> sources,
+            @NonNull List<PromptSpan> sources,
             @NonNull List<ChatMessage> messages,
             @NonNull Map<String, String> blocks) {}
 
@@ -116,7 +117,7 @@ public final class PromptDocument {
 
     private final @NonNull Map<String, String> sources;
     private final @NonNull StringBuilder output = new StringBuilder();
-    private final @NonNull List<PromptSource.Span> spans = new ArrayList<>();
+    private final @NonNull List<PromptSpan> spans = new ArrayList<>();
     private final @NonNull List<ChatMessage> messages = new ArrayList<>();
     private final @NonNull Map<String, String> blocks = new TreeMap<>();
     private final @NonNull Set<String> includes = new HashSet<>();
@@ -248,7 +249,7 @@ public final class PromptDocument {
                 case "verbatim" -> {
                     output.append(node.argument()).append('\n');
                     spans.add(
-                            new PromptSource.Span(
+                            new PromptSpan(
                                     node.source() + ".mdc",
                                     node.line() + 1,
                                     1,
@@ -273,7 +274,7 @@ public final class PromptDocument {
                         throw error(node.source(), node.line(), "E_EXPRESSION");
                     output.append(tail).append('\n');
                     spans.add(
-                            new PromptSource.Span(
+                            new PromptSpan(
                                     node.source() + ".mdc",
                                     node.line(),
                                     1,
@@ -326,7 +327,7 @@ public final class PromptDocument {
                                     .filter(span -> span.end() > from && span.start() < to)
                                     .map(
                                             span ->
-                                                    new PromptSource.Span(
+                                                    new PromptSpan(
                                                             span.source(),
                                                             span.line(),
                                                             span.column(),

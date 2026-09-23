@@ -10,3 +10,5 @@ include(
     "veto-core",
     "veto-terminal",
 )
+
+include("veto-llm-providers")

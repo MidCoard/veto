@@ -24,6 +24,12 @@ import top.focess.veto.agent.translation.VetoCapabilityTranslator;
 import top.focess.veto.agent.workspace.PathMode;
 import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.api.agent.tool.ToolDocs;
+import top.focess.veto.api.llm.ChatMessage;
+import top.focess.veto.api.llm.LlmOptions;
+import top.focess.veto.api.llm.ProviderType;
+import top.focess.veto.api.llm.ToolCall;
+import top.focess.veto.api.llm.ToolResultPresentationMode;
+import top.focess.veto.api.llm.VetoRequest;
 import top.focess.veto.llm.core.*;
 
 class PromptCompilerContextBudgetTest {

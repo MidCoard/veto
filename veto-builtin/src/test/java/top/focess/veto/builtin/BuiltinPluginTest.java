@@ -28,6 +28,7 @@ class BuiltinPluginTest {
             plugin.start();
             assertEquals(
                     List.of(
+                            "create_group",
                             "delete_path",
                             "find_files",
                             "grep_search",

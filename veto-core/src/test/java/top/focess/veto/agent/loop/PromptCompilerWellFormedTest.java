@@ -17,9 +17,9 @@ import top.focess.veto.agent.identity.SystemPromptResolver;
 import top.focess.veto.agent.translation.VetoCapabilityTranslator;
 import top.focess.veto.agent.workspace.PathMode;
 import top.focess.veto.agent.workspace.Workspace;
-import top.focess.veto.llm.core.ChatMessage;
-import top.focess.veto.llm.core.ToolCall;
-import top.focess.veto.llm.core.ToolResultPresentationMode;
+import top.focess.veto.api.llm.ChatMessage;
+import top.focess.veto.api.llm.ToolCall;
+import top.focess.veto.api.llm.ToolResultPresentationMode;
 
 /**
  * Contract tests for {@link PromptCompiler#wellFormed} — the provider-agnostic conversation shape

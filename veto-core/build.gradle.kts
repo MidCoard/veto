@@ -27,6 +27,8 @@ dependencies {
     implementation(project(":veto-plugin-runtime"))
     runtimeOnly(project(":veto-web-search"))
     runtimeOnly(project(":veto-builtin"))
+    runtimeOnly(project(":veto-llm-providers"))
+    testImplementation(project(":veto-llm-providers"))
     testImplementation(project(":veto-builtin"))
     // Host-authority bridge (SecretProtectionConfiguration) compiles against the plugin's own API,
     // but the plugin is a pure runtime plugin: absent jar -> host service simply not granted.
@@ -103,9 +105,9 @@ dependencies {
     implementation("org.jsoup:jsoup:1.18.3")
 
     // Official LLM SDKs
-    implementation("com.openai:openai-java:4.38.0")
-    implementation("com.anthropic:anthropic-java:2.35.0")
-    implementation("com.google.genai:google-genai:1.56.0")
+    testImplementation("com.openai:openai-java:4.38.0")
+    testImplementation("com.anthropic:anthropic-java:2.35.0")
+    testImplementation("com.google.genai:google-genai:1.56.0")
 
     // Database
     implementation("io.projectreactor:reactor-core")

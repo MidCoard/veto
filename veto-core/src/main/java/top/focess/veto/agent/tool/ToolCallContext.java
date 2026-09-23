@@ -4,7 +4,7 @@ import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.AgentRunner;
 import top.focess.veto.agent.intercept.ToolExecutionPermit;
-import top.focess.veto.llm.core.ToolResultPresentationMode;
+import top.focess.veto.api.llm.ToolResultPresentationMode;
 
 /**
  * The call context for a tool execution: the calling agent's id, the user id, the group id when the

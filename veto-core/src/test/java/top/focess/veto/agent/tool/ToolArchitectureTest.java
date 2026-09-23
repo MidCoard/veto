@@ -26,6 +26,7 @@ class ToolArchitectureTest {
     void workspaceToolsArePluginContributionsWithTheirOriginalPublicNames() {
         for (String name :
                 List.of(
+                        "create_group",
                         "view_file",
                         "list_dir",
                         "find_files",

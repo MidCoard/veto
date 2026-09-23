@@ -9,8 +9,8 @@ public interface CapabilityTranslator {
 
     /**
      * Translates the whitelisted manifest tools into the flat, provider-facing {@link
-     * top.focess.veto.llm.core.ToolDefinition} list carried by {@code VetoRequest.tools}.
+     * top.focess.veto.api.llm.ToolDefinition} list carried by {@code VetoRequest.tools}.
      */
-    @NonNull List<top.focess.veto.llm.core.ToolDefinition> translateTools(
+    @NonNull List<top.focess.veto.api.llm.ToolDefinition> translateTools(
             List<ToolDefinition> manifest);
 }

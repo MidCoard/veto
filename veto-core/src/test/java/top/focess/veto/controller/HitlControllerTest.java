@@ -17,7 +17,7 @@ import top.focess.veto.agent.intercept.HitlRegistry;
 import top.focess.veto.agent.intercept.VetoOption;
 import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.tool.ToolDocs;
-import top.focess.veto.llm.core.ToolCall;
+import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.session.SessionService;
 import top.focess.veto.vault.KeysteadVault;
 

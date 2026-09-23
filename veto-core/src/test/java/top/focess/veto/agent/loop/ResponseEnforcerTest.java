@@ -8,9 +8,9 @@ import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.api.agent.tool.ToolDocs;
-import top.focess.veto.llm.core.ToolCall;
-import top.focess.veto.llm.core.VetoResponse;
-import top.focess.veto.llm.exceptions.ModelSchemaException;
+import top.focess.veto.api.llm.ToolCall;
+import top.focess.veto.api.llm.VetoResponse;
+import top.focess.veto.api.llm.exceptions.ModelSchemaException;
 
 class ResponseEnforcerTest {
     @Test

@@ -3,7 +3,7 @@ package top.focess.veto.model.tier;
 import jakarta.persistence.*;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.llm.core.ProviderType;
+import top.focess.veto.api.llm.ProviderType;
 
 /**
  * One tier's concrete binding within a user's {@link ModelTierProfileEntity}. Built field by field

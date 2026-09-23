@@ -14,6 +14,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -41,13 +42,13 @@ import top.focess.veto.agent.web.WebFetchExecutor;
 import top.focess.veto.agent.web.WebFetchTool;
 import top.focess.veto.api.agent.tool.AgentTool;
 import top.focess.veto.api.agent.tool.ToolDocs;
-import top.focess.veto.llm.core.LlmOptions;
-import top.focess.veto.llm.core.ProviderType;
-import top.focess.veto.llm.core.ToolCall;
-import top.focess.veto.llm.core.ToolResultPresentationMode;
+import top.focess.veto.api.llm.LlmOptions;
+import top.focess.veto.api.llm.ProviderType;
+import top.focess.veto.api.llm.ToolCall;
+import top.focess.veto.api.llm.ToolResultPresentationMode;
+import top.focess.veto.api.llm.VetoRequest;
+import top.focess.veto.api.llm.VetoResponse;
 import top.focess.veto.llm.core.UniformLLMCaller;
-import top.focess.veto.llm.core.VetoRequest;
-import top.focess.veto.llm.core.VetoResponse;
 import top.focess.veto.memory.TurnLogService;
 import top.focess.veto.memory.TurnRecordEntity;
 import top.focess.veto.memory.TurnRecordRepository;
@@ -202,7 +203,7 @@ class WebReadAgentIntegrationTest {
                         return new VetoResponse(
                                 null,
                                 java.util.List.of(
-                                        new top.focess.veto.llm.core.ToolCall(
+                                        new ToolCall(
                                                 "submit_plan",
                                                 java.util.Map.of(
                                                         "actions",
@@ -303,7 +304,7 @@ class WebReadAgentIntegrationTest {
                         .anyMatch(
                                 turn ->
                                         turn.type() == TurnType.TOOL_RESPONSE
-                                                && java.util.Objects.equals(
+                                                && Objects.equals(
                                                         finishCall.payload().get("call_id"),
                                                         turn.payload().get("call_id"))));
         String childSystem = childRequests.getFirst().systemPrompt();

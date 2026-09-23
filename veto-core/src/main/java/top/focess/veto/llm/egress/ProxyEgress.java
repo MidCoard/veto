@@ -3,8 +3,8 @@ package top.focess.veto.llm.egress;
 import org.jspecify.annotations.NonNull;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
-import top.focess.veto.llm.core.ProviderType;
-import top.focess.veto.llm.exceptions.ModelCapabilityException;
+import top.focess.veto.api.llm.ProviderType;
+import top.focess.veto.api.llm.exceptions.ModelCapabilityException;
 
 /**
  * Opt-in egress: route the call through a separate credential-injecting broker process. The engine

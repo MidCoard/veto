@@ -3,8 +3,8 @@ package top.focess.veto.llm.credential;
 import java.util.Objects;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Service;
-import top.focess.veto.llm.core.ProviderType;
-import top.focess.veto.llm.exceptions.CredentialException;
+import top.focess.veto.api.llm.ProviderType;
+import top.focess.veto.api.llm.exceptions.CredentialException;
 import top.focess.veto.vault.KeysteadVault;
 
 /**

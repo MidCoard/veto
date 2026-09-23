@@ -1,9 +1,9 @@
 package top.focess.veto.llm.provider;
 
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.llm.core.ProviderType;
-import top.focess.veto.llm.core.ResolvedRequest;
-import top.focess.veto.llm.core.VetoResponse;
+import top.focess.veto.api.llm.ProviderType;
+import top.focess.veto.api.llm.ResolvedRequest;
+import top.focess.veto.api.llm.VetoResponse;
 
 /**
  * Strategy for a single LLM provider. Implementations receive a {@link ResolvedRequest} (credential

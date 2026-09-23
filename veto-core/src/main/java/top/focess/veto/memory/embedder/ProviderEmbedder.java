@@ -12,7 +12,7 @@ import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import top.focess.veto.llm.core.ProviderType;
+import top.focess.veto.api.llm.ProviderType;
 import top.focess.veto.llm.credential.CredentialResolver;
 import top.focess.veto.vault.KeysteadVault;
 

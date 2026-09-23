@@ -11,17 +11,17 @@ import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import top.focess.veto.llm.client.LlmClient;
-import top.focess.veto.llm.core.ResolvedRequest;
-import top.focess.veto.llm.core.ToolCall;
-import top.focess.veto.llm.core.ToolDefinition;
-import top.focess.veto.llm.core.VetoResponse;
-import top.focess.veto.llm.exceptions.LlmAuthException;
-import top.focess.veto.llm.exceptions.LlmException;
-import top.focess.veto.llm.exceptions.LlmRateLimitException;
-import top.focess.veto.llm.exceptions.LlmTimeoutException;
-import top.focess.veto.llm.exceptions.ModelCapabilityException;
-import top.focess.veto.llm.exceptions.ModelSchemaException;
+import top.focess.veto.api.llm.LlmClient;
+import top.focess.veto.api.llm.ResolvedRequest;
+import top.focess.veto.api.llm.ToolCall;
+import top.focess.veto.api.llm.ToolDefinition;
+import top.focess.veto.api.llm.VetoResponse;
+import top.focess.veto.api.llm.exceptions.LlmAuthException;
+import top.focess.veto.api.llm.exceptions.LlmException;
+import top.focess.veto.api.llm.exceptions.LlmRateLimitException;
+import top.focess.veto.api.llm.exceptions.LlmTimeoutException;
+import top.focess.veto.api.llm.exceptions.ModelCapabilityException;
+import top.focess.veto.api.llm.exceptions.ModelSchemaException;
 import top.focess.veto.observability.AuditLogger;
 
 /**

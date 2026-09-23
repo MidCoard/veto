@@ -3,9 +3,9 @@ package top.focess.veto.agent.loop;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.util.List;
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.llm.core.ChatMessage;
-import top.focess.veto.llm.core.ToolDefinition;
-import top.focess.veto.llm.core.VetoRequest;
+import top.focess.veto.api.llm.ChatMessage;
+import top.focess.veto.api.llm.ToolDefinition;
+import top.focess.veto.api.llm.VetoRequest;
 
 /**
  * The assembled LLM payload produced by {@link PromptCompiler} each loop cycle. The loop combines

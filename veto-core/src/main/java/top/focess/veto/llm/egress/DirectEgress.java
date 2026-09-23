@@ -3,7 +3,7 @@ package top.focess.veto.llm.egress;
 import org.jspecify.annotations.NonNull;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
-import top.focess.veto.llm.core.ProviderType;
+import top.focess.veto.api.llm.ProviderType;
 import top.focess.veto.llm.credential.CredentialResolver;
 
 /**

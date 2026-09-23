@@ -11,6 +11,8 @@ import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.api.agent.tool.ToolDocs;
+import top.focess.veto.api.llm.ToolCall;
+import top.focess.veto.api.llm.VetoResponse;
 
 /**
  * Guards the snake_case binding of the universal {@link VetoResponse} ({@code veto_pulse}) schema —

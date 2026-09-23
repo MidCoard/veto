@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -15,7 +16,10 @@ import org.jspecify.annotations.NonNull;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
+import top.focess.veto.agent.loop.PromptCompiler;
 import top.focess.veto.agent.tool.ToolSchemaCompiler;
+import top.focess.veto.api.agent.tool.ToolDocs;
+import top.focess.veto.api.llm.PromptRenderer;
 import top.focess.veto.api.plugin.PluginContext;
 import top.focess.veto.api.plugin.PluginContributions;
 import top.focess.veto.api.plugin.PluginState;
@@ -75,7 +79,11 @@ public final class PluginManager implements AutoCloseable {
         scriptHost = new ScriptHost(Path.of(nodeCommand), timeoutMillis);
         toolNames = Map.copyOf(configurations.getToolNames());
         var granted = hostServices.getIfAvailable();
-        var services = granted == null ? Map.<Class<?>, Object>of() : granted.services();
+        var services = new HashMap<Class<?>, Object>();
+        if (granted != null) services.putAll(granted.services());
+        PromptRenderer renderer =
+                (source, data) -> PromptCompiler.compileDocument(source, data).text();
+        services.put(ToolDocs.nonNullClass(PromptRenderer.class), renderer);
         List<ManagedPlugin> staged = new ArrayList<>();
         try {
             // Provider failures are fatal: a broken built-in must not silently drop its points.

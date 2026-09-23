@@ -9,6 +9,7 @@ import top.focess.veto.agent.tool.ToolResult;
 import top.focess.veto.api.agent.tool.ToolErrorCode;
 import top.focess.veto.api.agent.tool.ToolResultFormat;
 import top.focess.veto.api.agent.tool.ToolResultStatus;
+import top.focess.veto.api.llm.ToolResultPresentationMode;
 
 /** Converts a canonical result to the provider message content selected by its session. */
 @Component

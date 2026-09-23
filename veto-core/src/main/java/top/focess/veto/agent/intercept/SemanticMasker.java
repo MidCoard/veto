@@ -16,7 +16,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.loop.PromptCompiler;
 import top.focess.veto.agent.tool.ToolDefinition;
-import top.focess.veto.llm.core.ToolCall;
+import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.plugin.runtime.PluginManager;
 import top.focess.veto.veto.LlamaCppBridge;
 

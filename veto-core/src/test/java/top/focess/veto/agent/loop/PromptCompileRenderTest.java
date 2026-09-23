@@ -27,9 +27,9 @@ import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.ToolDocumentation;
 import top.focess.veto.api.agent.tool.ToolResultFormat;
+import top.focess.veto.api.llm.ToolDefinition;
+import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.builtin.workspace.GrepSearchTool;
-import top.focess.veto.llm.core.ToolDefinition;
-import top.focess.veto.llm.core.ToolResultPresentationMode;
 import top.focess.veto.memory.MemoryTools;
 
 /**

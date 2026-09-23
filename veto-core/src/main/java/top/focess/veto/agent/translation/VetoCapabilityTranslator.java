@@ -22,10 +22,10 @@ public class VetoCapabilityTranslator implements CapabilityTranslator {
     private static final @NonNull ObjectMapper MAPPER = new ObjectMapper();
 
     @Override
-    public @NonNull List<top.focess.veto.llm.core.ToolDefinition> translateTools(
+    public @NonNull List<top.focess.veto.api.llm.ToolDefinition> translateTools(
             List<ToolDefinition> manifest) {
-        List<top.focess.veto.llm.core.ToolDefinition> flat = new ArrayList<>();
-        List<top.focess.veto.llm.core.ToolDefinition> planTools = new ArrayList<>();
+        List<top.focess.veto.api.llm.ToolDefinition> flat = new ArrayList<>();
+        List<top.focess.veto.api.llm.ToolDefinition> planTools = new ArrayList<>();
         var javaRecordTools = new HashSet<String>();
         if (manifest == null) return flat;
         boolean citationsAvailable =
@@ -37,7 +37,7 @@ public class VetoCapabilityTranslator implements CapabilityTranslator {
         for (ToolDefinition def : manifest) {
             Map<String, Object> inputSchema = inputSchemaOf(def);
             var translated =
-                    new top.focess.veto.llm.core.ToolDefinition(
+                    new top.focess.veto.api.llm.ToolDefinition(
                             def.name(),
                             def.description(),
                             inputSchema,
@@ -57,7 +57,7 @@ public class VetoCapabilityTranslator implements CapabilityTranslator {
             var plan = flat.get(i);
             flat.set(
                     i,
-                    new top.focess.veto.llm.core.ToolDefinition(
+                    new top.focess.veto.api.llm.ToolDefinition(
                             plan.name(),
                             plan.description(),
                             MAPPER.convertValue(
@@ -69,7 +69,7 @@ public class VetoCapabilityTranslator implements CapabilityTranslator {
                             plan.returnExamples(),
                             plan.resultFormats()));
         }
-        flat.sort(Comparator.comparing(top.focess.veto.llm.core.ToolDefinition::name));
+        flat.sort(Comparator.comparing(top.focess.veto.api.llm.ToolDefinition::name));
         return flat;
     }
 

@@ -5,7 +5,7 @@ import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
-import top.focess.veto.llm.core.ProviderType;
+import top.focess.veto.api.llm.ProviderType;
 
 /**
  * Configuration for LLM egress. Bound from {@code veto.llm.egress.*}.

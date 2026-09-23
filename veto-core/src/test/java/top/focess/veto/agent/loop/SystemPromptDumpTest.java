@@ -30,8 +30,8 @@ import top.focess.veto.agent.tool.ToolEngine;
 import top.focess.veto.agent.translation.CapabilityTranslator;
 import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.api.agent.tool.ToolCapability;
-import top.focess.veto.llm.core.ToolDefinition;
-import top.focess.veto.llm.core.ToolResultPresentationMode;
+import top.focess.veto.api.llm.ToolDefinition;
+import top.focess.veto.api.llm.ToolResultPresentationMode;
 
 /**
  * Diagnostic dump: compiles the full system prompt for each role under the active deployer policy

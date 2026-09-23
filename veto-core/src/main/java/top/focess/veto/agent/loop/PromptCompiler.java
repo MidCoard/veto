@@ -28,12 +28,13 @@ import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.api.agent.tool.ToolErrorCode;
 import top.focess.veto.api.agent.tool.ToolResultFormat;
 import top.focess.veto.api.agent.tool.ToolResultStatus;
-import top.focess.veto.llm.core.ChatMessage;
-import top.focess.veto.llm.core.NativeToolState;
-import top.focess.veto.llm.core.ToolDefinition;
-import top.focess.veto.llm.core.ToolResultPresentationMode;
+import top.focess.veto.api.llm.ChatMessage;
+import top.focess.veto.api.llm.NativeToolState;
+import top.focess.veto.api.llm.PromptSpan;
+import top.focess.veto.api.llm.ToolDefinition;
+import top.focess.veto.api.llm.ToolResultPresentationMode;
+import top.focess.veto.api.llm.VetoRequest;
 import top.focess.veto.llm.core.ToolResultPresenter;
-import top.focess.veto.llm.core.VetoRequest;
 
 /**
  * Assembles each outgoing LLM payload from the agent's turn history, persona, and resolved tool
@@ -654,9 +655,8 @@ public class PromptCompiler {
         Object spans = source.get("spans");
         if (spans == null) return message;
         try {
-            List<PromptSource.Span> decoded =
-                    objectMapper.convertValue(
-                            spans, new TypeReference<List<PromptSource.Span>>() {});
+            List<PromptSpan> decoded =
+                    objectMapper.convertValue(spans, new TypeReference<List<PromptSpan>>() {});
             if (decoded == null
                     || decoded.stream()
                             .anyMatch(

@@ -6,12 +6,17 @@ import java.util.List;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import top.focess.veto.api.llm.ResolvedRequest;
+import top.focess.veto.api.llm.VetoRequest;
+import top.focess.veto.api.llm.VetoResponse;
+import top.focess.veto.api.llm.exceptions.LlmException;
+import top.focess.veto.api.llm.exceptions.ModelCapabilityException;
 import top.focess.veto.llm.egress.EgressEndpoint;
 import top.focess.veto.llm.egress.LlmEgress;
-import top.focess.veto.llm.exceptions.LlmException;
-import top.focess.veto.llm.exceptions.ModelCapabilityException;
 import top.focess.veto.llm.provider.LLMProviderStrategy;
+import top.focess.veto.plugin.runtime.PluginLlmProviders;
 import top.focess.veto.util.Nullness;
 
 /**
@@ -31,6 +36,12 @@ public class DefaultUniformLLMCaller implements UniformLLMCaller {
     private static final long BASE_BACKOFF_MILLIS = 250L;
     private final @NonNull List<LLMProviderStrategy> strategies;
     private final @NonNull LlmEgress egress;
+    private PluginLlmProviders plugins;
+
+    @Autowired
+    public void attachPluginProviders(@NonNull PluginLlmProviders value) {
+        plugins = value;
+    }
 
     /**
      * Constructs a new DefaultUniformLLMCaller with the specified strategies and egress.
@@ -48,13 +59,15 @@ public class DefaultUniformLLMCaller implements UniformLLMCaller {
     public @NonNull VetoResponse call(@NonNull VetoRequest request) {
         LLMProviderStrategy provider =
                 strategies.stream()
-                        .filter(s -> s.supports(request.providerType()))
+                        .filter(value -> value.supports(request.providerType()))
                         .findFirst()
-                        .orElseThrow(
-                                () ->
-                                        new ModelCapabilityException(
-                                                "No provider registered for type: "
-                                                        + request.providerType()));
+                        .orElse(null);
+        if (provider == null) {
+            if (plugins == null)
+                throw new ModelCapabilityException(
+                        "No provider registered for type: " + request.providerType());
+            provider = plugins.require(request.providerType());
+        }
         EgressEndpoint endpoint =
                 egress.resolve(
                         request.providerType(),

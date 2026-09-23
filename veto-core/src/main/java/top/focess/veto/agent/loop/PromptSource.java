@@ -9,6 +9,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.api.llm.PromptSpan;
 
 /** Version-one prompt source. Values are data; only registered source files are interpreted. */
 public final class PromptSource {
@@ -19,9 +20,8 @@ public final class PromptSource {
 
     private PromptSource() {}
 
-    public record Span(@NonNull String source, int line, int column, int start, int end) {}
-
-    public record Rendered(@NonNull String id, @NonNull String text, @NonNull List<Span> sources) {}
+    public record Rendered(
+            @NonNull String id, @NonNull String text, @NonNull List<PromptSpan> sources) {}
 
     private record Condition(boolean parent, int line, int blockLine) {}
 
@@ -48,7 +48,7 @@ public final class PromptSource {
         }
         if (!lines[4].equals("---")) throw error(name, 5, "E_HEADER");
         var output = new StringBuilder();
-        List<Span> spans = new ArrayList<>();
+        List<PromptSpan> spans = new ArrayList<>();
         render(
                 name,
                 lines,
@@ -73,7 +73,7 @@ public final class PromptSource {
             @NonNull Set<String> declared,
             @NonNull Deque<String> stack,
             @NonNull StringBuilder output,
-            @NonNull List<Span> spans) {
+            @NonNull List<PromptSpan> spans) {
         if (stack.contains(name) || stack.size() >= 8)
             throw error(name, 1, "E_INCLUDE_CYCLE_OR_DEPTH");
         stack.addLast(name);
@@ -106,7 +106,7 @@ public final class PromptSource {
                     if (!key.matches("[A-Za-z][A-Za-z0-9_-]*") || included == null)
                         throw error(name, number, "E_INCLUDE");
                     var nested = new StringBuilder();
-                    List<Span> nestedSpans = new ArrayList<>();
+                    List<PromptSpan> nestedSpans = new ArrayList<>();
                     render(
                             key,
                             included.replace("\r\n", "\n").split("\n", -1),
@@ -121,9 +121,9 @@ public final class PromptSource {
                     if (enabled) {
                         int offset = output.length();
                         output.append(nested);
-                        for (Span span : nestedSpans)
+                        for (PromptSpan span : nestedSpans)
                             spans.add(
-                                    new Span(
+                                    new PromptSpan(
                                             span.source(),
                                             span.line(),
                                             span.column(),
@@ -167,7 +167,7 @@ public final class PromptSource {
                     if (enabled) {
                         int start = output.length();
                         output.append(rendered).append('\n');
-                        spans.add(new Span(name, number, 1, start, output.length()));
+                        spans.add(new PromptSpan(name, number, 1, start, output.length()));
                     }
                 }
             }

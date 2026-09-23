@@ -11,7 +11,7 @@ import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
-import top.focess.veto.llm.core.ToolResultPresentationMode;
+import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.memory.TurnRecordEntity;
 import top.focess.veto.memory.TurnRecordRepository;
 

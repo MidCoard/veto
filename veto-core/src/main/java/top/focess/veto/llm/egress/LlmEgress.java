@@ -1,7 +1,7 @@
 package top.focess.veto.llm.egress;
 
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.llm.core.ProviderType;
+import top.focess.veto.api.llm.ProviderType;
 
 /**
  * Strategy that decides how an LLM request leaves this process. The default ({@code DirectEgress})

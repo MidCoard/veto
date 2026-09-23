@@ -2,7 +2,7 @@ package top.focess.veto.agent.intercept;
 
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.tool.ToolResult;
-import top.focess.veto.llm.core.ToolCall;
+import top.focess.veto.api.llm.ToolCall;
 
 /**
  * A user-plugin interceptor in the ordered chain the {@code AgentRunner} iterates at three join

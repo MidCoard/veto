@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import java.util.Map;
 import org.junit.jupiter.api.Test;
+import top.focess.veto.api.llm.NativeToolState;
 
 class NativeToolStateTest {
     @Test

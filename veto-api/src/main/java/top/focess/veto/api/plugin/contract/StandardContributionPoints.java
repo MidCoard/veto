@@ -5,6 +5,7 @@ import java.util.List;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.agent.tool.CapabilityTool;
 import top.focess.veto.api.agent.tool.ToolDocs;
+import top.focess.veto.api.llm.LlmProvider;
 import top.focess.veto.api.plugin.contribution.ContributionCatalog;
 import top.focess.veto.api.plugin.contribution.ContributionId;
 import top.focess.veto.api.plugin.contribution.ContributionPoint;
@@ -13,6 +14,13 @@ import top.focess.veto.api.search.SearchProvider;
 /** Initial application contracts. The catalog itself knows none of these types. */
 public final class StandardContributionPoints {
     private StandardContributionPoints() {}
+
+    public static final @NonNull ContributionPoint<LlmProvider> LLM_PROVIDERS =
+            new ContributionPoint<>(
+                    new ContributionId("veto:llm-providers"),
+                    1,
+                    ToolDocs.nonNullClass(LlmProvider.class),
+                    ContributionPoint.Cardinality.MULTIPLE);
 
     public static final @NonNull ContributionPoint<SearchProvider> SEARCH_PROVIDERS =
             new ContributionPoint<>(
@@ -121,6 +129,7 @@ public final class StandardContributionPoints {
     public static final @NonNull List<@NonNull ContributionPoint<?>> ALL =
             List.of(
                     SEARCH_PROVIDERS,
+                    LLM_PROVIDERS,
                     WORKFLOW,
                     FRONTEND,
                     FILE_OBSERVATION,

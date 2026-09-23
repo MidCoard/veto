@@ -14,7 +14,7 @@ import java.util.regex.Pattern;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.tool.ToolResult;
 import top.focess.veto.api.agent.tool.ToolDocs;
-import top.focess.veto.llm.core.VetoResponse;
+import top.focess.veto.api.llm.VetoResponse;
 
 /**
  * The engine-internal Scope — a derived projection of action outputs, auto-populated by the harness

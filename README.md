@@ -71,7 +71,8 @@ veto/
 |-- veto-core/       Spring Boot backend, agent runtime, security gateway, persistence, and tools
 |-- veto-terminal/   JLine/Mordant terminal application; depends on veto-protocol, not veto-core
 |-- veto-api/        Shared authoring contract: tool/capability annotations, contribution registration model, standard contract interfaces, and the experimental Java plugin lifecycle
-|-- veto-builtin/    Built-in workspace tools, registered through veto-api
+|-- veto-builtin/    Workspace tools and create_group, registered through veto-api
+|-- veto-llm-providers/  Cloud LLM SDK adapters, registered through veto-api
 |-- veto-plugin-runtime/ Operator-configured script workers and example package
 |-- veto-secret-protection/ Self-contained secret-protection plugin (ServiceLoader-discovered built-in)
 |-- veto-web-search/ DuckDuckGo and Brave search providers, registered through veto-api
@@ -420,3 +421,8 @@ is generated output and must not be committed.
 ## License
 
 Veto is licensed under the [GNU Affero General Public License v3.0 only](LICENSE).
+
+Provider SDK implementations are packaged in [veto-llm-providers](veto-llm-providers/README.md).
+Agent tools are also eligible for plugin ownership: `create_group` is part of
+[veto-builtin](veto-builtin/README.md). Model tiers, local models and the gateway
+remain in core.

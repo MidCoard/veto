@@ -1,8 +1,8 @@
 package top.focess.veto.model.tier;
 
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.llm.core.LlmOptions;
-import top.focess.veto.llm.core.ProviderType;
+import top.focess.veto.api.llm.LlmOptions;
+import top.focess.veto.api.llm.ProviderType;
 import top.focess.veto.vault.KeysteadVault;
 
 /**

@@ -20,7 +20,7 @@ public class DefaultCapabilityTranslator implements CapabilityTranslator {
     }
 
     @Override
-    public @NonNull List<top.focess.veto.llm.core.ToolDefinition> translateTools(
+    public @NonNull List<top.focess.veto.api.llm.ToolDefinition> translateTools(
             List<ToolDefinition> manifest) {
         return delegate.translateTools(manifest);
     }

@@ -4,6 +4,7 @@ import jakarta.persistence.AttributeConverter;
 import jakarta.persistence.Converter;
 import java.util.Objects;
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.api.llm.ToolResultPresentationMode;
 
 /** Keeps the public mode names small while remaining compatible with existing database rows. */
 @Converter

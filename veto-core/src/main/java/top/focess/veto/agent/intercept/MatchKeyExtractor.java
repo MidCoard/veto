@@ -13,7 +13,7 @@ import top.focess.veto.agent.workspace.Resolution;
 import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.api.agent.tool.ParamCategory;
 import top.focess.veto.api.agent.tool.ToolCapability;
-import top.focess.veto.llm.core.ToolCall;
+import top.focess.veto.api.llm.ToolCall;
 
 /**
  * Extracts a {@link PermissionGrant.ToolCallSpec} from a {@link ToolCall} — the structural pieces

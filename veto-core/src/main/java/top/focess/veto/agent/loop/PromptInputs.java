@@ -17,8 +17,8 @@ import top.focess.veto.agent.workspace.PathMode;
 import top.focess.veto.agent.workspace.VetoMdResolver;
 import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.api.agent.tool.ToolDocumentation;
-import top.focess.veto.llm.core.ToolDefinition;
-import top.focess.veto.llm.core.ToolResultPresentationMode;
+import top.focess.veto.api.llm.ToolDefinition;
+import top.focess.veto.api.llm.ToolResultPresentationMode;
 
 /** Model inputs contain facts and executable contracts, never pre-rendered prompt sections. */
 public final class PromptInputs {

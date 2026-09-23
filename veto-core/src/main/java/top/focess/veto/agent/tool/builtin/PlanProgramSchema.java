@@ -21,27 +21,27 @@ public final class PlanProgramSchema implements InputSchemaSource {
     }
 
     public static @NonNull JsonNode create(
-            @NonNull List<top.focess.veto.llm.core.ToolDefinition> tools) {
+            @NonNull List<top.focess.veto.api.llm.ToolDefinition> tools) {
         return create(tools, Set.of(), false, false);
     }
 
     /** Java record tools preserve their optional-null convention; remote schemas remain exact. */
     public static @NonNull JsonNode create(
-            @NonNull List<top.focess.veto.llm.core.ToolDefinition> tools,
+            @NonNull List<top.focess.veto.api.llm.ToolDefinition> tools,
             @NonNull Set<String> javaRecordTools) {
         return create(tools, javaRecordTools, false, false);
     }
 
     /** Expose cited generation only when this invocation has an answer-submission capability. */
     public static @NonNull JsonNode create(
-            @NonNull List<top.focess.veto.llm.core.ToolDefinition> tools,
+            @NonNull List<top.focess.veto.api.llm.ToolDefinition> tools,
             @NonNull Set<String> javaRecordTools,
             boolean citationsAvailable) {
         return create(tools, javaRecordTools, false, citationsAvailable);
     }
 
     private static @NonNull JsonNode create(
-            @NonNull List<top.focess.veto.llm.core.ToolDefinition> tools,
+            @NonNull List<top.focess.veto.api.llm.ToolDefinition> tools,
             @NonNull Set<String> javaRecordTools,
             boolean genericTools,
             boolean citationsAvailable) {
@@ -62,7 +62,7 @@ public final class PlanProgramSchema implements InputSchemaSource {
 
     /** The complete plan IR, including per-tool input-name constraints. */
     private static @NonNull JsonNode actionItemSchema(
-            @NonNull List<top.focess.veto.llm.core.ToolDefinition> tools,
+            @NonNull List<top.focess.veto.api.llm.ToolDefinition> tools,
             @NonNull Set<String> javaRecordTools,
             boolean genericTools,
             boolean citationsAvailable) {
@@ -70,7 +70,7 @@ public final class PlanProgramSchema implements InputSchemaSource {
         tools.stream()
                 .sorted(
                         Comparator.comparing(
-                                top.focess.veto.llm.core.ToolDefinition::name,
+                                top.focess.veto.api.llm.ToolDefinition::name,
                                 String.CASE_INSENSITIVE_ORDER))
                 .forEach(
                         tool ->
@@ -104,7 +104,7 @@ public final class PlanProgramSchema implements InputSchemaSource {
     }
 
     private static @NonNull ObjectNode toolActionSchema(
-            top.focess.veto.llm.core.@NonNull ToolDefinition tool, boolean javaNulls) {
+            top.focess.veto.api.llm.@NonNull ToolDefinition tool, boolean javaNulls) {
         ObjectNode properties = actionProperties("tool");
         properties.set("tool", enumString(tool.name(), "The catalogued tool to execute."));
         properties.set("inputs", bindingInputsSchema(tool, javaNulls));
@@ -222,7 +222,7 @@ public final class PlanProgramSchema implements InputSchemaSource {
     }
 
     private static @NonNull JsonNode bindingInputsSchema(
-            top.focess.veto.llm.core.@NonNull ToolDefinition tool, boolean javaNulls) {
+            top.focess.veto.api.llm.@NonNull ToolDefinition tool, boolean javaNulls) {
         JsonNode toolSchema = MAPPER.valueToTree(tool.inputSchema());
         // Preserve open dictionaries, unions and required fields from remote tools. The inputs
         // object itself is not a binding expression: ToolAction stores a map of input values.

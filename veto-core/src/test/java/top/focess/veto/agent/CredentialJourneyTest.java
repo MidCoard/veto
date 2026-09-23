@@ -31,6 +31,11 @@ import top.focess.veto.agent.web.*;
 import top.focess.veto.agent.workspace.*;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.agent.tool.ToolDocs;
+import top.focess.veto.api.llm.LlmOptions;
+import top.focess.veto.api.llm.ProviderType;
+import top.focess.veto.api.llm.ToolCall;
+import top.focess.veto.api.llm.ToolResultPresentationMode;
+import top.focess.veto.api.llm.VetoResponse;
 import top.focess.veto.api.search.SearchProvider;
 import top.focess.veto.llm.core.*;
 import top.focess.veto.plugin.runtime.PluginConfigurations;
@@ -159,7 +164,7 @@ class CredentialJourneyTest {
                             return new VetoResponse(
                                     null,
                                     java.util.List.of(
-                                            new top.focess.veto.llm.core.ToolCall(
+                                            new ToolCall(
                                                     "submit_plan",
                                                     java.util.Map.of(
                                                             "actions",

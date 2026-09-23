@@ -9,8 +9,8 @@ import top.focess.veto.agent.screening.Relevance;
 import top.focess.veto.agent.screening.Screening;
 import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.tool.ToolDocs;
+import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.api.plugin.contract.WorkflowHook;
-import top.focess.veto.llm.core.ToolCall;
 
 class WorkflowApprovalTest {
     @Test

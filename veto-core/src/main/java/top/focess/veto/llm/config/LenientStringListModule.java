@@ -18,7 +18,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.llm.core.VetoResponse;
+import top.focess.veto.api.llm.VetoResponse;
 
 /**
  * Jackson module that leniently deserializes string-element collections on the {@linkplain

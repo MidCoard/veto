@@ -18,8 +18,8 @@ import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.tool.ParamCategory;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.agent.tool.ToolDocs;
+import top.focess.veto.api.llm.ToolDefinition;
 import top.focess.veto.builtin.workspace.ViewFileTool;
-import top.focess.veto.llm.core.ToolDefinition;
 
 /**
  * Validates {@link VetoCapabilityTranslator} against the per-turn veto_pulse variant matrix and the

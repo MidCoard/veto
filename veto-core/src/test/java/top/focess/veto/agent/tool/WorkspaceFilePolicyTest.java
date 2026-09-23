@@ -29,12 +29,12 @@ import top.focess.veto.api.agent.tool.NativeTool;
 import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.ToolErrorCode;
 import top.focess.veto.api.agent.tool.ToolExecutionException;
+import top.focess.veto.api.llm.ToolCall;
+import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.api.plugin.contract.TextProtection;
 import top.focess.veto.builtin.workspace.DeletePathTool;
 import top.focess.veto.builtin.workspace.ViewFileTool;
 import top.focess.veto.builtin.workspace.WriteToFileTool;
-import top.focess.veto.llm.core.ToolCall;
-import top.focess.veto.llm.core.ToolResultPresentationMode;
 import top.focess.veto.plugin.runtime.PluginTestSupport;
 
 class WorkspaceFilePolicyTest {

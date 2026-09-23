@@ -13,8 +13,8 @@ import top.focess.veto.api.agent.tool.CapabilityTool;
 import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.WorkspaceReadTool;
 import top.focess.veto.api.agent.tool.WorkspaceWriteTool;
-import top.focess.veto.llm.core.ToolCall;
-import top.focess.veto.llm.core.ToolResultPresentationMode;
+import top.focess.veto.api.llm.ToolCall;
+import top.focess.veto.api.llm.ToolResultPresentationMode;
 
 /** Creates an exact approved-call scope for direct capability integration tests. */
 public final class CapabilityTestCalls {

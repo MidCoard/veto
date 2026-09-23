@@ -14,7 +14,7 @@ import top.focess.veto.agent.tool.NativeToolArgumentValidator;
 import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.ToolDocumentation;
 import top.focess.veto.api.agent.tool.ToolExecutionException;
-import top.focess.veto.llm.core.ToolDefinition;
+import top.focess.veto.api.llm.ToolDefinition;
 
 class PlanProgramSchemaTest {
     private static final @NonNull ObjectMapper MAPPER = new ObjectMapper();

@@ -7,7 +7,7 @@ import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.tool.ToolCallContext;
 import top.focess.veto.agent.workspace.Workspace;
-import top.focess.veto.llm.core.ToolResultPresentationMode;
+import top.focess.veto.api.llm.ToolResultPresentationMode;
 
 /**
  * A group is a Leader-Mate collaboration spawned via {@code create_group}. It owns its Blackboard,

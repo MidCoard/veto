@@ -7,7 +7,7 @@ import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.agent.intercept.ToolExecutionPermit;
-import top.focess.veto.llm.core.ToolResultPresentationMode;
+import top.focess.veto.api.llm.ToolResultPresentationMode;
 
 /**
  * Tests that ToolCallContext (agentId + userId) is threaded through tool execution, enabling

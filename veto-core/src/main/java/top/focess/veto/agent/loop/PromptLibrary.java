@@ -6,7 +6,7 @@ import java.util.Map;
 import java.util.TreeMap;
 import org.jspecify.annotations.NonNull;
 import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
-import top.focess.veto.llm.core.ChatMessage;
+import top.focess.veto.api.llm.ChatMessage;
 
 /**
  * Bundled trusted source package, recursively discovered under {@code prompts/}. Folder names

@@ -12,8 +12,8 @@ import org.mockito.ArgumentCaptor;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import top.focess.veto.agent.TurnRecord;
 import top.focess.veto.api.agent.tool.ToolDocs;
+import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.bus.DeltaBroker;
-import top.focess.veto.llm.core.ToolCall;
 
 /**
  * Verifies {@link TurnLogService} persists turns to the raw-turn log ({@link TurnRecordRepository})

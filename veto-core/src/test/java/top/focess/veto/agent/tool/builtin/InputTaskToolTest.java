@@ -21,7 +21,7 @@ import top.focess.veto.agent.intercept.ToolExecutionPermit;
 import top.focess.veto.agent.tool.CapabilityTestCalls;
 import top.focess.veto.agent.tool.ToolCallContext;
 import top.focess.veto.agent.tool.ToolCallContextHolder;
-import top.focess.veto.llm.core.ToolResultPresentationMode;
+import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.sandbox.BackgroundTaskManager;
 import top.focess.veto.sandbox.Command;
 import top.focess.veto.sandbox.SandboxManager;

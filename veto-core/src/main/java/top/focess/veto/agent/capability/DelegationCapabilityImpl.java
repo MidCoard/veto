@@ -7,6 +7,7 @@ import top.focess.veto.agent.identity.RoleToolFilter;
 import top.focess.veto.agent.intercept.HitlRegistry;
 import top.focess.veto.agent.tool.ToolCallContext;
 import top.focess.veto.agent.tool.ToolCallContextHolder;
+import top.focess.veto.api.agent.capability.DelegationCapability;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.agent.tool.ToolErrorCode;
 import top.focess.veto.api.agent.tool.ToolErrors;

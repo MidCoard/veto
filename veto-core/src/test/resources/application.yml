@@ -15,6 +15,7 @@ spring:
 veto:
   plugins:
     tool-names:
+      "[top.focess.builtin:create_group]": create_group
       "[top.focess.builtin:view_file]": view_file
       "[top.focess.builtin:list_dir]": list_dir
       "[top.focess.builtin:find_files]": find_files

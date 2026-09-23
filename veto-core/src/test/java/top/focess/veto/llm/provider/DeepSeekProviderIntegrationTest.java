@@ -12,11 +12,12 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
-import top.focess.veto.llm.core.LlmOptions;
-import top.focess.veto.llm.core.ProviderType;
-import top.focess.veto.llm.core.ResolvedRequest;
-import top.focess.veto.llm.core.VetoRequest;
-import top.focess.veto.llm.core.VetoResponse;
+import top.focess.veto.api.llm.LlmOptions;
+import top.focess.veto.api.llm.ProviderType;
+import top.focess.veto.api.llm.ResolvedRequest;
+import top.focess.veto.api.llm.VetoRequest;
+import top.focess.veto.api.llm.VetoResponse;
+import top.focess.veto.plugin.runtime.PluginLlmProviders;
 
 /** Integration test that calls the real DeepSeek API. Requires {@code application-local.yml}. */
 @SpringBootTest
@@ -24,7 +25,7 @@ import top.focess.veto.llm.core.VetoResponse;
 @SuppressWarnings("initialization.field.uninitialized")
 class DeepSeekProviderIntegrationTest {
 
-    @Autowired private @NonNull DeepSeekProvider provider;
+    @Autowired private @NonNull PluginLlmProviders providers;
 
     @Value("${veto.test.deepseek.api-key}")
     private @NonNull String apiKey;
@@ -55,7 +56,7 @@ class DeepSeekProviderIntegrationTest {
                         null);
 
         ResolvedRequest resolved = new ResolvedRequest(request, "https://api.deepseek.com", apiKey);
-        VetoResponse response = provider.execute(resolved);
+        VetoResponse response = providers.require(ProviderType.DEEPSEEK).execute(resolved);
 
         requireThought(response.thought());
         // calls is OPTIONAL in the veto_pulse schema (a model that answers directly emits
@@ -86,7 +87,7 @@ class DeepSeekProviderIntegrationTest {
                         null);
 
         ResolvedRequest resolved = new ResolvedRequest(request, "https://api.deepseek.com", apiKey);
-        VetoResponse response = provider.execute(resolved);
+        VetoResponse response = providers.require(ProviderType.DEEPSEEK).execute(resolved);
 
         String thought = requireThought(response.thought());
         assertFalse(thought.isBlank(), "thought should not be blank");

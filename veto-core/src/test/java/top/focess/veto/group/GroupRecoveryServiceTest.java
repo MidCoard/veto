@@ -17,9 +17,9 @@ import top.focess.veto.agent.SessionAgentRegistry;
 import top.focess.veto.agent.VetoAgent;
 import top.focess.veto.agent.identity.RoleToolFilter;
 import top.focess.veto.agent.workspace.Workspace;
-import top.focess.veto.llm.core.LlmOptions;
-import top.focess.veto.llm.core.ProviderType;
-import top.focess.veto.llm.core.ToolResultPresentationMode;
+import top.focess.veto.api.llm.LlmOptions;
+import top.focess.veto.api.llm.ProviderType;
+import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.session.SessionHistoryLoader;
 import top.focess.veto.util.Nullness;
 
