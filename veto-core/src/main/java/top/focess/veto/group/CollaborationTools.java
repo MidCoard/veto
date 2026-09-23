@@ -7,10 +7,10 @@ import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.capability.GroupControlCapability;
 import top.focess.veto.agent.tool.GroupControlTool;
-import top.focess.veto.agent.tool.ToolErrorCode;
-import top.focess.veto.agent.tool.ToolErrors;
 import top.focess.veto.api.agent.tool.Doc;
 import top.focess.veto.api.agent.tool.ToolDoc;
+import top.focess.veto.api.agent.tool.ToolErrorCode;
+import top.focess.veto.api.agent.tool.ToolErrors;
 import top.focess.veto.api.agent.tool.ToolResultFormat;
 
 public final class CollaborationTools {

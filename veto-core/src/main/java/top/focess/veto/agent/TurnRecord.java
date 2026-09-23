@@ -6,10 +6,10 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import org.checkerframework.checker.nullness.qual.Nullable;
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.agent.tool.ToolErrorCode;
 import top.focess.veto.agent.tool.ToolResult;
-import top.focess.veto.agent.tool.ToolResultStatus;
+import top.focess.veto.api.agent.tool.ToolErrorCode;
 import top.focess.veto.api.agent.tool.ToolResultFormat;
+import top.focess.veto.api.agent.tool.ToolResultStatus;
 import top.focess.veto.llm.core.ToolCall;
 import top.focess.veto.llm.core.ToolResultPresentationMode;
 

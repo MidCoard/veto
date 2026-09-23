@@ -3,6 +3,7 @@ package top.focess.veto.secret.detection;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import top.focess.veto.secret.api.SecretDetectionModel;
@@ -41,7 +42,13 @@ public final class SlmSecretDetector implements SecretDetector {
         var model = this.model;
         if (model != null && model.isAvailable()) {
             try {
-                var response = model.complete(prompt(text));
+                var response =
+                        model.complete(
+                                "secret-detection",
+                                Map.of(
+                                        "text",
+                                        text.substring(
+                                                0, Math.min(text.length(), MAX_PROMPT_CHARS))));
                 if (response.isPresent()) {
                     var spans = spans(text, response.get());
                     if (!spans.isEmpty()) return spans;
@@ -80,15 +87,6 @@ public final class SlmSecretDetector implements SecretDetector {
                 result.add(candidate);
         }
         return List.copyOf(result);
-    }
-
-    private static @NonNull String prompt(@NonNull String text) {
-        String truncated =
-                text.length() > MAX_PROMPT_CHARS ? text.substring(0, MAX_PROMPT_CHARS) : text;
-        return "List every secret (API key, token, password, private key, credential) in the text"
-                + " as a JSON array of the exact substrings, e.g. [\"abc\",\"def\"]. Reply with"
-                + " JSON only.\n\n"
-                + truncated;
     }
 
     private static @NonNull List<SecretMasker.SecretMatch> spans(

@@ -8,10 +8,18 @@ import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.plugin.contribution.ContributionCatalog;
 import top.focess.veto.api.plugin.contribution.ContributionId;
 import top.focess.veto.api.plugin.contribution.ContributionPoint;
+import top.focess.veto.api.search.SearchProvider;
 
 /** Initial application contracts. The catalog itself knows none of these types. */
 public final class StandardContributionPoints {
     private StandardContributionPoints() {}
+
+    public static final @NonNull ContributionPoint<SearchProvider> SEARCH_PROVIDERS =
+            new ContributionPoint<>(
+                    new ContributionId("veto:search-providers"),
+                    1,
+                    SearchProvider.class,
+                    ContributionPoint.Cardinality.MULTIPLE);
 
     public static final @NonNull ContributionPoint<WorkflowHook> WORKFLOW =
             new ContributionPoint<>(
@@ -112,6 +120,7 @@ public final class StandardContributionPoints {
      */
     public static final @NonNull List<@NonNull ContributionPoint<?>> ALL =
             List.of(
+                    SEARCH_PROVIDERS,
                     WORKFLOW,
                     FRONTEND,
                     FILE_OBSERVATION,

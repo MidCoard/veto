@@ -13,6 +13,7 @@ import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -23,12 +24,16 @@ import top.focess.veto.agent.identity.*;
 import top.focess.veto.agent.intercept.*;
 import top.focess.veto.agent.loop.PromptCompiler;
 import top.focess.veto.agent.tool.*;
+import top.focess.veto.agent.tool.ToolDefinition;
 import top.focess.veto.agent.tool.builtin.*;
 import top.focess.veto.agent.translation.DefaultCapabilityTranslator;
 import top.focess.veto.agent.web.*;
 import top.focess.veto.agent.workspace.*;
+import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.agent.tool.ToolDocs;
+import top.focess.veto.api.search.SearchProvider;
 import top.focess.veto.llm.core.*;
+import top.focess.veto.plugin.runtime.PluginConfigurations;
 import top.focess.veto.plugin.runtime.PluginLifecycleEvents;
 import top.focess.veto.plugin.runtime.PluginManager;
 import top.focess.veto.plugin.runtime.PluginTestSupport;
@@ -56,12 +61,20 @@ class CredentialJourneyTest {
         configuration.setVaultHome(root.resolve("vault").toString());
         var vault = new KeysteadVault(configuration);
         vault.signup("owner", "test-password");
+        var pluginConfiguration = new PluginConfigurations();
+        pluginConfiguration.setToolNames(Map.of("top.focess.builtin:view_file", "view_file"));
         var plugins =
-                PluginTestSupport.manager(
-                        new SecretProtectionConfiguration()
-                                .pluginHostServices(
-                                        PluginTestSupport.providerOf(vault),
-                                        PluginTestSupport.providerOf(null)));
+                new PluginManager(
+                        "",
+                        "",
+                        false,
+                        5000,
+                        PluginTestSupport.providerOf(
+                                new SecretProtectionConfiguration()
+                                        .pluginHostServices(
+                                                PluginTestSupport.providerOf(vault),
+                                                PluginTestSupport.providerOf(null))),
+                        pluginConfiguration);
         var sessionPlugins = PluginTestSupport.sessionPlugins(plugins);
         @NonNull HttpClient client = mock();
         @NonNull HttpResponse<byte[]> response = mock();
@@ -105,13 +118,8 @@ class CredentialJourneyTest {
                 .thenReturn(Map.of("plugins", plugins));
         var engine =
                 new ToolEngineImpl(
-                        mapper,
-                        List.of(
-                                new ViewFileTool(
-                                        new ProtectedWorkspaceReadCapabilityImpl(
-                                                PluginTestSupport.providerOf(sessionPlugins))),
-                                new ReadGitHubRepositoryTool(network)),
-                        toolContext);
+                        mapper, List.of(new ReadGitHubRepositoryTool(network)), toolContext);
+        engine.attachSessionPlugins(sessionPlugins);
         engine.afterSingletonsInstantiated();
         var compiler =
                 new PromptCompiler(
@@ -245,7 +253,24 @@ class CredentialJourneyTest {
                         caller,
                         mapper,
                         List.of(observationPlugin),
-                        new RoleToolFilter(engine),
+                        new RoleToolFilter(engine) {
+                            @Override
+                            public @NonNull Set<@NonNull ToolDefinition> resolve(
+                                    @NonNull Role role,
+                                    @NonNull Set<@NonNull ToolCapability> capabilities) {
+                                // Keep this credential journey's original four-tool manifest.
+                                return super.resolve(role, capabilities).stream()
+                                        .filter(
+                                                tool ->
+                                                        Set.of(
+                                                                        "view_file",
+                                                                        "read_github_repository",
+                                                                        "submit_plan",
+                                                                        IMPORT_TOOL)
+                                                                .contains(tool.name()))
+                                        .collect(Collectors.toUnmodifiableSet());
+                            }
+                        },
                         "REAL",
                         50,
                         1000,

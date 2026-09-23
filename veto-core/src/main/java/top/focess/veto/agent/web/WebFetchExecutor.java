@@ -27,17 +27,16 @@ import top.focess.veto.agent.intercept.Gateway;
 import top.focess.veto.agent.intercept.HitlRegistry;
 import top.focess.veto.agent.intercept.IngressDefense;
 import top.focess.veto.agent.loop.PromptCompiler;
-import top.focess.veto.agent.loop.PromptLibrary;
 import top.focess.veto.agent.screening.DangerComputation;
 import top.focess.veto.agent.screening.ProtectedSet;
 import top.focess.veto.agent.screening.SlmScreeningProvider;
 import top.focess.veto.agent.tool.ToolCallContextHolder;
 import top.focess.veto.agent.tool.ToolEngineImpl;
-import top.focess.veto.agent.tool.ToolErrorCode;
-import top.focess.veto.agent.tool.ToolErrors;
 import top.focess.veto.agent.translation.CapabilityTranslator;
 import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.api.agent.tool.ToolCapability;
+import top.focess.veto.api.agent.tool.ToolErrorCode;
+import top.focess.veto.api.agent.tool.ToolErrors;
 import top.focess.veto.llm.config.LlmJacksonConfig;
 import top.focess.veto.llm.core.LlmOptions;
 import top.focess.veto.llm.core.LlmSystemUsage;
@@ -59,7 +58,8 @@ public final class WebFetchExecutor {
     private static final int MAX_EVIDENCE = 8;
     private static final int MAX_ANSWER_CHARS = 4000;
     private static final int PROVIDER_FRAMING_RESERVE = 2048;
-    private static final @NonNull String SYSTEM = PromptLibrary.text("web-fetch-system-prompt");
+    private static final @NonNull String SYSTEM =
+            PromptCompiler.compileText("web-fetch-system-prompt");
     private final @NonNull SessionAgentRegistry sessionAgents;
     private final @NonNull TurnLogService turnLogService;
     private final @NonNull ObjectMapper mapper;
@@ -165,7 +165,7 @@ public final class WebFetchExecutor {
                     new AgentPersona(
                             id,
                             "web_fetch · 网页阅读",
-                            PromptLibrary.text("reader-persona-description"),
+                            PromptCompiler.compileText("reader-persona-description"),
                             Set.copyOf(engine.getActiveTools(null)),
                             List.of());
             var workspace = Workspace.fromConfig("", "", "REAL");

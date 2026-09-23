@@ -16,9 +16,9 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.capability.CapabilityAccess;
-import top.focess.veto.agent.tool.ToolErrorCode;
-import top.focess.veto.agent.tool.ToolErrors;
 import top.focess.veto.api.agent.tool.ToolCapability;
+import top.focess.veto.api.agent.tool.ToolErrorCode;
+import top.focess.veto.api.agent.tool.ToolErrors;
 import top.focess.veto.plugin.runtime.PluginManager;
 import top.focess.veto.vault.KeysteadVault;
 

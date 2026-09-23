@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.api.agent.capability.WorkspaceFile;
 
 final class ReadOnlyWorkspaceFile extends RestrictedWorkspaceFile {
     ReadOnlyWorkspaceFile(@NonNull WorkspaceFileAccess access) {

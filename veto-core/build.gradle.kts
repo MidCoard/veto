@@ -25,6 +25,9 @@ repositories {
 dependencies {
     implementation(project(":veto-protocol"))
     implementation(project(":veto-plugin-runtime"))
+    runtimeOnly(project(":veto-web-search"))
+    runtimeOnly(project(":veto-builtin"))
+    testImplementation(project(":veto-builtin"))
     // Host-authority bridge (SecretProtectionConfiguration) compiles against the plugin's own API,
     // but the plugin is a pure runtime plugin: absent jar -> host service simply not granted.
     compileOnly(project(":veto-secret-protection"))

@@ -83,10 +83,24 @@ veto:
     max-input-tokens: 32000
     max-output-tokens: 4096
 
+  plugins:
+    tool-names:
+      "[top.focess.builtin:view_file]": view_file
+      "[top.focess.builtin:list_dir]": list_dir
+      "[top.focess.builtin:find_files]": find_files
+      "[top.focess.builtin:grep_search]": grep_search
+      "[top.focess.builtin:write_to_file]": write_to_file
+      "[top.focess.builtin:replace_file_content]": replace_file_content
+      "[top.focess.builtin:move_path]": move_path
+      "[top.focess.builtin:delete_path]": delete_path
+    configuration:
+      "[top.focess.web-search]":
+        brave-api-key: ${veto.websearch.brave.api-key:}
+
   websearch:
     provider: duckduckgo
     brave:
-      api-key: ${BRAVE_API_KEY}
+      api-key: ${BRAVE_API_KEY:}
 
   # Model tiers: the single source of truth for an agent's model. Patterns and agents bind to a
   # tier name (TOP/MID/LOW/LOCAL); each user configures their own named profiles (provider + base

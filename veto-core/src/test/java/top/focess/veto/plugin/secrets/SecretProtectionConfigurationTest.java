@@ -6,6 +6,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static top.focess.veto.util.Nullness.requireNonNull;
 
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import org.junit.jupiter.api.Test;
@@ -78,7 +79,10 @@ class SecretProtectionConfigurationTest {
                             if (!(service instanceof SecretDetectionModel model))
                                 throw new AssertionError("Detection model service missing");
                             assertTrue(model.isAvailable());
-                            assertEquals(Optional.of("[\"x\"]"), model.complete("prompt"));
+                            assertEquals(
+                                    Optional.of("[\"x\"]"),
+                                    model.complete(
+                                            "secret-detection", Map.of("text", "synthetic-input")));
                         });
     }
 

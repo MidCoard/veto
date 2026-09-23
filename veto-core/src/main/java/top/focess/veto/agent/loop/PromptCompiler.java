@@ -23,11 +23,11 @@ import top.focess.veto.agent.identity.AgentPersona;
 import top.focess.veto.agent.identity.SystemPromptResolver;
 import top.focess.veto.agent.intercept.ApprovalReceipt;
 import top.focess.veto.agent.screening.DeployerPolicy;
-import top.focess.veto.agent.tool.ToolErrorCode;
-import top.focess.veto.agent.tool.ToolResultStatus;
 import top.focess.veto.agent.translation.CapabilityTranslator;
 import top.focess.veto.agent.workspace.Workspace;
+import top.focess.veto.api.agent.tool.ToolErrorCode;
 import top.focess.veto.api.agent.tool.ToolResultFormat;
+import top.focess.veto.api.agent.tool.ToolResultStatus;
 import top.focess.veto.llm.core.ChatMessage;
 import top.focess.veto.llm.core.NativeToolState;
 import top.focess.veto.llm.core.ToolDefinition;
@@ -57,6 +57,28 @@ import top.focess.veto.llm.core.VetoRequest;
 @Component
 public class PromptCompiler {
 
+    /** Shared MDC entry point for agent requests, runtime messages and local SLM prompts. */
+    public static PromptDocument.@NonNull Result compileDocument(
+            @NonNull String entry, @NonNull Map<String, ?> data) {
+        return PromptLibrary.compile(entry, data);
+    }
+
+    public static @NonNull String compileText(@NonNull String entry, @NonNull Map<String, ?> data) {
+        return compileDocument(entry, data).text().strip();
+    }
+
+    public static @NonNull String compileText(@NonNull String entry) {
+        return compileText(entry, Map.of());
+    }
+
+    public static @NonNull ChatMessage compileMessage(
+            @NonNull String entry, @NonNull Map<String, ?> data) {
+        var result = compileDocument(entry, data);
+        if (result.messages().size() != 1)
+            throw new IllegalArgumentException(entry + ": expected one message");
+        return result.messages().getFirst();
+    }
+
     /**
      * The tool_result content synthesized for a tool_call the episode never answered (the run was
      * interrupted or the backend stopped between the call and its result). The message is
@@ -64,7 +86,7 @@ public class PromptCompiler {
      * completion or absence of side effects.
      */
     static final @NonNull String INTERRUPTED_TOOL_RESULT =
-            PromptLibrary.text("runtime-missing-tool-result");
+            PromptCompiler.compileText("runtime-missing-tool-result");
 
     private final @NonNull CapabilityTranslator translator;
     private final SystemPromptResolver systemPromptResolver;
@@ -411,7 +433,7 @@ public class PromptCompiler {
             entry = "default-tool-agent-system-prompt";
             data.put("instructions", fixed);
         }
-        var compiled = PromptLibrary.compile(entry, data);
+        var compiled = PromptCompiler.compileDocument(entry, data);
         return new PromptSource.Rendered(entry, compiled.text(), compiled.sources());
     }
 
@@ -611,7 +633,7 @@ public class PromptCompiler {
 
     public static @NonNull TurnRecord sourcedUserPrompt(
             int number, @NonNull String entry, @NonNull Map<String, ?> data) {
-        ChatMessage message = PromptLibrary.message(entry, data);
+        ChatMessage message = PromptCompiler.compileMessage(entry, data);
         return withRecordedSource(TurnRecord.userPrompt(number, message.content()), message, false);
     }
 
@@ -664,12 +686,12 @@ public class PromptCompiler {
         String thoughtContent = pendingThought != null ? pendingThought : "";
         return switch (turn.type()) {
             case MONITOR_EVENT ->
-                    PromptLibrary.message(
+                    PromptCompiler.compileMessage(
                             "runtime-monitor", Map.of("content", str(turn.payload(), "content")));
             case USER_PROMPT ->
                     restoreSource(turn, ChatMessage.user(renderUserPrompt(turn.payload())));
             case USER_INTERRUPT ->
-                    PromptLibrary.message(
+                    PromptCompiler.compileMessage(
                             "runtime-feedback",
                             Map.of("feedback", str(turn.payload(), "feedback")));
             case ASSISTANT_THOUGHT -> null; // handled by resolveRewinds
@@ -690,18 +712,18 @@ public class PromptCompiler {
             case TOOL_RESPONSE -> mapPresentedToolResponse(turn, toolResultPresentation);
             case AGENT_INIT -> null; // handled before role mapping
             case COMPACTION_SUMMARY ->
-                    PromptLibrary.message(
+                    PromptCompiler.compileMessage(
                             "runtime-compaction-history",
                             Map.of("summary", str(turn.payload(), "content")));
             case EXECUTION_ERROR -> {
                 if (Boolean.TRUE.equals(turn.payload().get("recoverable"))) yield null;
                 if ("INTERRUPTED".equals(turn.payload().get("outcome")))
-                    yield PromptLibrary.message("runtime-interrupted", Map.of());
+                    yield PromptCompiler.compileMessage("runtime-interrupted", Map.of());
                 if ("CANCELLED".equals(turn.payload().get("outcome")))
                     yield turn.payload().get("requestId") instanceof String
-                            ? PromptLibrary.message("runtime-cancelled", Map.of())
+                            ? PromptCompiler.compileMessage("runtime-cancelled", Map.of())
                             : null;
-                yield PromptLibrary.message(
+                yield PromptCompiler.compileMessage(
                         "runtime-execution-error", Map.of("error", str(turn.payload(), "content")));
             }
             case REWIND, TOKEN_USAGE -> null;
@@ -715,7 +737,7 @@ public class PromptCompiler {
         if (receipt == null) return null;
         String option = receipt.decision().name();
         String origin = receipt.decisionSource().name();
-        return PromptLibrary.message(
+        return PromptCompiler.compileMessage(
                         "runtime-approval",
                         Map.of(
                                 "receipt",
@@ -792,7 +814,7 @@ public class PromptCompiler {
         if (resumeContext.isBlank()) {
             return str(payload, "content");
         }
-        return PromptLibrary.text("runtime-resume", Map.of("context", resumeContext));
+        return PromptCompiler.compileText("runtime-resume", Map.of("context", resumeContext));
     }
 
     // ── Token budget ──────────────────────────────────────────────────
@@ -953,7 +975,9 @@ public class PromptCompiler {
             ChatMessage anchor = lastUserMessage(full);
             out.add(
                     firstConversation,
-                    anchor != null ? anchor : PromptLibrary.message("runtime-continued", Map.of()));
+                    anchor != null
+                            ? anchor
+                            : PromptCompiler.compileMessage("runtime-continued", Map.of()));
         }
         return out;
     }

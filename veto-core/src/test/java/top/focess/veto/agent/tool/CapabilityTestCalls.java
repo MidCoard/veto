@@ -5,8 +5,14 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.Map;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.agent.capability.CapabilityResolver;
+import top.focess.veto.agent.capability.ProtectedWorkspaceReadCapabilityImpl;
 import top.focess.veto.agent.intercept.ToolExecutionPermit;
+import top.focess.veto.api.agent.capability.WorkspaceWriteCapability;
 import top.focess.veto.api.agent.tool.CapabilityTool;
+import top.focess.veto.api.agent.tool.ToolDocs;
+import top.focess.veto.api.agent.tool.WorkspaceReadTool;
+import top.focess.veto.api.agent.tool.WorkspaceWriteTool;
 import top.focess.veto.llm.core.ToolCall;
 import top.focess.veto.llm.core.ToolResultPresentationMode;
 
@@ -14,6 +20,8 @@ import top.focess.veto.llm.core.ToolResultPresentationMode;
 public final class CapabilityTestCalls {
     private CapabilityTestCalls() {}
 
+    @SuppressWarnings(
+            "unchecked") // The tool's typed workspace interface shares its argument type T.
     public static <T> @NonNull String execute(@NonNull CapabilityTool<T> tool, @NonNull T args)
             throws Exception {
         ToolCallContext previous = ToolCallContextHolder.get();
@@ -64,6 +72,15 @@ public final class CapabilityTestCalls {
                         previous.requestId()));
         ToolCallContextHolder.setCurrentCallId(callId);
         try {
+            if (tool instanceof WorkspaceReadTool<?> read)
+                return ((WorkspaceReadTool<T>) read)
+                        .execute(args, new ProtectedWorkspaceReadCapabilityImpl());
+            if (tool instanceof WorkspaceWriteTool<?> write)
+                return ((WorkspaceWriteTool<T>) write)
+                        .execute(
+                                args,
+                                CapabilityResolver.require(
+                                        ToolDocs.nonNullClass(WorkspaceWriteCapability.class)));
             return tool.execute(args);
         } finally {
             if (!hadContext) {

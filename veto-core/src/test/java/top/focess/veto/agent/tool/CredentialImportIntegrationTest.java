@@ -278,7 +278,15 @@ class CredentialImportIntegrationTest {
             @NonNull String service,
             @NonNull String label)
             throws Exception {
-        var entry = plugins.catalog().entries(StandardContributionPoints.NATIVE_TOOLS).getFirst();
+        var entry =
+                plugins.catalog().entries(StandardContributionPoints.NATIVE_TOOLS).stream()
+                        .filter(
+                                value ->
+                                        value.implementation()
+                                                .getName()
+                                                .equals("import_detected_credential"))
+                        .findFirst()
+                        .orElseThrow();
         CapabilityTool<?> tool = entry.implementation();
         var mapper = new ObjectMapper();
         @NonNull Object args =

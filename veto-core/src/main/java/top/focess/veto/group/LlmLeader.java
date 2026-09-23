@@ -19,7 +19,7 @@ import org.springframework.stereotype.Component;
 import top.focess.veto.agent.Agent;
 import top.focess.veto.agent.AgentResult;
 import top.focess.veto.agent.identity.AgentPersona;
-import top.focess.veto.agent.loop.PromptLibrary;
+import top.focess.veto.agent.loop.PromptCompiler;
 
 /**
  * LLM-backed Leader that wraps an {@link Agent}. It authors the DAG, assigns Mates, reasons over
@@ -200,7 +200,7 @@ public class LlmLeader {
 
     /** Heuristic prompt: "investigate + author a DAG from this contextBrief." */
     private static @NonNull String buildAuthorPrompt(@NonNull UUID groupId, String contextBrief) {
-        return PromptLibrary.text(
+        return PromptCompiler.compileText(
                 "leader-author",
                 Map.of("groupId", groupId, "brief", contextBrief == null ? "" : contextBrief));
     }
@@ -208,7 +208,7 @@ public class LlmLeader {
     /** Heuristic prompt: "should we pivot?" */
     private static @NonNull String buildPivotPrompt(
             @NonNull Group group, int perMateMessageCount, double saturation) {
-        return PromptLibrary.text(
+        return PromptCompiler.compileText(
                 "leader-pivot",
                 Map.of(
                         "groupId",

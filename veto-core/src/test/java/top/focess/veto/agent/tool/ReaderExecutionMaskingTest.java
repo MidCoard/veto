@@ -15,6 +15,7 @@ import top.focess.veto.agent.web.WebFetchTool;
 import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.agent.tool.ToolDocs;
+import top.focess.veto.api.agent.tool.ToolErrorCode;
 import top.focess.veto.llm.core.ToolCall;
 import top.focess.veto.plugin.runtime.PluginTestSupport;
 

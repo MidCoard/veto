@@ -62,7 +62,6 @@ import top.focess.veto.agent.loop.LoopBreaker;
 import top.focess.veto.agent.loop.MessageCitations;
 import top.focess.veto.agent.loop.ProgramValidator;
 import top.focess.veto.agent.loop.PromptCompiler;
-import top.focess.veto.agent.loop.PromptLibrary;
 import top.focess.veto.agent.loop.PromptSource;
 import top.focess.veto.agent.loop.ResponseEnforcer;
 import top.focess.veto.agent.loop.ResponseRequest;
@@ -78,14 +77,14 @@ import top.focess.veto.agent.tool.ToolCallContext;
 import top.focess.veto.agent.tool.ToolCallContextHolder;
 import top.focess.veto.agent.tool.ToolDefinition;
 import top.focess.veto.agent.tool.ToolEngine;
-import top.focess.veto.agent.tool.ToolErrorCode;
-import top.focess.veto.agent.tool.ToolExecutionException;
 import top.focess.veto.agent.tool.ToolResult;
-import top.focess.veto.agent.tool.ToolResultStatus;
 import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.tool.ParamCategory;
 import top.focess.veto.api.agent.tool.ToolCapability;
+import top.focess.veto.api.agent.tool.ToolErrorCode;
+import top.focess.veto.api.agent.tool.ToolExecutionException;
 import top.focess.veto.api.agent.tool.ToolResultFormat;
+import top.focess.veto.api.agent.tool.ToolResultStatus;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
 import top.focess.veto.api.plugin.contract.TextProtection;
 import top.focess.veto.api.plugin.contract.WorkflowHook;
@@ -1041,12 +1040,12 @@ public class AgentRunner {
             // There cannot be more chunks than records, so these index/count values bound the
             // rendered header. Include the provider's response wrapper in the actual overhead.
             var largestHeader =
-                    PromptLibrary.message(
+                    PromptCompiler.compileMessage(
                             "runtime-compaction",
                             Map.of("index", records.size(), "count", records.size()));
             var emptyRecords =
                     ChatMessage.user(
-                            PromptLibrary.text(
+                            PromptCompiler.compileText(
                                     "runtime-compaction-records", Map.of("records", List.of())));
             int overhead = compactionInputChars(compactionRequest(largestHeader, emptyRecords)) - 2;
             chunks =
@@ -1060,13 +1059,13 @@ public class AgentRunner {
             JsonNode chunk = chunks.get(i);
             Map<Integer, String> sources = CompactionSupport.sourceOrigins(chunk);
             ChatMessage systemPrompt =
-                    PromptLibrary.message(
+                    PromptCompiler.compileMessage(
                             "runtime-compaction", Map.of("index", i + 1, "count", chunks.size()));
             String rawSummary =
                     callCompactor(
                             systemPrompt,
                             ChatMessage.user(
-                                    PromptLibrary.text(
+                                    PromptCompiler.compileText(
                                             "runtime-compaction-records",
                                             Map.of("records", chunk))),
                             sources);
@@ -1088,8 +1087,8 @@ public class AgentRunner {
                         CompactionSupport.summaryOrigins(pair, originalOrigins);
                 String raw =
                         callCompactor(
-                                PromptLibrary.message("runtime-compaction-merge", Map.of()),
-                                PromptLibrary.message(
+                                PromptCompiler.compileMessage("runtime-compaction-merge", Map.of()),
+                                PromptCompiler.compileMessage(
                                         "runtime-compaction-input", Map.of("summaries", pair)),
                                 sources);
                 if ("{}".equals(raw)) return "{}";
@@ -1159,7 +1158,7 @@ public class AgentRunner {
         var data =
                 new LinkedHashMap<String, Object>(request.responseContract().promptData(request));
         data.put("system", request.systemPrompt());
-        return PromptLibrary.compile("provider-native", data).text().length()
+        return PromptCompiler.compileDocument("provider-native", data).text().length()
                 + request.userPrompt().length();
     }
 
@@ -1440,7 +1439,7 @@ public class AgentRunner {
                                 new GenerateAction(
                                         cg.id(),
                                         cg.label(),
-                                        PromptLibrary.text(
+                                        PromptCompiler.compileText(
                                                 "runtime-judgment",
                                                 Map.of("prompt", check.prompt())),
                                         Map.of(
@@ -1664,7 +1663,7 @@ public class AgentRunner {
                                                 ? messageGroups.get(index).getFirst().role()
                                                 : "";
                                 citationError =
-                                        PromptLibrary.text(
+                                        PromptCompiler.compileText(
                                                 "runtime-citation",
                                                 Map.of(
                                                         "id",
@@ -1691,7 +1690,7 @@ public class AgentRunner {
                                             index, item.role(), item.toolName() != null));
                         }
                         citationError =
-                                PromptLibrary.text(
+                                PromptCompiler.compileText(
                                         "runtime-citation-order",
                                         Map.of("error", citationError, "items", order));
                         citationCandidate = checked;
@@ -1785,7 +1784,7 @@ public class AgentRunner {
                                         source ->
                                                 source.source().equals("runtime-completion.mdc")));
         messages.add(
-                PromptLibrary.message(
+                PromptCompiler.compileMessage(
                         "runtime-completion",
                         Map.of(
                                 "tool",
@@ -1849,7 +1848,7 @@ public class AgentRunner {
                             options.contextWindowTokens());
         List<ChatMessage> messages = new ArrayList<>(original.messages());
         ChatMessage generated =
-                PromptLibrary.message(
+                PromptCompiler.compileMessage(
                         "runtime-generation",
                         Map.of(
                                 "prompt",
@@ -2013,7 +2012,7 @@ public class AgentRunner {
             @NonNull VetoRequest request, @NonNull ModelSchemaException e) {
         List<ChatMessage> augmented = new ArrayList<>(request.messages());
         augmented.add(
-                PromptLibrary.message(
+                PromptCompiler.compileMessage(
                         "runtime-schema-rejection",
                         Map.of(
                                 "error",
@@ -2059,7 +2058,7 @@ public class AgentRunner {
 
     /** Describes the response correction required for the bounded schema retry. */
     private @NonNull String getExpectedDescription(@NonNull VetoRequest request) {
-        return PromptLibrary.text(
+        return PromptCompiler.compileText(
                 "runtime-expected", request.responseContract().promptData(request));
     }
 
@@ -2090,7 +2089,8 @@ public class AgentRunner {
                     appendToolResponse(
                             call.toolName(),
                             call.callId(),
-                            refusedObservation(PromptLibrary.text("runtime-refused-duplicate")),
+                            refusedObservation(
+                                    PromptCompiler.compileText("runtime-refused-duplicate")),
                             false);
                 } else {
                     callsNeedingDecision.add(call);
@@ -3074,7 +3074,7 @@ public class AgentRunner {
 
     /** Sets observations only; does not enqueue work or alter durable conversation records. */
     public synchronized void setRecoveredTasks(@NonNull List<RecoveredTask> tasks) {
-        recoveryContext = PromptLibrary.message("runtime-recovery", Map.of("tasks", tasks));
+        recoveryContext = PromptCompiler.compileMessage("runtime-recovery", Map.of("tasks", tasks));
     }
 
     /**

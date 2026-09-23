@@ -1,7 +1,9 @@
 package top.focess.veto.agent.tool;
 
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.api.agent.tool.ToolErrorCode;
 import top.focess.veto.api.agent.tool.ToolResultFormat;
+import top.focess.veto.api.agent.tool.ToolResultStatus;
 
 /**
  * The result of executing a tool through the {@link ToolEngine}.

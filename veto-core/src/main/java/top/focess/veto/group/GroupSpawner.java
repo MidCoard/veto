@@ -22,7 +22,7 @@ import top.focess.veto.agent.SessionAgentRegistry;
 import top.focess.veto.agent.VetoAgent;
 import top.focess.veto.agent.identity.AgentPersona;
 import top.focess.veto.agent.identity.Role;
-import top.focess.veto.agent.loop.PromptLibrary;
+import top.focess.veto.agent.loop.PromptCompiler;
 import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.llm.core.ToolResultPresentationMode;
 import top.focess.veto.model.tier.ModelTier;
@@ -55,7 +55,7 @@ public class GroupSpawner implements GroupOrchestrator.MateProvisioner {
             LoggerFactory.getLogger("top.focess.veto.group.GroupSpawner");
 
     private static final @NonNull String DEFAULT_MATE_SYSTEM_PROMPT_BASE =
-            PromptLibrary.text("mate-default-guidance");
+            PromptCompiler.compileText("mate-default-guidance");
 
     private final @NonNull Blackboard blackboard;
     private final @NonNull GroupRegistry registry;

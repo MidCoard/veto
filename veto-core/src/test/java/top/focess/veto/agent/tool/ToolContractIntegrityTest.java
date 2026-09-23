@@ -18,7 +18,11 @@ import top.focess.veto.api.agent.tool.AgentTool;
 import top.focess.veto.api.agent.tool.NativeTool;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.agent.tool.ToolDocs;
+import top.focess.veto.api.agent.tool.ToolErrorCode;
+import top.focess.veto.api.agent.tool.ToolExecutionException;
 import top.focess.veto.api.agent.tool.ToolSecurity;
+import top.focess.veto.api.agent.tool.WorkspaceReadTool;
+import top.focess.veto.api.agent.tool.WorkspaceWriteTool;
 
 /**
  * Cross-checks every documented call example against the tool's real runtime argument validator.

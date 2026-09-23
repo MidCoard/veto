@@ -5,6 +5,7 @@ import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.List;
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.api.agent.capability.WritableWorkspaceFile;
 
 final class WritableWorkspaceFileImpl extends RestrictedWorkspaceFile
         implements WritableWorkspaceFile {

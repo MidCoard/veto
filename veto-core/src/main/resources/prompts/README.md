@@ -1,7 +1,7 @@
 # Prompt sources
 
-All bundled prompts live in `prompts/`. `PromptLibrary` discovers `**/*.mdc`
-recursively in both the source tree and the packaged JAR.
+All bundled prompts live in `prompts/`, including plugin-owned resources in their
+plugin JARs. `PromptLibrary` discovers `**/*.mdc` recursively on the classpath.
 
 ## Where to make a change
 
@@ -54,7 +54,14 @@ workspace files. Source changes require rebuilding the application.
 1. `PromptLibrary` discovers the trusted resource package.
 2. `PromptDocument` compiles version-2 MDC, validates required inputs, expands
    includes, and records source spans and message boundaries.
-3. `PromptCompiler` provides context and assembles each model request.
+3. `PromptCompiler` is the production compilation entry point: `compileDocument`,
+   `compileText` and `compileMessage` serve named sources, including SLM prompts;
+   agent request assembly also provides runtime context and history.
+
+SLM screening, semantic masking, outbound analysis and plugin secret detection all
+use this path. Java supplies data and bounds; instructions stay in MDC. The secret
+plugin supplies its source ID and data through its model service, so it does not
+import core's compiler. Transport code receives compiled text only.
 
 `PromptSource` is the separate version-1 string compiler; it is not this loader.
 

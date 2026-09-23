@@ -2,6 +2,7 @@ package top.focess.veto.secret.detection;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import java.util.Map;
 import java.util.Optional;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
@@ -105,7 +106,8 @@ class SensitiveDataMaskingTest {
                     }
 
                     @Override
-                    public @NonNull Optional<String> complete(@NonNull String prompt) {
+                    public @NonNull Optional<String> complete(
+                            @NonNull String source, @NonNull Map<String, ?> data) {
                         return Optional.of("[\"wEk7-qR9\"]");
                     }
                 };

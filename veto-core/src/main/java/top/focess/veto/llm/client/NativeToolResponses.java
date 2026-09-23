@@ -8,7 +8,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.agent.loop.PromptLibrary;
+import top.focess.veto.agent.loop.PromptCompiler;
 import top.focess.veto.llm.core.VetoRequest;
 import top.focess.veto.llm.exceptions.ModelSchemaException;
 
@@ -30,7 +30,7 @@ final class NativeToolResponses {
         var data =
                 new LinkedHashMap<String, Object>(request.responseContract().promptData(request));
         data.put("system", request.systemPrompt());
-        return PromptLibrary.compile(entry, data).text();
+        return PromptCompiler.compileDocument(entry, data).text();
     }
 
     static @NonNull JsonNode arguments(@NonNull ObjectMapper mapper, @NonNull String value) {

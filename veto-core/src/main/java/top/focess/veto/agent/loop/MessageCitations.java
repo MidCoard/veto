@@ -11,7 +11,7 @@ import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.TurnRecord;
 import top.focess.veto.agent.TurnType;
-import top.focess.veto.agent.tool.ToolResultStatus;
+import top.focess.veto.api.agent.tool.ToolResultStatus;
 import top.focess.veto.llm.core.ChatMessage;
 import top.focess.veto.llm.core.ProviderMessages;
 import top.focess.veto.llm.core.VetoRequest;

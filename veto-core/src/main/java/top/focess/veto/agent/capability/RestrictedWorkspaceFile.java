@@ -3,6 +3,7 @@ package top.focess.veto.agent.capability;
 import java.io.IOException;
 import java.io.InputStream;
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.api.agent.capability.WorkspaceFile;
 
 abstract sealed class RestrictedWorkspaceFile implements WorkspaceFile
         permits ReadOnlyWorkspaceFile, WritableWorkspaceFileImpl {

@@ -10,6 +10,7 @@ import top.focess.veto.agent.capability.LoopControlCapabilityImpl;
 import top.focess.veto.agent.tool.*;
 import top.focess.veto.agent.tool.builtin.*;
 import top.focess.veto.api.agent.tool.ToolDocs;
+import top.focess.veto.api.agent.tool.ToolExecutionException;
 
 class ResponseSubmissionToolsTest {
     private final @NonNull ObjectMapper mapper = new ObjectMapper();

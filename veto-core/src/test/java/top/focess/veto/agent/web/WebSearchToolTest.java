@@ -11,11 +11,14 @@ import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.agent.capability.NetworkEgressCapabilityImpl;
 import top.focess.veto.agent.tool.CapabilityTestCalls;
-import top.focess.veto.agent.tool.ToolErrors;
-import top.focess.veto.agent.tool.ToolExecutionException;
 import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.tool.ToolDocs;
+import top.focess.veto.api.agent.tool.ToolErrors;
+import top.focess.veto.api.agent.tool.ToolExecutionException;
 import top.focess.veto.api.agent.tool.ToolSecurity;
+import top.focess.veto.api.search.SearchOptions;
+import top.focess.veto.api.search.SearchProvider;
+import top.focess.veto.api.search.SearchResult;
 
 class WebSearchToolTest {
 

@@ -1,0 +1,7 @@
+---
+version: 2
+id: outbound-analysis
+requires: [payload]
+---
+Analyze the following payload for structural compliance:
+{{payload}}

@@ -8,8 +8,6 @@ import java.util.HashMap;
 import java.util.List;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
-import top.focess.veto.agent.tool.builtin.DeletePathTool;
-import top.focess.veto.agent.tool.builtin.FindFilesTool;
 import top.focess.veto.agent.tool.builtin.RunCommandTool;
 import top.focess.veto.agent.tool.builtin.RunTaskTool;
 import top.focess.veto.agent.tool.builtin.ViewTaskTool;
@@ -20,7 +18,11 @@ import top.focess.veto.api.agent.tool.RequiredWhen;
 import top.focess.veto.api.agent.tool.StringConstraint;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.agent.tool.ToolDocs;
+import top.focess.veto.api.agent.tool.ToolErrorCode;
+import top.focess.veto.api.agent.tool.ToolExecutionException;
 import top.focess.veto.api.agent.tool.ToolSecurity;
+import top.focess.veto.builtin.workspace.DeletePathTool;
+import top.focess.veto.builtin.workspace.FindFilesTool;
 import top.focess.veto.memory.MemoryTools;
 
 /**

@@ -3,6 +3,7 @@ package top.focess.veto.agent.capability;
 import java.util.List;
 import java.util.Set;
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.api.agent.capability.Capability;
 import top.focess.veto.group.BlackboardMessage;
 import top.focess.veto.group.BlackboardMessage.MessageType;
 import top.focess.veto.group.Group.GroupState;

@@ -1,9 +1,12 @@
 package top.focess.veto.agent.capability;
 
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.api.agent.capability.Capability;
+import top.focess.veto.api.agent.capability.WorkspaceReadCapability;
+import top.focess.veto.api.agent.capability.WorkspaceWriteCapability;
 import top.focess.veto.api.agent.tool.ToolCapability;
 
-/** Resolves an unforgeable call-scoped capability from the current screened tool context. */
+/** Resolves a host-enforced call-scoped capability from the current screened tool context. */
 public final class CapabilityResolver {
 
     private CapabilityResolver() {}

@@ -60,9 +60,10 @@ remain portable to other agent clients:
   obtained via `PluginContext.service(CredentialImportAccess.class)`. Without
   it, everything else works and credential import fails at call time.
 - `SecretDetectionModel` — a minimal model port
-  (`isAvailable()` + `Optional<String> complete(String prompt)`), obtained via
-  `PluginContext.service(SecretDetectionModel.class)`. The host supplies only a
-  completion; the plugin owns prompting and parsing, so any agent client can
+  (`isAvailable()` + `Optional<String> complete(String source, Map<String, ?> data)`), obtained via
+  `PluginContext.service(SecretDetectionModel.class)`. The plugin owns its
+  `prompts/secret-detection.mdc` resource and parsing; the host compiles that named
+  source through `PromptCompiler` before inference, so any agent client can
   back it with any model. Without it, detection runs in degraded deterministic
   mode.
 

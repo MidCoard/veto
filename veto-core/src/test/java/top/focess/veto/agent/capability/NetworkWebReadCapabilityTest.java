@@ -21,12 +21,12 @@ import org.junit.jupiter.api.Test;
 import org.mockito.stubbing.Answer;
 import top.focess.veto.agent.tool.CapabilityTestCalls;
 import top.focess.veto.agent.tool.ToolContractValidator;
-import top.focess.veto.agent.tool.ToolExecutionException;
 import top.focess.veto.agent.tool.ToolSchemaCompiler;
-import top.focess.veto.agent.web.SearchProvider;
 import top.focess.veto.agent.web.WebFetchExecutor;
 import top.focess.veto.agent.web.WebFetchTool;
 import top.focess.veto.api.agent.tool.ToolDocs;
+import top.focess.veto.api.agent.tool.ToolExecutionException;
+import top.focess.veto.api.search.SearchProvider;
 
 class NetworkWebReadCapabilityTest {
     private final @NonNull WebFetchExecutor reader =

@@ -3,6 +3,7 @@ package top.focess.veto.agent.capability;
 import java.util.List;
 import java.util.Optional;
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.api.agent.capability.Capability;
 import top.focess.veto.sandbox.BackgroundTaskManager;
 
 public sealed interface TaskControlCapability extends Capability permits TaskControlCapabilityImpl {

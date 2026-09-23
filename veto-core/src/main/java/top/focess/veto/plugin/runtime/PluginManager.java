@@ -20,7 +20,6 @@ import top.focess.veto.api.plugin.PluginContext;
 import top.focess.veto.api.plugin.PluginContributions;
 import top.focess.veto.api.plugin.PluginState;
 import top.focess.veto.api.plugin.VetoPlugin;
-import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.contract.PluginFailure;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
 import top.focess.veto.api.plugin.contract.Tool;
@@ -43,9 +42,26 @@ public final class PluginManager implements AutoCloseable {
     private final @NonNull List<ManagedPlugin> plugins;
     private final @NonNull List<Registration> registrations;
     private final @NonNull ContributionCatalog catalog;
+    private final @NonNull Map<@NonNull String, @NonNull String> toolNames;
 
     public record Registration(
             @NonNull ManagedPlugin plugin, @NonNull PluginContributions contributions) {}
+
+    public PluginManager(
+            @NonNull String paths,
+            @NonNull String nodeCommand,
+            boolean trustedCode,
+            long timeoutMillis,
+            @NonNull ObjectProvider<PluginHostServices> hostServices)
+            throws IOException {
+        this(
+                paths,
+                nodeCommand,
+                trustedCode,
+                timeoutMillis,
+                hostServices,
+                new PluginConfigurations());
+    }
 
     @org.springframework.beans.factory.annotation.Autowired
     public PluginManager(
@@ -53,9 +69,11 @@ public final class PluginManager implements AutoCloseable {
             @Value("${veto.plugins.node-command:}") @NonNull String nodeCommand,
             @Value("${veto.plugins.trusted-code:false}") boolean trustedCode,
             @Value("${veto.plugins.timeout-ms:5000}") long timeoutMillis,
-            @NonNull ObjectProvider<PluginHostServices> hostServices)
+            @NonNull ObjectProvider<PluginHostServices> hostServices,
+            @NonNull PluginConfigurations configurations)
             throws IOException {
         scriptHost = new ScriptHost(Path.of(nodeCommand), timeoutMillis);
+        toolNames = Map.copyOf(configurations.getToolNames());
         var granted = hostServices.getIfAvailable();
         var services = granted == null ? Map.<Class<?>, Object>of() : granted.services();
         List<ManagedPlugin> staged = new ArrayList<>();
@@ -97,7 +115,7 @@ public final class PluginManager implements AutoCloseable {
                                 plugin,
                                 plugin.initialize(
                                         new PluginContext(plugin.identity(), services),
-                                        new JsonValue.ObjectValue(Map.of()))));
+                                        configurations.forPlugin(plugin.identity().id()))));
             }
             var builder = new ContributionCatalog.Builder();
             // Define every standard point up front so an unpopulated point yields an empty entry
@@ -180,10 +198,12 @@ public final class PluginManager implements AutoCloseable {
     }
 
     /**
-     * Stable tool name for any plugin contribution: {@code plugin_<namespace>__<local>}. Shared by
-     * schema tools and internal capability tools so both surface the same provenance-prefixed name.
+     * Operator-configured alias, or {@code plugin_<namespace>__<local>} by default. Shared by
+     * schema and Java tools; names do not change provenance or authority.
      */
     public @NonNull String toolName(@NonNull String namespace, @NonNull String qualifiedId) {
+        String alias = toolNames.get(qualifiedId);
+        if (alias != null) return alias;
         String local = qualifiedId.substring(qualifiedId.indexOf(':') + 1);
         return "plugin_" + namespace.replace('.', '_').replace('-', '_') + "__" + local;
     }

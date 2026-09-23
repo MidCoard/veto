@@ -10,6 +10,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import top.focess.veto.agent.capability.CapabilityAccess;
+import top.focess.veto.agent.loop.PromptCompiler;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.plugin.runtime.PluginHostServices;
 import top.focess.veto.secret.api.CredentialImportAccess;
@@ -89,11 +90,14 @@ public class SecretProtectionConfiguration {
                         }
 
                         @Override
-                        public @NonNull Optional<String> complete(@NonNull String prompt) {
+                        public @NonNull Optional<String> complete(
+                                @NonNull String source, @NonNull Map<String, ?> data) {
                             if (!bridge.isAvailable()) return Optional.empty();
                             try {
                                 return Optional.ofNullable(
-                                        bridge.infer(prompt, "veto-secret-detect")
+                                        bridge.infer(
+                                                        PromptCompiler.compileText(source, data),
+                                                        "veto-secret-detect")
                                                 .get(2, TimeUnit.SECONDS));
                             } catch (Exception failure) {
                                 return Optional.empty();

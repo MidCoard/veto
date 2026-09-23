@@ -8,18 +8,18 @@ import java.util.Set;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.capability.UserInteractionCapability;
-import top.focess.veto.agent.tool.ToolErrorCode;
-import top.focess.veto.agent.tool.ToolErrors;
-import top.focess.veto.agent.tool.ToolExecutionException;
-import top.focess.veto.agent.tool.ToolJson;
-import top.focess.veto.agent.tool.ToolResultStatus;
 import top.focess.veto.agent.tool.UserInteractionTool;
 import top.focess.veto.api.agent.tool.ArraySize;
 import top.focess.veto.api.agent.tool.Doc;
 import top.focess.veto.api.agent.tool.StringConstraint;
 import top.focess.veto.api.agent.tool.ToolDoc;
 import top.focess.veto.api.agent.tool.ToolDocs;
+import top.focess.veto.api.agent.tool.ToolErrorCode;
+import top.focess.veto.api.agent.tool.ToolErrors;
+import top.focess.veto.api.agent.tool.ToolExecutionException;
+import top.focess.veto.api.agent.tool.ToolJson;
 import top.focess.veto.api.agent.tool.ToolResultFormat;
+import top.focess.veto.api.agent.tool.ToolResultStatus;
 
 /** Pauses the calling agent for a batch of up to {@value #MAX_QUESTIONS} questions. */
 @Component

@@ -15,7 +15,7 @@ import top.focess.veto.api.plugin.VetoPlugin;
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.contract.PluginFailure;
 
-/** Host-owned state and invocation admission, serialized on the manager control executor. */
+/** Host-owned lifecycle callbacks, with atomic admission and cleanup on the control executor. */
 public final class ManagedPlugin implements AutoCloseable {
     private final @NonNull VetoPlugin plugin;
     // Published for diagnostics and cooperative cancellation; never used to admit a call.
@@ -28,7 +28,7 @@ public final class ManagedPlugin implements AutoCloseable {
     private static final @NonNull ThreadLocal<@Nullable Boolean> inInvocation =
             ThreadLocal.withInitial(() -> false);
     private final @NonNull CompletableFuture<Void> closed = new CompletableFuture<>();
-    // Accessed only by the lifecycle executor.
+    // Cleanup is owned by the lifecycle executor; admission/count changes use this monitor.
     private boolean cleaned;
     private int activeCalls;
     private final @NonNull String activationId = java.util.UUID.randomUUID().toString();
@@ -107,20 +107,17 @@ public final class ManagedPlugin implements AutoCloseable {
                         }));
     }
 
-    /** Admission and shutdown are ordered together; the handler runs outside the control thread. */
+    /** Admission checks the stop state atomically; handlers run outside the control thread. */
     public final <T extends @NonNull Object> @NonNull T execute(@NonNull Operation<T> operation)
             throws PluginFailure {
         if (Boolean.TRUE.equals(controlling.get()))
             throw new PluginFailure(PluginFailure.Code.NOT_READY);
         // A same-thread nested adapter belongs to the already admitted invocation.
         if (Boolean.TRUE.equals(invoking.get())) return operation.run();
-        await(
-                submit(
-                        () -> {
-                            require(PluginState.ACTIVE);
-                            activeCalls++;
-                            return true;
-                        }));
+        synchronized (this) {
+            require(PluginState.ACTIVE);
+            activeCalls++;
+        }
         boolean nestedInvocation = Boolean.TRUE.equals(inInvocation.get());
         inInvocation.set(true);
         invoking.set(true);
@@ -135,7 +132,9 @@ public final class ManagedPlugin implements AutoCloseable {
             await(
                     submit(
                             () -> {
-                                activeCalls--;
+                                synchronized (this) {
+                                    activeCalls--;
+                                }
                                 finishClose();
                                 return true;
                             }));
@@ -150,8 +149,10 @@ public final class ManagedPlugin implements AutoCloseable {
         if (closed.isDone()) return;
         submit(
                 () -> {
-                    if (state != PluginState.CLOSED && state != PluginState.FAILED)
-                        state = PluginState.STOPPING;
+                    synchronized (this) {
+                        if (state != PluginState.CLOSED && state != PluginState.FAILED)
+                            state = PluginState.STOPPING;
+                    }
                     finishClose();
                     return true;
                 });
@@ -169,16 +170,20 @@ public final class ManagedPlugin implements AutoCloseable {
     }
 
     private void failOnControlThread() {
-        if (state == PluginState.CLOSED || state == PluginState.FAILED) return;
-        state = PluginState.FAILED;
+        synchronized (this) {
+            if (state == PluginState.CLOSED || state == PluginState.FAILED) return;
+            state = PluginState.FAILED;
+        }
         // Failure aborts owned resources to unblock outstanding I/O; graceful close drains first.
         cleanup();
         finishClose();
     }
 
     private void finishClose() {
-        if (activeCalls != 0 || (state != PluginState.STOPPING && state != PluginState.FAILED))
-            return;
+        synchronized (this) {
+            if (activeCalls != 0 || (state != PluginState.STOPPING && state != PluginState.FAILED))
+                return;
+        }
         cleanup();
         if (state != PluginState.FAILED) state = PluginState.CLOSED;
         closed.complete(null);

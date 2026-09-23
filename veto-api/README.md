@@ -20,7 +20,12 @@ and response text, not provider secrets or mutable native-call state. Input hook
 before input protection; output hooks precede final observation protection. Failures
 stop the operation with a safe host error. Script workers do not support Java hooks.
 
-Provider, storage and other feature contracts still in core are migration gaps; this
+Search providers now implement `top.focess.veto.api.search.SearchProvider` and register
+through `StandardContributionPoints.SEARCH_PROVIDERS`. The bundled `veto-web-search`
+plugin demonstrates this with no core dependency. The host selects by provider name,
+checks session bindings and invokes under plugin lifecycle admission.
+
+Model-provider, storage and other feature contracts still in core are migration gaps; this
 release does not yet make every feature implementable through the API alone.
 
 # Veto API — experimental
@@ -71,10 +76,23 @@ admission; tool handlers run on caller threads. Closing a handle drains admitted
 and releases the plugin's resources once. The manager shuts down the shared executor
 after closing all handles.
 
-The standalone fixture contributes a computation tool, a category, a static prompt
-and an observation-text transformer. Its JAR does not bundle shared contracts.
-Package tests load it with shared API class identities and without application
-libraries. Classloader separation is not a security sandbox.
+The shipped implementations are [secret protection](../veto-secret-protection/README.md)
+and [web search](../veto-web-search/README.md), plus the
+[built-in workspace tools](../veto-builtin/README.md). They register through ServiceLoader;
+their tests exercise the actual plugin implementations. Web search compiles and runs
+its module tests without core on the classpath. `veto-builtin` also depends only on
+this API and owns eight workspace tools; other built-in families remain in core.
+
+Workspace plugins implement `WorkspaceReadTool` or `WorkspaceWriteTool`. Host dispatch
+passes a call-scoped capability to the typed `execute` method after authorization;
+the one-argument method rejects execution without that capability. File handles and
+workspace contracts live in `top.focess.veto.api.agent.capability`. Tool error codes,
+exceptions, statuses and JSON result helpers now also belong to the API; update
+imports when rebuilding existing Java tools.
+
+Operators can map qualified contribution IDs to stable public names through
+`veto.plugins.tool-names`. The bundled configuration preserves workspace tool names.
+Aliases retain plugin provenance and do not bypass selection or execution permits.
 
 ## Standard contribution points
 
@@ -84,9 +102,12 @@ own points, but the host never invokes a point it does not define.
 
 | Point | Contract type | Contribution |
 |---|---|---|
+| `veto:search-providers` | `SearchProvider` | Named search backends, selected by host configuration and session bindings |
+| `veto:workflow` | `WorkflowHook` | Session-scoped input, model, tool and observation callbacks |
+| `veto:native-tools` | `CapabilityTool` | Record-authored Java tools |
 | `veto:tools` | `Tool` | Tool object: description, effect, categories, and either a record- or schema-authored invocation |
 | `veto:tool-categories` | `ToolCategory` | Display label and description |
-| `veto:prompts` | `PromptContribution` | Static package resource path (reserved; fixture-only consumer today) |
+| `veto:prompts` | `PromptContribution` | Reserved static resource descriptor; current MDC discovery uses classpath resources |
 | `veto:frontend` | `FrontendContribution` | Browser ESM activation, React registrations and scoped JSON actions |
 | `veto:observation-middleware` | `ObservationMiddleware` | Observation-text transform; chained by the host as the session-less masking hook |
 | `veto:input-protection` | `InputProtection` | User-prompt transform before the prompt enters session history |
@@ -172,16 +193,13 @@ The veto-ui repository contains the loader and its tests; this backend milestone
 Run from the repository root:
 
 ```sh
-./gradlew :veto-api:test
-./gradlew :veto-plugin-fixture:pluginPackage
+./gradlew :veto-api:test :veto-plugin-runtime:test :veto-secret-protection:test :veto-web-search:test
 ```
 
-The fixture is generated at
-`veto-plugin-fixture/build/plugin/top.focess.fixture/0.1.0/`, with its own README.
-Building or copying this package does not activate it in Veto.
+The built-in plugin JARs are packaged as dependencies in `:veto-core:bootJar`.
 
 ## Limitations
 
 The manifest and Java SPI are experimental. This module does not install Java packages or provide adapters for other agent clients. The separate script runtime supports a different
-manifest and validates its own descriptors and messages. The fixture demonstrates lifecycle and registration mechanics,
-not production protection or plugin installation.
+manifest and validates its own descriptors and messages. Java plugins are currently
+discovered from the application classpath; this is not an external JAR installer.

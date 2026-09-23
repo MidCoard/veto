@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Set;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
+import top.focess.veto.api.agent.tool.ToolErrorCode;
 import top.focess.veto.util.Nullness;
 
 class ToolErrorCodeTest {

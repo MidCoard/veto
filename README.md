@@ -71,9 +71,10 @@ veto/
 |-- veto-core/       Spring Boot backend, agent runtime, security gateway, persistence, and tools
 |-- veto-terminal/   JLine/Mordant terminal application; depends on veto-protocol, not veto-core
 |-- veto-api/        Shared authoring contract: tool/capability annotations, contribution registration model, standard contract interfaces, and the experimental Java plugin lifecycle
+|-- veto-builtin/    Built-in workspace tools, registered through veto-api
 |-- veto-plugin-runtime/ Operator-configured script workers and example package
-|-- veto-plugin-fixture/ Standalone plugin test fixture; not an installable production feature
 |-- veto-secret-protection/ Self-contained secret-protection plugin (ServiceLoader-discovered built-in)
+|-- veto-web-search/ DuckDuckGo and Brave search providers, registered through veto-api
 |-- RELEASE.md      Release-user guide template
 |-- gradle/          Gradle wrapper support
 |-- qodana.yaml      Qodana inspection configuration

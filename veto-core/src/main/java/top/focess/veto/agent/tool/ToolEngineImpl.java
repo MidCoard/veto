@@ -17,15 +17,26 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.ApplicationContext;
 import org.springframework.stereotype.Service;
+import top.focess.veto.agent.capability.CapabilityResolver;
+import top.focess.veto.agent.capability.ProtectedWorkspaceReadCapabilityImpl;
 import top.focess.veto.agent.capability.RemoteCallCapability;
 import top.focess.veto.agent.capability.RemoteCallCapabilityImpl;
 import top.focess.veto.agent.mcp.transport.McpJsonRpcClient;
 import top.focess.veto.agent.mcp.transport.McpTransport;
+import top.focess.veto.api.agent.capability.WorkspaceReadCapability;
+import top.focess.veto.api.agent.capability.WorkspaceWriteCapability;
 import top.focess.veto.api.agent.tool.AgentTool;
 import top.focess.veto.api.agent.tool.CapabilityTool;
 import top.focess.veto.api.agent.tool.NativeTool;
 import top.focess.veto.api.agent.tool.ToolCapability;
+import top.focess.veto.api.agent.tool.ToolDocs;
+import top.focess.veto.api.agent.tool.ToolErrorCode;
+import top.focess.veto.api.agent.tool.ToolErrors;
+import top.focess.veto.api.agent.tool.ToolExecutionException;
 import top.focess.veto.api.agent.tool.ToolResultFormat;
+import top.focess.veto.api.agent.tool.ToolResultStatus;
+import top.focess.veto.api.agent.tool.WorkspaceReadTool;
+import top.focess.veto.api.agent.tool.WorkspaceWriteTool;
 import top.focess.veto.api.plugin.PluginState;
 import top.focess.veto.api.plugin.contract.Cancellation;
 import top.focess.veto.api.plugin.contract.JsonValue;
@@ -355,8 +366,27 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
 
     private <T> @NonNull String executeLocal(
             @NonNull CapabilityTool<T> tool, @NonNull JsonNode jsonArgs) throws Exception {
+        if (tool instanceof WorkspaceReadTool<?> read) return executeWorkspaceRead(read, jsonArgs);
+        if (tool instanceof WorkspaceWriteTool<?> write)
+            return executeWorkspaceWrite(write, jsonArgs);
         T args = mapper.treeToValue(jsonArgs, tool.getArgsClass());
         return tool.execute(Nullness.requireNonNull(args, "Tool arguments deserialized to null"));
+    }
+
+    private <T> @NonNull String executeWorkspaceRead(
+            @NonNull WorkspaceReadTool<T> tool, @NonNull JsonNode jsonArgs) throws Exception {
+        WorkspaceReadCapability capability =
+                new ProtectedWorkspaceReadCapabilityImpl(sessionPlugins);
+        return tool.execute(
+                Nullness.requireNonNull(mapper.treeToValue(jsonArgs, tool.getArgsClass())),
+                capability);
+    }
+
+    private <T> @NonNull String executeWorkspaceWrite(
+            @NonNull WorkspaceWriteTool<T> tool, @NonNull JsonNode jsonArgs) throws Exception {
+        return tool.execute(
+                Nullness.requireNonNull(mapper.treeToValue(jsonArgs, tool.getArgsClass())),
+                CapabilityResolver.require(ToolDocs.nonNullClass(WorkspaceWriteCapability.class)));
     }
 
     /** External tool execution over the transport recorded during MCP discovery. */

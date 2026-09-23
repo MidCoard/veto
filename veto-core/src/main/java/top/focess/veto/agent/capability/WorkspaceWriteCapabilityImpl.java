@@ -3,6 +3,8 @@ package top.focess.veto.agent.capability;
 import java.io.IOException;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.intercept.ToolExecutionPermit;
+import top.focess.veto.api.agent.capability.WorkspaceWriteCapability;
+import top.focess.veto.api.agent.capability.WritableWorkspaceFile;
 
 final class WorkspaceWriteCapabilityImpl implements WorkspaceWriteCapability {
     private final @NonNull ToolExecutionPermit permit;

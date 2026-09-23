@@ -7,6 +7,8 @@ import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
+import top.focess.veto.api.agent.capability.WorkspaceFile;
+import top.focess.veto.api.agent.capability.WorkspaceReadCapability;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
 import top.focess.veto.api.plugin.contract.TextProtection;
@@ -25,6 +27,11 @@ public final class ProtectedWorkspaceReadCapabilityImpl implements WorkspaceRead
     /** Detached construction (tests): capture falls back to the unchanged text. */
     public ProtectedWorkspaceReadCapabilityImpl() {
         this.plugins = null;
+    }
+
+    /** Host dispatch binds protection to the same pinned selection used for this invocation. */
+    public ProtectedWorkspaceReadCapabilityImpl(@Nullable SessionPlugins plugins) {
+        this.plugins = plugins;
     }
 
     @Override

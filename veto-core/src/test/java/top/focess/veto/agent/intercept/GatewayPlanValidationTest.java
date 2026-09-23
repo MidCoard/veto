@@ -20,6 +20,7 @@ import top.focess.veto.api.agent.tool.RequiredWhen;
 import top.focess.veto.api.agent.tool.StringConstraint;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.agent.tool.ToolDocs;
+import top.focess.veto.api.agent.tool.ToolExecutionException;
 
 class GatewayPlanValidationTest {
     private static final @NonNull ObjectMapper MAPPER = new ObjectMapper();

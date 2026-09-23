@@ -20,6 +20,28 @@ import top.focess.veto.api.agent.tool.ToolDocs;
 class ToolArchitectureTest {
     @Autowired private @NonNull List<NativeTool<?>> nativeTools;
     @Autowired private @NonNull List<AgentTool<?>> agentTools;
+    @Autowired private @NonNull ToolEngine engine;
+
+    @Test
+    void workspaceToolsArePluginContributionsWithTheirOriginalPublicNames() {
+        for (String name :
+                List.of(
+                        "view_file",
+                        "list_dir",
+                        "find_files",
+                        "grep_search",
+                        "write_to_file",
+                        "replace_file_content",
+                        "move_path",
+                        "delete_path")) {
+            var definition = engine.resolveDefinition(name);
+            if (definition == null) throw new AssertionError("Missing built-in: " + name);
+            var provenance = definition.provenance();
+            if (provenance == null) throw new AssertionError("Not contributed by plugin: " + name);
+            assertEquals("top.focess.builtin", provenance.pluginId());
+            assertTrue(nativeTools.stream().noneMatch(tool -> tool.getName().equals(name)));
+        }
+    }
 
     @Test
     void everyRegisteredToolHasACoherentContract() {

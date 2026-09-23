@@ -1,6 +1,7 @@
 package top.focess.veto.veto;
 
 import jakarta.annotation.PostConstruct;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
@@ -8,6 +9,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
+import top.focess.veto.agent.loop.PromptCompiler;
 import top.focess.veto.observability.AuditLogger;
 import top.focess.veto.plugin.runtime.PluginManager;
 
@@ -112,9 +114,8 @@ public class VetoGateway {
             if (llamaCppBridge.isAvailable()) {
                 try {
                     String analysisPrompt =
-                            String.format(
-                                    "Analyze the following payload for structural compliance:\n%s",
-                                    masked);
+                            PromptCompiler.compileText(
+                                    "outbound-analysis", Map.of("payload", masked));
                     slmAnalysis = llamaCppBridge.infer(analysisPrompt, "veto-output").join();
                 } catch (Exception e) {
                     log.error("Local SLM failed (OOM/error); skipping the block analysis.", e);

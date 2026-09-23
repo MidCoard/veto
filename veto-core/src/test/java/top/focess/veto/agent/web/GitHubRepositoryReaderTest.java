@@ -21,6 +21,7 @@ import top.focess.veto.agent.intercept.ToolExecutionPermit;
 import top.focess.veto.agent.tool.*;
 import top.focess.veto.agent.tool.builtin.ReadGitHubRepositoryTool;
 import top.focess.veto.agent.workspace.*;
+import top.focess.veto.api.search.SearchProvider;
 import top.focess.veto.llm.core.*;
 import top.focess.veto.plugin.runtime.PluginTestSupport;
 import top.focess.veto.vault.*;

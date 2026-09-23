@@ -1,0 +1,191 @@
+package top.focess.veto.builtin.workspace;
+
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.StringReader;
+import java.nio.ByteBuffer;
+import java.nio.charset.MalformedInputException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.NoSuchFileException;
+import org.jspecify.annotations.NonNull;
+import top.focess.veto.api.agent.capability.WorkspaceFile;
+import top.focess.veto.api.agent.capability.WorkspaceReadCapability;
+import top.focess.veto.api.agent.screening.Danger;
+import top.focess.veto.api.agent.tool.Doc;
+import top.focess.veto.api.agent.tool.ParamCategory;
+import top.focess.veto.api.agent.tool.SecurityHint;
+import top.focess.veto.api.agent.tool.ToolCapability;
+import top.focess.veto.api.agent.tool.ToolDoc;
+import top.focess.veto.api.agent.tool.ToolDocs;
+import top.focess.veto.api.agent.tool.ToolErrorCode;
+import top.focess.veto.api.agent.tool.ToolErrors;
+import top.focess.veto.api.agent.tool.ToolResultFormat;
+import top.focess.veto.api.agent.tool.ToolSecurity;
+import top.focess.veto.api.agent.tool.WorkspaceReadTool;
+
+/** {@code view_file} — read lines of a text file from the local filesystem. */
+@ToolSecurity(capability = ToolCapability.WORKSPACE_READ, defaultDanger = Danger.SAFE)
+@ToolDoc(
+        resultFormats = {ToolResultFormat.PLAINTEXT},
+        description = "Read lines of a text file from the local filesystem.",
+        behavior =
+                """
+                Read UTF-8, replacing detected secrets with session references before selecting lines. \
+                startLine/endLine are inclusive, 1-indexed; omitted bounds mean first/last line. \
+                Bounds clamp to the file; reversed or out-of-file ranges are empty. \
+                The whole input must fit 16 MiB (16,777,216 bytes), even for a line range. \
+                Output stops at 5000 lines or 1000000 characters with \
+                `[truncated; request a narrower line range]`.""",
+        whenToUse =
+                "Inspect text or read current source before editing; numbered lines support replace_file_content.",
+        whenNotToUse =
+                "Use grep_search for cross-file patterns and list_dir for discovery. UTF-8 text only; read-only.",
+        resultContract =
+                """
+                    - Success: one output line per source line as \
+                    `<lineNumber>: <line text>` (1-indexed). An empty range yields no lines.
+                    - Supplied `absolutePath` does not exist or is not a regular file (failure): \
+                    `Not a regular file: <absolutePath>`.
+                    - Oversized file (failure): \
+                    `File too large: the file exceeds 16 MiB (16,777,216 bytes); request a smaller artifact.`
+                    - Invalid `absolutePath` syntax (failure): `Invalid path: <absolutePath>`.
+                    - Invalid UTF-8 (failure): `Invalid UTF-8: <absolutePath>`.
+                    - Protected content cannot be processed (failure): \
+                    `Protected content unavailable: the file content could not be processed; retry or adjust \
+                    credential settings.`
+                    - Read failure (failure): `I/O error: cannot read file <absolutePath>.`
+                    """,
+        errorsAndEdgeCases =
+                """
+                    - After a path rejection, do not retry a similar guess. Return to the last successful \
+                    parent listing and reconstruct the absolute path from observed file names.
+                    - `startLine` greater than the file length -> no output (range clamped to empty).
+                    - `endLine` less than `startLine` -> no output.
+                    - Directories, device files, and sockets are rejected as "not a regular file".
+                    - A symbolic-link or reparse-point target fails with UNSAFE_LINK (`Unsafe link: \
+                    symbolic links and reparse points cannot be followed.`); a file that changed after \
+                    authorization fails with TREE_CHANGED (`Tree changed: ...`); a protected target is \
+                    refused with PATH_PROTECTED.
+                    """,
+        security =
+                "Detected secrets are replaced with session references before lines are returned, so file secrets do not enter the conversation.",
+        examples = {
+            "{\"absolutePath\": \"/abs/src/Main.java\"}",
+            "{\"absolutePath\": \"/abs/src/Main.java\", \"startLine\": 10, \"endLine\": 20}",
+            "{\"absolutePath\": \"/abs/src/Main.java\", \"startLine\": 100}",
+            "{\"absolutePath\": \"/abs/config/app.yml\", \"endLine\": 30}",
+            "{\"absolutePath\": \"/abs/project/missing-file.txt\"}"
+        },
+        returnExamples = {
+            "1: package com.example;\n2: \n3: public class Main {",
+            "10:     public static void main(String[] args) {\n11:         System.out.println(\"hi\");\n12:     }",
+            "100: }\n101: ",
+            "1: server:\n2:   port: 8443\n3:   host: 0.0.0.0",
+            "Not a regular file: /abs/project/missing-file.txt"
+        })
+public final class ViewFileTool implements WorkspaceReadTool<ViewFileTool.Args> {
+    private final WorkspaceReadCapability protectedFiles;
+
+    public ViewFileTool(@NonNull WorkspaceReadCapability protectedFiles) {
+        this.protectedFiles = protectedFiles;
+    }
+
+    /** Detached construction (tests): reads without session-bound secret capture. */
+    public ViewFileTool() {
+        this.protectedFiles = null;
+    }
+
+    /** Parameter container for {@code view_file}. */
+    public record Args(
+            @SecurityHint(ParamCategory.FILESYSTEM_PATH)
+                    @Doc("The absolute path of the file to view.")
+                    @NonNull String absolutePath,
+            @Doc("1-indexed starting line (inclusive).") Integer startLine,
+            @Doc("1-indexed ending line (inclusive).") Integer endLine) {}
+
+    @Override
+    public @NonNull String getName() {
+        return "view_file";
+    }
+
+    @Override
+    public @NonNull Class<Args> getArgsClass() {
+        return ToolDocs.nonNullClass(Args.class);
+    }
+
+    @Override
+    public @NonNull String execute(@NonNull Args args, @NonNull WorkspaceReadCapability workspace) {
+        try {
+            WorkspaceFile file = workspace.file(args.absolutePath());
+            if (!file.kind().equals("file")) {
+                return ToolErrors.failure(
+                        ToolErrorCode.WORKSPACE.NOT_A_FILE,
+                        "Not a regular file: " + args.absolutePath());
+            }
+            if (file.size() > 16L * 1024 * 1024) {
+                return ToolErrors.failure(
+                        ToolErrorCode.WORKSPACE.FILE_TOO_LARGE,
+                        "File too large: the file exceeds 16 MiB (16,777,216 bytes); request a"
+                                + " smaller artifact.");
+            }
+            Integer start = args.startLine();
+            Integer end = args.endLine();
+            int from = start == null ? 1 : Math.max(1, start);
+            int until = end == null ? Integer.MAX_VALUE : end;
+            if (until < from) return "";
+            StringBuilder output = new StringBuilder();
+            int emitted = 0;
+            byte[] bytes;
+            try (var input = file.openRead()) {
+                bytes = input.readNBytes(16 * 1024 * 1024 + 1);
+            }
+            if (bytes.length > 16 * 1024 * 1024) {
+                return ToolErrors.failure(
+                        ToolErrorCode.WORKSPACE.FILE_TOO_LARGE,
+                        "File too large: the file exceeds 16 MiB (16,777,216 bytes); request a"
+                                + " smaller artifact.");
+            }
+            String original =
+                    StandardCharsets.UTF_8.newDecoder().decode(ByteBuffer.wrap(bytes)).toString();
+            String protectedText;
+            try {
+                protectedText =
+                        (protectedFiles == null ? workspace : protectedFiles)
+                                .captureFileText(original);
+            } catch (RuntimeException failure) {
+                return ToolErrors.failure(
+                        ToolErrorCode.POLICY.PROTECTED_INPUT_UNAVAILABLE,
+                        "Protected content unavailable: the file content could not be processed;"
+                                + " retry or adjust credential settings.");
+            }
+            try (var reader = new BufferedReader(new StringReader(protectedText))) {
+                String line;
+                int number = 0;
+                while ((line = reader.readLine()) != null) {
+                    number++;
+                    if (number < from) continue;
+                    if (number > until) break;
+                    String rendered = number + ": " + line + "\n";
+                    if (emitted >= 5000 || output.length() + rendered.length() > 1_000_000) {
+                        output.append("[truncated; request a narrower line range]\n");
+                        break;
+                    }
+                    output.append(rendered);
+                    emitted++;
+                }
+            }
+            return output.toString();
+        } catch (MalformedInputException e) {
+            return ToolErrors.failure(
+                    ToolErrorCode.VALIDATION.INVALID_UTF8, "Invalid UTF-8: " + args.absolutePath());
+        } catch (NoSuchFileException e) {
+            return ToolErrors.failure(
+                    ToolErrorCode.WORKSPACE.NOT_A_FILE,
+                    "Not a regular file: " + args.absolutePath());
+        } catch (IOException e) {
+            return ToolErrors.failure(
+                    ToolErrorCode.WORKSPACE.IO_ERROR,
+                    "I/O error: cannot read file " + args.absolutePath() + ".");
+        }
+    }
+}

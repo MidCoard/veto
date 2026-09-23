@@ -5,7 +5,9 @@ import static org.junit.jupiter.api.Assertions.*;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
@@ -19,6 +21,72 @@ import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.contract.PluginFailure;
 
 class ManagedPluginStateTest {
+    @Test
+    void closeDrainsActiveCallsAndRejectsNewAdmission() throws Exception {
+        try (var control = Executors.newSingleThreadExecutor();
+                var callers = Executors.newVirtualThreadPerTaskExecutor()) {
+            var observer = new Observer(false);
+            var managed = new ManagedPlugin(observer, control);
+            managed.initialize(
+                    new PluginContext(observer.identity()), new JsonValue.ObjectValue(Map.of()));
+            managed.start();
+            var entered = new CountDownLatch(1);
+            var release = new CountDownLatch(1);
+            var call =
+                    callers.submit(
+                            () ->
+                                    managed.execute(
+                                            () -> {
+                                                entered.countDown();
+                                                try {
+                                                    if (!release.await(5, TimeUnit.SECONDS))
+                                                        throw new AssertionError(
+                                                                "Release timed out");
+                                                } catch (InterruptedException e) {
+                                                    throw new AssertionError(e);
+                                                }
+                                                return "done";
+                                            }));
+            assertTrue(entered.await(2, TimeUnit.SECONDS));
+            var close = callers.submit(managed::close);
+            try {
+                long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+                while (managed.state() != PluginState.STOPPING && System.nanoTime() < deadline)
+                    Thread.sleep(1);
+                assertEquals(PluginState.STOPPING, managed.state());
+                assertFalse(close.isDone());
+                assertThrows(PluginFailure.class, () -> managed.execute(() -> "late"));
+            } finally {
+                release.countDown();
+            }
+            assertEquals("done", call.get(2, TimeUnit.SECONDS));
+            close.get(2, TimeUnit.SECONDS);
+            managed.close();
+            assertEquals(
+                    1, observer.callbacks.stream().filter(s -> s == PluginState.STOPPING).count());
+        }
+    }
+
+    @Test
+    void nestedCallsReuseAdmissionButCannotCloseTheirOwnPlugin() throws Exception {
+        try (var control = Executors.newSingleThreadExecutor()) {
+            var observer = new Observer(false);
+            try (var managed = new ManagedPlugin(observer, control)) {
+                managed.initialize(
+                        new PluginContext(observer.identity()),
+                        new JsonValue.ObjectValue(Map.of()));
+                managed.start();
+                assertEquals(
+                        "nested",
+                        managed.execute(
+                                () -> {
+                                    assertThrows(IllegalStateException.class, managed::close);
+                                    return managed.execute(() -> "nested");
+                                }));
+            }
+        }
+    }
+
     private static final class Observer extends AbstractVetoPlugin {
         private @Nullable PluginContext context;
         private final @NonNull List<PluginState> callbacks = new ArrayList<>();

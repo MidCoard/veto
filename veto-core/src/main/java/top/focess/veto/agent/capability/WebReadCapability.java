@@ -6,6 +6,7 @@ import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.tool.ToolCallContext;
 import top.focess.veto.agent.web.FetchedPage;
 import top.focess.veto.agent.web.WebFetchExecutor;
+import top.focess.veto.api.agent.capability.Capability;
 import top.focess.veto.api.agent.tool.ToolCapability;
 
 /** Invocation-local authority to fetch one approved document. No arbitrary URL operation exists. */

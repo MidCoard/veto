@@ -8,17 +8,17 @@ import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.capability.DelegationCapability;
 import top.focess.veto.agent.capability.GroupControlCapability;
-import top.focess.veto.agent.loop.PromptLibrary;
+import top.focess.veto.agent.loop.PromptCompiler;
 import top.focess.veto.agent.tool.DelegationTool;
 import top.focess.veto.agent.tool.GroupControlTool;
 import top.focess.veto.agent.tool.ToolCallContext;
-import top.focess.veto.agent.tool.ToolErrorCode;
-import top.focess.veto.agent.tool.ToolErrors;
 import top.focess.veto.api.agent.tool.Doc;
 import top.focess.veto.api.agent.tool.ParamCategory;
 import top.focess.veto.api.agent.tool.SecurityHint;
 import top.focess.veto.api.agent.tool.ToolDoc;
 import top.focess.veto.api.agent.tool.ToolDocs;
+import top.focess.veto.api.agent.tool.ToolErrorCode;
+import top.focess.veto.api.agent.tool.ToolErrors;
 import top.focess.veto.api.agent.tool.ToolResultFormat;
 
 /**
@@ -439,7 +439,7 @@ public final class GroupTools {
     }
 
     private static @NonNull String buildDisbandBrief(GroupSnapshot g) {
-        return PromptLibrary.text(
+        return PromptCompiler.compileText(
                 "group-disband-brief", Map.of("group", GroupPromptInputs.snapshot(g)));
     }
 
@@ -479,7 +479,7 @@ public final class GroupTools {
                                                                     dispatch, node.dispatchId())),
                             payload));
         }
-        return PromptLibrary.text(
+        return PromptCompiler.compileText(
                 "group-inspect",
                 Map.of(
                         "group",

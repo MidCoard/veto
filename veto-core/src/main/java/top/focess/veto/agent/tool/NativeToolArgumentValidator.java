@@ -14,8 +14,11 @@ import java.util.List;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.agent.tool.RequiredWhen;
 import top.focess.veto.api.agent.tool.ToolDocs;
+import top.focess.veto.api.agent.tool.ToolErrorCode;
+import top.focess.veto.api.agent.tool.ToolExecutionException;
 import top.focess.veto.api.agent.tool.ToolInputSchema;
 import top.focess.veto.api.agent.tool.ToolResultFormat;
+import top.focess.veto.api.agent.tool.ToolResultStatus;
 
 /** Validates native-tool arguments against the same record schema advertised to the model. */
 public final class NativeToolArgumentValidator {

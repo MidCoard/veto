@@ -10,8 +10,8 @@ import java.util.regex.Pattern;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Element;
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.agent.tool.ToolErrorCode;
-import top.focess.veto.agent.tool.ToolErrors;
+import top.focess.veto.api.agent.tool.ToolErrorCode;
+import top.focess.veto.api.agent.tool.ToolErrors;
 
 /** Bounded source segments owned by one reader invocation, never a filesystem resource. */
 final class WebReadDocument {

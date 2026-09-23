@@ -9,6 +9,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.EnumSet;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.api.agent.tool.ToolDocs;
+import top.focess.veto.api.agent.tool.ToolErrorCode;
+import top.focess.veto.api.agent.tool.ToolExecutionException;
 import top.focess.veto.group.BlackboardMessage;
 import top.focess.veto.group.GroupTools;
 

@@ -14,11 +14,11 @@ import top.focess.veto.agent.tool.ToolSchemaCompiler;
 import top.focess.veto.agent.tool.builtin.AnswerWithCitationsTool;
 import top.focess.veto.agent.tool.builtin.LoadSkillTool;
 import top.focess.veto.agent.tool.builtin.SubmitPlanTool;
-import top.focess.veto.agent.tool.builtin.ViewFileTool;
 import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.tool.ParamCategory;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.agent.tool.ToolDocs;
+import top.focess.veto.builtin.workspace.ViewFileTool;
 import top.focess.veto.llm.core.ToolDefinition;
 
 /**

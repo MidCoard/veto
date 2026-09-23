@@ -1,5 +1,6 @@
 package top.focess.veto.agent.intercept;
 
+import java.util.Map;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -13,6 +14,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
+import top.focess.veto.agent.loop.PromptCompiler;
 import top.focess.veto.agent.tool.ToolDefinition;
 import top.focess.veto.llm.core.ToolCall;
 import top.focess.veto.plugin.runtime.PluginManager;
@@ -175,19 +177,19 @@ public class SemanticMasker {
             @NonNull String observation, @NonNull ToolCall call, @NonNull ToolDefinition def) {
         String truncated =
                 observation.length() > 1000 ? observation.substring(0, 1000) + "..." : observation;
-        return "The agent just called "
-                + call.toolName()
-                + " on a tool with capability="
-                + def.capability()
-                + " and defaultDanger="
-                + def.defaultDanger()
-                + ".\nTool call args: "
-                + safe(call.args())
-                + "\nTool result (truncated to 1000 chars): "
-                + truncated
-                + "\n\nIs this tool call likely to exfiltrate a secret (API key, password, token, "
-                + "private key, credential) to an unintended destination? Reply with a single JSON "
-                + "object: {\"risk\": \"high|medium|low\", \"reason\": \"...\"}";
+        return PromptCompiler.compileText(
+                "semantic-mask",
+                Map.of(
+                        "tool",
+                        call.toolName(),
+                        "capability",
+                        def.capability(),
+                        "danger",
+                        def.defaultDanger(),
+                        "arguments",
+                        safe(call.args()),
+                        "observation",
+                        truncated));
     }
 
     private static @NonNull String safe(Object o) {
