@@ -1,21 +1,32 @@
 package top.focess.veto.agent.identity;
 
-/**
- * The agent's operational role. The role scopes the agent's tool set (resolved upstream into {@link
- * AgentPersona#whitelistedTools()}) and selects the role-specific instructions the {@code
- * PromptCompiler} injects into the system prompt.
- *
- * <ul>
- *   <li>{@link #STANDALONE} - a directly-addressable agent operating on the workspace. May delegate
- *       a decomposable task by calling {@code create_group}.
- *   <li>{@link #LEADER} - the strategist of a delegation group: plans (authors the DAG), dispatches
- *       to Mates, relays feedback, synthesizes the result. Never executes task nodes.
- *   <li>{@link #MATE} - a worker in a delegation group: executes dispatched nodes and reports to
- *       the Leader. Does not delegate further.
- * </ul>
- */
-public enum Role {
-    STANDALONE,
-    LEADER,
-    MATE
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonValue;
+import org.jspecify.annotations.NonNull;
+
+/** Historical/display label only. It never grants tools or selects model instructions. */
+public record Role(@NonNull String name) {
+    public static final @NonNull Role STANDALONE = new Role("STANDALONE");
+    public static final @NonNull Role LEADER = new Role("LEADER");
+    public static final @NonNull Role MATE = new Role("MATE");
+
+    public Role {
+        if (name.isBlank() || name.length() > 128)
+            throw new IllegalArgumentException("Invalid agent label");
+    }
+
+    @JsonCreator
+    public static @NonNull Role valueOf(@NonNull String name) {
+        return new Role(name);
+    }
+
+    @Override
+    public @NonNull String toString() {
+        return name;
+    }
+
+    @JsonValue
+    public @NonNull String name() {
+        return name;
+    }
 }

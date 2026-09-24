@@ -1,0 +1,161 @@
+package top.focess.veto.builtin.memory;
+
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import org.jspecify.annotations.NonNull;
+import top.focess.veto.builtin.memory.embedder.Embedder;
+
+/**
+ * A {@link MemoryStore} backed by the in-memory {@link VectorIndex}, which performs brute-force
+ * cosine similarity search. It stores memories in a thread-safe map + vector index; supports the
+ * two-axis abstraction (Axis A storage/query is this vector index; Axis B triggering is whatever
+ * calls search).
+ *
+ * <p>Activated by setting {@code veto.memory.store=vector}. Falls back to {@link
+ * InMemoryMemoryStore} (default) or {@link JpaMemoryStore} otherwise.
+ */
+public class VectorIndexMemoryStore implements MemoryStore {
+
+    private final @NonNull VectorIndex index;
+    private final @NonNull Embedder embedder;
+
+    /** Memories are stored separately so we can attach metadata for the search result. */
+    private final @NonNull ConcurrentMap<UUID, Memory> store = new ConcurrentHashMap<>();
+
+    public VectorIndexMemoryStore(@NonNull VectorIndex index, @NonNull Embedder embedder) {
+        this.index = index;
+        this.embedder = embedder;
+    }
+
+    @Override
+    public @NonNull List<ScoredMemory> search(@NonNull MemoryQuery query) {
+        // Over-fetch from the index in a single widening loop. The 4x budget covers the common
+        // case where the user/tier/session/project filters are loose (4x hit-rate is generous);
+        // if the post-filter result is still short of `topK`, widen the budget and re-query
+        // (capped at QUERY_WIDENING_CAP× to bound the worst-case cost). Without the re-query
+        // a sparse user in a multi-tenant corpus could silently receive zero results even
+        // when highly relevant memories exist outside the original window.
+        final float[] queryVec = embedder.embed(query.queryText());
+        final int initialBudget = query.topK() * 4;
+        final int cap = query.topK() * QUERY_WIDENING_CAP;
+        int budget = initialBudget;
+        List<ScoredMemory> results;
+        while (true) {
+            List<VectorIndex.Match> matches = index.topK(queryVec, budget);
+            results = new ArrayList<>();
+            for (VectorIndex.Match match : matches) {
+                Memory m = store.get(match.id());
+                if (m == null) {
+                    continue;
+                }
+                if (!m.userId().equals(query.userId())) {
+                    continue;
+                }
+                if (!query.tiers().contains(m.tier())) {
+                    continue;
+                }
+                var sessionFilter = query.sessionFilter();
+                if (sessionFilter != null && !sessionFilter.equals(m.sessionId())) {
+                    continue;
+                }
+                var projectFilter = query.projectFilter();
+                if (projectFilter != null && !projectFilter.equals(m.projectId())) {
+                    continue;
+                }
+                if (match.score() >= query.scoreFloor()) {
+                    results.add(new ScoredMemory(m, match.score()));
+                }
+            }
+            results.sort(Comparator.comparingDouble(ScoredMemory::score).reversed());
+            if (results.size() >= query.topK() || budget >= cap) {
+                break;
+            }
+            // Widen the budget and try again. Cap grows geometrically to bound the worst case.
+            budget = Math.min(cap, budget * 4);
+        }
+        if (results.size() > query.topK()) {
+            return results.subList(0, query.topK());
+        }
+        return results;
+    }
+
+    /**
+     * Maximum multiple of {@code topK} the re-query loop will fetch. Default 64× topK — well above
+     * the 4× initial budget so most sparse-user queries can recover, but still bounded so a
+     * malicious or extreme query can't burn the whole index.
+     */
+    private static final int QUERY_WIDENING_CAP = 64;
+
+    @Override
+    public @NonNull MemoryId add(@NonNull Memory memory) {
+        store.put(idOf(memory.id()), memory);
+        index.insert(idOf(memory.id()), memory.embedding());
+        return memory.id();
+    }
+
+    @Override
+    public MemoryId promote(@NonNull MemoryId id, @NonNull UUID userId) {
+        Memory m = store.get(idOf(id));
+        if (m == null || !m.userId().equals(userId) || m.tier() != MemoryTier.SESSION) {
+            return null;
+        }
+        Memory promoted =
+                new Memory(
+                        MemoryId.random(),
+                        m.userId(),
+                        null,
+                        MemoryTier.CROSS_SESSION,
+                        m.projectId(),
+                        m.content(),
+                        m.embedding(),
+                        m.sourceRef(),
+                        Instant.now());
+        store.remove(idOf(id));
+        index.remove(idOf(id));
+        store.put(idOf(promoted.id()), promoted);
+        index.insert(idOf(promoted.id()), promoted.embedding());
+        return promoted.id();
+    }
+
+    @Override
+    public boolean forget(@NonNull MemoryId id, @NonNull UUID userId) {
+        // store is keyed by UUID (see add() above) — apply idOf() consistently so the
+        // entry is actually evicted. Previously the raw MemoryId was passed, making
+        // store.remove a no-op and leaving the memory visible to future searches.
+        UUID key = idOf(id);
+        Memory memory = store.get(key);
+        if (memory == null || !memory.userId().equals(userId) || !store.remove(key, memory)) {
+            return false;
+        }
+        index.remove(key);
+        return true;
+    }
+
+    @Override
+    public void deleteOwner(@NonNull UUID userId) {
+        for (var memory : List.copyOf(store.values()))
+            if (memory.userId().equals(userId)) forget(memory.id(), userId);
+    }
+
+    @Override
+    public void deleteSession(@NonNull UUID userId, @NonNull UUID sessionId) {
+        for (var memory : List.copyOf(store.values()))
+            if (memory.userId().equals(userId) && sessionId.equals(memory.sessionId()))
+                forget(memory.id(), userId);
+    }
+
+    /** Test-only inspection of the store contents. */
+    public @NonNull Map<UUID, Memory> snapshot() {
+        return Map.copyOf(store);
+    }
+
+    private static @NonNull UUID idOf(@NonNull MemoryId id) {
+        return id.value();
+    }
+}

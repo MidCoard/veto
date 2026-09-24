@@ -8,8 +8,10 @@ import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.capability.CapabilityResolver;
 import top.focess.veto.agent.capability.ProtectedWorkspaceReadCapabilityImpl;
 import top.focess.veto.agent.intercept.ToolExecutionPermit;
+import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.api.agent.capability.WorkspaceWriteCapability;
 import top.focess.veto.api.agent.tool.CapabilityTool;
+import top.focess.veto.api.agent.tool.NativeTool;
 import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.WorkspaceReadTool;
 import top.focess.veto.api.agent.tool.WorkspaceWriteTool;
@@ -31,7 +33,6 @@ public final class CapabilityTestCalls {
                     new ToolCallContext(
                             "test-agent",
                             UUID.randomUUID(),
-                            null,
                             "test-owner",
                             UUID.randomUUID(),
                             ToolResultPresentationMode.BASIC,
@@ -53,18 +54,25 @@ public final class CapabilityTestCalls {
                                 old.executionRoot(),
                                 old.deployerPolicy(),
                                 old.protectedPaths(),
-                                old.taskBinding())
+                                old.preparation(),
+                                tool instanceof NativeTool<?> nativeTool
+                                        ? ToolExecutionPermit.capture(
+                                                        new ToolCall(
+                                                                tool.getName(), values, callId),
+                                                        ToolSchemaCompiler.compileNative(
+                                                                nativeTool),
+                                                        Workspace.fromConfig("", "", "REAL"))
+                                                .httpDestinations()
+                                        : Map.of())
                         .withCaller(
                                 previous.agentId(),
                                 previous.userId(),
-                                previous.groupId(),
                                 previous.owner(),
                                 previous.sessionId());
         ToolCallContextHolder.set(
                 new ToolCallContext(
                         previous.agentId(),
                         previous.userId(),
-                        previous.groupId(),
                         previous.owner(),
                         previous.sessionId(),
                         previous.toolResultPresentation(),
@@ -86,6 +94,7 @@ public final class CapabilityTestCalls {
             if (!hadContext) {
                 ToolCallContextHolder.clear();
             } else {
+                ToolCallContextHolder.clear();
                 ToolCallContextHolder.set(previous);
                 if (priorCall != null) ToolCallContextHolder.setCurrentCallId(priorCall);
                 else ToolCallContextHolder.setCurrentCallId("");

@@ -12,7 +12,7 @@ import org.junit.jupiter.params.provider.EnumSource;
 import top.focess.veto.agent.TurnRecord;
 import top.focess.veto.agent.TurnType;
 import top.focess.veto.agent.translation.VetoCapabilityTranslator;
-import top.focess.veto.api.agent.response.ResponseRequest;
+import top.focess.veto.api.agent.control.SourceEvidence;
 import top.focess.veto.api.llm.ChatMessage;
 import top.focess.veto.api.llm.LlmOptions;
 import top.focess.veto.api.llm.ProviderMessages;
@@ -42,14 +42,12 @@ class MessageCitationsTest {
         var response =
                 MessageCitations.resolve(
                         request,
-                        new ResponseRequest.Answer(
-                                "Launch [Friday](cite:launch).",
-                                List.of(
-                                        new ResponseRequest.Citation(
-                                                "launch",
-                                                List.of(
-                                                        new ResponseRequest.Source(
-                                                                null, "Launch Friday."))))));
+                        List.of(
+                                new SourceEvidence.Declaration(
+                                        "launch",
+                                        List.of(
+                                                new SourceEvidence.Selector(
+                                                        null, "Launch Friday.")))));
         var citations = response.citations();
         if (citations == null) throw new AssertionError("Missing citations");
         assertEquals(0, citations.getFirst().sources().getFirst().messageIndex());
@@ -80,15 +78,12 @@ class MessageCitationsTest {
                         () ->
                                 MessageCitations.resolve(
                                         request,
-                                        new ResponseRequest.Answer(
-                                                "[source](cite:s)",
-                                                List.of(
-                                                        new ResponseRequest.Citation(
-                                                                "s",
-                                                                List.of(
-                                                                        new ResponseRequest.Source(
-                                                                                null,
-                                                                                "Same quote")))))));
+                                        List.of(
+                                                new SourceEvidence.Declaration(
+                                                        "s",
+                                                        List.of(
+                                                                new SourceEvidence.Selector(
+                                                                        null, "Same quote"))))));
         assertTrue(String.valueOf(error.getMessage()).contains("[0, 1]"));
         for (String quote : List.of("Missing", "runtime correction"))
             assertThrows(
@@ -97,14 +92,12 @@ class MessageCitationsTest {
                     () ->
                             MessageCitations.resolve(
                                     request,
-                                    new ResponseRequest.Answer(
-                                            "[source](cite:s)",
-                                            List.of(
-                                                    new ResponseRequest.Citation(
-                                                            "s",
-                                                            List.of(
-                                                                    new ResponseRequest.Source(
-                                                                            null, quote)))))));
+                                    List.of(
+                                            new SourceEvidence.Declaration(
+                                                    "s",
+                                                    List.of(
+                                                            new SourceEvidence.Selector(
+                                                                    null, quote))))));
     }
 
     @Test
@@ -551,40 +544,10 @@ class MessageCitationsTest {
                         .status());
     }
 
-    @Test
-    void malformedAnswerIsRejectedBeforeAmbiguousSourcesAreResolved() {
-        var request =
-                request(
-                        ProviderType.OPENAI,
-                        List.of(
-                                ChatMessage.user("Launch Friday.").withSourceTurns(List.of(1)),
-                                ChatMessage.assistant("Launch Friday.")
-                                        .withSourceTurns(List.of(2))));
-        var error =
-                assertThrows(
-                        top.focess.veto.api.agent.tool.ToolDocs.nonNullClass(
-                                top.focess.veto.api.llm.exceptions.ModelSchemaException.class),
-                        () ->
-                                MessageCitations.resolve(
-                                        request,
-                                        new ResponseRequest.Answer(
-                                                "Launch Friday.",
-                                                answer(null, "Launch Friday.").citations())));
-        assertTrue(String.valueOf(error.getMessage()).contains("ordinary text"));
-        assertFalse(String.valueOf(error.getMessage()).contains("matches several"));
-        assertThrows(
-                top.focess.veto.api.agent.tool.ToolDocs.nonNullClass(
-                        IllegalArgumentException.class),
-                () ->
-                        MessageCitations.resolve(
-                                request, new ResponseRequest.Answer("Launch Friday.", List.of())));
-    }
-
-    private static ResponseRequest.@NonNull Answer answer(Integer index, @NonNull String quote) {
-        return new ResponseRequest.Answer(
-                "[source](cite:source)",
-                List.of(
-                        new ResponseRequest.Citation(
-                                "source", List.of(new ResponseRequest.Source(index, quote)))));
+    private static @NonNull List<SourceEvidence.Declaration> answer(
+            Integer index, @NonNull String quote) {
+        return List.of(
+                new SourceEvidence.Declaration(
+                        "source", List.of(new SourceEvidence.Selector(index, quote))));
     }
 }

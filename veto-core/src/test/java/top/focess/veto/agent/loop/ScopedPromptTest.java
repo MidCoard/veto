@@ -34,7 +34,7 @@ class ScopedPromptTest {
         var cite =
                 new RemoteToolDefinition(
                         "answer_with_citations", "Submit a cited answer", "fixture", schema);
-        var persona = new AgentPersona("test", "Veto", "Review", Set.of(read, cite), List.of());
+        var persona = new AgentPersona("test", "Veto", "Review", Set.of(read, cite));
         var workspace =
                 Workspace.single(Path.of(System.getProperty("user.dir", ".")), PathMode.REAL);
         String full =
@@ -79,8 +79,7 @@ class ScopedPromptTest {
             assertFalse(scoped.systemPrompt().contains("### `view_file`"));
             assertFalse(scoped.systemPrompt().contains("## Plan execution"));
             assertEquals(citations, scoped.systemPrompt().contains("### `answer_with_citations`"));
-            assertEquals(
-                    citations,
+            assertFalse(
                     scoped.systemPrompt().contains("registered `answer_with_citations` tool"));
             assertEquals(conversation, scoped.messages().subList(1, scoped.messages().size()));
             assertEquals(scoped.systemPrompt(), scoped.messages().getFirst().content());

@@ -63,7 +63,7 @@ class PromptCompilerWellFormedTest {
         ReflectionTestUtils.setField(standard, "maxInputTokens", 100000);
         ReflectionTestUtils.setField(standard, "contextFillRatio", 1.0);
         var isolated = PromptCompiler.isolated(translator, mapper, "Task instructions", 100000);
-        var persona = new AgentPersona("test", "Veto", "Test", Set.of(), List.of());
+        var persona = new AgentPersona("test", "Veto", "Test", Set.of());
         var workspace =
                 Workspace.single(Path.of(System.getProperty("user.dir", ".")), PathMode.REAL);
         var history =

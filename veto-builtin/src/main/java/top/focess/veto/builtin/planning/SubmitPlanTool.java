@@ -4,18 +4,19 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.api.agent.capability.ResponseCapability;
-import top.focess.veto.api.agent.response.ResponseRequest;
+import org.jspecify.annotations.Nullable;
+import top.focess.veto.api.agent.control.ControlHost;
 import top.focess.veto.api.agent.tool.*;
+import top.focess.veto.api.agent.tool.ControlSubmission;
+import top.focess.veto.api.agent.tool.ControlTool;
 import top.focess.veto.api.agent.tool.Doc;
-import top.focess.veto.api.agent.tool.ResponseSubmission;
-import top.focess.veto.api.agent.tool.ResponseTool;
 import top.focess.veto.api.agent.tool.ToolDoc;
 import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.ToolInputSchema;
 import top.focess.veto.api.agent.tool.ToolResultFormat;
 
-@ResponseSubmission(ResponseSubmission.Kind.PLAN)
+@ControlSubmission(ControlSubmission.Kind.EXECUTE)
+@ToolPrompt("plan-system-prompt")
 @ToolDoc(
         description =
                 "Submit a known executable workflow directly, including its reads as tool steps, generated content, branches and a final STOP. Resolve only missing prerequisites before submission. Keep source evidence in generate.inputs and put the transformation goal in its prompt; do not rewrite source facts into new instructions. Call this tool alone.",
@@ -46,16 +47,26 @@ import top.focess.veto.api.agent.tool.ToolResultFormat;
             "{\"status\":\"accepted\"}",
             "Plan rejected before execution: duplicate action id: greet"
         })
-public final class SubmitPlanTool implements ResponseTool<SubmitPlanTool.Args> {
-    private final ResponseCapability capability;
+public final class SubmitPlanTool implements ControlTool<SubmitPlanTool.Args> {
+    private final @Nullable ControlHost capability;
+    private final @NonNull PlanConfig configuration;
     private static final @NonNull ObjectMapper MAPPER = new ObjectMapper();
 
     public SubmitPlanTool() {
-        this.capability = null;
+        this(null, PlanConfig.defaults());
     }
 
-    public SubmitPlanTool(@NonNull ResponseCapability capability) {
+    public SubmitPlanTool(@NonNull PlanConfig configuration) {
+        this(null, configuration);
+    }
+
+    public SubmitPlanTool(@NonNull ControlHost capability) {
+        this(capability, PlanConfig.defaults());
+    }
+
+    public SubmitPlanTool(@Nullable ControlHost capability, @NonNull PlanConfig configuration) {
         this.capability = capability;
+        this.configuration = configuration;
     }
 
     @Override
@@ -69,22 +80,22 @@ public final class SubmitPlanTool implements ResponseTool<SubmitPlanTool.Args> {
     }
 
     @Override
-    public @NonNull ResponseCapability responseCapability() {
-        if (capability == null) throw new SecurityException("Host must supply loop control");
+    public @NonNull ControlHost controlHost() {
         if (capability == null) throw new SecurityException("Host must supply tool capability");
         return capability;
     }
 
     @Override
-    public @NonNull String execute(@NonNull Args args, @NonNull ResponseCapability capability)
+    public @NonNull String execute(@NonNull Args args, @NonNull ControlHost capability)
             throws Exception {
         var actions = MAPPER.valueToTree(args.actions());
         try {
             var program = ActionsProgramParser.parse(actions);
             ProgramValidator.validate(program);
             ProgramValidator.validateInputs(program);
-            capability.submitPlan(
-                    new ResponseRequest.Plan(actions, program, new PlanProgram(MAPPER)));
+            var answerTool = PlanPreflight.validate(program, capability, MAPPER);
+            capability.execute(
+                    new PlanProgram(MAPPER, configuration, answerTool).accepted(program));
         } catch (IllegalArgumentException | ProgramValidator.InvalidProgramException error) {
             throw new ToolExecutionException(
                     ToolResultStatus.FAILURE,

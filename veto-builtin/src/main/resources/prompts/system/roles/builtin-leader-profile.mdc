@@ -1,0 +1,10 @@
+---
+version: 2
+id: builtin-leader-profile
+requires: [guidance]
+---
+@include role-leader
+@if nonempty(guidance)
+## Configured guidance
+{{guidance}}
+@endif

@@ -5,19 +5,21 @@ import static org.mockito.Mockito.*;
 
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import top.focess.veto.agent.AgentProfiles;
 import top.focess.veto.agent.AgentService;
 import top.focess.veto.api.agent.AgentResult;
 import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.llm.LlmBinding;
 import top.focess.veto.api.llm.ProviderType;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
+import top.focess.veto.api.plugin.agent.AgentProfile;
 import top.focess.veto.command.PromptHandler;
 import top.focess.veto.command.VetoCommandSender;
 import top.focess.veto.controller.dto.SubmitPromptRequest;
-import top.focess.veto.group.LeaderBinding;
 import top.focess.veto.model.tier.ModelBinding;
 import top.focess.veto.model.tier.ModelTier;
 import top.focess.veto.model.tier.ModelTierRegistry;
@@ -100,7 +102,21 @@ class PromptBindingTest {
     void leaderKeepsConfiguredWindowAndOutputReservation() {
         @NonNull ModelTierRegistry tiers = mock();
         when(tiers.resolve("owner", ModelTier.TOP)).thenReturn(model);
-        var leader = new LeaderBinding("TOP", "Leader", tiers).binding("owner");
+        var leader =
+                AgentProfiles.resolve(
+                                "agent",
+                                "owner",
+                                new AgentProfile(
+                                        "Leader", "", "LEADER", Set.of(), "TOP", null, Map.of()),
+                                Set.of(),
+                                new LlmBinding(
+                                        model.provider(),
+                                        model.model(),
+                                        model.credentialKey(),
+                                        model.llmOptions(),
+                                        null),
+                                tiers)
+                        .binding();
         assertEquals(model.llmOptions(), leader.options());
         assertEquals(80100, leader.options().inputBudget());
     }

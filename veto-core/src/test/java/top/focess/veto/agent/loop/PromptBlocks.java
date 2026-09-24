@@ -9,7 +9,6 @@ import top.focess.veto.agent.workspace.PathMode;
 import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.api.llm.ToolDefinition;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
-import top.focess.veto.api.skills.Skill;
 
 /** Fragment fixtures exercise production MDC sources, without a second renderer. */
 final class PromptBlocks {
@@ -90,23 +89,5 @@ final class PromptBlocks {
                         policy == null ? "PROTECTED" : policy.name(),
                         "workspace",
                         Map.of("pathMode", mode.name())));
-    }
-
-    static @NonNull String skills(List<Skill> skills) {
-        return PromptLibrary.text(
-                "skills",
-                Map.of(
-                        "skills",
-                        skills == null
-                                ? List.of()
-                                : skills.stream()
-                                        .map(
-                                                skill ->
-                                                        Map.of(
-                                                                "name",
-                                                                skill.name(),
-                                                                "description",
-                                                                skill.description()))
-                                        .toList()));
     }
 }

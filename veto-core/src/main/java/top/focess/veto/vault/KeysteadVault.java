@@ -251,7 +251,7 @@ public class KeysteadVault {
             @NonNull String label,
             @NonNull String value) {
         if (!importId.matches("s_[a-f0-9]{32}")
-                || !service.equals("github")
+                || !service.matches("[a-z][a-z0-9._-]{0,63}")
                 || label.isBlank()
                 || label.length() > 80
                 || !label.equals(label.trim())
@@ -330,7 +330,7 @@ public class KeysteadVault {
             @NonNull String credentialRef,
             @NonNull String service,
             @NonNull Consumer<char @NonNull []> operation) {
-        if (!service.equals("github")
+        if (!service.matches("[a-z][a-z0-9._-]{0,63}")
                 || !credentialRef.matches(
                         "cred_[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}"))
             throw new IllegalArgumentException("Invalid credential binding");

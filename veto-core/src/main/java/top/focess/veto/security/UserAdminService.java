@@ -9,12 +9,16 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+import top.focess.veto.agent.continuation.RequestContinuationStore;
 import top.focess.veto.agent.intercept.HitlRecordRepository;
+import top.focess.veto.integration.plugins.PluginLifecycleEvents;
+import top.focess.veto.integration.plugins.storage.ScopedPluginStorage;
 import top.focess.veto.model.AgentInstanceRepository;
 import top.focess.veto.model.AgentPatternRepository;
 import top.focess.veto.model.SessionEntity;
 import top.focess.veto.model.SessionRepository;
-import top.focess.veto.monitor.RequestContinuationStore;
 import top.focess.veto.vault.AuthLifecycleManager;
 import top.focess.veto.vault.KeysteadVault;
 import top.focess.veto.vault.UserEntity;
@@ -30,6 +34,20 @@ import top.focess.veto.vault.UserRegistry;
  */
 @Service
 public class UserAdminService {
+    private PluginLifecycleEvents pluginEvents;
+
+    @Autowired
+    public void attachPluginEvents(@NonNull PluginLifecycleEvents events) {
+        pluginEvents = events;
+    }
+
+    private ScopedPluginStorage pluginStorage;
+
+    @Autowired
+    public void attachPluginStorage(@NonNull ScopedPluginStorage storage) {
+        pluginStorage = storage;
+    }
+
     private HitlRecordRepository hitlRecords;
 
     @Autowired
@@ -86,6 +104,8 @@ public class UserAdminService {
      */
     @Transactional
     public void deleteUser(@NonNull String username) {
+        var dataEvents = pluginEvents;
+        if (dataEvents != null) dataEvents.beforeOwnerDeleted(username);
         try {
             auth.logout(username);
         } catch (Exception e) {
@@ -95,11 +115,26 @@ public class UserAdminService {
                     safe(e.getMessage()));
         }
         for (SessionEntity s : sessions.findByOwner(username)) {
+            Runnable notifyDeleted =
+                    () -> {
+                        var events = pluginEvents;
+                        if (events != null) events.sessionClosed(username, s.getId());
+                    };
+            if (TransactionSynchronizationManager.isSynchronizationActive())
+                TransactionSynchronizationManager.registerSynchronization(
+                        new TransactionSynchronization() {
+                            @Override
+                            public void afterCommit() {
+                                notifyDeleted.run();
+                            }
+                        });
+            else notifyDeleted.run();
             RequestContinuationStore store = continuations;
             if (store != null) store.deleteSession(s.getId());
             if (hitlRecords != null) hitlRecords.deleteBySessionId(s.getId());
             agents.deleteBySessionId(s.getId());
         }
+        if (pluginStorage != null) pluginStorage.deleteUser(username);
         sessions.deleteByOwner(username);
         patterns.deleteByOwner(username);
         users.deleteByUsername(username);

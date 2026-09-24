@@ -14,7 +14,6 @@ import java.net.http.HttpTimeoutException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Arrays;
-import java.util.List;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
@@ -23,23 +22,19 @@ import org.jspecify.annotations.NonNull;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
-import top.focess.veto.agent.web.GitHubRepositoryReader;
-import top.focess.veto.agent.web.WebFetchExecutor;
 import top.focess.veto.agent.web.WebProxySelector;
 import top.focess.veto.api.agent.capability.NetworkEgressCapability;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.agent.tool.ToolErrorCode;
 import top.focess.veto.api.agent.tool.ToolErrors;
 import top.focess.veto.api.agent.tool.ToolExecutionException;
-import top.focess.veto.api.search.SearchOptions;
-import top.focess.veto.api.search.SearchProvider;
-import top.focess.veto.api.search.SearchResult;
-import top.focess.veto.api.web.FetchedPage;
+import top.focess.veto.api.credentials.ImportedCredentialLease;
+import top.focess.veto.api.http.ApprovedHttpDestination;
+import top.focess.veto.api.http.HttpDocument;
+import top.focess.veto.integration.plugins.IsolatedExecutions;
 
 @Component
 public final class NetworkEgressCapabilityImpl implements NetworkEgressCapability {
-    private final @NonNull SearchProvider provider;
-    private final @NonNull WebFetchExecutor reader;
 
     private static final int MAX_REDIRECTS = 5;
 
@@ -54,14 +49,9 @@ public final class NetworkEgressCapabilityImpl implements NetworkEgressCapabilit
 
     @Autowired
     public NetworkEgressCapabilityImpl(
-            @NonNull SearchProvider provider,
-            @NonNull WebFetchExecutor reader,
-            @Value("${veto.webfetch.fetch.timeout-seconds}") int timeoutSeconds,
-            @Value("${veto.webfetch.fetch.max-chars}") int maxChars,
-            @Value("${veto.webfetch.fetch.allow-private-addresses}")
-                    boolean allowPrivateAddresses) {
-        this.provider = provider;
-        this.reader = reader;
+            @Value("${veto.http.timeout-seconds:30}") int timeoutSeconds,
+            @Value("${veto.http.max-chars:524288}") int maxChars,
+            @Value("${veto.http.allow-private-addresses:false}") boolean allowPrivateAddresses) {
         this.timeoutSeconds = timeoutSeconds;
         this.maxChars = maxChars;
         if (timeoutSeconds <= 0 || maxChars <= 0) {
@@ -80,47 +70,31 @@ public final class NetworkEgressCapabilityImpl implements NetworkEgressCapabilit
         this.httpClient = builder.build();
     }
 
-    private GitHubRepositoryReader repositoryReader;
+    private ImportedCredentialLeases credentials;
 
     @Autowired
-    public void attachRepositoryReader(@NonNull GitHubRepositoryReader repositoryReader) {
-        this.repositoryReader = repositoryReader;
+    public void attachCredentials(@NonNull ImportedCredentialLeases value) {
+        credentials = value;
     }
 
     @Override
-    public @NonNull String readGitHubRepository(
-            @NonNull String credentialRef,
-            @NonNull String repositoryOwner,
-            @NonNull String repositoryName) {
-        GitHubRepositoryReader reader = repositoryReader;
-        if (reader == null)
-            throw new IllegalStateException("Authenticated repository reading is unavailable");
-        return reader.read(credentialRef, repositoryOwner, repositoryName);
+    public @NonNull ImportedCredentialLease openImportedCredential(
+            @NonNull String argument, @NonNull String service) {
+        var leases = credentials;
+        if (leases == null) throw new SecurityException("Credential access is unavailable");
+        return leases.open(argument, service);
     }
 
     @Override
-    public @NonNull String searchProviderName() {
-        return provider.name();
+    public @NonNull ApprovedHttpDestination openApprovedDestination(@NonNull String argument) {
+        var parent = CapabilityAccess.require(ToolCapability.NETWORK_EGRESS);
+        IsolatedExecutions.requireNonIsolatedParent(parent);
+        var uri = parent.executionPermit().httpDestinations().get(argument);
+        if (uri == null) throw new SecurityException("No screened URL argument with that name");
+        return new HttpDestinationGrant(deadline -> fetchDocument(uri, deadline), parent);
     }
 
-    @Override
-    public @NonNull List<SearchResult> search(@NonNull String query, @NonNull SearchOptions options)
-            throws Exception {
-        CapabilityAccess.require(ToolCapability.NETWORK_EGRESS, "web_search");
-        return provider.search(query, options);
-    }
-
-    @Override
-    public @NonNull WebReadCapability openReader(@NonNull URI uri) {
-        var parent = CapabilityAccess.require(ToolCapability.NETWORK_EGRESS, "web_fetch");
-        Object approvedUrl = parent.executionPermit().call().args().get("url");
-        if (!(approvedUrl instanceof String value) || !uri.equals(URI.create(value.trim()))) {
-            throw new SecurityException("Reader URL differs from the approved destination.");
-        }
-        return new WebReadCapability(deadline -> fetchDocument(uri, deadline), parent, reader);
-    }
-
-    private @NonNull FetchedPage fetchDocument(@NonNull URI uri, long readerDeadline) {
+    private @NonNull HttpDocument fetchDocument(@NonNull URI uri, long readerDeadline) {
         long deadline =
                 Math.min(
                         readerDeadline,
@@ -203,7 +177,7 @@ public final class NetworkEgressCapabilityImpl implements NetworkEgressCapabilit
                     bounded = readBounded(body, deadline);
                 }
                 String content = new String(bounded.bytes(), StandardCharsets.UTF_8);
-                return new FetchedPage(
+                return new HttpDocument(
                         current, status, contentType, content, bounded.truncated(), maxChars);
             }
             return ToolErrors.failure(

@@ -4,9 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.*;
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.api.agent.capability.MonitorCapability;
 import top.focess.veto.api.agent.tool.Doc;
-import top.focess.veto.api.agent.tool.MonitorTool;
 import top.focess.veto.api.agent.tool.ToolDoc;
 import top.focess.veto.api.agent.tool.ToolErrorCode;
 import top.focess.veto.api.agent.tool.ToolErrors;
@@ -43,13 +41,13 @@ public final class MonitorTools {
                 "Monitor not created: supply exactly one of afterSeconds or at."
             })
     public static final class CreateMonitor implements MonitorTool<CreateMonitor.Args> {
-        private final MonitorCapability capability;
+        private final MonitorOperations capability;
 
         public CreateMonitor() {
             this.capability = null;
         }
 
-        public CreateMonitor(@NonNull MonitorCapability capability) {
+        public CreateMonitor(@NonNull MonitorOperations capability) {
             this.capability = capability;
         }
 
@@ -71,13 +69,14 @@ public final class MonitorTools {
         }
 
         @Override
-        public @NonNull MonitorCapability monitorCapability() {
-            if (capability == null) throw new SecurityException("Host must supply tool capability");
+        public @NonNull MonitorOperations operations() {
+            if (capability == null)
+                throw new SecurityException("Monitor plugin operations are unavailable");
             return capability;
         }
 
         @Override
-        public @NonNull String execute(@NonNull Args args, @NonNull MonitorCapability capability) {
+        public @NonNull String execute(@NonNull Args args, @NonNull MonitorOperations capability) {
             return create(capability, args.purpose(), args.afterSeconds(), args.at());
         }
     }
@@ -101,13 +100,13 @@ public final class MonitorTools {
             returnExamples =
                     "[{\"id\":\"3f6c9f4e-7b1a-4c2d-9e5f-2a8b6d1c4e70\",\"kind\":\"TIME_ONCE\",\"purpose\":\"Remind me to review the report\",\"state\":\"ACTIVE\"}]")
     public static final class InspectMonitor implements MonitorTool<InspectMonitor.Args> {
-        private final MonitorCapability capability;
+        private final MonitorOperations capability;
 
         public InspectMonitor() {
             this.capability = null;
         }
 
-        public InspectMonitor(@NonNull MonitorCapability capability) {
+        public InspectMonitor(@NonNull MonitorOperations capability) {
             this.capability = capability;
         }
 
@@ -125,13 +124,14 @@ public final class MonitorTools {
         }
 
         @Override
-        public @NonNull MonitorCapability monitorCapability() {
-            if (capability == null) throw new SecurityException("Host must supply tool capability");
+        public @NonNull MonitorOperations operations() {
+            if (capability == null)
+                throw new SecurityException("Monitor plugin operations are unavailable");
             return capability;
         }
 
         @Override
-        public @NonNull String execute(@NonNull Args args, @NonNull MonitorCapability capability) {
+        public @NonNull String execute(@NonNull Args args, @NonNull MonitorOperations capability) {
             return json(capability.inspect());
         }
     }
@@ -162,13 +162,13 @@ public final class MonitorTools {
                 "{\"id\":\"b8d2e4f6-1a3c-4b5d-9e7f-0a1b2c3d4e5f\",\"kind\":\"TIME_ONCE\",\"state\":\"PAUSED\"}"
             })
     public static final class PauseMonitor implements MonitorTool<PauseMonitor.Args> {
-        private final MonitorCapability capability;
+        private final MonitorOperations capability;
 
         public PauseMonitor() {
             this.capability = null;
         }
 
-        public PauseMonitor(@NonNull MonitorCapability capability) {
+        public PauseMonitor(@NonNull MonitorOperations capability) {
             this.capability = capability;
         }
 
@@ -187,13 +187,14 @@ public final class MonitorTools {
         }
 
         @Override
-        public @NonNull MonitorCapability monitorCapability() {
-            if (capability == null) throw new SecurityException("Host must supply tool capability");
+        public @NonNull MonitorOperations operations() {
+            if (capability == null)
+                throw new SecurityException("Monitor plugin operations are unavailable");
             return capability;
         }
 
         @Override
-        public @NonNull String execute(@NonNull Args args, @NonNull MonitorCapability capability) {
+        public @NonNull String execute(@NonNull Args args, @NonNull MonitorOperations capability) {
             return control(capability, args.monitorId(), "pause");
         }
     }
@@ -224,13 +225,13 @@ public final class MonitorTools {
                 "{\"id\":\"b8d2e4f6-1a3c-4b5d-9e7f-0a1b2c3d4e5f\",\"kind\":\"TIME_ONCE\",\"state\":\"ACTIVE\"}"
             })
     public static final class ResumeMonitor implements MonitorTool<ResumeMonitor.Args> {
-        private final MonitorCapability capability;
+        private final MonitorOperations capability;
 
         public ResumeMonitor() {
             this.capability = null;
         }
 
-        public ResumeMonitor(@NonNull MonitorCapability capability) {
+        public ResumeMonitor(@NonNull MonitorOperations capability) {
             this.capability = capability;
         }
 
@@ -249,13 +250,14 @@ public final class MonitorTools {
         }
 
         @Override
-        public @NonNull MonitorCapability monitorCapability() {
-            if (capability == null) throw new SecurityException("Host must supply tool capability");
+        public @NonNull MonitorOperations operations() {
+            if (capability == null)
+                throw new SecurityException("Monitor plugin operations are unavailable");
             return capability;
         }
 
         @Override
-        public @NonNull String execute(@NonNull Args args, @NonNull MonitorCapability capability) {
+        public @NonNull String execute(@NonNull Args args, @NonNull MonitorOperations capability) {
             return control(capability, args.monitorId(), "resume");
         }
     }
@@ -286,13 +288,13 @@ public final class MonitorTools {
                 "{\"id\":\"b8d2e4f6-1a3c-4b5d-9e7f-0a1b2c3d4e5f\",\"kind\":\"TIME_ONCE\",\"state\":\"CANCELLED\"}"
             })
     public static final class CancelMonitor implements MonitorTool<CancelMonitor.Args> {
-        private final MonitorCapability capability;
+        private final MonitorOperations capability;
 
         public CancelMonitor() {
             this.capability = null;
         }
 
-        public CancelMonitor(@NonNull MonitorCapability capability) {
+        public CancelMonitor(@NonNull MonitorOperations capability) {
             this.capability = capability;
         }
 
@@ -311,19 +313,20 @@ public final class MonitorTools {
         }
 
         @Override
-        public @NonNull MonitorCapability monitorCapability() {
-            if (capability == null) throw new SecurityException("Host must supply tool capability");
+        public @NonNull MonitorOperations operations() {
+            if (capability == null)
+                throw new SecurityException("Monitor plugin operations are unavailable");
             return capability;
         }
 
         @Override
-        public @NonNull String execute(@NonNull Args args, @NonNull MonitorCapability capability) {
+        public @NonNull String execute(@NonNull Args args, @NonNull MonitorOperations capability) {
             return control(capability, args.monitorId(), "cancel");
         }
     }
 
     private static @NonNull String create(
-            @NonNull MonitorCapability capability,
+            @NonNull MonitorOperations capability,
             @NonNull String purpose,
             Long afterSeconds,
             String at) {
@@ -355,22 +358,22 @@ public final class MonitorTools {
             return json(capability.create(purpose, due));
         } catch (IllegalStateException error) {
             return ToolErrors.failure(
-                    ToolErrorCode.MONITOR.LIMIT_EXCEEDED,
+                    MonitorError.LIMIT_EXCEEDED,
                     "Monitor not created: this agent already has 32 active or paused monitors.");
         }
     }
 
     private static @NonNull String control(
-            @NonNull MonitorCapability capability, @NonNull String id, @NonNull String operation) {
+            @NonNull MonitorOperations capability, @NonNull String id, @NonNull String operation) {
         try {
             return json(capability.control(id, operation));
         } catch (SecurityException error) {
             return ToolErrors.failure(
-                    ToolErrorCode.MONITOR.UNKNOWN,
+                    MonitorError.UNKNOWN,
                     "Monitor not found: no accessible monitor has id " + id + ".");
         } catch (IllegalArgumentException error) {
             return ToolErrors.failure(
-                    ToolErrorCode.MONITOR.GROUP_MANAGED,
+                    MonitorError.GROUP_MANAGED,
                     "Monitor not updated: group observation monitors follow the group lifecycle and cannot be paused, resumed, or cancelled directly.");
         }
     }

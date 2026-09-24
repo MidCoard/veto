@@ -1,10 +1,9 @@
 package top.focess.veto.builtin.tools;
 
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.api.agent.capability.TaskControlCapability;
 import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.tool.Doc;
-import top.focess.veto.api.agent.tool.TaskControlTool;
+import top.focess.veto.api.agent.tool.NativeTool;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.agent.tool.ToolDoc;
 import top.focess.veto.api.agent.tool.ToolDocs;
@@ -13,12 +12,13 @@ import top.focess.veto.api.agent.tool.ToolErrors;
 import top.focess.veto.api.agent.tool.ToolJson;
 import top.focess.veto.api.agent.tool.ToolResultFormat;
 import top.focess.veto.api.agent.tool.ToolSecurity;
+import top.focess.veto.builtin.process.TaskControlCapability;
 
 /**
  * {@code stop_task} - force-stop a background task launched by {@code run_task}. Idempotent:
  * stopping an already-exited task reports its final status without error.
  */
-@ToolSecurity(capability = ToolCapability.TASK_CONTROL, defaultDanger = Danger.SAFE)
+@ToolSecurity(capability = ToolCapability.PLUGIN_LOCAL, defaultDanger = Danger.SAFE)
 @ToolDoc(
         resultFormats = {ToolResultFormat.JSON},
         description =
@@ -71,7 +71,7 @@ import top.focess.veto.api.agent.tool.ToolSecurity;
             "{\"status\": \"already_exited\", \"taskId\": \"bg-12\", \"alive\": false, \"exitCode\": 0}",
             "Task not found: bg-99"
         })
-public final class StopTaskTool implements TaskControlTool<StopTaskTool.Args> {
+public final class StopTaskTool implements NativeTool<StopTaskTool.Args> {
     private final TaskControlCapability capability;
 
     public StopTaskTool() {
@@ -95,12 +95,15 @@ public final class StopTaskTool implements TaskControlTool<StopTaskTool.Args> {
     }
 
     @Override
+    public @NonNull String execute(@NonNull Args args) {
+        return execute(args, taskControlCapability());
+    }
+
     public @NonNull TaskControlCapability taskControlCapability() {
         if (capability == null) throw new SecurityException("Host must supply tool capability");
         return capability;
     }
 
-    @Override
     public @NonNull String execute(@NonNull Args args, @NonNull TaskControlCapability capability) {
         var before = capability.status(args.taskId());
         if (before.isEmpty())

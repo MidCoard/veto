@@ -179,9 +179,9 @@ and writes audit data and audit logs to its `audit` directory. Tests use separat
 audit output under `work/tmp/audit-path/tests`.
 
 To launch a built JAR in the background on Windows, use
-`./start-backend.ps1 -Jar ./veto-core/build/libs/veto-core-1.0.100.jar`.
+`./start-backend.ps1 -Jar ./veto-app/build/libs/veto-app-1.0.100.jar`.
 On macOS/Linux, use
-`sh ./start-backend.sh ./veto-core/build/libs/veto-core-1.0.100.jar`.
+`sh ./start-backend.sh ./veto-app/build/libs/veto-app-1.0.100.jar`.
 Both launchers use Java from `JAVA_HOME`, or from `PATH` when unset.
 The launchers use the repository root even when called from another directory,
 and copy the JAR to an isolated runtime file so later builds cannot replace it.
@@ -189,10 +189,10 @@ Check its startup log for readiness. Direct JAR launches must explicitly set an
 absolute `VETO_AUDIT_DIR` or `veto.observability.audit-log-path` property.
 
 ```powershell
-.\gradlew.bat :veto-core:bootRun
+.\gradlew.bat :veto-app:bootRun
 ```
 
-On macOS/Linux, the equivalent development command is `sh ./gradlew :veto-core:bootRun`.
+On macOS/Linux, the equivalent development command is `sh ./gradlew :veto-app:bootRun`.
 
 Default listeners:
 
@@ -237,7 +237,7 @@ directory. Set `veto.slm.model-path` in an external Spring configuration file or
 command-line property when the model is stored elsewhere:
 
 ```powershell
-.\gradlew.bat :veto-core:bootRun --args="--veto.slm.model-path=<model-file>"
+.\gradlew.bat :veto-app:bootRun --args="--veto.slm.model-path=<model-file>"
 ```
 
 `llama-server` must be resolvable from `PATH`. At startup, verify the log contains both the selected
@@ -425,3 +425,7 @@ Provider SDK implementations are packaged in [veto-llm-providers](veto-llm-provi
 Agent tools are also eligible for plugin ownership: `create_group` is part of
 [veto-builtin](veto-builtin/README.md). Model tiers, local models and the gateway
 remain in core.
+
+### Core-only deployment
+
+The normal `veto-app` distribution includes builtin tools, model-provider adapters and secret protection. `:veto-core:bootJar` assembles the core without these plugin artifacts; `:veto-core:bootRun` starts that profile. External model adapters must be supplied to call their providers. `:veto-core:zeroPluginTest` exercises the core loop in a JVM without bundled plugin classes, using a deterministic model transport. Feature lifecycle extraction remains in progress.

@@ -44,17 +44,11 @@ class RemoteCapabilityBoundaryTest {
         UUID user = UUID.randomUUID();
         var permit =
                 ToolExecutionPermit.capture(call, definition, Workspace.single(root, PathMode.REAL))
-                        .withCaller("agent", user, null, "owner", null);
+                        .withCaller("agent", user, "owner", null);
         assertEquals("server-one", permit.remoteServerName());
         ToolCallContextHolder.set(
                 new ToolCallContext(
-                        "agent",
-                        user,
-                        null,
-                        "owner",
-                        null,
-                        ToolResultPresentationMode.BASIC,
-                        permit));
+                        "agent", user, "owner", null, ToolResultPresentationMode.BASIC, permit));
         ToolCallContextHolder.setCurrentCallId(call.callId());
         assertThrows(SecurityException.class, () -> otherCapability.call(call));
         assertThrows(
@@ -72,7 +66,6 @@ class RemoteCapabilityBoundaryTest {
                 new ToolCallContext(
                         "other-agent",
                         user,
-                        null,
                         "owner",
                         null,
                         ToolResultPresentationMode.BASIC,
@@ -81,13 +74,7 @@ class RemoteCapabilityBoundaryTest {
         verifyNoInteractions(client);
         ToolCallContextHolder.set(
                 new ToolCallContext(
-                        "agent",
-                        user,
-                        null,
-                        "owner",
-                        null,
-                        ToolResultPresentationMode.BASIC,
-                        permit));
+                        "agent", user, "owner", null, ToolResultPresentationMode.BASIC, permit));
         var result = mapper.createObjectNode().put("isError", false);
         when(client.callTool(transport, "lookup", call.args())).thenReturn(result);
         assertSame(result, capability.call(call));

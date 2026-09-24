@@ -3,18 +3,11 @@ package top.focess.veto.builtin.planning;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.agent.tool.ToolResult;
-import top.focess.veto.api.agent.workflow.ActionsProgram;
-import top.focess.veto.api.agent.workflow.Check;
-import top.focess.veto.api.agent.workflow.ConditionalGotoAction;
-import top.focess.veto.api.agent.workflow.GenerateAction;
-import top.focess.veto.api.agent.workflow.GotoAction;
-import top.focess.veto.api.agent.workflow.PlanExecution;
-import top.focess.veto.api.agent.workflow.PlanStepContext;
-import top.focess.veto.api.agent.workflow.Scope;
-import top.focess.veto.api.agent.workflow.StopAction;
-import top.focess.veto.api.agent.workflow.ToolAction;
+import top.focess.veto.api.agent.workflow.PluginWork;
+import top.focess.veto.api.agent.workflow.PluginWork.Source;
 import top.focess.veto.api.llm.ResponseContract;
 import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.api.llm.VetoResponse;
@@ -29,19 +22,88 @@ public final class PlanProgram implements PlanExecution {
     private ActionsProgram activeProgram;
     private int programCounter;
     private int currentSteps;
-    private int maxPlanSteps;
+    private final int maxPlanSteps;
+    private final String answerTool;
     private String programModelCallId;
     private final @NonNull Map<String, String> planSources = new HashMap<>();
     private final @NonNull Map<String, GeneratedCitation> generatedCitations = new HashMap<>();
 
     public PlanProgram(@NonNull ObjectMapper mapper) {
+        this(mapper, PlanConfig.defaults());
+    }
+
+    public PlanProgram(@NonNull ObjectMapper mapper, @NonNull PlanConfig configuration) {
+        this(mapper, configuration, "answer_with_citations");
+    }
+
+    public PlanProgram(
+            @NonNull ObjectMapper mapper, @NonNull PlanConfig configuration, String answerTool) {
+        this.answerTool = answerTool;
+        maxPlanSteps = configuration.maxSteps();
         objectMapper = mapper;
         scope = new Scope(mapper);
     }
 
-    public void configure(int maxSteps) {
-        if (maxSteps < 1) throw new IllegalArgumentException("plan max-steps must be positive");
-        maxPlanSteps = maxSteps;
+    @Override
+    public @NonNull PluginWork accepted(@NonNull ActionsProgram program) {
+        return ports -> {
+            install(program, ports.sourceCallId());
+            run(
+                    new Runtime() {
+                        public boolean running() {
+                            return ports.running();
+                        }
+
+                        public void beforeStep() {
+                            ports.beforeStep();
+                        }
+
+                        public @NonNull ToolResult tool(
+                                @NonNull ToolCall call, @NonNull PlanStepContext context) {
+                            return ports.tool(call, context.context());
+                        }
+
+                        public @NonNull Generated generate(
+                                @NonNull GenerateAction action,
+                                @NonNull ResponseContract contract) {
+                            var value =
+                                    ports.generate(
+                                            new PluginWork.ModelInput(
+                                                    action.resolvePrompt(scope),
+                                                    action.resolveInputs(scope),
+                                                    action.modelTier(),
+                                                    action.temperature(),
+                                                    action.thought(),
+                                                    action.responseMode()
+                                                                            == GenerateAction
+                                                                                    .ResponseMode
+                                                                                    .CITATIONS
+                                                                    && answerTool != null
+                                                            ? Set.of(answerTool)
+                                                            : Set.of()),
+                                            contract);
+                            return new Generated(
+                                    value.response(), value.citations(), value.modelCallId());
+                        }
+
+                        public void message(
+                                @NonNull String text,
+                                Source citations,
+                                String callId,
+                                boolean forwarded) {
+                            ports.message(text, citations, callId, forwarded);
+                        }
+
+                        public void escaped(@NonNull String reason) {
+                            ports.observation("plan_escape", reason);
+                        }
+
+                        public @NonNull String prompt(
+                                @NonNull String source, @NonNull Map<String, Object> data) {
+                            return ports.prompt(source, data);
+                        }
+                    });
+        };
     }
 
     public @NonNull Scope scope() {
@@ -99,10 +161,11 @@ public final class PlanProgram implements PlanExecution {
             return;
         }
         var action = program.actions().get(programCounter);
-        if (++currentSteps > maxPlanSteps) {
+        if (currentSteps >= maxPlanSteps) {
             escape(runtime, "step limit exceeded");
             throw new IllegalStateException("Plan program exceeded its execution step limit");
         }
+        currentSteps++;
         scope.put("CURRENT_STEPS", currentSteps);
         switch (action) {
             case ToolAction tool -> {

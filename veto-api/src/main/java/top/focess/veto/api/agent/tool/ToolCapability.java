@@ -17,13 +17,12 @@ public enum ToolCapability {
      * installed.
      */
     PRIVILEGED,
-    SKILL_READ,
-    MEMORY_READ,
-    MEMORY_WRITE,
+
     LOOP_CONTROL,
     DELEGATION,
     GROUP_CONTROL,
-    MONITOR_CONTROL,
+    /** Plugin-owned state/workflow; grants no host resource access and is not a sandbox. */
+    PLUGIN_LOCAL,
     USER_INTERACTION,
     /** Fail-closed fallback for an agent tool that has not yet declared a specific capability. */
     AGENT_CONTROL,

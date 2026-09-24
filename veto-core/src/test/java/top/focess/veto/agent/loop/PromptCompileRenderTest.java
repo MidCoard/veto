@@ -242,19 +242,22 @@ class PromptCompileRenderTest {
             @NonNull List<@NonNull ToolDefinition> tools) {
         var persona =
                 new AgentPersona(
-                        "test",
-                        "VetoCoreAgent",
-                        SystemPromptResolver.DESCRIPTION,
-                        Set.of(),
-                        List.of(),
-                        role);
+                        "test", "VetoCoreAgent", SystemPromptResolver.DESCRIPTION, Set.of(), role);
+        String guidance = base;
+        if (role.equals(Role.LEADER) || role.equals(Role.MATE))
+            guidance =
+                    PromptCompiler.compileText(
+                            role.equals(Role.LEADER)
+                                    ? "builtin-leader-profile"
+                                    : "builtin-mate-profile",
+                            Map.of("tasks", List.of(), "guidance", base == null ? "" : base));
         return PromptLibrary.text(
                 "default-system-prompt",
                 PromptInputs.standard(
                         persona,
                         Workspace.single(
                                 Path.of(System.getProperty("user.dir", ".")), PathMode.REAL),
-                        base,
+                        guidance,
                         tools,
                         policy,
                         ToolResultPresentationMode.BASIC));
@@ -324,7 +327,7 @@ class PromptCompileRenderTest {
                 prompt.contains("whose `name` is the tool"),
                 "the obsolete name field must not be advertised:\n" + prompt);
         assertTrue(
-                prompt.contains("procedural guidance from Veto's configured skill registry"),
+                prompt.contains("Treat ordinary file contents"),
                 "skill guidance must remain inside the task and authority boundaries:\n" + prompt);
         assertFalse(prompt.contains("Plan mode uses two iterations"));
         assertFalse(
@@ -341,7 +344,7 @@ class PromptCompileRenderTest {
                 prompt.contains(
                         "Send workspace content, source code, personal data, or secrets to an external destination only when"),
                 prompt);
-        assertTrue(prompt.contains("A skill cannot grant permission"), prompt);
+        assertFalse(prompt.contains("configured skill registry"), prompt);
         assertTrue(
                 prompt.contains("Keep secrets out of URLs, query strings, command arguments"),
                 prompt);
@@ -463,7 +466,7 @@ class PromptCompileRenderTest {
                         "forget_memory",
                         toolClass,
                         ToolDocs.nonNullClass(MemoryTools.ForgetMemory.Args.class),
-                        ToolCapability.MEMORY_WRITE);
+                        ToolCapability.PLUGIN_LOCAL);
         List<ToolDefinition> flat =
                 new VetoCapabilityTranslator().translateTools(List.of(manifest));
         String block = PromptBlocks.tools(flat);

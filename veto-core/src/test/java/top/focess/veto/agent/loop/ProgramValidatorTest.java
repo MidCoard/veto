@@ -12,14 +12,14 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import top.focess.veto.api.agent.tool.ToolDocs;
-import top.focess.veto.api.agent.workflow.ActionsProgram;
-import top.focess.veto.api.agent.workflow.Check;
-import top.focess.veto.api.agent.workflow.ConditionalGotoAction;
-import top.focess.veto.api.agent.workflow.GenerateAction;
-import top.focess.veto.api.agent.workflow.Scope;
-import top.focess.veto.api.agent.workflow.StopAction;
+import top.focess.veto.builtin.planning.ActionsProgram;
 import top.focess.veto.builtin.planning.ActionsProgramParser;
+import top.focess.veto.builtin.planning.Check;
+import top.focess.veto.builtin.planning.ConditionalGotoAction;
+import top.focess.veto.builtin.planning.GenerateAction;
 import top.focess.veto.builtin.planning.ProgramValidator;
+import top.focess.veto.builtin.planning.Scope;
+import top.focess.veto.builtin.planning.StopAction;
 import top.focess.veto.util.Nullness;
 
 class ProgramValidatorTest {

@@ -4,16 +4,17 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.util.Set;
+import java.util.List;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
-import top.focess.veto.agent.drift.ReadHistory;
 import top.focess.veto.agent.screening.*;
 import top.focess.veto.agent.tool.*;
-import top.focess.veto.agent.workspace.Workspace;
+import top.focess.veto.api.agent.control.ControlHost;
 import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.ToolExecutionException;
+import top.focess.veto.api.llm.ToolDefinition;
 import top.focess.veto.builtin.planning.ActionsProgramParser;
+import top.focess.veto.builtin.planning.PlanPreflight;
 
 class GatewayRemotePlanValidationTest {
     private static final @NonNull ObjectMapper MAPPER = new ObjectMapper();
@@ -22,16 +23,21 @@ class GatewayRemotePlanValidationTest {
         var definition =
                 new RemoteToolDefinition(
                         "remote_fixture", "Fixture", "remote-server", MAPPER.readTree(schema));
-        ToolEngine engine = mock(ToolDocs.nonNullClass(ToolEngine.class));
-        when(engine.resolveDefinition("remote_fixture")).thenReturn(definition);
-        Gateway gateway =
-                new Gateway(
-                        mock(ToolDocs.nonNullClass(Workspace.class)),
-                        new DangerComputation(),
-                        SlmScreeningProvider.unavailable(),
-                        DeployerPolicy.FULL_ACCESS,
-                        ProtectedSet.empty(),
-                        new ReadHistory());
+        @NonNull ControlHost host = mock();
+        @NonNull ToolDefinition advertised = mock();
+        when(advertised.name()).thenReturn("remote_fixture");
+        when(host.tools()).thenReturn(List.of(new ControlHost.Tool(advertised, null, null, null)));
+        doAnswer(
+                        call -> {
+                            NativeToolArgumentValidator.validateAgainstSchema(
+                                    "remote_fixture",
+                                    call.getArgument(1),
+                                    definition.inputSchema(),
+                                    call.getArgument(2));
+                            return null;
+                        })
+                .when(host)
+                .validateInputs(eq("remote_fixture"), any(), any());
         var program =
                 ActionsProgramParser.parse(
                         MAPPER.readTree(
@@ -40,8 +46,8 @@ class GatewayRemotePlanValidationTest {
                  {"id":"done","label":"Done","type":"STOP"}]
                 """
                                         .formatted(inputs)));
-        gateway.validateProgram(program, engine, Set.of("remote_fixture"), MAPPER);
-        verify(engine, only()).resolveDefinition("remote_fixture");
+        PlanPreflight.validate(program, host, MAPPER);
+        verify(host).validateInputs(eq("remote_fixture"), any(), any());
     }
 
     @Test
@@ -94,5 +100,27 @@ class GatewayRemotePlanValidationTest {
         assertThrows(
                 ToolDocs.nonNullClass(ToolExecutionException.class),
                 () -> validate(schema, "{\"known\":-1,\"later\":\"$count\"}"));
+    }
+
+    @Test
+    void remoteInvalidReferencesFailClosed() {
+        assertThrows(
+                ToolDocs.nonNullClass(ToolExecutionException.class),
+                () ->
+                        validate(
+                                "{\"type\":\"object\",\"properties\":{\"value\":{\"$ref\":\"#/$defs/missing\"}}}",
+                                "{\"value\":\"anything\"}"));
+        assertThrows(
+                ToolDocs.nonNullClass(ToolExecutionException.class),
+                () ->
+                        validate(
+                                "{\"type\":\"object\",\"properties\":{\"value\":{\"$ref\":\"https://example.com/schema\"}}}",
+                                "{\"value\":\"anything\"}"));
+        assertThrows(
+                ToolDocs.nonNullClass(ToolExecutionException.class),
+                () ->
+                        validate(
+                                "{\"$defs\":{\"loop\":{\"$ref\":\"#/$defs/loop\"}},\"type\":\"object\",\"properties\":{\"value\":{\"$ref\":\"#/$defs/loop\"}}}",
+                                "{\"value\":\"anything\"}"));
     }
 }

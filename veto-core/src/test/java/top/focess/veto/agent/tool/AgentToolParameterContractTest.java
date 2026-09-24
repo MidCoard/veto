@@ -11,7 +11,7 @@ import org.junit.jupiter.api.Test;
 import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.ToolErrorCode;
 import top.focess.veto.api.agent.tool.ToolExecutionException;
-import top.focess.veto.api.group.BlackboardMessage;
+import top.focess.veto.builtin.group.BlackboardMessage;
 import top.focess.veto.builtin.group.GroupTools;
 
 class AgentToolParameterContractTest {

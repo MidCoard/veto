@@ -54,9 +54,6 @@ veto:
       "[top.focess.builtin:delete_path]": delete_path
   observability:
     audit-log-path: ${java.io.tmpdir}/veto-test-audit
-  plan:
-    max-steps: 1000
-
   slm:
     enabled: false
   terminal:

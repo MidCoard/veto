@@ -1,6 +1,7 @@
 package top.focess.veto.agent.intercept;
 
 import java.io.IOException;
+import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.NoSuchFileException;
@@ -18,6 +19,7 @@ import top.focess.veto.agent.screening.DeployerPolicy;
 import top.focess.veto.agent.screening.ProtectedSet;
 import top.focess.veto.agent.tool.AgentToolDefinition;
 import top.focess.veto.agent.tool.NativeToolDefinition;
+import top.focess.veto.agent.tool.PreparedInvocation;
 import top.focess.veto.agent.tool.Provenance;
 import top.focess.veto.agent.tool.RemoteToolDefinition;
 import top.focess.veto.agent.tool.ToolCallContext;
@@ -43,7 +45,8 @@ public record ToolExecutionPermit(
         Path executionRoot,
         @NonNull DeployerPolicy deployerPolicy,
         @NonNull Set<@NonNull Path> protectedPaths,
-        TaskBinding taskBinding) {
+        @NonNull Map<@NonNull String, @NonNull URI> httpDestinations,
+        PreparedInvocation preparation) {
 
     private static final @NonNull ToolExecutionPermit EMPTY =
             new ToolExecutionPermit(
@@ -58,7 +61,74 @@ public record ToolExecutionPermit(
                     Set.of(),
                     null);
 
+    public ToolExecutionPermit(
+            @NonNull ToolCall call,
+            @NonNull ToolCapability capability,
+            String remoteServerName,
+            CallerBinding caller,
+            @NonNull Map<@NonNull String, @NonNull AuthorizedPath> filesystemPaths,
+            @NonNull List<@NonNull Path> workspaceRoots,
+            Path executionRoot,
+            @NonNull DeployerPolicy deployerPolicy,
+            @NonNull Set<@NonNull Path> protectedPaths,
+            PreparedInvocation preparation) {
+        this(
+                call,
+                capability,
+                remoteServerName,
+                caller,
+                filesystemPaths,
+                workspaceRoots,
+                executionRoot,
+                deployerPolicy,
+                protectedPaths,
+                preparation,
+                Map.of());
+    }
+
+    public ToolExecutionPermit(
+            @NonNull ToolCall call,
+            @NonNull ToolCapability capability,
+            String remoteServerName,
+            CallerBinding caller,
+            @NonNull Map<@NonNull String, @NonNull AuthorizedPath> filesystemPaths,
+            @NonNull List<@NonNull Path> workspaceRoots,
+            Path executionRoot,
+            @NonNull DeployerPolicy deployerPolicy,
+            @NonNull Set<@NonNull Path> protectedPaths,
+            PreparedInvocation preparation,
+            @NonNull Map<@NonNull String, @NonNull URI> httpDestinations) {
+        this(
+                call,
+                capability,
+                remoteServerName,
+                caller,
+                filesystemPaths,
+                workspaceRoots,
+                executionRoot,
+                deployerPolicy,
+                protectedPaths,
+                httpDestinations,
+                preparation);
+    }
+
+    public @NonNull ToolExecutionPermit withPreparation(@NonNull PreparedInvocation prepared) {
+        return new ToolExecutionPermit(
+                call,
+                capability,
+                remoteServerName,
+                caller,
+                filesystemPaths,
+                workspaceRoots,
+                executionRoot,
+                deployerPolicy,
+                protectedPaths,
+                httpDestinations,
+                prepared);
+    }
+
     public ToolExecutionPermit {
+        httpDestinations = Map.copyOf(httpDestinations);
         filesystemPaths = Map.copyOf(filesystemPaths);
         workspaceRoots =
                 workspaceRoots.stream().map(path -> path.toAbsolutePath().normalize()).toList();
@@ -99,6 +169,12 @@ public record ToolExecutionPermit(
             @NonNull ProtectedSet protectedSet) {
         String serverName = externalBinding(definition);
         Map<@NonNull String, @NonNull ParamCategory> hints = parameterHints(definition);
+        Map<@NonNull String, @NonNull URI> destinations = new LinkedHashMap<>();
+        for (var hint : hints.entrySet()) {
+            if (hint.getValue() == ParamCategory.URL
+                    && call.args().get(hint.getKey()) instanceof String url)
+                destinations.put(hint.getKey(), URI.create(url.trim()));
+        }
         List<Path> roots = workspace.hostRoots();
         Path executionRoot = workspace.currentHostRoot();
         Set<Path> denied =
@@ -114,7 +190,8 @@ public record ToolExecutionPermit(
                     executionRoot,
                     deployerPolicy,
                     denied,
-                    null);
+                    null,
+                    destinations);
         }
         Map<@NonNull String, @NonNull AuthorizedPath> paths = new LinkedHashMap<>();
         for (var entry : hints.entrySet()) {
@@ -156,42 +233,25 @@ public record ToolExecutionPermit(
                 executionRoot,
                 deployerPolicy,
                 denied,
-                null);
-    }
-
-    /** Binds a screened process-input call to the exact background-task instance it targeted. */
-    public @NonNull ToolExecutionPermit withTaskBinding(@NonNull TaskBinding binding) {
-        return new ToolExecutionPermit(
-                call,
-                capability,
-                remoteServerName,
-                caller,
-                filesystemPaths,
-                workspaceRoots,
-                executionRoot,
-                deployerPolicy,
-                protectedPaths,
-                binding);
+                null,
+                destinations);
     }
 
     /** Binds authorization to the runtime caller immediately before dispatch. */
     public @NonNull ToolExecutionPermit withCaller(
-            @NonNull String agentId,
-            @NonNull UUID userId,
-            UUID groupId,
-            String owner,
-            UUID sessionId) {
+            @NonNull String agentId, @NonNull UUID userId, String owner, UUID sessionId) {
         return new ToolExecutionPermit(
                 call,
                 capability,
                 remoteServerName,
-                new CallerBinding(agentId, userId, groupId, owner, sessionId),
+                new CallerBinding(agentId, userId, owner, sessionId),
                 filesystemPaths,
                 workspaceRoots,
                 executionRoot,
                 deployerPolicy,
                 protectedPaths,
-                taskBinding);
+                httpDestinations,
+                preparation);
     }
 
     private static String externalBinding(@NonNull ToolDefinition definition) {
@@ -216,17 +276,12 @@ public record ToolExecutionPermit(
         return caller != null
                 && caller.agentId().equals(context.agentId())
                 && caller.userId().equals(context.userId())
-                && Objects.equals(caller.groupId(), context.groupId())
                 && Objects.equals(caller.owner(), context.owner())
                 && Objects.equals(caller.sessionId(), context.sessionId());
     }
 
     public record CallerBinding(
-            @NonNull String agentId,
-            @NonNull UUID userId,
-            UUID groupId,
-            String owner,
-            UUID sessionId) {}
+            @NonNull String agentId, @NonNull UUID userId, String owner, UUID sessionId) {}
 
     /** Whether this permit still binds the exact immutable tool call. */
     public boolean matchesCall(@NonNull ToolCall call) {
@@ -247,7 +302,7 @@ public record ToolExecutionPermit(
                 || !Objects.equals(executionRoot, current.executionRoot)
                 || deployerPolicy != current.deployerPolicy
                 || !protectedPaths.equals(current.protectedPaths)
-                || !Objects.equals(taskBinding, current.taskBinding)) {
+                || preparation != current.preparation) {
             return false;
         }
         for (var entry : filesystemPaths.entrySet()) {
@@ -388,11 +443,4 @@ public record ToolExecutionPermit(
             UNAVAILABLE
         }
     }
-
-    /** Exact process instance approved for one process-input call. */
-    public record TaskBinding(
-            @NonNull String taskId,
-            @NonNull String agentId,
-            @NonNull UUID sessionId,
-            @NonNull UUID taskInstanceId) {}
 }

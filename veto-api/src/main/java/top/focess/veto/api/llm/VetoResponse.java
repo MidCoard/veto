@@ -7,7 +7,7 @@ import org.jspecify.annotations.NonNull;
 
 /**
  * Internal adapter result: model text, native calls and resolved answer citations. Execution plans
- * are control directives created by submit_plan, never model response fields. thought contains
+ * are host-controlled execution directives, never model response fields. thought contains
  * provider-exposed reasoning text, not a model-authored envelope or a thinking configuration.
  */
 @com.fasterxml.jackson.annotation.JsonInclude(

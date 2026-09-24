@@ -7,11 +7,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.api.agent.capability.MemoryReadCapability;
-import top.focess.veto.api.agent.capability.MemoryWriteCapability;
 import top.focess.veto.api.agent.tool.Doc;
-import top.focess.veto.api.agent.tool.MemoryReadTool;
-import top.focess.veto.api.agent.tool.MemoryWriteTool;
 import top.focess.veto.api.agent.tool.ParamCategory;
 import top.focess.veto.api.agent.tool.RequiredWhen;
 import top.focess.veto.api.agent.tool.SecurityHint;
@@ -20,10 +16,6 @@ import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.ToolErrorCode;
 import top.focess.veto.api.agent.tool.ToolErrors;
 import top.focess.veto.api.agent.tool.ToolResultFormat;
-import top.focess.veto.api.memory.Memory;
-import top.focess.veto.api.memory.MemoryId;
-import top.focess.veto.api.memory.MemoryTier;
-import top.focess.veto.api.memory.ScoredMemory;
 
 /**
  * Agent-facing memory tools. Their agent-tool definition flavour means the Gateway returns {@code

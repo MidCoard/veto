@@ -1,6 +1,7 @@
 package top.focess.veto.agent.tool;
 
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Where a tool definition came from, when it was contributed by an installed plugin rather than
@@ -11,4 +12,12 @@ import org.jspecify.annotations.NonNull;
  * an execution permit binds the exact plugin revision.
  */
 public record Provenance(
-        @NonNull String pluginId, @NonNull String bindingId, @NonNull String pluginVersion) {}
+        @NonNull String pluginId,
+        @NonNull String bindingId,
+        @NonNull String pluginVersion,
+        @Nullable String localId) {
+    public Provenance(
+            @NonNull String pluginId, @NonNull String bindingId, @NonNull String pluginVersion) {
+        this(pluginId, bindingId, pluginVersion, null);
+    }
+}

@@ -143,10 +143,9 @@ class GrepSearchToolTest {
                         "agent",
                         userId,
                         null,
-                        null,
                         sessionId,
                         ToolResultPresentationMode.BASIC,
-                        executionPermit.withCaller("agent", userId, null, null, sessionId)));
+                        executionPermit.withCaller("agent", userId, null, sessionId)));
         ReflectionTestUtils.invokeMethod(
                 ToolCallContextHolder.class, "setCurrentCallId", executionPermit.callId());
     }

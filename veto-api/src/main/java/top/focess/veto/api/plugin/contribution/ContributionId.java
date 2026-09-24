@@ -11,6 +11,11 @@ public record ContributionId(@NonNull String value) implements Comparable<Contri
             throw new IllegalArgumentException("Invalid contribution identity");
     }
 
+    /** The local portion of this validated contribution identity, independent of tool aliases. */
+    public @NonNull String localId() {
+        return value.substring(value.indexOf(':') + 1);
+    }
+
     @Override
     public int compareTo(@NonNull ContributionId other) {
         return value.compareTo(other.value);

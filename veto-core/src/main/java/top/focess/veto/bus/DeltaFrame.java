@@ -52,6 +52,7 @@ public record DeltaFrame(
         TOKEN_USAGE,
         RECORD_UPDATED,
         SESSION_INVALIDATED,
+        PLUGIN_EVENT,
         BREAKER_TRIPPED,
         ERROR,
         /** A HITL veto was raised and is waiting for the user's decision. */

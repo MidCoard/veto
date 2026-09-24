@@ -19,8 +19,7 @@ import top.focess.veto.api.search.SearchResult;
 
 /**
  * Brave Search API provider — higher-quality results than the keyless default, but requires an API
- * key ({@code veto.websearch.brave.api-key} or {@code BRAVE_API_KEY}). Enabled by setting {@code
- * veto.websearch.provider=brave}.
+ * key in builtin configuration {@code brave-api-key}. Select with {@code search-provider=brave}.
  */
 public class BraveSearchProvider implements SearchProvider, AutoCloseable {
 
@@ -56,8 +55,8 @@ public class BraveSearchProvider implements SearchProvider, AutoCloseable {
         if (apiKey == null || apiKey.isBlank()) {
             throw new IllegalStateException(
                     "web_search provider is 'brave' but no API key is set - configure"
-                            + " veto.websearch.brave.api-key (or BRAVE_API_KEY), or switch"
-                            + " veto.websearch.provider to duckduckgo (keyless).");
+                            + " builtin brave-api-key, or switch"
+                            + " builtin search-provider to duckduckgo (keyless).");
         }
         if (query.isBlank() || query.strip().length() < 2) {
             throw new IllegalArgumentException("query must be at least 2 characters");

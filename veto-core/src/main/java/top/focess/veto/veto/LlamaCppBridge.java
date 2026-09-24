@@ -217,6 +217,42 @@ public class LlamaCppBridge {
                 });
     }
 
+    /** Literal caller-owned grammar; cancellation propagates to the local HTTP request. */
+    public @NonNull CompletableFuture<String> inferWithGrammar(
+            @NonNull String prompt, @NonNull String grammar) {
+        if (!available || serverPort <= 0)
+            return CompletableFuture.failedFuture(
+                    new IllegalStateException("Local model unavailable"));
+        String body =
+                String.format(
+                        "{\"prompt\":\"%s\",\"n_predict\":512,\"temperature\":%s,\"stop\":[\"###\"],\"grammar\":\"%s\"}",
+                        escapeJson(prompt), config.getTemperature(), escapeJson(grammar));
+        HttpRequest request =
+                HttpRequest.newBuilder()
+                        .uri(
+                                URI.create(
+                                        String.format(
+                                                "http://127.0.0.1:%d/v1/completions", serverPort)))
+                        .timeout(Duration.ofSeconds(2))
+                        .header("Content-Type", "application/json")
+                        .POST(HttpRequest.BodyPublishers.ofString(body))
+                        .build();
+        var transport = httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString());
+        CompletableFuture<String> result = new CompletableFuture<>();
+        transport.whenComplete(
+                (response, failure) -> {
+                    if (failure != null || response == null || response.statusCode() != 200) {
+                        result.completeExceptionally(
+                                new IllegalStateException("Local model completion unavailable"));
+                    } else result.complete(extractContentFromResponse(response.body()));
+                });
+        result.whenComplete(
+                (value, failure) -> {
+                    if (result.isCancelled()) transport.cancel(true);
+                });
+        return result;
+    }
+
     /** Kill request for priority interruption. */
     public void killCurrentInference() {
         // With HTTP API, we can cancel pending requests by closing connections

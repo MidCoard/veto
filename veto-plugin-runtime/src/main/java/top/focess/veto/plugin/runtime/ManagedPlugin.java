@@ -1,11 +1,14 @@
 package top.focess.veto.plugin.runtime;
 
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.RejectedExecutionException;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
+import top.focess.veto.api.agent.workflow.PluginAwait;
 import top.focess.veto.api.plugin.*;
 import top.focess.veto.api.plugin.PluginContext;
 import top.focess.veto.api.plugin.PluginContributions;
@@ -27,11 +30,94 @@ public final class ManagedPlugin implements AutoCloseable {
             ThreadLocal.withInitial(() -> false);
     private static final @NonNull ThreadLocal<@Nullable Boolean> inInvocation =
             ThreadLocal.withInitial(() -> false);
+    private final @NonNull CompletableFuture<Void> active = new CompletableFuture<>();
     private final @NonNull CompletableFuture<Void> closed = new CompletableFuture<>();
     // Cleanup is owned by the lifecycle executor; admission/count changes use this monitor.
     private boolean cleaned;
+    private boolean stopping;
     private int activeCalls;
     private final @NonNull String activationId = java.util.UUID.randomUUID().toString();
+    private final @NonNull Map<PluginAwait, PluginAwait> waits = new ConcurrentHashMap<>();
+
+    private final @NonNull Map<Object, Runnable> resources = new ConcurrentHashMap<>();
+
+    private final @NonNull Map<Object, Runnable> stoppingResources = new ConcurrentHashMap<>();
+
+    /** Host cancellation signals that must run before waiting for admitted calls to drain. */
+    public synchronized void ownStoppingResource(
+            @NonNull Object identity, @NonNull Runnable release) {
+        if (state != PluginState.ACTIVE) throw new IllegalStateException("Plugin is not active");
+        stoppingResources.putIfAbsent(identity, release);
+    }
+
+    public void whenActive(@NonNull Runnable callback) {
+        active.thenRunAsync(
+                () -> {
+                    try {
+                        execute(
+                                () -> {
+                                    callback.run();
+                                    return true;
+                                });
+                    } catch (PluginFailure stopped) {
+                        /* Lifecycle revocation cancels the callback. */
+                    }
+                });
+    }
+
+    /** Host resources are closed even when the plugin's own shutdown callback fails. */
+    public synchronized void ownResource(@NonNull Runnable release) {
+        if (state != PluginState.ACTIVE) throw new IllegalStateException("Plugin is not active");
+        resources.putIfAbsent(release, release);
+    }
+
+    public synchronized boolean ownResource(@NonNull Object identity, @NonNull Runnable release) {
+        if (state != PluginState.ACTIVE) throw new IllegalStateException("Plugin is not active");
+        return resources.putIfAbsent(identity, release) == null;
+    }
+
+    public void releaseResource(@NonNull Object identity) {
+        resources.remove(identity);
+        stoppingResources.remove(identity);
+    }
+
+    /** Only the lifecycle callback may use a revoked handle for its final cleanup. */
+    public boolean cleaningResources() {
+        return (state == PluginState.STOPPING || state == PluginState.FAILED)
+                && Boolean.TRUE.equals(controlling.get());
+    }
+
+    /** Waiting does not retain an invocation admission; stopping fails it immediately. */
+    public @NonNull PluginAwait ownAwait(@NonNull PluginAwait signal) {
+        CompletableFuture<Boolean> ready = new CompletableFuture<>();
+        var owned = new PluginAwait(bindingId() + "/" + signal.token(), ready);
+        synchronized (this) {
+            if (state != PluginState.ACTIVE)
+                throw new IllegalStateException("Plugin is not active");
+            var existing = waits.get(signal);
+            if (existing != null) return existing;
+            waits.put(signal, owned);
+        }
+        signal.ready()
+                .whenComplete(
+                        (value, failure) -> {
+                            if (failure != null) ready.completeExceptionally(failure);
+                            else ready.complete(Boolean.TRUE.equals(value));
+                        });
+        ready.whenComplete(
+                (value, failure) -> {
+                    waits.remove(signal, owned);
+                    if (!signal.ready().isDone()) signal.ready().cancel(false);
+                });
+        return owned;
+    }
+
+    private void stopWaits() {
+        for (var signal : waits.values())
+            signal.ready()
+                    .completeExceptionally(
+                            new IllegalStateException("Plugin stopped while awaiting work"));
+    }
 
     public @NonNull String bindingId() {
         return "plugin:" + identity().id() + ":" + identity().version() + ":" + activationId;
@@ -99,6 +185,7 @@ public final class ManagedPlugin implements AutoCloseable {
                             try {
                                 plugin.start();
                                 state = PluginState.ACTIVE;
+                                active.complete(null);
                             } catch (Throwable failure) {
                                 failOnControlThread();
                                 throw safe(failure);
@@ -153,6 +240,7 @@ public final class ManagedPlugin implements AutoCloseable {
                         if (state != PluginState.CLOSED && state != PluginState.FAILED)
                             state = PluginState.STOPPING;
                     }
+                    signalStopping();
                     finishClose();
                     return true;
                 });
@@ -175,6 +263,7 @@ public final class ManagedPlugin implements AutoCloseable {
             state = PluginState.FAILED;
         }
         // Failure aborts owned resources to unblock outstanding I/O; graceful close drains first.
+        signalStopping();
         cleanup();
         finishClose();
     }
@@ -189,13 +278,43 @@ public final class ManagedPlugin implements AutoCloseable {
         closed.complete(null);
     }
 
+    private void signalStopping() {
+        if (stopping) return;
+        stopping = true;
+        for (var release : stoppingResources.values()) {
+            try {
+                release.run();
+            } catch (Throwable failure) {
+                state = PluginState.FAILED;
+            }
+        }
+        stoppingResources.clear();
+        try {
+            plugin.stopping();
+        } catch (Throwable failure) {
+            state = PluginState.FAILED;
+        }
+        if (state == PluginState.FAILED) cleanup();
+    }
+
     private void cleanup() {
         if (cleaned) return;
         cleaned = true;
+        active.completeExceptionally(new IllegalStateException("Plugin stopped before activation"));
+        stopWaits();
         try {
             plugin.close();
         } catch (Throwable failure) {
             state = PluginState.FAILED;
+        } finally {
+            for (var release : resources.values()) {
+                try {
+                    release.run();
+                } catch (Throwable failure) {
+                    state = PluginState.FAILED;
+                }
+            }
+            resources.clear();
         }
     }
 

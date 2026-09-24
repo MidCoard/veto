@@ -11,7 +11,6 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
-import top.focess.veto.agent.identity.RoleToolFilter;
 import top.focess.veto.agent.identity.SystemPromptResolver;
 import top.focess.veto.agent.intercept.HitlRegistry;
 import top.focess.veto.agent.intercept.IngressDefense;
@@ -32,9 +31,6 @@ import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.api.llm.VetoRequest;
 import top.focess.veto.api.llm.VetoResponse;
 import top.focess.veto.llm.core.UniformLLMCaller;
-import top.focess.veto.sandbox.BackgroundTaskManager;
-import top.focess.veto.sandbox.SandboxManager;
-import top.focess.veto.sandbox.TestSandboxFactory;
 
 /**
  * Verifies the production agent persona resolves a real tool whitelist from the {@link ToolEngine}
@@ -96,16 +92,12 @@ class PersonaToolWhitelistTest {
                 caller,
                 mapper,
                 List.of(),
-                new RoleToolFilter(engine),
                 "REAL",
                 50L,
-                1000,
                 "FULL_ACCESS",
                 "STRICT",
                 null,
-                null,
-                new BackgroundTaskManager(
-                        new SandboxManager(TestSandboxFactory.uncontainedSubprocesses())));
+                null);
     }
 
     private static @NonNull LlmBinding binding() {

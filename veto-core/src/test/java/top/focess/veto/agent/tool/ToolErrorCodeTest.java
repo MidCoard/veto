@@ -29,9 +29,14 @@ class ToolErrorCodeTest {
         assertNull(ToolErrorCode.parse(null));
         assertNull(ToolErrorCode.parse(""));
         assertNull(ToolErrorCode.parse("   "));
-        assertNull(ToolErrorCode.parse("NO_SUCH_CODE"));
-        assertNull(ToolErrorCode.parse("io_error"));
-        assertNull(ToolErrorCode.parse("FILE_EXISTS"), "merged-away names are not aliased");
+        assertEquals(new ToolErrorCode.Named("NO_SUCH_CODE"), ToolErrorCode.parse("NO_SUCH_CODE"));
+        assertEquals(
+                new ToolErrorCode.Named("vendor:io_error"), ToolErrorCode.parse("vendor:io_error"));
+        assertEquals(
+                new ToolErrorCode.Named("FILE_EXISTS"),
+                ToolErrorCode.parse("FILE_EXISTS"),
+                "historical names are preserved without aliases");
+        assertNull(ToolErrorCode.parse("bad code"));
     }
 
     @Test
@@ -126,11 +131,7 @@ class ToolErrorCodeTest {
                 "REQUEST_REJECTED");
         assertGroup(
                 Nullness.requireNonNull(ToolErrorCode.MEMORY.values()), "NOT_FOUND", "TOO_LARGE");
-        assertGroup(
-                Nullness.requireNonNull(ToolErrorCode.MONITOR.values()),
-                "GROUP_MANAGED",
-                "LIMIT_EXCEEDED",
-                "UNKNOWN");
+
         assertGroup(Nullness.requireNonNull(ToolErrorCode.SESSION.values()), "NO_SESSION_CONTEXT");
     }
 
@@ -167,7 +168,6 @@ class ToolErrorCodeTest {
         codes.addAll(List.of(Nullness.requireNonNull(ToolErrorCode.GENERIC.values())));
         codes.addAll(List.of(Nullness.requireNonNull(ToolErrorCode.GROUP.values())));
         codes.addAll(List.of(Nullness.requireNonNull(ToolErrorCode.MEMORY.values())));
-        codes.addAll(List.of(Nullness.requireNonNull(ToolErrorCode.MONITOR.values())));
         codes.addAll(List.of(Nullness.requireNonNull(ToolErrorCode.SESSION.values())));
         return codes;
     }

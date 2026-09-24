@@ -11,9 +11,9 @@ import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.TurnRecord;
 import top.focess.veto.agent.TurnType;
-import top.focess.veto.api.agent.response.ResponseRequest;
+import top.focess.veto.api.agent.control.SourceEvidence;
 import top.focess.veto.api.agent.tool.ToolResultStatus;
-import top.focess.veto.api.agent.workflow.PlanExecution;
+import top.focess.veto.api.agent.workflow.PluginWork;
 import top.focess.veto.api.llm.ChatMessage;
 import top.focess.veto.api.llm.ProviderMessages;
 import top.focess.veto.api.llm.VetoRequest;
@@ -34,43 +34,18 @@ public final class MessageCitations {
             @NonNull String model,
             int messageCount,
             @NonNull List<@NonNull Check> checks)
-            implements PlanExecution.Source {}
+            implements PluginWork.Source {}
 
     /**
      * Locate exact evidence in the same request that produced the call, without model-side
      * counting.
      */
     public static @NonNull VetoResponse resolve(
-            @NonNull VetoRequest request, ResponseRequest.@NonNull Answer answer) {
-        if (answer.citations().isEmpty())
-            throw new IllegalArgumentException(
-                    "answer_with_citations requires at least one linked source. Reply in ordinary text when the answer does not need verified citation links.");
-        // Validate the answer itself before asking the model to repair a source selector. An
-        // unlinked declaration cannot become a citation, even when its quote is valid.
-        ResponseEnforcer.enforce(
-                new VetoResponse(
-                        null,
-                        null,
-                        answer.message(),
-                        answer.citations().stream()
-                                .map(
-                                        citation ->
-                                                new VetoResponse.Citation(
-                                                        citation.id(),
-                                                        citation.sources().stream()
-                                                                .map(
-                                                                        source ->
-                                                                                new VetoResponse
-                                                                                        .Source(
-                                                                                        -1,
-                                                                                        source
-                                                                                                .quote()))
-                                                                .toList()))
-                                .toList()));
+            @NonNull VetoRequest request, @NonNull List<SourceEvidence.Declaration> declarations) {
         var messages = ProviderMessages.groups(request);
         var repeatedEvidence = toolEvidence(request);
         var citations = new ArrayList<VetoResponse.Citation>();
-        for (var citation : answer.citations()) {
+        for (var citation : declarations) {
             var sources = new ArrayList<VetoResponse.Source>();
             for (var source : citation.sources()) {
                 Integer selected = source.messageIndex();
@@ -143,7 +118,7 @@ public final class MessageCitations {
             }
             citations.add(new VetoResponse.Citation(citation.id(), sources));
         }
-        return new VetoResponse(null, null, answer.message(), citations);
+        return new VetoResponse(null, null, "", citations);
     }
 
     private static void addSource(

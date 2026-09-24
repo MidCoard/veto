@@ -1,15 +1,12 @@
 ---
 version: 2
 id: default-system-prompt
-requires: [persona, workspace, environment, lawSources, guidance, policy, presentation, planCitations, tools, toolNames, skills]
+requires: [persona, workspace, environment, lawSources, guidance, policy, presentation, tools, toolNames]
 ---
 @message system
 @include law
 @include identity
 @include role
-@if contains(toolNames, "create_group")
-@include delegation-system-prompt
-@endif
 @include workspace
 @include environment
 @include boundaries
@@ -19,15 +16,9 @@ requires: [persona, workspace, environment, lawSources, guidance, policy, presen
 @include answer-style
 @include presentation-mermaid
 @include tool-calls
-@if contains(toolNames, "load_skill")
-@include skills
-@endif
 @if nonempty(tools)
 @include result-conventions
 @endif
 @include tool-catalog
 @include response-protocol
-@if contains(toolNames, "submit_plan")
-@include plan-system-prompt
-@endif
 @endmessage

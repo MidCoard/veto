@@ -11,7 +11,7 @@ import java.util.ArrayList;
 import java.util.List;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
-import top.focess.veto.secret.api.CredentialWriter;
+import top.focess.veto.api.credentials.CredentialWriter;
 
 class SecretCandidateStoreTest {
     @Test

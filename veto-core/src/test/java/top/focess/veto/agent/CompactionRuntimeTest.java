@@ -133,7 +133,7 @@ class CompactionRuntimeTest {
                 .thenAnswer(invocation -> invocation.getArgument(0));
         return new AgentRunner(
                 id,
-                new AgentPersona(id, "Fixture", "Fixture", Set.of(), List.of()),
+                new AgentPersona(id, "Fixture", "Fixture", Set.of()),
                 mock(ToolDocs.nonNullClass(ToolEngine.class)),
                 gateway,
                 new HitlRegistry(),
@@ -146,7 +146,6 @@ class CompactionRuntimeTest {
                 new LlmBinding(ProviderType.ANTHROPIC, "test", "test", LlmOptions.defaults(), ""),
                 null,
                 UUID.randomUUID(),
-                null,
                 null);
     }
 

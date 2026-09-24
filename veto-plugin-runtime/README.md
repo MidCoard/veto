@@ -55,6 +55,7 @@ classloader or MCP subprocess configuration is involved.
 | `veto.plugins.paths` | empty | Comma-separated absolute package directories; at most 16 |
 | `veto.plugins.node-command` | empty | Absolute path to a Node executable; required when packages are configured |
 | `veto.plugins.trusted-code` | `false` | Explicit operator acknowledgement that installed scripts run as the server user |
+| `veto.plugins.script-mode` | `trusted` | `isolated` currently refuses configured script packages before loading; no verified strict OS launcher is available |
 | `veto.plugins.timeout-ms` | `5000` | Deadline per protocol request, including initialization; 100–60000 ms |
 
 **This is trusted local code, not a sandbox.** The worker can access resources
@@ -65,10 +66,12 @@ including `NODE_OPTIONS` and provider/vault variables; platform-supplied variabl
 may still exist. Environment clearing is not filesystem or network isolation.
 
 Startup validates packages and publishes their tool descriptors without starting Node.
-The manager starts one shared Node host on the first invocation. Each package runs
-in its own JavaScript context within that process; ten packages still use one Node
-process. Calls share a serialized transport. A host crash or timeout fails all its
-plugins, and calls are not automatically retried. There is no automatic folder
+The manager gives each package its own lazy Node host. A host crash or timeout
+fails that package; calls are not automatically retried. Separate processes limit
+accidental lifecycle interference but do not restrict trusted code's OS access.
+Selecting `isolated` never falls back to trusted execution, including when
+`trusted-code=true`. The enforced read-only snapshot workflow is not implemented;
+the mode currently fails closed on every platform. There is no automatic folder
 discovery, installation endpoint, hot reload or worker restart. Plugin authors must
 not assume that consecutive calls belong to the same user or session.
 

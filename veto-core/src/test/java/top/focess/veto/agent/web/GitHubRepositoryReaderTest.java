@@ -12,20 +12,23 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import top.focess.veto.agent.capability.ImportedCredentialLeases;
 import top.focess.veto.agent.capability.NetworkEgressCapabilityImpl;
 import top.focess.veto.agent.intercept.ToolExecutionPermit;
 import top.focess.veto.agent.tool.*;
 import top.focess.veto.agent.workspace.*;
 import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
-import top.focess.veto.api.search.SearchProvider;
 import top.focess.veto.builtin.tools.ReadGitHubRepositoryTool;
 import top.focess.veto.integration.plugins.PluginTestSupport;
 import top.focess.veto.llm.core.*;
+import top.focess.veto.model.SessionEntity;
+import top.focess.veto.model.SessionRepository;
 import top.focess.veto.vault.*;
 
 class GitHubRepositoryReaderTest {
@@ -69,12 +72,18 @@ class GitHubRepositoryReaderTest {
                                                 .orElseThrow());
                                 return response;
                             });
-            var reader = new GitHubRepositoryReader(vault, new ObjectMapper(), client, plugins);
-            @NonNull SearchProvider provider = mock();
-            @NonNull WebFetchExecutor fetch = mock();
-            var capability = new NetworkEgressCapabilityImpl(provider, fetch, 15, 1000000, false);
-            capability.attachRepositoryReader(reader);
-            var tool = new ReadGitHubRepositoryTool(capability);
+            @NonNull SessionRepository sessions = mock();
+            var row = new SessionEntity("alice", "test");
+            when(sessions.findById(row.getId())).thenReturn(Optional.of(row));
+            var leases =
+                    new ImportedCredentialLeases(
+                            vault,
+                            sessions,
+                            PluginTestSupport.providerOf(plugins),
+                            PluginTestSupport.providerOf(null));
+            var capability = new NetworkEgressCapabilityImpl(15, 1000000, false);
+            capability.attachCredentials(leases);
+            var tool = new ReadGitHubRepositoryTool(capability, client);
             var args =
                     Map.<String, Object>of(
                             "credentialRef",
@@ -85,18 +94,17 @@ class GitHubRepositoryReaderTest {
                             "project");
             var call = new ToolCall(tool.getName(), args, "approved-call");
             UUID user = UUID.randomUUID();
-            UUID session = UUID.randomUUID();
+            UUID session = UUID.fromString(row.getId());
             var permit =
                     ToolExecutionPermit.capture(
                                     call,
                                     ToolSchemaCompiler.compileNative(tool),
                                     Workspace.single(root, PathMode.REAL))
-                            .withCaller("agent", user, null, "alice", session);
+                            .withCaller("agent", user, "alice", session);
             ToolCallContextHolder.set(
                     new ToolCallContext(
                             "agent",
                             user,
-                            null,
                             "alice",
                             session,
                             ToolResultPresentationMode.BASIC,

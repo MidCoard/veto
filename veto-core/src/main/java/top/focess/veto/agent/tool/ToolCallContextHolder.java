@@ -1,20 +1,17 @@
 package top.focess.veto.agent.tool;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Set;
-import java.util.UUID;
+import java.util.function.Supplier;
 import java.util.function.UnaryOperator;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import top.focess.veto.agent.AgentRunner;
-import top.focess.veto.agent.TurnRecord;
-import top.focess.veto.agent.loop.MessageCitations;
-import top.focess.veto.api.agent.response.ResponseRequest;
-import top.focess.veto.api.agent.workflow.ActionsProgram;
-import top.focess.veto.api.agent.workflow.PlanExecution;
-import top.focess.veto.api.llm.LlmBinding;
+import top.focess.veto.agent.capability.ImportedCredentialLeases;
+import top.focess.veto.api.agent.control.ControlHost;
+import top.focess.veto.api.agent.control.SourceEvidence;
+import top.focess.veto.api.agent.workflow.PluginAwait;
+import top.focess.veto.api.agent.workflow.PluginWork;
 import top.focess.veto.api.llm.VetoResponse;
+import top.focess.veto.integration.plugins.IsolatedExecutions;
 
 /**
  * Thread-local execution context installed by {@link AgentRunner} and consumed by restricted
@@ -26,67 +23,74 @@ public final class ToolCallContextHolder {
 
     private static final @NonNull ThreadLocal<@Nullable ThreadState> STATE = new ThreadLocal<>();
 
-    /**
-     * A transform-to-Leader directive requested by {@code create_group} during its execution. The
-     * runner owns the turn counter + history, so it computes the compaction summary and appends the
-     * REWIND/AGENT_INIT/COMPACTION_SUMMARY/USER_PROMPT sequence itself; this directive carries only
-     * what the tool resolves (the brief, the registered group id, the Leader binding + Leader tool
-     * set). At most one per tool call - a transform supersedes any pending rewind.
-     */
-    public record TransformDirective(
-            @NonNull String brief,
-            @NonNull UUID groupId,
-            @NonNull LlmBinding leaderBinding,
-            @NonNull Set<ToolDefinition> leaderTools) {}
-
-    /**
-     * A delegation transform request: either the forward transform (STANDALONE -> Leader of a new
-     * group, requested by {@code create_group}) or the reverse (Leader -> STANDALONE, requested by
-     * {@code disband_group}). The runner drains and applies it in the same tool-call drain pass. At
-     * most one per tool call - the last request wins.
-     */
-    public sealed interface TransformRequest {
-        /** Transform the calling STANDALONE into the Leader of a new group. */
-        record ToLeader(@NonNull TransformDirective directive) implements TransformRequest {}
-
-        /** Reverse the transform: the Leader becomes STANDALONE again (the group was disbanded). */
-        record ToStandalone(@NonNull String brief) implements TransformRequest {}
-    }
-
     /** Validated control flow, separate from the model's text/tool-call result. */
     public sealed interface ResponseDirective {
-        record Plan(@NonNull ActionsProgram program, @NonNull PlanExecution execution)
+        record Await(@NonNull String requestId, @NonNull PluginAwait signal)
                 implements ResponseDirective {}
 
-        record Answer(@NonNull VetoResponse response, MessageCitations.Bound citations)
-                implements ResponseDirective {}
+        record Execute(@NonNull PluginWork work) implements ResponseDirective {}
+
+        record Finish(
+                @NonNull VetoResponse response, SourceEvidence.Receipt citations, boolean publish)
+                implements ResponseDirective {
+            public Finish(@NonNull VetoResponse response, SourceEvidence.Receipt citations) {
+                this(response, citations, true);
+            }
+        }
     }
 
-    @FunctionalInterface
-    public interface ResponseHandler {
-        @NonNull ResponseDirective validate(@NonNull ResponseRequest response) throws Exception;
+    public static void installControl(@NonNull ControlHost control) {
+        state().control = control;
     }
 
-    public static void setResponseHandler(@NonNull ResponseHandler handler) {
-        state().responseHandler = handler;
+    public static @NonNull ControlHost control() {
+        var control = state().control;
+        if (control == null)
+            throw new SecurityException(
+                    "Control submission is unavailable outside an admitted model call");
+        return control;
     }
 
-    public static void requestResponse(@NonNull ResponseRequest response) throws Exception {
-        var state = state();
-        var handler = state.responseHandler;
-        if (handler == null)
-            throw new IllegalStateException(
-                    "Response submission is unavailable outside a model tool call");
-        if (state.response != null)
-            throw new IllegalStateException("Only one response submission is allowed per call");
-        state.response = handler.validate(response);
-    }
-
-    public static void guardPlanExecution(@NonNull UnaryOperator<PlanExecution> guard) {
+    public static void transfer(@NonNull ResponseDirective result) {
         var current = state();
-        if (current.response instanceof ResponseDirective.Plan plan)
+        if (current.response != null)
+            throw new IllegalStateException("Only one control result per call");
+        current.response = result;
+    }
+
+    /**
+     * A feature-owned completion rule, applied only after its successful tool result is recorded.
+     */
+    public static void finish(@NonNull String result) {
+        var current = state();
+        if (current.response != null)
+            throw new IllegalStateException("Only one control result per call");
+        current.response =
+                new ResponseDirective.Finish(new VetoResponse(null, null, result), null, false);
+    }
+
+    public static void guardWork(@NonNull UnaryOperator<PluginWork> guard) {
+        var current = state();
+        if (current.response instanceof ResponseDirective.Execute execution)
+            current.response = new ResponseDirective.Execute(guard.apply(execution.work()));
+    }
+
+    public static void await(@NonNull PluginAwait wait) {
+        var current = state();
+        var context = current.context;
+        String requestId = context == null ? null : context.requestId();
+        if (requestId == null) throw new IllegalStateException("Await requires a live request");
+        if (current.response != null)
+            throw new IllegalStateException("Only one control result per call");
+        current.response = new ResponseDirective.Await(requestId, wait);
+    }
+
+    public static void guardAwait(@NonNull UnaryOperator<PluginAwait> guard) {
+        var current = state();
+        if (current.response instanceof ResponseDirective.Await awaiting)
             current.response =
-                    new ResponseDirective.Plan(plan.program(), guard.apply(plan.execution()));
+                    new ResponseDirective.Await(
+                            awaiting.requestId(), guard.apply(awaiting.signal()));
     }
 
     public static ResponseDirective drainResponse() {
@@ -95,6 +99,29 @@ public final class ToolCallContextHolder {
         var response = state.response;
         state.response = null;
         return response;
+    }
+
+    private static final @NonNull ThreadLocal<@Nullable Boolean> NO_EFFECTS = new ThreadLocal<>();
+
+    public static void requireEffects() {
+        if (Boolean.TRUE.equals(NO_EFFECTS.get()))
+            throw new SecurityException(
+                    "Effectful host operations are unavailable during preparation/presentation");
+    }
+
+    public static <T> T withoutEffects(@NonNull Supplier<T> operation) {
+        var previous = STATE.get();
+        var previousGuard = NO_EFFECTS.get();
+        STATE.remove();
+        NO_EFFECTS.set(true);
+        try {
+            return operation.get();
+        } finally {
+            clear();
+            if (previous != null) STATE.set(previous);
+            if (previousGuard == null) NO_EFFECTS.remove();
+            else NO_EFFECTS.set(previousGuard);
+        }
     }
 
     private ToolCallContextHolder() {}
@@ -124,80 +151,6 @@ public final class ToolCallContextHolder {
         return state == null ? null : state.currentCallId;
     }
 
-    /** Registers only the execution identifier generated by the native web reader. */
-    public static void registerReaderExecution(@NonNull UUID id) {
-        ThreadState state = state();
-        state.readerExecutionId = id;
-        state.readerCallId = state.currentCallId;
-    }
-
-    public static UUID readerExecutionId(@NonNull String callId) {
-        ThreadState state = STATE.get();
-        return state != null && callId.equals(state.readerCallId) ? state.readerExecutionId : null;
-    }
-
-    /**
-     * Requests a REWIND directive be appended to history after the current tool call returns. The
-     * {@code fromIndex} suffix-drops the compiled view (keeping the seed turns, e.g. {@code 1} to
-     * keep AGENT_INIT), and {@code content} is re-injected as a user message - seeding the
-     * delegating agent with the supplied brief.
-     */
-    public static void requestRewind(int fromIndex, @NonNull String content) {
-        state().pendingTurns.add(TurnRecord.rewind(0, fromIndex, content));
-    }
-
-    /**
-     * Requests a forward transform (STANDALONE -> Leader) be applied after the current tool call
-     * returns. The runner drains and applies it in the same tool-call drain pass: it appends the
-     * transform turn sequence (REWIND + AGENT_INIT + COMPACTION_SUMMARY + USER_PROMPT) and mutates
-     * the persona / binding / group. Supersedes any pending rewind - a transform is the stronger
-     * rewrite.
-     */
-    public static void requestTransform(@NonNull TransformDirective directive) {
-        state().transform = new TransformRequest.ToLeader(directive);
-    }
-
-    /**
-     * Requests a reverse transform (Leader -> STANDALONE) be applied after the current tool call
-     * returns - the group was disbanded. The runner rewinds, restores the stashed STANDALONE
-     * persona + binding, and re-injects {@code brief} (the group's outcome) so the agent continues
-     * autonomously.
-     */
-    public static void requestReverseTransform(@NonNull String brief) {
-        state().transform = new TransformRequest.ToStandalone(brief);
-    }
-
-    /**
-     * Drains and clears the transform request for the current thread, if one was requested. Called
-     * by {@link AgentRunner} after a tool call returns and after pending turn directives are
-     * drained.
-     *
-     * @return the request, or {@code null} if the tool requested no transform
-     */
-    public static TransformRequest drainTransform() {
-        ThreadState state = STATE.get();
-        TransformRequest request = state == null ? null : state.transform;
-        if (state != null) state.transform = null;
-        return request;
-    }
-
-    /**
-     * Drains and clears the pending turn directives for the current thread. Called by {@link
-     * AgentRunner} after a tool call returns; each entry is appended with a runner-assigned turn
-     * number.
-     *
-     * @return the pending directives (empty if none); never null
-     */
-    public static @NonNull List<@NonNull TurnRecord> drainPendingTurns() {
-        ThreadState state = STATE.get();
-        if (state == null || state.pendingTurns.isEmpty()) {
-            return List.of();
-        }
-        List<TurnRecord> copy = new ArrayList<>(state.pendingTurns);
-        state.pendingTurns.clear();
-        return copy;
-    }
-
     private static @NonNull ThreadState state() {
         ThreadState state = STATE.get();
         if (state == null) {
@@ -207,19 +160,24 @@ public final class ToolCallContextHolder {
         return state;
     }
 
-    /** Clears the tool call context (and any pending turn directives) for the current thread. */
+    /** Clears the tool call context and cancels any unconsumed wait for the current thread. */
     public static void clear() {
-        STATE.remove();
+        var current = STATE.get();
+        if (current != null && current.response instanceof ResponseDirective.Await awaiting)
+            awaiting.signal().ready().cancel(false);
+        try {
+            IsolatedExecutions.releaseInvocation(current == null ? null : current.context);
+        } finally {
+            ImportedCredentialLeases.releaseInvocation(current == null ? null : current.context);
+            ExecutionReceipts.discard(current == null ? null : current.context);
+            STATE.remove();
+        }
     }
 
     private static final class ThreadState {
-        private ResponseHandler responseHandler;
+        private ControlHost control;
         private ResponseDirective response;
         private ToolCallContext context;
         private String currentCallId;
-        private String readerCallId;
-        private UUID readerExecutionId;
-        private final @NonNull List<@NonNull TurnRecord> pendingTurns = new ArrayList<>();
-        private TransformRequest transform;
     }
 }

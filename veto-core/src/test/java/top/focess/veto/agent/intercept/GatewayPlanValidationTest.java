@@ -6,13 +6,11 @@ import static org.mockito.Mockito.*;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
-import top.focess.veto.agent.drift.ReadHistory;
 import top.focess.veto.agent.screening.*;
 import top.focess.veto.agent.tool.*;
-import top.focess.veto.agent.workspace.Workspace;
+import top.focess.veto.api.agent.control.ControlHost;
 import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.tool.Required;
 import top.focess.veto.api.agent.tool.RequiredWhen;
@@ -20,7 +18,9 @@ import top.focess.veto.api.agent.tool.StringConstraint;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.ToolExecutionException;
+import top.focess.veto.api.llm.ToolDefinition;
 import top.focess.veto.builtin.planning.ActionsProgramParser;
+import top.focess.veto.builtin.planning.PlanPreflight;
 
 class GatewayPlanValidationTest {
     private static final @NonNull ObjectMapper MAPPER = new ObjectMapper();
@@ -46,16 +46,21 @@ class GatewayPlanValidationTest {
                         ToolDocs.nonNullClass(GatewayPlanValidationTest.class),
                         ToolDocs.nonNullClass(Args.class),
                         Map.of());
-        ToolEngine engine = mock(ToolDocs.nonNullClass(ToolEngine.class));
-        when(engine.resolveDefinition("fixture")).thenReturn(definition);
-        Gateway gateway =
-                new Gateway(
-                        mock(ToolDocs.nonNullClass(Workspace.class)),
-                        new DangerComputation(),
-                        SlmScreeningProvider.unavailable(),
-                        DeployerPolicy.FULL_ACCESS,
-                        ProtectedSet.empty(),
-                        new ReadHistory());
+        @NonNull ControlHost host = mock();
+        @NonNull ToolDefinition advertised = mock();
+        when(advertised.name()).thenReturn("fixture");
+        when(host.tools()).thenReturn(List.of(new ControlHost.Tool(advertised, null, null, null)));
+        doAnswer(
+                        call -> {
+                            NativeToolArgumentValidator.validate(
+                                    "fixture",
+                                    call.getArgument(1),
+                                    definition.argsClass(),
+                                    call.getArgument(2));
+                            return null;
+                        })
+                .when(host)
+                .validateInputs(eq("fixture"), any(), any());
         var program =
                 ActionsProgramParser.parse(
                         MAPPER.readTree(
@@ -64,8 +69,8 @@ class GatewayPlanValidationTest {
                  {"id":"done","label":"Done","type":"STOP"}]
                 """
                                         .formatted(inputs)));
-        gateway.validateProgram(program, engine, Set.of("fixture"), MAPPER);
-        verify(engine, only()).resolveDefinition("fixture");
+        PlanPreflight.validate(program, host, MAPPER);
+        verify(host).validateInputs(eq("fixture"), any(), any());
     }
 
     private void rejects(@NonNull String inputs, @NonNull String diagnostic) {

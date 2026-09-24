@@ -4,49 +4,64 @@ import java.util.Locale;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.i18n.Msg;
 
-/**
- * The single-agent circuit breaker. One metric: <b>model calls between two {@code
- * UserPromptAction}s</b> (a model call = one {@code VetoResponse} in autonomous mode, one {@code
- * generate} action in plan mode; {@code tool}/{@code goto}/{@code conditional_goto}/{@code STOP}
- * are zero-call and don't increment). Per-episode, self-count only.
- *
- * <p>On a trip the agent transitions to {@code IDLE} (a trip is exactly an idle — not a distinct
- * state) and emits a notice; resumption is just a {@code UserPromptAction} ("continue"), which
- * resets the counter (new episode). Configurable; {@code maxCallsPerEpisode < 0} = infinite (a
- * life-long agent).
- */
+/** Core-owned cumulative consumption and explicitly granted allowance for one request. */
 public final class LoopBreaker {
 
     private final long maxCallsPerEpisode;
     private long count;
+    private long grantedCalls;
 
     /**
-     * @param maxCallsPerEpisode the model-call ceiling between two user prompts; {@code < 0} =
-     *     infinite (never trips).
+     * @param maxCallsPerEpisode the model-call allowance per explicitly authorized segment; {@code
+     *     < 0} = infinite (never trips).
      */
     public LoopBreaker(long maxCallsPerEpisode) {
         this.maxCallsPerEpisode = maxCallsPerEpisode;
+        newEpisode();
     }
 
-    /** A fresh {@code UserPromptAction} starts a new episode — reset the counter. */
+    /** Starts a new request with one initial allowance. Never use for request restoration. */
     public void newEpisode() {
         count = 0;
+        grantedCalls = maxCallsPerEpisode < 0 ? -1 : maxCallsPerEpisode;
     }
 
-    /** Restore the consumption of a live request when switching back from another request. */
+    /** Explicit user authorization after exhaustion adds one segment without erasing usage. */
+    public void grantContinuation() {
+        if (!shouldTrip()) throw new IllegalStateException("Request budget is not exhausted");
+        grantedCalls = maxCallsPerEpisode < 0 ? -1 : saturatedAdd(grantedCalls, maxCallsPerEpisode);
+    }
+
+    /** Legacy checkpoints carry only consumption and retain the original single-segment limit. */
     public void restoreCount(long consumedCalls) {
-        if (consumedCalls < 0) throw new IllegalArgumentException("Negative model-call usage");
-        count = consumedCalls;
+        restore(consumedCalls, maxCallsPerEpisode < 0 ? -1 : maxCallsPerEpisode);
     }
 
-    /** Whether the per-episode ceiling has been reached (checked at the top of each iteration). */
+    public void restore(long consumedCalls, long allowance) {
+        if (consumedCalls < 0 || allowance < -1)
+            throw new IllegalArgumentException("Invalid model-call checkpoint");
+        count = consumedCalls;
+        grantedCalls = allowance;
+    }
+
+    private static long saturatedAdd(long first, long second) {
+        return first > Long.MAX_VALUE - second ? Long.MAX_VALUE : first + second;
+    }
+
+    public long grantedCalls() {
+        return grantedCalls;
+    }
+
+    /**
+     * Whether the total request allowance has been reached (checked at the top of each iteration).
+     */
     public boolean shouldTrip() {
-        return maxCallsPerEpisode >= 0 && count >= maxCallsPerEpisode;
+        return grantedCalls >= 0 && count >= grantedCalls;
     }
 
     /** Records one model call (autonomous {@code VetoResponse} or plan {@code generate}). */
     public void recordModelCall() {
-        count++;
+        count = saturatedAdd(count, 1);
     }
 
     public long count() {

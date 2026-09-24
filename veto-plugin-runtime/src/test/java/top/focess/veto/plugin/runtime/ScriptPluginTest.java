@@ -122,6 +122,25 @@ class ScriptPluginTest {
     }
 
     @Test
+    void privateWorkerTimeoutDoesNotStopAnotherPackage(@TempDir @NonNull Path root)
+            throws Exception {
+        Path blockedRoot = Files.createDirectory(root.resolve("blocked"));
+        Path healthyRoot = Files.createDirectory(root.resolve("healthy"));
+        copy(blockedRoot);
+        copy(healthyRoot);
+        behavior(blockedRoot, "while (true) {}");
+        try (var blocked = load(blockedRoot, node(), Duration.ofMillis(500));
+                var healthy = load(healthyRoot, node(), Duration.ofSeconds(3))) {
+            var arguments = JSON.createObjectNode().put("text", "abc");
+            assertEquals(3, healthy.invoke(healthy.tools().getFirst(), arguments).asInt());
+            assertThrows(
+                    IOException.class, () -> blocked.invoke(blocked.tools().getFirst(), arguments));
+            assertTrue(healthy.active());
+            assertEquals(3, healthy.invoke(healthy.tools().getFirst(), arguments).asInt());
+        }
+    }
+
+    @Test
     void closingOnePluginKeepsSharedManagerExecutorAvailable(@TempDir @NonNull Path root)
             throws Exception {
         Path firstDir = Files.createDirectory(root.resolve("first"));

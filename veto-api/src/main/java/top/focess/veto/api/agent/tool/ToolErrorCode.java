@@ -9,7 +9,7 @@ import org.jspecify.annotations.NonNull;
  * is a constant of one nested group enum — {@code ToolErrorCode.WORKSPACE.PATH_NOT_FOUND} — so the
  * error aspect is compile-time structure. The wire and persisted representation is the constant
  * {@link #name()} as a plain string; {@link #parse(String)} is the tolerant reader for persisted
- * payloads, returning null for unknown names.
+ * payloads, preserving valid plugin-defined names.
  */
 public interface ToolErrorCode {
 
@@ -23,13 +23,23 @@ public interface ToolErrorCode {
 
     /**
      * Parses a wire or persisted code across every group, returning null for null, blank, or
-     * unrecognized names so legacy history payloads never crash the reader.
+     * malformed names so legacy history payloads never crash the reader.
      */
     static ToolErrorCode parse(String name) {
         if (name == null || name.isBlank()) {
             return null;
         }
-        return ByName.LOOKUP.get(name);
+        var known = ByName.LOOKUP.get(name);
+        if (known != null) return known;
+        return name.matches("[A-Za-z][A-Za-z0-9_.:-]{0,127}") ? new Named(name) : null;
+    }
+
+    /** A plugin-defined code needs no entry in a host enum. */
+    record Named(@NonNull String name) implements ToolErrorCode {
+        public Named {
+            if (!name.matches("[A-Za-z][A-Za-z0-9_.:-]{0,127}"))
+                throw new IllegalArgumentException("Invalid tool error name");
+        }
     }
 
     /** Caller-correctable argument or content problems. */
@@ -294,19 +304,6 @@ public interface ToolErrorCode {
         TOO_LARGE
     }
 
-    /** Monitor scheduling failures. */
-    enum MONITOR implements ToolErrorCode {
-
-        /** The monitor is group-managed and cannot be controlled directly. */
-        GROUP_MANAGED,
-
-        /** The agent reached its active-monitor limit. */
-        LIMIT_EXCEEDED,
-
-        /** The monitor does not exist or does not belong to this agent. */
-        UNKNOWN
-    }
-
     /** Session context failures. */
     enum SESSION implements ToolErrorCode {
 
@@ -339,7 +336,6 @@ public interface ToolErrorCode {
                 requireCodes(GENERIC.values()),
                 requireCodes(GROUP.values()),
                 requireCodes(MEMORY.values()),
-                requireCodes(MONITOR.values()),
                 requireCodes(SESSION.values())
             };
             for (ToolErrorCode[] group : groups) {

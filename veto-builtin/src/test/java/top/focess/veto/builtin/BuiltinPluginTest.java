@@ -70,7 +70,34 @@ class BuiltinPluginTest {
                             .map(e -> e.localId())
                             .sorted()
                             .toList());
-            assertEquals(39, contributions.entries().size());
+            assertEquals(52, contributions.entries().size());
+            var featurePoints =
+                    Map.of(
+                            StandardContributionPoints.AGENT_WORK,
+                            List.of("monitor-work"),
+                            StandardContributionPoints.SESSION_LIFECYCLE,
+                            List.of(
+                                    "group-lifecycle",
+                                    "monitor-lifecycle",
+                                    "questions-lifecycle",
+                                    "tasks-lifecycle"),
+                            StandardContributionPoints.FRONTEND,
+                            List.of("groups", "monitors", "questions", "tasks", "tools"),
+                            StandardContributionPoints.AGENT_CONFIGURATION,
+                            List.of("group-configuration"),
+                            StandardContributionPoints.MODEL_RESPONSE,
+                            List.of("responses"),
+                            StandardContributionPoints.DATA_LIFECYCLE,
+                            List.of("memory-data"));
+            featurePoints.forEach(
+                    (point, ids) ->
+                            assertEquals(
+                                    ids,
+                                    contributions.entries().stream()
+                                            .filter(entry -> entry.point().equals(point))
+                                            .map(entry -> entry.localId())
+                                            .sorted()
+                                            .toList()));
             assertEquals(
                     List.of("brave", "duckduckgo"),
                     contributions.entries().stream()
@@ -81,9 +108,6 @@ class BuiltinPluginTest {
             assertThrows(
                     ClassNotFoundException.class,
                     () -> Class.forName("top.focess.veto.agent.AgentRunner"));
-            assertThrows(
-                    ClassNotFoundException.class,
-                    () -> Class.forName("org.springframework.stereotype.Component"));
             assertThrows(
                     SecurityException.class,
                     () -> new ViewFileTool().execute(new ViewFileTool.Args("unused", null, null)));

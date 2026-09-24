@@ -30,6 +30,15 @@ public abstract class AbstractVetoPlugin implements VetoPlugin {
     }
 
     @Override
+    public final void stopping() throws PluginFailure {
+        try {
+            onStopping();
+        } catch (Exception failure) {
+            throw safe(failure);
+        }
+    }
+
+    @Override
     public final void close() throws PluginFailure {
         try {
             onClose();
@@ -49,6 +58,8 @@ public abstract class AbstractVetoPlugin implements VetoPlugin {
             throws Exception;
 
     protected abstract void onStart() throws Exception;
+
+    protected void onStopping() throws Exception {}
 
     protected abstract void onClose() throws Exception;
 }

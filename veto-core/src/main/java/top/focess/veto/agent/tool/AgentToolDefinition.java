@@ -8,6 +8,7 @@ import top.focess.veto.api.agent.tool.SecurityHint;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.agent.tool.ToolDoc;
 import top.focess.veto.api.agent.tool.ToolDocs;
+import top.focess.veto.api.agent.tool.ToolPresentation;
 
 /**
  * An agent-internal control/meta tool — used directly inside the agent loop or workflows, not a
@@ -33,11 +34,33 @@ public record AgentToolDefinition(
         @NonNull Class<?> toolClass,
         @NonNull Class<?> argsClass,
         @NonNull Map<@NonNull String, @NonNull ParamCategory> paramHints,
-        Provenance provenance)
+        Provenance provenance,
+        ToolPresentation presentation)
         implements LocalToolDefinition {
 
     public AgentToolDefinition {
         paramHints = Map.copyOf(paramHints);
+    }
+
+    public AgentToolDefinition(
+            @NonNull String name,
+            @NonNull String description,
+            @NonNull ToolCapability capability,
+            @NonNull Danger defaultDanger,
+            @NonNull Class<?> toolClass,
+            @NonNull Class<?> argsClass,
+            @NonNull Map<@NonNull String, @NonNull ParamCategory> paramHints,
+            Provenance provenance) {
+        this(
+                name,
+                description,
+                capability,
+                defaultDanger,
+                toolClass,
+                argsClass,
+                paramHints,
+                provenance,
+                null);
     }
 
     public AgentToolDefinition(

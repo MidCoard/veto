@@ -5,17 +5,20 @@ import static org.junit.jupiter.api.Assertions.*;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import top.focess.veto.agent.drift.ReadHistory;
 import top.focess.veto.agent.intercept.IngressDefense;
+import top.focess.veto.agent.intercept.ToolExecutionPermit;
 import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.ToolErrorCode;
 import top.focess.veto.api.agent.tool.ToolResult;
 import top.focess.veto.api.llm.ToolCall;
+import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.builtin.web.FinishReadTool;
 import top.focess.veto.builtin.web.WebFetchTool;
 import top.focess.veto.integration.plugins.PluginTestSupport;
@@ -46,7 +49,30 @@ class ReaderExecutionMaskingTest {
                     mapper.writeValueAsString(Map.of("execution", Map.of("id", id), "answer", id));
             try {
                 ToolCallContextHolder.setCurrentCallId(call.callId());
-                ToolCallContextHolder.registerReaderExecution(UUID.fromString(id));
+                var base = ToolExecutionPermit.empty();
+                var permit =
+                        new ToolExecutionPermit(
+                                call,
+                                ToolCapability.NETWORK_EGRESS,
+                                null,
+                                null,
+                                base.filesystemPaths(),
+                                base.workspaceRoots(),
+                                base.executionRoot(),
+                                base.deployerPolicy(),
+                                base.protectedPaths(),
+                                base.preparation());
+                var context =
+                        new ToolCallContext(
+                                "parent",
+                                UUID.randomUUID(),
+                                "owner",
+                                UUID.randomUUID(),
+                                ToolResultPresentationMode.BASIC,
+                                permit);
+                ToolCallContextHolder.set(context);
+                ToolCallContextHolder.setCurrentCallId(call.callId());
+                ExecutionReceipts.publish(context, id, () -> true);
                 String masked =
                         defense.maskAndFrame(
                                 call,
@@ -58,6 +84,7 @@ class ReaderExecutionMaskingTest {
                 assertNotNull(parsed);
                 assertEquals(id, parsed.path("execution").path("id").asText());
                 assertFalse(parsed.path("answer").asText().contains(id));
+                ExecutionReceipts.publish(context, id, () -> true);
                 String spoofed = body.replace(id, forged);
                 assertFalse(
                         defense.maskAndFrame(
@@ -87,6 +114,17 @@ class ReaderExecutionMaskingTest {
                                         true,
                                         new ReadHistory())
                                 .contains(id));
+                var admitted = new AtomicBoolean(true);
+                ExecutionReceipts.publish(context, id, admitted::get);
+                admitted.set(false);
+                assertFalse(
+                        defense.maskAndFrame(
+                                        call,
+                                        definition,
+                                        ToolResult.success(toolName, call.callId(), body),
+                                        true,
+                                        new ReadHistory())
+                                .contains(id));
                 var impostor =
                         new NativeToolDefinition(
                                 toolName,
@@ -108,7 +146,7 @@ class ReaderExecutionMaskingTest {
             } finally {
                 ToolCallContextHolder.clear();
             }
-            assertNull(ToolCallContextHolder.readerExecutionId(call.callId()));
+            assertNull(ExecutionReceipts.consume(call.callId()));
             assertFalse(
                     defense.maskAndFrame(
                                     call,

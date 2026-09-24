@@ -5,7 +5,7 @@ import com.fasterxml.jackson.databind.node.*;
 import java.util.*;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.agent.tool.ContextualInputSchemaSource;
-import top.focess.veto.api.agent.tool.ResponseSubmission;
+import top.focess.veto.api.agent.tool.ControlSubmission;
 import top.focess.veto.api.agent.tool.ToolSchemaReferences;
 
 /**
@@ -23,7 +23,7 @@ public final class PlanProgramSchema implements ContextualInputSchemaSource {
                         .filter(t -> !context.submissions().containsKey(t.name()))
                         .toList(),
                 context.localTools(),
-                context.submissions().containsValue(ResponseSubmission.Kind.ANSWER));
+                context.submissions().containsValue(ControlSubmission.Kind.FINISH));
     }
 
     @Override

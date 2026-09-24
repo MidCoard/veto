@@ -1,7 +1,7 @@
 ---
 version: 2
 id: plan-system-prompt
-requires: [planCitations]
+requires: []
 ---
 @verbatim
 ## Plan execution
@@ -34,11 +34,9 @@ requires: [planCitations]
 - A `generate` action produces content from a `prompt` and optional named `inputs`. The resolved inputs are supplied as data even when the prompt has no `$name` placeholders. Its output field is `message`; operations outside the content belong in separate tool actions.
 - `generate.response_mode` defaults to `TEXT`: return the requested content directly, with no tool calls. Ordinary external Markdown links work in `TEXT`.
 @endverbatim
-@if planCitations
 @verbatim
-- Use `CITATIONS` when the requested output needs clickable references to conversation passages or tool results; that mode submits the generated answer through the citation tool. Using source material for a rewrite or summary alone does not require reference links.
+- When the submitted plan schema offers `CITATIONS`, use it when the requested output needs clickable references to conversation passages or tool results; that mode submits the generated answer through the citation tool. Using source material for a rewrite or summary alone does not require reference links.
 @endverbatim
-@endif
 @verbatim
 - `outputs` binds result fields to new variables: `{"answer":"message"}` saves the generated message as `$answer`. Values are field selectors. For tool results, `content` captures the full result; `success`, `status`, `errorCode`, and documented top-level JSON fields may also be selected. Status values are `success`, `failure`, `refused`, `cancelled`, and `interrupted`.
 - An input value `"$name"` reads a variable while preserving its JSON type. References work inside arrays and objects. Use `$$` for a literal leading dollar sign. A generate prompt substitutes `$name` once; inserted content remains data.

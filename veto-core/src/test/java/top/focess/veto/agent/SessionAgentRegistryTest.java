@@ -4,7 +4,6 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
-import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
@@ -29,7 +28,6 @@ class SessionAgentRegistryTest {
         AgentRunner peerRunner = runner(peerPersona);
         when(peerRunner.sessionId()).thenReturn(session);
         VetoAgent peer = registry.startInSession(session, peerPersona, peerRunner);
-        verify(peerRunner).setSessionId(session);
         assertEquals(Set.of("root", "peer"), ids(registry, session));
         var entry =
                 registry.agents(session).stream()
@@ -49,7 +47,6 @@ class SessionAgentRegistryTest {
                 IllegalStateException.class,
                 () -> registry.startInSession(session, latePersona, lateRunner));
         verify(lateRunner, never()).run();
-        verify(lateRunner, never()).setSessionId(any());
         assertTrue(registry.agents(session).isEmpty());
         registry.close();
     }
@@ -69,6 +66,7 @@ class SessionAgentRegistryTest {
         registry.register(
                 otherSession, new VetoAgent(persona("other", Role.STANDALONE), otherRunner));
         AgentRunner readerRunner = runner(persona("reader", Role.STANDALONE));
+        when(readerRunner.sessionId()).thenReturn(session);
         VetoAgent reader =
                 registry.startChild(
                         session,
@@ -77,9 +75,11 @@ class SessionAgentRegistryTest {
                         persona("reader", Role.STANDALONE),
                         readerRunner);
         AgentRunner nestedRunner = runner(persona("nested", Role.STANDALONE));
+        when(nestedRunner.sessionId()).thenReturn(session);
         registry.startChild(
                 session, "reader", "nested-call", persona("nested", Role.STANDALONE), nestedRunner);
         AgentRunner mateReaderRunner = runner(persona("mate-reader", Role.STANDALONE));
+        when(mateReaderRunner.sessionId()).thenReturn(session);
         registry.startChild(
                 session,
                 "mate",
@@ -124,7 +124,8 @@ class SessionAgentRegistryTest {
         verify(mateReaderRunner).terminate();
         assertEquals(Set.of("other"), ids(registry, otherSession));
         registry.close();
-        verify(otherRunner).terminate();
+        verify(otherRunner).shutdown();
+        verify(otherRunner, never()).terminate();
     }
 
     @Test
@@ -134,7 +135,9 @@ class SessionAgentRegistryTest {
         AgentRunner parentRunner = runner(persona("parent", Role.STANDALONE));
         registry.register(session, new VetoAgent(persona("parent", Role.STANDALONE), parentRunner));
         AgentRunner firstRunner = runner(persona("first", Role.STANDALONE));
+        when(firstRunner.sessionId()).thenReturn(session);
         AgentRunner secondRunner = runner(persona("second", Role.STANDALONE));
+        when(secondRunner.sessionId()).thenReturn(session);
         registry.startChild(
                 session, "parent", "first-call", persona("first", Role.STANDALONE), firstRunner);
         registry.startChild(
@@ -156,6 +159,7 @@ class SessionAgentRegistryTest {
         VetoAgent parent = new VetoAgent(persona("parent", Role.STANDALONE), parentRunner);
         registry.register(session, parent);
         AgentRunner childRunner = runner(persona("child", Role.STANDALONE));
+        when(childRunner.sessionId()).thenReturn(session);
         assertThrows(
                 IllegalStateException.class,
                 () ->
@@ -217,6 +221,7 @@ class SessionAgentRegistryTest {
         CountDownLatch registering = new CountDownLatch(1);
         AtomicReference<Throwable> failure = new AtomicReference<>();
         AgentRunner childRunner = runner(persona("child", Role.STANDALONE));
+        when(childRunner.sessionId()).thenReturn(session);
         Thread starter;
         synchronized (registry) {
             starter =
@@ -252,7 +257,7 @@ class SessionAgentRegistryTest {
     }
 
     private static @NonNull AgentPersona persona(@NonNull String id, @NonNull Role role) {
-        return new AgentPersona(id, id, "Test agent", Set.of(), List.of(), role);
+        return new AgentPersona(id, id, "Test agent", Set.of(), role);
     }
 
     private static @NonNull AgentRunner runner(@NonNull AgentPersona persona) {

@@ -4,14 +4,15 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Duration;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.TimeoutException;
 import java.util.function.Consumer;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.AgentRuntimeState.BreakerTripException;
-import top.focess.veto.agent.AgentRuntimeState.TaskCancellation;
+import top.focess.veto.agent.ExecutionControl.Wait;
+import top.focess.veto.agent.continuation.RequestContinuationStore;
 import top.focess.veto.agent.drift.ReadHistory;
 import top.focess.veto.agent.identity.AgentPersona;
 import top.focess.veto.agent.intercept.Gateway;
@@ -20,15 +21,22 @@ import top.focess.veto.agent.intercept.IngressDefense;
 import top.focess.veto.agent.intercept.LoopInterceptor;
 import top.focess.veto.agent.intercept.VetoPrompt;
 import top.focess.veto.agent.loop.PromptCompiler;
-import top.focess.veto.agent.tool.ToolDefinition;
+import top.focess.veto.agent.tool.ToolCallContextHolder;
 import top.focess.veto.agent.tool.ToolEngine;
 import top.focess.veto.api.agent.AgentAction;
 import top.focess.veto.api.agent.AgentResult;
 import top.focess.veto.api.agent.AgentState;
 import top.focess.veto.api.agent.ToolCallEvent;
 import top.focess.veto.api.agent.ToolResultEvent;
+import top.focess.veto.api.agent.tool.ToolResult;
+import top.focess.veto.api.agent.workflow.ActionContext;
+import top.focess.veto.api.agent.workflow.PluginWork;
 import top.focess.veto.api.llm.LlmBinding;
+import top.focess.veto.api.llm.ResponseContract;
+import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
+import top.focess.veto.api.llm.VetoResponse;
+import top.focess.veto.api.plugin.contract.AgentWorkSource;
 import top.focess.veto.bus.DeltaBroker;
 import top.focess.veto.i18n.Msg;
 import top.focess.veto.integration.plugins.PluginLifecycleEvents;
@@ -36,9 +44,7 @@ import top.focess.veto.integration.plugins.SessionPlugins;
 import top.focess.veto.llm.core.UniformLLMCaller;
 import top.focess.veto.memory.TurnLogService;
 import top.focess.veto.model.tier.ModelTierRegistry;
-import top.focess.veto.monitor.MonitorService;
-import top.focess.veto.monitor.RequestContinuationStore;
-import top.focess.veto.sandbox.BackgroundTaskManager;
+import top.focess.veto.util.Nullness;
 import top.focess.veto.vault.KeysteadVault;
 import top.focess.veto.vault.UserContext;
 
@@ -61,8 +67,45 @@ public final class AgentRunner implements Runnable {
             @NonNull LlmBinding binding,
             DeltaBroker deltaBroker,
             @NonNull UUID userId,
+            TurnLogService turnLogService) {
+        this(
+                agentId,
+                persona,
+                toolEngine,
+                gateway,
+                hitlRegistry,
+                ingressDefense,
+                interceptors,
+                promptCompiler,
+                caller,
+                objectMapper,
+                maxCallsPerEpisode,
+                binding,
+                deltaBroker,
+                userId,
+                turnLogService,
+                null,
+                UUID.fromString(agentId));
+    }
+
+    public AgentRunner(
+            @NonNull String agentId,
+            @NonNull AgentPersona persona,
+            @NonNull ToolEngine toolEngine,
+            @NonNull Gateway gateway,
+            @NonNull HitlRegistry hitlRegistry,
+            @NonNull IngressDefense ingressDefense,
+            List<LoopInterceptor> interceptors,
+            @NonNull PromptCompiler promptCompiler,
+            @NonNull UniformLLMCaller caller,
+            @NonNull ObjectMapper objectMapper,
+            long maxCallsPerEpisode,
+            @NonNull LlmBinding binding,
+            DeltaBroker deltaBroker,
+            @NonNull UUID userId,
             TurnLogService turnLogService,
-            BackgroundTaskManager backgroundTaskManager) {
+            String owner,
+            @NonNull UUID sessionId) {
         runtime =
                 new AgentRuntimeState(
                         agentId,
@@ -80,20 +123,21 @@ public final class AgentRunner implements Runnable {
                         deltaBroker,
                         userId,
                         turnLogService,
-                        backgroundTaskManager);
+                        owner,
+                        sessionId);
         runtime.initializeComponents();
     }
 
-    public void attachMonitorVault(@NonNull KeysteadVault vault) {
-        runtime.monitor().attachMonitorVault(vault);
+    public void attachExecutionVault(@NonNull KeysteadVault vault) {
+        runtime.continuations().attachExecutionVault(vault);
     }
 
     public String executionWaitReason() {
         return runtime.lifecycle().executionWaitReason();
     }
 
-    void configurePlan(ModelTierRegistry registry, int maxSteps) {
-        runtime.lifecycle().configurePlan(registry, maxSteps);
+    void configureModelTiers(ModelTierRegistry registry) {
+        runtime.lifecycle().configureModelTiers(registry);
     }
 
     public boolean cancelTask(
@@ -112,15 +156,19 @@ public final class AgentRunner implements Runnable {
     }
 
     public void attachContinuationStore(@NonNull RequestContinuationStore store) {
-        runtime.monitor().attachContinuationStore(store);
+        runtime.continuations().attachContinuationStore(store);
     }
 
-    public void attachMonitor(@NonNull MonitorService service) {
-        runtime.monitor().attachMonitor(service);
+    public void attachWorkSource(@NonNull AgentWorkSource service) {
+        runtime.continuations().attachWorkSource(service);
     }
 
-    public void signalMonitor() {
-        runtime.monitor().signalMonitor();
+    void onBackgroundRequest(@NonNull Consumer<RequestHandle> listener) {
+        runtime.backgroundRequestListener = listener;
+    }
+
+    public void signalWork() {
+        runtime.continuations().signalWork();
     }
 
     public void run() {
@@ -135,18 +183,54 @@ public final class AgentRunner implements Runnable {
             UserContext.set(currentOwner);
         }
         try {
-            while (runtime.sessionAlive && runtime.state != AgentState.TERMINATED) {
+            while (runtime.control.open() && runtime.control.state() != AgentState.TERMINATED) {
                 try {
-                    AgentAction action = runtime.actionQueue.take();
-                    if (action instanceof AgentAction.MonitorAction) {
-                        runtime.monitorQueued.set(false);
-                        runtime.monitor().processMonitor();
+                    QueuedRequest queued = runtime.actionQueue.take();
+                    AgentAction action = queued.action();
+                    if (queued.handle().cancelled) {
+                        queued.handle().settled.complete(true);
                         continue;
                     }
+                    if (action instanceof AgentAction.WorkAvailableAction) {
+                        runtime.workQueued.set(false);
+                        queued.handle().result.complete(AgentResult.success("", Map.of()));
+                        queued.handle().settled.complete(true);
+                        QueuedRequest work = runtime.continuations().claimWork();
+                        if (work == null) continue;
+                        queued = work;
+                        action = work.action();
+                    }
                     if (action instanceof AgentAction.TerminateAction) {
-                        runtime.lifecycle().transitionTo(AgentState.TERMINATED);
+                        runtime.lifecycle().terminate();
+                        queued.handle().result.complete(AgentResult.success("", Map.of()));
+                        queued.handle().settled.complete(true);
                         break;
                     }
+                    if (action instanceof AgentAction.ConfigurationAction) {
+                        try {
+                            runtime.lifecycle().refreshConfiguration();
+                            queued.handle().result.complete(AgentResult.success("", Map.of()));
+                        } catch (RuntimeException error) {
+                            queued.handle()
+                                    .result
+                                    .complete(
+                                            AgentResult.failure(
+                                                    runtime.lifecycle().failureMessage(error),
+                                                    Map.of()));
+                            AgentRuntimeState.log.warn(
+                                    "Agent configuration was not applied", error);
+                        } finally {
+                            queued.handle().settled.complete(true);
+                        }
+                        continue;
+                    }
+                    if (runtime.control.waiting(Wait.PLUGIN)
+                            && !(action instanceof AgentAction.WorkAction)) {
+                        runtime.deferredUserPrompts.add(queued);
+                        runtime.continuations().signalWork();
+                        continue;
+                    }
+                    runtime.control = runtime.control.withRequest(queued.handle());
                     if (action instanceof AgentAction.CompactAction) {
                         runtime.lifecycle().transitionTo(AgentState.RUNNING);
                         try {
@@ -165,39 +249,48 @@ public final class AgentRunner implements Runnable {
                                         "Agent {} cleared a stale interrupt after compaction",
                                         runtime.agentId);
                             }
-                            if (runtime.sessionAlive && !runtime.waitingForMonitor)
+                            queued.handle().settled.complete(true);
+                            runtime.control = runtime.control.withRequest(null);
+                            if (runtime.control.open() && !runtime.control.waiting(Wait.PLUGIN))
                                 runtime.lifecycle().transitionTo(AgentState.IDLE);
                         }
                         continue;
                     }
                     if (action instanceof AgentAction.UserPromptAction
-                            || action instanceof AgentAction.DirectUserPromptAction) {
-                        if (runtime.waitingForMonitor
-                                && action instanceof AgentAction.DirectUserPromptAction direct) {
-                            runtime.deferredUserPrompts.add(direct);
-                            // A prior monitor wake may have yielded to this queued prompt.
-                            runtime.monitor().signalMonitor();
-                            continue;
-                        }
-                        runtime.handlingDirectUserPrompt =
-                                action instanceof AgentAction.DirectUserPromptAction;
+                            || action instanceof AgentAction.DirectUserPromptAction
+                            || action instanceof AgentAction.WorkAction) {
                         String prompt =
                                 action instanceof AgentAction.UserPromptAction upa
                                         ? upa.prompt()
-                                        : ((AgentAction.DirectUserPromptAction) action).prompt();
-                        TaskCancellation taskCancellation;
-                        synchronized (runtime) {
-                            taskCancellation = runtime.taskActions.remove(action);
-                            runtime.activeCancellation = taskCancellation;
-                        }
+                                        : action
+                                                        instanceof
+                                                        AgentAction.DirectUserPromptAction direct
+                                                ? direct.prompt()
+                                                : "";
+                        RequestHandle taskCancellation = queued.handle();
                         runtime.lifecycle().transitionTo(AgentState.RUNNING);
                         try {
                             runtime.lifecycle().checkTaskCancellation();
-                            runtime.waitingForMonitor = false;
+                            runtime.lifecycle().clearWait(Wait.PLUGIN);
                             runtime.lifecycle().checkExecutionBoundary();
-                            runtime.lifecycle().processUserPrompt(prompt);
+                            runtime.lifecycle().refreshConfiguration();
+                            if (action instanceof AgentAction.WorkAction) {
+                                // Consume readiness before admitting any new model/tool effects.
+                                runtime.lifecycle().currentRequest().awaiting();
+                                runtime.models().refreshSystemHistory();
+
+                                if (runtime.continuations().injectObservations())
+                                    runAutonomous(null);
+                            } else {
+                                var firstPrompt = runtime.lifecycle().processUserPrompt(prompt);
+                                runAutonomous(firstPrompt);
+                            }
                             runtime.lifecycle().checkTaskCancellation();
-                            runtime.monitor().completeOrWaitForMonitor();
+                            runtime.continuations().completeOrWaitForWork();
+                        } catch (LinkageError error) {
+                            runtime.lifecycle()
+                                    .completeFailure(runtime.lifecycle().failureMessage(error));
+                            throw error;
                         } catch (BreakerTripException e) {
                             runtime.lifecycle().completeBreaker();
                         } catch (Exception e) {
@@ -220,8 +313,6 @@ public final class AgentRunner implements Runnable {
                                         .completeFailure(runtime.lifecycle().failureMessage(e));
                             }
                         } finally {
-                            if (!runtime.waitingForMonitor)
-                                runtime.handlingDirectUserPrompt = false;
                             // A stray mid-round interrupt (external interference tripping the LLM
                             // HTTP call, a DB socket dying on interrupt) leaves the thread's
                             // interrupt flag SET. If it survives to the next actionQueue.take()
@@ -234,16 +325,15 @@ public final class AgentRunner implements Runnable {
                                         "Agent {} cleared a stale interrupt after a prompt",
                                         runtime.agentId);
                             }
-                            if (runtime.sessionAlive && !runtime.waitingForMonitor)
+                            if (runtime.control.open() && !runtime.control.waiting(Wait.PLUGIN))
                                 runtime.lifecycle().transitionTo(AgentState.IDLE);
                             synchronized (runtime) {
-                                runtime.activeCancellation = null;
-                                AgentLifecycle.clearTaskInterrupt();
-                                if (taskCancellation != null) {
-                                    runtime.cancellableTasks.remove(taskCancellation.result);
-                                    runtime.lastExitedTask = taskCancellation.result;
-                                    taskCancellation.exited.complete(true);
+                                if (!runtime.control.waiting(Wait.PLUGIN)
+                                        && !runtime.control.waiting(Wait.BREAKER)) {
+                                    runtime.control = runtime.control.withRequest(null);
                                 }
+                                taskCancellation.settled.complete(true);
+                                AgentLifecycle.clearTaskInterrupt();
                             }
                         }
                     }
@@ -262,25 +352,219 @@ public final class AgentRunner implements Runnable {
             try {
                 runtime.lifecycle().terminate();
             } finally {
-                UserContext.clear();
+                try {
+                    UserContext.clear();
+                } finally {
+                    runtime.lifecycle().notifyTermination();
+                }
             }
         }
     }
 
-    public void setRecoveredTasks(@NonNull List<RecoveredTask> tasks) {
-        runtime.output().setRecoveredTasks(tasks);
+    void runAutonomous(ModelSession.Prepared firstPrompt) {
+        ToolCallContextHolder.ResponseDirective pending = null;
+        String originatingCall = null;
+        ModelExchange.Result previousExchange = null;
+        while (runtime.control.state() == AgentState.RUNNING) {
+            runtime.lifecycle().checkTaskCancellation();
+            // Mid-episode task lifecycle: a background task that ended (or that the user
+            // stopped) during THIS episode is reported at the next iteration, not only at the
+            // start of the next episode. Cheap no-op when the queue is empty.
+            // processUserPrompt already drained notices before preparing the first immutable
+            // request. Do not mutate history between that compilation and its dispatch.
+            if (firstPrompt == null) {
+                runtime.continuations().injectObservations();
+            }
+            if (pending == null
+                    && runtime.lifecycle().currentRequest().episode.breaker().shouldTrip()) {
+                runtime.lifecycle().tripBreaker();
+                throw new BreakerTripException();
+            }
+            var accepted = pending;
+            if (accepted instanceof ToolCallContextHolder.ResponseDirective.Execute execution) {
+                pending = null;
+                runtime.lifecycle().checkTaskCancellation();
+                long configuration = runtime.configurationRevision;
+                var sources = new RequestEvidence.WorkSources();
+                try {
+                    execution.work().run(workRuntime(originatingCall, sources));
+                } finally {
+                    sources.close();
+                }
+                if (runtime.configurationRevision != configuration) continue;
+                return;
+            }
+            ModelExchange.Result exchange;
+            if (accepted instanceof ToolCallContextHolder.ResponseDirective.Finish answer) {
+                pending = null;
+                if (!answer.publish()) {
+                    String result = answer.response().message();
+                    runtime.lifecycle().currentRequest().message = result == null ? "" : result;
+                    return;
+                }
+                exchange =
+                        new ModelExchange.Result(
+                                Nullness.requireNonNull(previousExchange).request(),
+                                answer.response(),
+                                answer.citations(),
+                                originatingCall,
+                                true);
+            } else {
+                exchange = runtime.models().callModel(firstPrompt);
+                firstPrompt = null;
+            }
+            previousExchange = exchange;
+            VetoResponse response = exchange.response();
+            originatingCall = exchange.modelCallId();
+            runtime.lifecycle().checkTaskCancellation();
+
+            runtime.output().appendThought(response, exchange.modelCallId());
+            String message = response.message();
+            if (message != null && !message.isBlank()) {
+                var calls = response.calls();
+                runtime.output()
+                        .emitMessage(
+                                message,
+                                RequestEvidence.forRequest(
+                                        exchange.citations(),
+                                        runtime.output().requestIdentity(),
+                                        exchange.modelCallId(),
+                                        message),
+                                exchange.modelCallId(),
+                                false,
+                                calls != null
+                                        && calls.stream()
+                                                .anyMatch(call -> call.nativeState() != null));
+            }
+            List<ToolCall> responseCalls = response.calls();
+            if (responseCalls != null && !responseCalls.isEmpty()) {
+                pending =
+                        runtime.tools()
+                                .executeToolCalls(
+                                        responseCalls,
+                                        response.thought(),
+                                        new ToolBatch(exchange, false, null));
+            } else {
+                // No tool calls: the agent has emitted its answer with nothing further to act
+                // on. Termination routes on call presence - calls absent means stop. The agent
+                // reasons within its model invocation. Stop the episode here; the emitted
+                // message is the final answer.
+                return;
+            }
+        }
+    }
+
+    PluginWork.@NonNull Runtime workRuntime(
+            String sourceCallId, RequestEvidence.@NonNull WorkSources sources) {
+        long configuration = runtime.configurationRevision;
+        return new PluginWork.Runtime() {
+            @Override
+            public void beforeStep() {
+                sources.check();
+                runtime.lifecycle().checkTaskCancellation();
+                runtime.continuations().injectObservations();
+            }
+
+            @Override
+            public boolean running() {
+                return sources.active()
+                        && runtime.control.state() == AgentState.RUNNING
+                        && runtime.configurationRevision == configuration;
+            }
+
+            @Override
+            public @NonNull ToolResult tool(
+                    @NonNull ToolCall call, @NonNull ActionContext context) {
+                sources.check();
+                return runtime.tools().executeOneCall(call, new ToolBatch(null, false, context));
+            }
+
+            @Override
+            public PluginWork.@NonNull Generated generate(
+                    PluginWork.@NonNull ModelInput action, @NonNull ResponseContract contract) {
+                sources.check();
+                ModelExchange.Result exchange = callGenerate(action, contract);
+                sources.register(exchange.citations());
+                return new PluginWork.Generated(
+                        exchange.response(), exchange.citations(), exchange.modelCallId());
+            }
+
+            @Override
+            public void message(
+                    @NonNull String text,
+                    PluginWork.Source citations,
+                    String callId,
+                    boolean forwarded) {
+                runtime.output()
+                        .emitMessage(
+                                text,
+                                sources.consume(
+                                        citations,
+                                        runtime.output().requestIdentity(),
+                                        callId,
+                                        text),
+                                callId,
+                                forwarded);
+            }
+
+            @Override
+            public @NonNull String prompt(
+                    @NonNull String source, @NonNull Map<String, Object> data) {
+                return PromptCompiler.compileText(source, data);
+            }
+
+            @Override
+            public void observation(@NonNull String topic, @NonNull String reason) {
+                sources.check();
+                runtime.output().appendObservation(topic, reason);
+            }
+
+            public String sourceCallId() {
+                return sourceCallId;
+            }
+        };
+    }
+
+    ModelExchange.@NonNull Result callGenerate(
+            PluginWork.@NonNull ModelInput gen, @NonNull ResponseContract contract) {
+        if (runtime.lifecycle().currentRequest().episode.breaker().shouldTrip()) {
+            runtime.lifecycle().tripBreaker();
+            throw new BreakerTripException();
+        }
+        while (true) {
+            ModelExchange.Result exchange = runtime.models().callModel(null, gen, contract);
+            VetoResponse response = exchange.response();
+            if (!Boolean.FALSE.equals(gen.thought()))
+                runtime.output().appendThought(response, exchange.modelCallId());
+            var calls = response.calls();
+            if (calls == null || calls.isEmpty()) return exchange;
+            var accepted =
+                    runtime.tools()
+                            .executeToolCalls(
+                                    calls, response.thought(), new ToolBatch(exchange, true, null));
+            if (accepted instanceof ToolCallContextHolder.ResponseDirective.Finish answer)
+                return new ModelExchange.Result(
+                        exchange.request(),
+                        answer.response(),
+                        answer.citations(),
+                        exchange.modelCallId(),
+                        true);
+            runtime.lifecycle().checkTaskCancellation();
+        }
     }
 
     public void seedHistory(@NonNull List<TurnRecord> replayed) {
-        runtime.output().seedHistory(replayed);
+        if (runtime.output().seedHistory(replayed))
+            runtime.lifecycle().saveExecutionWait(Wait.INTERRUPTED);
     }
 
     public boolean hasPendingWork() {
         return runtime.lifecycle().hasPendingWork();
     }
 
-    public void startTask(Consumer<AgentResult> callback, @NonNull AgentAction action) {
-        runtime.lifecycle().startTask(callback, action);
+    public @NonNull RequestHandle startTask(
+            Consumer<AgentResult> callback, @NonNull AgentAction action) {
+        return runtime.lifecycle().startTask(callback, action);
     }
 
     public void enqueue(@NonNull AgentAction action) {
@@ -335,15 +619,6 @@ public final class AgentRunner implements Runnable {
         runtime.output().removeToolResultListener(listener);
     }
 
-    public @NonNull AgentResult await(@NonNull Duration timeout)
-            throws TimeoutException, InterruptedException {
-        return runtime.lifecycle().await(timeout);
-    }
-
-    public @NonNull CompletableFuture<AgentResult> result() {
-        return runtime.lifecycle().result();
-    }
-
     public @NonNull AgentState state() {
         return runtime.lifecycle().state();
     }
@@ -360,31 +635,21 @@ public final class AgentRunner implements Runnable {
         return runtime.lifecycle().whitelistedToolsView();
     }
 
-    public void setCompletionTool(@NonNull String toolName) {
-        runtime.lifecycle().setCompletionTool(toolName);
+    public void setExecutionPolicy(@NonNull AgentExecutionPolicy policy) {
+        runtime.lifecycle().setExecutionPolicy(policy);
+    }
+
+    public boolean budgetExhausted() {
+        RequestHandle request = runtime.control.request();
+        return request != null && request.episode.breaker().shouldTrip();
     }
 
     public @NonNull String agentId() {
         return runtime.lifecycle().agentId();
     }
 
-    public UUID groupId() {
-        return runtime.lifecycle().groupId();
-    }
-
-    public void setGroupId(UUID groupId) {
-        runtime.lifecycle().setGroupId(groupId);
-    }
-
-    public void restoreLeader(
-            @NonNull UUID restoredGroup,
-            @NonNull LlmBinding leaderBinding,
-            @NonNull Set<ToolDefinition> tools) {
-        runtime.lifecycle().restoreLeader(restoredGroup, leaderBinding, tools);
-    }
-
-    public void setOwner(String owner) {
-        runtime.lifecycle().setOwner(owner);
+    public void refreshConfiguration() {
+        runtime.lifecycle().enqueue(new AgentAction.ConfigurationAction());
     }
 
     public void setLocale(Locale locale) {
@@ -393,10 +658,6 @@ public final class AgentRunner implements Runnable {
 
     public @NonNull Locale locale() {
         return runtime.lifecycle().locale();
-    }
-
-    public void setSessionId(@NonNull UUID sessionId) {
-        runtime.lifecycle().setSessionId(sessionId);
     }
 
     public @NonNull AgentPersona personaView() {
@@ -417,6 +678,10 @@ public final class AgentRunner implements Runnable {
 
     public @NonNull UUID sessionId() {
         return runtime.lifecycle().sessionId();
+    }
+
+    public void shutdown() {
+        runtime.lifecycle().close(ExecutionControl.CloseReason.SHUTDOWN);
     }
 
     public void terminate() {

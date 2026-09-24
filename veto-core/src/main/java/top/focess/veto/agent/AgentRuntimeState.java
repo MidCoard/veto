@@ -2,9 +2,6 @@ package top.focess.veto.agent;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -12,7 +9,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
@@ -20,33 +16,22 @@ import java.util.stream.Collectors;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import top.focess.veto.agent.continuation.RequestContinuationStore;
 import top.focess.veto.agent.drift.ReadHistory;
 import top.focess.veto.agent.identity.AgentPersona;
-import top.focess.veto.agent.intercept.ApprovalReceipt;
 import top.focess.veto.agent.intercept.Gateway;
 import top.focess.veto.agent.intercept.HitlRegistry;
 import top.focess.veto.agent.intercept.IngressDefense;
 import top.focess.veto.agent.intercept.LoopInterceptor;
 import top.focess.veto.agent.intercept.ToolExecutionPermit;
-import top.focess.veto.agent.intercept.ToolExecutionPermit.TaskBinding;
-import top.focess.veto.agent.loop.CompiledPrompt;
-import top.focess.veto.agent.loop.LoopBreaker;
-import top.focess.veto.agent.loop.MessageCitations;
 import top.focess.veto.agent.loop.PromptCompiler;
-import top.focess.veto.agent.loop.PromptSource;
-import top.focess.veto.agent.tool.ToolCallContextHolder;
 import top.focess.veto.agent.tool.ToolDefinition;
 import top.focess.veto.agent.tool.ToolEngine;
-import top.focess.veto.api.agent.AgentAction;
-import top.focess.veto.api.agent.AgentResult;
-import top.focess.veto.api.agent.AgentState;
-import top.focess.veto.api.agent.workflow.PlanExecution;
-import top.focess.veto.api.agent.workflow.PlanStepContext;
-import top.focess.veto.api.llm.ChatMessage;
 import top.focess.veto.api.llm.LlmBinding;
 import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
-import top.focess.veto.api.llm.VetoRequest;
+import top.focess.veto.api.plugin.contract.AgentWorkSource;
+import top.focess.veto.api.plugin.contract.WorkflowHook;
 import top.focess.veto.bus.DeltaBroker;
 import top.focess.veto.integration.plugins.PluginLifecycleEvents;
 import top.focess.veto.integration.plugins.SessionPlugins;
@@ -54,10 +39,6 @@ import top.focess.veto.llm.core.ToolResultPresenter;
 import top.focess.veto.llm.core.UniformLLMCaller;
 import top.focess.veto.memory.TurnLogService;
 import top.focess.veto.model.tier.ModelTierRegistry;
-import top.focess.veto.monitor.MonitorRecord;
-import top.focess.veto.monitor.MonitorService;
-import top.focess.veto.monitor.RequestContinuationStore;
-import top.focess.veto.sandbox.BackgroundTaskManager;
 import top.focess.veto.util.Nullness;
 import top.focess.veto.vault.KeysteadVault;
 
@@ -73,7 +54,7 @@ final class AgentRuntimeState {
 
     final @NonNull ToolEngine toolEngine;
 
-    final @NonNull ResponseValidator responses;
+    final @NonNull ModelResponseValidation responses;
 
     final @NonNull Gateway gateway;
 
@@ -91,164 +72,64 @@ final class AgentRuntimeState {
 
     final @NonNull ObjectMapper objectMapper;
 
-    final @NonNull ToolResultPresenter toolResultPresenter;
-
-    final @NonNull LoopBreaker breaker;
+    final long maxCallsPerEpisode;
 
     final @NonNull ReadHistory readHistory;
 
-    final @NonNull AgentEvents events;
-
-    volatile @NonNull UUID sessionId;
-
-    final @NonNull AgentHistory journal;
+    final @NonNull UUID sessionId;
 
     final @NonNull UUID userId;
 
-    final BackgroundTaskManager backgroundTaskManager;
-
-    volatile String owner;
+    final String owner;
 
     volatile @NonNull Locale locale = Locale.ENGLISH;
 
-    volatile UUID groupId;
-
     volatile @NonNull LlmBinding binding;
 
-    volatile AgentPersona preTransformPersona;
+    final @NonNull AgentPersona basePersona;
 
-    volatile LlmBinding preTransformBinding;
+    volatile @NonNull LlmBinding baseBinding;
 
-    final @NonNull BlockingQueue<AgentAction> actionQueue = new LinkedBlockingQueue<>();
+    long configurationRevision;
+    String configurationTransition;
 
-    final @NonNull List<AgentAction.@NonNull DirectUserPromptAction> deferredUserPrompts =
-            new ArrayList<>();
+    final @NonNull BlockingQueue<QueuedRequest> actionQueue = new LinkedBlockingQueue<>();
 
-    volatile @NonNull AgentState state = AgentState.IDLE;
+    final @NonNull List<QueuedRequest> deferredUserPrompts = new ArrayList<>();
 
-    KeysteadVault monitorVault;
+    Consumer<RequestHandle> backgroundRequestListener;
 
-    enum WaitReason {
-        APPROVAL,
-        QUESTION,
-        BREAKER
-    }
+    volatile @NonNull ExecutionControl control = new ExecutionControl.Idle();
 
-    volatile WaitReason executionWait;
+    KeysteadVault executionVault;
 
-    volatile boolean recoveredWait;
+    ModelTierRegistry modelTierRegistry;
 
-    int turnNumber = 0;
+    AgentWorkSource workSource;
 
-    PlanExecution program;
+    final @NonNull Map<String, ActivatedObservation> activatedObservations = new LinkedHashMap<>();
 
-    int maxPlanSteps;
-
-    ModelTierRegistry planTierRegistry;
-
-    volatile @NonNull CompletableFuture<AgentResult> resultFuture = new CompletableFuture<>();
-
-    Consumer<AgentResult> callback;
-
-    final @NonNull Map<AgentAction, TaskCancellation> taskActions = new IdentityHashMap<>();
-
-    final @NonNull Map<CompletableFuture<AgentResult>, TaskCancellation> cancellableTasks =
-            new HashMap<>();
-
-    volatile TaskCancellation activeCancellation;
-
-    CompletableFuture<AgentResult> lastExitedTask;
-
-    static final class TaskCancellation {
-        final @NonNull CompletableFuture<AgentResult> result;
-        final @NonNull CompletableFuture<Boolean> exited = new CompletableFuture<>();
-        final Consumer<AgentResult> callback;
-        volatile boolean cancelled;
-        boolean interruptSent;
-        String requestId;
-
-        TaskCancellation(
-                @NonNull CompletableFuture<AgentResult> result, Consumer<AgentResult> callback) {
-            this.result = result;
-            this.callback = callback;
-        }
-    }
-
-    volatile boolean sessionAlive = true;
-
-    double correctionFactor = 1.0;
-
-    volatile PluginContextSnapshot lastPluginContext;
-
-    boolean awaitingBreakerContinuation = false;
-
-    CompiledPrompt preparedFirstPrompt = null;
-
-    @NonNull String activeUserTask = "";
-
-    final @NonNull Set<String> declinedCallSignatures = new HashSet<>();
-
-    MonitorService monitorService;
-
-    volatile boolean waitingForMonitor;
-
-    String activeRequestId;
-
-    String activeMonitorEventId;
-
-    final @NonNull Map<String, RequestContinuation> requestContinuations = new HashMap<>();
-
-    CompletableFuture<AgentResult> monitorResultFuture;
-
-    Consumer<AgentResult> monitorCallback;
-
-    final @NonNull Map<String, ActivatedObservation> activatedMonitorEvents = new LinkedHashMap<>();
-
-    record ActivatedObservation(MonitorRecord.@NonNull Event event, String requestId) {}
-
-    record RequestContinuation(@NonNull String task, long consumedCalls) {}
+    record ActivatedObservation(AgentWorkSource.@NonNull Observation event, String requestId) {}
 
     RequestContinuationStore continuationStore;
 
-    final @NonNull AtomicBoolean monitorQueued = new AtomicBoolean();
+    final @NonNull AtomicBoolean workQueued = new AtomicBoolean();
 
     volatile Thread runningThread;
 
-    VetoRequest submissionRequest;
-
-    boolean submissionGeneration;
-
-    ToolCallContextHolder.ResponseDirective pendingResponse;
-
-    PlanStepContext currentPlanStep;
-
-    PromptSource.Rendered currentSystemSource;
-
-    final @NonNull Map<String, ApprovalReceipt> approvalReceipts = new HashMap<>();
-
     record ResolvedCall(@NonNull ToolCall call, @NonNull ToolExecutionPermit executionPermit) {}
 
-    record ProcessInputTarget(@NonNull TaskBinding binding, @NonNull String screeningContext) {}
+    @NonNull AgentExecutionPolicy executionPolicy = AgentExecutionPolicy.ordinary();
 
-    MessageCitations.Bound lastCitations;
-
-    String lastModelCallId;
-
-    String currentToolModelCallId;
-
-    volatile @NonNull ChatMessage recoveryContext = ChatMessage.user("");
-
-    volatile @NonNull String lastMessage = "";
-
-    boolean handlingDirectUserPrompt;
-
-    String completionTool;
-
-    boolean completionToolFinished;
+    @NonNull String currentTask() {
+        RequestHandle request = control.request();
+        return request == null ? "" : request.episode.task();
+    }
 
     SessionPlugins sessionPlugins;
 
     volatile Runnable terminationCallback;
+    boolean terminationNotified;
 
     PluginLifecycleEvents lifecycleEvents;
 
@@ -282,15 +163,18 @@ final class AgentRuntimeState {
             DeltaBroker deltaBroker,
             @NonNull UUID userId,
             TurnLogService turnLogService,
-            BackgroundTaskManager backgroundTaskManager) {
+            String owner,
+            @NonNull UUID sessionId) {
         this.agentId = agentId;
         this.persona = persona;
+        this.basePersona = persona;
+        this.baseBinding = binding;
         this.whitelistedTools =
                 persona.whitelistedTools().stream()
                         .map(ToolDefinition::name)
                         .collect(Collectors.toUnmodifiableSet());
         this.toolEngine = toolEngine;
-        this.responses = new ResponseValidator(toolEngine, objectMapper);
+        this.responses = new ModelResponseValidation(toolEngine, objectMapper);
         this.gateway = gateway;
         this.hitlRegistry = hitlRegistry;
         this.ingressDefense = ingressDefense;
@@ -298,18 +182,28 @@ final class AgentRuntimeState {
         this.promptCompiler = promptCompiler;
         this.caller = caller;
         this.objectMapper = objectMapper;
-        this.toolResultPresenter = new ToolResultPresenter(objectMapper);
-        this.breaker = new LoopBreaker(maxCallsPerEpisode);
+        this.maxCallsPerEpisode = maxCallsPerEpisode;
         this.readHistory = gateway.readHistory();
         this.binding = binding;
         // agentId is the persona id (a UUID string — see AgentService.createAgent); derive the
         // per-session frame key once. Fail-fast if a non-UUID id ever reaches here.
-        this.sessionId = UUID.fromString(agentId);
-        this.events = new AgentEvents(agentId, objectMapper, deltaBroker, () -> sessionId);
+        this.sessionId = sessionId;
+        this.owner = owner;
         hitlRegistry.setSession(agentId, this.sessionId);
         this.userId = userId;
-        this.journal = new AgentHistory(turnLogService, () -> sessionId, userId, agentId);
-        this.backgroundTaskManager = backgroundTaskManager;
+        this.output =
+                new AgentOutput(
+                        new AgentHistory(turnLogService, () -> sessionId, userId, agentId),
+                        new AgentEvents(agentId, objectMapper, deltaBroker, () -> sessionId),
+                        promptCompiler,
+                        new ToolResultPresenter(objectMapper),
+                        toolEngine,
+                        () ->
+                                new AgentOutput.View(
+                                        control.request(),
+                                        toolResultPresentation,
+                                        control.waiting(ExecutionControl.Wait.QUESTION),
+                                        this.binding.options().contextWindowOrDefault()));
     }
 
     private AgentToolExecution tools;
@@ -318,16 +212,16 @@ final class AgentRuntimeState {
         return Nullness.requireNonNull(tools, "Runtime is not initialized");
     }
 
-    private AgentModelExecution models;
+    private ModelSession models;
 
-    @NonNull AgentModelExecution models() {
+    @NonNull ModelSession models() {
         return Nullness.requireNonNull(models, "Runtime is not initialized");
     }
 
-    private AgentMonitorExecution monitor;
+    private AgentContinuationExecution continuations;
 
-    @NonNull AgentMonitorExecution monitor() {
-        return Nullness.requireNonNull(monitor, "Runtime is not initialized");
+    @NonNull AgentContinuationExecution continuations() {
+        return Nullness.requireNonNull(continuations, "Runtime is not initialized");
     }
 
     private AgentOutput output;
@@ -350,10 +244,42 @@ final class AgentRuntimeState {
 
     void initializeComponents() {
         tools = new AgentToolExecution(this);
-        models = new AgentModelExecution(this);
-        monitor = new AgentMonitorExecution(this);
-        output = new AgentOutput(this);
+        continuations = new AgentContinuationExecution(this);
         lifecycle = new AgentLifecycle(this);
-        hooks = new AgentPluginHooks(this);
+        hooks =
+                new AgentPluginHooks(
+                        new WorkflowHook.Context(
+                                owner,
+                                sessionId.toString(),
+                                agentId,
+                                () -> Thread.currentThread().isInterrupted()),
+                        objectMapper,
+                        caller,
+                        () -> sessionPlugins,
+                        () -> control.open(),
+                        () ->
+                                control.request() != null
+                                        && Nullness.requireNonNull(control.request()).cancelled);
+        models =
+                new ModelSession(
+                        agentId,
+                        promptCompiler,
+                        responses,
+                        toolEngine,
+                        output(),
+                        hooks(),
+                        () -> lifecycle().currentRequest().episode.breaker(),
+                        () ->
+                                new ModelSession.Configuration(
+                                        persona,
+                                        binding,
+                                        toolResultPresentation,
+                                        owner,
+                                        modelTierRegistry,
+                                        executionPolicy.terminal(),
+                                        gateway.workspace()),
+                        () -> lifecycle().checkExecutionBoundary(),
+                        () -> continuations().reserveRequestCall(),
+                        () -> lifecycle().tripBreaker());
     }
 }

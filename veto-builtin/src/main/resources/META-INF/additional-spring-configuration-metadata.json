@@ -1,0 +1,33 @@
+{
+  "properties": [
+    {
+      "name": "veto.memory.store",
+      "type": "java.lang.String",
+      "description": "Memory backend: memory, jpa, vector, or pgvector.",
+      "defaultValue": "jpa"
+    }
+  ],
+  "hints": [
+    {
+      "name": "veto.memory.store",
+      "values": [
+        {
+          "value": "memory",
+          "description": "In-process memory store."
+        },
+        {
+          "value": "jpa",
+          "description": "JPA-backed persistent store."
+        },
+        {
+          "value": "vector",
+          "description": "In-process vector index."
+        },
+        {
+          "value": "pgvector",
+          "description": "PostgreSQL pgvector store."
+        }
+      ]
+    }
+  ]
+}

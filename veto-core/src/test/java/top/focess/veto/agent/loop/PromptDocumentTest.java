@@ -114,8 +114,7 @@ class PromptDocumentTest {
             var result = PromptLibrary.compile("default-system-prompt", inputs);
             assertEquals(1, result.messages().size());
             assertTrue(result.text().contains(PromptLibrary.text("answer-style")));
-            assertEquals(
-                    hasPlan,
+            assertFalse(
                     result.text()
                             .contains(
                                     PromptLibrary.text(
@@ -129,9 +128,16 @@ class PromptDocumentTest {
 
     @Test
     void numericPredicatesHandleLongBudgetAndMessageSourcesMatchText() {
-        var message =
-                PromptLibrary.message(
-                        "runtime-completion", Map.of("tool", "finish", "remaining", 1L));
+        var document =
+                PromptDocument.compile(
+                        "main",
+                        Map.of("remaining", 1L),
+                        Map.of(
+                                "main",
+                                source(
+                                        "remaining",
+                                        "@message user\n@if remaining == 1\nfinal allowed model call\n@else\ntwo model calls\n@endif\n@endmessage")));
+        var message = document.messages().getFirst();
         assertTrue(message.content().contains("final allowed model call"));
         assertFalse(message.content().contains("two model calls"));
         assertFalse(message.promptSources().isEmpty());

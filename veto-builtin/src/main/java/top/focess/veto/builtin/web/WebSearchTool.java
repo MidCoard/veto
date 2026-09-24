@@ -6,10 +6,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.api.agent.capability.NetworkEgressCapability;
 import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.tool.Doc;
-import top.focess.veto.api.agent.tool.NetworkEgressTool;
+import top.focess.veto.api.agent.tool.NativeTool;
 import top.focess.veto.api.agent.tool.ParamCategory;
 import top.focess.veto.api.agent.tool.SecurityHint;
 import top.focess.veto.api.agent.tool.ToolCapability;
@@ -142,18 +141,14 @@ import top.focess.veto.api.search.SearchResult;
             - https://spring.io/blog/spring-boot-4-0""",
             "Invalid arguments: query must be at least 2 characters."
         })
-public final class WebSearchTool implements NetworkEgressTool<WebSearchTool.Args> {
+public final class WebSearchTool implements NativeTool<WebSearchTool.Args> {
     private static final int DEFAULT_MAX_RESULTS = 10;
     private static final int MAX_OUTPUT_CHARS = 64_000;
 
-    private final NetworkEgressCapability capability;
+    private final @NonNull SearchProvider provider;
 
-    public WebSearchTool() {
-        this.capability = null;
-    }
-
-    public WebSearchTool(@NonNull NetworkEgressCapability capability) {
-        this.capability = capability;
+    public WebSearchTool(@NonNull SearchProvider provider) {
+        this.provider = provider;
     }
 
     public record Args(
@@ -177,14 +172,7 @@ public final class WebSearchTool implements NetworkEgressTool<WebSearchTool.Args
     }
 
     @Override
-    public @NonNull NetworkEgressCapability networkEgressCapability() {
-        if (capability == null) throw new SecurityException("Host must supply tool capability");
-        return capability;
-    }
-
-    @Override
-    public @NonNull String execute(
-            @NonNull Args args, @NonNull NetworkEgressCapability capability) {
+    public @NonNull String execute(@NonNull Args args) {
         String query = args.query();
         if (query.isBlank() || query.strip().length() < 2) {
             return ToolErrors.failure(
@@ -196,7 +184,7 @@ public final class WebSearchTool implements NetworkEgressTool<WebSearchTool.Args
                         args.allowed_domains(), args.blocked_domains(), DEFAULT_MAX_RESULTS);
         try {
             List<SearchResult> results =
-                    applyDomainFilters(capability.search(query, options), options);
+                    applyDomainFilters(provider.search(query, options), options);
             if (results.isEmpty()) {
                 return "(no results)";
             }
@@ -216,7 +204,7 @@ public final class WebSearchTool implements NetworkEgressTool<WebSearchTool.Args
             return ToolErrors.failure(
                     ToolErrorCode.NETWORK.TIMEOUT,
                     "Search timed out: the "
-                            + capability.searchProviderName()
+                            + provider.name()
                             + " provider did not respond in time; retry later or rephrase the"
                             + " query.");
         } catch (Exception e) {
@@ -225,10 +213,10 @@ public final class WebSearchTool implements NetworkEgressTool<WebSearchTool.Args
                     ToolErrorCode.NETWORK.FETCH_FAILED,
                     diagnostic == null || diagnostic.isBlank()
                             ? "Search failed: the "
-                                    + capability.searchProviderName()
+                                    + provider.name()
                                     + " provider returned no diagnostic."
                             : "Search failed: the "
-                                    + capability.searchProviderName()
+                                    + provider.name()
                                     + " provider reported an error: "
                                     + sentence(diagnostic));
         }

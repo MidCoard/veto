@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -24,9 +25,13 @@ import top.focess.veto.agent.identity.AgentPersona;
 import top.focess.veto.agent.identity.SystemPromptResolver;
 import top.focess.veto.agent.intercept.ApprovalReceipt;
 import top.focess.veto.agent.screening.DeployerPolicy;
+import top.focess.veto.agent.tool.LocalToolDefinition;
+import top.focess.veto.agent.tool.ToolPresentations;
 import top.focess.veto.agent.translation.CapabilityTranslator;
 import top.focess.veto.agent.workspace.Workspace;
+import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.ToolErrorCode;
+import top.focess.veto.api.agent.tool.ToolPrompt;
 import top.focess.veto.api.agent.tool.ToolResultFormat;
 import top.focess.veto.api.agent.tool.ToolResultStatus;
 import top.focess.veto.api.llm.ChatMessage;
@@ -158,7 +163,7 @@ public class PromptCompiler {
     }
 
     /**
-     * Links the tool-agent template without resolving workspace, group role, skills, or
+     * Links the tool-agent template without resolving workspace, plugin profile, skills, or
      * environment.
      */
     public static @NonNull PromptCompiler isolated(
@@ -233,9 +238,8 @@ public class PromptCompiler {
      * @param sessionWorkspace the per-session workspace (the session's actual roots, from the
      *     Gateway). Mounted into the system prompt and used to resolve VETO.md (The Law) so the
      *     prompt reflects the session's real roots, not the default bean workspace.
-     * @param systemPromptBase optional additional role guidance (e.g. the Mate base from {@code
-     *     veto.group.mate.system-prompt-base}); it never replaces persona identity or skillset
-     *     context. Role/tools/boundaries are persona-driven.
+     * @param systemPromptBase optional compiled profile guidance; it never replaces persona
+     *     identity or skills context. Role/tools/boundaries are persona-driven.
      * @param history the raw, append-only turn history (oldest->newest)
      */
     public @NonNull CompiledPrompt compile(
@@ -278,36 +282,10 @@ public class PromptCompiler {
             double correctionFactor,
             @NonNull ToolResultPresentationMode toolResultPresentation,
             Long inputBudgetOverride) {
-        return compile(
-                persona,
-                sessionWorkspace,
-                systemPromptBase,
-                history,
-                correctionFactor,
-                toolResultPresentation,
-                inputBudgetOverride,
-                ChatMessage.user(""));
-    }
-
-    public @NonNull CompiledPrompt compile(
-            @NonNull AgentPersona persona,
-            @NonNull Workspace sessionWorkspace,
-            String systemPromptBase,
-            List<TurnRecord> history,
-            double correctionFactor,
-            @NonNull ToolResultPresentationMode toolResultPresentation,
-            Long inputBudgetOverride,
-            @NonNull ChatMessage recoveryContext) {
-
         List<ToolDefinition> flatTools =
                 translator.translateTools(
-                        availableTools(
-                                persona.whitelistedTools(), persona.registeredSkills().isEmpty()));
+                        availableTools(persona.whitelistedTools(), sessionWorkspace.hostRoots()));
         List<ChatMessage> conversation = resolveRewinds(history, toolResultPresentation);
-        if (!recoveryContext.content().isBlank()) {
-            conversation = new ArrayList<>(conversation);
-            conversation.add(recoveryContext);
-        }
         String systemMessage =
                 conversation.stream()
                         .filter(message -> "system".equals(message.role()))
@@ -366,8 +344,7 @@ public class PromptCompiler {
             @NonNull ToolResultPresentationMode toolResultPresentation) {
         List<ToolDefinition> flatTools =
                 translator.translateTools(
-                        availableTools(
-                                persona.whitelistedTools(), persona.registeredSkills().isEmpty()));
+                        availableTools(persona.whitelistedTools(), sessionWorkspace.hostRoots()));
         return buildSystemMessage(
                 persona, sessionWorkspace, systemPromptBase, flatTools, toolResultPresentation);
     }
@@ -407,9 +384,9 @@ public class PromptCompiler {
     /** Removes conditional capabilities that cannot succeed for this persona. */
     static @NonNull List<top.focess.veto.agent.tool.@NonNull ToolDefinition> availableTools(
             @NonNull Collection<top.focess.veto.agent.tool.@NonNull ToolDefinition> tools,
-            boolean skillsEmpty) {
+            @NonNull List<Path> roots) {
         return tools.stream()
-                .filter(tool -> !skillsEmpty || !"load_skill".equals(tool.name()))
+                .filter(tool -> ToolPresentations.inspect(tool, roots).available())
                 .toList();
     }
 
@@ -436,7 +413,39 @@ public class PromptCompiler {
             data.put("instructions", fixed);
         }
         var compiled = PromptCompiler.compileDocument(entry, data);
-        return new PromptSource.Rendered(entry, compiled.text(), compiled.sources());
+        var text = new StringBuilder(compiled.text());
+        var spans = new ArrayList<>(compiled.sources());
+        var included = new HashSet<String>();
+        if (fixed == null) {
+            for (var tool : persona.whitelistedTools()) {
+                if (!(tool instanceof LocalToolDefinition local)
+                        || flatTools.stream()
+                                .noneMatch(available -> available.name().equals(tool.name())))
+                    continue;
+                ToolPrompt prompt =
+                        local.toolClass().getAnnotation(ToolDocs.nonNullClass(ToolPrompt.class));
+                if (prompt == null || !included.add(prompt.value())) continue;
+                var extensionData = new LinkedHashMap<>(data);
+                extensionData.put("extensionToolName", tool.name());
+                extensionData.put(
+                        "extension",
+                        ToolPresentations.inspect(tool, sessionWorkspace.hostRoots()).facts());
+                var extension = PromptCompiler.compileDocument(prompt.value(), extensionData);
+                text.append('\n');
+                int offset = text.length();
+                text.append(extension.text());
+                for (var span : extension.sources()) {
+                    spans.add(
+                            new PromptSpan(
+                                    span.source(),
+                                    span.line(),
+                                    span.column(),
+                                    offset + span.start(),
+                                    offset + span.end()));
+                }
+            }
+        }
+        return new PromptSource.Rendered(entry, text.toString(), List.copyOf(spans));
     }
 
     private @NonNull List<ChatMessage> fitIsolatedBudget(
@@ -624,6 +633,7 @@ public class PromptCompiler {
     public @NonNull TurnRecord recordRuntimeSource(@NonNull TurnRecord turn) {
         if (turn.payload().containsKey("compiled_observation")
                 || !List.of(
+                                TurnType.RUNTIME_EVENT,
                                 TurnType.MONITOR_EVENT,
                                 TurnType.USER_INTERRUPT,
                                 TurnType.EXECUTION_ERROR)
@@ -686,6 +696,14 @@ public class PromptCompiler {
             return restoreSource(turn, ChatMessage.user(content));
         String thoughtContent = pendingThought != null ? pendingThought : "";
         return switch (turn.type()) {
+            case RUNTIME_EVENT ->
+                    PromptCompiler.compileMessage(
+                            "runtime-observation",
+                            Map.of(
+                                    "content",
+                                    str(turn.payload(), "content"),
+                                    "originatingTask",
+                                    str(turn.payload(), "originatingTask")));
             case MONITOR_EVENT ->
                     PromptCompiler.compileMessage(
                             "runtime-monitor", Map.of("content", str(turn.payload(), "content")));

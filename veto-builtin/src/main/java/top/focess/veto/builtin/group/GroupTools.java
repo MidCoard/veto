@@ -7,22 +7,15 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.api.agent.capability.DelegationCapability;
-import top.focess.veto.api.agent.capability.GroupControlCapability;
-import top.focess.veto.api.agent.tool.DelegationTool;
 import top.focess.veto.api.agent.tool.Doc;
-import top.focess.veto.api.agent.tool.GroupControlTool;
 import top.focess.veto.api.agent.tool.ParamCategory;
 import top.focess.veto.api.agent.tool.SecurityHint;
 import top.focess.veto.api.agent.tool.ToolDoc;
 import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.ToolErrorCode;
 import top.focess.veto.api.agent.tool.ToolErrors;
+import top.focess.veto.api.agent.tool.ToolPrompt;
 import top.focess.veto.api.agent.tool.ToolResultFormat;
-import top.focess.veto.api.group.BlackboardMessage;
-import top.focess.veto.api.group.DagNode;
-import top.focess.veto.api.group.GroupSnapshot;
-import top.focess.veto.api.group.GroupState;
 
 /**
  * Agent-facing group management tools. The caller of {@code create_group} <em>transforms</em> into
@@ -75,6 +68,7 @@ public final class GroupTools {
                 "",
                 "Group not created: blank brief. Pass a real description of the work."
             })
+    @ToolPrompt("delegation-system-prompt")
     public static final class CreateGroup implements DelegationTool<CreateGroup.Args> {
 
         private final DelegationCapability capability;

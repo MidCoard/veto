@@ -9,37 +9,29 @@ import org.junit.jupiter.api.Test;
 import top.focess.veto.agent.intercept.ToolExecutionPermit;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
 
-/**
- * Tests that ToolCallContext (agentId + userId) is threaded through tool execution, enabling
- * GroupTools to record the caller's identity instead of placeholders.
- */
+/** Trusted caller and control state remain isolated to the executing thread. */
 class ToolCallContextTest {
 
     @Test
     void callStateIsIsolatedAcrossPlatformAndVirtualThreads() throws Exception {
         for (boolean virtual : new boolean[] {false, true}) {
             ToolCallContextHolder.setCurrentCallId("parent-call");
-            ToolCallContextHolder.requestRewind(1, "parent-rewind");
-            ToolCallContextHolder.requestReverseTransform("parent-transform");
+            ToolCallContextHolder.finish("parent-result");
             try {
                 FutureTask<Void> child =
                         new FutureTask<>(
                                 () -> {
                                     assertNull(ToolCallContextHolder.get());
                                     assertNull(ToolCallContextHolder.currentCallId());
-                                    assertTrue(ToolCallContextHolder.drainPendingTurns().isEmpty());
-                                    assertNull(ToolCallContextHolder.drainTransform());
+                                    assertNull(ToolCallContextHolder.drainResponse());
                                     try {
                                         ToolCallContextHolder.setCurrentCallId("child-call");
-                                        ToolCallContextHolder.requestRewind(1, "child-rewind");
-                                        ToolCallContextHolder.requestReverseTransform(
-                                                "child-transform");
+                                        ToolCallContextHolder.finish("child-result");
                                     } finally {
                                         ToolCallContextHolder.clear();
                                     }
                                     assertNull(ToolCallContextHolder.currentCallId());
-                                    assertTrue(ToolCallContextHolder.drainPendingTurns().isEmpty());
-                                    assertNull(ToolCallContextHolder.drainTransform());
+                                    assertNull(ToolCallContextHolder.drainResponse());
                                     return null;
                                 });
                 if (virtual) {
@@ -49,10 +41,10 @@ class ToolCallContextTest {
                 }
                 child.get(5, TimeUnit.SECONDS);
                 assertEquals("parent-call", ToolCallContextHolder.currentCallId());
-                assertEquals(1, ToolCallContextHolder.drainPendingTurns().size());
-                assertEquals(
-                        new ToolCallContextHolder.TransformRequest.ToStandalone("parent-transform"),
-                        ToolCallContextHolder.drainTransform());
+                if (!(ToolCallContextHolder.drainResponse()
+                        instanceof ToolCallContextHolder.ResponseDirective.Finish result))
+                    throw new AssertionError("Expected finish response");
+                assertEquals("parent-result", result.response().message());
             } finally {
                 ToolCallContextHolder.clear();
             }
@@ -68,7 +60,6 @@ class ToolCallContextTest {
                 new ToolCallContext(
                         agentId,
                         userId,
-                        null,
                         null,
                         null,
                         ToolResultPresentationMode.BASIC,
@@ -88,7 +79,6 @@ class ToolCallContextTest {
                 new ToolCallContext(
                         agentId,
                         userId,
-                        null,
                         null,
                         null,
                         ToolResultPresentationMode.BASIC,

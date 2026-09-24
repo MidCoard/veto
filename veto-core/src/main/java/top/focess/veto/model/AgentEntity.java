@@ -62,6 +62,34 @@ public class AgentEntity {
 
     private String runtimeRole;
 
+    private String pluginNamespace;
+    private Boolean ephemeral;
+
+    public boolean isEphemeral() {
+        return Boolean.TRUE.equals(ephemeral);
+    }
+
+    public void markEphemeral() {
+        ephemeral = true;
+    }
+
+    public String getPluginNamespace() {
+        return pluginNamespace;
+    }
+
+    public void claimPlugin(@NonNull String namespace, @NonNull String parent) {
+        setPluginNamespace(namespace);
+        if (parentAgentId != null && !parentAgentId.equals(parent))
+            throw new SecurityException("Agent parent is immutable");
+        parentAgentId = parent;
+    }
+
+    public void setPluginNamespace(@NonNull String namespace) {
+        if (pluginNamespace != null && !pluginNamespace.equals(namespace))
+            throw new SecurityException("Agent plugin ownership is immutable");
+        pluginNamespace = namespace;
+    }
+
     @Column(columnDefinition = "TEXT")
     private String responsibility;
 
@@ -75,10 +103,12 @@ public class AgentEntity {
     private Instant endedAt;
     private Boolean userInteractionEnabled;
 
-    private Integer monitorRecoveryVersion;
+    // Preserve the existing column while the recovery eligibility is feature-independent.
+    @Column(name = "monitor_recovery_version")
+    private Integer recoveryVersion;
 
-    public boolean supportsMonitorRecovery() {
-        return monitorRecoveryVersion != null && monitorRecoveryVersion >= 1;
+    public boolean supportsRecovery() {
+        return recoveryVersion != null && recoveryVersion >= 1;
     }
 
     public boolean isUserInteractionEnabled() {
@@ -104,7 +134,7 @@ public class AgentEntity {
     }
 
     public void started(@NonNull AgentPersona persona, String parentAgentId, String parentCallId) {
-        monitorRecoveryVersion = 1;
+        recoveryVersion = 1;
         this.runtimeRole = persona.role().name();
         this.responsibility = persona.description();
         this.parentAgentId = parentAgentId;

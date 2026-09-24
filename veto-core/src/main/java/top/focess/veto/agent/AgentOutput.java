@@ -5,32 +5,77 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.agent.AgentRuntimeState.WaitReason;
+import top.focess.veto.agent.intercept.ApprovalDecision;
 import top.focess.veto.agent.intercept.ApprovalReceipt;
+import top.focess.veto.agent.intercept.VetoOption;
 import top.focess.veto.agent.intercept.VetoPrompt;
-import top.focess.veto.agent.loop.LoopBreaker;
 import top.focess.veto.agent.loop.MessageCitations;
 import top.focess.veto.agent.loop.PromptCompiler;
 import top.focess.veto.agent.loop.PromptSource;
 import top.focess.veto.agent.tool.ToolDefinition;
+import top.focess.veto.agent.tool.ToolEngine;
 import top.focess.veto.api.agent.ToolCallEvent;
 import top.focess.veto.api.agent.ToolResultEvent;
 import top.focess.veto.api.agent.tool.ToolErrorCode;
 import top.focess.veto.api.agent.tool.ToolResult;
 import top.focess.veto.api.llm.ToolCall;
+import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.api.llm.VetoResponse;
 import top.focess.veto.bus.DeltaFrame;
+import top.focess.veto.llm.core.ToolResultPresenter;
+import top.focess.veto.util.Nullness;
 
 /** Appends durable history and emits corresponding events in order. */
 final class AgentOutput {
-    private final @NonNull AgentRuntimeState runtime;
+    record View(
+            RequestHandle request,
+            @NonNull ToolResultPresentationMode presentation,
+            boolean question,
+            int contextMaxTokens) {}
 
-    AgentOutput(@NonNull AgentRuntimeState runtime) {
-        this.runtime = runtime;
+    private final @NonNull AgentHistory journal;
+    private final @NonNull AgentEvents events;
+    private final @NonNull PromptCompiler compiler;
+    private final @NonNull ToolResultPresenter presenter;
+    private final @NonNull ToolEngine tools;
+    private final @NonNull Supplier<View> view;
+    private PromptSource.Rendered systemSource;
+
+    AgentOutput(
+            @NonNull AgentHistory journal,
+            @NonNull AgentEvents events,
+            @NonNull PromptCompiler compiler,
+            @NonNull ToolResultPresenter presenter,
+            @NonNull ToolEngine tools,
+            @NonNull Supplier<View> view) {
+        this.journal = journal;
+        this.events = events;
+        this.compiler = compiler;
+        this.presenter = presenter;
+        this.tools = tools;
+        this.view = view;
     }
 
-    void appendThought(@NonNull VetoResponse response) {
+    int turnNumber() {
+        return journal.turnNumber();
+    }
+
+    int nextTurn() {
+        return turnNumber() + 1;
+    }
+
+    void systemSource(PromptSource.@NonNull Rendered source) {
+        systemSource = source;
+    }
+
+    @NonNull Object requestIdentity() {
+        var request = view.get().request();
+        return request == null ? this : request;
+    }
+
+    void appendThought(@NonNull VetoResponse response, String modelCallId) {
         String thought = response.thought();
         // Provider-exposed reasoning is display text; native replay state lives on tool calls.
         Map<String, Object> payload = new HashMap<>();
@@ -41,11 +86,8 @@ final class AgentOutput {
         } else {
             return;
         }
-        if (runtime.lastModelCallId != null) payload.put("model_call_id", runtime.lastModelCallId);
-        runtime.output()
-                .appendTurn(
-                        new TurnRecord(
-                                ++runtime.turnNumber, TurnType.ASSISTANT_THOUGHT, payload, null));
+        if (modelCallId != null) payload.put("model_call_id", modelCallId);
+        appendTurn(new TurnRecord(nextTurn(), TurnType.ASSISTANT_THOUGHT, payload, null));
         // Stream the thought to transports now (after it is durably recorded). The terminal
         // renders it dimmed/muted ahead of the user-facing message that follows, so the user
         // can follow the reasoning without it competing with the answer.
@@ -86,36 +128,18 @@ final class AgentOutput {
         if (modelCallId != null) payload.put("model_call_id", modelCallId);
         if (citations != null && !citations.checks().isEmpty())
             payload.put("citation_context", citations);
-        runtime.output()
-                .appendTurn(
-                        new TurnRecord(
-                                ++runtime.turnNumber, TurnType.ASSISTANT_RESPONSE, payload, null));
-        runtime.lastMessage = message;
-        runtime.events.message(message, runtime.turnNumber);
+        appendTurn(new TurnRecord(nextTurn(), TurnType.ASSISTANT_RESPONSE, payload, null));
+        RequestHandle request = view.get().request();
+        if (request != null) request.message = message;
+        events.message(message, turnNumber());
     }
 
     void emitThought(@NonNull String thought) {
-        runtime.events.thought(thought, runtime.turnNumber);
+        events.thought(thought, turnNumber());
     }
 
     void publishFrame(@NonNull DeltaFrame frame) {
-        runtime.events.publishFrame(frame);
-    }
-
-    void tripBreaker() {
-        runtime.lifecycle().saveExecutionWait(WaitReason.BREAKER);
-        runtime.awaitingBreakerContinuation = true;
-        String notice = LoopBreaker.tripNotice(runtime.locale);
-        emitMessage(notice);
-        runtime.output()
-                .publishFrame(
-                        DeltaFrame.builder()
-                                .sessionId(runtime.sessionId)
-                                .kind(DeltaFrame.Kind.BREAKER_TRIPPED)
-                                .attr("turnNumber", runtime.turnNumber)
-                                .attr("maxCallsPerEpisode", runtime.breaker.maxCallsPerEpisode())
-                                .text(notice)
-                                .build());
+        events.publishFrame(frame);
     }
 
     void appendObservation(@NonNull String toolName, @NonNull String content) {
@@ -124,26 +148,25 @@ final class AgentOutput {
 
     void appendToolResponse(
             @NonNull String toolName, String callId, @NonNull String content, boolean success) {
-        runtime.output()
-                .appendToolResponse(
-                        success
-                                ? ToolResult.success(toolName, callId, content)
-                                : ToolResult.failure(
-                                        toolName,
-                                        callId,
-                                        content,
-                                        ToolErrorCode.GENERIC.TOOL_FAILURE));
+        appendToolResponse(
+                success
+                        ? ToolResult.success(toolName, callId, content)
+                        : ToolResult.failure(
+                                toolName, callId, content, ToolErrorCode.GENERIC.TOOL_FAILURE));
     }
 
     void appendToolResponse(@NonNull ToolResult result) {
-        String presented =
-                runtime.toolResultPresenter.present(result, runtime.toolResultPresentation);
+        String presented = presenter.present(result, view.get().presentation());
         TurnRecord turn =
                 TurnRecord.presentedToolResponse(
-                        ++runtime.turnNumber, result, presented, runtime.toolResultPresentation);
+                        nextTurn(), result, presented, view.get().presentation());
         String responseCallId = result.callId();
         ApprovalReceipt receipt =
-                responseCallId == null ? null : runtime.approvalReceipts.remove(responseCallId);
+                responseCallId == null
+                        ? null
+                        : Nullness.requireNonNull(view.get().request())
+                                .approvalReceipts
+                                .remove(responseCallId);
         if (receipt != null) {
             Map<String, Object> payload = new HashMap<>(turn.payload());
             payload.put("approval", receipt);
@@ -153,20 +176,21 @@ final class AgentOutput {
     }
 
     void recordUsage(int throughTurn, @NonNull UsageMeasurement measurement) {
-        runtime.journal.recordUsage(throughTurn, measurement);
+        journal.recordUsage(throughTurn, measurement);
     }
 
-    void appendToolCall(@NonNull ToolCall call) {
-        TurnRecord turn = TurnRecord.toolCall(++runtime.turnNumber, call);
-        String origin = runtime.currentToolModelCallId;
+    void appendToolCall(@NonNull ToolCall call, String origin) {
+        TurnRecord turn = TurnRecord.toolCall(nextTurn(), call);
         Map<String, Object> payload = new LinkedHashMap<>(turn.payload());
         if (origin != null) payload.put("model_call_id", origin);
-        ToolDefinition definition = runtime.toolEngine.resolveDefinition(call.toolName());
+        ToolDefinition definition = tools.resolveDefinition(call.toolName());
         if (definition != null) {
             payload.put("tool_origin", definition.origin());
             var provenance = definition.provenance();
             if (provenance != null) {
                 payload.put("plugin_id", provenance.pluginId());
+                var localId = provenance.localId();
+                if (localId != null) payload.put("tool_local_id", localId);
             }
         }
         turn = new TurnRecord(turn.turnNumber(), turn.type(), payload, turn.timestamp());
@@ -174,16 +198,15 @@ final class AgentOutput {
     }
 
     void appendTurn(@NonNull TurnRecord turn) {
-        turn = runtime.promptCompiler.recordRuntimeSource(turn);
-        WaitReason waiting = runtime.executionWait;
+        turn = compiler.recordRuntimeSource(turn);
+        boolean question = view.get().question();
         boolean required =
-                turn.type() == TurnType.MONITOR_EVENT
-                        || (turn.type() == TurnType.TOOL_RESPONSE
-                                && waiting == WaitReason.QUESTION);
+                (turn.type() == TurnType.RUNTIME_EVENT || turn.type() == TurnType.MONITOR_EVENT)
+                        || (turn.type() == TurnType.TOOL_RESPONSE && question);
         if (turn.type() == TurnType.AGENT_INIT) {
             Map<String, Object> metadata = new LinkedHashMap<>(turn.payload());
-            metadata.put("contextMaxTokens", runtime.binding.options().contextWindowOrDefault());
-            PromptSource.Rendered source = runtime.currentSystemSource;
+            metadata.put("contextMaxTokens", view.get().contextMaxTokens());
+            PromptSource.Rendered source = systemSource;
             if (source != null
                     && !source.sources().isEmpty()
                     && source.text().equals(metadata.get("system_prompt"))) {
@@ -208,67 +231,65 @@ final class AgentOutput {
                             turn.llmUsage());
         }
         turn = RecordTokenCounter.unmeasured(turn);
-        TurnRecord numbered = runtime.journal.append(turn, required);
-        runtime.turnNumber = numbered.turnNumber();
-        runtime.events.turn(numbered);
+        TurnRecord numbered = journal.append(turn, required);
+
+        events.turn(numbered);
     }
 
-    void setRecoveredTasks(@NonNull List<RecoveredTask> tasks) {
-        synchronized (runtime) {
-            runtime.recoveryContext =
-                    PromptCompiler.compileMessage("runtime-recovery", Map.of("tasks", tasks));
-        }
+    boolean seedHistory(@NonNull List<TurnRecord> replayed) {
+        if (!journal.snapshot().isEmpty() || replayed.isEmpty()) return false;
+        journal.seed(replayed);
+        return RecordRecovery.requiresExplicitContinuation(replayed);
     }
 
-    void seedHistory(@NonNull List<TurnRecord> replayed) {
-        synchronized (runtime) {
-            if (!runtime.journal.snapshot().isEmpty() || replayed.isEmpty()) return;
-            runtime.turnNumber = runtime.journal.seed(replayed);
-            runtime.recoveredWait = RecordRecovery.requiresExplicitContinuation(replayed);
-        }
+    void emitVetoRequired(
+            @NonNull ToolCall call,
+            ApprovalDecision.@NonNull Prompt prompt,
+            @NonNull List<VetoOption> offered) {
+        events.emitVetoRequired(call, prompt, offered);
     }
 
     void addMessageListener(@NonNull Consumer<String> listener) {
-        runtime.events.messages.add(listener);
+        events.messages.add(listener);
     }
 
     void removeMessageListener(@NonNull Consumer<String> listener) {
-        runtime.events.messages.remove(listener);
+        events.messages.remove(listener);
     }
 
     void addThoughtListener(@NonNull Consumer<String> listener) {
-        runtime.events.thoughts.add(listener);
+        events.thoughts.add(listener);
     }
 
     void removeThoughtListener(@NonNull Consumer<String> listener) {
-        runtime.events.thoughts.remove(listener);
+        events.thoughts.remove(listener);
     }
 
     void addVetoListener(@NonNull Consumer<VetoPrompt> listener) {
-        runtime.events.vetoes.add(listener);
+        events.vetoes.add(listener);
     }
 
     void removeVetoListener(@NonNull Consumer<VetoPrompt> listener) {
-        runtime.events.vetoes.remove(listener);
+        events.vetoes.remove(listener);
     }
 
     void addToolCallListener(@NonNull Consumer<ToolCallEvent> listener) {
-        runtime.events.calls.add(listener);
+        events.calls.add(listener);
     }
 
     void removeToolCallListener(@NonNull Consumer<ToolCallEvent> listener) {
-        runtime.events.calls.remove(listener);
+        events.calls.remove(listener);
     }
 
     void addToolResultListener(@NonNull Consumer<ToolResultEvent> listener) {
-        runtime.events.results.add(listener);
+        events.results.add(listener);
     }
 
     void removeToolResultListener(@NonNull Consumer<ToolResultEvent> listener) {
-        runtime.events.results.remove(listener);
+        events.results.remove(listener);
     }
 
     @NonNull List<TurnRecord> history() {
-        return runtime.journal.snapshot();
+        return journal.snapshot();
     }
 }

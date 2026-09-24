@@ -2,8 +2,6 @@ package top.focess.veto.builtin.planning;
 
 import java.util.regex.Pattern;
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.api.agent.workflow.Check;
-import top.focess.veto.api.agent.workflow.Scope;
 
 /**
  * Evaluates a {@link Check} over {@link Scope} vars deterministically, with zero LLM calls. {@link

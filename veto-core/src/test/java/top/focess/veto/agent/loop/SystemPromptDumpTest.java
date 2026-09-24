@@ -19,19 +19,20 @@ import java.util.stream.Collectors;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
 import top.focess.veto.agent.TurnRecord;
 import top.focess.veto.agent.identity.AgentPersona;
+import top.focess.veto.agent.identity.BuiltinProfiles;
 import top.focess.veto.agent.identity.Role;
-import top.focess.veto.agent.identity.RoleToolFilter;
 import top.focess.veto.agent.identity.SystemPromptResolver;
+import top.focess.veto.agent.tool.RemoteToolDefinition;
 import top.focess.veto.agent.tool.ToolEngine;
 import top.focess.veto.agent.translation.CapabilityTranslator;
 import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.llm.ToolDefinition;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
+import top.focess.veto.integration.plugins.PluginManager;
 
 /**
  * Diagnostic dump: compiles the full system prompt for each role under the active deployer policy
@@ -49,9 +50,9 @@ import top.focess.veto.api.llm.ToolResultPresentationMode;
  * (no bootRun, no login) but calls {@link PromptCompiler#compile}, including the configured
  * Leader/Mate prompt bases, so what you read follows the production prompt-assembly path.
  *
- * <p><b>Note:</b> each role's tools are resolved through the production {@link RoleToolFilter} (the
- * same filter {@code AgentService.buildPersona} applies), so the {@code ## Your tools} block in
- * each role's dump reflects exactly what a real agent of that role would see - STANDALONE sees
+ * <p><b>Note:</b> each role's tools are resolved through the production {@link BuiltinProfiles}
+ * (the same filter {@code AgentService.buildPersona} applies), so the {@code ## Your tools} block
+ * in each role's dump reflects exactly what a real agent of that role would see - STANDALONE sees
  * execution/delegation capabilities; LEADER sees investigation + group control; MATE sees execution
  * capabilities without delegation or memory mutation.
  */
@@ -66,16 +67,17 @@ class SystemPromptDumpTest {
     private static final int MAX_TOOL_CATALOG_CHARS = 113 * 1024;
 
     @Autowired private @NonNull ToolEngine mcpEngine;
+    @Autowired private @NonNull PluginManager plugins;
     @Autowired private @NonNull CapabilityTranslator translator;
     @Autowired private @NonNull Workspace workspace;
-    @Autowired private @NonNull RoleToolFilter roleToolFilter;
     @Autowired private @NonNull PromptCompiler promptCompiler;
 
-    @Value("${veto.group.leader.system-prompt-base}")
-    private @NonNull String leaderSystemPromptBase;
+    private final @NonNull String leaderSystemPromptBase =
+            PromptCompiler.compileText("role-leader", Map.of());
 
-    @Value("${veto.group.mate.system-prompt-base}")
-    private @NonNull String mateSystemPromptBase;
+    private final @NonNull String mateSystemPromptBase =
+            PromptCompiler.compileText(
+                    "builtin-mate-profile", Map.of("tasks", List.of(), "guidance", ""));
 
     private final @NonNull SystemPromptResolver resolver = new SystemPromptResolver();
     private final @NonNull ObjectMapper objectMapper = new ObjectMapper();
@@ -135,7 +137,8 @@ class SystemPromptDumpTest {
                 translator.translateTools(mcpEngine.getActiveTools(null));
         List<ToolDefinition> flatTools =
                 translator.translateTools(
-                        PromptCompiler.availableTools(mcpEngine.getActiveTools(null), true));
+                        PromptCompiler.availableTools(
+                                mcpEngine.getActiveTools(null), dumpWorkspace().hostRoots()));
         Workspace renderedWorkspace = dumpWorkspace();
         String template = PromptLibrary.source("default-system-prompt");
 
@@ -156,7 +159,9 @@ class SystemPromptDumpTest {
         for (Role role : roles) {
             List<ToolDefinition> roleTools =
                     translator.translateTools(
-                            PromptCompiler.availableTools(roleToolFilter.resolve(role), true));
+                            PromptCompiler.availableTools(
+                                    BuiltinProfiles.tools(role, mcpEngine),
+                                    renderedWorkspace.hostRoots()));
             write(
                     role + ".md",
                     promptCompiler
@@ -200,7 +205,9 @@ class SystemPromptDumpTest {
         write("STANDALONE-plan-tool.md", planned.systemMessage());
         assertTrue(planned.systemMessage().contains("conditional_goto"));
         assertNull(planned.responseSchema());
-        assertTrue(planned.tools().stream().anyMatch(tool -> tool.name().equals("submit_plan")));
+        assertTrue(
+                planned.tools().stream()
+                        .anyMatch(tool -> tool.name().equals(builtinName("submit_plan"))));
         deleteLegacyRolePolicyDumps(roles);
         String standalone = Files.readString(DUMP_DIR.resolve("STANDALONE.md"));
         assertFalse(
@@ -212,8 +219,8 @@ class SystemPromptDumpTest {
         for (Role role : roles) {
             String linked = Files.readString(DUMP_DIR.resolve(role + ".md"));
             boolean canDelegate =
-                    roleToolFilter.resolve(role).stream()
-                            .anyMatch(tool -> "create_group".equals(tool.name()));
+                    BuiltinProfiles.tools(role, mcpEngine).stream()
+                            .anyMatch(tool -> builtinName("create_group").equals(tool.name()));
             assertEquals(
                     canDelegate,
                     linked.contains("## How to delegate"),
@@ -250,34 +257,34 @@ class SystemPromptDumpTest {
         System.out.println("Tools active without skills: " + flatTools.size());
         assertTrue(!flatTools.isEmpty(), "tool catalog is non-empty");
         assertTrue(
-                toolNames(flatTools).contains("create_group"),
+                toolNames(flatTools).contains(builtinName("create_group")),
                 "the production catalog must register the delegation entry tool");
         assertTrue(
-                toolNames(flatTools).contains("recall_memory"),
+                toolNames(flatTools).contains(builtinName("recall_memory")),
                 "the production catalog must expose the unified memory-recall tool");
         assertFalse(
-                toolNames(flatTools).contains("recall_session"),
+                toolNames(flatTools).contains(builtinName("recall_session")),
                 "the removed session-only recall tool must not remain registered");
         assertFalse(
-                toolNames(flatTools).contains("recall_insights"),
+                toolNames(flatTools).contains(builtinName("recall_insights")),
                 "the removed insight-only recall tool must not remain registered");
         assertTrue(
-                toolNames(flatTools).contains("write_memory"),
+                toolNames(flatTools).contains(builtinName("write_memory")),
                 "the production catalog must expose the consistently named memory-write tool");
         assertTrue(
-                toolNames(flatTools).contains("forget_memory"),
+                toolNames(flatTools).contains(builtinName("forget_memory")),
                 "the production catalog must expose the consistently named memory-delete tool");
         assertFalse(
-                toolNames(flatTools).contains("write_insight"),
+                toolNames(flatTools).contains(builtinName("write_insight")),
                 "the replaced insight-specific write name must not remain registered");
         assertFalse(
-                toolNames(flatTools).contains("forget"),
+                toolNames(flatTools).contains(builtinName("forget")),
                 "the replaced generic forget name must not remain registered");
         assertFalse(
-                toolNames(flatTools).contains("load_skill"),
+                toolNames(flatTools).contains(builtinName("load_skill")),
                 "load_skill must not be exposed when the persona has no registered skills");
         assertTrue(
-                toolNames(registeredFlatTools).contains("load_skill"),
+                toolNames(registeredFlatTools).contains(builtinName("load_skill")),
                 "the registered-tool inventory must retain conditional load_skill");
         assertTrue(
                 mcpEngine.getActiveTools(null).stream()
@@ -286,33 +293,42 @@ class SystemPromptDumpTest {
         assertTrue(
                 toolNames(
                                 translator.translateTools(
-                                        new ArrayList<>(roleToolFilter.resolve(Role.STANDALONE))))
-                        .contains("create_group"),
+                                        new ArrayList<>(
+                                                BuiltinProfiles.tools(Role.STANDALONE, mcpEngine))))
+                        .contains(builtinName("create_group")),
                 "STANDALONE must receive create_group");
         assertFalse(
                 toolNames(
                                 translator.translateTools(
-                                        new ArrayList<>(roleToolFilter.resolve(Role.LEADER))))
-                        .contains("create_group"),
+                                        new ArrayList<>(
+                                                BuiltinProfiles.tools(Role.LEADER, mcpEngine))))
+                        .contains(builtinName("create_group")),
                 "LEADER must not receive create_group");
         assertFalse(
                 toolNames(
                                 translator.translateTools(
-                                        new ArrayList<>(roleToolFilter.resolve(Role.MATE))))
-                        .contains("create_group"),
+                                        new ArrayList<>(
+                                                BuiltinProfiles.tools(Role.MATE, mcpEngine))))
+                        .contains(builtinName("create_group")),
                 "MATE must not receive create_group");
         Set<String> leaderTools =
                 toolNames(
                         translator.translateTools(
-                                new ArrayList<>(roleToolFilter.resolve(Role.LEADER))));
-        assertTrue(leaderTools.contains("inspect_group"), "LEADER must observe Mate outcomes");
-        assertTrue(leaderTools.contains("post_message"), "LEADER must communicate with Mates");
+                                new ArrayList<>(BuiltinProfiles.tools(Role.LEADER, mcpEngine))));
+        assertTrue(
+                leaderTools.contains(builtinName("inspect_group")),
+                "LEADER must observe Mate outcomes");
+        assertTrue(
+                leaderTools.contains(builtinName("post_message")),
+                "LEADER must communicate with Mates");
         Set<String> mateTools =
                 toolNames(
                         translator.translateTools(
-                                new ArrayList<>(roleToolFilter.resolve(Role.MATE))));
-        assertFalse(mateTools.contains("forget_memory"), "MATE cannot delete user memory");
-        assertFalse(mateTools.contains("write_memory"), "MATE cannot mutate user memory");
+                                new ArrayList<>(BuiltinProfiles.tools(Role.MATE, mcpEngine))));
+        assertFalse(
+                mateTools.contains(builtinName("forget_memory")), "MATE cannot delete user memory");
+        assertFalse(
+                mateTools.contains(builtinName("write_memory")), "MATE cannot mutate user memory");
         assertFalse(
                 Files.readString(DUMP_DIR.resolve("LEADER.md")).contains("execute in parallel"),
                 "prompt must match ordered runtime tool execution");
@@ -325,14 +341,20 @@ class SystemPromptDumpTest {
         assertFalse(
                 sharedInstructions.contains("For a Mate"),
                 "the shared response protocol must not contain role-specific behavior");
-        assertFalse(
-                Files.readString(DUMP_DIR.resolve("LEADER.md"))
-                        .contains("## Additional role guidance"),
-                "default Leader guidance must not repeat the role contract");
-        assertFalse(
-                Files.readString(DUMP_DIR.resolve("MATE.md"))
-                        .contains("## Additional role guidance"),
-                "default Mate guidance must not repeat the role contract");
+        for (var contract :
+                Map.of(
+                                "LEADER",
+                                "Coordinate the group, review its results, and answer the user.",
+                                "MATE",
+                                "Complete the work assigned to you within the delegation group.")
+                        .entrySet()) {
+            String rendered = Files.readString(DUMP_DIR.resolve(contract.getKey() + ".md"));
+            assertTrue(rendered.contains(contract.getValue()));
+            assertEquals(
+                    rendered.indexOf(contract.getValue()),
+                    rendered.lastIndexOf(contract.getValue()),
+                    "Plugin role contract must appear exactly once");
+        }
         assertFalse(
                 Files.readString(DUMP_DIR.resolve("MATE.md")).contains("mate mate-sample"),
                 "the Mate identity must not repeat its name and role");
@@ -407,7 +429,7 @@ class SystemPromptDumpTest {
                 "the catalog must describe the active persona capabilities");
         var questionTool =
                 flatTools.stream()
-                        .filter(t -> t.name().equals("ask_user"))
+                        .filter(t -> t.name().equals(builtinName("ask_user")))
                         .findFirst()
                         .orElseThrow();
         var questionSchema =
@@ -447,10 +469,9 @@ class SystemPromptDumpTest {
             int start = catalog.indexOf(heading);
             int end = catalog.indexOf("\n### `", start + heading.length());
             String entry = end < 0 ? catalog.substring(start) : catalog.substring(start, end);
-            if (tool.name().startsWith("plugin_")) {
-                // Plugin tools are third-party contributions: the catalogue renders their
-                // description, arguments, and result formats; Veto-owned documentation sections
-                // exist only for Veto-owned tools.
+            if (mcpEngine.resolveDefinition(tool.name()) instanceof RemoteToolDefinition) {
+                // Schema-authored tools carry their descriptor contract; Java handlers carry
+                // the full authoring contract regardless of their resolved name.
                 assertTrue(
                         entry.contains("#### Arguments") && entry.contains("#### Result formats"),
                         tool.name() + " must render its plugin descriptor contract");
@@ -470,7 +491,7 @@ class SystemPromptDumpTest {
                             "Security"),
                     sectionHeadings(entry),
                     tool.name() + " must render the complete canonical contract order");
-            assertKnownResultCasesAreUnique(tool.name(), entry);
+            assertKnownResultCasesAreUnique(localName(tool.name()), entry);
         }
     }
 
@@ -582,41 +603,41 @@ class SystemPromptDumpTest {
     }
 
     private @NonNull AgentPersona personaFor(@NonNull Role role) {
-        Set<top.focess.veto.agent.tool.ToolDefinition> tools = roleToolFilter.resolve(role);
-        return switch (role) {
-            case STANDALONE ->
+        Set<top.focess.veto.agent.tool.ToolDefinition> tools =
+                BuiltinProfiles.tools(role, mcpEngine);
+        return switch (role.name()) {
+            case "STANDALONE" ->
                     new AgentPersona(
                             "dump-standalone",
                             "VetoCoreAgent",
                             "a standalone coding agent that plans and executes tasks directly.",
                             tools,
-                            List.of(),
                             role);
-            case LEADER ->
+            case "LEADER" ->
                     new AgentPersona(
                             "dump-leader",
                             "VetoCoreAgent",
                             "a standalone coding agent transformed into the Leader of this"
                                     + " delegation.",
                             tools,
-                            List.of(),
                             role);
-            case MATE ->
+            case "MATE" ->
                     new AgentPersona(
                             "dump-mate",
                             "mate-sample",
                             "a Mate assigned to the coding skillset",
                             tools,
-                            List.of(),
                             role);
+            default -> throw new IllegalArgumentException("Unexpected test role");
         };
     }
 
     private String baseFor(@NonNull Role role) {
-        return switch (role) {
-            case STANDALONE -> null;
-            case LEADER -> leaderSystemPromptBase;
-            case MATE -> mateSystemPromptBase;
+        return switch (role.name()) {
+            case "STANDALONE" -> null;
+            case "LEADER" -> leaderSystemPromptBase;
+            case "MATE" -> mateSystemPromptBase;
+            default -> null;
         };
     }
 
@@ -690,12 +711,25 @@ class SystemPromptDumpTest {
         }
     }
 
+    private @NonNull String builtinName(@NonNull String local) {
+        return plugins.toolName("top.focess.builtin", "top.focess.builtin:" + local);
+    }
+
+    private @NonNull String localName(@NonNull String name) {
+        var definition = mcpEngine.resolveDefinition(name);
+        var provenance = definition == null ? null : definition.provenance();
+        if (provenance == null || !provenance.pluginId().equals("top.focess.builtin")) return name;
+        var local = provenance.localId();
+        if (local == null) throw new AssertionError("Builtin tool lacks local identity: " + name);
+        return local;
+    }
+
     private static @NonNull Set<String> toolNames(@NonNull List<@NonNull ToolDefinition> tools) {
         return tools.stream().map(ToolDefinition::name).collect(Collectors.toUnmodifiableSet());
     }
 
     private static @NonNull Role @NonNull [] roles() {
-        Role[] roles = Role.values();
+        Role[] roles = {Role.STANDALONE, Role.LEADER, Role.MATE};
         if (roles == null) throw new AssertionError("Role.values returned null");
         return roles;
     }

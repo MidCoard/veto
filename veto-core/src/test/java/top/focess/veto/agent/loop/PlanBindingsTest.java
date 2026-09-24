@@ -10,17 +10,17 @@ import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.ToolResult;
 import top.focess.veto.api.agent.tool.ToolResultFormat;
 import top.focess.veto.api.agent.tool.ToolResultStatus;
-import top.focess.veto.api.agent.workflow.ActionsProgram;
-import top.focess.veto.api.agent.workflow.Check;
-import top.focess.veto.api.agent.workflow.ConditionalGotoAction;
-import top.focess.veto.api.agent.workflow.GenerateAction;
-import top.focess.veto.api.agent.workflow.GotoAction;
-import top.focess.veto.api.agent.workflow.Scope;
-import top.focess.veto.api.agent.workflow.StopAction;
-import top.focess.veto.api.agent.workflow.ToolAction;
+import top.focess.veto.builtin.planning.ActionsProgram;
 import top.focess.veto.builtin.planning.ActionsProgramParser;
+import top.focess.veto.builtin.planning.Check;
 import top.focess.veto.builtin.planning.CheckEvaluator;
+import top.focess.veto.builtin.planning.ConditionalGotoAction;
+import top.focess.veto.builtin.planning.GenerateAction;
+import top.focess.veto.builtin.planning.GotoAction;
 import top.focess.veto.builtin.planning.ProgramValidator;
+import top.focess.veto.builtin.planning.Scope;
+import top.focess.veto.builtin.planning.StopAction;
+import top.focess.veto.builtin.planning.ToolAction;
 import top.focess.veto.util.Nullness;
 
 class PlanBindingsTest {

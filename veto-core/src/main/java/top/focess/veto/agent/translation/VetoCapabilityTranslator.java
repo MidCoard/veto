@@ -11,11 +11,11 @@ import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Service;
+import top.focess.veto.agent.tool.ControlSubmissions;
 import top.focess.veto.agent.tool.LocalToolDefinition;
-import top.focess.veto.agent.tool.ResponseSubmissions;
 import top.focess.veto.agent.tool.ToolDefinition;
 import top.focess.veto.api.agent.tool.ContextualInputSchemaSource;
-import top.focess.veto.api.agent.tool.ResponseSubmission;
+import top.focess.veto.api.agent.tool.ControlSubmission;
 import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.ToolInputSchema;
 
@@ -29,7 +29,7 @@ public class VetoCapabilityTranslator implements CapabilityTranslator {
     public @NonNull List<top.focess.veto.api.llm.ToolDefinition> translateTools(
             List<ToolDefinition> manifest) {
         List<top.focess.veto.api.llm.ToolDefinition> flat = new ArrayList<>();
-        var submissions = new HashMap<String, ResponseSubmission.Kind>();
+        var submissions = new HashMap<String, ControlSubmission.Kind>();
         var javaRecordTools = new HashSet<String>();
         if (manifest == null) return flat;
         for (ToolDefinition def : manifest) {
@@ -44,7 +44,7 @@ public class VetoCapabilityTranslator implements CapabilityTranslator {
                             def.returnExamples(),
                             def.resultFormats());
             flat.add(translated);
-            var kind = ResponseSubmissions.kindOf(def);
+            var kind = ControlSubmissions.kindOf(def);
             if (kind != null) submissions.put(def.name(), kind);
             if (def instanceof LocalToolDefinition) javaRecordTools.add(def.name());
         }

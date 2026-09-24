@@ -8,10 +8,10 @@ import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.api.agent.tool.ToolDocs;
-import top.focess.veto.api.agent.workflow.GenerateAction;
-import top.focess.veto.api.agent.workflow.Scope;
 import top.focess.veto.builtin.planning.ActionsProgramParser;
+import top.focess.veto.builtin.planning.GenerateAction;
 import top.focess.veto.builtin.planning.ProgramValidator;
+import top.focess.veto.builtin.planning.Scope;
 
 class ActionsProgramParserTest {
     private static final @NonNull ObjectMapper MAPPER = new ObjectMapper();

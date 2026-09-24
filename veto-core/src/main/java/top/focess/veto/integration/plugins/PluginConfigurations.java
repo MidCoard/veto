@@ -12,6 +12,26 @@ import top.focess.veto.plugin.runtime.*;
 @Component
 @ConfigurationProperties(prefix = "veto.plugins")
 public final class PluginConfigurations {
+    private @NonNull Map<String, Map<String, String>> catalogueRoots = Map.of();
+
+    public @NonNull Map<String, Map<String, String>> getCatalogueRoots() {
+        return catalogueRoots;
+    }
+
+    public void setCatalogueRoots(@NonNull Map<String, Map<String, String>> roots) {
+        catalogueRoots = Map.copyOf(roots);
+    }
+
+    private @NonNull ScriptExecutionMode scriptMode = ScriptExecutionMode.TRUSTED;
+
+    public @NonNull ScriptExecutionMode getScriptMode() {
+        return scriptMode;
+    }
+
+    public void setScriptMode(@NonNull ScriptExecutionMode scriptMode) {
+        this.scriptMode = scriptMode;
+    }
+
     private @NonNull Map<@NonNull String, @NonNull String> toolNames = Map.of();
 
     public @NonNull Map<@NonNull String, @NonNull String> getToolNames() {

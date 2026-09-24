@@ -216,16 +216,10 @@ class WorkspaceFilePolicyTest {
                                 Workspace.single(root, PathMode.REAL),
                                 DeployerPolicy.PROTECTED,
                                 new ProtectedSet(protectedPaths))
-                        .withCaller("agent", USER, null, "owner", SESSION);
+                        .withCaller("agent", USER, "owner", SESSION);
         ToolCallContextHolder.set(
                 new ToolCallContext(
-                        "agent",
-                        USER,
-                        null,
-                        "owner",
-                        SESSION,
-                        ToolResultPresentationMode.BASIC,
-                        permit));
+                        "agent", USER, "owner", SESSION, ToolResultPresentationMode.BASIC, permit));
         ToolCallContextHolder.setCurrentCallId(permit.callId());
     }
 }

@@ -174,7 +174,7 @@ class PromptCompilerContextBudgetTest {
 
     @Test
     void recoveryObservationConsumesTheConfiguredInputBudget() {
-        var persona = new AgentPersona("test", "test", "test", Set.of(), List.of(), Role.MATE);
+        var persona = new AgentPersona("test", "test", "test", Set.of(), Role.MATE);
         var workspace =
                 Workspace.single(Path.of(System.getProperty("user.dir", ".")), PathMode.REAL);
         var history = List.of(TurnRecord.userPrompt(1, "New task"));
@@ -188,8 +188,7 @@ class PromptCompilerContextBudgetTest {
                                 history,
                                 1.1,
                                 ToolResultPresentationMode.BASIC,
-                                10000L,
-                                ChatMessage.user("")));
+                                10000L));
         assertThrows(
                 IllegalStateException.class,
                 () ->
@@ -197,16 +196,17 @@ class PromptCompilerContextBudgetTest {
                                 persona,
                                 workspace,
                                 null,
-                                history,
+                                List.of(
+                                        history.getFirst(),
+                                        TurnRecord.userPrompt(2, "observation ".repeat(50000))),
                                 1.1,
                                 ToolResultPresentationMode.BASIC,
-                                10000L,
-                                ChatMessage.user("observation ".repeat(50000))));
+                                10000L));
     }
 
     @Test
     void approvalReceiptsRemainBoundToResultsAcrossCompilationAndRewind() {
-        var persona = new AgentPersona("test", "test", "test", Set.of(), List.of(), Role.MATE);
+        var persona = new AgentPersona("test", "test", "test", Set.of(), Role.MATE);
         var workspace =
                 Workspace.single(Path.of(System.getProperty("user.dir", ".")), PathMode.REAL);
         for (ToolResultPresentationMode mode :
@@ -277,8 +277,7 @@ class PromptCompilerContextBudgetTest {
                                 Map.of("content", "private failure detail"),
                                 null),
                         TurnRecord.userPrompt(3, "Try again"));
-        var persona =
-                new AgentPersona("test", "test", "test", Set.of(), List.of(), Role.STANDALONE);
+        var persona = new AgentPersona("test", "test", "test", Set.of(), Role.STANDALONE);
         var workspace =
                 Workspace.single(Path.of(System.getProperty("user.dir", ".")), PathMode.REAL);
         var compiled = compiler(32000).compile(persona, workspace, null, history, 1.1);
@@ -289,8 +288,7 @@ class PromptCompilerContextBudgetTest {
 
     @Test
     void replayedCancellationSeparatesRequestsWithoutExposingFailureDetails() {
-        var persona =
-                new AgentPersona("test", "test", "test", Set.of(), List.of(), Role.STANDALONE);
+        var persona = new AgentPersona("test", "test", "test", Set.of(), Role.STANDALONE);
         var workspace =
                 Workspace.single(Path.of(System.getProperty("user.dir", ".")), PathMode.REAL);
         for (boolean started : List.of(true, false)) {
@@ -382,8 +380,7 @@ class PromptCompilerContextBudgetTest {
                         TurnRecord.userPrompt(2, "Explain TCP"),
                         TurnRecord.assistantResponse(3, "TCP handshake " + "a".repeat(2124)),
                         TurnRecord.userPrompt(4, "Can you draw a diagram?"));
-        var persona =
-                new AgentPersona("test", "test", "test", Set.of(), List.of(), Role.STANDALONE);
+        var persona = new AgentPersona("test", "test", "test", Set.of(), Role.STANDALONE);
         var workspace =
                 Workspace.single(Path.of(System.getProperty("user.dir", ".")), PathMode.REAL);
         var compiled = compiler.compile(persona, workspace, null, history, 1.1);

@@ -14,24 +14,21 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.context.ApplicationContext;
 import top.focess.veto.agent.drift.ReadHistory;
-import top.focess.veto.agent.identity.Role;
-import top.focess.veto.agent.identity.RoleToolFilter;
 import top.focess.veto.agent.intercept.*;
 import top.focess.veto.agent.screening.*;
 import top.focess.veto.agent.workspace.*;
 import top.focess.veto.api.agent.tool.CapabilityTool;
-import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.agent.tool.ToolDocs;
+import top.focess.veto.api.credentials.CredentialImportAccess;
 import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.api.plugin.contract.PluginFailure;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
 import top.focess.veto.api.plugin.contract.TextProtection;
+import top.focess.veto.integration.plugins.HostResourceConfiguration;
 import top.focess.veto.integration.plugins.PluginHostServices;
 import top.focess.veto.integration.plugins.PluginManager;
 import top.focess.veto.integration.plugins.PluginTestSupport;
-import top.focess.veto.integration.plugins.secrets.SecretProtectionConfiguration;
-import top.focess.veto.secret.api.CredentialImportAccess;
 import top.focess.veto.util.Nullness;
 import top.focess.veto.vault.KeysteadVault;
 
@@ -91,12 +88,11 @@ class CredentialImportIntegrationTest {
             verifyNoInteractions(vault);
             var permit =
                     gateway.revalidateExecution(call, definition, screened.executionPermit())
-                            .withCaller("agent", user, null, "alice", session);
+                            .withCaller("agent", user, "alice", session);
             ToolCallContextHolder.set(
                     new ToolCallContext(
                             "mate",
                             user,
-                            null,
                             "alice",
                             session,
                             ToolResultPresentationMode.BASIC,
@@ -107,7 +103,6 @@ class CredentialImportIntegrationTest {
                     new ToolCallContext(
                             "agent",
                             user,
-                            null,
                             "alice",
                             session,
                             ToolResultPresentationMode.BASIC,
@@ -139,7 +134,7 @@ class CredentialImportIntegrationTest {
     }
 
     private static @NonNull PluginHostServices hostServices(@NonNull KeysteadVault vault) {
-        return new SecretProtectionConfiguration()
+        return new HostResourceConfiguration()
                 .pluginHostServices(
                         PluginTestSupport.providerOf(vault), PluginTestSupport.providerOf(null));
     }
@@ -206,6 +201,34 @@ class CredentialImportIntegrationTest {
                     () -> access.authorize(reference, "github", "Repository"));
 
             installContext(call, definition, workspace, "alice", session, "agent");
+            var writer = access.authorize(reference, "github", "Repository").writer();
+            assertThrows(SecurityException.class, () -> writer.isUnlocked("bob"));
+            assertThrows(
+                    SecurityException.class,
+                    () ->
+                            writer.createImportedCredential(
+                                    "alice",
+                                    "other-reference",
+                                    "github",
+                                    "Repository",
+                                    "synthetic-token"));
+            assertThrows(
+                    SecurityException.class,
+                    () ->
+                            writer.createImportedCredential(
+                                    "alice",
+                                    reference,
+                                    "other-service",
+                                    "Repository",
+                                    "synthetic-token"));
+            assertThrows(
+                    SecurityException.class,
+                    () ->
+                            writer.createImportedCredential(
+                                    "alice", reference, "github", "Changed", "synthetic-token"));
+            // Even identical approved arguments on a new invocation do not renew a retained writer.
+            installContext(call, definition, workspace, "alice", session, "agent");
+            assertThrows(SecurityException.class, () -> writer.isUnlocked("alice"));
             assertThrows(
                     SecurityException.class,
                     () -> access.authorize(reference, "github", "Changed"));
@@ -311,26 +334,10 @@ class CredentialImportIntegrationTest {
         var user = UUID.randomUUID();
         var permit =
                 ToolExecutionPermit.capture(call, definition, workspace)
-                        .withCaller(agent, user, null, owner, session);
+                        .withCaller(agent, user, owner, session);
         ToolCallContextHolder.set(
                 new ToolCallContext(
-                        agent,
-                        user,
-                        null,
-                        owner,
-                        session,
-                        ToolResultPresentationMode.BASIC,
-                        permit));
+                        agent, user, owner, session, ToolResultPresentationMode.BASIC, permit));
         ToolCallContextHolder.setCurrentCallId(call.callId());
-    }
-
-    @Test
-    void rolesKeepImportWithinItsOwnBoundary() {
-        assertTrue(
-                RoleToolFilter.capabilitiesFor(Role.STANDALONE)
-                        .contains(ToolCapability.PRIVILEGED));
-        assertTrue(RoleToolFilter.capabilitiesFor(Role.MATE).contains(ToolCapability.PRIVILEGED));
-        assertFalse(
-                RoleToolFilter.capabilitiesFor(Role.LEADER).contains(ToolCapability.PRIVILEGED));
     }
 }

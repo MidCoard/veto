@@ -3,25 +3,27 @@ package top.focess.veto.builtin.tools;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.api.agent.capability.TaskControlCapability;
 import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.tool.Doc;
 import top.focess.veto.api.agent.tool.ParamCategory;
+import top.focess.veto.api.agent.tool.PreparedTool;
 import top.focess.veto.api.agent.tool.Required;
 import top.focess.veto.api.agent.tool.SecurityHint;
-import top.focess.veto.api.agent.tool.TaskControlTool;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.agent.tool.ToolDoc;
 import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.ToolErrorCode;
 import top.focess.veto.api.agent.tool.ToolErrors;
 import top.focess.veto.api.agent.tool.ToolJson;
+import top.focess.veto.api.agent.tool.ToolPreparation;
 import top.focess.veto.api.agent.tool.ToolResultFormat;
 import top.focess.veto.api.agent.tool.ToolSecurity;
+import top.focess.veto.api.plugin.PluginHost;
+import top.focess.veto.builtin.process.TaskControlCapability;
 
 /** Queues standard-input bytes to a background task owned by the calling agent. */
 @ToolSecurity(
-        capability = ToolCapability.TASK_CONTROL,
+        capability = ToolCapability.PROCESS_EXECUTION,
         defaultDanger = Danger.SAFE,
         requiresSemanticScreening = true)
 @ToolDoc(
@@ -73,7 +75,7 @@ import top.focess.veto.api.agent.tool.ToolSecurity;
             "{\"status\":\"queued\",\"taskId\":\"bg-3\",\"bytes\":0,\"newline\":false,\"closeQueued\":true}",
             "Task not running: bg-7"
         })
-public final class InputTaskTool implements TaskControlTool<InputTaskTool.Args> {
+public final class InputTaskTool implements PreparedTool<InputTaskTool.Args> {
     private final TaskControlCapability capability;
 
     public InputTaskTool() {
@@ -104,12 +106,25 @@ public final class InputTaskTool implements TaskControlTool<InputTaskTool.Args> 
     }
 
     @Override
+    public @NonNull ToolPreparation prepare(
+            @NonNull Args args, PluginHost.@NonNull Invocation invocation) {
+        byte[] content = args.content().getBytes(StandardCharsets.UTF_8);
+        byte[] bytes = args.appendNewline() ? Arrays.copyOf(content, content.length + 1) : content;
+        if (args.appendNewline()) bytes[content.length] = (byte) '\n';
+        return taskControlCapability()
+                .prepareInput(invocation, args.taskId(), bytes, args.closeStdin());
+    }
+
+    @Override
+    public @NonNull String execute(@NonNull Args args) {
+        return execute(args, taskControlCapability());
+    }
+
     public @NonNull TaskControlCapability taskControlCapability() {
         if (capability == null) throw new SecurityException("Host must supply tool capability");
         return capability;
     }
 
-    @Override
     public @NonNull String execute(@NonNull Args args, @NonNull TaskControlCapability capability) {
         if (args.content().isEmpty() && !args.appendNewline() && !args.closeStdin()) {
             return ToolErrors.failure(

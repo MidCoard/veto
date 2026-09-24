@@ -5,6 +5,7 @@ import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.tool.AgentTool;
 import top.focess.veto.api.agent.tool.CapabilityTool;
 import top.focess.veto.api.agent.tool.ToolDocs;
+import top.focess.veto.api.agent.tool.ToolPresentation;
 import top.focess.veto.api.agent.tool.ToolSecurity;
 import top.focess.veto.plugin.runtime.ManagedPlugin;
 
@@ -14,14 +15,41 @@ final class ToolRegistration {
 
     static RegisteredTool.@NonNull Local local(
             @NonNull CapabilityTool<?> tool, @NonNull String name, ManagedPlugin runtime) {
+        return local(tool, name, runtime, tool.getName());
+    }
+
+    static RegisteredTool.@NonNull Local local(
+            @NonNull CapabilityTool<?> tool,
+            @NonNull String name,
+            ManagedPlugin runtime,
+            @NonNull String localId) {
         Provenance provenance =
                 runtime == null
                         ? null
                         : new Provenance(
                                 runtime.identity().id(),
                                 runtime.bindingId(),
-                                runtime.identity().version());
+                                runtime.identity().version(),
+                                localId);
         LocalToolDefinition definition;
+        ToolPresentation presentation =
+                tool instanceof ToolPresentation callback
+                        ? workspace -> {
+                            try {
+                                return runtime == null
+                                        ? ToolCallContextHolder.withoutEffects(
+                                                () -> callback.describe(workspace))
+                                        : runtime.execute(
+                                                () ->
+                                                        ToolCallContextHolder.withoutEffects(
+                                                                () ->
+                                                                        callback.describe(
+                                                                                workspace)));
+                            } catch (Exception failure) {
+                                return new ToolPresentation.State(false, java.util.Map.of());
+                            }
+                        }
+                        : null;
         if (tool instanceof AgentTool<?>) {
             definition =
                     new AgentToolDefinition(
@@ -32,7 +60,8 @@ final class ToolRegistration {
                             tool.getClass(),
                             tool.getArgsClass(),
                             ToolSchemaCompiler.hintsOf(tool.getArgsClass()),
-                            provenance);
+                            provenance,
+                            presentation);
         } else {
             ToolSecurity security = ToolSchemaCompiler.securityOf(tool.getClass());
             definition =
@@ -45,7 +74,8 @@ final class ToolRegistration {
                             tool.getClass(),
                             tool.getArgsClass(),
                             ToolSchemaCompiler.hintsOf(tool.getArgsClass()),
-                            provenance);
+                            provenance,
+                            presentation);
         }
         return new RegisteredTool.Local(definition, tool, runtime);
     }

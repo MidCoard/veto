@@ -1,12 +1,13 @@
 package top.focess.veto.builtin.tools;
 
+import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.api.agent.capability.ProcessExecutionCapability;
 import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.tool.Doc;
 import top.focess.veto.api.agent.tool.ParamCategory;
-import top.focess.veto.api.agent.tool.ProcessExecutionTool;
+import top.focess.veto.api.agent.tool.PreparedTool;
 import top.focess.veto.api.agent.tool.SecurityHint;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.agent.tool.ToolDoc;
@@ -14,10 +15,15 @@ import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.ToolErrorCode;
 import top.focess.veto.api.agent.tool.ToolErrors;
 import top.focess.veto.api.agent.tool.ToolJson;
+import top.focess.veto.api.agent.tool.ToolPreparation;
 import top.focess.veto.api.agent.tool.ToolResultFormat;
 import top.focess.veto.api.agent.tool.ToolSecurity;
+import top.focess.veto.api.plugin.PluginHost;
+import top.focess.veto.api.plugin.contract.JsonValue;
+import top.focess.veto.api.process.ChainMode;
 import top.focess.veto.api.process.Command;
-import top.focess.veto.api.process.TaskInfo;
+import top.focess.veto.builtin.process.ProcessExecutionCapability;
+import top.focess.veto.builtin.process.TaskInfo;
 
 /**
  * {@code run_task} - launch a long-running command as a detached background task. Takes the same
@@ -95,7 +101,7 @@ import top.focess.veto.api.process.TaskInfo;
             "{\"status\": \"started\", \"taskId\": \"bg-6\", \"pid\": 12402, \"command\": \"python -m http.server 8000\", \"cwd\": \"/abs/project\", \"requestedTimeoutSeconds\": 3600, \"effectiveTimeoutSeconds\": 600}",
             "Invalid arguments: exactly one command is required (background mode does not chain); got 2."
         })
-public final class RunTaskTool implements ProcessExecutionTool<RunTaskTool.Args> {
+public final class RunTaskTool implements PreparedTool<RunTaskTool.Args> {
     private final ProcessExecutionCapability capability;
 
     public RunTaskTool() {
@@ -129,12 +135,31 @@ public final class RunTaskTool implements ProcessExecutionTool<RunTaskTool.Args>
     }
 
     @Override
+    public @NonNull ToolPreparation prepare(
+            @NonNull Args args, PluginHost.@NonNull Invocation invocation) {
+        if (args.commands().size() != 1)
+            throw new IllegalArgumentException("Exactly one background command is required");
+        return new ToolPreparation(
+                new ToolPreparation.ProcessIntent(
+                        args.commands().stream()
+                                .map(command -> new Command(command.executable(), command.args()))
+                                .toList(),
+                        ChainMode.STOP_ON_FAILURE,
+                        Boolean.TRUE.equals(args.network()),
+                        Duration.ofSeconds(args.timeout())),
+                new JsonValue.ObjectValue(Map.of()));
+    }
+
+    @Override
+    public @NonNull String execute(@NonNull Args args) {
+        return execute(args, processExecutionCapability());
+    }
+
     public @NonNull ProcessExecutionCapability processExecutionCapability() {
         if (capability == null) throw new SecurityException("Host must supply tool capability");
         return capability;
     }
 
-    @Override
     public @NonNull String execute(
             @NonNull Args args, @NonNull ProcessExecutionCapability capability) {
         int timeout = args.timeout();

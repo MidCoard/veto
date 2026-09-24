@@ -6,22 +6,28 @@ import static org.mockito.Mockito.when;
 
 import java.io.IOException;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Stream;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.NoSuchBeanDefinitionException;
 import org.springframework.beans.factory.ObjectProvider;
 import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.plugin.PluginBinding;
+import top.focess.veto.api.plugin.agent.AgentHost;
+import top.focess.veto.api.plugin.agent.AgentProfile;
 import top.focess.veto.api.plugin.contract.FrontendContribution;
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.contract.PluginFailure;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
 import top.focess.veto.api.plugin.contract.TextProtection;
 import top.focess.veto.api.plugin.contribution.ContributionPoint;
+import top.focess.veto.integration.plugins.storage.ConfigurationStorageFixture;
+import top.focess.veto.integration.plugins.storage.PluginStorageFactory;
 import top.focess.veto.model.SessionEntity;
 import top.focess.veto.model.SessionRepository;
 import top.focess.veto.plugin.runtime.*;
@@ -47,6 +53,16 @@ public final class PluginTestSupport {
             }
 
             @Override
+            public @NonNull Stream<T> stream() {
+                return value == null ? Stream.empty() : Stream.of(value);
+            }
+
+            @Override
+            public @NonNull Stream<T> orderedStream() {
+                return stream();
+            }
+
+            @Override
             public @NonNull Iterator<T> iterator() {
                 return value == null ? Collections.emptyIterator() : List.of(value).iterator();
             }
@@ -60,7 +76,37 @@ public final class PluginTestSupport {
 
     public static @NonNull PluginManager manager(@Nullable PluginHostServices services)
             throws IOException {
-        return new PluginManager("", "", false, 5000, providerOf(services));
+        return new PluginManager("", "", false, 5000, providerOf(configurationServices(services)));
+    }
+
+    /** Only configuration storage is provided; accidental child execution fails visibly. */
+    public static @NonNull PluginHostServices configurationServices(
+            @Nullable PluginHostServices services) {
+        Map<@NonNull Class<?>, @NonNull Object> merged = new HashMap<>();
+        merged.put(
+                ToolDocs.nonNullClass(PluginStorageFactory.class),
+                new ConfigurationStorageFixture());
+        PluginAgentHostFactory hosts =
+                (plugin, storage) ->
+                        scope -> {
+                            storage.session(scope);
+                            return new AgentHost.Session() {
+                                public @NonNull String id() {
+                                    return scope.sessionId();
+                                }
+
+                                public AgentHost.@NonNull Child open(
+                                        @NonNull String id,
+                                        @NonNull String parent,
+                                        @NonNull AgentProfile profile) {
+                                    throw new UnsupportedOperationException(
+                                            "Configuration fixture cannot execute children");
+                                }
+                            };
+                        };
+        merged.put(ToolDocs.nonNullClass(PluginAgentHostFactory.class), hosts);
+        if (services != null) merged.putAll(services.services());
+        return new PluginHostServices(merged);
     }
 
     /**
@@ -108,7 +154,16 @@ public final class PluginTestSupport {
             TextProtection.@NonNull Scope scope,
             @NonNull String reference)
             throws PluginFailure {
-        var entry = manager.catalog().entries(StandardContributionPoints.FRONTEND).getFirst();
+        var entry =
+                manager.catalog().entries(StandardContributionPoints.FRONTEND).stream()
+                        .filter(
+                                candidate ->
+                                        candidate
+                                                .source()
+                                                .namespace()
+                                                .equals("top.focess.secret-protection"))
+                        .findFirst()
+                        .orElseThrow();
         JsonValue result =
                 manager.plugin(entry.source().namespace())
                         .execute(

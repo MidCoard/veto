@@ -10,7 +10,6 @@ import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.test.util.ReflectionTestUtils;
-import top.focess.veto.agent.identity.RoleToolFilter;
 import top.focess.veto.agent.identity.SystemPromptResolver;
 import top.focess.veto.agent.intercept.HitlRegistry;
 import top.focess.veto.agent.intercept.IngressDefense;
@@ -26,8 +25,6 @@ import top.focess.veto.llm.core.UniformLLMCaller;
 import top.focess.veto.memory.TurnLogService;
 import top.focess.veto.memory.TurnRecordEntity;
 import top.focess.veto.memory.TurnRecordRepository;
-import top.focess.veto.sandbox.BackgroundTaskManager;
-import top.focess.veto.sandbox.SandboxManager;
 
 /**
  * Verifies the turn-log wiring end-to-end: an agent's {@code appendTurn} (driven by a submitted
@@ -61,18 +58,12 @@ class TurnLogWiringTest {
                         callerFinishingImmediately(),
                         mapper,
                         List.of(),
-                        new RoleToolFilter(new TestToolEngine()),
                         "REAL",
                         50L,
-                        1000,
                         "FULL_ACCESS",
                         "STRICT",
                         null,
-                        turnLog,
-                        new BackgroundTaskManager(
-                                new SandboxManager(
-                                        new top.focess.veto.sandbox
-                                                .ConstrainedSubprocessSubstrate())));
+                        turnLog);
 
         AgentResult result =
                 service.submit(

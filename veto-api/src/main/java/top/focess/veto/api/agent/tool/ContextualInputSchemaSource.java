@@ -12,7 +12,7 @@ public interface ContextualInputSchemaSource extends InputSchemaSource {
     record Context(
             @NonNull List<ToolDefinition> tools,
             @NonNull Set<String> localTools,
-            @NonNull Map<String, ResponseSubmission.Kind> submissions) {
+            @NonNull Map<String, ControlSubmission.Kind> submissions) {
         public Context {
             tools = List.copyOf(tools);
             localTools = Set.copyOf(localTools);

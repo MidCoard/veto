@@ -1,6 +1,8 @@
 package top.focess.veto.agent.tool;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.databind.node.TextNode;
 import java.lang.reflect.AnnotatedArrayType;
 import java.lang.reflect.AnnotatedParameterizedType;
@@ -11,6 +13,7 @@ import java.util.Collections;
 import java.util.Iterator;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.agent.tool.RequiredWhen;
 import top.focess.veto.api.agent.tool.ToolDocs;
@@ -27,14 +30,14 @@ public final class NativeToolArgumentValidator {
 
     public static void validate(
             @NonNull String toolName, @NonNull JsonNode arguments, @NonNull Class<?> argsClass) {
-        validate(toolName, arguments, argsClass, false);
+        validate(toolName, arguments, argsClass, Set.of());
     }
 
     public static void validate(
             @NonNull String toolName,
             @NonNull JsonNode arguments,
             @NonNull Class<?> argsClass,
-            boolean allowBindings) {
+            @NonNull Set<String> deferredPaths) {
         JsonNode schema = ToolSchemaCompiler.compileFromRecord(argsClass);
         List<String> issues = new ArrayList<>();
         validateNode(
@@ -43,7 +46,7 @@ public final class NativeToolArgumentValidator {
                 "",
                 issues,
                 !argsClass.isAnnotationPresent(ToolDocs.nonNullClass(ToolInputSchema.class)),
-                allowBindings);
+                deferredPaths);
         validateConditionalRequirements(arguments, argsClass, "", issues);
         throwIfInvalid(toolName, schema, issues);
     }
@@ -51,18 +54,77 @@ public final class NativeToolArgumentValidator {
     /** Validates a contextual schema, including tool catalog constraints captured for a request. */
     public static void validateAgainstSchema(
             @NonNull String toolName, @NonNull JsonNode arguments, @NonNull JsonNode schema) {
-        validateAgainstSchema(toolName, arguments, schema, false);
+        validateAgainstSchema(toolName, arguments, schema, Set.of());
     }
 
-    /** During plan preflight, defer only individual references; validate all known siblings. */
+    /** Defers only explicitly named preflight paths; execution always validates every argument. */
     public static void validateAgainstSchema(
             @NonNull String toolName,
             @NonNull JsonNode arguments,
             @NonNull JsonNode schema,
-            boolean allowBindings) {
+            @NonNull Set<String> deferredPaths) {
         List<String> issues = new ArrayList<>();
-        validateNode(arguments, schema, "", issues, false, allowBindings);
+        JsonNode resolved = resolveReferences(schema, schema, new LinkedHashSet<>(), issues, 0);
+        validateNode(arguments, resolved, "", issues, false, deferredPaths);
         throwIfInvalid(toolName, schema, issues);
+    }
+
+    private static @NonNull JsonNode resolveReferences(
+            @NonNull JsonNode node,
+            @NonNull JsonNode root,
+            @NonNull Set<String> resolving,
+            @NonNull List<String> issues,
+            int depth) {
+        if (depth > 64) {
+            issues.add("tool schema reference depth exceeds 64");
+            return node;
+        }
+        JsonNode reference = node.path("$ref");
+        if (reference.isTextual()) {
+            String pointer = reference.asText();
+            if (!pointer.startsWith("#/")) {
+                issues.add("tool schema contains an unsupported reference");
+                return node;
+            }
+            if (!resolving.add(pointer)) {
+                issues.add("tool schema contains a cyclic reference");
+                return node;
+            }
+            JsonNode target = root.at(pointer.substring(1));
+            if (target.isMissingNode()) {
+                issues.add("tool schema contains an unresolved reference");
+                resolving.remove(pointer);
+                return node;
+            }
+            JsonNode resolved = resolveReferences(target, root, resolving, issues, depth + 1);
+            resolving.remove(pointer);
+            return resolved;
+        }
+        if (node.isObject()) {
+            ObjectNode resolved = ((ObjectNode) node).deepCopy();
+            node.properties()
+                    .forEach(
+                            entry ->
+                                    resolved.set(
+                                            entry.getKey(),
+                                            resolveReferences(
+                                                    entry.getValue(),
+                                                    root,
+                                                    resolving,
+                                                    issues,
+                                                    depth + 1)));
+            return resolved;
+        }
+        if (node.isArray()) {
+            ArrayNode resolved = ((ArrayNode) node).deepCopy();
+            for (int index = 0; index < node.size(); index++)
+                resolved.set(
+                        index,
+                        resolveReferences(
+                                node.path(index), root, resolving, issues, depth + 1));
+            return resolved;
+        }
+        return node;
     }
 
     private static void throwIfInvalid(
@@ -173,36 +235,19 @@ public final class NativeToolArgumentValidator {
             @NonNull String path,
             @NonNull List<String> issues,
             boolean javaNulls,
-            boolean allowBindings) {
-        validateNode(originalValue, schema, path, issues, javaNulls, allowBindings, false);
-    }
-
-    private static void validateNode(
-            @NonNull JsonNode originalValue,
-            @NonNull JsonNode schema,
-            @NonNull String path,
-            @NonNull List<String> issues,
-            boolean javaNulls,
-            boolean allowBindings,
-            boolean currentResolved) {
+            @NonNull Set<String> deferredPaths) {
         if (schema.isBoolean()) {
             if (!schema.asBoolean())
                 issues.add("parameter '" + displayPath(path) + "' is forbidden by its schema");
             return;
         }
         JsonNode value = originalValue;
-        if (allowBindings && !currentResolved && value.isTextual()) {
-            String text = value.asText();
-            if (text.startsWith("$") && !text.startsWith("$$")) return;
-            // Escape once, before matching literals; recursive anyOf checks must not unescape
-            // again.
-            if (text.startsWith("$$")) value = TextNode.valueOf(text.substring(1));
-        }
+        if (deferredPaths.contains(path)) return;
         var variants = schema.path("anyOf");
         if (variants.isArray()) {
             List<JsonNode> choices = new ArrayList<>();
             variants.forEach(choices::add);
-            validateVariants(value, choices, path, issues, javaNulls, allowBindings);
+            validateVariants(value, choices, path, issues, javaNulls, deferredPaths);
         }
         JsonNode type = schema.path("type");
         if ((path.isEmpty() && !value.isObject()) || !matchesType(value, type, javaNulls)) {
@@ -237,7 +282,7 @@ public final class NativeToolArgumentValidator {
                             childPath(path, name),
                             issues,
                             javaNulls,
-                            false);
+                            Set.of());
                 boolean matchedProperty = properties.has(name);
                 for (var pattern : schema.path("patternProperties").properties()) {
                     if (!java.util.regex.Pattern.compile(pattern.getKey()).matcher(name).find())
@@ -249,7 +294,7 @@ public final class NativeToolArgumentValidator {
                             childPath(path, name),
                             issues,
                             javaNulls,
-                            allowBindings);
+                            deferredPaths);
                 }
                 if (!matchedProperty) {
                     var additional = schema.path("additionalProperties");
@@ -262,7 +307,7 @@ public final class NativeToolArgumentValidator {
                                 childPath(path, name),
                                 issues,
                                 javaNulls,
-                                allowBindings);
+                                deferredPaths);
                 }
             }
             for (JsonNode required : schema.path("required")) {
@@ -278,7 +323,7 @@ public final class NativeToolArgumentValidator {
                             childPath(path, name),
                             issues,
                             javaNulls,
-                            allowBindings);
+                            deferredPaths);
             }
         } else if (value.isArray()) {
             if (schema.has("minItems") && value.size() < schema.path("minItems").asInt())
@@ -292,7 +337,7 @@ public final class NativeToolArgumentValidator {
                         path + "[" + i + "]",
                         issues,
                         javaNulls,
-                        allowBindings);
+                        deferredPaths);
         } else if (value.isTextual()) {
             String text = value.asText();
             int length = text.codePointCount(0, text.length());
@@ -325,7 +370,7 @@ public final class NativeToolArgumentValidator {
             @NonNull String path,
             @NonNull List<String> issues,
             boolean javaNulls,
-            boolean allowBindings) {
+            @NonNull Set<String> deferredPaths) {
         if (value.isObject() && variants.size() > 1) {
             for (String key : fieldNames(variants.getFirst().path("properties"))) {
                 var allowed = new LinkedHashSet<JsonNode>();
@@ -365,12 +410,7 @@ public final class NativeToolArgumentValidator {
                     return;
                 }
                 JsonNode selectedValue = value.path(key);
-                if (allowBindings
-                        && selectedValue.isTextual()
-                        && selectedValue.asText().startsWith("$")) {
-                    if (!selectedValue.asText().startsWith("$$")) continue;
-                    selectedValue = TextNode.valueOf(selectedValue.asText().substring(1));
-                }
+                if (deferredPaths.contains(childPath(path, key))) continue;
                 List<JsonNode> matching = new ArrayList<>();
                 for (var variant : variants)
                     if (containsValue(
@@ -385,19 +425,19 @@ public final class NativeToolArgumentValidator {
                     return;
                 }
                 if (matching.size() < variants.size()) {
-                    validateVariants(value, matching, path, issues, javaNulls, allowBindings);
+                    validateVariants(value, matching, path, issues, javaNulls, deferredPaths);
                     return;
                 }
             }
         }
         if (variants.size() == 1) {
-            validateNode(value, variants.getFirst(), path, issues, javaNulls, allowBindings, true);
+            validateNode(value, variants.getFirst(), path, issues, javaNulls, deferredPaths);
             return;
         }
         List<List<String>> failures = new ArrayList<>();
         for (var variant : variants) {
             List<String> candidate = new ArrayList<>();
-            validateNode(value, variant, path, candidate, javaNulls, allowBindings, true);
+            validateNode(value, variant, path, candidate, javaNulls, deferredPaths);
             if (candidate.isEmpty()) return;
             failures.add(candidate);
         }

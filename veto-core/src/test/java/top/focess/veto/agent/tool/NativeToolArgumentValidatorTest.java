@@ -4,11 +4,13 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.util.HashSet;
 import java.util.List;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.ToolExecutionException;
+import top.focess.veto.builtin.planning.PlanPreflight;
 import top.focess.veto.builtin.planning.SubmitPlanTool;
 
 class NativeToolArgumentValidatorTest {
@@ -109,10 +111,7 @@ class NativeToolArgumentValidatorTest {
                         """
                 {"items":[{"kind":"amount","value":"$unknown"},{"kind":"literal","value":"$$price"}]}
                 """);
-        assertDoesNotThrow(
-                () ->
-                        NativeToolArgumentValidator.validateAgainstSchema(
-                                "sample", valid, schema, true));
+        assertDoesNotThrow(() -> validatePrepared(valid, schema));
         var bad =
                 mapper.readTree(
                         """
@@ -121,17 +120,13 @@ class NativeToolArgumentValidatorTest {
         var error =
                 assertThrows(
                         ToolDocs.nonNullClass(ToolExecutionException.class),
-                        () ->
-                                NativeToolArgumentValidator.validateAgainstSchema(
-                                        "sample", bad, schema, true));
+                        () -> validatePrepared(bad, schema));
         assertTrue(String.valueOf(error.getMessage()).contains("items[1].value"));
         var doubleEscaped =
                 mapper.readTree("{\"items\":[{\"kind\":\"literal\",\"value\":\"$$$price\"}]}");
         assertThrows(
                 ToolDocs.nonNullClass(ToolExecutionException.class),
-                () ->
-                        NativeToolArgumentValidator.validateAgainstSchema(
-                                "sample", doubleEscaped, schema, true));
+                () -> validatePrepared(doubleEscaped, schema));
     }
 
     @Test
@@ -203,5 +198,11 @@ class NativeToolArgumentValidatorTest {
                                         args,
                                         ToolDocs.nonNullClass(SubmitPlanTool.Args.class)));
         return String.valueOf(error.getMessage());
+    }
+
+    private void validatePrepared(@NonNull JsonNode input, @NonNull JsonNode schema) {
+        var paths = new HashSet<String>();
+        var prepared = PlanPreflight.prepare(input, "", paths);
+        NativeToolArgumentValidator.validateAgainstSchema("sample", prepared, schema, paths);
     }
 }

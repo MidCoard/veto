@@ -1,14 +1,20 @@
 package top.focess.veto.builtin.tools;
 
+import java.util.List;
+import java.util.Map;
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.api.agent.capability.SkillReadCapability;
+import top.focess.veto.api.agent.tool.AgentTool;
 import top.focess.veto.api.agent.tool.Doc;
-import top.focess.veto.api.agent.tool.SkillReadTool;
+import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.agent.tool.ToolDoc;
 import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.ToolErrorCode;
 import top.focess.veto.api.agent.tool.ToolErrors;
+import top.focess.veto.api.agent.tool.ToolPresentation;
+import top.focess.veto.api.agent.tool.ToolPrompt;
 import top.focess.veto.api.agent.tool.ToolResultFormat;
+import top.focess.veto.api.resources.CatalogueTree;
+import top.focess.veto.builtin.skills.SkillRuntime;
 
 /**
  * {@code load_skill} — load a skill's full instructions into context as an observation, so the
@@ -68,16 +74,26 @@ import top.focess.veto.api.agent.tool.ToolResultFormat;
             "# git-rebase\n1. Fetch the target branch, then replay local commits ...",
             "Skill not found: 'deploy' is not registered or its stored content failed verification."
         })
-public final class LoadSkillTool implements SkillReadTool<LoadSkillTool.Args> {
+@ToolPrompt("builtin-skills")
+public final class LoadSkillTool implements AgentTool<LoadSkillTool.Args>, ToolPresentation {
 
-    private final SkillReadCapability capability;
+    private final SkillRuntime runtime;
 
     public LoadSkillTool() {
-        this.capability = null;
+        this.runtime = null;
     }
 
-    public LoadSkillTool(@NonNull SkillReadCapability capability) {
-        this.capability = capability;
+    public LoadSkillTool(@NonNull SkillRuntime runtime) {
+        this.runtime = runtime;
+    }
+
+    public @NonNull ToolCapability getCapability() {
+        return ToolCapability.PLUGIN_LOCAL;
+    }
+
+    public @NonNull State describe(@NonNull CatalogueTree workspace) {
+        var catalogue = runtime == null ? List.of() : runtime.catalogue(workspace);
+        return new State(!catalogue.isEmpty(), Map.of("skills", catalogue));
     }
 
     @Override
@@ -91,15 +107,9 @@ public final class LoadSkillTool implements SkillReadTool<LoadSkillTool.Args> {
     }
 
     @Override
-    public @NonNull SkillReadCapability skillReadCapability() {
-        if (capability == null) throw new SecurityException("Host must supply tool capability");
-        return capability;
-    }
-
-    @Override
-    public @NonNull String execute(@NonNull Args args, @NonNull SkillReadCapability capability)
-            throws Exception {
-        var skill = capability.load(args.skillName());
+    public @NonNull String execute(@NonNull Args args) throws Exception {
+        if (runtime == null) throw new SecurityException("Skill runtime unavailable");
+        var skill = runtime.load(args.skillName());
         if (skill.isEmpty()) {
             return ToolErrors.failure(
                     ToolErrorCode.VALIDATION.SKILL_NOT_FOUND,
@@ -107,7 +117,7 @@ public final class LoadSkillTool implements SkillReadTool<LoadSkillTool.Args> {
                             + args.skillName()
                             + "' is not registered or its stored content failed verification.");
         }
-        String instructions = skill.get().promptInstructions();
+        String instructions = skill.get();
         return instructions == null
                 ? ToolErrors.failure(
                         ToolErrorCode.GENERIC.TOOL_FAILURE,

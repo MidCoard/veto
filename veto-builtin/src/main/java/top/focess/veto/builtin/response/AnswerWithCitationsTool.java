@@ -1,20 +1,24 @@
 package top.focess.veto.builtin.response;
 
+import java.util.ArrayList;
 import java.util.List;
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.api.agent.capability.ResponseCapability;
-import top.focess.veto.api.agent.response.ResponseRequest;
+import top.focess.veto.api.agent.control.ControlHost;
+import top.focess.veto.api.agent.control.SourceEvidence;
 import top.focess.veto.api.agent.tool.*;
 import top.focess.veto.api.agent.tool.ArraySize;
+import top.focess.veto.api.agent.tool.ControlSubmission;
+import top.focess.veto.api.agent.tool.ControlTool;
 import top.focess.veto.api.agent.tool.Doc;
-import top.focess.veto.api.agent.tool.ResponseSubmission;
-import top.focess.veto.api.agent.tool.ResponseTool;
 import top.focess.veto.api.agent.tool.StringConstraint;
 import top.focess.veto.api.agent.tool.ToolDoc;
 import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.ToolResultFormat;
+import top.focess.veto.api.llm.VetoResponse;
+import top.focess.veto.api.llm.exceptions.ModelSchemaException;
 
-@ResponseSubmission(ResponseSubmission.Kind.ANSWER)
+@ControlSubmission(ControlSubmission.Kind.FINISH)
+@ToolPrompt("builtin-sourced-answers")
 @ToolDoc(
         description =
                 "Use only for answers that need verified, clickable citations to conversation text or tool results. Ordinary answers use plain text, without this tool. Supply message with [label](cite:id) links and a nonempty citations array of exact source quotes. Call this tool alone; it publishes the answer.",
@@ -45,14 +49,14 @@ import top.focess.veto.api.agent.tool.ToolResultFormat;
             "{\"status\":\"accepted\"}",
             "Citation rejected: Citation deadline: quote was not found in visible conversation evidence. Copy a longer exact passage from the source; do not paraphrase or invent a message index."
         })
-public final class AnswerWithCitationsTool implements ResponseTool<AnswerWithCitationsTool.Args> {
-    private final ResponseCapability capability;
+public final class AnswerWithCitationsTool implements ControlTool<AnswerWithCitationsTool.Args> {
+    private final ControlHost capability;
 
     public AnswerWithCitationsTool() {
         this.capability = null;
     }
 
-    public AnswerWithCitationsTool(@NonNull ResponseCapability capability) {
+    public AnswerWithCitationsTool(@NonNull ControlHost capability) {
         this.capability = capability;
     }
 
@@ -67,30 +71,51 @@ public final class AnswerWithCitationsTool implements ResponseTool<AnswerWithCit
     }
 
     @Override
-    public @NonNull ResponseCapability responseCapability() {
-        if (capability == null) throw new SecurityException("Host must supply loop control");
+    public @NonNull ControlHost controlHost() {
         if (capability == null) throw new SecurityException("Host must supply tool capability");
         return capability;
     }
 
     @Override
-    public @NonNull String execute(@NonNull Args args, @NonNull ResponseCapability capability)
+    public @NonNull String execute(@NonNull Args args, @NonNull ControlHost capability)
             throws Exception {
-        var citations =
-                args.citations().stream()
-                        .map(
-                                c ->
-                                        new ResponseRequest.Citation(
-                                                c.id(),
-                                                c.sources().stream()
-                                                        .map(
-                                                                s ->
-                                                                        new ResponseRequest.Source(
-                                                                                s.message_index(),
-                                                                                s.quote()))
-                                                        .toList()))
-                        .toList();
-        capability.answerWithCitations(new ResponseRequest.Answer(args.message(), citations));
+        var citations = new ArrayList<SourceEvidence.Declaration>();
+        for (var citation : args.citations()) {
+            var selectors = new ArrayList<SourceEvidence.Selector>();
+            for (var source : citation.sources())
+                selectors.add(new SourceEvidence.Selector(source.message_index(), source.quote()));
+            citations.add(new SourceEvidence.Declaration(citation.id(), selectors));
+        }
+        try {
+            if (citations.isEmpty())
+                throw new IllegalArgumentException(
+                        "answer_with_citations requires at least one linked source. Reply in ordinary text when the answer does not need verified citation links.");
+            var formatting = new ArrayList<VetoResponse.Citation>();
+            for (var citation : citations) {
+                var sources = new ArrayList<VetoResponse.Source>();
+                for (var source : citation.sources())
+                    sources.add(new VetoResponse.Source(-1, source.quote()));
+                formatting.add(new VetoResponse.Citation(citation.id(), sources));
+            }
+            ResponseEnforcer.enforce(new VetoResponse(null, null, args.message(), formatting));
+            var inspected = capability.evidence().inspect(citations);
+            if (!inspected.issues().isEmpty()) {
+                var issue = inspected.issues().getFirst();
+                throw new IllegalArgumentException(
+                        "Citation "
+                                + issue.id()
+                                + " could not match the exact quote in input message "
+                                + issue.messageIndex()
+                                + "; omit message_index and provide an exact quote from a successful source. If the runtime returns ambiguous candidates, select one of those indices.");
+            }
+            capability.finish(args.message(), inspected.receipt());
+        } catch (IllegalArgumentException | ModelSchemaException error) {
+            throw new ToolExecutionException(
+                    ToolResultStatus.FAILURE,
+                    ToolResultFormat.PLAINTEXT,
+                    ToolErrorCode.VALIDATION.INVALID_CITATION,
+                    "Citation rejected: " + error.getMessage());
+        }
         return "{\"status\":\"accepted\"}";
     }
 

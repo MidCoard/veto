@@ -11,7 +11,9 @@ public enum TurnType {
     TOKEN_USAGE,
     /** A user interrupt/feedback mid-episode. */
     USER_INTERRUPT,
-    /** A sourced runtime observation, never a new user request. */
+    /** A sourced plugin/runtime observation, never a new user request. */
+    RUNTIME_EVENT,
+    /** Read compatibility for existing histories; new plugins use RUNTIME_EVENT. */
     MONITOR_EVENT,
     /** Operational reasoning text. Older records may contain legacy response JSON. */
     ASSISTANT_THOUGHT,

@@ -2,23 +2,27 @@ package top.focess.veto.builtin.tools;
 
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.api.agent.capability.ProcessExecutionCapability;
 import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.tool.Doc;
 import top.focess.veto.api.agent.tool.ParamCategory;
-import top.focess.veto.api.agent.tool.ProcessExecutionTool;
+import top.focess.veto.api.agent.tool.PreparedTool;
 import top.focess.veto.api.agent.tool.SecurityHint;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.agent.tool.ToolDoc;
 import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.ToolErrorCode;
 import top.focess.veto.api.agent.tool.ToolErrors;
+import top.focess.veto.api.agent.tool.ToolPreparation;
 import top.focess.veto.api.agent.tool.ToolResultFormat;
 import top.focess.veto.api.agent.tool.ToolSecurity;
+import top.focess.veto.api.plugin.PluginHost;
+import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.process.ChainMode;
 import top.focess.veto.api.process.Command;
 import top.focess.veto.api.process.CommandResult;
+import top.focess.veto.builtin.process.ProcessExecutionCapability;
 
 /** Executes screened commands through the sandbox using the standard native-tool path. */
 @ToolSecurity(capability = ToolCapability.PROCESS_EXECUTION, defaultDanger = Danger.ELEVATED)
@@ -93,7 +97,7 @@ import top.focess.veto.api.process.CommandResult;
             "BUILD SUCCESSFUL in 45s",
             "\n[stderr]\nCreateProcessW(AppContainer) failed (Win32 error=2)\r\n\n(exit code: 125)"
         })
-public final class RunCommandTool implements ProcessExecutionTool<RunCommandTool.Args> {
+public final class RunCommandTool implements PreparedTool<RunCommandTool.Args> {
     private final ProcessExecutionCapability capability;
 
     public RunCommandTool() {
@@ -148,12 +152,30 @@ public final class RunCommandTool implements ProcessExecutionTool<RunCommandTool
     }
 
     @Override
+    public @NonNull ToolPreparation prepare(
+            @NonNull Args args, PluginHost.@NonNull Invocation invocation) {
+
+        return new ToolPreparation(
+                new ToolPreparation.ProcessIntent(
+                        args.commands().stream()
+                                .map(command -> new Command(command.executable(), command.args()))
+                                .toList(),
+                        args.connect() == null ? ChainMode.STOP_ON_FAILURE : args.connect(),
+                        Boolean.TRUE.equals(args.network()),
+                        Duration.ofSeconds(args.timeout())),
+                new JsonValue.ObjectValue(Map.of()));
+    }
+
+    @Override
+    public @NonNull String execute(@NonNull Args args) {
+        return execute(args, processExecutionCapability());
+    }
+
     public @NonNull ProcessExecutionCapability processExecutionCapability() {
         if (capability == null) throw new SecurityException("Host must supply tool capability");
         return capability;
     }
 
-    @Override
     public @NonNull String execute(
             @NonNull Args args, @NonNull ProcessExecutionCapability capability) {
         if (args.timeout() < 0)

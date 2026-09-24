@@ -22,6 +22,13 @@ public interface VetoPlugin extends AutoCloseable {
 
     void start() throws PluginFailure;
 
+    /**
+     * Admission has closed. Cancel plugin-owned blocking waits without waiting for handlers to
+     * drain; ordinary resources remain usable by admitted handlers until close. Called once on the
+     * lifecycle executor, including failure and partial initialization.
+     */
+    default void stopping() throws PluginFailure {}
+
     @Override
     void close() throws PluginFailure;
 }

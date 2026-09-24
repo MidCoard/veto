@@ -2,14 +2,12 @@ package top.focess.veto.builtin.web;
 
 import java.util.List;
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.api.agent.capability.WebDocumentCapability;
 import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.tool.Doc;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.agent.tool.ToolDoc;
 import top.focess.veto.api.agent.tool.ToolResultFormat;
 import top.focess.veto.api.agent.tool.ToolSecurity;
-import top.focess.veto.api.agent.tool.WebDocumentTool;
 
 /** Invocation-local tool; deliberately not registered as a Spring component. */
 @ToolSecurity(capability = ToolCapability.NETWORK_EGRESS, defaultDanger = Danger.SAFE)

@@ -8,13 +8,13 @@ import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.api.agent.tool.CapabilityTool;
 import top.focess.veto.api.agent.tool.ToolDocs;
+import top.focess.veto.api.credentials.CredentialImportAccess;
+import top.focess.veto.api.credentials.CredentialWriter;
 import top.focess.veto.api.plugin.PluginState;
 import top.focess.veto.api.plugin.contract.PluginFailure;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
 import top.focess.veto.api.plugin.contract.TextProtection;
 import top.focess.veto.plugin.runtime.*;
-import top.focess.veto.secret.api.CredentialImportAccess;
-import top.focess.veto.secret.api.CredentialWriter;
 import top.focess.veto.util.Nullness;
 
 /**

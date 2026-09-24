@@ -1,15 +1,12 @@
 package top.focess.veto.builtin.web;
 
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.api.agent.capability.WebDocumentCapability;
 import top.focess.veto.api.agent.screening.Danger;
-import top.focess.veto.api.agent.tool.ReaderExecutionResult;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.agent.tool.ToolDoc;
 import top.focess.veto.api.agent.tool.ToolResultFormat;
 import top.focess.veto.api.agent.tool.ToolSecurity;
-import top.focess.veto.api.agent.tool.WebDocumentTool;
-import top.focess.veto.api.web.FinishReadArgs;
+import top.focess.veto.builtin.web.model.FinishReadArgs;
 
 /** Invocation-local tool; deliberately not registered as a Spring component. */
 @ToolSecurity(capability = ToolCapability.NETWORK_EGRESS, defaultDanger = Danger.SAFE)
@@ -41,7 +38,6 @@ import top.focess.veto.api.web.FinishReadArgs;
             "{\"outcome\":\"not_found\",\"answer\":\"The retained document does not state any rate limit.\",\"evidenceIds\":[],\"limitations\":[\"All 6 retained sections were inspected; the page may be truncated before any rate-limit section.\"]}",
             "{\"outcome\":\"done\",\"answer\":\"The timeout is 30 seconds.\",\"evidenceIds\":[\"s1\"],\"limitations\":[]}"
         })
-@ReaderExecutionResult
 public final class FinishReadTool implements WebDocumentTool<FinishReadArgs> {
 
     private final @NonNull WebDocumentCapability document;

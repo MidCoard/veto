@@ -1,8 +1,8 @@
 package top.focess.veto.agent.tool.builtin;
 
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.api.agent.capability.ResponseCapability;
-import top.focess.veto.api.agent.tool.ResponseTool;
+import top.focess.veto.api.agent.tool.AgentTool;
+import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.agent.tool.ToolDoc;
 import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.ToolResultFormat;
@@ -19,13 +19,7 @@ import top.focess.veto.api.agent.tool.ToolResultFormat;
         resultFormats = {ToolResultFormat.PLAINTEXT},
         examples = {"{}"},
         returnExamples = {"fixture result"})
-public final class FixtureLoopTool implements ResponseTool<FixtureLoopTool.Args> {
-    private final @NonNull ResponseCapability capability;
-
-    public FixtureLoopTool(@NonNull ResponseCapability capability) {
-        this.capability = capability;
-    }
-
+public final class FixtureLoopTool implements AgentTool<FixtureLoopTool.Args> {
     @Override
     public @NonNull String getName() {
         return "fixture_loop";
@@ -36,13 +30,12 @@ public final class FixtureLoopTool implements ResponseTool<FixtureLoopTool.Args>
         return ToolDocs.nonNullClass(Args.class);
     }
 
-    @Override
-    public @NonNull ResponseCapability responseCapability() {
-        return capability;
+    public @NonNull ToolCapability getCapability() {
+        return ToolCapability.LOOP_CONTROL;
     }
 
     @Override
-    public @NonNull String execute(@NonNull Args args, @NonNull ResponseCapability access) {
+    public @NonNull String execute(@NonNull Args args) {
         return "fixture result";
     }
 

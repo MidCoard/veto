@@ -128,6 +128,8 @@ public final class ToolContractValidator {
     private static void validateNative(@NonNull NativeToolDefinition definition) {
         boolean hasPath = definition.paramHints().containsValue(ParamCategory.FILESYSTEM_PATH);
         boolean hasCommand = definition.paramHints().containsValue(ParamCategory.SHELL_COMMAND);
+        boolean hasProcessInput =
+                definition.paramHints().containsValue(ParamCategory.PROCESS_INPUT);
         switch (definition.capability()) {
             case WORKSPACE_READ ->
                     require(
@@ -142,24 +144,20 @@ public final class ToolContractValidator {
             case PROCESS_EXECUTION ->
                     require(
                             definition,
-                            !hasPath && hasCommand,
-                            "PROCESS_EXECUTION requires SHELL_COMMAND parameters; its working directory comes from the session permit, not a FILESYSTEM_PATH argument");
+                            !hasPath && (hasCommand || hasProcessInput),
+                            "PROCESS_EXECUTION requires SHELL_COMMAND or PROCESS_INPUT parameters; its working directory comes from the session permit, not a FILESYSTEM_PATH argument");
             case TASK_CONTROL ->
                     require(
                             definition,
                             !hasPath && !hasCommand,
                             "TASK_CONTROL must not accept host path/command arguments");
-            case NETWORK_EGRESS, PRIVILEGED -> {
+            case NETWORK_EGRESS, PRIVILEGED, USER_INTERACTION -> {
                 // URL arguments are optional because some network tools use deployer-fixed hosts.
             }
-            case SKILL_READ,
-                    MEMORY_READ,
-                    MEMORY_WRITE,
-                    LOOP_CONTROL,
+            case LOOP_CONTROL,
                     DELEGATION,
                     GROUP_CONTROL,
-                    MONITOR_CONTROL,
-                    USER_INTERACTION,
+                    PLUGIN_LOCAL,
                     AGENT_CONTROL,
                     REMOTE_UNKNOWN ->
                     throw invalid(
@@ -183,14 +181,7 @@ public final class ToolContractValidator {
                     "agent tools may not early-route with filesystem, command, or URL parameters");
         }
         switch (definition.capability()) {
-            case SKILL_READ,
-                    MEMORY_READ,
-                    MEMORY_WRITE,
-                    LOOP_CONTROL,
-                    DELEGATION,
-                    GROUP_CONTROL,
-                    MONITOR_CONTROL,
-                    USER_INTERACTION -> {
+            case LOOP_CONTROL, DELEGATION, GROUP_CONTROL, PLUGIN_LOCAL, USER_INTERACTION -> {
                 // These capabilities execute through typed, caller-scoped runtime services.
             }
             case AGENT_CONTROL ->

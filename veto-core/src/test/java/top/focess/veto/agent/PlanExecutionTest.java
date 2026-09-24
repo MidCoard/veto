@@ -20,9 +20,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.springframework.context.ApplicationContext;
 import org.springframework.test.util.ReflectionTestUtils;
-import top.focess.veto.agent.capability.ProcessExecutionCapabilityImpl;
 import top.focess.veto.agent.capability.ProtectedWorkspaceReadCapabilityImpl;
-import top.focess.veto.agent.capability.ResponseCapabilityImpl;
 import top.focess.veto.agent.identity.*;
 import top.focess.veto.agent.intercept.*;
 import top.focess.veto.agent.loop.PromptCompiler;
@@ -34,7 +32,7 @@ import top.focess.veto.agent.workspace.*;
 import top.focess.veto.api.agent.ToolCallEvent;
 import top.focess.veto.api.agent.tool.AgentTool;
 import top.focess.veto.api.agent.tool.ToolDocs;
-import top.focess.veto.api.agent.workflow.PlanStepContext;
+import top.focess.veto.api.agent.workflow.ActionContext;
 import top.focess.veto.api.llm.LlmBinding;
 import top.focess.veto.api.llm.LlmOptions;
 import top.focess.veto.api.llm.ProviderType;
@@ -43,19 +41,21 @@ import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.api.llm.VetoRequest;
 import top.focess.veto.api.llm.VetoResponse;
+import top.focess.veto.api.plugin.contract.JsonValues;
+import top.focess.veto.builtin.planning.PlanConfig;
 import top.focess.veto.builtin.planning.SubmitPlanTool;
 import top.focess.veto.builtin.response.AnswerWithCitationsTool;
-import top.focess.veto.builtin.tools.RunCommandTool;
 import top.focess.veto.builtin.workspace.ViewFileTool;
+import top.focess.veto.integration.plugins.PluginConfigurations;
 import top.focess.veto.integration.plugins.PluginLifecycleEvents;
 import top.focess.veto.integration.plugins.PluginManager;
 import top.focess.veto.integration.plugins.PluginTestSupport;
+import top.focess.veto.integration.plugins.ProcessHostFixture;
 import top.focess.veto.llm.core.*;
 import top.focess.veto.model.tier.ModelBinding;
 import top.focess.veto.model.tier.ModelTier;
 import top.focess.veto.model.tier.ModelTierRegistry;
 import top.focess.veto.sandbox.*;
-import top.focess.veto.sandbox.BackgroundTaskManager;
 
 class PlanExecutionTest {
     private static final @NonNull List<PluginManager> MANAGERS = new CopyOnWriteArrayList<>();
@@ -189,14 +189,13 @@ class PlanExecutionTest {
     }
 
     @Test
-    void recoveryObservationReachesPlanGenerationWithoutStartingWork(@TempDir @NonNull Path root)
+    void pluginRecoveryPromptReachesPlanGenerationWithoutStartingWork(@TempDir @NonNull Path root)
             throws Exception {
         AtomicInteger calls = new AtomicInteger();
         var service =
                 service(
                         request -> {
                             int index = calls.getAndIncrement();
-                            if (index == 0) return message("ready");
                             var observations =
                                     request.messages().stream()
                                             .filter(
@@ -205,13 +204,33 @@ class PlanExecutionTest {
                                                                     .startsWith(
                                                                             "[Runtime recovery observation]"))
                                             .toList();
-                            assertEquals(1, observations.size());
+                            assertEquals(
+                                    1,
+                                    observations.size(),
+                                    () ->
+                                            "Model call "
+                                                    + index
+                                                    + " message prefixes: "
+                                                    + request.messages().stream()
+                                                            .map(
+                                                                    value ->
+                                                                            value.role()
+                                                                                    + ":"
+                                                                                    + value.content()
+                                                                                            .substring(
+                                                                                                    0,
+                                                                                                    Math
+                                                                                                            .min(
+                                                                                                                    120,
+                                                                                                                    value.content()
+                                                                                                                            .length())))
+                                                            .toList());
                             assertTrue(
                                     observations
                                             .getFirst()
                                             .content()
                                             .contains("interrupted-attempt"));
-                            if (index == 1)
+                            if (index == 0)
                                 return actions(
                                         """
                     [{"id":"answer","label":"Answer","type":"generate","prompt":"Answer the new request","inputs":{},"outputs":{"answer":"message"}},
@@ -222,24 +241,37 @@ class PlanExecutionTest {
                         new HitlRegistry(),
                         root);
         try {
-            service.submit("recovered-plan", "Initialize", binding(), Duration.ofSeconds(10));
-            var agent = service.agent("recovered-plan");
-            if (!(agent instanceof VetoAgent restored)) throw new AssertionError("Agent missing");
-            var tasks =
-                    List.of(
-                            new RecoveredTask(
-                                    "group", "old-node", "interrupted-attempt", "old-request"));
-            int historySize = restored.history().size();
-            restored.setRecoveredTasks(tasks);
-            restored.setRecoveredTasks(tasks);
-            assertEquals(historySize, restored.history().size());
-            assertEquals(1, calls.get());
+            String session = "recovered-plan";
+            var task =
+                    Map.of(
+                            "groupId",
+                            "group",
+                            "nodeId",
+                            "old-node",
+                            "dispatchId",
+                            "interrupted-attempt",
+                            "requestId",
+                            "old-request");
+            var observation =
+                    PromptCompiler.sourcedUserPrompt(
+                            1, "runtime-group-recovery", Map.of("tasks", List.of(task)));
+            service.getOrCreateAgent(
+                    session,
+                    null,
+                    binding(),
+                    List.of(observation),
+                    UUID.randomUUID(),
+                    "owner",
+                    root.toString(),
+                    0,
+                    ToolResultPresentationMode.BASIC);
+            assertEquals(0, calls.get());
             var result =
                     service.submit(
                             "recovered-plan", "New request", binding(), Duration.ofSeconds(10));
             assertTrue(result.success(), result.message());
             assertEquals("new answer", result.message());
-            assertEquals(3, calls.get());
+            assertEquals(2, calls.get());
         } finally {
             service.remove("recovered-plan");
         }
@@ -518,8 +550,29 @@ class PlanExecutionTest {
     private static @NonNull AgentService service(
             @NonNull UniformLLMCaller caller, @NonNull HitlRegistry hitl, @NonNull Path root)
             throws IOException {
+        return service(caller, hitl, root, 1000);
+    }
+
+    private static @NonNull AgentService service(
+            @NonNull UniformLLMCaller caller,
+            @NonNull HitlRegistry hitl,
+            @NonNull Path root,
+            int maxSteps)
+            throws IOException {
         ObjectMapper mapper = new ObjectMapper();
-        var plugins = PluginTestSupport.manager();
+        SandboxManager sandbox = new SandboxManager(TestSandboxFactory.uncontainedSubprocesses());
+        var config = new PluginConfigurations();
+        config.setToolNames(Map.of("top.focess.builtin:run_command", "run_command"));
+        var plugins =
+                new PluginManager(
+                        "",
+                        "",
+                        false,
+                        5000,
+                        PluginTestSupport.providerOf(
+                                PluginTestSupport.configurationServices(
+                                        ProcessHostFixture.services(sandbox))),
+                        config);
         MANAGERS.add(plugins);
         var sessionPlugins = PluginTestSupport.sessionPlugins(plugins);
         var context = mock(ToolDocs.nonNullClass(ApplicationContext.class));
@@ -527,23 +580,36 @@ class PlanExecutionTest {
                 .thenReturn(
                         Map.of(
                                 "fixture_loop",
-                                new FixtureLoopTool(new ResponseCapabilityImpl()),
+                                new FixtureLoopTool(),
                                 "submit_plan",
-                                new SubmitPlanTool(new ResponseCapabilityImpl()),
+                                new SubmitPlanTool(new PlanConfig(maxSteps)),
                                 "answer_with_citations",
-                                new AnswerWithCitationsTool(new ResponseCapabilityImpl())));
-        SandboxManager sandbox = new SandboxManager(TestSandboxFactory.uncontainedSubprocesses());
+                                new AnswerWithCitationsTool()));
+        when(context.getBeansOfType(PluginManager.class)).thenReturn(Map.of("plugins", plugins));
         ToolEngineImpl engine =
                 new ToolEngineImpl(
                         mapper,
                         List.of(
                                 new ViewFileTool(
                                         new ProtectedWorkspaceReadCapabilityImpl(
-                                                PluginTestSupport.providerOf(sessionPlugins))),
-                                new RunCommandTool(
-                                        new ProcessExecutionCapabilityImpl(
-                                                sandbox, new BackgroundTaskManager(sandbox)))),
-                        context);
+                                                PluginTestSupport.providerOf(sessionPlugins)))),
+                        context) {
+                    @Override
+                    public @NonNull List<ToolDefinition> getActiveTools(Set<String> whitelist) {
+                        return super.getActiveTools(whitelist).stream()
+                                .filter(
+                                        tool ->
+                                                Set.of(
+                                                                "view_file",
+                                                                "run_command",
+                                                                "fixture_loop",
+                                                                "submit_plan",
+                                                                "answer_with_citations")
+                                                        .contains(tool.name()))
+                                .toList();
+                    }
+                };
+        engine.attachSessionPlugins(sessionPlugins);
         ReflectionTestUtils.invokeMethod(engine, "init");
         PromptCompiler compiler =
                 new PromptCompiler(
@@ -562,15 +628,12 @@ class PlanExecutionTest {
                         caller,
                         mapper,
                         List.of(),
-                        new RoleToolFilter(engine),
                         "REAL",
                         50,
-                        1000,
                         "FULL_ACCESS",
                         "STRICT",
                         null,
-                        null,
-                        new BackgroundTaskManager(sandbox));
+                        null);
         service.attachSessionPlugins(sessionPlugins);
         service.attachLifecycleEvents(new PluginLifecycleEvents(plugins));
         service.setConfiguredDefaultWorkspace(Workspace.single(root, PathMode.REAL));
@@ -585,8 +648,7 @@ class PlanExecutionTest {
                         "bounded-plan",
                         "failed-plan",
                         "tier-plan",
-                        "recover-plan",
-                        "recovered-plan")) {
+                        "recover-plan")) {
             service.getOrCreateAgent(
                     id,
                     null,
@@ -795,12 +857,8 @@ class PlanExecutionTest {
                             return actions(program);
                         },
                         new HitlRegistry(),
-                        root);
-        var bounded = service.agent("bounded-plan");
-        if (bounded == null) throw new AssertionError("agent missing");
-        Object boundedRunner = ReflectionTestUtils.getField(bounded, "runner");
-        if (boundedRunner == null) throw new AssertionError("runner missing");
-        ((AgentRunner) boundedRunner).configurePlan(null, 5);
+                        root,
+                        5);
         var result =
                 service.submit(
                         "bounded-plan", "Exercise bounded loop", binding(), Duration.ofSeconds(10));
@@ -918,7 +976,6 @@ class PlanExecutionTest {
                 service(
                         request -> {
                             int index = calls.getAndIncrement();
-                            if (index == 0) return message("ready");
                             if (index == 1) return actions(program);
                             if (index == 2 || index == 3) {
                                 assertEquals("tier-model", request.modelName());
@@ -957,14 +1014,15 @@ class PlanExecutionTest {
                                 0.7,
                                 1234,
                                 "https://example.invalid"));
-        service.setPlanTierRegistry(tiers);
+        service.setModelTierRegistry(tiers);
+        service.getOrCreateAgent(
+                "tier-plan", null, binding(), List.of(), UUID.randomUUID(), "owner", null);
         service.submit("tier-plan", "Initialize", binding(), Duration.ofSeconds(10));
         var agent = service.agent("tier-plan");
         if (agent == null) throw new AssertionError("agent missing");
         Object value = ReflectionTestUtils.getField(agent, "runner");
         if (!(value instanceof AgentRunner runner)) throw new AssertionError("runner missing");
-        runner.setOwner("owner");
-        runner.configurePlan(tiers, 1000);
+        runner.configureModelTiers(tiers);
         var result = service.submit("tier-plan", "Summarize", binding(), Duration.ofSeconds(10));
         assertTrue(result.success(), result.message());
         assertEquals("scoped output", result.message());
@@ -1355,7 +1413,7 @@ class PlanExecutionTest {
                             binding(),
                             Duration.ofSeconds(10));
             assertTrue(result.success(), result.message());
-            var capture = ArgumentCaptor.forClass(ToolDocs.nonNullClass(PlanStepContext.class));
+            var capture = ArgumentCaptor.forClass(ToolDocs.nonNullClass(ActionContext.class));
             verify(observed)
                     .screen(
                             any(),
@@ -1363,9 +1421,12 @@ class PlanExecutionTest {
                             eq("Read the selected file"),
                             isNull(),
                             isNull(),
-                            capture.capture());
-            assertEquals("read", capture.getValue().stepId());
-            String source = capture.getValue().inputSources().get("absolutePath");
+                            capture.capture(),
+                            isNull());
+            var facts = JsonValues.toMap(capture.getValue().data());
+            assertEquals("read", facts.get("stepId"));
+            var sources = (Map<?, ?>) facts.get("inputSources");
+            String source = sources == null ? null : (String) sources.get("absolutePath");
             assertTrue(source != null && source.startsWith("choose:"));
         } finally {
             service.remove("read-plan");

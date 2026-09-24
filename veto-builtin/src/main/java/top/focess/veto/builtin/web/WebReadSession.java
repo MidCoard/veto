@@ -7,32 +7,34 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.api.agent.capability.WebDocumentCapability;
 import top.focess.veto.api.agent.tool.NativeTool;
 import top.focess.veto.api.agent.tool.ToolErrorCode;
 import top.focess.veto.api.agent.tool.ToolErrors;
 import top.focess.veto.api.agent.tool.ToolExecutionException;
-import top.focess.veto.api.web.*;
-import top.focess.veto.api.web.Execution;
-import top.focess.veto.api.web.FinishReadArgs;
-import top.focess.veto.api.web.ReaderSession;
-import top.focess.veto.api.web.Result;
+import top.focess.veto.api.http.ApprovedHttpDestination;
+import top.focess.veto.api.plugin.agent.IsolatedAgent;
+import top.focess.veto.builtin.web.model.*;
+import top.focess.veto.builtin.web.model.Execution;
+import top.focess.veto.builtin.web.model.FinishReadArgs;
+import top.focess.veto.builtin.web.model.Result;
 
 /** Document state and effect boundary owned by exactly one reader AgentRunner. */
-public final class WebReadSession implements WebDocumentCapability, ReaderSession {
+public final class WebReadSession implements WebDocumentCapability, IsolatedAgent.Tools {
     private static final int MAX_ANSWER_CHARS = 4000;
     private static final int MAX_EVIDENCE = 8;
     private static final int OUTLINE_ENTRIES = 24;
     private final @NonNull ObjectMapper mapper = new ObjectMapper();
-    private final ReaderSession.@NonNull Runtime runtime;
+    private final IsolatedAgent.@NonNull Runtime runtime;
     private volatile boolean closed;
-    private int observationBudget;
+    private final @NonNull ApprovedHttpDestination destination;
     private WebReadDocument document;
     private volatile Result result;
     private volatile ToolExecutionException failure;
 
-    public WebReadSession(ReaderSession.@NonNull Runtime runtime) {
+    public WebReadSession(
+            IsolatedAgent.@NonNull Runtime runtime, @NonNull ApprovedHttpDestination destination) {
         this.runtime = runtime;
+        this.destination = destination;
     }
 
     public @NonNull List<NativeTool<?>> tools() {
@@ -56,7 +58,7 @@ public final class WebReadSession implements WebDocumentCapability, ReaderSessio
         try {
             WebReadDocument current = document;
             if (current == null) {
-                current = new WebReadDocument(runtime.fetch());
+                current = new WebReadDocument(fetched());
                 document = current;
             }
             var outline = current.outline();
@@ -68,8 +70,8 @@ public final class WebReadSession implements WebDocumentCapability, ReaderSessio
                                         "outline", outline.subList(0, count),
                                         "segmentCount", outline.size(),
                                         "truncated", current.truncated()));
-                if (observation.getBytes(StandardCharsets.UTF_8).length <= observationBudget)
-                    return observation;
+                if (observation.getBytes(StandardCharsets.UTF_8).length
+                        <= runtime.observationBudgetBytes()) return observation;
                 if (count == 0)
                     return ToolErrors.failure(
                             ToolErrorCode.READER.READER_OBSERVATION,
@@ -93,7 +95,7 @@ public final class WebReadSession implements WebDocumentCapability, ReaderSessio
         authorize("read_sections");
         var current = document();
         String observation = json(current.read(ids));
-        if (observation.getBytes(StandardCharsets.UTF_8).length > observationBudget)
+        if (observation.getBytes(StandardCharsets.UTF_8).length > runtime.observationBudgetBytes())
             return ToolErrors.failure(
                     ToolErrorCode.READER.READER_OBSERVATION,
                     "Observation budget: these sections exceed the reading budget. Read fewer IDs"
@@ -105,11 +107,11 @@ public final class WebReadSession implements WebDocumentCapability, ReaderSessio
     @Override
     public @NonNull String finish(@NonNull FinishReadArgs value) {
         authorize("finish_read");
-        Result completed = finish(value, document(), runtime.execution());
+        Result completed = finish(value, document(), execution());
         String content = json(completed);
         runtime.authorize("finish_read");
         result = completed;
-        runtime.completed();
+        runtime.complete(content);
         return content;
     }
 
@@ -122,8 +124,31 @@ public final class WebReadSession implements WebDocumentCapability, ReaderSessio
         return current;
     }
 
-    public void setObservationBudget(int bytes) {
-        observationBudget = Math.max(0, bytes);
+    private @NonNull FetchedPage fetched() {
+        var page = destination.fetch();
+        return new FetchedPage(
+                page.uri(),
+                page.status(),
+                page.contentType(),
+                page.content(),
+                page.truncated(),
+                page.maxChars());
+    }
+
+    private @NonNull Execution execution() {
+        var usage = runtime.usage();
+        return new Execution(
+                usage.id(),
+                usage.model(),
+                usage.elapsedMillis(),
+                usage.calls(),
+                usage.inputTokens(),
+                usage.outputTokens());
+    }
+
+    public void check() {
+        var error = failure;
+        if (error != null) throw error;
     }
 
     public Result result() {

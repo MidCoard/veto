@@ -1,8 +1,15 @@
 package top.focess.veto.builtin.tools;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.agent.capability.NetworkEgressCapability;
 import top.focess.veto.api.agent.screening.Danger;
@@ -42,15 +49,34 @@ import top.focess.veto.api.agent.tool.ToolSecurity;
             "{\"credentialRef\":\"cred_01234567-89ab-cdef-0123-456789abcdef\",\"repositoryOwner\":\"bad owner\",\"repositoryName\":\"project\"}"
         })
 public final class ReadGitHubRepositoryTool
-        implements NetworkEgressTool<ReadGitHubRepositoryTool.Args> {
+        implements NetworkEgressTool<ReadGitHubRepositoryTool.Args>, AutoCloseable {
     private final NetworkEgressCapability capability;
+    private final @NonNull HttpClient client;
 
     public ReadGitHubRepositoryTool() {
-        this.capability = null;
+        this(null, newClient());
     }
 
     public ReadGitHubRepositoryTool(@NonNull NetworkEgressCapability capability) {
+        this(capability, newClient());
+    }
+
+    public ReadGitHubRepositoryTool(
+            NetworkEgressCapability capability, @NonNull HttpClient client) {
         this.capability = capability;
+        this.client = client;
+    }
+
+    private static @NonNull HttpClient newClient() {
+        return HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(10))
+                .followRedirects(HttpClient.Redirect.NEVER)
+                .build();
+    }
+
+    @Override
+    public void close() {
+        client.close();
     }
 
     public record Args(
@@ -85,28 +111,81 @@ public final class ReadGitHubRepositoryTool
             return ToolErrors.failure(
                     ToolErrorCode.NETWORK.INVALID_REPOSITORY,
                     "Invalid repository: the repository owner or name is invalid.");
-        String raw =
-                restricted.readGitHubRepository(
-                        args.credentialRef(), args.repositoryOwner(), args.repositoryName());
-        try {
-            var mapper = new ObjectMapper();
-            var body = mapper.readTree(raw);
-            if (body == null
-                    || !body.isObject()
-                    || !body.path("id").isIntegralNumber()
-                    || !body.path("full_name").isTextual()
-                    || !body.path("private").isBoolean())
-                throw new IllegalArgumentException("Invalid repository response");
-            Map<String, Object> safe = new LinkedHashMap<>();
-            safe.put("id", body.path("id").longValue());
-            safe.put("private", body.path("private").booleanValue());
-            for (String field : new String[] {"full_name", "description", "default_branch"})
-                if (body.path(field).isTextual()) safe.put(field, body.path(field).asText());
-            return mapper.writeValueAsString(safe);
-        } catch (Exception error) {
+        var answer = new AtomicReference<String>();
+        var status = new AtomicInteger();
+        try (var lease = restricted.openImportedCredential("credentialRef", "github")) {
+            lease.use(
+                    value -> {
+                        String secret = new String(value);
+                        try {
+                            var request =
+                                    HttpRequest.newBuilder(
+                                                    URI.create(
+                                                            "https://api.github.com/repos/"
+                                                                    + args.repositoryOwner()
+                                                                    + "/"
+                                                                    + args.repositoryName()))
+                                            .timeout(Duration.ofSeconds(15))
+                                            .header("Accept", "application/vnd.github+json")
+                                            .header("X-GitHub-Api-Version", "2022-11-28")
+                                            .header("Authorization", "Bearer " + secret)
+                                            .GET()
+                                            .build();
+                            var response =
+                                    client.send(
+                                            request,
+                                            HttpResponse.BodyHandlers.limiting(
+                                                    HttpResponse.BodyHandlers.ofByteArray(),
+                                                    1_048_576));
+                            if (response.statusCode() != 200) {
+                                status.set(response.statusCode());
+                                return;
+                            }
+                            byte[] bytes = response.body();
+                            if (bytes == null || bytes.length > 1_048_576)
+                                throw new IllegalArgumentException("Invalid response size");
+                            var mapper = new ObjectMapper();
+                            var body = mapper.readTree(bytes);
+                            if (body == null
+                                    || !body.isObject()
+                                    || !body.path("id").isIntegralNumber()
+                                    || !body.path("full_name").isTextual()
+                                    || !body.path("private").isBoolean())
+                                throw new IllegalArgumentException("Invalid repository response");
+                            Map<String, Object> safe = new LinkedHashMap<>();
+                            safe.put("id", body.path("id").longValue());
+                            safe.put("private", body.path("private").booleanValue());
+                            for (String field :
+                                    new String[] {"full_name", "description", "default_branch"})
+                                if (body.path(field).isTextual())
+                                    safe.put(
+                                            field,
+                                            body.path(field)
+                                                    .asText()
+                                                    .replace(secret, "[REDACTED_CREDENTIAL]"));
+                            answer.set(mapper.writeValueAsString(safe));
+                        } catch (InterruptedException interrupted) {
+                            Thread.currentThread().interrupt();
+                        } catch (Exception failure) {
+                            /* Never expose response bodies, credentials or exception details. */
+                        }
+                    });
+        } catch (RuntimeException failure) {
             return ToolErrors.failure(
-                    ToolErrorCode.NETWORK.AUTHENTICATED_READ_FAILED,
-                    "Authenticated read failed: the repository information could not be read.");
+                    ToolErrorCode.NETWORK.CREDENTIAL_UNAVAILABLE,
+                    "Credential unavailable: the credential is unavailable for this operation.");
         }
+        if (status.get() != 0)
+            return ToolErrors.failure(
+                    ToolErrorCode.NETWORK.GITHUB_HTTP_ERROR,
+                    "GitHub HTTP error: the repository request returned HTTP "
+                            + status.get()
+                            + ".");
+        var result = answer.get();
+        return result == null
+                ? ToolErrors.failure(
+                        ToolErrorCode.NETWORK.AUTHENTICATED_READ_FAILED,
+                        "Authenticated read failed: the repository information could not be read.")
+                : result;
     }
 }

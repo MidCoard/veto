@@ -4,7 +4,6 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 import java.time.Duration;
-import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -33,8 +32,7 @@ class VetoAgentTerminationTest {
         when(runner.state()).thenReturn(AgentState.TERMINATED);
         VetoAgent agent =
                 new VetoAgent(
-                        new AgentPersona(
-                                "termination-test", "test", "test", Set.of(), List.of(), Role.MATE),
+                        new AgentPersona("termination-test", "test", "test", Set.of(), Role.MATE),
                         runner);
         try {
             assertTrue(entered.await(2, TimeUnit.SECONDS));

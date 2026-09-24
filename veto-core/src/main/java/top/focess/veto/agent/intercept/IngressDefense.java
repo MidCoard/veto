@@ -4,7 +4,6 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.Map;
-import java.util.UUID;
 import java.util.function.UnaryOperator;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
@@ -15,14 +14,12 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.drift.ReadHistory;
 import top.focess.veto.agent.tool.AgentToolDefinition;
+import top.focess.veto.agent.tool.ExecutionReceipts;
 import top.focess.veto.agent.tool.NativeToolDefinition;
 import top.focess.veto.agent.tool.RemoteToolDefinition;
-import top.focess.veto.agent.tool.ToolCallContextHolder;
 import top.focess.veto.agent.tool.ToolDefinition;
 import top.focess.veto.api.agent.tool.ParamCategory;
-import top.focess.veto.api.agent.tool.ReaderExecutionResult;
 import top.focess.veto.api.agent.tool.ToolCapability;
-import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.ToolResult;
 import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.integration.plugins.PluginManager;
@@ -106,23 +103,17 @@ public class IngressDefense {
             boolean maskObservation,
             @NonNull ReadHistory readHistory) {
         String body = result.content();
-        UUID readerId = ToolCallContextHolder.readerExecutionId(call.callId());
-        boolean preserveReaderId = false;
-        if (readerId != null
-                && result.success()
-                && def instanceof NativeToolDefinition nativeDef
-                && nativeDef
-                        .toolClass()
-                        .isAnnotationPresent(ToolDocs.nonNullClass(ReaderExecutionResult.class))
-                && def.capability() == ToolCapability.NETWORK_EGRESS) {
+        String executionId = ExecutionReceipts.consume(call.callId());
+        boolean preserveExecutionId = false;
+        if (executionId != null && result.success()) {
             try {
                 var root = JSON.readTree(body);
                 if (root != null
                         && root.path("execution") instanceof ObjectNode execution
-                        && readerId.toString().equals(execution.path("id").asText())) {
+                        && executionId.equals(execution.path("id").asText())) {
                     execution.remove("id");
                     body = JSON.writeValueAsString(root);
-                    preserveReaderId = true;
+                    preserveExecutionId = true;
                 }
             } catch (JsonProcessingException ignored) {
                 // Unrecognized output keeps the ordinary masking path.
@@ -164,11 +155,11 @@ public class IngressDefense {
         // as this body. A tool result that happens to open with the reserved prefix (e.g. a
         // command's stdout) would read as a veto decision - quote its leading REFUSED so the
         // grammar stays exclusive to real refusals.
-        if (preserveReaderId) {
+        if (preserveExecutionId) {
             try {
                 var root = JSON.readTree(body);
                 if (root != null && root.path("execution") instanceof ObjectNode execution) {
-                    execution.put("id", Nullness.requireNonNull(readerId).toString());
+                    execution.put("id", Nullness.requireNonNull(executionId));
                     body = JSON.writeValueAsString(root);
                 }
             } catch (JsonProcessingException ignored) {

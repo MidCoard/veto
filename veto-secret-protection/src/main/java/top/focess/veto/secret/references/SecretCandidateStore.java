@@ -15,7 +15,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.secret.api.CredentialWriter;
+import top.focess.veto.api.credentials.CredentialWriter;
 import top.focess.veto.secret.detection.SecretDetector;
 import top.focess.veto.secret.detection.SecretMasker;
 

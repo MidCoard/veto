@@ -6,6 +6,7 @@ import java.util.function.Supplier;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.plugin.service.PluginServices;
+import top.focess.veto.api.plugin.storage.PluginStorage;
 
 /**
  * Host metadata, a live read-only lifecycle view, a failure signal, and host-granted services. Host
@@ -73,6 +74,11 @@ public record PluginContext(
     /** Class-independent discovery of services registered by plugins. */
     public @NonNull PluginServices services() {
         return service(ToolDocs.nonNullClass(PluginServices.class)).orElse(PluginServices.EMPTY);
+    }
+
+    public @NonNull PluginStorage storage() {
+        return service(ToolDocs.nonNullClass(PluginStorage.class))
+                .orElseThrow(() -> new IllegalStateException("Plugin storage unavailable"));
     }
 
     public void reportFailure() {

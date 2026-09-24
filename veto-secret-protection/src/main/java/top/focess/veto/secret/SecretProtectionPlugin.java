@@ -17,6 +17,9 @@ import top.focess.veto.api.agent.tool.ToolDoc;
 import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.ToolResultFormat;
 import top.focess.veto.api.agent.tool.ToolSecurity;
+import top.focess.veto.api.credentials.CredentialImportAccess;
+import top.focess.veto.api.llm.LocalModelCompletion;
+import top.focess.veto.api.llm.PromptRenderer;
 import top.focess.veto.api.plugin.*;
 import top.focess.veto.api.plugin.AbstractVetoPlugin;
 import top.focess.veto.api.plugin.PluginContext;
@@ -35,8 +38,7 @@ import top.focess.veto.api.plugin.contract.StandardContributionPoints;
 import top.focess.veto.api.plugin.contract.TextProtection;
 import top.focess.veto.api.plugin.contribution.*;
 import top.focess.veto.api.plugin.contribution.Contribution;
-import top.focess.veto.secret.api.CredentialImportAccess;
-import top.focess.veto.secret.api.SecretDetectionModel;
+import top.focess.veto.secret.detection.MdcSecretDetectionModel;
 import top.focess.veto.secret.detection.SlmSecretDetector;
 import top.focess.veto.secret.references.SecretCandidateStore;
 
@@ -87,8 +89,13 @@ public final class SecretProtectionPlugin extends AbstractVetoPlugin {
         if (!configuration.values().isEmpty())
             throw new IllegalArgumentException("Unsupported configuration");
         importer = context.service(CredentialImportAccess.class).orElse(importer);
+        var localModel = context.service(LocalModelCompletion.class).orElse(null);
+        var prompts = context.service(PromptRenderer.class).orElse(null);
         var detector =
-                new SlmSecretDetector(context.service(SecretDetectionModel.class).orElse(null));
+                new SlmSecretDetector(
+                        localModel == null || prompts == null
+                                ? null
+                                : new MdcSecretDetectionModel(localModel, prompts));
         candidates.detector(detector);
         return new PluginContributions(
                 List.of(

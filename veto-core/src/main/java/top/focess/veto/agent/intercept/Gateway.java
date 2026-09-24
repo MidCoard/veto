@@ -1,6 +1,5 @@
 package top.focess.veto.agent.intercept;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -9,7 +8,6 @@ import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Optional;
-import java.util.Set;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -24,19 +22,13 @@ import top.focess.veto.agent.screening.Screening;
 import top.focess.veto.agent.screening.SlmScreening;
 import top.focess.veto.agent.screening.SlmScreeningProvider;
 import top.focess.veto.agent.tool.AgentToolDefinition;
-import top.focess.veto.agent.tool.LocalToolDefinition;
-import top.focess.veto.agent.tool.NativeToolArgumentValidator;
 import top.focess.veto.agent.tool.NativeToolDefinition;
+import top.focess.veto.agent.tool.PreparedInvocation;
 import top.focess.veto.agent.tool.ToolDefinition;
-import top.focess.veto.agent.tool.ToolEngine;
 import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.tool.ToolCapability;
-import top.focess.veto.api.agent.tool.ToolSchemaReferences;
-import top.focess.veto.api.agent.workflow.ActionsProgram;
-import top.focess.veto.api.agent.workflow.PlanStepContext;
-import top.focess.veto.api.agent.workflow.Scope;
-import top.focess.veto.api.agent.workflow.ToolAction;
+import top.focess.veto.api.agent.workflow.ActionContext;
 import top.focess.veto.api.llm.ToolCall;
 
 /**
@@ -134,11 +126,23 @@ public class Gateway {
             String activeTask,
             String thought,
             String executionContext,
-            PlanStepContext planStep) {
+            ActionContext planStep) {
+        return screen(call, def, activeTask, thought, executionContext, planStep, null);
+    }
+
+    public @NonNull GatewayResult screen(
+            @NonNull ToolCall call,
+            @NonNull ToolDefinition def,
+            String activeTask,
+            String thought,
+            String executionContext,
+            ActionContext planStep,
+            PreparedInvocation prepared) {
+        if (prepared != null) executionContext = prepared.facts();
         if (planStep != null) {
             var context = new LinkedHashMap<String, Object>();
             if (executionContext != null) context.put("execution", executionContext);
-            context.put("planStep", planStep);
+            context.put("action", planStep);
             executionContext = new ObjectMapper().valueToTree(context).toString();
         }
         if (def instanceof AgentToolDefinition) {
@@ -146,6 +150,7 @@ public class Gateway {
         }
         ToolExecutionPermit executionPermit =
                 ToolExecutionPermit.capture(call, def, workspace, policy, protectedSet);
+        if (prepared != null) executionPermit = executionPermit.withPreparation(prepared);
         List<@NonNull String> paths = executionPermit.requestedPaths();
         // drift is a correctness check on writes — checked before danger.
         if (def.capability() == ToolCapability.WORKSPACE_WRITE) {
@@ -170,55 +175,10 @@ public class Gateway {
         Relevance relevance = advisory.map(SlmScreening::relevance).orElse(Relevance.HIGH);
         VetoScenario scenario = scenarioFor(danger, def);
         String reason = reasonFor(deterministicDanger, advisory.orElse(null), danger, def);
+        if (prepared != null) reason += "\nPrepared execution: " + prepared.summary();
         return new GatewayResult.Screened(
                 new Screening(relevance, danger, advisory.isPresent(), scenario, reason),
                 executionPermit);
-    }
-
-    /** Static checks only: no screening, approval or execution of speculative branches. */
-    public void validateProgram(
-            @NonNull ActionsProgram program,
-            @NonNull ToolEngine engine,
-            @NonNull Set<String> whitelist,
-            @NonNull ObjectMapper mapper) {
-        for (var action : program.actions()) {
-            if (!(action instanceof ToolAction tool)) continue;
-            ToolDefinition definition = engine.resolveDefinition(tool.tool());
-            if (!whitelist.contains(tool.tool()) || definition == null)
-                throw new IllegalArgumentException(
-                        "Tool is not available in this role: " + tool.tool());
-            if (definition instanceof LocalToolDefinition local) {
-                JsonNode inputs = mapper.valueToTree(tool.inputs());
-                if (hasBinding(inputs)) {
-                    // Only a referenced value is unknown before execution. Its literal siblings,
-                    // required fields and argument names still belong to the selected tool's
-                    // contract, including inside nested objects and arrays.
-                    NativeToolArgumentValidator.validate(
-                            local.name(), inputs, local.argsClass(), true);
-                } else {
-                    NativeToolArgumentValidator.validate(
-                            local.name(),
-                            mapper.valueToTree(tool.resolveInputs(new Scope(mapper))),
-                            local.argsClass());
-                }
-            } else {
-                // This preflight covers the validator's supported JSON Schema keywords, not the
-                // remote server's entire dialect. Defer unresolved values only, and decode $$
-                // once even when no actual binding occurs anywhere in the input object.
-                NativeToolArgumentValidator.validateAgainstSchema(
-                        definition.name(),
-                        mapper.valueToTree(tool.inputs()),
-                        ToolSchemaReferences.inlineForEmbedding(definition.inputSchema()),
-                        true);
-            }
-        }
-    }
-
-    private boolean hasBinding(@NonNull JsonNode node) {
-        if (node.isTextual())
-            return node.asText().startsWith("$") && !node.asText().startsWith("$$");
-        for (var child : node) if (hasBinding(child)) return true;
-        return false;
     }
 
     /**
@@ -234,9 +194,10 @@ public class Gateway {
         }
         ToolExecutionPermit current =
                 ToolExecutionPermit.capture(call, definition, workspace, policy, protectedSet);
-        var taskBinding = screenedPermit.taskBinding();
-        if (taskBinding != null) {
-            current = current.withTaskBinding(taskBinding);
+        var preparation = screenedPermit.preparation();
+        if (preparation != null) {
+            preparation.revalidate();
+            current = current.withPreparation(preparation);
         }
         if (!screenedPermit.sameTargets(current)) {
             throw new SecurityException(
@@ -262,13 +223,10 @@ public class Gateway {
                     VetoScenario.EXEC_FIRST_TIME; // E3 first-time pattern
             case TASK_CONTROL,
                     PRIVILEGED,
-                    SKILL_READ,
-                    MEMORY_READ,
-                    MEMORY_WRITE,
                     LOOP_CONTROL,
                     DELEGATION,
                     GROUP_CONTROL,
-                    MONITOR_CONTROL,
+                    PLUGIN_LOCAL,
                     USER_INTERACTION,
                     AGENT_CONTROL ->
                     VetoScenario.GENERIC;

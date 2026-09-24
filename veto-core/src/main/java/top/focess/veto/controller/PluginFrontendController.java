@@ -1,12 +1,17 @@
 package top.focess.veto.controller;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.springframework.http.*;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
+import top.focess.veto.agent.SessionAgentRegistry;
 import top.focess.veto.api.plugin.PluginBinding;
+import top.focess.veto.api.plugin.PluginState;
 import top.focess.veto.api.plugin.contract.*;
 import top.focess.veto.api.plugin.contract.FrontendContribution;
 import top.focess.veto.api.plugin.contract.JsonValue;
@@ -14,6 +19,7 @@ import top.focess.veto.api.plugin.contract.PluginFailure;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
 import top.focess.veto.integration.plugins.PluginManager;
 import top.focess.veto.integration.plugins.SessionPlugins;
+import top.focess.veto.integration.plugins.storage.PluginInvocationScope;
 import top.focess.veto.model.SessionEntity;
 import top.focess.veto.model.SessionRepository;
 import top.focess.veto.plugin.runtime.*;
@@ -26,20 +32,27 @@ public final class PluginFrontendController {
     private final @NonNull SessionRepository sessions;
     private final @NonNull SessionPlugins selected;
     private final @NonNull PluginManager plugins;
+    private final @NonNull SessionAgentRegistry agents;
 
     public PluginFrontendController(
             @NonNull RequestAuthorization authorization,
             @NonNull SessionRepository sessions,
             @NonNull SessionPlugins selected,
-            @NonNull PluginManager plugins) {
+            @NonNull PluginManager plugins,
+            @NonNull SessionAgentRegistry agents) {
         this.authorization = authorization;
         this.sessions = sessions;
         this.selected = selected;
         this.plugins = plugins;
+        this.agents = agents;
     }
 
     public record Module(
-            @NonNull String id, @NonNull String pluginId, int apiVersion, @NonNull String source) {}
+            @NonNull String id,
+            @NonNull String pluginId,
+            int apiVersion,
+            @NonNull String source,
+            @NonNull Map<String, String> tools) {}
 
     public record ActionRequest(
             @NonNull String moduleId,
@@ -62,16 +75,34 @@ public final class PluginFrontendController {
         var ids = ids(session(name));
         var modules =
                 plugins.catalog().entries(StandardContributionPoints.FRONTEND).stream()
-                        .filter(e -> ids.contains(e.source().namespace()))
+                        .filter(
+                                e ->
+                                        ids.contains(e.source().namespace())
+                                                && plugins.plugin(e.source().namespace()).state()
+                                                        == PluginState.ACTIVE)
                         .map(
                                 e ->
                                         new Module(
                                                 e.id().value(),
                                                 e.source().namespace(),
                                                 1,
-                                                e.implementation().module()))
+                                                e.implementation().module(),
+                                                toolNames(e.source().namespace())))
                         .toList();
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(modules);
+    }
+
+    private @NonNull Map<String, String> toolNames(@NonNull String pluginId) {
+        Map<String, String> names = new LinkedHashMap<>();
+        for (var entry : plugins.catalog().entries(StandardContributionPoints.NATIVE_TOOLS)) {
+            if (pluginId.equals(entry.source().namespace()))
+                names.put(entry.id().localId(), plugins.toolName(pluginId, entry.id().value()));
+        }
+        for (var entry : plugins.catalog().entries(StandardContributionPoints.TOOLS)) {
+            if (pluginId.equals(entry.source().namespace()))
+                names.put(entry.id().localId(), plugins.toolName(pluginId, entry.id().value()));
+        }
+        return Map.copyOf(names);
     }
 
     @PostMapping("/actions")
@@ -88,6 +119,9 @@ public final class PluginFrontendController {
                 || request.arguments() == null
                 || !request.arguments().isObject())
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST);
+        if (agents.records(UUID.fromString(session.getId())).stream()
+                .noneMatch(agent -> agent.id().equals(request.agentId())))
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND);
         var entry =
                 plugins.catalog().entries(StandardContributionPoints.FRONTEND).stream()
                         .filter(
@@ -106,8 +140,12 @@ public final class PluginFrontendController {
             var value =
                     plugins.plugin(entry.source().namespace())
                             .execute(
-                                    () ->
-                                            entry.implementation()
+                                    () -> {
+                                        var invocation =
+                                                new PluginInvocationScope(
+                                                        session.getOwner(), session.getId());
+                                        try {
+                                            return entry.implementation()
                                                     .handler()
                                                     .handle(
                                                             new FrontendContribution.Scope(
@@ -115,7 +153,11 @@ public final class PluginFrontendController {
                                                                     session.getId(),
                                                                     request.agentId()),
                                                             request.action(),
-                                                            arguments));
+                                                            arguments);
+                                        } finally {
+                                            invocation.close();
+                                        }
+                                    });
             return ResponseEntity.ok()
                     .cacheControl(CacheControl.noStore())
                     .header("Pragma", "no-cache")

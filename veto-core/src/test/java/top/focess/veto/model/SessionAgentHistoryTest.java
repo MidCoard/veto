@@ -121,6 +121,60 @@ class SessionAgentHistoryTest {
     }
 
     @Test
+    void isolatedAuditRowsNeverBecomeRestorableSessionAgents() {
+        UUID session = UUID.randomUUID();
+        var primary =
+                repository.save(
+                        new AgentEntity(
+                                session.toString(),
+                                null,
+                                AgentEntity.Role.PRIMARY,
+                                "Main",
+                                "DEEPSEEK",
+                                "model",
+                                "key"));
+        var registry = new SessionAgentRegistry(repository, turns);
+        @NonNull VetoAgent parent = mock();
+        when(parent.id()).thenReturn(primary.getId());
+        when(parent.state()).thenReturn(AgentState.IDLE);
+        registry.register(session, parent);
+        var persona = new AgentPersona("private-child", "Private", "", Set.of());
+        @NonNull AgentRunner runner = mock();
+        when(runner.sessionId()).thenReturn(session);
+        when(runner.personaView()).thenReturn(persona);
+        when(runner.state()).thenReturn(AgentState.IDLE);
+        registry.startIsolated(session, primary.getId(), "parent-call", persona, runner);
+        turns.save(
+                TurnRecordEntity.of(
+                        TurnRecord.userPrompt(1, "private objective"),
+                        session,
+                        UUID.randomUUID(),
+                        "private-child",
+                        new ObjectMapper()));
+        assertEquals(
+                List.of(primary.getId()),
+                registry.records(session).stream()
+                        .map(SessionAgentRegistry.AgentSummary::id)
+                        .toList());
+        registry.stop("private-child");
+        repository.flush();
+        var audit = repository.findById("private-child").orElseThrow();
+        assertTrue(audit.isEphemeral());
+        assertEquals(primary.getId(), audit.getParentAgentId());
+        assertEquals("parent-call", audit.getParentCallId());
+        assertTrue(audit.getEndedAt() != null);
+        registry.close();
+        var restarted = new SessionAgentRegistry(repository, turns);
+        assertEquals(
+                List.of(primary.getId()),
+                restarted.records(session).stream()
+                        .map(SessionAgentRegistry.AgentSummary::id)
+                        .toList());
+        assertTrue(restarted.agents(session).isEmpty());
+        assertEquals(1, turns.findBySessionIdOrderByTurnNumberAsc(session.toString()).size());
+    }
+
+    @Test
     void idleParentAndEndedChildRemainAfterRegistryRecreation() {
         UUID sessionId = UUID.randomUUID();
         AgentEntity primary =
@@ -137,8 +191,7 @@ class SessionAgentHistoryTest {
         assertEquals(1, registry.records(sessionId).size());
         assertFalse(registry.records(sessionId).getFirst().live());
 
-        AgentPersona parentPersona =
-                new AgentPersona(primary.getId(), "Main", "", Set.of(), List.of());
+        AgentPersona parentPersona = new AgentPersona(primary.getId(), "Main", "", Set.of());
         @NonNull VetoAgent parent = mock();
         when(parent.id()).thenReturn(primary.getId());
         when(parent.name()).thenReturn("Main");
@@ -149,8 +202,9 @@ class SessionAgentHistoryTest {
         assertEquals(AgentState.IDLE, registry.records(sessionId).getFirst().state());
         assertEquals("My assistant", registry.records(sessionId).getFirst().name());
 
-        AgentPersona reader = new AgentPersona("reader", "Web reader", "", Set.of(), List.of());
+        AgentPersona reader = new AgentPersona("reader", "Web reader", "", Set.of());
         @NonNull AgentRunner runner = mock();
+        when(runner.sessionId()).thenReturn(sessionId);
         when(runner.personaView()).thenReturn(reader);
         when(runner.state()).thenReturn(AgentState.IDLE);
         registry.startChild(sessionId, primary.getId(), "fetch-1", reader, runner);

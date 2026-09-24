@@ -1,39 +1,44 @@
 package top.focess.veto.agent.identity;
 
-import java.util.List;
 import java.util.Set;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.tool.ToolDefinition;
-import top.focess.veto.api.skills.Skill;
 
-/** An agent identity with its role-scoped tool catalog and discoverable skills. */
+/** An agent identity with its host-authorized tool catalogue. */
 public record AgentPersona(
         @NonNull String id,
         @NonNull String name,
         @NonNull String description,
         @NonNull Set<@NonNull ToolDefinition> whitelistedTools,
-        @NonNull List<@NonNull Skill> registeredSkills,
-        @NonNull Role role) {
+        @NonNull Role role,
+        String configurationOwner) {
+    public AgentPersona(
+            @NonNull String id,
+            @NonNull String name,
+            @NonNull String description,
+            @NonNull Set<@NonNull ToolDefinition> tools,
+            @NonNull Role role) {
+        this(id, name, description, tools, role, null);
+    }
 
     public AgentPersona(
             @NonNull String id,
             @NonNull String name,
             @NonNull String description,
-            @NonNull Set<@NonNull ToolDefinition> whitelistedTools,
-            @NonNull List<@NonNull Skill> registeredSkills) {
-        this(id, name, description, whitelistedTools, registeredSkills, Role.STANDALONE);
+            @NonNull Set<@NonNull ToolDefinition> tools) {
+        this(id, name, description, tools, Role.STANDALONE, null);
     }
 
     public @NonNull AgentPersona withWhitelistedTools(@NonNull Set<@NonNull ToolDefinition> tools) {
-        return new AgentPersona(id, name, description, tools, registeredSkills, role);
+        return new AgentPersona(id, name, description, tools, role, configurationOwner);
     }
 
     public @NonNull AgentPersona withRole(@NonNull Role role) {
-        return new AgentPersona(id, name, description, whitelistedTools, registeredSkills, role);
+        return new AgentPersona(id, name, description, whitelistedTools, role, configurationOwner);
     }
 
     public @NonNull AgentPersona withRoleAndTools(
             @NonNull Role role, @NonNull Set<@NonNull ToolDefinition> tools) {
-        return new AgentPersona(id, name, description, tools, registeredSkills, role);
+        return new AgentPersona(id, name, description, tools, role, configurationOwner);
     }
 }

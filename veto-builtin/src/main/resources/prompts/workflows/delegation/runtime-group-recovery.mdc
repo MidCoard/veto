@@ -1,0 +1,9 @@
+---
+version: 2
+id: runtime-group-recovery
+requires: [tasks]
+---
+@message user
+[Runtime recovery observation] Historical attempts below were interrupted by runtime loss. Results and prior side effects are unknown; they were not replayed. Do not resume without a new assignment. These identifiers describe only the old attempts.
+{{json(tasks)}}
+@endmessage

@@ -1,6 +1,7 @@
 package top.focess.veto.agent;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static top.focess.veto.integration.plugins.MonitorTestSupport.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Duration;
@@ -9,14 +10,15 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import org.checkerframework.checker.nullness.qual.Nullable;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
@@ -26,29 +28,27 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Mockito;
 import org.springframework.context.ApplicationContext;
 import org.springframework.test.util.ReflectionTestUtils;
-import top.focess.veto.agent.capability.UserInteractionCapabilityImpl;
-import top.focess.veto.agent.identity.Role;
-import top.focess.veto.agent.identity.RoleToolFilter;
+import top.focess.veto.agent.continuation.RequestContinuationEntity;
+import top.focess.veto.agent.continuation.RequestContinuationRepository;
+import top.focess.veto.agent.continuation.RequestContinuationStore;
 import top.focess.veto.agent.identity.SystemPromptResolver;
 import top.focess.veto.agent.intercept.HitlRegistry;
 import top.focess.veto.agent.intercept.IngressDefense;
 import top.focess.veto.agent.loop.PromptCompiler;
 import top.focess.veto.agent.tool.AgentToolDefinition;
 import top.focess.veto.agent.tool.NativeToolDefinition;
+import top.focess.veto.agent.tool.ToolCallContextHolder;
 import top.focess.veto.agent.tool.ToolEngine;
 import top.focess.veto.agent.tool.ToolEngineImpl;
 import top.focess.veto.agent.tool.builtin.FixtureLoopTool;
-import top.focess.veto.agent.tool.builtin.UserQuestionRegistry;
 import top.focess.veto.agent.translation.DefaultCapabilityTranslator;
 import top.focess.veto.api.agent.AgentResult;
 import top.focess.veto.api.agent.AgentState;
 import top.focess.veto.api.agent.screening.Danger;
-import top.focess.veto.api.agent.tool.AgentTool;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.ToolResult;
-import top.focess.veto.api.group.DagNode;
-import top.focess.veto.api.group.GroupState;
+import top.focess.veto.api.agent.workflow.PluginAwait;
 import top.focess.veto.api.llm.ChatMessage;
 import top.focess.veto.api.llm.LlmBinding;
 import top.focess.veto.api.llm.LlmOptions;
@@ -60,27 +60,28 @@ import top.focess.veto.api.llm.VetoRequest;
 import top.focess.veto.api.llm.VetoResponse;
 import top.focess.veto.api.llm.exceptions.LlmException;
 import top.focess.veto.api.llm.exceptions.ModelSchemaException;
+import top.focess.veto.api.plugin.agent.AgentProfile;
+import top.focess.veto.api.plugin.agent.IsolatedAgent;
+import top.focess.veto.api.plugin.contract.AgentConfiguration;
+import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
 import top.focess.veto.api.plugin.contract.TextProtection;
 import top.focess.veto.api.plugin.contract.WorkflowHook;
 import top.focess.veto.api.plugin.contribution.Contribution;
+import top.focess.veto.builtin.group.GroupRegistry;
+import top.focess.veto.builtin.monitor.MonitorEntity;
+import top.focess.veto.builtin.monitor.MonitorRecord;
+import top.focess.veto.builtin.monitor.MonitorRecord.ActivationState;
+import top.focess.veto.builtin.monitor.MonitorRepository;
+import top.focess.veto.builtin.monitor.MonitorService;
+import top.focess.veto.builtin.questions.QuestionRuntime;
+import top.focess.veto.builtin.response.CitationResponsePolicy;
 import top.focess.veto.builtin.tools.AskUserTool;
 import top.focess.veto.builtin.tools.RunTaskTool;
-import top.focess.veto.group.Blackboard;
-import top.focess.veto.group.ExecutionDag;
-import top.focess.veto.group.Group;
-import top.focess.veto.group.GroupHistoryEntity;
-import top.focess.veto.group.GroupHistoryRepository;
-import top.focess.veto.group.GroupHistoryStore;
-import top.focess.veto.group.GroupOrchestrator;
-import top.focess.veto.group.GroupRecoveryService;
-import top.focess.veto.group.GroupRegistry;
-import top.focess.veto.group.GroupSpawner;
-import top.focess.veto.group.LeaderBinding;
-import top.focess.veto.group.MateBreakerRegistry;
-import top.focess.veto.group.SkillsetProperties;
 import top.focess.veto.integration.plugins.PluginLifecycleEvents;
 import top.focess.veto.integration.plugins.PluginTestSupport;
+import top.focess.veto.integration.plugins.QuestionTestSupport;
+import top.focess.veto.integration.plugins.SessionPlugins;
 import top.focess.veto.integration.plugins.WorkflowPluginFixture;
 import top.focess.veto.llm.core.UniformLLMCaller;
 import top.focess.veto.memory.TurnLogService;
@@ -94,18 +95,6 @@ import top.focess.veto.model.SessionRepository;
 import top.focess.veto.model.tier.ModelBinding;
 import top.focess.veto.model.tier.ModelTier;
 import top.focess.veto.model.tier.ModelTierRegistry;
-import top.focess.veto.monitor.MonitorAgentActivator;
-import top.focess.veto.monitor.MonitorEntity;
-import top.focess.veto.monitor.MonitorRecord;
-import top.focess.veto.monitor.MonitorRecord.ActivationState;
-import top.focess.veto.monitor.MonitorRepository;
-import top.focess.veto.monitor.MonitorService;
-import top.focess.veto.monitor.RequestContinuationEntity;
-import top.focess.veto.monitor.RequestContinuationRepository;
-import top.focess.veto.monitor.RequestContinuationStore;
-import top.focess.veto.sandbox.BackgroundTaskManager;
-import top.focess.veto.sandbox.SandboxManager;
-import top.focess.veto.sandbox.TestSandboxFactory;
 import top.focess.veto.session.SessionHistoryLoader;
 import top.focess.veto.session.SessionService;
 import top.focess.veto.util.Nullness;
@@ -224,6 +213,8 @@ class AgentRunnerTest {
                             ToolCall call = invocation.getArgument(0);
                             if (call == null) throw new AssertionError("Missing call");
                             executed.add(call.toolName());
+                            if (call.toolName().equals("finish"))
+                                ToolCallContextHolder.finish("done");
                             return ToolResult.success(call.toolName(), call.callId(), "done");
                         });
         List<VetoRequest> requests = new CopyOnWriteArrayList<>();
@@ -259,7 +250,14 @@ class AgentRunnerTest {
                         ToolResultPresentationMode.BASIC);
         Object owned = ReflectionTestUtils.getField(agent, "runner");
         if (!(owned instanceof AgentRunner runner)) throw new AssertionError("Missing runner");
-        runner.setCompletionTool("finish");
+        runner.setExecutionPolicy(
+                new AgentExecutionPolicy(
+                        new IsolatedAgent.Terminal(
+                                "finish",
+                                limit >= 4 ? 2 : 1,
+                                new AgentProfile.Prompt(
+                                        "reader-completion", new JsonValue.ObjectValue(Map.of()))),
+                        () -> {}));
         try {
             agent.submit("Complete within the configured budget.");
             var result = agent.await(EPISODE_TIMEOUT);
@@ -547,7 +545,7 @@ class AgentRunnerTest {
                             return new VetoResponse(null, null, "Notification handled");
                         });
         @NonNull KeysteadVault vault = Mockito.mock();
-        runtime.attachMonitorVault(vault);
+        runtime.attachExecutionVault(vault);
         var registry =
                 (SessionAgentRegistry)
                         Nullness.requireNonNull(
@@ -568,7 +566,7 @@ class AgentRunnerTest {
                         "model",
                         "key");
         session.setPrimaryAgentId(identity.getId());
-        ReflectionTestUtils.setField(identity, "monitorRecoveryVersion", 1);
+        ReflectionTestUtils.setField(identity, "recoveryVersion", 1);
         Mockito.when(sessions.findById(session.getId())).thenReturn(Optional.of(session));
         Mockito.when(agents.findById(identity.getId())).thenReturn(Optional.of(identity));
         Mockito.when(history.load(session.getId(), identity.getId()))
@@ -591,10 +589,13 @@ class AgentRunnerTest {
         var groups = new GroupRegistry();
         var monitors =
                 new MonitorService(
-                        repository, new ObjectMapper().findAndRegisterModules(), groups, registry);
-        registry.attachMonitor(monitors);
-        monitors.attachActivator(
-                new MonitorAgentActivator(sessionService, registry, vault, groups));
+                        repository,
+                        new ObjectMapper().findAndRegisterModules(),
+                        groups(groups),
+                        host(sessionService, registry, vault));
+        @NonNull SessionPlugins selected = Mockito.mock();
+        Mockito.when(selected.workSource(Mockito.anyString())).thenReturn(monitors);
+        runtime.attachSessionPlugins(selected);
         var due = Instant.now().plusSeconds(10);
         monitors.createTimer("alice", session.getId(), identity.getId(), "Review", due);
         try {
@@ -625,12 +626,10 @@ class AgentRunnerTest {
         }
     }
 
-    private static @NonNull ToolEngine questionEngine(@NonNull UserQuestionRegistry questions) {
+    private static @NonNull ToolEngine questionEngine(@NonNull QuestionRuntime questions) {
         @NonNull ApplicationContext spring = Mockito.mock();
-        var tool = new AskUserTool(new UserInteractionCapabilityImpl(questions));
-        Mockito.when(spring.getBeansOfType(AgentTool.class))
-                .thenReturn(Map.of("askUserTool", tool));
-        var engine = new ToolEngineImpl(new ObjectMapper(), List.of(), spring);
+        var tool = new AskUserTool(questions);
+        var engine = new ToolEngineImpl(new ObjectMapper(), List.of(tool), spring);
         ReflectionTestUtils.invokeMethod(engine, "init");
         return engine;
     }
@@ -667,7 +666,7 @@ class AgentRunnerTest {
     @ValueSource(strings = {"ANSWER", "CANCEL", "INTERRUPT", "HISTORY_FAIL"})
     void actualQuestionWaitRequiresDurableAnswerBeforeContinuing(@NonNull String action)
             throws Exception {
-        var questions = new UserQuestionRegistry();
+        var questions = new QuestionRuntime(QuestionTestSupport.host());
         AtomicInteger calls = new AtomicInteger();
         var service =
                 serviceWith(
@@ -691,9 +690,9 @@ class AgentRunnerTest {
         var agent = requireAgent(service.agent("question-wait"));
         try {
             long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
-            while (questions.pendingFor(agent.id()).isEmpty() && System.nanoTime() < deadline)
-                Thread.sleep(10);
-            assertEquals(1, questions.pendingFor(agent.id()).size());
+            while (questions.pendingFor(QuestionTestSupport.scope(agent.id())).isEmpty()
+                    && System.nanoTime() < deadline) Thread.sleep(10);
+            assertEquals(1, questions.pendingFor(QuestionTestSupport.scope(agent.id())).size());
             assertEquals("QUESTION", agent.executionWaitReason());
             assertFalse(agent.result().isDone());
             if (action.equals("INTERRUPT")) {
@@ -705,8 +704,13 @@ class AgentRunnerTest {
                 if (!action.equals("CANCEL"))
                     assertTrue(
                             questions.answer(
-                                    agent.id(), "question-call", Map.of("format", "Markdown")));
-                else assertTrue(questions.cancel(agent.id(), "question-call"));
+                                    QuestionTestSupport.scope(agent.id()),
+                                    "question-call",
+                                    Map.of("format", "Markdown")));
+                else
+                    assertTrue(
+                            questions.cancel(
+                                    QuestionTestSupport.scope(agent.id()), "question-call"));
                 if (action.equals("HISTORY_FAIL")) {
                     assertFalse(agent.await(EPISODE_TIMEOUT).success());
                     assertEquals("QUESTION", agent.executionWaitReason());
@@ -717,7 +721,7 @@ class AgentRunnerTest {
                     assertEquals(2, calls.get());
                 }
             }
-            assertTrue(questions.pendingFor(agent.id()).isEmpty());
+            assertTrue(questions.pendingFor(QuestionTestSupport.scope(agent.id())).isEmpty());
         } finally {
             service.remove("question-wait");
             assertTrue(agent.awaitTermination(Duration.ofSeconds(5)));
@@ -751,10 +755,10 @@ class AgentRunnerTest {
                                 0,
                                 ToolResultPresentationMode.BASIC);
         @NonNull MonitorService monitor = Mockito.mock();
-        agent.attachMonitor(monitor);
+        agent.attachWorkSource(work(monitor));
         try {
             assertEquals(AgentState.WAITING, agent.state());
-            agent.signalMonitor();
+            agent.signalWork();
             assertFalse(called.await(150, TimeUnit.MILLISECONDS));
             Mockito.verify(monitor, Mockito.never())
                     .pending(Mockito.anyString(), Mockito.anyString());
@@ -804,9 +808,7 @@ class AgentRunnerTest {
                         List.of(
                                 new MonitorEntity(
                                         snapshot.id(), mapper.writeValueAsString(snapshot))));
-        var monitor =
-                new MonitorService(
-                        repository, mapper, new GroupRegistry(), new SessionAgentRegistry());
+        var monitor = new MonitorService(repository, mapper, groups(new GroupRegistry()), null);
         monitor.restore();
         var entered = new CountDownLatch(1);
         var release = new CountDownLatch(1);
@@ -835,7 +837,7 @@ class AgentRunnerTest {
                                     List.of(
                                             new TurnRecord(
                                                     1,
-                                                    TurnType.MONITOR_EVENT,
+                                                    TurnType.RUNTIME_EVENT,
                                                     Map.of(
                                                             "eventId",
                                                             event.id(),
@@ -847,8 +849,8 @@ class AgentRunnerTest {
                                     "D:/IdeaProjects/veto/work/tmp/unfinished-group",
                                     0,
                                     ToolResultPresentationMode.BASIC);
-            agent.attachMonitor(monitor);
-            agent.signalMonitor();
+            agent.attachWorkSource(work(monitor));
+            agent.signalWork();
             assertTrue(entered.await(5, TimeUnit.SECONDS));
             assertEquals(
                     ActivationState.RUNNING,
@@ -873,13 +875,13 @@ class AgentRunnerTest {
             assertEquals(
                     1,
                     agent.history().stream()
-                            .filter(t -> t.type() == TurnType.MONITOR_EVENT)
+                            .filter(t -> t.type() == TurnType.RUNTIME_EVENT)
                             .filter(t -> !t.payload().containsKey("restored_from_turn"))
                             .count());
             assertEquals(
                     1,
                     HistoryProjection.effective(agent.history()).stream()
-                            .filter(t -> t.type() == TurnType.MONITOR_EVENT)
+                            .filter(t -> t.type() == TurnType.RUNTIME_EVENT)
                             .count());
         } finally {
             release.countDown();
@@ -933,6 +935,9 @@ class AgentRunnerTest {
         String agentId = original.id();
         first.remove(session.toString());
         assertTrue(original.awaitTermination(Duration.ofSeconds(5)));
+        // A checkpoint from an explicitly extended request must survive a new runtime whose
+        // configured single-segment limit is smaller than that saved total allowance.
+        if (maxCalls == 2) store.save(session, agentId, requestId, "Review apples", 3, 4L);
         var restarted = serviceWith(caller, maxCalls);
         restarted.attachContinuationStore(store);
         try {
@@ -970,22 +975,25 @@ class AgentRunnerTest {
                             })
                     .when(monitors)
                     .acknowledge(agentId, event);
-            agent.attachMonitor(monitors);
-            agent.signalMonitor();
+            agent.attachWorkSource(work(monitors));
+            agent.signalWork();
             assertTrue(acknowledged.await(5, TimeUnit.SECONDS));
             assertEquals(maxCalls == 2, agent.await(EPISODE_TIMEOUT).success());
             assertEquals(maxCalls, requests.size());
             assertEquals(
-                    maxCalls,
+                    maxCalls == 2 ? 4 : 1,
                     store.load(session, agentId, requestId).orElseThrow().consumedCalls());
+            assertEquals(
+                    Long.valueOf(maxCalls == 2 ? 4 : 1),
+                    store.load(session, agentId, requestId).orElseThrow().grantedCalls());
             assertEquals(
                     "Review apples", store.load(session, agentId, requestId).orElseThrow().task());
             assertTrue(
                     agent.history().stream()
-                            .filter(t -> t.type() == TurnType.MONITOR_EVENT)
+                            .filter(t -> t.type() == TurnType.RUNTIME_EVENT)
                             .anyMatch(
                                     t ->
-                                            String.valueOf(t.payload().get("content"))
+                                            String.valueOf(t.payload().get("compiled_observation"))
                                                     .contains("Review apples")));
         } finally {
             restarted.remove(session.toString());
@@ -1009,6 +1017,7 @@ class AgentRunnerTest {
                         Mockito.anyString(),
                         Mockito.anyString(),
                         Mockito.anyString(),
+                        Mockito.anyLong(),
                         Mockito.anyLong());
         service.attachContinuationStore(store);
         @NonNull TurnRecordRepository records = Mockito.mock();
@@ -1041,8 +1050,9 @@ class AgentRunnerTest {
         }
     }
 
-    @Test
-    void restoredTimerOccurrenceCannotAcquireAnotherBudget() throws Exception {
+    @ParameterizedTest
+    @ValueSource(longs = {1L, 3L})
+    void restoredTimerOccurrenceCannotAcquireAnotherBudget(long consumed) throws Exception {
         AtomicInteger calls = new AtomicInteger();
         var service =
                 serviceWith(
@@ -1058,7 +1068,9 @@ class AgentRunnerTest {
                 .thenReturn(
                         Optional.of(
                                 new RequestContinuationStore.Checkpoint(
-                                        "Original timer purpose", 1)));
+                                        "Original timer purpose",
+                                        consumed,
+                                        consumed == 1 ? null : consumed)));
         service.attachContinuationStore(store);
         try {
             var agent =
@@ -1089,8 +1101,8 @@ class AgentRunnerTest {
                             })
                     .when(monitors)
                     .acknowledge(agentId, event);
-            agent.attachMonitor(monitors);
-            agent.signalMonitor();
+            agent.attachWorkSource(work(monitors));
+            agent.signalWork();
             assertTrue(acknowledged.await(5, TimeUnit.SECONDS));
             assertFalse(agent.await(EPISODE_TIMEOUT).success());
             assertEquals(0, calls.get());
@@ -1100,6 +1112,7 @@ class AgentRunnerTest {
                             Mockito.anyString(),
                             Mockito.anyString(),
                             Mockito.anyString(),
+                            Mockito.anyLong(),
                             Mockito.anyLong());
         } finally {
             service.remove(session.toString());
@@ -1107,244 +1120,178 @@ class AgentRunnerTest {
     }
 
     @Test
-    void sessionActivationRestoresTeamAndRunsNewWorkOnOriginalMateWithoutReplay() throws Exception {
+    void restoredHistoryPrecedesSafeConfigurationTransition() throws Exception {
         List<VetoRequest> requests = new CopyOnWriteArrayList<>();
         var service =
                 serviceWith(
                         request -> {
                             requests.add(request);
-                            return new VetoResponse(null, null, "new report");
+                            return new VetoResponse(null, null, "done");
                         });
-        UUID session = UUID.randomUUID();
-        UUID user = UUID.randomUUID();
-        String leaderId = UUID.randomUUID().toString();
-        String mateId = UUID.randomUUID().toString();
-        String idleId = UUID.randomUUID().toString();
-        Blackboard board = new Blackboard();
-        GroupRegistry registry = new GroupRegistry();
-        GroupOrchestrator orchestrator = new GroupOrchestrator(registry, board);
-        var repository = Mockito.mock(ToolDocs.nonNullClass(GroupHistoryRepository.class));
-        List<GroupHistoryEntity> rows = new ArrayList<>();
-        Mockito.when(repository.save(Mockito.any()))
-                .thenAnswer(
-                        invocation -> {
-                            GroupHistoryEntity row = invocation.getArgument(0);
-                            if (row == null) throw new AssertionError("Missing row");
-                            rows.add(row);
-                            return row;
-                        });
-        Mockito.when(repository.findBySessionIdOrderByRecordedAtAsc(session.toString()))
-                .thenReturn(rows);
-        GroupHistoryStore store =
-                new GroupHistoryStore(repository, new ObjectMapper().findAndRegisterModules());
-        Group old =
-                Group.create(
-                                leaderId,
-                                user.toString(),
-                                "saved team",
-                                board,
-                                new ExecutionDag(UUID.randomUUID(), List.of()),
-                                "owner",
-                                null,
-                                ToolResultPresentationMode.BASIC,
-                                session)
-                        .withMate(mateId, "review")
-                        .withMate(idleId, "analysis");
-        old =
-                old.withDag(
-                        new ExecutionDag(
-                                old.groupId(),
-                                List.of(
-                                        new DagNode(
-                                                "old-task",
-                                                "do not replay",
-                                                mateId,
-                                                "review",
-                                                Set.of(),
-                                                DagNode.NodeState.RUNNING,
-                                                new DagNode.ResultNone(),
-                                                1,
-                                                "old-dispatch",
-                                                "old-request"))));
-        store.save(old);
-        registry.attachHistory(store);
-        var loader = Mockito.mock(ToolDocs.nonNullClass(SessionHistoryLoader.class));
-        AtomicInteger historyLoads = new AtomicInteger();
-        Mockito.when(loader.load(Mockito.eq(session.toString()), Mockito.anyString()))
-                .thenAnswer(
-                        invocation -> {
-                            if (historyLoads.incrementAndGet() == 2)
-                                throw new IllegalStateException("Temporary history read failure");
-                            return mateId.equals(invocation.getArgument(1))
-                                    ? List.of(TurnRecord.userPrompt(1, "prior member history"))
-                                    : List.of();
-                        });
-        var tiers = Mockito.mock(ToolDocs.nonNullClass(ModelTierRegistry.class));
-        Mockito.when(tiers.resolve("owner", ModelTier.TOP))
-                .thenReturn(
-                        new ModelBinding(ProviderType.DEEPSEEK, "leader-current", "key", 0, 4096));
-        var spawner =
-                new GroupSpawner(
-                        board,
-                        registry,
-                        orchestrator,
-                        new MateBreakerRegistry(),
-                        new SkillsetProperties(),
-                        50,
-                        "MID",
-                        "System",
-                        (persona, mateBinding) ->
-                                service.createMate(
-                                        persona,
-                                        binding("System"),
-                                        user,
-                                        "owner",
-                                        Nullness.requireNonNull(mateBinding.workspace()),
-                                        ToolResultPresentationMode.BASIC,
-                                        session));
-        Object owned = ReflectionTestUtils.getField(service, "sessionAgents");
-        if (!(owned instanceof SessionAgentRegistry agents))
-            throw new AssertionError("Missing registry");
-        service.attachGroupRecovery(
-                new GroupRecoveryService(
-                        store,
-                        registry,
-                        board,
-                        spawner,
-                        loader,
-                        agents,
-                        new LeaderBinding("TOP", "System", tiers),
-                        new RoleToolFilter(new TestToolEngine())));
+        var plugins = Mockito.mock(ToolDocs.nonNullClass(SessionPlugins.class));
+        Mockito.when(plugins.tools(Mockito.anyString(), Mockito.any()))
+                .thenAnswer(call -> call.getArgument(1));
+        var transition =
+                new AgentConfiguration.Transition(
+                        "configured",
+                        "runtime-observation",
+                        new JsonValue.ObjectValue(
+                                Map.of(
+                                        "content",
+                                        new JsonValue.StringValue("configured"),
+                                        "originatingTask",
+                                        new JsonValue.StringValue("prior task"))));
+        Mockito.when(
+                        plugins.configure(
+                                Mockito.anyString(),
+                                Mockito.anyString(),
+                                Mockito.anyString(),
+                                Mockito.isNull(),
+                                Mockito.any(),
+                                Mockito.any(),
+                                Mockito.anyString()))
+                .thenAnswer(call -> new AgentConfiguration.Intent(call.getArgument(4), transition));
+        Mockito.when(plugins.protect(Mockito.any(), Mockito.any(), Mockito.anyString()))
+                .thenAnswer(call -> call.getArgument(2));
+        service.attachSessionPlugins(plugins);
+        service.setModelTierRegistry(Mockito.mock(ToolDocs.nonNullClass(ModelTierRegistry.class)));
+        String session = UUID.randomUUID().toString();
         try {
-            assertThrows(
-                    IllegalStateException.class,
-                    () ->
-                            service.getOrCreateAgent(
-                                    session.toString(),
-                                    leaderId,
-                                    binding("System"),
-                                    List.of(TurnRecord.userPrompt(1, "prior leader history")),
-                                    user,
-                                    "owner",
-                                    "D:/IdeaProjects/veto/work/tmp/unfinished-group",
-                                    0,
-                                    ToolResultPresentationMode.BASIC));
-            assertEquals(
-                    2,
-                    agents.agents(session).size(),
-                    "First recovered member remains available for retry");
-            Agent leader =
+            var agent =
                     service.getOrCreateAgent(
-                            session.toString(),
-                            leaderId,
+                            session,
+                            UUID.randomUUID().toString(),
                             binding("System"),
-                            List.of(TurnRecord.userPrompt(1, "prior leader history")),
-                            user,
+                            List.of(TurnRecord.userPrompt(1, "prior persisted request")),
+                            UUID.randomUUID(),
                             "owner",
-                            "D:/IdeaProjects/veto/work/tmp/unfinished-group",
+                            "D:/IdeaProjects/veto/work/tmp/runner-state-storage",
                             0,
                             ToolResultPresentationMode.BASIC);
-            assertEquals(Role.LEADER, leader.persona().role());
-            assertEquals(3, historyLoads.get(), "Retry loads only the missing member");
-            Group restored = Nullness.requireNonNull(registry.get(old.groupId()));
-            assertEquals(old.mates(), restored.mates());
-            assertEquals(DagNode.NodeState.INTERRUPTED, restored.dag().nodes().getFirst().state());
-            orchestrator.tick(old.groupId());
-            assertEquals(
-                    GroupState.ACTIVE,
-                    Nullness.requireNonNull(registry.get(old.groupId())).state());
-            assertTrue(requests.isEmpty(), "Recovery must not execute interrupted work");
-            var mate =
-                    agents.agents(session).stream()
-                            .filter(entry -> entry.agent().id().equals(mateId))
-                            .findFirst()
-                            .orElseThrow()
-                            .agent();
+            agent.submit("New request");
+            assertTrue(agent.await(EPISODE_TIMEOUT).success());
             assertTrue(
-                    mate.history().stream()
+                    agent.history().stream()
                             .anyMatch(
                                     turn ->
-                                            "prior member history"
-                                                    .equals(turn.payload().get("content"))));
-            orchestrator.addNode(
-                    old.groupId(),
-                    "new-task",
-                    "new review",
-                    "review",
-                    Set.of(),
-                    mateId,
-                    false,
-                    "new-request");
-            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
-            while (System.nanoTime() < deadline) {
-                restored = Nullness.requireNonNull(orchestrator.tick(old.groupId()));
-                if (restored.dag().nodes().stream()
-                        .anyMatch(
-                                node ->
-                                        node.nodeId().equals("new-task")
-                                                && node.state() == DagNode.NodeState.VERIFIED))
-                    break;
-                Thread.sleep(20);
-            }
-            assertEquals(1, requests.size());
-            var recoveryMessages =
-                    requests.getFirst().messages().stream()
-                            .filter(
-                                    message ->
-                                            message.content()
-                                                    .startsWith("[Runtime recovery observation]"))
-                            .toList();
+                                            turn.payload()
+                                                    .toString()
+                                                    .contains("prior persisted request")));
             assertEquals(
                     1,
-                    recoveryMessages.size(),
-                    "Partial recovery retry must not duplicate context");
-            String recovery = recoveryMessages.getFirst().content();
-            assertTrue(recovery.contains("old-task"));
-            assertTrue(recovery.contains("old-dispatch"));
-            assertTrue(recovery.contains("old-request"));
-            assertFalse(recovery.contains("new-request"));
-            assertFalse(
-                    mate.history().stream()
-                            .anyMatch(
+                    agent.history().stream()
+                            .filter(
                                     turn ->
-                                            turn.payload().values().stream()
-                                                    .anyMatch(
-                                                            value ->
-                                                                    value instanceof String text
-                                                                            && text.contains(
-                                                                                    "[Runtime recovery observation]"))));
+                                            turn.payload()
+                                                    .toString()
+                                                    .contains("[Runtime observation]"))
+                            .count());
             assertTrue(
-                    restored.dag().nodes().stream()
+                    requests.stream()
                             .anyMatch(
-                                    node ->
-                                            node.nodeId().equals("new-task")
-                                                    && node.state() == DagNode.NodeState.VERIFIED));
-            assertSame(
-                    leader,
-                    service.getOrCreateAgent(
-                            session.toString(),
-                            leaderId,
-                            binding("System"),
-                            List.of(),
-                            user,
-                            "owner",
-                            "D:/IdeaProjects/veto/work/tmp/unfinished-group",
-                            0,
-                            ToolResultPresentationMode.BASIC));
-            assertEquals(3, agents.agents(session).size());
-            service.submitNow(session.toString(), "Follow-up", binding("System"));
-            assertTrue(leader.await(EPISODE_TIMEOUT).success());
-            assertEquals("leader-current", requests.getLast().modelName());
-            assertFalse(
-                    requests.getLast().messages().stream()
-                            .anyMatch(
-                                    message ->
-                                            message.content()
-                                                    .startsWith("[Runtime recovery observation]")),
-                    "Mate recovery context must not leak into the Leader");
+                                    request ->
+                                            request.messages()
+                                                    .toString()
+                                                    .contains("prior persisted request")));
         } finally {
-            spawner.disband(old.groupId());
-            service.remove(session.toString());
+            service.remove(session);
+        }
+    }
+
+    @Test
+    void queuedCancellationSettlesOnlyItsOwnRequest() throws Exception {
+        CountDownLatch entered = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        AtomicInteger calls = new AtomicInteger();
+        var service =
+                serviceWith(
+                        request -> {
+                            if (calls.incrementAndGet() == 2) {
+                                entered.countDown();
+                                try {
+                                    release.await(5, TimeUnit.SECONDS);
+                                } catch (InterruptedException error) {
+                                    Thread.currentThread().interrupt();
+                                }
+                            }
+                            return new VetoResponse(null, null, "done");
+                        });
+        try {
+            service.submit("owned-queue", "Warm up", binding("System"), EPISODE_TIMEOUT);
+            var agent = requireAgent(service.agent("owned-queue"));
+            var active = agent.submitRequest("First");
+            assertTrue(entered.await(5, TimeUnit.SECONDS));
+            var cancelled = agent.submitRequest("Second");
+            var following = agent.submitRequest("Third");
+            assertTrue(agent.cancelTask(cancelled.result(), Duration.ofSeconds(1)));
+            assertFalse(cancelled.await(EPISODE_TIMEOUT).success());
+            assertTrue(cancelled.settled().isDone());
+            assertFalse(active.result().isDone());
+            release.countDown();
+            assertTrue(active.await(EPISODE_TIMEOUT).success());
+            assertTrue(following.await(EPISODE_TIMEOUT).success());
+            assertEquals(3, calls.get());
+        } finally {
+            release.countDown();
+            service.remove("owned-queue");
+        }
+    }
+
+    @Test
+    void callbackFailureDoesNotStrandFollowingRequest() throws Exception {
+        var service = serviceWith(request -> new VetoResponse(null, null, "done"));
+        try {
+            service.submit("callback-throw", "Warm up", binding("System"), EPISODE_TIMEOUT);
+            var agent = requireAgent(service.agent("callback-throw"));
+            agent.submit(
+                    "First",
+                    result -> {
+                        throw new IllegalStateException("subscriber failed");
+                    });
+            var first = agent.result();
+            var following = agent.submitRequest("Second");
+            assertTrue(first.get(5, TimeUnit.SECONDS).success());
+            assertTrue(agent.cancelTask(first, Duration.ofSeconds(5)));
+            assertTrue(following.await(EPISODE_TIMEOUT).success());
+        } finally {
+            service.remove("callback-throw");
+        }
+    }
+
+    @Test
+    void closingSettlesActiveAndQueuedRequests() throws Exception {
+        CountDownLatch entered = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        AtomicInteger calls = new AtomicInteger();
+        var service =
+                serviceWith(
+                        request -> {
+                            if (calls.incrementAndGet() == 2) {
+                                entered.countDown();
+                                try {
+                                    release.await(5, TimeUnit.SECONDS);
+                                } catch (InterruptedException error) {
+                                    Thread.currentThread().interrupt();
+                                }
+                            }
+                            return new VetoResponse(null, null, "done");
+                        });
+        try {
+            service.submit("close-owned", "Warm up", binding("System"), EPISODE_TIMEOUT);
+            var agent = requireAgent(service.agent("close-owned"));
+            var active = agent.submitRequest("First");
+            assertTrue(entered.await(5, TimeUnit.SECONDS));
+            var queued = agent.submitRequest("Second");
+            service.remove("close-owned");
+            release.countDown();
+            assertFalse(active.await(EPISODE_TIMEOUT).success());
+            assertFalse(queued.await(EPISODE_TIMEOUT).success());
+            assertTrue(active.settled().get(5, TimeUnit.SECONDS));
+            assertTrue(queued.settled().get(5, TimeUnit.SECONDS));
+            assertEquals(2, calls.get());
+        } finally {
+            release.countDown();
+            service.remove("close-owned");
         }
     }
 
@@ -1443,8 +1390,8 @@ class AgentRunnerTest {
                             })
                     .when(monitors)
                     .activationCancelled(agentId, session.toString(), event);
-            agent.attachMonitor(monitors);
-            agent.signalMonitor();
+            agent.attachWorkSource(work(monitors));
+            agent.signalWork();
             assertTrue(cancelled.await(5, TimeUnit.SECONDS));
             assertEquals(0, calls.get());
             agent.submit("A new task");
@@ -1455,7 +1402,7 @@ class AgentRunnerTest {
                     agent.history().stream()
                             .noneMatch(
                                     turn ->
-                                            turn.type() == TurnType.MONITOR_EVENT
+                                            turn.type() == TurnType.RUNTIME_EVENT
                                                     && event.id()
                                                             .equals(
                                                                     turn.payload()
@@ -1556,8 +1503,8 @@ class AgentRunnerTest {
                     .when(monitors)
                     .activationCancelled(
                             Mockito.eq(agent.id()), Mockito.anyString(), Mockito.eq(event));
-            agent.attachMonitor(monitors);
-            agent.signalMonitor();
+            agent.attachWorkSource(work(monitors));
+            agent.signalWork();
             assertTrue(observationCancelled.await(5, TimeUnit.SECONDS));
             assertEquals(1, calls.get(), "Cancelled request must not resume on process exit");
             agent.submit("Second task");
@@ -1631,7 +1578,8 @@ class AgentRunnerTest {
     void citationCorrectionHasAnOpportunityAfterSchemaCorrections() throws Exception {
         var calls = new AtomicInteger();
         var service =
-                serviceWith(
+                serviceWithCitationPolicy(
+                        "citation-after-schema",
                         request -> {
                             int call = calls.incrementAndGet();
                             if (call <= 2) throw new ModelSchemaException("Invalid JSON shape");
@@ -1661,7 +1609,8 @@ class AgentRunnerTest {
     void malformedCorrectionsPreserveTheCandidateAndItsOriginalSourceBinding() throws Exception {
         var calls = new AtomicInteger();
         var service =
-                serviceWith(
+                serviceWithCitationPolicy(
+                        "citation-candidate",
                         request -> {
                             if (calls.incrementAndGet() > 1)
                                 throw new ModelSchemaException("Invalid correction");
@@ -1698,7 +1647,8 @@ class AgentRunnerTest {
     void exhaustedCitationCorrectionPreservesAnswerAndUnresolvedReference() throws Exception {
         var calls = new AtomicInteger();
         var service =
-                serviceWith(
+                serviceWithCitationPolicy(
+                        "citation-unresolved",
                         request -> {
                             calls.incrementAndGet();
                             return new VetoResponse(
@@ -1741,7 +1691,8 @@ class AgentRunnerTest {
     void invalidCitationIsCorrectedAgainstTheActualRequestBeforePublishing() throws Exception {
         var calls = new AtomicInteger();
         var service =
-                serviceWith(
+                serviceWithCitationPolicy(
+                        "citation-correction",
                         request -> {
                             boolean first = calls.incrementAndGet() == 1;
                             return new VetoResponse(
@@ -1781,7 +1732,8 @@ class AgentRunnerTest {
         var calls = new AtomicInteger();
         var mapper = new ObjectMapper();
         var service =
-                serviceWith(
+                serviceWithCitationPolicy(
+                        "citation-retry",
                         request -> {
                             if (calls.incrementAndGet() == 1)
                                 throw new ModelSchemaException("try again");
@@ -1843,18 +1795,60 @@ class AgentRunnerTest {
         assertTrue(result.message().contains("ToolErrors"));
     }
 
+    @Test
+    void configurationChangeAppliesAfterTheCurrentExchangeIncludingRepair() throws Exception {
+        var active = new AtomicReference<VetoAgent>();
+        List<VetoRequest> seen = new CopyOnWriteArrayList<>();
+        var service =
+                serviceWith(
+                        request -> {
+                            seen.add(request);
+                            if (seen.size() == 2) {
+                                var agent = active.get();
+                                if (agent == null) throw new AssertionError("Missing agent");
+                                agent.bind(binding("Changed system"));
+                                return new VetoResponse(null, null, null);
+                            }
+                            return new VetoResponse(null, null, "done");
+                        });
+        try {
+            service.submit(
+                    "model-snapshot", "Initialize", binding("Original system"), EPISODE_TIMEOUT);
+            var agent = requireAgent(service.agent("model-snapshot"));
+            active.set(agent);
+            assertTrue(agent.submitRequest("Repair once").await(EPISODE_TIMEOUT).success());
+            assertEquals(seen.get(1).systemPrompt(), seen.get(2).systemPrompt());
+            assertTrue(
+                    agent.submitRequest("Use updated configuration")
+                            .await(EPISODE_TIMEOUT)
+                            .success());
+            assertNotEquals(seen.get(2).systemPrompt(), seen.get(3).systemPrompt());
+        } finally {
+            service.remove("model-snapshot");
+        }
+    }
+
     @ParameterizedTest
     @ValueSource(strings = {"RESOURCE_EVENT", "TIME_ONCE"})
     void directPromptWaitsForGroupMonitorCompletion(@NonNull String kind) throws Exception {
         var calls = new AtomicInteger();
         var parked = new CountDownLatch(1);
         var directDone = new CountDownLatch(1);
-        var groupWork = new AtomicBoolean(true);
+        var registered = new CountDownLatch(1);
+        var groupReady = new CompletableFuture<Boolean>();
         var eventPending = new AtomicBoolean(false);
         var service =
                 serviceWith(
                         request -> {
                             int call = calls.incrementAndGet();
+                            if (call == 2) {
+                                parked.countDown();
+                                try {
+                                    registered.await(5, TimeUnit.SECONDS);
+                                } catch (InterruptedException error) {
+                                    Thread.currentThread().interrupt();
+                                }
+                            }
                             return new VetoResponse(null, null, "result-" + call);
                         });
         try {
@@ -1863,13 +1857,6 @@ class AgentRunnerTest {
             @NonNull MonitorService monitors = Mockito.mock();
             var event =
                     new MonitorRecord.Event("done", "group", kind, "Group finished", Instant.now());
-            Mockito.when(monitors.hasGroupWork(Mockito.eq(agent.id()), Mockito.anyString()))
-                    .thenAnswer(
-                            invocation -> {
-                                boolean work = groupWork.get();
-                                if (work) parked.countDown();
-                                return work;
-                            });
             Mockito.when(monitors.pending(agent.id(), agent.sessionId().toString()))
                     .thenAnswer(
                             invocation ->
@@ -1887,11 +1874,12 @@ class AgentRunnerTest {
             Mockito.doAnswer(
                             invocation -> {
                                 eventPending.set(false);
+                                groupReady.complete(true);
                                 return null;
                             })
                     .when(monitors)
                     .acknowledge(Mockito.eq(agent.id()), Mockito.any());
-            agent.attachMonitor(monitors);
+            agent.attachWorkSource(work(monitors));
             agent.addMessageListener(
                     message -> {
                         if (message.equals("result-4")) directDone.countDown();
@@ -1899,15 +1887,124 @@ class AgentRunnerTest {
             agent.submit("Wait for group");
             var workflow = agent.result();
             assertTrue(parked.await(5, TimeUnit.SECONDS));
+            if (!(workflow instanceof RequestHandle.Result owned))
+                throw new AssertionError("Missing request");
+            owned.handle().await(new PluginAwait("group-test", groupReady), agent::signalWork);
+            registered.countDown();
             agent.submitUserPrompt("User follow-up");
             assertSame(workflow, agent.result());
-            groupWork.set(false);
             eventPending.set(true);
-            agent.signalMonitor();
+            agent.signalWork();
             assertEquals("result-3", workflow.get(5, TimeUnit.SECONDS).message());
             assertTrue(directDone.await(5, TimeUnit.SECONDS));
         } finally {
             service.remove("direct-monitor");
+        }
+    }
+
+    @Test
+    void failedWaitDuringModelCallBlocksTheNextToolEffect() throws Exception {
+        var entered = new CountDownLatch(1);
+        var release = new CountDownLatch(1);
+        var calls = new AtomicInteger();
+        var signal = new CompletableFuture<Boolean>();
+        var definition =
+                AgentToolDefinition.from(
+                        "fixture_loop",
+                        ToolDocs.nonNullClass(FixtureLoopTool.class),
+                        ToolDocs.nonNullClass(FixtureLoopTool.Args.class),
+                        ToolCapability.LOOP_CONTROL);
+        @NonNull ToolEngine engine = Mockito.mock();
+        Mockito.when(engine.getActiveTools(Mockito.any())).thenReturn(List.of(definition));
+        Mockito.when(engine.resolveDefinition("fixture_loop")).thenReturn(definition);
+        var service =
+                serviceWith(
+                        request -> {
+                            if (calls.incrementAndGet() == 1)
+                                return new VetoResponse(null, null, "initialized");
+                            entered.countDown();
+                            try {
+                                if (!release.await(5, TimeUnit.SECONDS))
+                                    throw new AssertionError("Timed out");
+                            } catch (InterruptedException error) {
+                                throw new AssertionError(error);
+                            }
+                            return new VetoResponse(
+                                    null, List.of(new ToolCall("fixture_loop", Map.of())), null);
+                        },
+                        50,
+                        engine,
+                        new HitlRegistry());
+        try {
+            service.submit("active-wait-failure", "Initialize", binding("System"), EPISODE_TIMEOUT);
+            var agent = requireAgent(service.agent("active-wait-failure"));
+            var request = agent.submitRequest("Work");
+            assertTrue(entered.await(5, TimeUnit.SECONDS));
+            request.await(new PluginAwait("generation/wait", signal), agent::signalWork);
+            signal.completeExceptionally(new IllegalStateException("Plugin stopped"));
+            release.countDown();
+            assertFalse(request.await(EPISODE_TIMEOUT).success());
+            assertTrue(request.settled().get(5, TimeUnit.SECONDS));
+            assertEquals(2, calls.get());
+            Mockito.verify(engine, Mockito.never()).execute(Mockito.any(), Mockito.any());
+        } finally {
+            release.countDown();
+            service.remove("active-wait-failure");
+        }
+    }
+
+    @Test
+    void failedWaitRejectsPendingObservationBeforeCallingModel() throws Exception {
+        var entered = new CountDownLatch(1);
+        var release = new CountDownLatch(1);
+        var calls = new AtomicInteger();
+        var signal = new CompletableFuture<Boolean>();
+        var service =
+                serviceWith(
+                        request -> {
+                            if (calls.incrementAndGet() == 2) {
+                                entered.countDown();
+                                try {
+                                    release.await(5, TimeUnit.SECONDS);
+                                } catch (InterruptedException error) {
+                                    Thread.currentThread().interrupt();
+                                }
+                            }
+                            return new VetoResponse(null, null, "waiting");
+                        });
+        try {
+            service.submit("wait-failure", "Initialize", binding("System"), EPISODE_TIMEOUT);
+            var agent = requireAgent(service.agent("wait-failure"));
+            var request = agent.submitRequest("Wait");
+            assertTrue(entered.await(5, TimeUnit.SECONDS));
+            request.await(new PluginAwait("generation/wait", signal), agent::signalWork);
+            release.countDown();
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+            while (agent.state() != AgentState.WAITING && System.nanoTime() < deadline)
+                Thread.sleep(10);
+            assertEquals(AgentState.WAITING, agent.state());
+            @NonNull MonitorService monitors = Mockito.mock();
+            Mockito.when(monitors.pending(agent.id(), agent.sessionId().toString()))
+                    .thenReturn(
+                            List.of(
+                                    new MonitorRecord.Event(
+                                            "other",
+                                            "group",
+                                            "RESOURCE_EVENT",
+                                            "Work",
+                                            Instant.now(),
+                                            request.requestId(),
+                                            "dispatch")));
+            agent.attachWorkSource(work(monitors));
+            signal.completeExceptionally(new IllegalStateException("Plugin stopped"));
+            assertFalse(request.await(EPISODE_TIMEOUT).success());
+            assertTrue(request.settled().get(5, TimeUnit.SECONDS));
+            assertEquals(2, calls.get());
+            Mockito.verify(monitors, Mockito.never())
+                    .acknowledge(Mockito.anyString(), Mockito.any());
+        } finally {
+            release.countDown();
+            service.remove("wait-failure");
         }
     }
 
@@ -2014,13 +2111,13 @@ class AgentRunnerTest {
                         })
                 .when(monitors)
                 .acknowledge(agent.id(), event);
-        agent.attachMonitor(monitors);
+        agent.attachWorkSource(work(monitors));
         try {
-            agent.signalMonitor();
+            agent.signalWork();
             if (retryAcknowledgement) {
                 assertTrue(acknowledgementFailed.await(5, TimeUnit.SECONDS));
                 assertFalse(agent.await(EPISODE_TIMEOUT).success());
-                agent.signalMonitor();
+                agent.signalWork();
             }
             assertTrue(resumed.await(5, TimeUnit.SECONDS));
             assertTrue(agent.await(EPISODE_TIMEOUT).success());
@@ -2030,7 +2127,7 @@ class AgentRunnerTest {
             assertEquals(
                     1,
                     agent.history().stream()
-                            .filter(t -> t.type() == TurnType.MONITOR_EVENT)
+                            .filter(t -> t.type() == TurnType.RUNTIME_EVENT)
                             .count());
             assertTrue(
                     seen.getLast().messages().stream()
@@ -2055,7 +2152,13 @@ class AgentRunnerTest {
         @NonNull MonitorService monitors = Mockito.mock();
         var event =
                 new MonitorRecord.Event(
-                        "result", "group", "RESOURCE_EVENT", "Task completed", Instant.now());
+                        "result",
+                        "group",
+                        "RESOURCE_EVENT",
+                        "Task completed",
+                        Instant.now(),
+                        requestIdentity(agent),
+                        "dispatch");
         Mockito.when(monitors.pending(agent.id(), agent.sessionId().toString()))
                 .thenReturn(List.of(event));
         var consumed = new CountDownLatch(1);
@@ -2066,9 +2169,9 @@ class AgentRunnerTest {
                         })
                 .when(monitors)
                 .acknowledge(agent.id(), event);
-        agent.attachMonitor(monitors);
+        agent.attachWorkSource(work(monitors));
         try {
-            agent.signalMonitor();
+            agent.signalWork();
             assertTrue(consumed.await(5, TimeUnit.SECONDS));
             assertFalse(agent.await(EPISODE_TIMEOUT).success());
             assertEquals(1, calls.get());
@@ -2138,18 +2241,18 @@ class AgentRunnerTest {
                             })
                     .when(monitors)
                     .acknowledge(Mockito.eq(agent.id()), Mockito.any());
-            agent.attachMonitor(monitors);
-            agent.signalMonitor();
+            agent.attachWorkSource(work(monitors));
+            agent.signalWork();
             assertTrue(resumed.await(5, TimeUnit.SECONDS));
             assertTrue(agent.await(EPISODE_TIMEOUT).success());
             assertEquals(List.of(other), List.copyOf(pending));
             var notification =
                     agent.history().stream()
-                            .filter(t -> t.type() == TurnType.MONITOR_EVENT)
+                            .filter(t -> t.type() == TurnType.RUNTIME_EVENT)
                             .toList()
                             .getLast();
             assertEquals(firstId, notification.payload().get("requestId"));
-            String content = String.valueOf(notification.payload().get("content"));
+            String content = String.valueOf(notification.payload().get("compiled_observation"));
             assertTrue(content.contains("Review apples"));
             assertFalse(content.contains("Review oranges"));
             assertTrue(
@@ -2209,8 +2312,8 @@ class AgentRunnerTest {
                             })
                     .when(monitors)
                     .acknowledge(agent.id(), event);
-            agent.attachMonitor(monitors);
-            agent.signalMonitor();
+            agent.attachWorkSource(work(monitors));
+            agent.signalWork();
             assertTrue(inNotification.await(5, TimeUnit.SECONDS));
             agent.submit("New request");
             var newResult = agent.result();
@@ -2264,8 +2367,8 @@ class AgentRunnerTest {
                             })
                     .when(monitors)
                     .acknowledge(agent.id(), event);
-            agent.attachMonitor(monitors);
-            agent.signalMonitor();
+            agent.attachWorkSource(work(monitors));
+            agent.signalWork();
             assertTrue(appended.await(5, TimeUnit.SECONDS));
             assertFalse(agent.await(EPISODE_TIMEOUT).success());
             assertEquals(3, calls.get(), "Old request already consumed both calls");
@@ -2275,6 +2378,30 @@ class AgentRunnerTest {
     }
 
     private static final Duration EPISODE_TIMEOUT = Duration.ofSeconds(10);
+
+    /** Only citation-policy scenarios select the builtin response contribution. */
+    private static @NonNull AgentService serviceWithCitationPolicy(
+            @NonNull String agentKey, @NonNull UniformLLMCaller caller) {
+        var service = serviceWith(caller);
+        @NonNull SessionPlugins selected = Mockito.mock();
+        Mockito.when(selected.responsePolicies(Mockito.anyString()))
+                .thenAnswer(call -> List.of(new CitationResponsePolicy().open()));
+        Mockito.when(selected.protect(Mockito.any(), Mockito.any(), Mockito.anyString()))
+                .thenAnswer(call -> call.getArgument(2));
+        Mockito.when(selected.tools(Mockito.anyString(), Mockito.any()))
+                .thenAnswer(call -> call.getArgument(1));
+        // configure defaults to null: this fixture selects a response policy, not an agent profile.
+        service.attachSessionPlugins(selected);
+        service.getOrCreateAgent(
+                agentKey,
+                null,
+                binding("System"),
+                List.of(),
+                UUID.randomUUID(),
+                "citation-owner",
+                null);
+        return service;
+    }
 
     /** Builds an {@link AgentService} wired with the default stubs + a capturing caller. */
     private static @NonNull AgentService serviceWith(@NonNull UniformLLMCaller caller) {
@@ -2309,16 +2436,147 @@ class AgentRunnerTest {
                 caller,
                 mapper,
                 List.of(),
-                new RoleToolFilter(engine),
                 "REAL",
                 maxCallsPerEpisode,
-                1000,
                 "FULL_ACCESS",
                 "STRICT",
                 null,
-                null,
-                new BackgroundTaskManager(
-                        new SandboxManager(TestSandboxFactory.uncontainedSubprocesses())));
+                null);
+    }
+
+    @Test
+    void historySeededContinueRemainsANewTaskWithoutGuessingBreakerWait() throws Exception {
+        UUID session = UUID.randomUUID();
+        String oldRequest = UUID.randomUUID().toString();
+        String agentId = UUID.randomUUID().toString();
+        @NonNull RequestContinuationStore store = Mockito.mock();
+        var calls = new AtomicInteger();
+        var service =
+                serviceWith(
+                        request -> {
+                            calls.incrementAndGet();
+                            return new VetoResponse(null, null, "done");
+                        },
+                        1L);
+        service.attachContinuationStore(store);
+        var history =
+                List.of(
+                        new TurnRecord(
+                                1,
+                                TurnType.USER_PROMPT,
+                                Map.of("content", "Unfinished old task", "requestId", oldRequest),
+                                Instant.now()));
+        try {
+            var agent =
+                    (VetoAgent)
+                            service.getOrCreateAgent(
+                                    session.toString(),
+                                    agentId,
+                                    binding("System"),
+                                    history,
+                                    UUID.randomUUID(),
+                                    null,
+                                    "D:/IdeaProjects/veto/work/tmp/breaker-budget",
+                                    0,
+                                    ToolResultPresentationMode.BASIC);
+            assertTrue(
+                    service.submit(
+                                    session.toString(),
+                                    "continue",
+                                    binding("System"),
+                                    EPISODE_TIMEOUT)
+                            .success());
+            assertEquals(1, calls.get());
+            String newRequest = requestIdentity(agent);
+            assertNotEquals(oldRequest, newRequest);
+            Mockito.verify(store).save(session, agentId, newRequest, "continue", 0, 1L);
+            Mockito.verify(store).save(session, agentId, newRequest, "continue", 1, 1L);
+            var last =
+                    agent.history().stream()
+                            .filter(turn -> turn.type() == TurnType.USER_PROMPT)
+                            .reduce((first, second) -> second)
+                            .orElseThrow();
+            assertEquals("continue", last.payload().get("content"));
+            assertFalse(last.payload().containsKey("resume_context"));
+            assertEquals(history.getFirst(), agent.history().getFirst());
+        } finally {
+            service.remove(session.toString());
+        }
+    }
+
+    @Test
+    void repeatedBreakerContinuePersistsCumulativeBudgetBeforeEachModelCall() throws Exception {
+        @NonNull RequestContinuationRepository repository = Mockito.mock();
+        Map<String, RequestContinuationEntity> durable = new ConcurrentHashMap<>();
+        Mockito.when(repository.findById(Mockito.anyString()))
+                .thenAnswer(
+                        invocation -> Optional.ofNullable(durable.get(invocation.getArgument(0))));
+        Mockito.when(repository.saveAndFlush(Mockito.any()))
+                .thenAnswer(
+                        invocation -> {
+                            RequestContinuationEntity row = invocation.getArgument(0);
+                            if (row == null) throw new AssertionError("Missing checkpoint");
+                            durable.put(row.getId(), row);
+                            return row;
+                        });
+        var store = new RequestContinuationStore(repository);
+        var calls = new AtomicInteger();
+        var service =
+                serviceWith(
+                        request -> {
+                            int current = calls.incrementAndGet();
+                            assertEquals(
+                                    1,
+                                    durable.size(),
+                                    "Continue retains the same request checkpoint");
+                            var checkpoint = durable.values().iterator().next();
+                            assertEquals(current, checkpoint.getConsumedCalls());
+                            assertEquals(Long.valueOf(current), checkpoint.getGrantedCalls());
+                            assertEquals("Original task", checkpoint.getTask());
+                            return current < 3
+                                    ? new VetoResponse(
+                                            null,
+                                            List.of(
+                                                    new ToolCall(
+                                                            "missing_tool",
+                                                            Map.of(),
+                                                            "call-" + current)),
+                                            null)
+                                    : new VetoResponse(null, null, "Done");
+                        },
+                        1L);
+        service.attachContinuationStore(store);
+        String session = UUID.randomUUID().toString();
+        try {
+            assertFalse(
+                    service.submit(session, "Original task", binding("System"), EPISODE_TIMEOUT)
+                            .success());
+            assertFalse(
+                    service.submit(session, "continue", binding("System"), EPISODE_TIMEOUT)
+                            .success());
+            assertTrue(
+                    service.submit(session, "continue", binding("System"), EPISODE_TIMEOUT)
+                            .success());
+            assertEquals(3, calls.get());
+            var agent = requireAgent(service.agent(session));
+            var checkpoint =
+                    new RequestContinuationStore(repository)
+                            .load(UUID.fromString(session), agent.id(), requestIdentity(agent))
+                            .orElseThrow();
+            assertEquals(3, checkpoint.consumedCalls());
+            assertEquals(Long.valueOf(3), checkpoint.grantedCalls());
+            var prompts =
+                    agent.history().stream()
+                            .filter(turn -> turn.type() == TurnType.USER_PROMPT)
+                            .toList();
+            assertEquals(
+                    List.of("Original task", "continue", "continue"),
+                    prompts.stream().map(turn -> turn.payload().get("content")).toList());
+            assertEquals("Original task", prompts.get(1).payload().get("resume_context"));
+            assertEquals("Original task", prompts.get(2).payload().get("resume_context"));
+        } finally {
+            service.remove(session);
+        }
     }
 
     @Test

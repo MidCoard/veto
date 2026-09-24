@@ -10,7 +10,6 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
-import top.focess.veto.agent.identity.RoleToolFilter;
 import top.focess.veto.agent.identity.SystemPromptResolver;
 import top.focess.veto.agent.intercept.HitlRegistry;
 import top.focess.veto.agent.intercept.IngressDefense;
@@ -24,9 +23,6 @@ import top.focess.veto.api.llm.VetoResponse;
 import top.focess.veto.bus.DeltaBroker;
 import top.focess.veto.bus.DeltaFrame;
 import top.focess.veto.llm.core.UniformLLMCaller;
-import top.focess.veto.sandbox.BackgroundTaskManager;
-import top.focess.veto.sandbox.SandboxManager;
-import top.focess.veto.sandbox.TestSandboxFactory;
 
 /**
  * Verifies the Part-8 emission seam: an agent's user-facing message is published as a per-session
@@ -57,16 +53,12 @@ class DeltaBrokerWiringTest {
                 caller,
                 mapper,
                 List.of(),
-                new RoleToolFilter(new TestToolEngine()),
                 "REAL",
                 50L,
-                1000,
                 "FULL_ACCESS",
                 "STRICT",
                 broker,
-                null,
-                new BackgroundTaskManager(
-                        new SandboxManager(TestSandboxFactory.uncontainedSubprocesses())));
+                null);
     }
 
     private static @NonNull LlmBinding binding(@NonNull String systemPrompt) {

@@ -1,0 +1,13 @@
+---
+version: 2
+id: runtime-observation
+requires: [content, originatingTask]
+---
+@message user
+[Runtime observation]
+Originating task (later user requests remain separate):
+{{originatingTask}}
+
+{{content}}
+Process this observation without repeating completed work.
+@endmessage

@@ -15,6 +15,20 @@ import top.focess.veto.api.plugin.service.ServiceRegistration;
 public final class StandardContributionPoints {
     private StandardContributionPoints() {}
 
+    public static final @NonNull ContributionPoint<AgentConfiguration> AGENT_CONFIGURATION =
+            new ContributionPoint<>(
+                    new ContributionId("veto:agent-configuration"),
+                    1,
+                    AgentConfiguration.class,
+                    ContributionPoint.Cardinality.MULTIPLE);
+
+    public static final @NonNull ContributionPoint<AgentWorkSource> AGENT_WORK =
+            new ContributionPoint<>(
+                    new ContributionId("veto:agent-work"),
+                    1,
+                    AgentWorkSource.class,
+                    ContributionPoint.Cardinality.MULTIPLE);
+
     public static final @NonNull ContributionPoint<LlmProvider> LLM_PROVIDERS =
             new ContributionPoint<>(
                     new ContributionId("veto:llm-providers"),
@@ -27,6 +41,13 @@ public final class StandardContributionPoints {
                     new ContributionId("veto:services"),
                     1,
                     ServiceRegistration.class,
+                    ContributionPoint.Cardinality.MULTIPLE);
+
+    public static final @NonNull ContributionPoint<ModelResponsePolicy> MODEL_RESPONSE =
+            new ContributionPoint<>(
+                    new ContributionId("veto:model-response"),
+                    1,
+                    ModelResponsePolicy.class,
                     ContributionPoint.Cardinality.MULTIPLE);
 
     public static final @NonNull ContributionPoint<WorkflowHook> WORKFLOW =
@@ -61,6 +82,13 @@ public final class StandardContributionPoints {
                     1,
                     FileProtection.class,
                     ContributionPoint.Cardinality.MULTIPLE);
+    public static final @NonNull ContributionPoint<DataLifecycle> DATA_LIFECYCLE =
+            new ContributionPoint<>(
+                    new ContributionId("veto:data-lifecycle"),
+                    1,
+                    ToolDocs.nonNullClass(DataLifecycle.class),
+                    ContributionPoint.Cardinality.MULTIPLE);
+
     public static final @NonNull ContributionPoint<SessionLifecycle> SESSION_LIFECYCLE =
             new ContributionPoint<>(
                     new ContributionId("veto:session-lifecycle"),
@@ -128,14 +156,18 @@ public final class StandardContributionPoints {
      */
     public static final @NonNull List<@NonNull ContributionPoint<?>> ALL =
             List.of(
+                    AGENT_CONFIGURATION,
+                    AGENT_WORK,
                     SERVICES,
                     LLM_PROVIDERS,
                     WORKFLOW,
+                    MODEL_RESPONSE,
                     FRONTEND,
                     FILE_OBSERVATION,
                     INPUT_PROTECTION,
                     FILE_PROTECTION,
                     SESSION_LIFECYCLE,
+                    DATA_LIFECYCLE,
                     TOOLS,
                     NATIVE_TOOLS,
                     CATEGORIES,

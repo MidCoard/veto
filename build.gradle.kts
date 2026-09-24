@@ -86,7 +86,7 @@ val generateReleaseReadme by tasks.registering {
 val localRelease by tasks.registering {
     group = "release"
     description = "Assembles the versioned local release bundle under release/."
-    dependsOn(":veto-core:bootJar", ":veto-terminal:distZip", ":veto-protocol:jar")
+    dependsOn(":veto-app:bootJar", ":veto-terminal:distZip", ":veto-protocol:jar")
     dependsOn(generateReleaseReadme)
     val versionStr = project.version.toString()
     val outDir = layout.projectDirectory.dir("release/veto-$versionStr")
@@ -96,10 +96,10 @@ val localRelease by tasks.registering {
         val coreDir = File(out, "core").apply { mkdirs() }
         val terminalDir = File(out, "terminal").apply { mkdirs() }
         val bootJar =
-                project(":veto-core")
+                project(":veto-app")
                         .layout
                         .buildDirectory
-                        .file("libs/veto-core-$versionStr.jar")
+                        .file("libs/veto-app-$versionStr.jar")
                         .get()
                         .asFile
         bootJar.copyTo(File(coreDir, "veto-core.jar"))

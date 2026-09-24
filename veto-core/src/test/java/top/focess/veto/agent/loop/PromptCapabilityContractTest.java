@@ -13,6 +13,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import top.focess.veto.agent.identity.AgentPersona;
 import top.focess.veto.agent.identity.Role;
+import top.focess.veto.agent.identity.SystemPromptResolver;
 import top.focess.veto.agent.screening.DeployerPolicy;
 import top.focess.veto.agent.tool.AgentToolDefinition;
 import top.focess.veto.agent.tool.ToolSchemaCompiler;
@@ -26,14 +27,14 @@ import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.ToolDocumentation;
 import top.focess.veto.api.llm.ToolDefinition;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
-import top.focess.veto.api.skills.Skill;
 import top.focess.veto.builtin.planning.SubmitPlanTool;
 import top.focess.veto.builtin.response.AnswerWithCitationsTool;
 import top.focess.veto.builtin.tools.AskUserTool;
 
 class PromptCapabilityContractTest {
     @Test
-    void planSchemaAndInstructionsExposeCitationsOnlyForAnAvailableAnswerCapability() {
+    void planSchemaAndInstructionsExposeCitationsOnlyForAnAvailableAnswerCapability(
+            @TempDir @NonNull Path root) {
         var plan =
                 AgentToolDefinition.from(
                         "submit_plan",
@@ -49,8 +50,7 @@ class PromptCapabilityContractTest {
         for (boolean citationsAvailable : List.of(false, true)) {
             List<top.focess.veto.agent.tool.ToolDefinition> manifest =
                     citationsAvailable ? List.of(plan, answer) : List.of(plan);
-            var persona =
-                    new AgentPersona("fixture", "Fixture", "", Set.copyOf(manifest), List.of());
+            var persona = new AgentPersona("fixture", "Fixture", "", Set.copyOf(manifest));
             var flat = new VetoCapabilityTranslator().translateTools(manifest);
             var planSchema =
                     new ObjectMapper()
@@ -66,20 +66,24 @@ class PromptCapabilityContractTest {
             assertEquals(citationsAvailable ? 2 : 1, modes.size());
             assertEquals("TEXT", modes.get(0).asText());
             if (citationsAvailable) assertEquals("CITATIONS", modes.get(1).asText());
-            var inputs =
-                    PromptInputs.standard(
+            var compiler =
+                    new PromptCompiler(
+                            new VetoCapabilityTranslator(),
+                            new SystemPromptResolver(),
+                            new ObjectMapper(),
+                            "FULL_ACCESS");
+            var linked =
+                    compiler.linkSystemSource(
                             persona,
-                            Workspace.single(
-                                    Path.of(System.getProperty("user.dir", ".")), PathMode.REAL),
+                            Workspace.single(root, PathMode.REAL),
                             null,
-                            flat,
-                            DeployerPolicy.FULL_ACCESS,
                             ToolResultPresentationMode.BASIC);
-            inputs.put("lawSources", List.of());
-            String prompt = PromptLibrary.text("default-system-prompt", inputs);
+            String prompt = linked.text();
+            assertTrue(
+                    linked.sources().stream()
+                            .anyMatch(span -> span.source().equals("plan-system-prompt.mdc")));
             assertTrue(prompt.contains("## Plan execution"));
-            assertEquals(citationsAvailable, prompt.contains("Use `CITATIONS`"));
-            assertEquals(citationsAvailable, prompt.contains("CITATIONS"));
+            assertTrue(prompt.contains("schema offers `CITATIONS`"));
             assertFalse(prompt.contains("@if"));
         }
     }
@@ -98,22 +102,7 @@ class PromptCapabilityContractTest {
 
     private static @NonNull Map<String, Object> inputs(
             @NonNull Role role, @NonNull PathMode pathMode, boolean capabilities) {
-        var persona =
-                new AgentPersona(
-                        "fixture",
-                        "Fixture agent",
-                        "",
-                        Set.of(),
-                        List.of(
-                                new Skill(
-                                        "fixture-skill",
-                                        "Fixture skill",
-                                        null,
-                                        null,
-                                        null,
-                                        List.of(),
-                                        "")),
-                        role);
+        var persona = new AgentPersona("fixture", "Fixture agent", "", Set.of(), role);
         List<ToolDefinition> tools =
                 capabilities
                         ? List.of(
@@ -141,10 +130,11 @@ class PromptCapabilityContractTest {
                 String prompt =
                         PromptLibrary.text(
                                 "default-system-prompt", inputs(role, PathMode.REAL, capabilities));
-                assertEquals(capabilities, prompt.contains("## Plan execution"));
-                assertEquals(capabilities, prompt.contains("For clickable references"));
-                assertEquals(capabilities, prompt.contains("## Available skills"));
-                assertEquals(capabilities, prompt.contains("fixture-skill"));
+                // Tool names alone do not install plugin instructions.
+                assertFalse(prompt.contains("## Plan execution"));
+                assertFalse(prompt.contains("For clickable references"));
+                assertFalse(prompt.contains("## Available skills"));
+                assertFalse(prompt.contains("fixture-skill"));
                 assertFalse(prompt.contains("@if"));
             }
         }
@@ -210,8 +200,7 @@ class PromptCapabilityContractTest {
                                 WorkspaceRoot.of(second, TrustMarker.OWNED)),
                         PathMode.VIRTUAL,
                         0);
-        var persona =
-                new AgentPersona("fixture", "Fixture", "", Set.of(), List.of(), Role.STANDALONE);
+        var persona = new AgentPersona("fixture", "Fixture", "", Set.of(), Role.STANDALONE);
         var data =
                 PromptInputs.standard(
                         persona,

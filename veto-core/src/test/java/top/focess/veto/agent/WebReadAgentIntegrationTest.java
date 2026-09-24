@@ -2,7 +2,6 @@ package top.focess.veto.agent;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
@@ -27,9 +26,8 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.springframework.context.ApplicationContext;
 import org.springframework.test.util.ReflectionTestUtils;
+import top.focess.veto.agent.capability.DestinationTestGrants;
 import top.focess.veto.agent.capability.NetworkEgressCapabilityImpl;
-import top.focess.veto.agent.capability.WebReadCapability;
-import top.focess.veto.agent.identity.RoleToolFilter;
 import top.focess.veto.agent.identity.SystemPromptResolver;
 import top.focess.veto.agent.intercept.HitlRegistry;
 import top.focess.veto.agent.intercept.IngressDefense;
@@ -37,10 +35,12 @@ import top.focess.veto.agent.intercept.VetoOption;
 import top.focess.veto.agent.loop.PromptCompiler;
 import top.focess.veto.agent.tool.ToolEngineImpl;
 import top.focess.veto.agent.translation.DefaultCapabilityTranslator;
-import top.focess.veto.agent.web.WebFetchExecutor;
+import top.focess.veto.agent.web.ReaderTestHarness;
 import top.focess.veto.api.agent.AgentState;
 import top.focess.veto.api.agent.tool.AgentTool;
 import top.focess.veto.api.agent.tool.ToolDocs;
+import top.focess.veto.api.http.ApprovedHttpDestination;
+import top.focess.veto.api.http.HttpDocument;
 import top.focess.veto.api.llm.LlmBinding;
 import top.focess.veto.api.llm.LlmOptions;
 import top.focess.veto.api.llm.ProviderType;
@@ -48,7 +48,6 @@ import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.api.llm.VetoRequest;
 import top.focess.veto.api.llm.VetoResponse;
-import top.focess.veto.api.web.FetchedPage;
 import top.focess.veto.builtin.web.WebFetchTool;
 import top.focess.veto.llm.core.UniformLLMCaller;
 import top.focess.veto.memory.TurnLogService;
@@ -57,7 +56,6 @@ import top.focess.veto.memory.TurnRecordRepository;
 import top.focess.veto.model.tier.ModelBinding;
 import top.focess.veto.model.tier.ModelTier;
 import top.focess.veto.model.tier.ModelTierRegistry;
-import top.focess.veto.sandbox.BackgroundTaskManager;
 
 class WebReadAgentIntegrationTest {
     @ParameterizedTest
@@ -137,50 +135,41 @@ class WebReadAgentIntegrationTest {
                         new ModelBinding(
                                 ProviderType.DEEPSEEK, "isolated-reader", "reader-key", 0, 2048));
         @NonNull TurnRecordRepository turnRepository = mock();
-        WebFetchExecutor reader =
-                new WebFetchExecutor(
+        var reader =
+                ReaderTestHarness.create(
                         mapper,
                         childCaller,
                         models,
                         new DefaultCapabilityTranslator(mapper),
                         registry,
                         new TurnLogService(turnRepository, mapper),
-                        new IngressDefense(),
-                        ModelTier.LOW,
                         maxRounds,
                         15,
                         32000,
-                        2048);
-        var access = mock(ToolDocs.nonNullClass(WebReadCapability.class));
-        when(access.fetch(anyLong()))
+                        2048,
+                        () -> {});
+        var access = mock(ToolDocs.nonNullClass(ApprovedHttpDestination.class));
+        when(access.fetch())
                 .thenReturn(
-                        new FetchedPage(
+                        new HttpDocument(
                                 URI.create("https://example.com/docs"),
                                 200,
                                 "text/html",
                                 "<main><p>Timeout is 30 seconds.</p><p>RAW_CHILD_PAGE_SENTINEL</p></main>",
                                 false,
                                 10000));
-        when(access.read(anyString(), any()))
-                .thenAnswer(
-                        invocation -> {
-                            String objective = invocation.getArgument(0);
-                            if (objective == null)
-                                throw new AssertionError("Missing reader objective");
-                            return reader.read(objective, access, invocation.getArgument(1));
-                        });
+
         var network = mock(ToolDocs.nonNullClass(NetworkEgressCapabilityImpl.class));
-        when(network.openReader(any())).thenReturn(access);
+        when(network.openApprovedDestination("url"))
+                .thenAnswer(invocation -> DestinationTestGrants.wrap(access, () -> {}));
         var context = mock(ToolDocs.nonNullClass(ApplicationContext.class));
         when(context.getBeansOfType(AgentTool.class))
                 .thenReturn(
                         Map.of(
                                 "submit_plan",
-                                new top.focess.veto.builtin.planning.SubmitPlanTool(
-                                        new top.focess.veto.agent.capability
-                                                .ResponseCapabilityImpl())));
+                                new top.focess.veto.builtin.planning.SubmitPlanTool()));
         ToolEngineImpl engine =
-                new ToolEngineImpl(mapper, List.of(new WebFetchTool(network)), context);
+                new ToolEngineImpl(mapper, List.of(new WebFetchTool(reader, network)), context);
         engine.afterSingletonsInstantiated();
         List<VetoRequest> parentRequests = new ArrayList<>();
         AtomicInteger parentTurn = new AtomicInteger();
@@ -428,28 +417,21 @@ class WebReadAgentIntegrationTest {
         when(models.resolve("test-owner", ModelTier.LOW))
                 .thenReturn(new ModelBinding(ProviderType.DEEPSEEK, "reader", "key", 0, 2048));
         @NonNull TurnRecordRepository turnRepository = mock();
-        WebFetchExecutor reader =
-                new WebFetchExecutor(
+        var reader =
+                ReaderTestHarness.create(
                         mapper,
                         childCaller,
                         models,
                         new DefaultCapabilityTranslator(mapper),
                         registry,
                         new TurnLogService(turnRepository, mapper),
-                        new IngressDefense(),
-                        ModelTier.LOW,
                         5,
                         30,
                         32000,
-                        2048);
-        var access = mock(ToolDocs.nonNullClass(WebReadCapability.class));
-        when(access.read(anyString(), any()))
-                .thenAnswer(
-                        invocation -> {
-                            String objective = invocation.getArgument(0);
-                            if (objective == null) throw new AssertionError("Missing objective");
-                            return reader.read(objective, access, invocation.getArgument(1));
-                        });
+                        2048,
+                        () -> {});
+        var access = mock(ToolDocs.nonNullClass(ApprovedHttpDestination.class));
+
         doAnswer(
                         invocation -> {
                             accessClosed.countDown();
@@ -458,17 +440,16 @@ class WebReadAgentIntegrationTest {
                 .when(access)
                 .close();
         var network = mock(ToolDocs.nonNullClass(NetworkEgressCapabilityImpl.class));
-        when(network.openReader(any())).thenReturn(access);
+        when(network.openApprovedDestination("url"))
+                .thenAnswer(invocation -> DestinationTestGrants.wrap(access, () -> {}));
         var context = mock(ToolDocs.nonNullClass(ApplicationContext.class));
         when(context.getBeansOfType(AgentTool.class))
                 .thenReturn(
                         Map.of(
                                 "submit_plan",
-                                new top.focess.veto.builtin.planning.SubmitPlanTool(
-                                        new top.focess.veto.agent.capability
-                                                .ResponseCapabilityImpl())));
+                                new top.focess.veto.builtin.planning.SubmitPlanTool()));
         ToolEngineImpl engine =
-                new ToolEngineImpl(mapper, List.of(new WebFetchTool(network)), context);
+                new ToolEngineImpl(mapper, List.of(new WebFetchTool(reader, network)), context);
         engine.afterSingletonsInstantiated();
         AtomicInteger parentCalls = new AtomicInteger();
         UniformLLMCaller parentCaller =
@@ -559,7 +540,7 @@ class WebReadAgentIntegrationTest {
                 assertFalse(parent.result().get().success());
                 assertTrue(hitl.pendingFor(parent.id()).isEmpty());
                 assertEquals(1, entered.getCount(), "Unapproved reader must never start");
-                verify(network, never()).openReader(any());
+                verify(network, never()).openApprovedDestination(any());
                 parent.submit("Next task");
                 assertTrue(parent.await(Duration.ofSeconds(3)).success());
                 return;
@@ -639,15 +620,12 @@ class WebReadAgentIntegrationTest {
                 caller,
                 mapper,
                 List.of(),
-                new RoleToolFilter(engine),
                 "REAL",
                 50,
-                1000,
                 "FULL_ACCESS",
                 "STRICT",
                 null,
-                null,
-                mock(ToolDocs.nonNullClass(BackgroundTaskManager.class)));
+                null);
     }
 
     private static @NonNull VetoResponse call(

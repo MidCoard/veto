@@ -6,10 +6,9 @@ import java.util.Optional;
 import java.util.concurrent.CancellationException;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
-import top.focess.veto.api.agent.capability.TaskControlCapability;
 import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.tool.Doc;
-import top.focess.veto.api.agent.tool.TaskControlTool;
+import top.focess.veto.api.agent.tool.NativeTool;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.agent.tool.ToolDoc;
 import top.focess.veto.api.agent.tool.ToolDocs;
@@ -18,14 +17,15 @@ import top.focess.veto.api.agent.tool.ToolErrors;
 import top.focess.veto.api.agent.tool.ToolJson;
 import top.focess.veto.api.agent.tool.ToolResultFormat;
 import top.focess.veto.api.agent.tool.ToolSecurity;
-import top.focess.veto.api.process.TaskInfo;
+import top.focess.veto.builtin.process.TaskControlCapability;
+import top.focess.veto.builtin.process.TaskInfo;
 
 /**
  * {@code view_task} - inspect background tasks launched by {@code run_task}. With a {@code taskId}
  * it returns that task's status (alive / exitCode / uptime) plus recent merged output; without a
  * {@code taskId} it lists every task the calling agent owns. Read-only.
  */
-@ToolSecurity(capability = ToolCapability.TASK_CONTROL, defaultDanger = Danger.SAFE)
+@ToolSecurity(capability = ToolCapability.PLUGIN_LOCAL, defaultDanger = Danger.SAFE)
 @ToolDoc(
         resultFormats = {ToolResultFormat.JSON},
         description =
@@ -82,7 +82,7 @@ import top.focess.veto.api.process.TaskInfo;
             "{\"taskId\": \"bg-3\", \"command\": \"npm run dev\", \"alive\": false, \"exitCode\": 0, \"pid\": 12345, \"startedAt\": \"2026-01-01T00:00:00Z\", \"uptimeSeconds\": 184, \"cwd\": \"/abs/project\", \"recentOutput\": \"Server stopped.\", \"outputCapture\": \"recentOutput merges stdout and stderr without stream labels. Report it as combined output; it cannot establish that either stream was empty.\", \"inputFailures\": []}",
             "Task not found: bg-99"
         })
-public final class ViewTaskTool implements TaskControlTool<ViewTaskTool.Args> {
+public final class ViewTaskTool implements NativeTool<ViewTaskTool.Args> {
     private final TaskControlCapability capability;
 
     public ViewTaskTool() {
@@ -115,12 +115,15 @@ public final class ViewTaskTool implements TaskControlTool<ViewTaskTool.Args> {
     }
 
     @Override
+    public @NonNull String execute(@NonNull Args args) {
+        return execute(args, taskControlCapability());
+    }
+
     public @NonNull TaskControlCapability taskControlCapability() {
         if (capability == null) throw new SecurityException("Host must supply tool capability");
         return capability;
     }
 
-    @Override
     public @NonNull String execute(@NonNull Args args, @NonNull TaskControlCapability capability) {
         String taskId = args.taskId();
         if (taskId == null || taskId.isBlank()) {

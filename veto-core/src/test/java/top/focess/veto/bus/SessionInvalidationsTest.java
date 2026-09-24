@@ -4,13 +4,11 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
-import top.focess.veto.agent.tool.builtin.UserQuestionRegistry;
 import top.focess.veto.model.AgentInstanceRepository;
 
 class SessionInvalidationsTest {
@@ -46,20 +44,5 @@ class SessionInvalidationsTest {
             TransactionSynchronizationManager.clear();
             service.close();
         }
-    }
-
-    @Test
-    void questionRegistrationAndExceptionalCleanupInvalidateButRejectedAnswersDoNot() {
-        @NonNull SessionInvalidations changes = mock();
-        UserQuestionRegistry questions = new UserQuestionRegistry();
-        questions.attachInvalidations(changes);
-        var pending = questions.register("agent", "call", List.of());
-        verify(changes).agentChanged("agent", "interactions");
-        clearInvocations(changes);
-        assertFalse(questions.answer("agent", "missing", Map.of()));
-        verifyNoInteractions(changes);
-        pending.completeExceptionally(new IllegalStateException("interrupted"));
-        assertTrue(questions.pendingFor("agent").isEmpty());
-        verify(changes).agentChanged("agent", "interactions");
     }
 }

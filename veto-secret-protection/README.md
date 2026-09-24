@@ -52,20 +52,11 @@ are the fail-safe net, not the primary path.
 
 ## Host-service contracts
 
-`top.focess.veto.secret.api` is this plugin's own host-service surface, not part
-of the shared plugin API — the generic layers stay plugin-agnostic so plugins
-remain portable to other agent clients:
+All host contracts now come from veto-api; core never imports plugin classes.
 
-- `CredentialImportAccess` / `CredentialWriter` — the vault-backed import gate,
-  obtained via `PluginContext.service(CredentialImportAccess.class)`. Without
-  it, everything else works and credential import fails at call time.
-- `SecretDetectionModel` — a minimal model port
-  (`isAvailable()` + `Optional<String> complete(String source, Map<String, ?> data)`), obtained via
-  `PluginContext.service(SecretDetectionModel.class)`. The plugin owns its
-  `prompts/secret-detection.mdc` resource and parsing; the host compiles that named
-  source through `PromptCompiler` before inference, so any agent client can
-  back it with any model. Without it, detection runs in degraded deterministic
-  mode.
+- `api.credentials.CredentialImportAccess` / `CredentialWriter` provide the vault-backed import gate. The returned writer is bound to one exact approved invocation and revalidates owner/session/Agent/reference/service/label before storage. Without this service, import fails at call time while detection remains available.
+- `api.llm.PromptRenderer` compiles the plugin's `prompts/secret-detection.mdc`. `MdcSecretDetectionModel` then submits compiled text and the plugin's `grammars/secret-detection.gbnf` through `api.llm.LocalModelCompletion`. The host binds purpose and lifecycle, enforces bounds/deadline and cancels local HTTP work. The plugin owns array parsing and deterministic fallback. Missing resources never trigger an inline-prompt fallback.
+- `secret.api.SecretDetectionModel` is an internal detector adapter for plugin tests and implementation, not a host service.
 
 The store enforces owner/session/agent scope isolation, TTL expiry, capacity
 bounds, and import-once receipts; raw values never leave the store except

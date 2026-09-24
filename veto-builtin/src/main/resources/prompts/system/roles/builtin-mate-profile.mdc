@@ -1,0 +1,17 @@
+---
+version: 2
+id: builtin-mate-profile
+requires: [tasks, guidance]
+---
+@include role-mate
+@include mate-default-guidance
+
+@if nonempty(tasks)
+[Runtime recovery observation] Historical attempts below were interrupted by runtime loss. Their prior side effects and results are unknown. They were not replayed. Do not resume without a new assignment; these identifiers do not describe later requests.
+{{json(tasks)}}
+@endif
+
+@if nonempty(guidance)
+## Configured guidance
+{{guidance}}
+@endif

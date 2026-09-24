@@ -4,14 +4,11 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.api.agent.capability.GroupControlCapability;
 import top.focess.veto.api.agent.tool.Doc;
-import top.focess.veto.api.agent.tool.GroupControlTool;
 import top.focess.veto.api.agent.tool.ToolDoc;
 import top.focess.veto.api.agent.tool.ToolErrorCode;
 import top.focess.veto.api.agent.tool.ToolErrors;
 import top.focess.veto.api.agent.tool.ToolResultFormat;
-import top.focess.veto.api.group.NodeEdit;
 
 public final class CollaborationTools {
     private CollaborationTools() {}
@@ -248,13 +245,19 @@ public final class CollaborationTools {
             })
     public static final class CreateTask implements GroupControlTool<CreateTask.Args> {
         private final GroupControlCapability capability;
+        private final @NonNull Runnable await;
 
         public CreateTask() {
-            this.capability = null;
+            this(null, () -> {});
         }
 
         public CreateTask(@NonNull GroupControlCapability capability) {
+            this(capability, () -> {});
+        }
+
+        public CreateTask(GroupControlCapability capability, @NonNull Runnable await) {
             this.capability = capability;
+            this.await = await;
         }
 
         public record Args(
@@ -302,6 +305,7 @@ public final class CollaborationTools {
                 return ToolErrors.failure(
                         ToolErrorCode.GROUP.REQUEST_REJECTED,
                         "Task not created: " + rejected.reason());
+            await.run();
             return "Task registered: "
                     + args.taskId()
                     + "; assigned Mate: "

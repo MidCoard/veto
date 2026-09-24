@@ -12,8 +12,8 @@ import org.jsoup.nodes.Element;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.agent.tool.ToolErrorCode;
 import top.focess.veto.api.agent.tool.ToolErrors;
-import top.focess.veto.api.web.Evidence;
-import top.focess.veto.api.web.FetchedPage;
+import top.focess.veto.builtin.web.model.Evidence;
+import top.focess.veto.builtin.web.model.FetchedPage;
 
 /** Bounded source segments owned by one reader invocation, never a filesystem resource. */
 public final class WebReadDocument {

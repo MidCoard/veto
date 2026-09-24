@@ -12,14 +12,6 @@ import java.util.Set;
 import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.api.agent.workflow.Action;
-import top.focess.veto.api.agent.workflow.ActionsProgram;
-import top.focess.veto.api.agent.workflow.Check;
-import top.focess.veto.api.agent.workflow.ConditionalGotoAction;
-import top.focess.veto.api.agent.workflow.GenerateAction;
-import top.focess.veto.api.agent.workflow.GotoAction;
-import top.focess.veto.api.agent.workflow.StopAction;
-import top.focess.veto.api.agent.workflow.ToolAction;
 
 /**
  * Validates an {@link ActionsProgram} before plan mode loads it. A program that fails validation is

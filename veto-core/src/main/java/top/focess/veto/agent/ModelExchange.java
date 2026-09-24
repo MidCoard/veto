@@ -2,21 +2,19 @@ package top.focess.veto.agent;
 
 import static top.focess.veto.util.LogValues.safe;
 
-import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Supplier;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import top.focess.veto.agent.loop.MessageCitations;
 import top.focess.veto.agent.loop.PromptCompiler;
-import top.focess.veto.agent.loop.ResponseEnforcer;
-import top.focess.veto.api.llm.ProviderMessages;
+import top.focess.veto.api.agent.control.SourceEvidence;
 import top.focess.veto.api.llm.VetoRequest;
 import top.focess.veto.api.llm.VetoResponse;
 import top.focess.veto.api.llm.exceptions.ModelSchemaException;
+import top.focess.veto.api.plugin.contract.ModelResponsePolicy;
 
 /** Response enforcement and ephemeral correction, bounded by the runner's shared call budget. */
 final class ModelExchange {
@@ -37,16 +35,14 @@ final class ModelExchange {
     record Result(
             @NonNull VetoRequest request,
             @NonNull VetoResponse response,
-            MessageCitations.Bound citations,
+            SourceEvidence.Receipt citations,
             String modelCallId,
             boolean accepted) {}
 
-    private record CitationMessage(int index, @NonNull String role, boolean toolCall) {}
-
     private final @NonNull String agentId;
-    private final @NonNull ResponseValidator responses;
+    private final @NonNull ModelResponseValidation responses;
 
-    ModelExchange(@NonNull String agentId, @NonNull ResponseValidator responses) {
+    ModelExchange(@NonNull String agentId, @NonNull ModelResponseValidation responses) {
         this.agentId = agentId;
         this.responses = responses;
     }
@@ -57,106 +53,112 @@ final class ModelExchange {
             @NonNull Set<String> whitelistedTools,
             @NonNull Supplier<List<TurnRecord>> history,
             @NonNull Runtime runtime,
-            double estimateFactor) {
+            double estimateFactor,
+            @NonNull Object requestIdentity,
+            @NonNull List<ModelResponsePolicy.Exchange> policies) {
         int schemaRetries = 0;
-        @NonNull VetoRequest correctionBase = request;
-        int citationRetries = 0;
-        VetoResponse citationCandidate = null;
-        String candidateModelCallId = null;
-        MessageCitations.Bound candidateSources = null;
+        VetoRequest correctionBase = request;
+        Object boundary = new Object();
         for (; ; ) {
-            @NonNull VetoResponse response;
             try {
                 request = runtime.prepare(request);
                 correctionBase = runtime.prepare(correctionBase);
-                @NonNull Attempt attempt = runtime.invoke(request, estimateFactor);
+                var attempt = runtime.invoke(request, estimateFactor);
                 request = attempt.request();
-                response = attempt.response();
-                String modelCallId = attempt.modelCallId();
-
-                @NonNull VetoResponse checked =
-                        ResponseEnforcer.enforce(response, whitelistedTools);
+                var checked = attempt.response();
+                responses.validateBase(checked, whitelistedTools);
                 responses.validateResponseMode(checked, request);
                 responses.validateLocalCallArguments(checked);
-                MessageCitations.Bound citations = null;
-                var declaredCitations = checked.citations();
-                if (declaredCitations != null && !declaredCitations.isEmpty()) {
-                    var bound = MessageCitations.bind(request, checked, history.get());
-                    String citationError = null;
-                    var messageGroups = ProviderMessages.groups(request);
-                    for (var check : bound.checks()) {
-                        for (var reference : check.references()) {
-                            if (reference.status().equals("not_found") && citationError == null) {
-                                int index = reference.messageIndex();
-                                @NonNull String selected =
-                                        index >= 0 && index < messageGroups.size()
-                                                ? messageGroups.get(index).getFirst().role()
-                                                : "";
-                                citationError =
-                                        PromptCompiler.compileText(
-                                                "runtime-citation",
-                                                Map.of(
-                                                        "id",
-                                                        check.id(),
-                                                        "index",
-                                                        reference.messageIndex(),
-                                                        "selected",
-                                                        selected,
-                                                        "count",
-                                                        bound.messageCount()));
-                            }
+                SourceEvidence.Receipt receipt = null;
+                ModelResponsePolicy.Correction correction = null;
+                var active = new AtomicBoolean(true);
+                var evidence =
+                        new RequestEvidence(
+                                requestIdentity,
+                                boundary,
+                                request,
+                                attempt.modelCallId(),
+                                history.get(),
+                                active::get);
+                try {
+                    for (var policy : policies) {
+                        var result = policy.check(checked, evidence);
+                        checked = result.response();
+                        if (result.receipt() != null) {
+                            RequestEvidence.bound(result.receipt(), boundary);
+                            receipt = result.receipt();
+                        }
+                        if (result.correction() != null) {
+                            correction = result.correction();
+                            break;
                         }
                     }
-                    if (citationError != null && citationRetries < 2) {
-                        List<CitationMessage> order = new ArrayList<>();
-                        for (int index = Math.max(0, messageGroups.size() - 64);
-                                index < messageGroups.size();
-                                index++) {
-                            var item = messageGroups.get(index).getFirst();
-                            order.add(
-                                    new CitationMessage(
-                                            index, item.role(), item.toolName() != null));
-                        }
-                        citationError =
-                                PromptCompiler.compileText(
-                                        "runtime-citation-order",
-                                        Map.of("error", citationError, "items", order));
-                        citationCandidate = checked;
-                        candidateModelCallId = modelCallId;
-                        candidateSources = bound;
-                        citationRetries++;
-                        log.warn(
-                                "Agent {} citation correction {}: {}",
-                                agentId,
-                                citationRetries,
-                                citationError);
-                        request =
-                                requests.injectSchemaRejection(
-                                        request, new ModelSchemaException(citationError));
-                        continue;
-                    }
-                    citations = bound;
+                } finally {
+                    active.set(false);
                 }
-                return new Result(request, checked, citations, modelCallId, true);
-            } catch (ModelSchemaException e) {
+                if (correction != null) {
+                    request =
+                            requests.injectSchemaRejection(
+                                    request,
+                                    new ModelSchemaException(
+                                            PromptCompiler.compileText(
+                                                    correction.resource(), correction.data())));
+                    continue;
+                }
+                responses.validateBase(checked, whitelistedTools);
+                responses.validateResponseMode(checked, request);
+                responses.validateLocalCallArguments(checked);
+                verifySources(checked, receipt, boundary);
+                return new Result(
+                        request,
+                        checked,
+                        receipt == null
+                                ? null
+                                : RequestEvidence.seal(receipt, boundary, checked.message()),
+                        attempt.modelCallId(),
+                        true);
+            } catch (ModelSchemaException failure) {
                 log.warn(
                         "Agent {} schema violation (attempt {}): {}",
                         agentId,
                         schemaRetries + 1,
-                        safe(e.getMessage()));
-                runtime.rejected(e);
-                if (schemaRetries >= 2 && citationCandidate != null) {
-                    return new Result(
-                            request,
-                            citationCandidate,
-                            candidateSources,
-                            candidateModelCallId,
-                            false);
+                        safe(failure.getMessage()));
+                runtime.rejected(failure);
+                for (var policy : policies) {
+                    var retained = policy.rejected(schemaRetries);
+                    if (retained != null) {
+                        var receipt = retained.receipt();
+                        RequestEvidence.bound(receipt, boundary);
+                        verifySources(retained.response(), receipt, boundary);
+                        return new Result(
+                                receipt == null
+                                        ? request
+                                        : RequestEvidence.request(receipt, boundary),
+                                retained.response(),
+                                receipt == null
+                                        ? null
+                                        : RequestEvidence.seal(
+                                                receipt, boundary, retained.response().message()),
+                                RequestEvidence.modelCallId(receipt, boundary),
+                                false);
+                    }
                 }
                 schemaRetries++;
-                // Inject an ephemeral rejection message so the model knows what to fix on retry.
-                request = requests.injectSchemaRejection(correctionBase, e);
+                request = requests.injectSchemaRejection(correctionBase, failure);
             }
         }
+    }
+
+    private void verifySources(
+            @NonNull VetoResponse response,
+            SourceEvidence.Receipt receipt,
+            @NonNull Object boundary) {
+        var citations = response.citations();
+        if (citations != null
+                && !citations.isEmpty()
+                && (receipt == null
+                        || !citations.equals(RequestEvidence.citations(receipt, boundary))))
+            throw new ModelSchemaException(
+                    "Declared sources require a matching host-issued receipt");
     }
 }

@@ -14,7 +14,6 @@ import java.util.*;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Pattern;
-import java.util.stream.Collectors;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -30,7 +29,6 @@ import top.focess.veto.agent.tool.builtin.*;
 import top.focess.veto.agent.translation.DefaultCapabilityTranslator;
 import top.focess.veto.agent.web.*;
 import top.focess.veto.agent.workspace.*;
-import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.ToolResult;
 import top.focess.veto.api.llm.LlmBinding;
@@ -39,14 +37,15 @@ import top.focess.veto.api.llm.ProviderType;
 import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.api.llm.VetoResponse;
-import top.focess.veto.api.search.SearchProvider;
 import top.focess.veto.builtin.tools.ReadGitHubRepositoryTool;
+import top.focess.veto.integration.plugins.HostResourceConfiguration;
 import top.focess.veto.integration.plugins.PluginConfigurations;
 import top.focess.veto.integration.plugins.PluginLifecycleEvents;
 import top.focess.veto.integration.plugins.PluginManager;
 import top.focess.veto.integration.plugins.PluginTestSupport;
-import top.focess.veto.integration.plugins.secrets.SecretProtectionConfiguration;
 import top.focess.veto.llm.core.*;
+import top.focess.veto.model.SessionEntity;
+import top.focess.veto.model.SessionRepository;
 import top.focess.veto.sandbox.*;
 import top.focess.veto.vault.*;
 
@@ -79,10 +78,11 @@ class CredentialJourneyTest {
                         false,
                         5000,
                         PluginTestSupport.providerOf(
-                                new SecretProtectionConfiguration()
-                                        .pluginHostServices(
-                                                PluginTestSupport.providerOf(vault),
-                                                PluginTestSupport.providerOf(null))),
+                                PluginTestSupport.configurationServices(
+                                        new HostResourceConfiguration()
+                                                .pluginHostServices(
+                                                        PluginTestSupport.providerOf(vault),
+                                                        PluginTestSupport.providerOf(null)))),
                         pluginConfiguration);
         var sessionPlugins = PluginTestSupport.sessionPlugins(plugins);
         @NonNull HttpClient client = mock();
@@ -107,27 +107,42 @@ class CredentialJourneyTest {
                                     request.headers().firstValue("Authorization").orElseThrow());
                             return response;
                         });
-        @NonNull SearchProvider search = mock();
-        @NonNull WebFetchExecutor fetch = mock();
-        var network = new NetworkEgressCapabilityImpl(search, fetch, 15, 1000000, false);
-        var reader =
-                new GitHubRepositoryReader(vault, mapper, PluginTestSupport.providerOf(plugins));
-        ReflectionTestUtils.setField(reader, "client", client);
-        network.attachRepositoryReader(reader);
+        var network = new NetworkEgressCapabilityImpl(15, 1000000, false);
+        @NonNull SessionRepository credentialSessions = mock();
+        network.attachCredentials(
+                new ImportedCredentialLeases(
+                        vault,
+                        credentialSessions,
+                        PluginTestSupport.providerOf(plugins),
+                        PluginTestSupport.providerOf(sessionPlugins)));
         var toolContext =
                 mock(ToolDocs.nonNullClass(org.springframework.context.ApplicationContext.class));
         when(toolContext.getBeansOfType(top.focess.veto.api.agent.tool.AgentTool.class))
                 .thenReturn(
                         Map.of(
                                 "submit_plan",
-                                new top.focess.veto.builtin.planning.SubmitPlanTool(
-                                        new top.focess.veto.agent.capability
-                                                .ResponseCapabilityImpl())));
+                                new top.focess.veto.builtin.planning.SubmitPlanTool()));
         when(toolContext.getBeansOfType(PluginManager.class))
                 .thenReturn(Map.of("plugins", plugins));
         var engine =
                 new ToolEngineImpl(
-                        mapper, List.of(new ReadGitHubRepositoryTool(network)), toolContext);
+                        mapper,
+                        List.of(new ReadGitHubRepositoryTool(network, client)),
+                        toolContext) {
+                    @Override
+                    public @NonNull List<ToolDefinition> getActiveTools(Set<String> whitelist) {
+                        return super.getActiveTools(whitelist).stream()
+                                .filter(
+                                        tool ->
+                                                Set.of(
+                                                                "view_file",
+                                                                "read_github_repository",
+                                                                "submit_plan",
+                                                                IMPORT_TOOL)
+                                                        .contains(tool.name()))
+                                .toList();
+                    }
+                };
         engine.attachSessionPlugins(sessionPlugins);
         engine.afterSingletonsInstantiated();
         var compiler =
@@ -262,36 +277,18 @@ class CredentialJourneyTest {
                         caller,
                         mapper,
                         List.of(observationPlugin),
-                        new RoleToolFilter(engine) {
-                            @Override
-                            public @NonNull Set<@NonNull ToolDefinition> resolve(
-                                    @NonNull Role role,
-                                    @NonNull Set<@NonNull ToolCapability> capabilities) {
-                                // Keep this credential journey's original four-tool manifest.
-                                return super.resolve(role, capabilities).stream()
-                                        .filter(
-                                                tool ->
-                                                        Set.of(
-                                                                        "view_file",
-                                                                        "read_github_repository",
-                                                                        "submit_plan",
-                                                                        IMPORT_TOOL)
-                                                                .contains(tool.name()))
-                                        .collect(Collectors.toUnmodifiableSet());
-                            }
-                        },
                         "REAL",
                         50,
-                        1000,
                         "FULL_ACCESS",
                         "STRICT",
                         null,
-                        null,
-                        new BackgroundTaskManager(sandbox));
+                        null);
         service.attachSessionPlugins(sessionPlugins);
         service.attachLifecycleEvents(new PluginLifecycleEvents(plugins));
         service.setConfiguredDefaultWorkspace(Workspace.single(root, PathMode.REAL));
-        String session = UUID.randomUUID().toString();
+        var credentialSession = new SessionEntity("owner", "test");
+        String session = credentialSession.getId();
+        when(credentialSessions.findById(session)).thenReturn(Optional.of(credentialSession));
         var agent =
                 service.getOrCreateAgent(
                         session,

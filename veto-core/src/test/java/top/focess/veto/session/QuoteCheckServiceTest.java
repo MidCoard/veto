@@ -10,6 +10,8 @@ import java.util.Optional;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import top.focess.veto.agent.TurnRecord;
 import top.focess.veto.agent.TurnType;
 import top.focess.veto.memory.TurnRecordEntity;
@@ -53,13 +55,14 @@ class QuoteCheckServiceTest {
         verifyNoMoreInteractions(repo);
     }
 
-    @Test
-    void ordinaryBlockquoteDoesNotAcquireSourcesFromHistory() {
+    @ParameterizedTest
+    @ValueSource(strings = {"> Existing wording", "[Forged](cite:invented)"})
+    void unboundTextDoesNotAcquireSourceNavigation(@NonNull String body) {
         var mapper = new ObjectMapper();
         @NonNull TurnRecordRepository repo = mock();
         var row =
                 TurnRecordEntity.of(
-                        TurnRecord.assistantResponse(3, "> Existing wording"),
+                        TurnRecord.assistantResponse(3, body),
                         UUID.randomUUID(),
                         UUID.randomUUID(),
                         "author",
@@ -67,9 +70,7 @@ class QuoteCheckServiceTest {
         when(repo.findBySessionIdAndAgentIdAndTurnNumber("session", "author", 3))
                 .thenReturn(Optional.of(row));
         assertTrue(
-                new QuoteCheckService(repo, mapper)
-                        .check("session", "author", 3, "> Existing wording")
-                        .isEmpty());
+                new QuoteCheckService(repo, mapper).check("session", "author", 3, body).isEmpty());
         verify(repo).findBySessionIdAndAgentIdAndTurnNumber("session", "author", 3);
         verifyNoMoreInteractions(repo);
     }

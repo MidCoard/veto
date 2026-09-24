@@ -7,7 +7,6 @@ import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.tool.Doc;
 import top.focess.veto.api.agent.tool.NetworkEgressTool;
 import top.focess.veto.api.agent.tool.ParamCategory;
-import top.focess.veto.api.agent.tool.ReaderExecutionResult;
 import top.focess.veto.api.agent.tool.SecurityHint;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.agent.tool.ToolDoc;
@@ -46,15 +45,16 @@ import top.focess.veto.api.agent.tool.ToolSecurity;
             "{\"outcome\":\"partial\",\"answer\":\"v2.0 removes the XML formatter and renames retryLimit to maxRetries; the deprecations section was truncated.\",\"evidence\":[{\"url\":\"https://example.com/changelog\",\"section\":\"Breaking changes\",\"quote\":\"The XML formatter is removed; retryLimit is renamed to maxRetries.\"}],\"limitations\":[\"Deprecations section truncated; the full deprecation list is not verified.\"]}",
             "Invalid arguments: url and objective must not be blank."
         })
-@ReaderExecutionResult
 public final class WebFetchTool implements NetworkEgressTool<WebFetchTool.Args> {
     private final NetworkEgressCapability network;
+    private final @NonNull WebReader reader;
 
-    public WebFetchTool() {
-        network = null;
+    public WebFetchTool(@NonNull WebReader reader) {
+        this(reader, null);
     }
 
-    public WebFetchTool(@NonNull NetworkEgressCapability network) {
+    public WebFetchTool(@NonNull WebReader reader, NetworkEgressCapability network) {
+        this.reader = reader;
         this.network = network;
     }
 
@@ -102,8 +102,6 @@ public final class WebFetchTool implements NetworkEgressTool<WebFetchTool.Args> 
                     ToolErrorCode.VALIDATION.INVALID_ARGUMENTS,
                     "Invalid arguments: url is not a valid URL.");
         }
-        try (var access = capability.openReader(uri)) {
-            return access.read(args.objective(), WebReadSession::new);
-        }
+        return reader.read(args.objective(), capability);
     }
 }

@@ -15,12 +15,13 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Collectors;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
 import org.springframework.test.util.ReflectionTestUtils;
 import top.focess.veto.agent.identity.AgentPersona;
 import top.focess.veto.agent.identity.Role;
-import top.focess.veto.agent.identity.RoleToolFilter;
 import top.focess.veto.agent.identity.SystemPromptResolver;
 import top.focess.veto.agent.intercept.HitlRegistry;
 import top.focess.veto.agent.intercept.IngressDefense;
@@ -29,12 +30,10 @@ import top.focess.veto.agent.tool.AgentToolDefinition;
 import top.focess.veto.agent.tool.ToolCallContextHolder;
 import top.focess.veto.agent.tool.ToolDefinition;
 import top.focess.veto.agent.tool.ToolEngine;
+import top.focess.veto.agent.tool.ToolInvocationFixture;
 import top.focess.veto.agent.translation.DefaultCapabilityTranslator;
-import top.focess.veto.agent.workspace.PathMode;
-import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.api.agent.AgentResult;
 import top.focess.veto.api.agent.AgentState;
-import top.focess.veto.api.agent.response.ResponseRequest;
 import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.agent.tool.ToolDocs;
@@ -46,13 +45,17 @@ import top.focess.veto.api.llm.ProviderType;
 import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.api.llm.VetoResponse;
+import top.focess.veto.api.plugin.agent.AgentProfile;
+import top.focess.veto.api.plugin.contract.AgentConfiguration;
+import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.builtin.planning.ActionsProgramParser;
 import top.focess.veto.builtin.planning.PlanProgram;
 import top.focess.veto.builtin.planning.ProgramValidator;
+import top.focess.veto.integration.plugins.SessionPlugins;
 import top.focess.veto.llm.core.UniformLLMCaller;
-import top.focess.veto.sandbox.BackgroundTaskManager;
-import top.focess.veto.sandbox.SandboxManager;
-import top.focess.veto.sandbox.TestSandboxFactory;
+import top.focess.veto.model.SessionEntity;
+import top.focess.veto.model.tier.ModelBinding;
+import top.focess.veto.model.tier.ModelTierRegistry;
 
 /**
  * Exercises the agent loop end-to-end (AgentService → VetoAgent → AgentRunner) with a scripted
@@ -85,16 +88,12 @@ class AgentEndToEndTest {
                 caller,
                 mapper,
                 List.of(),
-                new RoleToolFilter(new TestToolEngine()),
                 "REAL",
                 50L,
-                1000,
                 "FULL_ACCESS",
                 "STRICT",
                 null,
-                null,
-                new BackgroundTaskManager(
-                        new SandboxManager(TestSandboxFactory.uncontainedSubprocesses())));
+                null);
     }
 
     private static @NonNull LlmBinding binding(@NonNull String systemPrompt) {
@@ -157,24 +156,52 @@ class AgentEndToEndTest {
                         "FULL_ACCESS");
         ReflectionTestUtils.setField(compiler, "maxInputTokens", 32000);
         ReflectionTestUtils.setField(compiler, "contextFillRatio", 0.9);
-        return new AgentService(
-                engine,
-                new HitlRegistry(),
-                new IngressDefense(),
-                compiler,
-                caller,
-                mapper,
-                List.of(),
-                new RoleToolFilter(engine),
-                "REAL",
-                50L,
-                1000,
-                "FULL_ACCESS",
-                "STRICT",
-                null,
-                null,
-                new BackgroundTaskManager(
-                        new SandboxManager(TestSandboxFactory.uncontainedSubprocesses())));
+        var service =
+                new AgentService(
+                        engine,
+                        new HitlRegistry(),
+                        new IngressDefense(),
+                        compiler,
+                        caller,
+                        mapper,
+                        List.of(),
+                        "REAL",
+                        50L,
+                        "FULL_ACCESS",
+                        "STRICT",
+                        null,
+                        null);
+        if (engine instanceof TransformToolEngine transforms) {
+            var selection = Mockito.mock(ToolDocs.nonNullClass(SessionPlugins.class));
+            Mockito.when(selection.protect(Mockito.any(), Mockito.any(), Mockito.anyString()))
+                    .thenAnswer(call -> call.getArgument(2));
+            Mockito.when(selection.tools(Mockito.anyString(), Mockito.any()))
+                    .thenAnswer(call -> call.getArgument(1));
+            Mockito.when(
+                            selection.configure(
+                                    Mockito.anyString(),
+                                    Mockito.anyString(),
+                                    Mockito.anyString(),
+                                    Mockito.isNull(),
+                                    Mockito.any(),
+                                    Mockito.any(),
+                                    Mockito.anyString()))
+                    .thenAnswer(
+                            call -> transforms.intent(call.getArgument(4), call.getArgument(6)));
+            service.attachSessionPlugins(selection);
+            var tiers = Mockito.mock(ToolDocs.nonNullClass(ModelTierRegistry.class));
+            var model = transforms.leaderBinding;
+            Mockito.when(tiers.resolve(Mockito.anyString(), Mockito.any()))
+                    .thenReturn(
+                            new ModelBinding(
+                                    model.provider(),
+                                    model.model(),
+                                    model.credentialKey(),
+                                    0,
+                                    4096));
+            service.setModelTierRegistry(tiers);
+        }
+        return service;
     }
 
     private static @NonNull VetoResponse thoughtOn(String thought, String message) {
@@ -349,6 +376,16 @@ class AgentEndToEndTest {
                                         new ToolCall("create_group", Map.of("task", "ship it"))),
                                 thoughtOn("Group is leading.", "Done.")));
 
+        service.getOrCreateAgent(
+                "transform-fwd",
+                null,
+                binding("standalone base"),
+                List.of(),
+                UUID.randomUUID(),
+                "owner",
+                null,
+                0,
+                ToolResultPresentationMode.BASIC);
         AgentResult result =
                 service.submit(
                         "transform-fwd",
@@ -372,10 +409,6 @@ class AgentEndToEndTest {
         assertEquals(Role.LEADER, agent.persona().role());
         assertEquals(runner.whitelistedToolsView(), agent.whitelistedTools());
         assertEquals("leader-model", runner.binding().model(), "the Leader binding was applied");
-        assertEquals(
-                engine.lastDirective().groupId(),
-                runner.groupId(),
-                "the group id was stamped on the runner");
 
         // The transform appended a REWIND + AGENT_INIT(leader) + USER_PROMPT(brief) sequence.
         List<TurnRecord> history = agent.history();
@@ -439,6 +472,16 @@ class AgentEndToEndTest {
                                         new ToolCall("disband_group", Map.of())),
                                 thoughtOn("Back to standalone.", "All done.")));
 
+        service.getOrCreateAgent(
+                "transform-rev",
+                null,
+                binding("standalone base"),
+                List.of(),
+                UUID.randomUUID(),
+                "owner",
+                null,
+                0,
+                ToolResultPresentationMode.BASIC);
         AgentResult result =
                 service.submit(
                         "transform-rev",
@@ -465,7 +508,6 @@ class AgentEndToEndTest {
                 "stub-model",
                 runner.binding().model(),
                 "the original STANDALONE binding was restored");
-        assertNull(runner.groupId(), "the group stamp was cleared");
 
         // The reverse transform appended AGENT_INIT(standalone) + USER_PROMPT(disband brief).
         List<TurnRecord> history = agent.history();
@@ -519,21 +561,28 @@ class AgentEndToEndTest {
                 ToolResultPresentationMode.BASIC);
         var persona =
                 new AgentPersona(
-                        UUID.randomUUID().toString(),
-                        "Mate",
-                        "Worker",
-                        Set.of(),
-                        List.of(),
-                        Role.MATE);
+                        UUID.randomUUID().toString(), "Mate", "Worker", Set.of(), Role.MATE);
+        var selection = Mockito.mock(ToolDocs.nonNullClass(SessionPlugins.class));
+        Mockito.when(selection.protect(Mockito.any(), Mockito.any(), Mockito.anyString()))
+                .thenAnswer(call -> call.getArgument(2));
+        Mockito.when(selection.tools(Mockito.anyString(), Mockito.any()))
+                .thenAnswer(call -> call.getArgument(1));
+        service.attachSessionPlugins(selection);
+        service.setModelTierRegistry(Mockito.mock(ToolDocs.nonNullClass(ModelTierRegistry.class)));
+        var session = Mockito.mock(ToolDocs.nonNullClass(SessionEntity.class));
+        Mockito.when(session.getId()).thenReturn(sessionId.toString());
+        Mockito.when(session.getOwner()).thenReturn("owner");
+        Mockito.when(session.getToolResultPresentation())
+                .thenReturn(ToolResultPresentationMode.BASIC);
+        var parent = requireAgent(service.agent(sessionId.toString()));
         var mate =
-                service.createMate(
-                        persona,
-                        binding("Mate"),
-                        userId,
-                        "owner",
-                        Workspace.single(Path.of("."), PathMode.REAL),
-                        ToolResultPresentationMode.BASIC,
-                        sessionId);
+                service.openPluginAgent(
+                        session,
+                        persona.id(),
+                        parent.id(),
+                        "test.plugin",
+                        new AgentProfile("Mate", "Worker", "MATE", Set.of(), null, null, Map.of()),
+                        List.of());
         try {
             var runner =
                     assertInstanceOf(
@@ -601,7 +650,7 @@ class AgentEndToEndTest {
                 binding("standalone base"),
                 List.of(),
                 UUID.randomUUID(),
-                null,
+                "owner",
                 null,
                 0,
                 ToolResultPresentationMode.BASIC);
@@ -636,6 +685,16 @@ class AgentEndToEndTest {
                                                         Map.of("task", "stale duplicate"))),
                                         null),
                                 thoughtOn("Leading", "Leader continued.")));
+        service.getOrCreateAgent(
+                "batch-transform",
+                null,
+                binding("standalone base"),
+                List.of(),
+                UUID.randomUUID(),
+                "owner",
+                null,
+                0,
+                ToolResultPresentationMode.BASIC);
         var result =
                 service.submit(
                         "batch-transform", "Ship it", binding("standalone base"), EPISODE_TIMEOUT);
@@ -709,9 +768,7 @@ class AgentEndToEndTest {
      */
     private static final class TransformToolEngine implements ToolEngine {
         static @NonNull AgentToolDefinition planDefinition() {
-            var tool =
-                    new top.focess.veto.builtin.planning.SubmitPlanTool(
-                            new top.focess.veto.agent.capability.ResponseCapabilityImpl());
+            var tool = new top.focess.veto.builtin.planning.SubmitPlanTool();
             return AgentToolDefinition.from(
                     tool.getName(),
                     ToolDocs.nonNullClass(top.focess.veto.builtin.planning.SubmitPlanTool.class),
@@ -721,8 +778,7 @@ class AgentEndToEndTest {
 
         private final @NonNull LlmBinding leaderBinding;
         private final @NonNull Set<ToolDefinition> leaderTools;
-        private final @NonNull UUID groupId = UUID.randomUUID();
-        private ToolCallContextHolder.TransformDirective lastDirective;
+        private int phase;
         private final List<String> executed = new ArrayList<>();
 
         TransformToolEngine(
@@ -731,10 +787,40 @@ class AgentEndToEndTest {
             this.leaderTools = leaderTools;
         }
 
-        ToolCallContextHolder.@NonNull TransformDirective lastDirective() {
-            ToolCallContextHolder.TransformDirective directive = lastDirective;
-            if (directive == null) throw new AssertionError("transform directive was not captured");
-            return directive;
+        AgentConfiguration.Intent intent(@NonNull AgentProfile base, @NonNull String task) {
+            if (phase == 0) return null;
+            boolean leading = phase == 1;
+            var names =
+                    leading
+                            ? leaderTools.stream()
+                                    .map(ToolDefinition::name)
+                                    .collect(Collectors.toSet())
+                            : base.tools();
+            var profile =
+                    new AgentProfile(
+                            base.name(),
+                            base.description(),
+                            leading ? "LEADER" : "STANDALONE",
+                            names,
+                            leading ? "TOP" : null,
+                            null,
+                            Map.of());
+            var data =
+                    new JsonValue.ObjectValue(
+                            Map.of(
+                                    "task",
+                                    new JsonValue.StringValue(task),
+                                    "brief",
+                                    new JsonValue.StringValue(
+                                            leading
+                                                    ? "Lead the group and ship the feature."
+                                                    : "Delegation complete: feature shipped.")));
+            return new AgentConfiguration.Intent(
+                    profile,
+                    new AgentConfiguration.Transition(
+                            "phase-" + phase,
+                            leading ? "runtime-leader" : "runtime-disband",
+                            data));
         }
 
         @Override
@@ -766,8 +852,13 @@ class AgentEndToEndTest {
                     var parsed = ActionsProgramParser.parse(raw);
                     ProgramValidator.validate(parsed);
                     ProgramValidator.validateInputs(parsed);
-                    ToolCallContextHolder.requestResponse(
-                            new ResponseRequest.Plan(raw, parsed, new PlanProgram(mapper)));
+                    ToolInvocationFixture.call(
+                            call.callId(),
+                            () -> {
+                                ToolCallContextHolder.control()
+                                        .execute(new PlanProgram(mapper).accepted(parsed));
+                                return true;
+                            });
                     return ToolResult.success(call.toolName(), call.callId(), "accepted");
                 } catch (Exception e) {
                     return ToolResult.failure(
@@ -779,19 +870,11 @@ class AgentEndToEndTest {
             }
             executed.add(call.toolName());
             if ("create_group".equals(call.toolName())) {
-                ToolCallContextHolder.TransformDirective directive =
-                        new ToolCallContextHolder.TransformDirective(
-                                "Lead the group and ship the feature.",
-                                groupId,
-                                leaderBinding,
-                                leaderTools);
-                lastDirective = directive;
-                ToolCallContextHolder.requestTransform(directive);
+                phase = 1;
                 return ToolResult.success(call.toolName(), call.callId(), "");
             }
             if ("disband_group".equals(call.toolName())) {
-                ToolCallContextHolder.requestReverseTransform(
-                        "Delegation complete: feature shipped.");
+                phase = 2;
                 return ToolResult.success(call.toolName(), call.callId(), "");
             }
             return ToolResult.failure(

@@ -77,11 +77,11 @@ public record ResponseContract(
                     throw new ModelSchemaException("This invocation must call " + completionTool);
             }
             case GENERATION -> {
-                boolean citationSubmission =
+                boolean nativeSubmission =
                         request.nativeToolsEnabled() && !request.tools().isEmpty();
-                if (citationSubmission && (calls.size() != 1 || !answer.isEmpty()))
+                if (nativeSubmission && (calls.size() != 1 || !answer.isEmpty()))
                     throw new ModelSchemaException(
-                            "This generation requires exactly one native answer-submission call and no accompanying text");
+                            "This generation requires exactly one native control call and no accompanying text");
             }
             case ORDINARY -> {}
         }

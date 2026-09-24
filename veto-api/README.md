@@ -229,13 +229,16 @@ tool-owned schemas specialized against the live model-visible manifest.
 
 ## Complete tool capability surface
 
-`HostCapabilityTool<T,C>` supports typed host injection for process execution,
-background tasks, network egress, skills, user interaction, memory, monitors and
-group control. Their contracts and shared process, interaction, group, memory and
-skill values are API types. Plugins own execution behavior and use these ports for
-authorized host effects. `ReaderSession.Factory` supplies plugin-owned private
-reader tools and document state while the host runs the shared child-agent lifecycle.
-`ReaderExecutionResult` marks outputs eligible to carry host-issued child identities.
+`HostCapabilityTool<T,C>` supports typed injection of authorized host resource
+operations. Feature-specific domain values and private document tools belong to
+the owning plugin. `AgentHost.isolate` accepts private `NativeTool` instances,
+plugin MDC references, requested limits and a terminal contract. The host owns
+execution, model budgets, actual termination and read-only request facts.
+`ApprovedHttpDestination` delegates one screened parent URL to the exact child
+and private operation; children cannot open broader network grants. Private tool
+capabilities cannot exceed the parent call's approved category. Host-issued
+execution receipts are internal invocation facts, never plugin-supplied output
+annotations or serialized authorization tokens.
 
 ## Named services between plugins
 
@@ -280,3 +283,23 @@ step, so host cancellation, budgets and sourced observations remain enforced.
 Spring/session/database integration lives in core's `integration.plugins` package.
 Generic lifecycle admission, service dispatch and managed plan execution belong in
 veto-plugin-runtime. These host adapters are not plugin feature implementations.
+
+### Feature-owned execution and presentation
+
+`AgentWorkSource` supplies plugin-owned pending observations and receives admitted/completed/cancelled callbacks. `PluginHost` exposes authorized invocation scope, wake hints, invalidations and trusted JDBC access. Plugins own their schemas and lifecycle. These contracts do not enforce confinement of Java code. `PLUGIN_LOCAL` tool execution grants no host resource permission and requires no feature-specific enum entry.
+
+The `frontend` package publishes `@veto/plugin-api`. Plugins register inspector panels through `registerInspector`, receive scoped actions, connection status and resource subscriptions, and dispose work when their lifetime aborts. The host contains no monitor component.
+
+Tool-owned system instructions can be declared with @ToolPrompt(sourceId). The host compiles that registered MDC source with PromptCompiler only when the annotated tool is available, retaining source spans. Plugins own the source; a tool name alone does not install instructions.
+
+### Tool presentation registrations
+
+`registerToolRenderer(localToolId, {call, result, conversation, headerTarget})` registers optional React views for a tool contributed by that plugin. `FrontendModule.tools` maps local IDs to effective tool aliases; modules cannot register foreign IDs, and duplicate producer registrations across modules fail. Host `components.CodeBlock` and `components.Markdown` are generic rendering primitives. Renderers receive the scoped `context`, identity, args and optional result; the conversation view should remain a compact summary.
+
+New TOOL_CALL records persist `plugin_id` and `tool_local_id`. Hosts resolve those before aliases and inherit response identity by Agent/call ID. Old alias-only records require an unambiguous current owner, restricted to the recorded plugin when present. Missing, failed or unloaded renderers retain generic/raw content. A renderer never replaces the host's raw disclosure or approval controls.
+
+### Invocation-bound imports and local model resources
+
+`api.credentials.CredentialImportAccess` authorizes an import from the actual privileged tool call, not from a claimed caller. Its CredentialWriter is scoped to that invocation and approved reference/service/label; retained writers must not authorize later calls. Values cross only the authorized local storage boundary. Candidate detection, capture and expiration remain plugin-owned.
+
+`api.llm.LocalModelCompletion` accepts a compiled prompt, plugin-local purpose and literal GBNF grammar. Obtain PromptRenderer to compile an owned MDC source first. The host binds the actual plugin identity/lifecycle, enforces a two-second operation bound, input/output limits and cancellation. Absent resources yield deterministic plugin fallback; no cloud-provider or raw inline-prompt fallback is implicit. This resource boundary is not isolation of arbitrary in-process Java.

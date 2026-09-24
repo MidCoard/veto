@@ -7,11 +7,16 @@ import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.agent.tool.ParamCategory;
 import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.ToolDocumentation;
+import top.focess.veto.api.agent.tool.ToolPresentation;
 import top.focess.veto.api.agent.tool.ToolResultFormat;
 
 /** Tool-class documentation and independent argument schemas for local tools. */
 public sealed interface LocalToolDefinition extends ToolDefinition
         permits NativeToolDefinition, AgentToolDefinition {
+    default ToolPresentation presentation() {
+        return null;
+    }
+
     @NonNull Class<?> argsClass();
 
     @NonNull Class<?> toolClass();

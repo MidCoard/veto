@@ -13,10 +13,13 @@ import org.jspecify.annotations.NonNull;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import top.focess.veto.agent.Agent;
 import top.focess.veto.agent.AgentService;
 import top.focess.veto.agent.RecordRecovery;
 import top.focess.veto.agent.TurnRecord;
+import top.focess.veto.agent.continuation.RequestContinuationStore;
 import top.focess.veto.agent.intercept.HitlRecordRepository;
 import top.focess.veto.agent.workspace.PathResolver;
 import top.focess.veto.agent.workspace.WorkspaceAdmissionPolicy;
@@ -26,6 +29,7 @@ import top.focess.veto.controller.SessionController;
 import top.focess.veto.i18n.Msg;
 import top.focess.veto.integration.plugins.PluginLifecycleEvents;
 import top.focess.veto.integration.plugins.SessionPlugins;
+import top.focess.veto.integration.plugins.storage.ScopedPluginStorage;
 import top.focess.veto.model.AgentEntity;
 import top.focess.veto.model.AgentInstanceRepository;
 import top.focess.veto.model.AgentPatternEntity;
@@ -34,7 +38,6 @@ import top.focess.veto.model.SessionEntity;
 import top.focess.veto.model.SessionRepository;
 import top.focess.veto.model.tier.ModelBinding;
 import top.focess.veto.model.tier.ModelTierRegistry;
-import top.focess.veto.monitor.RequestContinuationStore;
 import top.focess.veto.security.UserAdminService;
 
 /**
@@ -43,12 +46,18 @@ import top.focess.veto.security.UserAdminService;
  * session; the session's primary agent is get-or-created in {@link AgentService} with replayed
  * history loaded by {@link SessionHistoryLoader}.
  *
- * <p>Per-user identity for memory capture is derived from the session owner via {@link
- * AgentService#userIdForOwner(String)}, so memories and turn logs attribute to the real user rather
- * than a shared placeholder.
+ * <p>Plugin-owned data uses host-issued storage scopes. The scope carries the account's persisted,
+ * incarnation-specific storage identity rather than a username-derived identifier.
  */
 @Service
 public class SessionService {
+    private ScopedPluginStorage pluginStorage;
+
+    @Autowired
+    public void attachPluginStorage(@NonNull ScopedPluginStorage storage) {
+        pluginStorage = storage;
+    }
+
     private HitlRecordRepository hitlRecords;
 
     @Autowired
@@ -477,14 +486,29 @@ public class SessionService {
         }
         for (SessionEntity session : matches) {
             String sessionId = session.getId();
-            var events = lifecycleEvents;
-            if (events != null) events.sessionClosed(owner, sessionId);
-            activeSessions.entrySet().removeIf(e -> sessionId.equals(e.getValue()));
-            agentService.remove(sessionId);
+            var dataEvents = lifecycleEvents;
+            if (dataEvents != null) dataEvents.beforeSessionDeleted(owner, sessionId);
+            Runnable stop =
+                    () -> {
+                        activeSessions.entrySet().removeIf(e -> sessionId.equals(e.getValue()));
+                        var events = lifecycleEvents;
+                        if (events != null) events.sessionClosed(owner, sessionId);
+                        agentService.remove(sessionId);
+                    };
+            if (TransactionSynchronizationManager.isSynchronizationActive())
+                TransactionSynchronizationManager.registerSynchronization(
+                        new TransactionSynchronization() {
+                            @Override
+                            public void afterCommit() {
+                                stop.run();
+                            }
+                        });
+            else stop.run();
             RequestContinuationStore store = continuations;
             if (store != null) store.deleteSession(sessionId);
             if (hitlRecords != null) hitlRecords.deleteBySessionId(sessionId);
             agents.deleteBySessionId(sessionId);
+            if (pluginStorage != null) pluginStorage.deleteSession(sessionId);
             sessions.delete(session);
         }
         return true;
@@ -564,19 +588,29 @@ public class SessionService {
                         session.getId(), llmConfig(resolved), session.getToolResultPresentation()));
     }
 
-    /** Restores the exact primary/team identity for an already-authorized Monitor observation. */
-    public boolean activateForMonitor(
+    /** Restores the exact primary/team identity for an plugin observation. */
+    public boolean activateForObservation(
             @NonNull UUID sessionId, @NonNull String owner, @NonNull String targetId) {
         SessionEntity session = sessions.findById(sessionId.toString()).orElse(null);
         if (session == null || !session.getOwner().equals(owner)) return false;
         AgentEntity primary = primaryAgent(session);
         AgentEntity target = agents.findById(targetId).orElse(null);
+        if (primary != null
+                && target != null
+                && primary.getSessionId().equals(session.getId())
+                && target.getSessionId().equals(session.getId())
+                && agentService.agentsView().values().stream()
+                        .anyMatch(
+                                agent ->
+                                        agent.id().equals(targetId)
+                                                && sessionId.equals(agent.sessionId())))
+            return true;
         if (primary == null
                 || target == null
                 || !primary.getSessionId().equals(session.getId())
                 || !target.getSessionId().equals(session.getId())
-                || !primary.supportsMonitorRecovery()
-                || !target.supportsMonitorRecovery()
+                || !primary.supportsRecovery()
+                || !target.supportsRecovery()
                 || RecordRecovery.requiresExplicitContinuation(
                         historyLoader.load(session.getId(), primary.getId()))
                 || RecordRecovery.requiresExplicitContinuation(

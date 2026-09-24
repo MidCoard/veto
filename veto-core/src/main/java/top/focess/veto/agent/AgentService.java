@@ -17,13 +17,11 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.context.annotation.Lazy;
 import org.springframework.context.i18n.LocaleContextHolder;
 import org.springframework.stereotype.Service;
+import top.focess.veto.agent.continuation.RequestContinuationStore;
 import top.focess.veto.agent.drift.ReadHistory;
 import top.focess.veto.agent.identity.AgentPersona;
-import top.focess.veto.agent.identity.Role;
-import top.focess.veto.agent.identity.RoleToolFilter;
 import top.focess.veto.agent.identity.SystemPromptResolver;
 import top.focess.veto.agent.intercept.Gateway;
 import top.focess.veto.agent.intercept.HitlRegistry;
@@ -39,7 +37,6 @@ import top.focess.veto.agent.screening.ProtectedSetResolver;
 import top.focess.veto.agent.screening.ScreeningMode;
 import top.focess.veto.agent.screening.SlmScreeningProvider;
 import top.focess.veto.agent.tool.ToolCallContext;
-import top.focess.veto.agent.tool.ToolCallContextHolder;
 import top.focess.veto.agent.tool.ToolDefinition;
 import top.focess.veto.agent.tool.ToolEngine;
 import top.focess.veto.agent.workspace.Workspace;
@@ -48,20 +45,18 @@ import top.focess.veto.api.agent.ToolCallEvent;
 import top.focess.veto.api.agent.ToolResultEvent;
 import top.focess.veto.api.llm.LlmBinding;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
+import top.focess.veto.api.plugin.agent.AgentProfile;
 import top.focess.veto.bus.DeltaBroker;
 import top.focess.veto.bus.DeltaFrame;
-import top.focess.veto.group.GroupAgentFactory;
-import top.focess.veto.group.GroupRecoveryService;
 import top.focess.veto.i18n.Msg;
 import top.focess.veto.integration.plugins.PluginLifecycleEvents;
 import top.focess.veto.integration.plugins.SessionPlugins;
 import top.focess.veto.llm.config.LlmJacksonConfig;
 import top.focess.veto.llm.core.UniformLLMCaller;
 import top.focess.veto.memory.TurnLogService;
+import top.focess.veto.model.SessionEntity;
 import top.focess.veto.model.tier.ModelTierRegistry;
-import top.focess.veto.monitor.RequestContinuationStore;
 import top.focess.veto.observability.ObservabilityConfiguration;
-import top.focess.veto.sandbox.BackgroundTaskManager;
 import top.focess.veto.util.Nullness;
 import top.focess.veto.vault.CredentialVaultConfiguration;
 import top.focess.veto.vault.KeysteadVault;
@@ -86,14 +81,12 @@ public class AgentService {
         sessionPlugins = value;
     }
 
-    private GroupRecoveryService groupRecovery;
-
     private RequestContinuationStore continuationStore;
-    private KeysteadVault monitorVault;
+    private KeysteadVault executionVault;
 
     @Autowired
-    public void attachMonitorVault(@NonNull KeysteadVault vault) {
-        monitorVault = vault;
+    public void attachExecutionVault(@NonNull KeysteadVault vault) {
+        executionVault = vault;
     }
 
     @Autowired
@@ -106,8 +99,8 @@ public class AgentService {
         if (plugins != null) runner.attachSessionPlugins(plugins);
         var events = lifecycleEvents;
         if (events != null) runner.attachLifecycleEvents(events);
-        KeysteadVault vault = monitorVault;
-        if (vault != null) runner.attachMonitorVault(vault);
+        KeysteadVault vault = executionVault;
+        if (vault != null) runner.attachExecutionVault(vault);
         RequestContinuationStore store = continuationStore;
         if (store != null) runner.attachContinuationStore(store);
     }
@@ -119,14 +112,9 @@ public class AgentService {
         lifecycleEvents = events;
     }
 
-    @Autowired
-    public void attachGroupRecovery(@Lazy @NonNull GroupRecoveryService recovery) {
-        groupRecovery = recovery;
-    }
-
     private void bindForSubmission(@NonNull VetoAgent agent, @NonNull LlmBinding binding) {
-        GroupRecoveryService recovery = groupRecovery;
-        if (recovery == null || !recovery.refreshLeaderBinding(agent)) agent.bind(binding);
+        agent.bind(binding);
+        agent.refreshConfiguration();
     }
 
     private static final @NonNull Logger log =
@@ -135,13 +123,11 @@ public class AgentService {
 
     private final @NonNull SessionAgentRegistry sessionAgents;
 
-    private ModelTierRegistry planTierRegistry;
-
-    private final int maxPlanSteps;
+    private ModelTierRegistry modelTierRegistry;
 
     @Autowired
-    void setPlanTierRegistry(@NonNull ModelTierRegistry registry) {
-        planTierRegistry = registry;
+    void setModelTierRegistry(@NonNull ModelTierRegistry registry) {
+        modelTierRegistry = registry;
     }
 
     private final @NonNull ToolEngine toolEngine;
@@ -153,14 +139,12 @@ public class AgentService {
     private final @NonNull List<@NonNull LoopInterceptor> interceptors;
     private @NonNull Workspace defaultWorkspace;
     private final @NonNull String pathMode;
-    private final @NonNull RoleToolFilter roleToolFilter;
     private final long maxCallsPerEpisode;
     private final @NonNull DeployerPolicy deployerPolicy;
     // Optional event-stream sink shared by created AgentRunners.
     private final DeltaBroker deltaBroker;
     // Optional durable turn log shared by created AgentRunners.
     private final TurnLogService turnLogService;
-    private final @NonNull BackgroundTaskManager backgroundTaskManager;
     private final @NonNull ProtectedSetResolver protectedSetResolver;
     private final @NonNull SlmScreeningProvider slmScreeningProvider;
 
@@ -185,15 +169,12 @@ public class AgentService {
             @NonNull UniformLLMCaller caller,
             @Qualifier(LlmJacksonConfig.LLM_OBJECT_MAPPER) @NonNull ObjectMapper objectMapper,
             List<LoopInterceptor> interceptors,
-            @NonNull RoleToolFilter roleToolFilter,
             @Value("${veto.workspace.path-mode}") @NonNull String pathMode,
             @Value("${veto.breaker.max_calls_per_episode}") long maxCallsPerEpisode,
-            @Value("${veto.plan.max-steps}") int maxPlanSteps,
             @NonNull DeployerPolicyConfiguration deployerPolicyConfiguration,
             @Value("${veto.security.screening-mode}") @NonNull String screeningModeRaw,
             DeltaBroker deltaBroker,
             TurnLogService turnLogService,
-            @NonNull BackgroundTaskManager backgroundTaskManager,
             @NonNull ProtectedSetResolver protectedSetResolver,
             @NonNull SlmScreeningProvider slmScreeningProvider,
             @NonNull SessionAgentRegistry sessionAgents) {
@@ -207,12 +188,7 @@ public class AgentService {
         this.interceptors = interceptors == null ? List.of() : interceptors;
         this.pathMode = pathMode;
         this.defaultWorkspace = Workspace.fromConfig("", "", pathMode);
-        this.roleToolFilter = roleToolFilter;
         this.maxCallsPerEpisode = maxCallsPerEpisode;
-        if (maxPlanSteps <= 0) {
-            throw new IllegalArgumentException("veto.plan.max-steps must be positive");
-        }
-        this.maxPlanSteps = maxPlanSteps;
         this.deployerPolicy = deployerPolicyConfiguration.getDeployerPolicy();
         if (this.deployerPolicy == DeployerPolicy.FULL_ACCESS) {
             log.info(
@@ -222,12 +198,11 @@ public class AgentService {
         }
         // Thread the runtime screening matrix + a fallback workspace to the (shared) HITL registry.
         // Each session registers its own workspace per-agentId at create time (see createAgent /
-        // createMate); the default here covers legacy call paths that bypass session creation.
+        // openPluginAgent); the default covers legacy paths that bypass session creation.
         this.hitlRegistry.setScreeningMode(parseScreeningMode(screeningModeRaw));
         this.hitlRegistry.setDefaultWorkspace(this.defaultWorkspace);
         this.deltaBroker = deltaBroker;
         this.turnLogService = turnLogService;
-        this.backgroundTaskManager = backgroundTaskManager;
         this.protectedSetResolver = protectedSetResolver;
         this.slmScreeningProvider = slmScreeningProvider;
     }
@@ -241,15 +216,12 @@ public class AgentService {
             @NonNull UniformLLMCaller caller,
             @NonNull ObjectMapper objectMapper,
             List<LoopInterceptor> interceptors,
-            @NonNull RoleToolFilter roleToolFilter,
             @NonNull String pathMode,
             long maxCallsPerEpisode,
-            int maxPlanSteps,
             @NonNull String deployerPolicyRaw,
             @NonNull String screeningModeRaw,
             DeltaBroker deltaBroker,
-            TurnLogService turnLogService,
-            @NonNull BackgroundTaskManager backgroundTaskManager) {
+            TurnLogService turnLogService) {
         this(
                 toolEngine,
                 hitlRegistry,
@@ -258,15 +230,12 @@ public class AgentService {
                 caller,
                 objectMapper,
                 interceptors,
-                roleToolFilter,
                 pathMode,
                 maxCallsPerEpisode,
-                maxPlanSteps,
                 policyConfigurationFor(deployerPolicyRaw),
                 screeningModeRaw,
                 deltaBroker,
                 turnLogService,
-                backgroundTaskManager,
                 new ProtectedSetResolver(
                         policyConfigurationFor(deployerPolicyRaw),
                         new ObservabilityConfiguration(),
@@ -291,9 +260,9 @@ public class AgentService {
         VetoAgent agent = agents.computeIfAbsent(agentKey, k -> createAgent(k, binding));
         bindForSubmission(agent, binding);
         agent.setLocale(LocaleContextHolder.getLocale());
-        agent.submit(prompt);
+        var request = agent.submitRequest(prompt);
         try {
-            return agent.await(DEFAULT_AWAIT);
+            return request.await(DEFAULT_AWAIT);
         } catch (TimeoutException e) {
             log.warn("Agent {} await timed out", agentKey);
             return AgentResult.failure(Msg.get(agent.locale(), "error.agent.timedOut"), Map.of());
@@ -330,8 +299,8 @@ public class AgentService {
         VetoAgent agent = agents.computeIfAbsent(agentKey, k -> createAgent(k, binding));
         bindForSubmission(agent, binding);
         agent.setLocale(LocaleContextHolder.getLocale());
-        agent.submit(prompt);
-        return agent.await(timeout);
+        var request = agent.submitRequest(prompt);
+        return request.await(timeout);
     }
 
     /**
@@ -428,8 +397,8 @@ public class AgentService {
             agent.addToolResultListener(toolResultSink);
         }
         try {
-            agent.submit(prompt);
-            return agent.await(timeout);
+            var request = agent.submitRequest(prompt);
+            return request.await(timeout);
         } finally {
             if (messageSink != null) {
                 agent.removeMessageListener(messageSink);
@@ -471,8 +440,8 @@ public class AgentService {
         VetoAgent agent = agents.computeIfAbsent(agentKey, k -> createAgent(k, binding, userId));
         bindForSubmission(agent, binding);
         agent.setLocale(LocaleContextHolder.getLocale());
-        agent.submit(prompt);
-        return agent.await(timeout);
+        var request = agent.submitRequest(prompt);
+        return request.await(timeout);
     }
 
     /**
@@ -587,14 +556,11 @@ public class AgentService {
                                     workspace,
                                     toolResultPresentation);
                         });
-        bindForSubmission(agent, binding);
+        agent.bind(binding);
         if (created[0] && !history.isEmpty()) {
             agent.seedHistory(history);
         }
-        GroupRecoveryService recovery = groupRecovery;
-        if (recovery != null && owner != null)
-            recovery.restore(
-                    agent, agent.sessionId(), userId, owner, workspace, toolResultPresentation);
+        agent.refreshConfiguration();
         return agent;
     }
 
@@ -642,8 +608,6 @@ public class AgentService {
         VetoAgent a = agents.remove(agentKey);
         if (a != null) {
             sessionAgents.stopSession(a.sessionId());
-            // Kill any background tasks the agent launched so they don't outlive their owner.
-            backgroundTaskManager.stopAll(a.id());
         }
     }
 
@@ -727,117 +691,66 @@ public class AgentService {
                         deltaBroker,
                         userId,
                         turnLogService,
-                        backgroundTaskManager);
-        // Stamp the session owner so group-spawned Mates / Leaders resolve their tier against the
-        // user's active model-tier profile via the ToolCallContext.
-        runner.configurePlan(planTierRegistry, maxPlanSteps);
-        runner.setOwner(owner);
+                        owner,
+                        primaryAgentId == null
+                                ? UUID.fromString(persona.id())
+                                : UUID.fromString(agentKey));
+        runner.configureModelTiers(modelTierRegistry);
         runner.setToolResultPresentation(toolResultPresentation);
-        if (primaryAgentId != null) {
-            runner.setSessionId(UUID.fromString(agentKey));
-        }
         configureContinuations(runner);
         return sessionAgents.start(persona, runner);
     }
 
-    /**
-     * Builds a Mate {@link Agent} (a Leader-delegated worker) for the group engine. Unlike {@link
-     * #createAgent} this does not register the agent under a transport key (Mates are not
-     * transport-addressable). The session registry owns their runtime lifetime while {@code
-     * GroupSpawner} manages group membership. Each Mate receives its owner's protected paths.
-     */
-    public @NonNull Agent createMate(@NonNull AgentPersona persona, @NonNull LlmBinding binding) {
-        return createMate(persona, binding, DEFAULT_USER_ID, null, defaultWorkspace);
-    }
-
-    /**
-     * Builds a Mate {@link Agent} bound to the given workspace, inheriting the default user id.
-     * Used by the group engine to spawn a Mate / one-shot Leader in the calling session's
-     * workspace.
-     */
-    public @NonNull Agent createMate(
-            @NonNull AgentPersona persona,
-            @NonNull LlmBinding binding,
-            @NonNull Workspace workspace) {
-        return createMate(persona, binding, DEFAULT_USER_ID, null, workspace);
-    }
-
-    /**
-     * Builds a Mate {@link Agent} with explicit user identity for multi-user tenant isolation. The
-     * Mate inherits the Leader's userId so its memory capture is scoped to the same tenant.
-     */
-    public @NonNull Agent createMate(
-            @NonNull AgentPersona persona, @NonNull LlmBinding binding, @NonNull UUID userId) {
-        return createMate(persona, binding, userId, null, defaultWorkspace);
-    }
-
-    /**
-     * Builds a Mate {@link Agent} bound to the given workspace (the calling session's). The Mate
-     * inherits the session's workspace so its tool calls resolve paths + match grants against the
-     * same roots as the delegating agent.
-     */
-    public @NonNull Agent createMate(
-            @NonNull AgentPersona persona,
-            @NonNull LlmBinding binding,
-            @NonNull UUID userId,
-            @NonNull Workspace workspace) {
-        return createMate(persona, binding, userId, null, workspace);
-    }
-
-    /**
-     * Builds a Mate {@link Agent} with explicit user identity <em>and</em> session owner. The Mate
-     * inherits the Leader's userId (memory tenant) and owner (whose model-tier profile resolves the
-     * Mate's tier). This is the overload the production group factory ({@link GroupAgentFactory})
-     * uses - it reads both from the calling agent's {@link ToolCallContext} so the Mate resolves
-     * its model against the same user's active profile as the Leader.
-     */
-    public @NonNull Agent createMate(
-            @NonNull AgentPersona persona,
-            @NonNull LlmBinding binding,
-            @NonNull UUID userId,
-            String owner,
-            @NonNull Workspace workspace) {
-        return createMate(
-                persona, binding, userId, owner, workspace, ToolResultPresentationMode.BASIC);
-    }
-
-    public @NonNull Agent createMate(
-            @NonNull AgentPersona persona,
-            @NonNull LlmBinding binding,
-            @NonNull UUID userId,
-            String owner,
-            @NonNull Workspace workspace,
-            @NonNull ToolResultPresentationMode toolResultPresentation) {
-        return createMate(persona, binding, userId, owner, workspace, toolResultPresentation, null);
-    }
-
-    public @NonNull Agent createMate(
-            @NonNull AgentPersona persona,
-            @NonNull LlmBinding binding,
-            @NonNull UUID userId,
-            String owner,
-            @NonNull Workspace workspace,
-            @NonNull ToolResultPresentationMode toolResultPresentation,
-            UUID sessionId) {
-        // Re-scope the persona's tools to its role. The persona may have been built with the full
-        // standalone manifest before its role (MATE/LEADER) was known; the RoleToolFilter narrows
-        // it to the role's allow-list (MATE: no group tools; LEADER: read + arrange only).
-        Set<ToolDefinition> selectedTools = roleToolFilter.resolve(persona.role());
-        var selection = sessionPlugins;
-        if (selection != null && sessionId != null)
-            selectedTools = selection.tools(sessionId.toString(), selectedTools);
-        AgentPersona scoped = persona.withWhitelistedTools(selectedTools);
+    /** Creates a plugin-owned child inside an already authenticated session. */
+    public @NonNull VetoAgent openPluginAgent(
+            @NonNull SessionEntity session,
+            @NonNull String id,
+            @NonNull String parentId,
+            @NonNull String namespace,
+            @NonNull AgentProfile profile,
+            @NonNull List<TurnRecord> history) {
+        String owner = session.getOwner();
+        UUID userId = userIdForOwner(owner);
+        UUID sessionId = UUID.fromString(session.getId());
+        Workspace workspace =
+                buildWorkspace(session.getWorkspaceRoots(), session.getCurrentWorkspaceRootIndex());
+        var tiers = Nullness.requireNonNull(modelTierRegistry, "Model tiers unavailable");
+        var parent =
+                sessionAgents.agents(sessionId).stream()
+                        .filter(entry -> entry.agent().id().equals(parentId))
+                        .findFirst()
+                        .orElseThrow(
+                                () ->
+                                        new IllegalStateException(
+                                                "Parent must be active before opening a child"));
+        var base = parent.agent().binding();
+        var selection =
+                Nullness.requireNonNull(sessionPlugins, "Session plugin selection unavailable");
+        var authorized =
+                selection.tools(session.getId(), Set.copyOf(toolEngine.getActiveTools(null)));
+        var resolved = AgentProfiles.resolve(id, owner, profile, authorized, base, tiers);
+        var intentPersona = resolved.persona();
+        AgentPersona scoped =
+                new AgentPersona(
+                        id,
+                        intentPersona.name(),
+                        intentPersona.description(),
+                        intentPersona.whitelistedTools(),
+                        intentPersona.role(),
+                        namespace);
+        LlmBinding binding = resolved.binding();
+        var toolResultPresentation = session.getToolResultPresentation();
         hitlRegistry.setWorkspace(scoped.id(), workspace);
         ReadHistory readHistory = new ReadHistory();
         String protectionOwner = owner == null || owner.isBlank() ? userId.toString() : owner;
-        ProtectedSet mateProtectedSet = protectedSetFor(protectionOwner, workspace);
+        ProtectedSet scopedProtectedSet = protectedSetFor(protectionOwner, workspace);
         Gateway gateway =
                 new Gateway(
                         workspace,
                         new DangerComputation(),
                         slmScreeningProvider,
                         deployerPolicy,
-                        mateProtectedSet,
+                        scopedProtectedSet,
                         readHistory);
         AgentRunner runner =
                 new AgentRunner(
@@ -856,18 +769,13 @@ public class AgentService {
                         deltaBroker,
                         userId,
                         turnLogService,
-                        backgroundTaskManager);
-        // Stamp the session owner so the Mate (or one-shot Leader) resolves its tier against the
-        // user's active model-tier profile via the ToolCallContext.
-        if (sessionId != null) runner.setSessionId(sessionId);
+                        owner,
+                        sessionId);
         configureContinuations(runner);
-        runner.configurePlan(planTierRegistry, maxPlanSteps);
-        runner.setOwner(owner);
+        runner.configureModelTiers(modelTierRegistry);
         runner.setToolResultPresentation(toolResultPresentation);
-        if (sessionId != null) {
-            return sessionAgents.startInSession(sessionId, scoped, runner);
-        }
-        return sessionAgents.start(scoped, runner);
+        runner.seedHistory(history);
+        return sessionAgents.startChild(sessionId, parentId, "plugin", scoped, runner, true);
     }
 
     /** Builds the standalone persona from the active, role-scoped tool catalog. */
@@ -884,16 +792,12 @@ public class AgentService {
     // that (legacy/test path) we mint a fresh UUID just as before.
     private @NonNull AgentPersona buildPersona(
             @NonNull String agentKey, String primaryAgentId, @NonNull LlmBinding binding) {
-        Set<ToolDefinition> tools = roleToolFilter.resolve(Role.STANDALONE);
+        Set<ToolDefinition> tools = Set.copyOf(toolEngine.getActiveTools(null));
         var selection = sessionPlugins;
         if (selection != null && primaryAgentId != null) tools = selection.tools(agentKey, tools);
         String personaId = primaryAgentId != null ? primaryAgentId : UUID.randomUUID().toString();
         return new AgentPersona(
-                personaId,
-                SystemPromptResolver.NAME,
-                SystemPromptResolver.DESCRIPTION,
-                tools,
-                List.of());
+                personaId, SystemPromptResolver.NAME, SystemPromptResolver.DESCRIPTION, tools);
     }
 
     /** The fallback workspace used when no session workspace is set. */
@@ -905,8 +809,7 @@ public class AgentService {
      * Derives the stable memory-tenant userId for a session owner. Users are keyed by username (no
      * UUID column on {@code UserEntity}), so a name-based UUID ({@link UUID#nameUUIDFromBytes})
      * gives each owner a distinct, deterministic tenant id. Memories and turn logs then attribute
-     * to the real user across sessions and restarts. Used by session activation and by Mate
-     * provisioning when no tool-call scope is available.
+     * to the real user across sessions and restarts, including host-created plugin children.
      */
     public @NonNull UUID userIdForOwner(@NonNull String owner) {
         return UUID.nameUUIDFromBytes(owner.getBytes(StandardCharsets.UTF_8));
@@ -914,8 +817,7 @@ public class AgentService {
 
     /**
      * The workspace registered for the agent (by persona id), or the fallback default. Used by the
-     * group engine to inherit the calling session's workspace when spawning Mates / a one-shot
-     * Leader (the calling agent's persona id is read from the {@link ToolCallContextHolder}).
+     * host to inherit the calling session's workspace for authorized child agents.
      */
     public @NonNull Workspace workspaceOf(@NonNull String agentId) {
         return hitlRegistry.workspace(agentId);

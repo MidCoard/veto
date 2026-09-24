@@ -1,8 +1,6 @@
 package top.focess.veto.agent.capability;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -13,6 +11,10 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.jspecify.annotations.NonNull;
@@ -28,17 +30,23 @@ import top.focess.veto.agent.tool.CapabilityTestCalls;
 import top.focess.veto.agent.tool.ToolCallContext;
 import top.focess.veto.agent.tool.ToolCallContextHolder;
 import top.focess.veto.agent.translation.DefaultCapabilityTranslator;
-import top.focess.veto.agent.web.WebFetchExecutor;
+import top.focess.veto.agent.web.ReaderTestHarness;
 import top.focess.veto.api.agent.AgentState;
+import top.focess.veto.api.agent.tool.NativeTool;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.agent.tool.ToolDocs;
+import top.focess.veto.api.http.ApprovedHttpDestination;
+import top.focess.veto.api.http.HttpDocument;
 import top.focess.veto.api.llm.ProviderType;
 import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.api.llm.VetoResponse;
-import top.focess.veto.api.search.SearchProvider;
-import top.focess.veto.api.web.FetchedPage;
+import top.focess.veto.api.plugin.agent.IsolatedAgent;
+import top.focess.veto.builtin.web.ReaderConfig;
 import top.focess.veto.builtin.web.WebFetchTool;
+import top.focess.veto.builtin.web.WebReadSession;
+import top.focess.veto.builtin.workspace.WriteToFileTool;
+import top.focess.veto.integration.plugins.IsolatedExecutions;
 import top.focess.veto.llm.core.UniformLLMCaller;
 import top.focess.veto.memory.TurnLogService;
 import top.focess.veto.model.tier.ModelBinding;
@@ -123,31 +131,23 @@ class WebReadChildAuthorityTest {
                             new ModelBinding(
                                     ProviderType.DEEPSEEK, "reader", "reader-key", 0, 2048));
             SessionAgentRegistry registry = new SessionAgentRegistry();
-            WebFetchExecutor reader =
-                    new WebFetchExecutor(
+            var reader =
+                    ReaderTestHarness.create(
                             mapper,
                             caller,
                             models,
                             new DefaultCapabilityTranslator(mapper),
                             registry,
                             new TurnLogService(null, mapper),
-                            new IngressDefense(),
-                            ModelTier.LOW,
                             6,
                             15,
                             32000,
-                            2048);
-            var network =
-                    spy(
-                            new NetworkEgressCapabilityImpl(
-                                    mock(ToolDocs.nonNullClass(SearchProvider.class)),
-                                    reader,
-                                    5,
-                                    10000,
-                                    true));
+                            2048,
+                            () -> {});
+            var network = spy(new NetworkEgressCapabilityImpl(5, 10000, true));
             AtomicReference<ToolCallContext> parent = new AtomicReference<>();
             AtomicReference<ToolCallContext> child = new AtomicReference<>();
-            AtomicReference<WebReadCapability> captured = new AtomicReference<>();
+            AtomicReference<ApprovedHttpDestination> captured = new AtomicReference<>();
             doAnswer(
                             invocation -> {
                                 ToolCallContext parentContext = ToolCallContextHolder.get();
@@ -160,11 +160,11 @@ class WebReadChildAuthorityTest {
                                 when(parentAgent.id()).thenReturn(parentContext.agentId());
                                 when(parentAgent.state()).thenReturn(AgentState.RUNNING);
                                 registry.register(session, parentAgent);
-                                WebReadCapability original =
-                                        (WebReadCapability) invocation.callRealMethod();
+                                ApprovedHttpDestination original =
+                                        (ApprovedHttpDestination) invocation.callRealMethod();
                                 if (original == null)
                                     throw new AssertionError("Missing capability");
-                                WebReadCapability access = spy(original);
+                                ApprovedHttpDestination access = spy(original);
                                 captured.set(access);
                                 doAnswer(
                                                 fetch -> {
@@ -175,16 +175,16 @@ class WebReadChildAuthorityTest {
                                                     return fetch.callRealMethod();
                                                 })
                                         .when(access)
-                                        .fetch(anyLong());
+                                        .fetch();
                                 return access;
                             })
                     .when(network)
-                    .openReader(any());
+                    .openApprovedDestination("url");
             URI url = URI.create("http://127.0.0.1:" + server.getAddress().getPort() + "/approved");
             UserContext.set("test-owner");
             String result =
                     CapabilityTestCalls.execute(
-                            new WebFetchTool(network),
+                            new WebFetchTool(reader, network),
                             new WebFetchTool.Args(url.toString(), "Find timeout units."));
             assertEquals("complete", mapper.readTree(result).path("outcome").asText());
             assertEquals(
@@ -203,9 +203,9 @@ class WebReadChildAuthorityTest {
             assertEquals(parentScope.userId(), childScope.userId());
             assertEquals(parentScope.owner(), childScope.owner());
             assertEquals(parentScope.sessionId(), childScope.sessionId());
-            WebReadCapability access = captured.get();
+            ApprovedHttpDestination access = captured.get();
             assertNotNull(access);
-            assertThrows(SecurityException.class, () -> access.fetch(Long.MAX_VALUE));
+            assertThrows(SecurityException.class, () -> access.fetch());
         } finally {
             server.stop(0);
         }
@@ -217,11 +217,11 @@ class WebReadChildAuthorityTest {
         UUID session = UUID.randomUUID();
         ToolCallContext parent = install("parent", user, "owner", session, "web_fetch");
         AtomicInteger fetches = new AtomicInteger();
-        WebReadCapability access =
-                new WebReadCapability(
+        var access =
+                new HttpDestinationGrant(
                         deadline -> {
                             fetches.incrementAndGet();
-                            return new FetchedPage(
+                            return new HttpDocument(
                                     URI.create("https://example.com/approved"),
                                     200,
                                     "text/plain",
@@ -229,27 +229,258 @@ class WebReadChildAuthorityTest {
                                     false,
                                     100);
                         },
-                        parent,
-                        mock(ToolDocs.nonNullClass(WebFetchExecutor.class)));
-        access.bindReader("child");
-        assertThrows(SecurityException.class, () -> access.bindReader("replacement"));
-        install("child", user, "owner", session, "fetch_page");
-        assertEquals("source", access.fetch(Long.MAX_VALUE).content());
-        for (ToolCallContext wrong :
-                List.of(
-                        scope("wrong-child", user, "owner", session, "fetch_page"),
-                        scope("child", UUID.randomUUID(), "owner", session, "fetch_page"),
-                        scope("child", user, "other-owner", session, "fetch_page"),
-                        scope("child", user, "owner", UUID.randomUUID(), "fetch_page"),
-                        scope("child", user, "owner", session, "web_fetch"),
-                        scope("parent", user, "owner", session, "web_fetch"))) {
-            activate(wrong);
-            assertThrows(SecurityException.class, () -> access.fetch(Long.MAX_VALUE));
+                        parent);
+        var mapper = new ObjectMapper();
+        var registry = new SessionAgentRegistry();
+        var parentAgent = mock(ToolDocs.nonNullClass(VetoAgent.class));
+        when(parentAgent.id()).thenReturn("parent");
+        when(parentAgent.state()).thenReturn(AgentState.RUNNING);
+        registry.register(session, parentAgent);
+        var models = mock(ToolDocs.nonNullClass(ModelTierRegistry.class));
+        when(models.resolve("owner", ModelTier.LOW))
+                .thenReturn(new ModelBinding(ProviderType.DEEPSEEK, "reader", "key", 0, 2048));
+        var executions =
+                new IsolatedExecutions(
+                        mapper,
+                        request -> {
+                            throw new AssertionError("No model requested");
+                        },
+                        models,
+                        new DefaultCapabilityTranslator(mapper),
+                        registry,
+                        new TurnLogService(null, mapper),
+                        new IngressDefense(),
+                        128,
+                        600,
+                        1048576,
+                        65536);
+        assertThrows(
+                SecurityException.class,
+                () ->
+                        access.bind(
+                                mock(ToolDocs.nonNullClass(IsolatedAgent.Runtime.class)),
+                                "fetch_page"));
+        var runtime = new AtomicReference<IsolatedAgent.Runtime>();
+        var child =
+                executions.open(
+                        new ReaderConfig(Map.of()).spec(),
+                        scope -> {
+                            runtime.set(scope);
+                            access.bind(scope, "fetch_page");
+                            return new WebReadSession(scope, access);
+                        },
+                        () -> true);
+        try {
+            var scope = runtime.get();
+            if (scope == null) throw new AssertionError();
+            assertThrows(SecurityException.class, () -> access.bind(scope, "fetch_page"));
+            assertThrows(SecurityException.class, () -> access.publish(child));
+            assertThrows(
+                    SecurityException.class,
+                    () ->
+                            executions.open(
+                                    new ReaderConfig(Map.of()).spec(),
+                                    unused -> {
+                                        throw new AssertionError();
+                                    },
+                                    () -> true));
+            String id = child.id();
+            install(id, user, "owner", session, "fetch_page");
+            assertEquals("source", access.fetch().content());
+            var approved = ToolCallContextHolder.get();
+            if (approved == null) throw new AssertionError();
+            var basePermit = approved.executionPermit();
+            var expanded =
+                    new ToolExecutionPermit(
+                            basePermit.call(),
+                            basePermit.capability(),
+                            basePermit.remoteServerName(),
+                            basePermit.caller(),
+                            basePermit.filesystemPaths(),
+                            basePermit.workspaceRoots(),
+                            basePermit.executionRoot(),
+                            basePermit.deployerPolicy(),
+                            basePermit.protectedPaths(),
+                            basePermit.preparation(),
+                            Map.of("url", URI.create("https://evil.example/unapproved")));
+            activate(
+                    new ToolCallContext(
+                            id,
+                            user,
+                            "owner",
+                            session,
+                            ToolResultPresentationMode.BASIC,
+                            expanded));
+            assertThrows(
+                    SecurityException.class,
+                    () ->
+                            new NetworkEgressCapabilityImpl(5, 1000, false)
+                                    .openApprovedDestination("url"));
+            for (ToolCallContext wrong :
+                    List.of(
+                            scope("wrong-child", user, "owner", session, "fetch_page"),
+                            scope(id, UUID.randomUUID(), "owner", session, "fetch_page"),
+                            scope(id, user, "other-owner", session, "fetch_page"),
+                            scope(id, user, "owner", UUID.randomUUID(), "fetch_page"),
+                            scope(id, user, "owner", session, "web_fetch"),
+                            scope("parent", user, "owner", session, "web_fetch"))) {
+                activate(wrong);
+                assertThrows(SecurityException.class, access::fetch);
+            }
+            activate(parent);
+            child.close();
+            assertThrows(SecurityException.class, access::fetch);
+            assertThrows(
+                    SecurityException.class,
+                    () ->
+                            executions.open(
+                                    new ReaderConfig(Map.of()).spec(),
+                                    unused -> {
+                                        throw new AssertionError();
+                                    },
+                                    () -> true));
+        } finally {
+            activate(parent);
+            child.close();
+            access.close();
+            registry.stopSession(session);
         }
-        install("child", user, "owner", session, "fetch_page");
-        access.close();
-        assertThrows(SecurityException.class, () -> access.fetch(Long.MAX_VALUE));
         assertEquals(1, fetches.get());
+    }
+
+    @Test
+    void grantBindingMustNameAnActualPrivateTool() {
+        var parent = install("parent", UUID.randomUUID(), "owner", UUID.randomUUID(), "alias");
+        var mapper = new ObjectMapper();
+        var models = mock(ToolDocs.nonNullClass(ModelTierRegistry.class));
+        when(models.resolve("owner", ModelTier.LOW))
+                .thenReturn(new ModelBinding(ProviderType.DEEPSEEK, "reader", "key", 0, 2048));
+        var executions =
+                new IsolatedExecutions(
+                        mapper,
+                        request -> {
+                            throw new AssertionError();
+                        },
+                        models,
+                        new DefaultCapabilityTranslator(mapper),
+                        new SessionAgentRegistry(),
+                        new TurnLogService(null, mapper),
+                        new IngressDefense(),
+                        128,
+                        600,
+                        1048576,
+                        65536);
+        try (var grant =
+                new HttpDestinationGrant(
+                        deadline -> {
+                            throw new AssertionError("No fetch before catalog validation");
+                        },
+                        parent)) {
+            assertThrows(
+                    SecurityException.class,
+                    () ->
+                            executions.open(
+                                    new ReaderConfig(Map.of()).spec(),
+                                    scope -> {
+                                        grant.bind(scope, "invented-operation");
+                                        return new WebReadSession(scope, grant);
+                                    },
+                                    () -> true));
+        }
+    }
+
+    @Test
+    void closingGrantDoesNotWaitForInFlightTransportAndRejectsLateContent() throws Exception {
+        var parent = install("parent", UUID.randomUUID(), "owner", UUID.randomUUID(), "alias");
+        var entered = new CountDownLatch(1);
+        var release = new CountDownLatch(1);
+        var grant =
+                new HttpDestinationGrant(
+                        deadline -> {
+                            entered.countDown();
+                            try {
+                                release.await();
+                            } catch (InterruptedException failure) {
+                                Thread.currentThread().interrupt();
+                                throw new IllegalStateException(failure);
+                            }
+                            return new HttpDocument(
+                                    URI.create("https://example.com"),
+                                    200,
+                                    "text/plain",
+                                    "late source",
+                                    false,
+                                    100);
+                        },
+                        parent);
+        var pending =
+                CompletableFuture.supplyAsync(
+                        () -> {
+                            activate(parent);
+                            try {
+                                return grant.fetch();
+                            } finally {
+                                ToolCallContextHolder.clear();
+                            }
+                        });
+        try {
+            assertTrue(entered.await(5, TimeUnit.SECONDS));
+            long started = System.nanoTime();
+            grant.close();
+            assertTrue(System.nanoTime() - started < TimeUnit.SECONDS.toNanos(1));
+            release.countDown();
+            var failure = assertThrows(CompletionException.class, pending::join);
+            var cause = failure.getCause();
+            if (cause == null) throw new AssertionError("Expected fetch failure cause");
+            assertInstanceOf(SecurityException.class, cause);
+            assertThrows(SecurityException.class, grant::fetch);
+        } finally {
+            release.countDown();
+            grant.close();
+        }
+    }
+
+    @Test
+    void privateCatalogCannotExpandParentCapability() {
+        install("parent", UUID.randomUUID(), "owner", UUID.randomUUID(), "alias");
+        var mapper = new ObjectMapper();
+        var disposed = new AtomicInteger();
+        var models = mock(ToolDocs.nonNullClass(ModelTierRegistry.class));
+        when(models.resolve("owner", ModelTier.LOW))
+                .thenReturn(new ModelBinding(ProviderType.DEEPSEEK, "reader", "key", 0, 2048));
+        var registry = new SessionAgentRegistry();
+        var executions =
+                new IsolatedExecutions(
+                        mapper,
+                        request -> {
+                            throw new AssertionError("No model dispatch");
+                        },
+                        models,
+                        new DefaultCapabilityTranslator(mapper),
+                        registry,
+                        new TurnLogService(null, mapper),
+                        new IngressDefense(),
+                        128,
+                        600,
+                        1048576,
+                        65536);
+        assertThrows(
+                SecurityException.class,
+                () ->
+                        executions.open(
+                                new ReaderConfig(Map.of()).spec(),
+                                scope ->
+                                        new IsolatedAgent.Tools() {
+                                            public @NonNull List<NativeTool<?>> tools() {
+                                                return List.of(new WriteToFileTool());
+                                            }
+
+                                            public void close() {
+                                                disposed.incrementAndGet();
+                                            }
+                                        },
+                                () -> true));
+        assertEquals(1, disposed.get());
     }
 
     private static @NonNull ToolCallContext install(
@@ -289,10 +520,10 @@ class WebReadChildAuthorityTest {
                                 base.executionRoot(),
                                 base.deployerPolicy(),
                                 base.protectedPaths(),
-                                base.taskBinding())
-                        .withCaller(agent, user, null, owner, session);
+                                base.preparation())
+                        .withCaller(agent, user, owner, session);
         return new ToolCallContext(
-                agent, user, null, owner, session, ToolResultPresentationMode.BASIC, permit);
+                agent, user, owner, session, ToolResultPresentationMode.BASIC, permit);
     }
 
     private static @NonNull VetoResponse call(

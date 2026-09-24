@@ -9,6 +9,8 @@ import java.util.stream.Collectors;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.api.agent.tool.CapabilityTool;
+import top.focess.veto.api.credentials.CredentialImportAccess;
+import top.focess.veto.api.credentials.CredentialWriter;
 import top.focess.veto.api.plugin.PluginContext;
 import top.focess.veto.api.plugin.VetoPlugin;
 import top.focess.veto.api.plugin.contract.InputProtection;
@@ -18,8 +20,6 @@ import top.focess.veto.api.plugin.contract.PluginFailure;
 import top.focess.veto.api.plugin.contract.SessionLifecycle;
 import top.focess.veto.api.plugin.contract.TextProtection;
 import top.focess.veto.api.plugin.contribution.Contribution;
-import top.focess.veto.secret.api.CredentialImportAccess;
-import top.focess.veto.secret.api.CredentialWriter;
 
 /** The plugin is self-contained: ServiceLoader discovery, typed points, and host-service import. */
 @SuppressWarnings("nullness") // Cross-module class literals read as nullable.

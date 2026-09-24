@@ -6,33 +6,30 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
-import top.focess.veto.agent.capability.ResponseCapabilityImpl;
 import top.focess.veto.agent.tool.*;
-import top.focess.veto.agent.tool.ResponseSubmissions;
+import top.focess.veto.agent.tool.ControlSubmissions;
 import top.focess.veto.agent.tool.builtin.*;
-import top.focess.veto.api.agent.response.ResponseRequest;
-import top.focess.veto.api.agent.tool.ResponseSubmission;
+import top.focess.veto.api.agent.tool.ControlSubmission;
 import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.ToolExecutionException;
-import top.focess.veto.api.agent.workflow.ActionsProgram;
-import top.focess.veto.builtin.planning.PlanProgram;
 import top.focess.veto.builtin.planning.SubmitPlanTool;
 import top.focess.veto.builtin.response.AnswerWithCitationsTool;
 
-class ResponseSubmissionToolsTest {
+class ControlSubmissionToolsTest {
     private final @NonNull ObjectMapper mapper = new ObjectMapper();
 
     @Test
     void planToolIsAvailableWithoutSkills() {
-        var tool = new SubmitPlanTool(new ResponseCapabilityImpl());
+        var tool = new SubmitPlanTool();
         var definition =
                 AgentToolDefinition.from(
                         tool.getName(),
                         ToolDocs.nonNullClass(SubmitPlanTool.class),
                         tool.getArgsClass(),
                         tool.getCapability());
-        assertEquals(List.of(definition), PromptCompiler.availableTools(List.of(definition), true));
-        assertEquals(ResponseSubmission.Kind.PLAN, ResponseSubmissions.kindOf(definition));
+        assertEquals(
+                List.of(definition), PromptCompiler.availableTools(List.of(definition), List.of()));
+        assertEquals(ControlSubmission.Kind.EXECUTE, ControlSubmissions.kindOf(definition));
     }
 
     @Test
@@ -82,19 +79,15 @@ class ResponseSubmissionToolsTest {
 
     @Test
     void submissionsRequireAuthorizedToolExecution() {
-        var capability = new ResponseCapabilityImpl();
+        ToolCallContextHolder.clear();
+        assertThrows(SecurityException.class, ToolCallContextHolder::control);
         assertThrows(
-                ToolDocs.nonNullClass(SecurityException.class),
-                () ->
-                        capability.submitPlan(
-                                new ResponseRequest.Plan(
-                                        mapper.createArrayNode(),
-                                        new ActionsProgram(List.of()),
-                                        new PlanProgram(mapper))));
+                SecurityException.class,
+                () -> new SubmitPlanTool().execute(new SubmitPlanTool.Args(List.of())));
         assertThrows(
-                ToolDocs.nonNullClass(SecurityException.class),
+                SecurityException.class,
                 () ->
-                        capability.answerWithCitations(
-                                new ResponseRequest.Answer("Answer", List.of())));
+                        new AnswerWithCitationsTool()
+                                .execute(new AnswerWithCitationsTool.Args("Answer", List.of())));
     }
 }

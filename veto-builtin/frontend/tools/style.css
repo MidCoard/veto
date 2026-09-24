@@ -1,0 +1,381 @@
+.veto-tools .visible {
+    visibility: visible
+}
+.veto-tools .fixed {
+    position: fixed
+}
+.veto-tools .mb-1 {
+    margin-bottom: 0.25rem
+}
+.veto-tools .mt-1 {
+    margin-top: 0.25rem
+}
+.veto-tools .mt-2 {
+    margin-top: 0.5rem
+}
+.veto-tools .block {
+    display: block
+}
+.veto-tools .inline-block {
+    display: inline-block
+}
+.veto-tools .flex {
+    display: flex
+}
+.veto-tools .inline-flex {
+    display: inline-flex
+}
+.veto-tools .h-1\.5 {
+    height: 0.375rem
+}
+.veto-tools .h-3 {
+    height: 0.75rem
+}
+.veto-tools .h-3\.5 {
+    height: 0.875rem
+}
+.veto-tools .max-h-48 {
+    max-height: 12rem
+}
+.veto-tools .max-h-64 {
+    max-height: 16rem
+}
+.veto-tools .max-h-80 {
+    max-height: 20rem
+}
+.veto-tools .max-h-96 {
+    max-height: 24rem
+}
+.veto-tools .w-1\.5 {
+    width: 0.375rem
+}
+.veto-tools .w-3 {
+    width: 0.75rem
+}
+.veto-tools .w-3\.5 {
+    width: 0.875rem
+}
+.veto-tools .w-full {
+    width: 100%
+}
+.veto-tools .min-w-0 {
+    min-width: 0px
+}
+.veto-tools .max-w-full {
+    max-width: 100%
+}
+.veto-tools .flex-1 {
+    flex: 1 1 0%
+}
+.veto-tools .shrink-0 {
+    flex-shrink: 0
+}
+@keyframes pulse {
+    50% {
+        opacity: .5
+    }
+}
+.veto-tools .animate-pulse {
+    animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite
+}
+.veto-tools .cursor-pointer {
+    cursor: pointer
+}
+.veto-tools .select-none {
+    user-select: none
+}
+.veto-tools .list-disc {
+    list-style-type: disc
+}
+.veto-tools .flex-wrap {
+    flex-wrap: wrap
+}
+.veto-tools .items-start {
+    align-items: flex-start
+}
+.veto-tools .items-center {
+    align-items: center
+}
+.veto-tools .items-baseline {
+    align-items: baseline
+}
+.veto-tools .gap-1\.5 {
+    gap: 0.375rem
+}
+.veto-tools .gap-2 {
+    gap: 0.5rem
+}
+.veto-tools .gap-3 {
+    gap: 0.75rem
+}
+.veto-tools .gap-x-2 {
+    column-gap: 0.5rem
+}
+.veto-tools :is(.space-y-1 > :not([hidden]) ~ :not([hidden])) {
+    --tw-space-y-reverse: 0;
+    margin-top: calc(0.25rem * calc(1 - var(--tw-space-y-reverse)));
+    margin-bottom: calc(0.25rem * var(--tw-space-y-reverse))
+}
+.veto-tools :is(.space-y-1\.5 > :not([hidden]) ~ :not([hidden])) {
+    --tw-space-y-reverse: 0;
+    margin-top: calc(0.375rem * calc(1 - var(--tw-space-y-reverse)));
+    margin-bottom: calc(0.375rem * var(--tw-space-y-reverse))
+}
+.veto-tools :is(.space-y-2 > :not([hidden]) ~ :not([hidden])) {
+    --tw-space-y-reverse: 0;
+    margin-top: calc(0.5rem * calc(1 - var(--tw-space-y-reverse)));
+    margin-bottom: calc(0.5rem * var(--tw-space-y-reverse))
+}
+.veto-tools :is(.space-y-3 > :not([hidden]) ~ :not([hidden])) {
+    --tw-space-y-reverse: 0;
+    margin-top: calc(0.75rem * calc(1 - var(--tw-space-y-reverse)));
+    margin-bottom: calc(0.75rem * var(--tw-space-y-reverse))
+}
+.veto-tools .overflow-auto {
+    overflow: auto
+}
+.veto-tools .overflow-hidden {
+    overflow: hidden
+}
+.veto-tools .overflow-y-auto {
+    overflow-y: auto
+}
+.veto-tools .truncate {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap
+}
+.veto-tools .whitespace-pre-wrap {
+    white-space: pre-wrap
+}
+.veto-tools .break-words {
+    overflow-wrap: break-word
+}
+.veto-tools .break-all {
+    word-break: break-all
+}
+.veto-tools .rounded {
+    border-radius: 0.25rem
+}
+.veto-tools .rounded-full {
+    border-radius: 9999px
+}
+.veto-tools .rounded-lg {
+    border-radius: 0.5rem
+}
+.veto-tools .rounded-md {
+    border-radius: 0.375rem
+}
+.veto-tools .rounded-r {
+    border-top-right-radius: 0.25rem;
+    border-bottom-right-radius: 0.25rem
+}
+.veto-tools .border {
+    border-width: 1px
+}
+.veto-tools .border-b {
+    border-bottom-width: 1px
+}
+.veto-tools .border-l-2 {
+    border-left-width: 2px
+}
+.veto-tools .border-t {
+    border-top-width: 1px
+}
+.veto-tools .border-accent\/40 {
+    border-color: rgb(var(--accent) / 0.4)
+}
+.veto-tools .border-pass {
+    --tw-border-opacity: 1;
+    border-color: rgb(var(--pass) / var(--tw-border-opacity, 1))
+}
+.veto-tools .border-pass\/30 {
+    border-color: rgb(var(--pass) / 0.3)
+}
+.veto-tools .border-pass\/40 {
+    border-color: rgb(var(--pass) / 0.4)
+}
+.veto-tools .border-pass\/50 {
+    border-color: rgb(var(--pass) / 0.5)
+}
+.veto-tools .border-rule {
+    --tw-border-opacity: 1;
+    border-color: rgb(var(--rule) / var(--tw-border-opacity, 1))
+}
+.veto-tools .border-rule\/60 {
+    border-color: rgb(var(--rule) / 0.6)
+}
+.veto-tools .border-verdict {
+    --tw-border-opacity: 1;
+    border-color: rgb(var(--verdict) / var(--tw-border-opacity, 1))
+}
+.veto-tools .border-verdict\/30 {
+    border-color: rgb(var(--verdict) / 0.3)
+}
+.veto-tools .bg-codebg {
+    --tw-bg-opacity: 1;
+    background-color: rgb(20 24 31 / var(--tw-bg-opacity, 1))
+}
+.veto-tools .bg-dim\/50 {
+    background-color: rgb(var(--dim) / 0.5)
+}
+.veto-tools .bg-ink {
+    --tw-bg-opacity: 1;
+    background-color: rgb(var(--ink) / var(--tw-bg-opacity, 1))
+}
+.veto-tools .bg-ink\/50 {
+    background-color: rgb(var(--ink) / 0.5)
+}
+.veto-tools .bg-ink\/60 {
+    background-color: rgb(var(--ink) / 0.6)
+}
+.veto-tools .bg-panel {
+    --tw-bg-opacity: 1;
+    background-color: rgb(var(--panel) / var(--tw-bg-opacity, 1))
+}
+.veto-tools .bg-pass {
+    --tw-bg-opacity: 1;
+    background-color: rgb(var(--pass) / var(--tw-bg-opacity, 1))
+}
+.veto-tools .bg-pass\/10 {
+    background-color: rgb(var(--pass) / 0.1)
+}
+.veto-tools .bg-pass\/15 {
+    background-color: rgb(var(--pass) / 0.15)
+}
+.veto-tools .bg-raised\/30 {
+    background-color: rgb(var(--raised) / 0.3)
+}
+.veto-tools .bg-verdict\/10 {
+    background-color: rgb(var(--verdict) / 0.1)
+}
+.veto-tools .bg-verdict\/15 {
+    background-color: rgb(var(--verdict) / 0.15)
+}
+.veto-tools .p-2 {
+    padding: 0.5rem
+}
+.veto-tools .p-3 {
+    padding: 0.75rem
+}
+.veto-tools .px-1\.5 {
+    padding-left: 0.375rem;
+    padding-right: 0.375rem
+}
+.veto-tools .px-2 {
+    padding-left: 0.5rem;
+    padding-right: 0.5rem
+}
+.veto-tools .px-3 {
+    padding-left: 0.75rem;
+    padding-right: 0.75rem
+}
+.veto-tools .py-0\.5 {
+    padding-top: 0.125rem;
+    padding-bottom: 0.125rem
+}
+.veto-tools .py-1 {
+    padding-top: 0.25rem;
+    padding-bottom: 0.25rem
+}
+.veto-tools .py-1\.5 {
+    padding-top: 0.375rem;
+    padding-bottom: 0.375rem
+}
+.veto-tools .py-2 {
+    padding-top: 0.5rem;
+    padding-bottom: 0.5rem
+}
+.veto-tools .py-3 {
+    padding-top: 0.75rem;
+    padding-bottom: 0.75rem
+}
+.veto-tools .pl-3 {
+    padding-left: 0.75rem
+}
+.veto-tools .pl-4 {
+    padding-left: 1rem
+}
+.veto-tools .pr-3 {
+    padding-right: 0.75rem
+}
+.veto-tools .text-right {
+    text-align: right
+}
+.veto-tools .font-mono {
+    font-family: "IBM Plex Mono", ui-monospace, monospace
+}
+.veto-tools .text-\[10px\] {
+    font-size: 10px
+}
+.veto-tools .text-\[11px\] {
+    font-size: 11px
+}
+.veto-tools .text-xs {
+    font-size: 0.75rem;
+    line-height: 1rem
+}
+.veto-tools .uppercase {
+    text-transform: uppercase
+}
+.veto-tools .normal-case {
+    text-transform: none
+}
+.veto-tools .italic {
+    font-style: italic
+}
+.veto-tools .leading-relaxed {
+    line-height: 1.625
+}
+.veto-tools .tracking-wider {
+    letter-spacing: 0.05em
+}
+.veto-tools .text-\[\#7A8694\] {
+    --tw-text-opacity: 1;
+    color: rgb(122 134 148 / var(--tw-text-opacity, 1))
+}
+.veto-tools .text-\[\#DDE3EA\] {
+    --tw-text-opacity: 1;
+    color: rgb(221 227 234 / var(--tw-text-opacity, 1))
+}
+.veto-tools .text-accent {
+    --tw-text-opacity: 1;
+    color: rgb(var(--accent) / var(--tw-text-opacity, 1))
+}
+.veto-tools .text-accent\/70 {
+    color: rgb(var(--accent) / 0.7)
+}
+.veto-tools .text-dim {
+    --tw-text-opacity: 1;
+    color: rgb(var(--dim) / var(--tw-text-opacity, 1))
+}
+.veto-tools .text-dim\/60 {
+    color: rgb(var(--dim) / 0.6)
+}
+.veto-tools .text-dim\/70 {
+    color: rgb(var(--dim) / 0.7)
+}
+.veto-tools .text-paper {
+    --tw-text-opacity: 1;
+    color: rgb(var(--paper) / var(--tw-text-opacity, 1))
+}
+.veto-tools .text-paper\/70 {
+    color: rgb(var(--paper) / 0.7)
+}
+.veto-tools .text-paper\/80 {
+    color: rgb(var(--paper) / 0.8)
+}
+.veto-tools .text-pass {
+    --tw-text-opacity: 1;
+    color: rgb(var(--pass) / var(--tw-text-opacity, 1))
+}
+.veto-tools .text-verdict {
+    --tw-text-opacity: 1;
+    color: rgb(var(--verdict) / var(--tw-text-opacity, 1))
+}
+.veto-tools .filter {
+    filter: var(--tw-blur) var(--tw-brightness) var(--tw-contrast) var(--tw-grayscale) var(--tw-hue-rotate) var(--tw-invert) var(--tw-saturate) var(--tw-sepia) var(--tw-drop-shadow)
+}
+.veto-tools .hover\:underline:hover {
+    text-decoration-line: underline
+}

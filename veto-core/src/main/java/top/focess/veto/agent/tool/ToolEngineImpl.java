@@ -1,6 +1,7 @@
 package top.focess.veto.agent.tool;
 
 import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -18,10 +19,10 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.ApplicationContext;
 import org.springframework.stereotype.Service;
 import top.focess.veto.agent.capability.CapabilityResolver;
+import top.focess.veto.agent.capability.ImportedCredentialLeases;
 import top.focess.veto.agent.capability.ProtectedWorkspaceReadCapabilityImpl;
 import top.focess.veto.agent.capability.RemoteCallCapability;
 import top.focess.veto.agent.capability.RemoteCallCapabilityImpl;
-import top.focess.veto.agent.capability.ResponseCapabilityImpl;
 import top.focess.veto.agent.mcp.transport.McpJsonRpcClient;
 import top.focess.veto.agent.mcp.transport.McpTransport;
 import top.focess.veto.api.agent.capability.Capability;
@@ -29,9 +30,10 @@ import top.focess.veto.api.agent.capability.WorkspaceReadCapability;
 import top.focess.veto.api.agent.capability.WorkspaceWriteCapability;
 import top.focess.veto.api.agent.tool.AgentTool;
 import top.focess.veto.api.agent.tool.CapabilityTool;
+import top.focess.veto.api.agent.tool.ControlTool;
 import top.focess.veto.api.agent.tool.HostCapabilityTool;
 import top.focess.veto.api.agent.tool.NativeTool;
-import top.focess.veto.api.agent.tool.ResponseTool;
+import top.focess.veto.api.agent.tool.PreparedTool;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.ToolErrorCode;
@@ -43,15 +45,18 @@ import top.focess.veto.api.agent.tool.ToolResultStatus;
 import top.focess.veto.api.agent.tool.WorkspaceReadTool;
 import top.focess.veto.api.agent.tool.WorkspaceWriteTool;
 import top.focess.veto.api.llm.ToolCall;
+import top.focess.veto.api.plugin.PluginHost;
 import top.focess.veto.api.plugin.PluginState;
 import top.focess.veto.api.plugin.contract.Cancellation;
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
 import top.focess.veto.api.plugin.contract.Tool;
+import top.focess.veto.integration.plugins.IsolatedExecutions;
 import top.focess.veto.integration.plugins.PluginManager;
 import top.focess.veto.integration.plugins.SessionPlugins;
 import top.focess.veto.llm.config.LlmJacksonConfig;
-import top.focess.veto.plugin.runtime.ManagedPlanExecution;
+import top.focess.veto.plugin.runtime.ManagedPlugin;
+import top.focess.veto.plugin.runtime.ManagedPluginWork;
 import top.focess.veto.plugin.runtime.PluginJson;
 import top.focess.veto.plugin.runtime.PluginSchema;
 import top.focess.veto.sandbox.SandboxSubstrate;
@@ -171,7 +176,8 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
                                     tool,
                                     manager.toolName(
                                             entry.source().namespace(), entry.id().value()),
-                                    plugin));
+                                    plugin,
+                                    entry.id().localId()));
                 }
             }
         }
@@ -224,6 +230,65 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
     }
 
     @Override
+    public PreparedInvocation prepare(
+            @NonNull ToolCall call,
+            @NonNull ToolDefinition definition,
+            PluginHost.@NonNull Invocation invocation) {
+        var registered = catalog.resolve(call.toolName());
+        if (registered == null || registered.definition() != definition)
+            throw new SecurityException("Preparation definition mismatch");
+        if (!(registered instanceof RegisteredTool.Local local)
+                || !(local.handler() instanceof PreparedTool<?> prepared)) return null;
+        var runtime = local.runtime();
+        var selected = sessionPlugins;
+        if (runtime == null
+                || runtime.state() != PluginState.ACTIVE
+                || selected == null
+                || !selected.includes(invocation.sessionId(), runtime.identity().id()))
+            throw new SecurityException("Preparation requires the selected active contribution");
+        JsonNode json = mapper.valueToTree(call.args());
+        NativeToolArgumentValidator.validate(
+                definition.name(), json, local.definition().argsClass());
+        try {
+            return runtime.execute(
+                    () ->
+                            ToolCallContextHolder.withoutEffects(
+                                    () -> {
+                                        return prepareTyped(
+                                                prepared,
+                                                json,
+                                                runtime,
+                                                invocation,
+                                                call,
+                                                definition.capability());
+                                    }));
+        } catch (Exception failure) {
+            throw new SecurityException("Tool preparation failed", failure);
+        }
+    }
+
+    private <T> @NonNull PreparedInvocation prepareTyped(
+            @NonNull PreparedTool<T> tool,
+            @NonNull JsonNode json,
+            @NonNull ManagedPlugin runtime,
+            PluginHost.@NonNull Invocation invocation,
+            @NonNull ToolCall call,
+            @NonNull ToolCapability capability) {
+        try {
+            return new PreparedInvocation(
+                    runtime,
+                    invocation,
+                    call,
+                    tool.prepare(
+                            Nullness.requireNonNull(mapper.treeToValue(json, tool.getArgsClass())),
+                            invocation),
+                    capability);
+        } catch (JsonProcessingException failure) {
+            throw new IllegalArgumentException("Invalid preparation arguments", failure);
+        }
+    }
+
+    @Override
     public @NonNull ToolResult execute(@NonNull ToolCall call, @NonNull ToolDefinition def) {
         String callId = call.callId();
         ToolCallContextHolder.setCurrentCallId(callId);
@@ -243,9 +308,11 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
                     };
             return boundResult(result);
         } catch (ToolExecutionException e) {
+            ExecutionReceipts.discard(ToolCallContextHolder.get());
             return new ToolResult(
                     call.toolName(), callId, e.status(), e.format(), e.content(), e.errorCode());
         } catch (Exception e) {
+            ExecutionReceipts.discard(ToolCallContextHolder.get());
             log.warn("Tool '{}' execution failed.", call.toolName(), e);
             return new ToolResult(
                     call.toolName(),
@@ -255,7 +322,15 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
                     "Tool execution failed: " + ToolErrors.normalize(e.getMessage()),
                     ToolErrorCode.GENERIC.TOOL_FAILURE);
         } finally {
-            ToolCallContextHolder.setCurrentCallId("");
+            try {
+                IsolatedExecutions.finishInvocation(ToolCallContextHolder.get());
+            } catch (RuntimeException failure) {
+                ExecutionReceipts.discard(ToolCallContextHolder.get());
+                throw failure;
+            } finally {
+                ImportedCredentialLeases.releaseInvocation(ToolCallContextHolder.get());
+                ToolCallContextHolder.setCurrentCallId("");
+            }
         }
     }
 
@@ -349,7 +424,9 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
         }
         JsonNode jsonArgs = mapper.valueToTree(call.args());
         NativeToolArgumentValidator.validate(definition.name(), jsonArgs, definition.argsClass());
-        requirePermit(call, definition);
+        var invocation = requirePermit(call, definition);
+        ToolPresentations.requireAvailable(
+                definition, invocation.executionPermit().workspaceRoots());
         if (runtime == null)
             return successfulResult(
                     call, definition, executeLocal(registration.handler(), jsonArgs, false));
@@ -359,8 +436,9 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
                             try {
                                 String content =
                                         executeLocal(registration.handler(), jsonArgs, true);
-                                ToolCallContextHolder.guardPlanExecution(
-                                        execution -> new ManagedPlanExecution(runtime, execution));
+                                ToolCallContextHolder.guardWork(
+                                        execution -> new ManagedPluginWork(runtime, execution));
+                                ToolCallContextHolder.guardAwait(runtime::ownAwait);
                                 return new LocalOutcome(content, null);
                             } catch (Exception failure) {
                                 return new LocalOutcome(null, failure);
@@ -378,7 +456,7 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
             throws Exception {
         if (injectHost && tool instanceof HostCapabilityTool<?, ?> hosted)
             return executeHosted(hosted, jsonArgs);
-        if (tool instanceof ResponseTool<?> loop) return executeResponse(loop, jsonArgs);
+        if (tool instanceof ControlTool<?> loop) return executeControl(loop, jsonArgs);
         if (tool instanceof WorkspaceReadTool<?> read) return executeWorkspaceRead(read, jsonArgs);
         if (tool instanceof WorkspaceWriteTool<?> write)
             return executeWorkspaceWrite(write, jsonArgs);
@@ -395,11 +473,11 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
                 Nullness.requireNonNull(context.getBean(tool.capabilityType())));
     }
 
-    private <T> @NonNull String executeResponse(
-            @NonNull ResponseTool<T> tool, @NonNull JsonNode jsonArgs) throws Exception {
+    private <T> @NonNull String executeControl(
+            @NonNull ControlTool<T> tool, @NonNull JsonNode jsonArgs) throws Exception {
         return tool.execute(
                 Nullness.requireNonNull(mapper.treeToValue(jsonArgs, tool.getArgsClass())),
-                new ResponseCapabilityImpl());
+                ToolCallContextHolder.control());
     }
 
     private <T> @NonNull String executeWorkspaceRead(

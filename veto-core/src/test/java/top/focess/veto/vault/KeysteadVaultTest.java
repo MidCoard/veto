@@ -15,7 +15,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import top.focess.veto.api.agent.tool.ToolDocs;
-import top.focess.veto.secret.api.CredentialWriter;
+import top.focess.veto.api.credentials.CredentialWriter;
 import top.focess.veto.secret.references.SecretCandidateStore;
 
 /**
@@ -24,6 +24,42 @@ import top.focess.veto.secret.references.SecretCandidateStore;
  * duplicate, and a locked vault rejects operations.
  */
 class KeysteadVaultTest {
+    @Test
+    void importedServicesAreBoundedGenericIdentifiers(@TempDir @NonNull Path tempDir) {
+        var vault = newVault(tempDir);
+        try {
+            vault.signup("alice", "password");
+            var ref =
+                    vault.createImportedCredential(
+                            "alice",
+                            "s_0123456789abcdef0123456789abcdef",
+                            "custom-service.v2",
+                            "Label",
+                            "synthetic-token");
+            vault.withImportedCredential(
+                    "alice",
+                    ref,
+                    "custom-service.v2",
+                    value -> assertEquals("synthetic-token", new String(value)));
+            assertThrows(
+                    IllegalArgumentException.class,
+                    () ->
+                            vault.createImportedCredential(
+                                    "alice",
+                                    "s_1123456789abcdef0123456789abcdef",
+                                    "https://bad",
+                                    "Label",
+                                    "token"));
+            assertThrows(
+                    IllegalArgumentException.class,
+                    () ->
+                            vault.withImportedCredential(
+                                    "alice", ref, "other", value -> fail("Service mismatch")));
+        } finally {
+            vault.shutdown();
+        }
+    }
+
     @Test
     void importedCredentialUseRequiresTheExactOwnerAndService(@TempDir @NonNull Path tempDir) {
         var vault = newVault(tempDir);

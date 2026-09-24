@@ -14,6 +14,7 @@ import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.agent.workspace.WorkspaceRoot;
 import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.tool.ToolCapability;
+import top.focess.veto.api.agent.tool.ToolPreparation;
 import top.focess.veto.api.llm.ToolCall;
 
 /**
@@ -81,7 +82,30 @@ public class DangerComputation {
         Danger pathDanger = pathDanger(def, permit, workspace, policy, protectedSet);
         Danger executionRootDanger =
                 executionRootDanger(def, permit, workspace, policy, protectedSet);
-        Danger processDanger = processDanger(def, call);
+        var prepared = permit.preparation();
+        if (prepared != null && prepared.intent() instanceof ToolPreparation.ProcessIntent intent) {
+            call =
+                    new ToolCall(
+                            call.toolName(),
+                            Map.of(
+                                    "commands",
+                                    intent.commands().stream()
+                                            .map(
+                                                    command ->
+                                                            Map.of(
+                                                                    "executable",
+                                                                    command.executable(),
+                                                                    "args",
+                                                                    command.args()))
+                                            .toList(),
+                                    "network",
+                                    intent.network()),
+                            call.callId());
+        }
+        Danger processDanger =
+                prepared != null && prepared.intent() instanceof ToolPreparation.InputIntent
+                        ? Danger.SAFE
+                        : processDanger(def, call);
         return max(base, pathDanger, executionRootDanger, processDanger);
     }
 

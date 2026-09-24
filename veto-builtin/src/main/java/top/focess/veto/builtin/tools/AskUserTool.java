@@ -6,9 +6,11 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.api.agent.capability.UserInteractionCapability;
+import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.tool.ArraySize;
 import top.focess.veto.api.agent.tool.Doc;
+import top.focess.veto.api.agent.tool.NativeTool;
+import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.agent.tool.ToolDoc;
 import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.ToolErrorCode;
@@ -17,10 +19,11 @@ import top.focess.veto.api.agent.tool.ToolExecutionException;
 import top.focess.veto.api.agent.tool.ToolJson;
 import top.focess.veto.api.agent.tool.ToolResultFormat;
 import top.focess.veto.api.agent.tool.ToolResultStatus;
-import top.focess.veto.api.agent.tool.UserInteractionTool;
-import top.focess.veto.api.interaction.AnswerBatch;
-import top.focess.veto.api.interaction.Option;
-import top.focess.veto.api.interaction.Question;
+import top.focess.veto.api.agent.tool.ToolSecurity;
+import top.focess.veto.builtin.questions.AnswerBatch;
+import top.focess.veto.builtin.questions.Option;
+import top.focess.veto.builtin.questions.Question;
+import top.focess.veto.builtin.questions.QuestionRuntime;
 
 /** Pauses the calling agent for a batch of up to {@value #MAX_QUESTIONS} questions. */
 @ToolDoc(
@@ -74,20 +77,17 @@ import top.focess.veto.api.interaction.Question;
             "{\"answers\":{\"verbosity\":\"NOTICE\"}}",
             "Invalid questions: question ids must be unique snake_case identifiers."
         })
-public final class AskUserTool implements UserInteractionTool<AskUserTool.Args> {
+@ToolSecurity(capability = ToolCapability.USER_INTERACTION, defaultDanger = Danger.SAFE)
+public final class AskUserTool implements NativeTool<AskUserTool.Args> {
 
     static final int MAX_QUESTIONS = 10;
     static final int MIN_OPTIONS = 2;
     static final int MAX_OPTIONS = 5;
 
-    private final UserInteractionCapability capability;
+    private final @NonNull QuestionRuntime runtime;
 
-    public AskUserTool() {
-        this.capability = null;
-    }
-
-    public AskUserTool(@NonNull UserInteractionCapability capability) {
-        this.capability = capability;
+    public AskUserTool(@NonNull QuestionRuntime runtime) {
+        this.runtime = runtime;
     }
 
     public record Args(
@@ -108,19 +108,12 @@ public final class AskUserTool implements UserInteractionTool<AskUserTool.Args> 
     }
 
     @Override
-    public @NonNull UserInteractionCapability userInteractionCapability() {
-        if (capability == null) throw new SecurityException("Host must supply tool capability");
-        return capability;
-    }
-
-    @Override
-    public @NonNull String execute(
-            @NonNull Args args, @NonNull UserInteractionCapability capability) throws Exception {
+    public @NonNull String execute(@NonNull Args args) throws Exception {
         validate(args.questions());
 
         AnswerBatch answer;
         try {
-            answer = capability.ask(args.questions());
+            answer = runtime.ask(args.questions());
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new ToolExecutionException(

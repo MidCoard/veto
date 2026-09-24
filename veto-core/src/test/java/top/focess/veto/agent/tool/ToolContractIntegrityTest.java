@@ -49,8 +49,11 @@ class ToolContractIntegrityTest {
         }
         nativeTools = List.copyOf(natives);
         agentTools = List.copyOf(agents);
-        assertTrue(nativeTools.size() >= 16, "all native tools must be covered");
-        assertTrue(agentTools.size() >= 21, "all agent tools must be covered");
+        assertEquals(
+                plugins.catalog().entries(StandardContributionPoints.NATIVE_TOOLS).size(),
+                nativeTools.size() + agentTools.size(),
+                "every contributed handler must be checked");
+        assertEquals(37, nativeTools.size() + agentTools.size());
     }
 
     private final @NonNull ObjectMapper mapper = new ObjectMapper();

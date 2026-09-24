@@ -33,6 +33,10 @@ final class AgentHistory {
         return List.copyOf(history);
     }
 
+    synchronized int turnNumber() {
+        return history.isEmpty() ? 0 : history.getLast().turnNumber();
+    }
+
     synchronized int seed(@NonNull List<TurnRecord> replayed) {
         if (history.isEmpty()) history.addAll(replayed);
         return history.stream().mapToInt(TurnRecord::turnNumber).max().orElse(0);

@@ -1,6 +1,8 @@
 package top.focess.veto.integration.plugins;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -9,15 +11,26 @@ import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
 import top.focess.veto.agent.TurnType;
 import top.focess.veto.agent.tool.ToolDefinition;
+import top.focess.veto.api.agent.control.SourceEvidence;
+import top.focess.veto.api.agent.tool.ToolDocs;
+import top.focess.veto.api.llm.VetoResponse;
 import top.focess.veto.api.plugin.PluginBinding;
 import top.focess.veto.api.plugin.PluginState;
+import top.focess.veto.api.plugin.agent.AgentHost;
+import top.focess.veto.api.plugin.agent.AgentProfile;
+import top.focess.veto.api.plugin.contract.AgentConfiguration;
+import top.focess.veto.api.plugin.contract.AgentWorkSource;
+import top.focess.veto.api.plugin.contract.ModelResponsePolicy;
 import top.focess.veto.api.plugin.contract.PluginFailure;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
 import top.focess.veto.api.plugin.contract.TextProtection;
 import top.focess.veto.api.plugin.contract.WorkflowHook;
 import top.focess.veto.api.plugin.contribution.ContributionPoint;
+import top.focess.veto.api.plugin.storage.PluginStorage;
+import top.focess.veto.integration.plugins.storage.PluginInvocationScope;
 import top.focess.veto.model.SessionRepository;
 import top.focess.veto.plugin.runtime.*;
+import top.focess.veto.plugin.runtime.CompositeAgentWorkSource;
 import top.focess.veto.session.SessionHistoryLoader;
 
 /**
@@ -122,11 +135,68 @@ public class SessionPlugins {
             sessions.saveAndFlush(session);
         }
         for (var binding : bindings) {
-            if (!binding.equals(binding(manager.plugin(binding.id()))))
+            var installed =
+                    manager.plugins().stream()
+                            .filter(plugin -> plugin.identity().id().equals(binding.id()))
+                            .findFirst()
+                            .orElse(null);
+            if (installed != null && !binding.equals(binding(installed)))
                 throw new IllegalStateException(
                         "Session requires the pinned plugin revision: " + binding.id());
         }
         return bindings;
+    }
+
+    public AgentConfiguration.@Nullable Intent configure(
+            @NonNull String owner,
+            @NonNull String session,
+            @NonNull String agent,
+            @Nullable String configurationOwner,
+            @NonNull AgentProfile base,
+            @NonNull List<AgentConfiguration.Tool> tools,
+            @NonNull String activeTask) {
+        var entries = manager.catalog().entries(StandardContributionPoints.AGENT_CONFIGURATION);
+        if (entries.isEmpty()) return null;
+        var selected =
+                bindings(session).stream().map(PluginBinding::id).collect(Collectors.toSet());
+        AgentConfiguration.Intent result = null;
+        for (var entry : entries) {
+            String namespace = entry.source().namespace();
+            if (!selected.contains(namespace)
+                    || (configurationOwner != null && !configurationOwner.equals(namespace)))
+                continue;
+            if (manager.plugin(namespace).state() != PluginState.ACTIVE) continue;
+            var storage =
+                    manager.hostService(namespace, ToolDocs.nonNullClass(PluginStorage.class));
+            var host = manager.hostService(namespace, ToolDocs.nonNullClass(AgentHost.class));
+            if (storage == null || host == null)
+                throw new IllegalStateException("Agent configuration services unavailable");
+            var invocation = new PluginInvocationScope(owner, session);
+            try {
+                var scope = storage.currentSession();
+                var context =
+                        new AgentConfiguration.Context(
+                                owner, scope, host.session(scope), agent, base, tools, activeTask);
+                var intent =
+                        manager.plugin(namespace)
+                                .execute(
+                                        () ->
+                                                Optional.ofNullable(
+                                                        entry.implementation().configure(context)))
+                                .orElse(null);
+                if (intent != null) {
+                    if (result != null)
+                        throw new IllegalStateException(
+                                "Conflicting agent configuration contributions");
+                    result = intent;
+                }
+            } catch (PluginFailure error) {
+                throw new IllegalStateException("Agent configuration failed", error);
+            } finally {
+                invocation.close();
+            }
+        }
+        return result;
     }
 
     @FunctionalInterface
@@ -169,6 +239,47 @@ public class SessionPlugins {
         return result;
     }
 
+    public @NonNull List<ModelResponsePolicy.Exchange> responsePolicies(@NonNull String sessionId) {
+        var ids = bindings(sessionId).stream().map(PluginBinding::id).collect(Collectors.toSet());
+        List<ModelResponsePolicy.Exchange> result = new ArrayList<>();
+        for (var entry : manager.catalog().entries(StandardContributionPoints.MODEL_RESPONSE)) {
+            if (!ids.contains(entry.source().namespace())) continue;
+            var plugin = manager.plugin(entry.source().namespace());
+            try {
+                var policy = plugin.execute(() -> entry.implementation().open());
+                result.add(
+                        new ModelResponsePolicy.Exchange() {
+                            public ModelResponsePolicy.@NonNull Result check(
+                                    @NonNull VetoResponse response,
+                                    @NonNull SourceEvidence evidence) {
+                                try {
+                                    return plugin.execute(() -> policy.check(response, evidence));
+                                } catch (PluginFailure failure) {
+                                    throw new IllegalStateException(
+                                            "Model response policy unavailable");
+                                }
+                            }
+
+                            public ModelResponsePolicy.@Nullable Result rejected(int count) {
+                                try {
+                                    return plugin.execute(
+                                                    () ->
+                                                            Optional.ofNullable(
+                                                                    policy.rejected(count)))
+                                            .orElse(null);
+                                } catch (PluginFailure failure) {
+                                    throw new IllegalStateException(
+                                            "Model response policy unavailable");
+                                }
+                            }
+                        });
+            } catch (PluginFailure failure) {
+                throw new IllegalStateException("Model response policy unavailable");
+            }
+        }
+        return List.copyOf(result);
+    }
+
     public @NonNull String protect(
             @NonNull ContributionPoint<? extends TextProtection> point,
             TextProtection.@NonNull Scope scope,
@@ -196,6 +307,27 @@ public class SessionPlugins {
             }
         }
         return result;
+    }
+
+    public @NonNull AgentWorkSource workSource(@NonNull String sessionId) {
+        return new CompositeAgentWorkSource(
+                () -> {
+                    if (manager.catalog().entries(StandardContributionPoints.AGENT_WORK).isEmpty())
+                        return List.of();
+                    var ids =
+                            bindings(sessionId).stream()
+                                    .map(PluginBinding::id)
+                                    .collect(Collectors.toSet());
+                    return manager.catalog().entries(StandardContributionPoints.AGENT_WORK).stream()
+                            .filter(entry -> ids.contains(entry.source().namespace()))
+                            .map(
+                                    entry ->
+                                            new CompositeAgentWorkSource.Entry(
+                                                    entry.id().value(),
+                                                    manager.plugin(entry.source().namespace()),
+                                                    entry.implementation()))
+                            .toList();
+                });
     }
 
     public boolean has(@NonNull String sessionId, @NonNull ContributionPoint<?> point) {

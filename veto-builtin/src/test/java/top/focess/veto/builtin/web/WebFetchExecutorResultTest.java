@@ -12,10 +12,10 @@ import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.ToolExecutionException;
-import top.focess.veto.api.web.Execution;
-import top.focess.veto.api.web.FetchedPage;
-import top.focess.veto.api.web.FinishReadArgs;
-import top.focess.veto.api.web.Result;
+import top.focess.veto.builtin.web.model.Execution;
+import top.focess.veto.builtin.web.model.FetchedPage;
+import top.focess.veto.builtin.web.model.FinishReadArgs;
+import top.focess.veto.builtin.web.model.Result;
 
 class WebFetchExecutorResultTest {
     private static final @NonNull Execution EXECUTION =

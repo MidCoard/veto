@@ -47,6 +47,14 @@ public interface Agent {
     /** The current task's result future, or a completed future if idle. */
     @NonNull CompletableFuture<AgentResult> result();
 
+    /** Submit and retain this request's identity independently of later submissions. */
+    default @NonNull RequestHandle submitRequest(@NonNull String prompt) {
+        submit(prompt);
+        RequestHandle handle = new RequestHandle(this);
+        result().thenAccept(handle.result::complete);
+        return handle;
+    }
+
     // --- Lifecycle ---
     void terminate(); // Request termination; completion is confirmed separately.
 

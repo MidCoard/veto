@@ -48,7 +48,7 @@ class VetoCapabilityTranslatorTest {
                 new AgentToolDefinition(
                         "load_skill",
                         "Load a skill.",
-                        ToolCapability.SKILL_READ,
+                        ToolCapability.PLUGIN_LOCAL,
                         Danger.SAFE,
                         toolClass,
                         ToolDocs.nonNullClass(LoadSkillTool.Args.class),
@@ -83,7 +83,7 @@ class VetoCapabilityTranslatorTest {
     }
 
     @Test
-    void translatedPlanBindsAllowedToolNamesAndInputsAndExcludesResponseSubmissions() {
+    void translatedPlanBindsAllowedToolNamesAndInputsAndExcludesControlSubmissions() {
         var tool = ToolSchemaCompiler.compileNative(new ViewFileTool());
         var plan = planDefinition("renamed_plan_submission");
         var answer =

@@ -51,7 +51,7 @@ public final class ToolSchemaReferences {
         ObjectNode result = original.deepCopy();
         boolean separateResource = nestedResource || (original != root && original.has("$id"));
         // Definitions are expanded at their use sites. Keeping root-relative references inside
-        // unused definitions would accidentally address the enclosing submit_plan document.
+        // unused definitions would accidentally address an enclosing tool-input document.
         result.remove(
                 java.util.List.of(
                         "$defs",

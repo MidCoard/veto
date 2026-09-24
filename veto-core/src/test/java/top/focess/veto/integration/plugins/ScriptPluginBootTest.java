@@ -162,12 +162,11 @@ class ScriptPluginBootTest {
         var permit =
                 ToolExecutionPermit.capture(
                                 call, definition, Workspace.single(STATE, PathMode.REAL))
-                        .withCaller("test-agent", user, null, "test-owner", sessionId);
+                        .withCaller("test-agent", user, "test-owner", sessionId);
         ToolCallContextHolder.set(
                 new ToolCallContext(
                         "test-agent",
                         user,
-                        null,
                         "test-owner",
                         sessionId,
                         ToolResultPresentationMode.BASIC,

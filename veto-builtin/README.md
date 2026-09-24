@@ -9,9 +9,7 @@ are created by the plugin for an individual child reader, never globally adverti
 The module compiles against `veto-api`, without core or Spring. It owns tool schemas,
 validation, transformations, formatting, plan interpretation and document processing.
 `HostCapabilityTool` receives authorized host services through public API contracts.
-Core retains sandbox/egress/credential authority, ownership and session checks,
-shared persistence/schedulers, agent lifecycle and model selection. Plugin tool code
-cannot obtain raw credentials or bypass the normal gateway by invoking these ports.
+Core retains sandbox/egress/credential authority, ownership/session checks, generic agent execution and model selection. Monitor schema, restoration, scheduling, delivery and frontend now belong to this plugin. Group/memory/process lifecycle extraction is still pending. These API ports do not expose raw credentials. In-process Java remains trusted execution; these ports are not a confinement boundary.
 
 `WebReadSession` owns source segmentation, search, evidence selection and terminal
 result validation; core runs its private tools using the shared AgentRunner.
@@ -19,7 +17,7 @@ Monitor tools interpret dates and render results. Repository tools select respon
 fields; the host performs the fixed authorized HTTP operation and masks credentials.
 All feature prompts are MDC resources compiled through the host PromptCompiler.
 
-Core bundles the plugin at runtime and discovers it through ServiceLoader. Existing
+`veto-app` bundles the plugin at runtime; `veto-core` does not and discovers it through ServiceLoader. Existing
 public tool names are preserved by configured contribution aliases. Provenance,
 lifecycle admission and session plugin selection remain active.
 
@@ -45,3 +43,5 @@ Delegation uses the same `HostCapabilityTool` dispatch as other host-backed agen
 `planning/PlanProgram` owns plan stepping and its execution loop; API runtime callbacks
 supply authorized model/tool operations. The current configuration is `veto.plan.max-steps`.
 Plan terminology replaces the former guided names in active code and observations.
+
+Monitor operations are internal to builtin. No `MonitorCapability` or monitor tool interface is required by veto-api; any third-party plugin can register its own tools and generic `AgentWorkSource`. The current Java host and frontend ESM execution are trusted, not resource-isolated.

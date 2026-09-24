@@ -2,7 +2,6 @@ package top.focess.veto.agent.web;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
@@ -26,9 +25,8 @@ import top.focess.veto.agent.SessionAgentRegistry;
 import top.focess.veto.agent.TurnRecord;
 import top.focess.veto.agent.TurnType;
 import top.focess.veto.agent.VetoAgent;
+import top.focess.veto.agent.capability.DestinationTestGrants;
 import top.focess.veto.agent.capability.NetworkEgressCapabilityImpl;
-import top.focess.veto.agent.capability.WebReadCapability;
-import top.focess.veto.agent.intercept.IngressDefense;
 import top.focess.veto.agent.tool.CapabilityTestCalls;
 import top.focess.veto.agent.tool.ToolCallContextHolder;
 import top.focess.veto.agent.translation.DefaultCapabilityTranslator;
@@ -36,13 +34,14 @@ import top.focess.veto.api.agent.AgentState;
 import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.ToolErrorCode;
 import top.focess.veto.api.agent.tool.ToolExecutionException;
+import top.focess.veto.api.http.ApprovedHttpDestination;
+import top.focess.veto.api.http.HttpDocument;
 import top.focess.veto.api.llm.ProviderType;
 import top.focess.veto.api.llm.ResponseContract;
 import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.api.llm.ToolDefinition;
 import top.focess.veto.api.llm.VetoRequest;
 import top.focess.veto.api.llm.VetoResponse;
-import top.focess.veto.api.web.FetchedPage;
 import top.focess.veto.builtin.web.WebFetchTool;
 import top.focess.veto.llm.core.UniformLLMCaller;
 import top.focess.veto.memory.TurnLogService;
@@ -56,8 +55,8 @@ import top.focess.veto.vault.UserContext;
 class WebFetchExecutorLoopTest {
     private final @NonNull ObjectMapper mapper = new ObjectMapper();
     private final @NonNull TurnLogService turnLog = spy(new TurnLogService(null, mapper));
-    private final @NonNull WebReadCapability access =
-            mock(ToolDocs.nonNullClass(WebReadCapability.class));
+    private final @NonNull ApprovedHttpDestination access =
+            mock(ToolDocs.nonNullClass(ApprovedHttpDestination.class));
     private final @NonNull List<@NonNull VetoRequest> requests = new ArrayList<>();
     private final @NonNull ModelTierRegistry models = mock();
 
@@ -78,7 +77,7 @@ class WebFetchExecutorLoopTest {
                         ToolDocs.nonNullClass(ToolExecutionException.class), () -> execute(tool));
         assertEquals(ToolErrorCode.READER.READER_MODEL, error.errorCode());
         assertTrue(requests.isEmpty());
-        verify(access, never()).fetch(anyLong());
+        verify(access, never()).fetch();
         verify(models, never()).resolve("test-owner", ModelTier.MID);
         verify(models, never()).resolve("test-owner", ModelTier.TOP);
         verify(access).close();
@@ -127,7 +126,7 @@ class WebFetchExecutorLoopTest {
             assertEquals("No configured binding", expected.getMessage());
         }
         assertTrue(requests.isEmpty());
-        verify(access, never()).fetch(anyLong());
+        verify(access, never()).fetch();
     }
 
     @Test
@@ -163,7 +162,7 @@ class WebFetchExecutorLoopTest {
                 Set.copyOf(first.tools().stream().map(ToolDefinition::name).toList()));
         assertFalse(first.systemPrompt().contains("UNRELATED_PAGE_BODY"));
         assertEquals("test-owner", UserContext.get());
-        verify(access).fetch(anyLong());
+        verify(access).fetch();
         verify(access).close();
         verify(models, never()).resolve("test-owner", ModelTier.MID);
         verify(models, never()).resolve("test-owner", ModelTier.TOP);
@@ -194,11 +193,11 @@ class WebFetchExecutorLoopTest {
         assertTrue(correction.contains("exactly one native tool call"));
         assertFalse(correction.contains("A tool call is not required"));
         VetoRequest last = requests.getLast();
-        assertTrue(last.responseContract().completionOnly());
+        assertFalse(last.responseContract().completionOnly());
         assertEquals(
                 List.of("finish_read"), last.tools().stream().map(ToolDefinition::name).toList());
         assertFalse(last.systemPrompt().contains("### `fetch_page`"));
-        verify(access).fetch(anyLong());
+        verify(access).fetch();
     }
 
     @Test
@@ -220,9 +219,9 @@ class WebFetchExecutorLoopTest {
                                         finish("s300"))),
                         6,
                         10);
-        when(access.fetch(anyLong()))
+        when(access.fetch())
                 .thenReturn(
-                        new FetchedPage(
+                        new HttpDocument(
                                 URI.create("https://example.com/docs"),
                                 200,
                                 "text/html",
@@ -300,9 +299,9 @@ class WebFetchExecutorLoopTest {
                         7,
                         10,
                         32000);
-        when(access.fetch(anyLong()))
+        when(access.fetch())
                 .thenReturn(
-                        new FetchedPage(
+                        new HttpDocument(
                                 URI.create("https://example.com/docs"),
                                 200,
                                 "text/html",
@@ -378,10 +377,8 @@ class WebFetchExecutorLoopTest {
                                                                     "not in this turn's tool catalog")
                                                     && message.content().contains(name)),
                     name);
-            verify(access).fetch(anyLong());
+            verify(access).fetch();
             verify(access).close();
-            verify(access).read(eq("Find timeout units."), any());
-            verify(access).bindReader(anyString());
             verifyNoMoreInteractions(access);
         }
     }
@@ -429,7 +426,7 @@ class WebFetchExecutorLoopTest {
         verify(models, never()).resolve("test-owner", ModelTier.MID);
         verify(models, never()).resolve("test-owner", ModelTier.TOP);
         verify(access).close();
-        verify(access, never()).fetch(anyLong());
+        verify(access, never()).fetch();
     }
 
     @Test
@@ -525,10 +522,10 @@ class WebFetchExecutorLoopTest {
     private @NonNull WebFetchTool tool(
             @NonNull UniformLLMCaller caller, int rounds, int timeout, int maxInputTokens) {
         var network = mock(ToolDocs.nonNullClass(NetworkEgressCapabilityImpl.class));
-        when(network.openReader(any())).thenReturn(access);
-        when(access.fetch(anyLong()))
+
+        when(access.fetch())
                 .thenReturn(
-                        new FetchedPage(
+                        new HttpDocument(
                                 URI.create("https://example.com/docs"),
                                 200,
                                 "text/html",
@@ -544,42 +541,44 @@ class WebFetchExecutorLoopTest {
                                 0,
                                 2048));
         SessionAgentRegistry registry = new SessionAgentRegistry();
-        WebFetchExecutor reader =
-                new WebFetchExecutor(
+        var reader =
+                ReaderTestHarness.create(
                         mapper,
                         caller,
                         models,
                         new DefaultCapabilityTranslator(mapper),
                         registry,
                         turnLog,
-                        new IngressDefense(),
-                        ModelTier.LOW,
                         rounds,
                         timeout,
                         maxInputTokens,
-                        2048);
-        when(access.read(anyString(), any()))
-                .thenAnswer(
-                        invocation -> {
-                            String objective = invocation.getArgument(0);
-                            if (objective == null) throw new AssertionError("Missing objective");
+                        2048,
+                        () -> {
                             var context = ToolCallContextHolder.get();
-                            if (context == null) throw new AssertionError("Missing parent context");
+                            if (context == null || context.sessionId() == null)
+                                throw new AssertionError("Missing parent context");
                             var sessionId = context.sessionId();
-                            if (sessionId == null)
-                                throw new AssertionError("Missing parent session");
+                            if (sessionId == null) throw new AssertionError("Missing session");
                             var parent = mock(ToolDocs.nonNullClass(VetoAgent.class));
                             when(parent.id()).thenReturn(context.agentId());
                             when(parent.state()).thenReturn(AgentState.RUNNING);
                             registry.register(sessionId, parent);
-                            try {
-                                return reader.read(objective, access, invocation.getArgument(1));
-                            } finally {
-                                assertEquals(1, registry.agents(sessionId).size());
-                                registry.stopSession(sessionId);
-                            }
                         });
-        return new WebFetchTool(network);
+        when(network.openApprovedDestination("url"))
+                .thenAnswer(
+                        invocation ->
+                                DestinationTestGrants.wrap(
+                                        access,
+                                        () -> {
+                                            var context = ToolCallContextHolder.get();
+                                            if (context != null && context.sessionId() != null) {
+                                                var sessionId = context.sessionId();
+                                                if (sessionId == null) throw new AssertionError();
+                                                assertEquals(1, registry.agents(sessionId).size());
+                                                registry.stopSession(sessionId);
+                                            }
+                                        }));
+        return new WebFetchTool(reader, network);
     }
 
     private @NonNull String execute(@NonNull WebFetchTool tool) throws Exception {

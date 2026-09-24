@@ -1,12 +1,6 @@
 {
   "properties": [
     {
-      "name": "veto.memory.store",
-      "type": "java.lang.String",
-      "description": "Memory backend: memory, jpa, vector, or pgvector.",
-      "defaultValue": "jpa"
-    },
-    {
       "name": "veto.security.deployer-policy",
       "type": "java.lang.String",
       "description": "Active install-time path and tenant policy. PROTECTED, SANDBOXED, and TENANT use their matching veto.security section; FULL_ACCESS needs no additional settings.",
@@ -31,21 +25,21 @@
       "defaultValue": "tcp://127.0.0.1:5555"
     },
     {
-      "name": "veto.webfetch.fetch.timeout-seconds",
+      "name": "veto.http.timeout-seconds",
       "type": "java.lang.Integer",
-      "description": "HTTP fetch timeout within a web reading in seconds.",
+      "description": "Timeout for an authorized HTTP read, in seconds.",
       "defaultValue": 30
     },
     {
-      "name": "veto.webfetch.fetch.max-chars",
+      "name": "veto.http.max-chars",
       "type": "java.lang.Integer",
-      "description": "Size limit for the page fetched by the isolated web reader.",
-      "defaultValue": 40000
+      "description": "Maximum characters returned by an authorized HTTP read.",
+      "defaultValue": 524288
     },
     {
-      "name": "veto.webfetch.fetch.allow-private-addresses",
+      "name": "veto.http.allow-private-addresses",
       "type": "java.lang.Boolean",
-      "description": "Allow the web reader to contact loopback, link-local, private, or multicast destinations. Keep disabled unless agents must access a trusted intranet.",
+      "description": "Allow authorized HTTP reads to contact loopback, link-local, private, or multicast destinations. Keep disabled unless agents must access a trusted intranet.",
       "defaultValue": false
     }
   ],
@@ -53,27 +47,39 @@
     {
       "name": "veto.security.deployer-policy",
       "values": [
-        { "value": "FULL_ACCESS", "description": "Host paths are unrestricted; Gateway screening and HITL remain active." },
-        { "value": "PROTECTED", "description": "Host paths are reachable except for the policy's hard protected-path deny-list." },
-        { "value": "SANDBOXED", "description": "Session roots must be admitted within deployer-configured project zones and form a hard execution boundary." },
-        { "value": "TENANT", "description": "Per-owner session roots are admitted within tenant zones with cross-user isolation." }
+        {
+          "value": "FULL_ACCESS",
+          "description": "Host paths are unrestricted; Gateway screening and HITL remain active."
+        },
+        {
+          "value": "PROTECTED",
+          "description": "Host paths are reachable except for the policy's hard protected-path deny-list."
+        },
+        {
+          "value": "SANDBOXED",
+          "description": "Session roots must be admitted within deployer-configured project zones and form a hard execution boundary."
+        },
+        {
+          "value": "TENANT",
+          "description": "Per-owner session roots are admitted within tenant zones with cross-user isolation."
+        }
       ]
     },
     {
       "name": "veto.security.screening-mode",
       "values": [
-        { "value": "STRICT", "description": "Only HIGH/SAFE calls auto-approve." },
-        { "value": "BALANCED", "description": "On-task SAFE/ELEVATED work may auto-approve." },
-        { "value": "PERMISSIVE", "description": "SAFE/ELEVATED calls auto-approve; DANGEROUS still requires authorization." }
-      ]
-    },
-    {
-      "name": "veto.memory.store",
-      "values": [
-        { "value": "memory", "description": "In-process memory store." },
-        { "value": "jpa", "description": "JPA-backed persistent store." },
-        { "value": "vector", "description": "In-process vector index." },
-        { "value": "pgvector", "description": "PostgreSQL pgvector store." }
+        {
+          "value": "STRICT",
+          "description": "Only HIGH/SAFE calls auto-approve."
+        },
+        {
+          "value": "BALANCED",
+          "description": "On-task SAFE/ELEVATED work may auto-approve."
+        },
+        {
+          "value": "PERMISSIVE",
+          "description": "SAFE/ELEVATED calls auto-approve; DANGEROUS still requires authorization."
+        }
       ]
     }
   ]

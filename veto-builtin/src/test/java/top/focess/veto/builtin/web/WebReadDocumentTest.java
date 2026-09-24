@@ -11,7 +11,7 @@ import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.ToolExecutionException;
-import top.focess.veto.api.web.FetchedPage;
+import top.focess.veto.builtin.web.model.FetchedPage;
 
 class WebReadDocumentTest {
     @Test

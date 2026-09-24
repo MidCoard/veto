@@ -25,15 +25,9 @@ repositories {
 dependencies {
     implementation(project(":veto-protocol"))
     implementation(project(":veto-plugin-runtime"))
-    runtimeOnly(project(":veto-builtin"))
-    runtimeOnly(project(":veto-llm-providers"))
     testImplementation(project(":veto-llm-providers"))
     testImplementation(project(":veto-builtin"))
-    // Host-authority bridge (SecretProtectionConfiguration) compiles against the plugin's own API,
-    // but the plugin is a pure runtime plugin: absent jar -> host service simply not granted.
-    compileOnly(project(":veto-secret-protection"))
-    runtimeOnly(project(":veto-secret-protection"))
-    // Tests still exercise the store internals directly.
+    // Explicit integration fixtures only; production and zeroPluginTest exclude this plugin.
     testImplementation(project(":veto-secret-protection"))
 
     // JSpecify nullability contracts are part of normal compilation and reflection metadata.
@@ -99,9 +93,6 @@ dependencies {
 
     // WebSocket Client
     implementation("org.java-websocket:Java-WebSocket:1.6.0")
-
-    // HTML parsing for web_fetch (HTML -> readable text)
-    implementation("org.jsoup:jsoup:1.18.3")
 
     // Official LLM SDKs
     testImplementation("com.openai:openai-java:4.38.0")
@@ -223,3 +214,18 @@ tasks.withType<Test> {
     // Mockito instruments bootstrap classes, so class-data sharing cannot apply to test JVMs.
     jvmArgs("--enable-native-access=ALL-UNNAMED", "-Xshare:off")
 }
+
+tasks.named<Test>("test") { exclude("**/ZeroPluginBootTest.class") }
+val zeroPluginTest by tasks.registering(Test::class) {
+    description = "Boots and exercises the core workflow with no bundled plugin artifacts."
+    testClassesDirs = sourceSets.test.get().output.classesDirs
+    classpath = sourceSets.test.get().runtimeClasspath.filter {
+        val path = it.absolutePath.replace('\\', '/')
+        listOf("veto-builtin", "veto-llm-providers", "veto-secret-protection").none { module ->
+            path.contains("/$module/") || it.name.startsWith("$module-")
+        }
+    }
+    include("**/ZeroPluginBootTest.class")
+    shouldRunAfter(tasks.test)
+}
+tasks.check { dependsOn(zeroPluginTest) }

@@ -12,15 +12,12 @@ import java.util.stream.Collectors;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.identity.AgentPersona;
 import top.focess.veto.agent.screening.DeployerPolicy;
-import top.focess.veto.agent.tool.ResponseSubmissions;
 import top.focess.veto.agent.workspace.PathMode;
 import top.focess.veto.agent.workspace.VetoMdResolver;
 import top.focess.veto.agent.workspace.Workspace;
-import top.focess.veto.api.agent.tool.ResponseSubmission;
 import top.focess.veto.api.agent.tool.ToolDocumentation;
 import top.focess.veto.api.llm.ToolDefinition;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
-import top.focess.veto.api.skills.Skill;
 
 /** Model inputs contain facts and executable contracts, never pre-rendered prompt sections. */
 public final class PromptInputs {
@@ -63,28 +60,8 @@ public final class PromptInputs {
         data.put("environment", environment());
         data.put("policy", policy.name());
         data.put("presentation", presentation.name());
-        data.put(
-                "planCitations",
-                persona.whitelistedTools().stream()
-                        .anyMatch(
-                                tool ->
-                                        ResponseSubmissions.kindOf(tool)
-                                                        == ResponseSubmission.Kind.ANSWER
-                                                && tools.stream()
-                                                        .anyMatch(
-                                                                available ->
-                                                                        available
-                                                                                .name()
-                                                                                .equals(
-                                                                                        tool
-                                                                                                .name()))));
         data.put("tools", tools(tools));
         data.put("toolNames", tools.stream().map(ToolDefinition::name).toList());
-        data.put(
-                "skills",
-                persona.registeredSkills().stream()
-                        .map(skill -> new Skill(skill.name(), skill.description()))
-                        .toList());
         return data;
     }
 
@@ -121,8 +98,6 @@ public final class PromptInputs {
 
     public record Persona(
             @NonNull String name, @NonNull String description, @NonNull String role) {}
-
-    public record Skill(@NonNull String name, @NonNull String description) {}
 
     public record LawSource(
             @NonNull String root,

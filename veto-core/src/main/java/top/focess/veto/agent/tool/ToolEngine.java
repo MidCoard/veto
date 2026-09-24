@@ -5,6 +5,7 @@ import java.util.Set;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.agent.tool.ToolResult;
 import top.focess.veto.api.llm.ToolCall;
+import top.focess.veto.api.plugin.PluginHost;
 
 /**
  * The tool engine — manages server registrations, schema discovery, and tool dispatching. The loop
@@ -24,6 +25,13 @@ public interface ToolEngine {
     @SuppressWarnings(
             "NullableProblems") // JSpecify and Checker defaults disagree on this override contract.
     ToolDefinition resolveDefinition(@NonNull String toolName);
+
+    default PreparedInvocation prepare(
+            @NonNull ToolCall call,
+            @NonNull ToolDefinition definition,
+            PluginHost.@NonNull Invocation invocation) {
+        return null;
+    }
 
     /** Executes a tool call, dispatching by the resolved definition's flavour. */
     @NonNull ToolResult execute(@NonNull ToolCall call, @NonNull ToolDefinition def);

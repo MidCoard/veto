@@ -19,7 +19,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.test.util.ReflectionTestUtils;
-import top.focess.veto.agent.identity.RoleToolFilter;
 import top.focess.veto.agent.identity.SystemPromptResolver;
 import top.focess.veto.agent.intercept.HitlRegistry;
 import top.focess.veto.agent.intercept.IngressDefense;
@@ -48,8 +47,6 @@ import top.focess.veto.api.llm.VetoResponse;
 import top.focess.veto.api.llm.exceptions.LlmException;
 import top.focess.veto.api.process.Command;
 import top.focess.veto.llm.core.UniformLLMCaller;
-import top.focess.veto.sandbox.BackgroundTaskManager;
-import top.focess.veto.sandbox.SandboxManager;
 
 @SuppressWarnings("initialization.field.uninitialized")
 class NewRequirementsTest {
@@ -177,18 +174,12 @@ class NewRequirementsTest {
                         caller,
                         mapper,
                         List.of(),
-                        new RoleToolFilter(mcpEngine),
                         "REAL",
                         50L,
-                        1000,
                         "FULL_ACCESS",
                         "STRICT",
                         null,
-                        null,
-                        new BackgroundTaskManager(
-                                new SandboxManager(
-                                        new top.focess.veto.sandbox
-                                                .ConstrainedSubprocessSubstrate())));
+                        null);
 
         String agentKey = "refused-test";
         CompletableFuture<AgentResult> resultFuture =
@@ -308,18 +299,12 @@ class NewRequirementsTest {
                         caller,
                         mapper,
                         List.of(),
-                        new RoleToolFilter(mcpEngine),
                         "REAL",
                         50L,
-                        1000,
                         "FULL_ACCESS",
                         "STRICT",
                         null,
-                        null,
-                        new BackgroundTaskManager(
-                                new SandboxManager(
-                                        new top.focess.veto.sandbox
-                                                .ConstrainedSubprocessSubstrate())));
+                        null);
 
         String agentKey = "disconnect-test";
         AgentResult result =

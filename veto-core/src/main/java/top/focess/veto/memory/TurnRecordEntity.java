@@ -15,12 +15,12 @@ import top.focess.veto.agent.TurnRecord;
 
 /**
  * JPA persistence for a raw {@link TurnRecord} — the durable per-turn audit/replay log (distinct
- * from the semantic {@link MemoryEntity} LTM entries, which are content+embedding for recall). One
- * row per captured turn, keyed by tenant ({@code user_id}) + session.
+ * from the semantic long-term-memory entries LTM entries, which are content+embedding for recall).
+ * One row per captured turn, keyed by tenant ({@code user_id}) + session.
  *
  * <p>The {@code payload} {@link Map} is serialized to a TEXT column as JSON (portable — H2 has no
- * {@code jsonb} type; matching the {@link MemoryEntity} TEXT-column convention). The id is a fresh
- * UUID per row (the {@link TurnRecord} itself has no id).
+ * {@code jsonb} type; matching the long-term-memory entries TEXT-column convention). The id is a
+ * fresh UUID per row (the {@link TurnRecord} itself has no id).
  */
 @Entity
 @Table(

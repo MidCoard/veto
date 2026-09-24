@@ -16,6 +16,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import top.focess.veto.agent.Agent;
 import top.focess.veto.agent.AgentService;
 import top.focess.veto.agent.TurnRecord;
@@ -35,6 +37,8 @@ import top.focess.veto.model.SessionEntity;
 import top.focess.veto.model.SessionRepository;
 import top.focess.veto.model.tier.ModelBinding;
 import top.focess.veto.model.tier.ModelTierRegistry;
+import top.focess.veto.vault.UserEntity;
+import top.focess.veto.vault.UserRegistry;
 
 class SessionServiceTest {
     @Test
@@ -64,10 +68,10 @@ class SessionServiceTest {
         var service =
                 new SessionService(sessions, agents, patterns, runtime, history, tierRegistry);
         UUID id = UUID.fromString(session.getId());
-        assertFalse(service.activateForMonitor(id, "bob", primary.getId()));
-        assertFalse(service.activateForMonitor(id, "alice", primary.getId()));
-        ReflectionTestUtils.setField(primary, "monitorRecoveryVersion", 1);
-        assertFalse(service.activateForMonitor(id, "alice", primary.getId()));
+        assertFalse(service.activateForObservation(id, "bob", primary.getId()));
+        assertFalse(service.activateForObservation(id, "alice", primary.getId()));
+        ReflectionTestUtils.setField(primary, "recoveryVersion", 1);
+        assertFalse(service.activateForObservation(id, "alice", primary.getId()));
         replay =
                 List.of(
                         TurnRecord.userPrompt(1, "Original task"),
@@ -75,12 +79,12 @@ class SessionServiceTest {
                                 2, TurnType.ASSISTANT_RESPONSE, Map.of("content", "Done"), null));
         when(history.load(session.getId(), primary.getId())).thenReturn(replay);
         var reader = AgentEntity.spawned("reader", session.getId(), "Reader");
-        ReflectionTestUtils.setField(reader, "monitorRecoveryVersion", 1);
+        ReflectionTestUtils.setField(reader, "recoveryVersion", 1);
         ReflectionTestUtils.setField(reader, "runtimeRole", "STANDALONE");
         ReflectionTestUtils.setField(reader, "parentCallId", "read-call");
         when(agents.findById("reader")).thenReturn(Optional.of(reader));
-        assertFalse(service.activateForMonitor(id, "alice", "reader"));
-        assertTrue(service.activateForMonitor(id, "alice", primary.getId()));
+        assertFalse(service.activateForObservation(id, "alice", "reader"));
+        assertTrue(service.activateForObservation(id, "alice", primary.getId()));
         verify(runtime)
                 .getOrCreateAgent(
                         eq(session.getId()),
@@ -445,7 +449,13 @@ class SessionServiceTest {
         boolean removed;
         var scope = new TextProtection.Scope("alice", session.getId(), agent.getId());
         try (var plugins = PluginTestSupport.manager()) {
-            service.attachLifecycleEvents(new PluginLifecycleEvents(plugins));
+            var lifecycle = new PluginLifecycleEvents(plugins);
+            var users = mock(ToolDocs.nonNullClass(UserRegistry.class));
+            var user = mock(ToolDocs.nonNullClass(UserEntity.class));
+            when(user.storageIdentity()).thenReturn("alice-storage-identity");
+            when(users.findByUsername("alice")).thenReturn(Optional.of(user));
+            lifecycle.attachUsers(users);
+            service.attachLifecycleEvents(lifecycle);
             String captured =
                     PluginTestSupport.protect(
                             plugins,
@@ -456,7 +466,17 @@ class SessionServiceTest {
             var matcher = java.util.regex.Pattern.compile("s_[a-f0-9]{32}").matcher(captured);
             assertTrue(matcher.find(), "expected a captured reference");
             String secret = matcher.group();
-            removed = service.delete("alice", "coder");
+            TransactionSynchronizationManager.initSynchronization();
+            TransactionSynchronizationManager.setActualTransactionActive(true);
+            try {
+                removed = service.delete("alice", "coder");
+                for (var synchronization :
+                        TransactionSynchronizationManager.getSynchronizations()) {
+                    synchronization.afterCompletion(TransactionSynchronization.STATUS_COMMITTED);
+                }
+            } finally {
+                TransactionSynchronizationManager.clear();
+            }
             assertTrue(PluginTestSupport.reveal(plugins, scope, secret).isEmpty());
             assertThrows(
                     IllegalStateException.class,

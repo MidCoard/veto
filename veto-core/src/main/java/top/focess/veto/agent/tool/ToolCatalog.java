@@ -89,9 +89,10 @@ final class ToolCatalog {
             ToolDefinition definition = registration.definition();
             if (registration instanceof RegisteredTool.Plugin plugin
                     && !pluginAvailable(plugin.runtime())) continue;
-            if (registration instanceof RegisteredTool.Local local
-                    && local.runtime() != null
-                    && !pluginAvailable(local.runtime())) continue;
+            if (registration instanceof RegisteredTool.Local local) {
+                ManagedPlugin runtime = local.runtime();
+                if (runtime != null && !pluginAvailable(runtime)) continue;
+            }
             if (definition instanceof AgentToolDefinition
                     || whitelist == null
                     || whitelist.contains(definition.name())) definitions.add(definition);

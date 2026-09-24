@@ -19,7 +19,7 @@ public interface Tool {
         COMPUTATION,
         /**
          * Crosses a host trust boundary; the host gates every call with explicit approval
-         * (approval-level danger, no path/command/URL arguments).
+         * (approval-level danger; resource arguments remain subject to host screening).
          */
         PRIVILEGED,
         /** Trusted external code whose effects require host scrutiny on every call. */

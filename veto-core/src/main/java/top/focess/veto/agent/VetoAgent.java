@@ -19,7 +19,7 @@ import top.focess.veto.api.agent.AgentState;
 import top.focess.veto.api.agent.ToolCallEvent;
 import top.focess.veto.api.agent.ToolResultEvent;
 import top.focess.veto.api.llm.LlmBinding;
-import top.focess.veto.monitor.MonitorService;
+import top.focess.veto.api.plugin.contract.AgentWorkSource;
 
 /**
  * The {@link Agent} implementation. Owns its {@link AgentRunner} internally on a virtual thread;
@@ -33,6 +33,7 @@ public class VetoAgent implements Agent {
     private final @NonNull AgentRunner runner;
     private final boolean userInteractionEnabled;
     private final @NonNull Thread executionThread;
+    private volatile @NonNull RequestHandle latestRequest = new RequestHandle(new Object());
 
     public VetoAgent(@NonNull AgentPersona persona, @NonNull AgentRunner runner) {
         this(persona, runner, true);
@@ -45,6 +46,8 @@ public class VetoAgent implements Agent {
         this.id = persona.id();
         this.runner = runner;
         this.userInteractionEnabled = userInteractionEnabled;
+        // Legacy await/result compatibility lives at the facade; production callers retain handles.
+        runner.onBackgroundRequest(request -> latestRequest = request);
         executionThread = Thread.ofVirtual().name("agent-" + id).start(runner::run);
     }
 
@@ -64,12 +67,12 @@ public class VetoAgent implements Agent {
         runner.enqueue(new AgentAction.DirectUserPromptAction(prompt));
     }
 
-    public void attachMonitor(@NonNull MonitorService service) {
-        runner.attachMonitor(service);
+    public void attachWorkSource(@NonNull AgentWorkSource service) {
+        runner.attachWorkSource(service);
     }
 
-    public void signalMonitor() {
-        runner.signalMonitor();
+    public void signalWork() {
+        runner.signalWork();
     }
 
     @Override
@@ -107,31 +110,42 @@ public class VetoAgent implements Agent {
 
     @Override
     public void submit(@NonNull String prompt) {
-        runner.startTask(null, new AgentAction.UserPromptAction(prompt));
+        latestRequest = runner.startTask(null, new AgentAction.UserPromptAction(prompt));
     }
 
     @Override
     public void submit(@NonNull String prompt, Consumer<AgentResult> callback) {
-        runner.startTask(callback, new AgentAction.UserPromptAction(prompt));
+        latestRequest = runner.startTask(callback, new AgentAction.UserPromptAction(prompt));
+    }
+
+    @Override
+    public @NonNull RequestHandle submitRequest(@NonNull String prompt) {
+        RequestHandle request = runner.startTask(null, new AgentAction.UserPromptAction(prompt));
+        latestRequest = request;
+        return request;
     }
 
     @Override
     public @NonNull AgentResult await(@NonNull Duration timeout)
             throws TimeoutException, InterruptedException {
-        return runner.await(timeout);
+        return latestRequest.await(timeout);
     }
 
     @Override
     public @NonNull CompletableFuture<AgentResult> result() {
-        return runner.result();
+        return latestRequest.result();
     }
 
-    void onTermination(@NonNull Runnable callback) {
+    public void onTermination(@NonNull Runnable callback) {
         runner.onTermination(callback);
     }
 
     public @NonNull UUID sessionId() {
         return runner.sessionId();
+    }
+
+    public void shutdown() {
+        runner.shutdown();
     }
 
     @Override
@@ -165,7 +179,7 @@ public class VetoAgent implements Agent {
 
     @Override
     public void compact() {
-        runner.startTask(null, new AgentAction.CompactAction());
+        latestRequest = runner.startTask(null, new AgentAction.CompactAction());
     }
 
     /**
@@ -192,19 +206,16 @@ public class VetoAgent implements Agent {
      * Seeds replayed history (from the durable turn log) into the runner on session activate.
      * Idempotent; see {@link AgentRunner#seedHistory}.
      */
-    public void setRecoveredTasks(@NonNull List<RecoveredTask> tasks) {
-        runner.setRecoveredTasks(tasks);
-    }
-
     public void seedHistory(@NonNull List<TurnRecord> history) {
         runner.seedHistory(history);
     }
 
-    public void restoreLeader(
-            @NonNull UUID groupId,
-            @NonNull LlmBinding binding,
-            @NonNull Set<ToolDefinition> tools) {
-        runner.restoreLeader(groupId, binding, tools);
+    public @NonNull LlmBinding binding() {
+        return runner.binding();
+    }
+
+    public void refreshConfiguration() {
+        runner.refreshConfiguration();
     }
 
     /**

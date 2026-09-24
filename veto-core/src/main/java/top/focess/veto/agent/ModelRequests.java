@@ -1,16 +1,16 @@
 package top.focess.veto.agent;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import top.focess.veto.agent.identity.AgentPersona;
 import top.focess.veto.agent.loop.CompiledPrompt;
 import top.focess.veto.agent.loop.PromptCompiler;
 import top.focess.veto.agent.workspace.Workspace;
-import top.focess.veto.api.agent.tool.ResponseSubmission;
-import top.focess.veto.api.agent.workflow.GenerateAction;
-import top.focess.veto.api.agent.workflow.Scope;
+import top.focess.veto.api.agent.workflow.PluginWork;
 import top.focess.veto.api.llm.ChatMessage;
 import top.focess.veto.api.llm.LlmBinding;
 import top.focess.veto.api.llm.LlmOptions;
@@ -18,6 +18,8 @@ import top.focess.veto.api.llm.ResponseContract;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.api.llm.VetoRequest;
 import top.focess.veto.api.llm.exceptions.ModelSchemaException;
+import top.focess.veto.api.plugin.agent.IsolatedAgent;
+import top.focess.veto.api.plugin.contract.JsonValues;
 import top.focess.veto.model.tier.ModelTier;
 import top.focess.veto.model.tier.ModelTierRegistry;
 import top.focess.veto.util.Nullness;
@@ -30,8 +32,8 @@ final class ModelRequests {
     private final @NonNull LlmBinding binding;
     private final @NonNull ToolResultPresentationMode toolResultPresentation;
     private final String owner;
-    private final ModelTierRegistry planTierRegistry;
-    private final @NonNull ResponseValidator responses;
+    private final ModelTierRegistry modelTierRegistry;
+    private final @NonNull ModelResponseValidation responses;
 
     ModelRequests(
             @NonNull PromptCompiler compiler,
@@ -41,30 +43,32 @@ final class ModelRequests {
             @NonNull ToolResultPresentationMode presentation,
             String owner,
             ModelTierRegistry tiers,
-            @NonNull ResponseValidator responses) {
+            @NonNull ModelResponseValidation responses) {
         this.promptCompiler = compiler;
         this.workspace = workspace;
         this.persona = persona;
         this.binding = binding;
         this.toolResultPresentation = presentation;
         this.owner = owner;
-        this.planTierRegistry = tiers;
+        this.modelTierRegistry = tiers;
         this.responses = responses;
     }
 
     @NonNull VetoRequest completionRequest(
-            @NonNull VetoRequest request, String tool, long remaining) {
-        if (tool == null) return request;
+            @NonNull VetoRequest request, IsolatedAgent.Terminal terminal, long remaining) {
+        if (terminal == null) return request;
+        String tool = terminal.tool();
+        String resource = terminal.prompt().resource();
+        Map<String, @Nullable Object> data =
+                new LinkedHashMap<>(JsonValues.toMap(terminal.prompt().data()));
+        data.put("tool", tool);
+        data.put("remaining", remaining);
         List<ChatMessage> messages = new ArrayList<>(request.messages());
         messages.removeIf(
                 message ->
                         message.promptSources().stream()
-                                .anyMatch(
-                                        source ->
-                                                source.source().equals("runtime-completion.mdc")));
-        messages.add(
-                PromptCompiler.compileMessage(
-                        "runtime-completion", Map.of("tool", tool, "remaining", remaining)));
+                                .anyMatch(source -> source.source().equals(resource + ".mdc")));
+        messages.add(PromptCompiler.compileMessage(resource, data));
         @NonNull VetoRequest scoped =
                 new VetoRequest(
                         request.systemPrompt(),
@@ -85,13 +89,11 @@ final class ModelRequests {
     }
 
     @NonNull VetoRequest generationRequest(
-            @NonNull VetoRequest original,
-            @NonNull GenerateAction generation,
-            @NonNull Scope scope) {
+            @NonNull VetoRequest original, PluginWork.@NonNull ModelInput generation) {
         @NonNull LlmBinding selected = binding;
         String tier = generation.modelTier();
         if (tier != null) {
-            var registry = planTierRegistry;
+            var registry = modelTierRegistry;
             String username = owner;
             if (registry == null || username == null)
                 throw new IllegalStateException(
@@ -126,27 +128,15 @@ final class ModelRequests {
         ChatMessage generated =
                 PromptCompiler.compileMessage(
                         "runtime-generation",
-                        Map.of(
-                                "prompt",
-                                generation.resolvePrompt(scope),
-                                "inputs",
-                                generation.resolveInputs(scope)));
+                        Map.of("prompt", generation.prompt(), "inputs", generation.inputs()));
         @NonNull String prompt = generated.content();
         messages.add(generated);
-        boolean predicate = original.responseContract().mode() == ResponseContract.Mode.PREDICATE;
-        boolean cited =
-                !predicate && generation.responseMode() == GenerateAction.ResponseMode.CITATIONS;
+        var allowed = generation.allowedTools();
         var tools =
-                original.tools().stream()
-                        .filter(
-                                t ->
-                                        cited
-                                                && responses.submissionKind(t.name())
-                                                        == ResponseSubmission.Kind.ANSWER)
-                        .toList();
-        if (cited && tools.isEmpty())
-            throw new IllegalStateException(
-                    "Citation generation requires an available answer submission tool");
+                original.tools().stream().filter(tool -> allowed.contains(tool.name())).toList();
+        if (tools.size() != allowed.size())
+            throw new IllegalArgumentException(
+                    "Generated invocation requested an unavailable tool");
         @NonNull VetoRequest scoped =
                 new VetoRequest(
                         original.systemPrompt(),
@@ -159,7 +149,7 @@ final class ModelRequests {
                         messages,
                         original.responseSchema(),
                         selected.baseUrl(),
-                        cited,
+                        !tools.isEmpty(),
                         original.responseContract());
         return scopeResponseRequest(scoped);
     }
@@ -172,8 +162,7 @@ final class ModelRequests {
     @NonNull CompiledPrompt compilePrompt(
             @NonNull List<TurnRecord> sourceHistory,
             boolean scopedInvocation,
-            double correctionFactor,
-            @NonNull ChatMessage recoveryContext) {
+            double correctionFactor) {
         // Generation/predicate calls first assemble history, then rebuild the system with their
         // restricted tool manifest. The dispatch guard budgets that final request and selected
         // model; budgeting this temporary full manifest could reject an otherwise fitting call.
@@ -188,8 +177,7 @@ final class ModelRequests {
                 sourceHistory,
                 correctionFactor,
                 toolResultPresentation,
-                inputBudgetOverride,
-                recoveryContext);
+                inputBudgetOverride);
     }
 
     @NonNull VetoRequest buildRequest(@NonNull CompiledPrompt compiled) {

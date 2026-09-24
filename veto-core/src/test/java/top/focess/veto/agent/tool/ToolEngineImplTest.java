@@ -6,18 +6,19 @@ import static org.mockito.Mockito.*;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.sun.net.httpserver.HttpServer;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.StreamSupport;
 import org.jspecify.annotations.NonNull;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledOnOs;
 import org.junit.jupiter.api.condition.OS;
@@ -25,20 +26,13 @@ import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.context.ApplicationContext;
-import top.focess.veto.agent.capability.ProcessExecutionCapabilityImpl;
-import top.focess.veto.agent.capability.ResponseCapabilityImpl;
-import top.focess.veto.agent.capability.TaskControlCapabilityImpl;
 import top.focess.veto.agent.intercept.ToolExecutionPermit;
 import top.focess.veto.agent.mcp.transport.McpTransport;
 import top.focess.veto.agent.workspace.PathMode;
 import top.focess.veto.agent.workspace.TrustMarker;
 import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.agent.workspace.WorkspaceRoot;
-import top.focess.veto.api.agent.capability.ProcessExecutionCapability;
-import top.focess.veto.api.agent.capability.ResponseCapability;
 import top.focess.veto.api.agent.tool.AgentTool;
-import top.focess.veto.api.agent.tool.NativeTool;
-import top.focess.veto.api.agent.tool.ResponseTool;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.agent.tool.ToolDoc;
 import top.focess.veto.api.agent.tool.ToolDocs;
@@ -50,20 +44,14 @@ import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
 import top.focess.veto.api.plugin.contribution.Contribution;
-import top.focess.veto.api.process.CommandResult;
-import top.focess.veto.builtin.tools.RunCommandTool;
-import top.focess.veto.builtin.tools.RunTaskTool;
-import top.focess.veto.builtin.tools.StopTaskTool;
-import top.focess.veto.builtin.tools.ViewTaskTool;
 import top.focess.veto.builtin.workspace.GrepSearchTool;
 import top.focess.veto.builtin.workspace.ListDirTool;
 import top.focess.veto.builtin.workspace.ReplaceFileContentTool;
 import top.focess.veto.builtin.workspace.ViewFileTool;
 import top.focess.veto.builtin.workspace.WriteToFileTool;
 import top.focess.veto.integration.plugins.PluginManager;
+import top.focess.veto.integration.plugins.ProcessHostFixture;
 import top.focess.veto.integration.plugins.WorkflowPluginFixture;
-import top.focess.veto.sandbox.BackgroundTaskManager;
-import top.focess.veto.sandbox.SandboxManager;
 import top.focess.veto.sandbox.TestSandboxFactory;
 
 /**
@@ -71,6 +59,15 @@ import top.focess.veto.sandbox.TestSandboxFactory;
  * arguments, {@code run_command} routing through the no-shell substrate, and agent-tool dispatch.
  */
 class ToolEngineImplTest {
+    private static final @NonNull Map<ToolEngineImpl, ProcessHostFixture> PROCESS_FIXTURES =
+            new IdentityHashMap<>();
+
+    @AfterEach
+    void closeProcesses() {
+        PROCESS_FIXTURES.values().forEach(ProcessHostFixture::close);
+        PROCESS_FIXTURES.clear();
+    }
+
     @Test
     void pluginFileToolUsesTheOrdinaryPermitAndSessionBoundary(@TempDir @NonNull Path root)
             throws Exception {
@@ -105,42 +102,32 @@ class ToolEngineImplTest {
     }
 
     @Test
-    void pluginProcessToolReceivesHostCapabilityOnlyAfterAuthorization(@TempDir @NonNull Path root)
-            throws Exception {
-        var contribution =
-                Contribution.of(
-                        StandardContributionPoints.NATIVE_TOOLS,
+    void pluginProcessToolReceivesOnlyTheApprovedIntent(@TempDir @NonNull Path root) {
+        var engine = newEngine();
+        var def = definition(engine, "run_command");
+        var call =
+                new ToolCall(
                         "run_command",
-                        new RunCommandTool());
-        try (var fixture = new WorkflowPluginFixture(List.of(contribution))) {
-            var context = mock(ToolDocs.nonNullClass(ApplicationContext.class));
-            var processes = mock(ToolDocs.nonNullClass(ProcessExecutionCapability.class));
-            when(context.getBeansOfType(PluginManager.class))
-                    .thenReturn(Map.of("plugins", fixture.manager));
-            when(context.getBean(ToolDocs.nonNullClass(ProcessExecutionCapability.class)))
-                    .thenReturn(processes);
-            when(processes.run(anyList(), any(), any(), anyBoolean()))
-                    .thenReturn(new CommandResult(0, "plugin executed", "", List.of(0)));
-            var engine = new ToolEngineImpl(new ObjectMapper(), List.of(), context);
-            engine.attachSessionPlugins(fixture.sessions);
-            engine.init();
-            String name = "plugin_fixture_workflow__run_command";
-            var definition = definition(engine, name);
-            var call =
-                    new ToolCall(
-                            name,
-                            Map.of(
-                                    "commands",
-                                    List.of(Map.of("executable", "example", "args", List.of())),
-                                    "timeout",
-                                    1));
-            assertFalse(engine.execute(call, definition).success());
-            verifyNoInteractions(processes);
-            var result = executeAuthorized(engine, call, definition, root);
-            assertTrue(result.success(), result.content());
-            assertEquals("plugin executed", result.content());
-            verify(processes).run(anyList(), any(), any(), eq(false));
-        }
+                        Map.of(
+                                "commands",
+                                List.of(
+                                        Map.of(
+                                                "executable",
+                                                Path.of(
+                                                                System.getProperty("java.home"),
+                                                                "bin",
+                                                                System.getProperty("os.name")
+                                                                                .contains("Windows")
+                                                                        ? "java.exe"
+                                                                        : "java")
+                                                        .toString(),
+                                                "args",
+                                                List.of("-version"))),
+                                "timeout",
+                                10));
+        assertFalse(engine.execute(call, def).success());
+        var result = executeAuthorized(engine, call, def, root);
+        assertTrue(result.success(), result.content());
     }
 
     private static final @NonNull UUID TEST_USER = UUID.randomUUID();
@@ -160,10 +147,9 @@ class ToolEngineImplTest {
             security = "Test-only agent tool.",
             examples = {"{\"output\":\"{}\"}", "{\"output\":\"[]\"}", "{\"output\":\"42\"}"},
             returnExamples = {"{}", "[]", "42"})
-    private static class JsonAgentTool implements ResponseTool<JsonAgentArgs> {
-        @Override
-        public @NonNull ResponseCapability responseCapability() {
-            return new ResponseCapabilityImpl();
+    private static class JsonAgentTool implements AgentTool<JsonAgentArgs> {
+        public @NonNull ToolCapability getCapability() {
+            return ToolCapability.LOOP_CONTROL;
         }
 
         @Override
@@ -177,8 +163,7 @@ class ToolEngineImplTest {
         }
 
         @Override
-        public @NonNull String execute(
-                @NonNull JsonAgentArgs args, @NonNull ResponseCapability capability) {
+        public @NonNull String execute(@NonNull JsonAgentArgs args) {
             return args.output();
         }
     }
@@ -193,7 +178,7 @@ class ToolEngineImplTest {
     private static final class WrongBoundaryAgentTool extends JsonAgentTool {
         @Override
         public @NonNull ToolCapability getCapability() {
-            return ToolCapability.MEMORY_READ;
+            return ToolCapability.PLUGIN_LOCAL;
         }
     }
 
@@ -253,7 +238,7 @@ class ToolEngineImplTest {
                         tool.getName(),
                         tool.getClass(),
                         tool.getArgsClass(),
-                        ToolCapability.MEMORY_READ);
+                        ToolCapability.PLUGIN_LOCAL);
         var failure =
                 assertThrows(
                         ToolDocs.nonNullClass(IllegalArgumentException.class),
@@ -293,7 +278,6 @@ class ToolEngineImplTest {
                 "capability",
                 "agent",
                 "user",
-                "group",
                 "owner",
                 "session"
             })
@@ -312,20 +296,19 @@ class ToolEngineImplTest {
                                 "json_agent",
                                 tool.getClass(),
                                 ToolDocs.nonNullClass(JsonAgentArgs.class),
-                                ToolCapability.MEMORY_READ)
+                                ToolCapability.PLUGIN_LOCAL)
                         : definition;
         ToolExecutionPermit permit =
                 ToolExecutionPermit.capture(
                                 screened,
                                 screenedDefinition,
                                 Workspace.single(Path.of("."), PathMode.REAL))
-                        .withCaller("test-agent", TEST_USER, null, null, null);
+                        .withCaller("test-agent", TEST_USER, null, null);
         if (!mismatch.equals("context")) {
             ToolCallContextHolder.set(
                     new ToolCallContext(
                             mismatch.equals("agent") ? "other-agent" : "test-agent",
                             mismatch.equals("user") ? UUID.randomUUID() : TEST_USER,
-                            mismatch.equals("group") ? UUID.randomUUID() : null,
                             mismatch.equals("owner") ? "other-owner" : null,
                             mismatch.equals("session") ? UUID.randomUUID() : null,
                             ToolResultPresentationMode.BASIC,
@@ -405,11 +388,7 @@ class ToolEngineImplTest {
                 "{\"reason\":\"timeout\"}"
             },
             returnExamples = {"ok", "ok", "ok"})
-    private static final class FailingAgentTool implements ResponseTool<FailingAgentArgs> {
-        @Override
-        public @NonNull ResponseCapability responseCapability() {
-            return new ResponseCapabilityImpl();
-        }
+    private static final class FailingAgentTool implements AgentTool<FailingAgentArgs> {
 
         @Override
         public @NonNull ToolCapability getCapability() {
@@ -427,60 +406,35 @@ class ToolEngineImplTest {
         }
 
         @Override
-        public @NonNull String execute(
-                @NonNull FailingAgentArgs args, @NonNull ResponseCapability capability) {
+        public @NonNull String execute(@NonNull FailingAgentArgs args) {
             return ToolErrors.failure(ToolErrorCode.GENERIC.TOOL_FAILURE, args.reason());
         }
     }
 
     private @NonNull ToolEngineImpl newEngine() {
-        ObjectMapper mapper =
-                new ObjectMapper()
-                        .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
-        SandboxManager sandbox = new SandboxManager(TestSandboxFactory.uncontainedSubprocesses());
-        var processes =
-                new ProcessExecutionCapabilityImpl(sandbox, new BackgroundTaskManager(sandbox));
-        List<NativeTool<?>> tools =
-                List.of(
-                        new ViewFileTool(),
-                        new ListDirTool(),
-                        new WriteToFileTool(),
-                        new ReplaceFileContentTool(),
-                        new GrepSearchTool(),
-                        new RunCommandTool(processes));
-        // Minimal ApplicationContext mock that returns no AgentTool beans
-        ApplicationContext appCtx = mock(ToolDocs.nonNullClass(ApplicationContext.class));
-        when(appCtx.getBeansOfType(AgentTool.class)).thenReturn(Map.of());
-        ToolEngineImpl engine = new ToolEngineImpl(mapper, tools, appCtx);
-        engine.init();
-        return engine;
+        var fixture =
+                new ProcessHostFixture(
+                        TestSandboxFactory.uncontainedSubprocesses(),
+                        List.of(
+                                new ViewFileTool(),
+                                new ListDirTool(),
+                                new WriteToFileTool(),
+                                new ReplaceFileContentTool(),
+                                new GrepSearchTool()),
+                        false);
+        PROCESS_FIXTURES.put(fixture.engine, fixture);
+        return fixture.engine;
     }
 
     private @NonNull WindowsSandboxFixture newWindowsSandboxFixture() {
-        ObjectMapper mapper =
-                new ObjectMapper()
-                        .registerModule(new JavaTimeModule())
-                        .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
-        SandboxManager sandboxes = new SandboxManager(TestSandboxFactory.platformSandbox());
-        BackgroundTaskManager backgroundTasks = new BackgroundTaskManager(sandboxes);
-        var processes = new ProcessExecutionCapabilityImpl(sandboxes, backgroundTasks);
-        var tasks = new TaskControlCapabilityImpl(backgroundTasks);
-        List<NativeTool<?>> tools =
-                List.of(
-                        new RunCommandTool(processes),
-                        new RunTaskTool(processes),
-                        new ViewTaskTool(tasks),
-                        new StopTaskTool(tasks));
-        ApplicationContext appCtx = mock(ToolDocs.nonNullClass(ApplicationContext.class));
-        when(appCtx.getBeansOfType(AgentTool.class)).thenReturn(Map.of());
-        ToolEngineImpl engine = new ToolEngineImpl(mapper, tools, appCtx);
-        engine.init();
-        return new WindowsSandboxFixture(engine, backgroundTasks, mapper);
+        var fixture = new ProcessHostFixture(TestSandboxFactory.platformSandbox(), List.of(), true);
+        PROCESS_FIXTURES.put(fixture.engine, fixture);
+        return new WindowsSandboxFixture(fixture.engine, fixture, new ObjectMapper());
     }
 
     private record WindowsSandboxFixture(
             @NonNull ToolEngineImpl engine,
-            @NonNull BackgroundTaskManager backgroundTasks,
+            @NonNull ProcessHostFixture processes,
             @NonNull ObjectMapper mapper) {}
 
     private static @NonNull ToolDefinition definition(
@@ -495,6 +449,25 @@ class ToolEngineImplTest {
             @NonNull ToolCall call,
             @NonNull ToolDefinition definition,
             @NonNull Path workspaceRoot) {
+        var fixture = PROCESS_FIXTURES.get(engine);
+        if (fixture != null) {
+            var permit =
+                    fixture.permit(
+                            call, definition, Workspace.single(workspaceRoot, PathMode.REAL));
+            ToolCallContextHolder.set(
+                    new ToolCallContext(
+                            fixture.agent,
+                            fixture.user,
+                            fixture.owner,
+                            fixture.session,
+                            ToolResultPresentationMode.BASIC,
+                            permit));
+            try {
+                return engine.execute(call, definition);
+            } finally {
+                ToolCallContextHolder.clear();
+            }
+        }
         UUID sessionId = UUID.randomUUID();
         ToolExecutionPermit permit =
                 ToolExecutionPermit.capture(
@@ -503,14 +476,46 @@ class ToolEngineImplTest {
                 new ToolCallContext(
                         "test-agent",
                         TEST_USER,
-                        null,
                         "test-owner",
                         sessionId,
                         ToolResultPresentationMode.BASIC,
-                        permit.withCaller("test-agent", TEST_USER, null, "test-owner", sessionId)));
+                        permit.withCaller("test-agent", TEST_USER, "test-owner", sessionId)));
         try {
             ToolResult result = engine.execute(call, definition);
             return result;
+        } finally {
+            ToolCallContextHolder.clear();
+        }
+    }
+
+    /** Installs caller/session authority while deliberately leaving preparation unexecuted. */
+    private static @NonNull ToolResult executeWithCapturedPermit(
+            @NonNull ToolEngineImpl engine,
+            @NonNull ToolCall call,
+            @NonNull ToolDefinition definition,
+            @NonNull Path workspaceRoot) {
+        var fixture = PROCESS_FIXTURES.get(engine);
+        if (fixture == null) throw new AssertionError("missing process fixture");
+        var permit =
+                ToolExecutionPermit.capture(
+                                call,
+                                definition,
+                                Workspace.single(workspaceRoot, PathMode.REAL))
+                        .withCaller(
+                                fixture.agent,
+                                fixture.user,
+                                fixture.owner,
+                                fixture.session);
+        ToolCallContextHolder.set(
+                new ToolCallContext(
+                        fixture.agent,
+                        fixture.user,
+                        fixture.owner,
+                        fixture.session,
+                        ToolResultPresentationMode.BASIC,
+                        permit));
+        try {
+            return engine.execute(call, definition);
         } finally {
             ToolCallContextHolder.clear();
         }
@@ -532,9 +537,9 @@ class ToolEngineImplTest {
                         "view_file",
                         Map.of("absolutePath", tempDir.toString()),
                         "mismatched-definition");
-        ToolResult result =
-                executeAuthorized(engine, call, definition(engine, "list_dir"), tempDir);
-        assertFalse(result.success(), "a view_file call must not execute list_dir");
+        assertThrows(
+                ToolDocs.nonNullClass(SecurityException.class),
+                () -> executeAuthorized(engine, call, definition(engine, "list_dir"), tempDir));
     }
 
     @Test
@@ -557,9 +562,9 @@ class ToolEngineImplTest {
         ToolCall call =
                 new ToolCall(
                         "view_file", Map.of("absolutePath", file.toString()), "forged-definition");
-        ToolResult result = executeAuthorized(engine, call, forged, tempDir);
-        assertFalse(result.success(), "execution must use the actual registered definition");
-        assertFalse(result.content().contains("content that should not be read"));
+        assertThrows(
+                ToolDocs.nonNullClass(SecurityException.class),
+                () -> executeAuthorized(engine, call, forged, tempDir));
     }
 
     @Test
@@ -605,10 +610,7 @@ class ToolEngineImplTest {
         assertFalse(result.success());
         assertTrue(
                 result.content().contains("missing required parameter 'reason'"), result.content());
-        verify(tool, never())
-                .execute(
-                        any(ToolDocs.nonNullClass(FailingAgentArgs.class)),
-                        any(ToolDocs.nonNullClass(ResponseCapability.class)));
+        verify(tool, never()).execute(any(ToolDocs.nonNullClass(FailingAgentArgs.class)));
     }
 
     @Test
@@ -684,9 +686,8 @@ class ToolEngineImplTest {
                         TEST_USER,
                         null,
                         null,
-                        null,
                         ToolResultPresentationMode.BASIC,
-                        permit.withCaller("test-agent", TEST_USER, null, null, null)));
+                        permit.withCaller("test-agent", TEST_USER, null, null)));
         try {
             ToolResult result =
                     engine.execute(
@@ -790,7 +791,8 @@ class ToolEngineImplTest {
         ToolEngineImpl engine = newEngine();
 
         ToolResult result =
-                engine.execute(
+                executeWithCapturedPermit(
+                        engine,
                         new ToolCall(
                                 "run_command",
                                 Map.of(
@@ -799,7 +801,8 @@ class ToolEngineImplTest {
                                         "timeout",
                                         1),
                                 "cid-invalid-command"),
-                        definition(engine, "run_command"));
+                        definition(engine, "run_command"),
+                        tempDir);
 
         assertFalse(result.success());
         assertTrue(
@@ -1026,16 +1029,17 @@ class ToolEngineImplTest {
                                 30),
                         "cid-selected-root");
         ToolDefinition definition = definition(engine, "run_command");
-        ToolExecutionPermit permit = ToolExecutionPermit.capture(call, definition, workspace);
+        var fixture = PROCESS_FIXTURES.get(engine);
+        if (fixture == null) throw new AssertionError();
+        ToolExecutionPermit permit = fixture.permit(call, definition, workspace);
         ToolCallContextHolder.set(
                 new ToolCallContext(
-                        "test-agent",
-                        TEST_USER,
-                        null,
-                        null,
-                        null,
+                        fixture.agent,
+                        fixture.user,
+                        fixture.owner,
+                        fixture.session,
                         ToolResultPresentationMode.BASIC,
-                        permit.withCaller("test-agent", TEST_USER, null, null, null)));
+                        permit));
         try {
             ToolResult result = engine.execute(call, definition);
             assertTrue(result.success(), result.content());
@@ -1051,7 +1055,8 @@ class ToolEngineImplTest {
     void runCommandRejectsModelSuppliedWorkingDirectory(@TempDir @NonNull Path tempDir) {
         ToolEngineImpl engine = newEngine();
         ToolResult result =
-                engine.execute(
+                executeWithCapturedPermit(
+                        engine,
                         new ToolCall(
                                 "run_command",
                                 Map.of(
@@ -1067,7 +1072,8 @@ class ToolEngineImplTest {
                                         "timeout",
                                         30),
                                 "cid-model-cwd"),
-                        definition(engine, "run_command"));
+                        definition(engine, "run_command"),
+                        tempDir);
 
         assertFalse(result.success());
         assertTrue(result.content().contains("unknown parameter 'cwd'"), result.content());
@@ -1160,8 +1166,7 @@ class ToolEngineImplTest {
                     "already_exited",
                     fixture.mapper().readTree(stopped.content()).path("status").asText());
         } finally {
-            fixture.backgroundTasks().stopAll("test-agent");
-            fixture.backgroundTasks().shutdown();
+            fixture.processes().close();
         }
     }
 
@@ -1191,18 +1196,18 @@ class ToolEngineImplTest {
                                 "timeout",
                                 30),
                         "cid-screened-command");
+        var fixture = PROCESS_FIXTURES.get(engine);
+        if (fixture == null) throw new AssertionError("Missing process fixture");
         ToolExecutionPermit permit =
-                ToolExecutionPermit.capture(
-                        screened, definition, Workspace.single(tempDir, PathMode.REAL));
+                fixture.permit(screened, definition, Workspace.single(tempDir, PathMode.REAL));
         ToolCallContextHolder.set(
                 new ToolCallContext(
-                        "test-agent",
-                        TEST_USER,
-                        null,
-                        null,
-                        null,
+                        fixture.agent,
+                        fixture.user,
+                        fixture.owner,
+                        fixture.session,
                         ToolResultPresentationMode.BASIC,
-                        permit.withCaller("test-agent", TEST_USER, null, null, null)));
+                        permit));
         try {
             ToolCall changed =
                     new ToolCall(
@@ -1232,7 +1237,8 @@ class ToolEngineImplTest {
     void runCommandWithoutTimeoutIsRejected(@TempDir @NonNull Path tempDir) {
         ToolEngineImpl engine = newEngine();
         ToolResult result =
-                engine.execute(
+                executeWithCapturedPermit(
+                        engine,
                         new ToolCall(
                                 "run_command",
                                 Map.of(
@@ -1244,7 +1250,8 @@ class ToolEngineImplTest {
                                                         "args",
                                                         List.of("-version")))),
                                 "cid-no-timeout"),
-                        definition(engine, "run_command"));
+                        definition(engine, "run_command"),
+                        tempDir);
         assertFalse(result.success(), "run_command without an explicit timeout must fail");
         assertTrue(result.content().contains("timeout"), "error must name the missing timeout");
     }
