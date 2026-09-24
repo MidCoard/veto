@@ -4,16 +4,16 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.api.agent.capability.LoopControlCapability;
+import top.focess.veto.api.agent.capability.ResponseCapability;
+import top.focess.veto.api.agent.response.ResponseRequest;
 import top.focess.veto.api.agent.tool.*;
 import top.focess.veto.api.agent.tool.Doc;
-import top.focess.veto.api.agent.tool.LoopControlTool;
 import top.focess.veto.api.agent.tool.ResponseSubmission;
+import top.focess.veto.api.agent.tool.ResponseTool;
 import top.focess.veto.api.agent.tool.ToolDoc;
 import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.ToolInputSchema;
 import top.focess.veto.api.agent.tool.ToolResultFormat;
-import top.focess.veto.api.agent.workflow.ResponseRequest;
 
 @ResponseSubmission(ResponseSubmission.Kind.PLAN)
 @ToolDoc(
@@ -46,15 +46,15 @@ import top.focess.veto.api.agent.workflow.ResponseRequest;
             "{\"status\":\"accepted\"}",
             "Plan rejected before execution: duplicate action id: greet"
         })
-public final class SubmitPlanTool implements LoopControlTool<SubmitPlanTool.Args> {
-    private final LoopControlCapability capability;
+public final class SubmitPlanTool implements ResponseTool<SubmitPlanTool.Args> {
+    private final ResponseCapability capability;
     private static final @NonNull ObjectMapper MAPPER = new ObjectMapper();
 
     public SubmitPlanTool() {
         this.capability = null;
     }
 
-    public SubmitPlanTool(@NonNull LoopControlCapability capability) {
+    public SubmitPlanTool(@NonNull ResponseCapability capability) {
         this.capability = capability;
     }
 
@@ -69,14 +69,14 @@ public final class SubmitPlanTool implements LoopControlTool<SubmitPlanTool.Args
     }
 
     @Override
-    public @NonNull LoopControlCapability loopControlCapability() {
+    public @NonNull ResponseCapability responseCapability() {
         if (capability == null) throw new SecurityException("Host must supply loop control");
         if (capability == null) throw new SecurityException("Host must supply tool capability");
         return capability;
     }
 
     @Override
-    public @NonNull String execute(@NonNull Args args, @NonNull LoopControlCapability capability)
+    public @NonNull String execute(@NonNull Args args, @NonNull ResponseCapability capability)
             throws Exception {
         var actions = MAPPER.valueToTree(args.actions());
         try {
@@ -84,7 +84,7 @@ public final class SubmitPlanTool implements LoopControlTool<SubmitPlanTool.Args
             ProgramValidator.validate(program);
             ProgramValidator.validateInputs(program);
             capability.submitPlan(
-                    new ResponseRequest.Plan(actions, program, new GuidedProgram(MAPPER)));
+                    new ResponseRequest.Plan(actions, program, new PlanProgram(MAPPER)));
         } catch (IllegalArgumentException | ProgramValidator.InvalidProgramException error) {
             throw new ToolExecutionException(
                     ToolResultStatus.FAILURE,

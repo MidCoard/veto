@@ -11,9 +11,9 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-import top.focess.veto.agent.AgentRunner;
 import top.focess.veto.agent.AgentService;
 import top.focess.veto.agent.ProtectedInputException;
+import top.focess.veto.api.llm.LlmBinding;
 import top.focess.veto.controller.dto.*;
 import top.focess.veto.controller.dto.SubmitPromptRequest;
 import top.focess.veto.i18n.Msg;
@@ -82,8 +82,8 @@ public class PromptController {
                     .body(new ErrorResponse(Msg.get("error.session.notFoundForUser", name, user)));
         }
 
-        AgentRunner.LlmBinding binding =
-                new AgentRunner.LlmBinding(
+        LlmBinding binding =
+                new LlmBinding(
                         cfg.config().provider(),
                         cfg.config().model(),
                         cfg.config().credKey(),

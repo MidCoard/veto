@@ -7,7 +7,7 @@ import top.focess.veto.i18n.Msg;
 /**
  * The single-agent circuit breaker. One metric: <b>model calls between two {@code
  * UserPromptAction}s</b> (a model call = one {@code VetoResponse} in autonomous mode, one {@code
- * generate} action in guided mode; {@code tool}/{@code goto}/{@code conditional_goto}/{@code STOP}
+ * generate} action in plan mode; {@code tool}/{@code goto}/{@code conditional_goto}/{@code STOP}
  * are zero-call and don't increment). Per-episode, self-count only.
  *
  * <p>On a trip the agent transitions to {@code IDLE} (a trip is exactly an idle — not a distinct
@@ -44,7 +44,7 @@ public final class LoopBreaker {
         return maxCallsPerEpisode >= 0 && count >= maxCallsPerEpisode;
     }
 
-    /** Records one model call (autonomous {@code VetoResponse} or guided {@code generate}). */
+    /** Records one model call (autonomous {@code VetoResponse} or plan {@code generate}). */
     public void recordModelCall() {
         count++;
     }

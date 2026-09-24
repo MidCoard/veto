@@ -9,7 +9,7 @@ import top.focess.veto.api.llm.LlmProvider;
 import top.focess.veto.api.plugin.contribution.ContributionCatalog;
 import top.focess.veto.api.plugin.contribution.ContributionId;
 import top.focess.veto.api.plugin.contribution.ContributionPoint;
-import top.focess.veto.api.search.SearchProvider;
+import top.focess.veto.api.plugin.service.ServiceRegistration;
 
 /** Initial application contracts. The catalog itself knows none of these types. */
 public final class StandardContributionPoints {
@@ -22,11 +22,11 @@ public final class StandardContributionPoints {
                     ToolDocs.nonNullClass(LlmProvider.class),
                     ContributionPoint.Cardinality.MULTIPLE);
 
-    public static final @NonNull ContributionPoint<SearchProvider> SEARCH_PROVIDERS =
+    public static final @NonNull ContributionPoint<ServiceRegistration> SERVICES =
             new ContributionPoint<>(
-                    new ContributionId("veto:search-providers"),
+                    new ContributionId("veto:services"),
                     1,
-                    SearchProvider.class,
+                    ServiceRegistration.class,
                     ContributionPoint.Cardinality.MULTIPLE);
 
     public static final @NonNull ContributionPoint<WorkflowHook> WORKFLOW =
@@ -128,7 +128,7 @@ public final class StandardContributionPoints {
      */
     public static final @NonNull List<@NonNull ContributionPoint<?>> ALL =
             List.of(
-                    SEARCH_PROVIDERS,
+                    SERVICES,
                     LLM_PROVIDERS,
                     WORKFLOW,
                     FRONTEND,

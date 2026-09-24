@@ -8,10 +8,10 @@ import java.util.Optional;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
-import top.focess.veto.agent.AgentResult;
-import top.focess.veto.agent.AgentRunner;
 import top.focess.veto.agent.AgentService;
+import top.focess.veto.api.agent.AgentResult;
 import top.focess.veto.api.agent.tool.ToolDocs;
+import top.focess.veto.api.llm.LlmBinding;
 import top.focess.veto.api.llm.ProviderType;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.command.PromptHandler;
@@ -61,7 +61,7 @@ class PromptBindingTest {
             throw new AssertionError("Prompt submission must return an HTTP response");
         }
         assertEquals(202, response.getStatusCode().value());
-        var binding = ArgumentCaptor.forClass(ToolDocs.nonNullClass(AgentRunner.LlmBinding.class));
+        var binding = ArgumentCaptor.forClass(ToolDocs.nonNullClass(LlmBinding.class));
         verify(agents).submitNow(eq("session-id"), eq("Explain TCP"), binding.capture());
         assertEquals(model.llmOptions(), binding.getValue().options());
         assertEquals(model.model(), binding.getValue().model());
@@ -81,7 +81,7 @@ class PromptBindingTest {
                         anyString(), anyString(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(AgentResult.success("done", Map.of()));
         new PromptHandler(vault, agents, sessions).handle("Explain TCP", "terminal", sender);
-        var binding = ArgumentCaptor.forClass(ToolDocs.nonNullClass(AgentRunner.LlmBinding.class));
+        var binding = ArgumentCaptor.forClass(ToolDocs.nonNullClass(LlmBinding.class));
         verify(agents)
                 .submit(
                         eq("session-id"),

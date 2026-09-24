@@ -13,10 +13,10 @@ import top.focess.veto.api.llm.VetoRequest;
 import top.focess.veto.api.llm.VetoResponse;
 import top.focess.veto.api.llm.exceptions.LlmException;
 import top.focess.veto.api.llm.exceptions.ModelCapabilityException;
+import top.focess.veto.integration.plugins.PluginLlmProviders;
 import top.focess.veto.llm.egress.EgressEndpoint;
 import top.focess.veto.llm.egress.LlmEgress;
 import top.focess.veto.llm.provider.LLMProviderStrategy;
-import top.focess.veto.plugin.runtime.PluginLlmProviders;
 import top.focess.veto.util.Nullness;
 
 /**

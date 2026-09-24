@@ -10,8 +10,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 import top.focess.veto.agent.loop.PromptCompiler;
+import top.focess.veto.integration.plugins.PluginManager;
 import top.focess.veto.observability.AuditLogger;
-import top.focess.veto.plugin.runtime.PluginManager;
 
 /**
  * gateway Local SLM Veto Gateway - THE CORE OF PROJECT VETO.

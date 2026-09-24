@@ -13,6 +13,12 @@ import top.focess.veto.agent.drift.ReadHistory;
 import top.focess.veto.agent.identity.AgentPersona;
 import top.focess.veto.agent.intercept.VetoPrompt;
 import top.focess.veto.agent.tool.ToolDefinition;
+import top.focess.veto.api.agent.AgentAction;
+import top.focess.veto.api.agent.AgentResult;
+import top.focess.veto.api.agent.AgentState;
+import top.focess.veto.api.agent.ToolCallEvent;
+import top.focess.veto.api.agent.ToolResultEvent;
+import top.focess.veto.api.llm.LlmBinding;
 import top.focess.veto.monitor.MonitorService;
 
 /**
@@ -165,7 +171,7 @@ public class VetoAgent implements Agent {
     /**
      * Updates the model binding (provider/model/credential) — used when the user switches agent.
      */
-    public void bind(AgentRunner.@NonNull LlmBinding binding) {
+    public void bind(@NonNull LlmBinding binding) {
         runner.bind(binding);
     }
 
@@ -196,7 +202,7 @@ public class VetoAgent implements Agent {
 
     public void restoreLeader(
             @NonNull UUID groupId,
-            AgentRunner.@NonNull LlmBinding binding,
+            @NonNull LlmBinding binding,
             @NonNull Set<ToolDefinition> tools) {
         runner.restoreLeader(groupId, binding, tools);
     }
@@ -249,12 +255,12 @@ public class VetoAgent implements Agent {
      * thread when a TOOL_CALL turn is appended — i.e. just before the model receives the matching
      * tool result.
      */
-    public void addToolCallListener(@NonNull Consumer<AgentRunner.ToolCallEvent> listener) {
+    public void addToolCallListener(@NonNull Consumer<ToolCallEvent> listener) {
         runner.addToolCallListener(listener);
     }
 
     /** Unsubscribes a tool-call listener. */
-    public void removeToolCallListener(@NonNull Consumer<AgentRunner.ToolCallEvent> listener) {
+    public void removeToolCallListener(@NonNull Consumer<ToolCallEvent> listener) {
         runner.removeToolCallListener(listener);
     }
 
@@ -263,12 +269,12 @@ public class VetoAgent implements Agent {
      * transport cares about streaming the observation the model received. The listener fires on the
      * agent's virtual thread when a TOOL_RESPONSE turn is appended.
      */
-    public void addToolResultListener(@NonNull Consumer<AgentRunner.ToolResultEvent> listener) {
+    public void addToolResultListener(@NonNull Consumer<ToolResultEvent> listener) {
         runner.addToolResultListener(listener);
     }
 
     /** Unsubscribes a tool-result listener. */
-    public void removeToolResultListener(@NonNull Consumer<AgentRunner.ToolResultEvent> listener) {
+    public void removeToolResultListener(@NonNull Consumer<ToolResultEvent> listener) {
         runner.removeToolResultListener(listener);
     }
 

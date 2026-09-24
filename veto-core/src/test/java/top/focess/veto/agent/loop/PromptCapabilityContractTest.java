@@ -27,8 +27,8 @@ import top.focess.veto.api.agent.tool.ToolDocumentation;
 import top.focess.veto.api.llm.ToolDefinition;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.api.skills.Skill;
-import top.focess.veto.builtin.planning.AnswerWithCitationsTool;
 import top.focess.veto.builtin.planning.SubmitPlanTool;
+import top.focess.veto.builtin.response.AnswerWithCitationsTool;
 import top.focess.veto.builtin.tools.AskUserTool;
 
 class PromptCapabilityContractTest {

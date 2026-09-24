@@ -12,7 +12,6 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
-import org.springframework.test.util.ReflectionTestUtils;
 import top.focess.veto.agent.drift.ReadHistory;
 import top.focess.veto.agent.identity.AgentPersona;
 import top.focess.veto.agent.intercept.Gateway;
@@ -23,6 +22,7 @@ import top.focess.veto.agent.loop.PromptCompiler;
 import top.focess.veto.agent.loop.PromptLibrary;
 import top.focess.veto.agent.tool.ToolEngine;
 import top.focess.veto.api.agent.tool.ToolDocs;
+import top.focess.veto.api.llm.LlmBinding;
 import top.focess.veto.api.llm.LlmOptions;
 import top.focess.veto.api.llm.ProviderType;
 import top.focess.veto.api.llm.VetoResponse;
@@ -78,12 +78,12 @@ class CompactionRuntimeTest {
                             }
                         });
         Object summary =
-                ReflectionTestUtils.invokeMethod(
-                        runner,
-                        "computeCompactionSummary",
-                        List.of(
-                                TurnRecord.userPrompt(2, "a".repeat(29_000)),
-                                TurnRecord.userPrompt(3, "b".repeat(29_000))));
+                AgentRuntimeTestAccess.state(runner)
+                        .lifecycle()
+                        .computeCompactionSummary(
+                                List.of(
+                                        TurnRecord.userPrompt(2, "a".repeat(29_000)),
+                                        TurnRecord.userPrompt(3, "b".repeat(29_000))));
         assertTrue(summary instanceof String text && text.contains("Recorded user material"));
         assertEquals(3, calls.get(), "Two bounded record chunks followed by one bounded merge");
     }
@@ -115,7 +115,7 @@ class CompactionRuntimeTest {
                                 Map.of("call_id", "read-3", "content", "A quoted permission"),
                                 null));
         runner.seedHistory(original);
-        ReflectionTestUtils.invokeMethod(runner, "processCompaction");
+        AgentRuntimeTestAccess.state(runner).lifecycle().processCompaction();
         assertEquals(1, calls.get());
         assertEquals(original, runner.history().subList(0, original.size()));
         assertTrue(runner.history().stream().noneMatch(turn -> turn.type() == TurnType.REWIND));
@@ -143,8 +143,7 @@ class CompactionRuntimeTest {
                 caller,
                 new ObjectMapper(),
                 50,
-                new AgentRunner.LlmBinding(
-                        ProviderType.ANTHROPIC, "test", "test", LlmOptions.defaults(), ""),
+                new LlmBinding(ProviderType.ANTHROPIC, "test", "test", LlmOptions.defaults(), ""),
                 null,
                 UUID.randomUUID(),
                 null,
@@ -175,7 +174,7 @@ class CompactionRuntimeTest {
                         TurnRecord.userPrompt(2, "a".repeat(40_000)),
                         TurnRecord.userPrompt(3, "b".repeat(40_000)));
         runner.seedHistory(original);
-        ReflectionTestUtils.invokeMethod(runner, "processCompaction");
+        AgentRuntimeTestAccess.state(runner).lifecycle().processCompaction();
         assertEquals(2, calls.get(), "Do not merge a failed chunk away");
         assertEquals(original, runner.history().subList(0, original.size()));
         assertTrue(runner.history().stream().noneMatch(turn -> turn.type() == TurnType.REWIND));
@@ -206,7 +205,7 @@ class CompactionRuntimeTest {
                                 1, TurnType.AGENT_INIT, Map.of("system_prompt", "Fixture"), null),
                         TurnRecord.userPrompt(2, "a".repeat(60_000)));
         runner.seedHistory(original);
-        ReflectionTestUtils.invokeMethod(runner, "processCompaction");
+        AgentRuntimeTestAccess.state(runner).lifecycle().processCompaction();
         assertEquals(0, calls.get());
         assertEquals(original, runner.history().subList(0, original.size()));
         assertTrue(runner.history().stream().noneMatch(turn -> turn.type() == TurnType.REWIND));

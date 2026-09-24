@@ -191,7 +191,7 @@ final class GeminiLlmClient extends LlmClient {
                     call.id().ifPresent(response::id);
                     parts.add(Part.builder().functionResponse(response.build()).build());
                 } else {
-                    // Legacy, JSON and guided calls have no signed native part. Keep them as text;
+                    // Legacy, JSON and plan calls have no signed native part. Keep them as text;
                     // do not synthesize a signature or a functionCall that Gemini 3 would reject.
                     parts.add(Part.fromText(renderHistoryMessage(message)));
                 }

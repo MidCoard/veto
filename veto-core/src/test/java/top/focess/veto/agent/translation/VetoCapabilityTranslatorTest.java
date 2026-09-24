@@ -16,8 +16,8 @@ import top.focess.veto.api.agent.tool.ParamCategory;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.llm.ToolDefinition;
-import top.focess.veto.builtin.planning.AnswerWithCitationsTool;
 import top.focess.veto.builtin.planning.SubmitPlanTool;
+import top.focess.veto.builtin.response.AnswerWithCitationsTool;
 import top.focess.veto.builtin.tools.LoadSkillTool;
 import top.focess.veto.builtin.workspace.ViewFileTool;
 
@@ -193,7 +193,7 @@ class VetoCapabilityTranslatorTest {
                 return variant;
             }
         }
-        fail("missing guided action variant for " + toolName);
+        fail("missing plan action variant for " + toolName);
         throw new AssertionError("unreachable");
     }
 }

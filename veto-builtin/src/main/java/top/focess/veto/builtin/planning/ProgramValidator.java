@@ -22,8 +22,8 @@ import top.focess.veto.api.agent.workflow.StopAction;
 import top.focess.veto.api.agent.workflow.ToolAction;
 
 /**
- * Validates an {@link ActionsProgram} before guided mode loads it. A program that fails validation
- * is rejected and the agent stays autonomous.
+ * Validates an {@link ActionsProgram} before plan mode loads it. A program that fails validation is
+ * rejected and the agent stays autonomous.
  *
  * <ul>
  *   <li><b>(A) Static lint</b> — the final element must be {@link StopAction}.

@@ -81,7 +81,7 @@ class VetoResponseDeserializationTest {
     void rejectsLegacyFeatureSwitchAndIncompleteGuideAtDeserialization() {
         for (String json :
                 List.of(
-                        "{\"features\":{\"guided\":true}}",
+                        "{\"features\":{\"plan\":true}}",
                         "{\"actions\":[]}",
                         "{\"guide\":true}",
                         "{\"guide\":{}}")) {

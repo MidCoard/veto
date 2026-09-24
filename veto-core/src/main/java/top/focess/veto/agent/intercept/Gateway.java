@@ -34,7 +34,7 @@ import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.agent.tool.ToolSchemaReferences;
 import top.focess.veto.api.agent.workflow.ActionsProgram;
-import top.focess.veto.api.agent.workflow.GuidedStepContext;
+import top.focess.veto.api.agent.workflow.PlanStepContext;
 import top.focess.veto.api.agent.workflow.Scope;
 import top.focess.veto.api.agent.workflow.ToolAction;
 import top.focess.veto.api.llm.ToolCall;
@@ -134,11 +134,11 @@ public class Gateway {
             String activeTask,
             String thought,
             String executionContext,
-            GuidedStepContext guidedStep) {
-        if (guidedStep != null) {
+            PlanStepContext planStep) {
+        if (planStep != null) {
             var context = new LinkedHashMap<String, Object>();
             if (executionContext != null) context.put("execution", executionContext);
-            context.put("guidedStep", guidedStep);
+            context.put("planStep", planStep);
             executionContext = new ObjectMapper().valueToTree(context).toString();
         }
         if (def instanceof AgentToolDefinition) {

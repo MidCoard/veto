@@ -96,7 +96,7 @@ public class Scope {
             if (text.startsWith("$")) {
                 Object value = get(text);
                 if (value == UNDEFINED)
-                    throw new IllegalArgumentException("Unbound guided input: " + text);
+                    throw new IllegalArgumentException("Unbound plan input: " + text);
                 return value;
             }
         }
@@ -117,7 +117,7 @@ public class Scope {
             else {
                 Object value = get(token);
                 if (value == UNDEFINED)
-                    throw new IllegalArgumentException("Unbound guided input: " + token);
+                    throw new IllegalArgumentException("Unbound plan input: " + token);
                 replacement = stringify(value);
             }
             matcher.appendReplacement(result, Matcher.quoteReplacement(replacement));
@@ -143,8 +143,10 @@ public class Scope {
                     switch (field) {
                         case "success" -> result.success();
                         case "status" -> result.status().id();
-                        case "errorCode" ->
-                                result.errorCode() == null ? null : result.errorCode().name();
+                        case "errorCode" -> {
+                            var errorCode = result.errorCode();
+                            yield errorCode == null ? null : errorCode.name();
+                        }
                         default ->
                                 !result.success() && !"content".equals(field)
                                         ? UNDEFINED
@@ -191,7 +193,7 @@ public class Scope {
                     "Result is not JSON; bind content instead of " + field);
         JsonNode at = node.get(field);
         if (at == null) {
-            throw new IllegalArgumentException("Missing guided result field: " + field);
+            throw new IllegalArgumentException("Missing plan result field: " + field);
         }
         if (at.isNumber()) {
             return at.numberValue();

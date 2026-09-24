@@ -20,7 +20,6 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 import top.focess.veto.agent.AgentRunner;
-import top.focess.veto.agent.AgentState;
 import top.focess.veto.agent.SessionAgentRegistry;
 import top.focess.veto.agent.VetoAgent;
 import top.focess.veto.agent.intercept.IngressDefense;
@@ -30,6 +29,7 @@ import top.focess.veto.agent.tool.ToolCallContext;
 import top.focess.veto.agent.tool.ToolCallContextHolder;
 import top.focess.veto.agent.translation.DefaultCapabilityTranslator;
 import top.focess.veto.agent.web.WebFetchExecutor;
+import top.focess.veto.api.agent.AgentState;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.llm.ProviderType;
@@ -95,7 +95,7 @@ class WebReadChildAuthorityTest {
                                                                                                         .getName())
                                                                                 && frame.getMethodName()
                                                                                         .equals(
-                                                                                                "callModel")));
+                                                                                                "run")));
                         assertTrue(throughAgentRunner);
                         return switch (modelCalls.getAndIncrement()) {
                             case 0 -> call("fetch_page", Map.of());

@@ -25,6 +25,8 @@ import top.focess.veto.api.llm.ProviderType;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
 import top.focess.veto.api.plugin.contract.TextProtection;
+import top.focess.veto.integration.plugins.PluginLifecycleEvents;
+import top.focess.veto.integration.plugins.PluginTestSupport;
 import top.focess.veto.model.AgentEntity;
 import top.focess.veto.model.AgentInstanceRepository;
 import top.focess.veto.model.AgentPatternEntity;
@@ -33,8 +35,6 @@ import top.focess.veto.model.SessionEntity;
 import top.focess.veto.model.SessionRepository;
 import top.focess.veto.model.tier.ModelBinding;
 import top.focess.veto.model.tier.ModelTierRegistry;
-import top.focess.veto.plugin.runtime.PluginLifecycleEvents;
-import top.focess.veto.plugin.runtime.PluginTestSupport;
 
 class SessionServiceTest {
     @Test

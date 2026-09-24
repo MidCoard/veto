@@ -16,6 +16,8 @@ import top.focess.veto.agent.intercept.HitlRegistry;
 import top.focess.veto.agent.intercept.IngressDefense;
 import top.focess.veto.agent.loop.PromptCompiler;
 import top.focess.veto.agent.translation.DefaultCapabilityTranslator;
+import top.focess.veto.api.agent.AgentResult;
+import top.focess.veto.api.llm.LlmBinding;
 import top.focess.veto.api.llm.LlmOptions;
 import top.focess.veto.api.llm.ProviderType;
 import top.focess.veto.api.llm.VetoResponse;
@@ -67,8 +69,8 @@ class DeltaBrokerWiringTest {
                         new SandboxManager(TestSandboxFactory.uncontainedSubprocesses())));
     }
 
-    private static AgentRunner.@NonNull LlmBinding binding(@NonNull String systemPrompt) {
-        return new AgentRunner.LlmBinding(
+    private static @NonNull LlmBinding binding(@NonNull String systemPrompt) {
+        return new LlmBinding(
                 ProviderType.DEEPSEEK,
                 "stub-model",
                 "stub-key",

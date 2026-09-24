@@ -25,8 +25,8 @@ import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.context.ApplicationContext;
-import top.focess.veto.agent.capability.LoopControlCapabilityImpl;
 import top.focess.veto.agent.capability.ProcessExecutionCapabilityImpl;
+import top.focess.veto.agent.capability.ResponseCapabilityImpl;
 import top.focess.veto.agent.capability.TaskControlCapabilityImpl;
 import top.focess.veto.agent.intercept.ToolExecutionPermit;
 import top.focess.veto.agent.mcp.transport.McpTransport;
@@ -34,11 +34,11 @@ import top.focess.veto.agent.workspace.PathMode;
 import top.focess.veto.agent.workspace.TrustMarker;
 import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.agent.workspace.WorkspaceRoot;
-import top.focess.veto.api.agent.capability.LoopControlCapability;
 import top.focess.veto.api.agent.capability.ProcessExecutionCapability;
+import top.focess.veto.api.agent.capability.ResponseCapability;
 import top.focess.veto.api.agent.tool.AgentTool;
-import top.focess.veto.api.agent.tool.LoopControlTool;
 import top.focess.veto.api.agent.tool.NativeTool;
+import top.focess.veto.api.agent.tool.ResponseTool;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.agent.tool.ToolDoc;
 import top.focess.veto.api.agent.tool.ToolDocs;
@@ -60,8 +60,8 @@ import top.focess.veto.builtin.workspace.ListDirTool;
 import top.focess.veto.builtin.workspace.ReplaceFileContentTool;
 import top.focess.veto.builtin.workspace.ViewFileTool;
 import top.focess.veto.builtin.workspace.WriteToFileTool;
-import top.focess.veto.plugin.runtime.PluginManager;
-import top.focess.veto.plugin.runtime.WorkflowPluginFixture;
+import top.focess.veto.integration.plugins.PluginManager;
+import top.focess.veto.integration.plugins.WorkflowPluginFixture;
 import top.focess.veto.sandbox.BackgroundTaskManager;
 import top.focess.veto.sandbox.SandboxManager;
 import top.focess.veto.sandbox.TestSandboxFactory;
@@ -160,10 +160,10 @@ class ToolEngineImplTest {
             security = "Test-only agent tool.",
             examples = {"{\"output\":\"{}\"}", "{\"output\":\"[]\"}", "{\"output\":\"42\"}"},
             returnExamples = {"{}", "[]", "42"})
-    private static class JsonAgentTool implements LoopControlTool<JsonAgentArgs> {
+    private static class JsonAgentTool implements ResponseTool<JsonAgentArgs> {
         @Override
-        public @NonNull LoopControlCapability loopControlCapability() {
-            return new LoopControlCapabilityImpl();
+        public @NonNull ResponseCapability responseCapability() {
+            return new ResponseCapabilityImpl();
         }
 
         @Override
@@ -178,7 +178,7 @@ class ToolEngineImplTest {
 
         @Override
         public @NonNull String execute(
-                @NonNull JsonAgentArgs args, @NonNull LoopControlCapability capability) {
+                @NonNull JsonAgentArgs args, @NonNull ResponseCapability capability) {
             return args.output();
         }
     }
@@ -405,10 +405,10 @@ class ToolEngineImplTest {
                 "{\"reason\":\"timeout\"}"
             },
             returnExamples = {"ok", "ok", "ok"})
-    private static final class FailingAgentTool implements LoopControlTool<FailingAgentArgs> {
+    private static final class FailingAgentTool implements ResponseTool<FailingAgentArgs> {
         @Override
-        public @NonNull LoopControlCapability loopControlCapability() {
-            return new LoopControlCapabilityImpl();
+        public @NonNull ResponseCapability responseCapability() {
+            return new ResponseCapabilityImpl();
         }
 
         @Override
@@ -428,7 +428,7 @@ class ToolEngineImplTest {
 
         @Override
         public @NonNull String execute(
-                @NonNull FailingAgentArgs args, @NonNull LoopControlCapability capability) {
+                @NonNull FailingAgentArgs args, @NonNull ResponseCapability capability) {
             return ToolErrors.failure(ToolErrorCode.GENERIC.TOOL_FAILURE, args.reason());
         }
     }
@@ -608,7 +608,7 @@ class ToolEngineImplTest {
         verify(tool, never())
                 .execute(
                         any(ToolDocs.nonNullClass(FailingAgentArgs.class)),
-                        any(ToolDocs.nonNullClass(LoopControlCapability.class)));
+                        any(ToolDocs.nonNullClass(ResponseCapability.class)));
     }
 
     @Test

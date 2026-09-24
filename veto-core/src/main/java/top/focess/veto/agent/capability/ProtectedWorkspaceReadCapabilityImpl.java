@@ -12,7 +12,7 @@ import top.focess.veto.api.agent.capability.WorkspaceReadCapability;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
 import top.focess.veto.api.plugin.contract.TextProtection;
-import top.focess.veto.plugin.runtime.SessionPlugins;
+import top.focess.veto.integration.plugins.SessionPlugins;
 
 /** File capture bound to the screened native file read and its owned session. */
 @Component

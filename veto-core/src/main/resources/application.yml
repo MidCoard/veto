@@ -20,7 +20,7 @@ spring:
     show-sql: false
 
 veto:
-  guided:
+  plan:
     max-steps: 1000
 
   bus:

@@ -1,7 +1,6 @@
 package top.focess.veto.agent.tool;
 
 import com.fasterxml.jackson.core.JsonParser;
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -19,22 +18,20 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.ApplicationContext;
 import org.springframework.stereotype.Service;
 import top.focess.veto.agent.capability.CapabilityResolver;
-import top.focess.veto.agent.capability.LoopControlCapabilityImpl;
 import top.focess.veto.agent.capability.ProtectedWorkspaceReadCapabilityImpl;
 import top.focess.veto.agent.capability.RemoteCallCapability;
 import top.focess.veto.agent.capability.RemoteCallCapabilityImpl;
+import top.focess.veto.agent.capability.ResponseCapabilityImpl;
 import top.focess.veto.agent.mcp.transport.McpJsonRpcClient;
 import top.focess.veto.agent.mcp.transport.McpTransport;
 import top.focess.veto.api.agent.capability.Capability;
-import top.focess.veto.api.agent.capability.DelegationCapability;
 import top.focess.veto.api.agent.capability.WorkspaceReadCapability;
 import top.focess.veto.api.agent.capability.WorkspaceWriteCapability;
 import top.focess.veto.api.agent.tool.AgentTool;
 import top.focess.veto.api.agent.tool.CapabilityTool;
-import top.focess.veto.api.agent.tool.DelegationTool;
 import top.focess.veto.api.agent.tool.HostCapabilityTool;
-import top.focess.veto.api.agent.tool.LoopControlTool;
 import top.focess.veto.api.agent.tool.NativeTool;
+import top.focess.veto.api.agent.tool.ResponseTool;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.ToolErrorCode;
@@ -51,12 +48,12 @@ import top.focess.veto.api.plugin.contract.Cancellation;
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
 import top.focess.veto.api.plugin.contract.Tool;
+import top.focess.veto.integration.plugins.PluginManager;
+import top.focess.veto.integration.plugins.SessionPlugins;
 import top.focess.veto.llm.config.LlmJacksonConfig;
 import top.focess.veto.plugin.runtime.ManagedPlanExecution;
 import top.focess.veto.plugin.runtime.PluginJson;
-import top.focess.veto.plugin.runtime.PluginManager;
 import top.focess.veto.plugin.runtime.PluginSchema;
-import top.focess.veto.plugin.runtime.SessionPlugins;
 import top.focess.veto.sandbox.SandboxSubstrate;
 import top.focess.veto.util.Nullness;
 
@@ -381,9 +378,7 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
             throws Exception {
         if (injectHost && tool instanceof HostCapabilityTool<?, ?> hosted)
             return executeHosted(hosted, jsonArgs);
-        if (tool instanceof LoopControlTool<?> loop) return executeLoopControl(loop, jsonArgs);
-        if (tool instanceof DelegationTool<?> delegation)
-            return executeDelegation(delegation, jsonArgs);
+        if (tool instanceof ResponseTool<?> loop) return executeResponse(loop, jsonArgs);
         if (tool instanceof WorkspaceReadTool<?> read) return executeWorkspaceRead(read, jsonArgs);
         if (tool instanceof WorkspaceWriteTool<?> write)
             return executeWorkspaceWrite(write, jsonArgs);
@@ -400,23 +395,11 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
                 Nullness.requireNonNull(context.getBean(tool.capabilityType())));
     }
 
-    private <T> @NonNull String executeLoopControl(
-            @NonNull LoopControlTool<T> tool, @NonNull JsonNode jsonArgs) throws Exception {
+    private <T> @NonNull String executeResponse(
+            @NonNull ResponseTool<T> tool, @NonNull JsonNode jsonArgs) throws Exception {
         return tool.execute(
                 Nullness.requireNonNull(mapper.treeToValue(jsonArgs, tool.getArgsClass())),
-                new LoopControlCapabilityImpl());
-    }
-
-    private <T> @NonNull String executeDelegation(
-            @NonNull DelegationTool<T> tool, @NonNull JsonNode jsonArgs) {
-        if (applicationContext == null) throw new SecurityException("Host delegation unavailable");
-        try {
-            return tool.execute(
-                    Nullness.requireNonNull(mapper.treeToValue(jsonArgs, tool.getArgsClass())),
-                    applicationContext.getBean(ToolDocs.nonNullClass(DelegationCapability.class)));
-        } catch (JsonProcessingException failure) {
-            throw new IllegalArgumentException("Invalid delegation arguments", failure);
-        }
+                new ResponseCapabilityImpl());
     }
 
     private <T> @NonNull String executeWorkspaceRead(

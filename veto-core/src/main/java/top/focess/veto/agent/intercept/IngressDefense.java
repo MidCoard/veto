@@ -25,7 +25,7 @@ import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.ToolResult;
 import top.focess.veto.api.llm.ToolCall;
-import top.focess.veto.plugin.runtime.PluginManager;
+import top.focess.veto.integration.plugins.PluginManager;
 import top.focess.veto.util.Nullness;
 
 /**

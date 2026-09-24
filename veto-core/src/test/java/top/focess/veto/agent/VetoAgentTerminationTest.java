@@ -12,6 +12,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import top.focess.veto.agent.identity.AgentPersona;
 import top.focess.veto.agent.identity.Role;
+import top.focess.veto.api.agent.AgentState;
 import top.focess.veto.api.agent.tool.ToolDocs;
 
 @Timeout(10)

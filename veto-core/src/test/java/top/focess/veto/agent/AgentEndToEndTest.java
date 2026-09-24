@@ -32,19 +32,22 @@ import top.focess.veto.agent.tool.ToolEngine;
 import top.focess.veto.agent.translation.DefaultCapabilityTranslator;
 import top.focess.veto.agent.workspace.PathMode;
 import top.focess.veto.agent.workspace.Workspace;
+import top.focess.veto.api.agent.AgentResult;
+import top.focess.veto.api.agent.AgentState;
+import top.focess.veto.api.agent.response.ResponseRequest;
 import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.ToolErrorCode;
 import top.focess.veto.api.agent.tool.ToolResult;
-import top.focess.veto.api.agent.workflow.ResponseRequest;
+import top.focess.veto.api.llm.LlmBinding;
 import top.focess.veto.api.llm.LlmOptions;
 import top.focess.veto.api.llm.ProviderType;
 import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.api.llm.VetoResponse;
 import top.focess.veto.builtin.planning.ActionsProgramParser;
-import top.focess.veto.builtin.planning.GuidedProgram;
+import top.focess.veto.builtin.planning.PlanProgram;
 import top.focess.veto.builtin.planning.ProgramValidator;
 import top.focess.veto.llm.core.UniformLLMCaller;
 import top.focess.veto.sandbox.BackgroundTaskManager;
@@ -94,8 +97,8 @@ class AgentEndToEndTest {
                         new SandboxManager(TestSandboxFactory.uncontainedSubprocesses())));
     }
 
-    private static AgentRunner.@NonNull LlmBinding binding(@NonNull String systemPrompt) {
-        return new AgentRunner.LlmBinding(
+    private static @NonNull LlmBinding binding(@NonNull String systemPrompt) {
+        return new LlmBinding(
                 ProviderType.DEEPSEEK,
                 "stub-model",
                 "stub-key",
@@ -328,8 +331,8 @@ class AgentEndToEndTest {
     @Test
     void createGroupTransformsStandaloneIntoLeader() throws Exception {
         // The Leader binding the transform adopts - distinct model so the swap is observable.
-        AgentRunner.LlmBinding leaderBinding =
-                new AgentRunner.LlmBinding(
+        LlmBinding leaderBinding =
+                new LlmBinding(
                         ProviderType.DEEPSEEK,
                         "leader-model",
                         "leader-key",
@@ -364,7 +367,7 @@ class AgentEndToEndTest {
         AgentPersona persona =
                 assertInstanceOf(
                         ToolDocs.nonNullClass(AgentPersona.class),
-                        requireField(ReflectionTestUtils.getField(runner, "persona")));
+                        requireField(runner.personaView()));
         assertEquals(Role.LEADER, persona.role(), "persona role advanced to LEADER");
         assertEquals(Role.LEADER, agent.persona().role());
         assertEquals(runner.whitelistedToolsView(), agent.whitelistedTools());
@@ -412,8 +415,8 @@ class AgentEndToEndTest {
 
     @Test
     void disbandGroupReversesTransformBackToStandalone() throws Exception {
-        AgentRunner.LlmBinding leaderBinding =
-                new AgentRunner.LlmBinding(
+        LlmBinding leaderBinding =
+                new LlmBinding(
                         ProviderType.DEEPSEEK,
                         "leader-model",
                         "leader-key",
@@ -454,7 +457,7 @@ class AgentEndToEndTest {
         AgentPersona persona =
                 assertInstanceOf(
                         ToolDocs.nonNullClass(AgentPersona.class),
-                        requireField(ReflectionTestUtils.getField(runner, "persona")));
+                        requireField(runner.personaView()));
         assertEquals(Role.STANDALONE, persona.role(), "persona role restored to STANDALONE");
         assertEquals(Role.STANDALONE, agent.persona().role());
         assertEquals(runner.whitelistedToolsView(), agent.whitelistedTools());
@@ -536,19 +539,19 @@ class AgentEndToEndTest {
                     assertInstanceOf(
                             ToolDocs.nonNullClass(AgentRunner.class),
                             requireField(ReflectionTestUtils.getField(mate, "runner")));
-            assertEquals(sessionId, ReflectionTestUtils.getField(runner, "sessionId"));
+            assertEquals(sessionId, runner.sessionId());
             assertNotEquals(persona.id(), sessionId.toString());
             mate.submit("Execute assigned work");
             assertTrue(mate.await(EPISODE_TIMEOUT).success());
             assertFalse(mate.history().isEmpty());
-            assertEquals(sessionId, ReflectionTestUtils.getField(runner, "sessionId"));
+            assertEquals(sessionId, runner.sessionId());
         } finally {
             service.remove(sessionId.toString());
         }
     }
 
     @Test
-    void guidedTransformsContinueTheLoopAndDiscardTheOldProgram() throws Exception {
+    void planTransformsContinueTheLoopAndDiscardTheOldProgram() throws Exception {
         var leaderBinding = binding("leader base");
         var engine =
                 new TransformToolEngine(
@@ -593,7 +596,7 @@ class AgentEndToEndTest {
                                 reverse,
                                 thoughtOn("Finished", "Both transformations completed.")));
         service.getOrCreateAgent(
-                "guided-transform",
+                "plan-transform",
                 null,
                 binding("standalone base"),
                 List.of(),
@@ -604,13 +607,13 @@ class AgentEndToEndTest {
                 ToolResultPresentationMode.BASIC);
         var result =
                 service.submit(
-                        "guided-transform",
+                        "plan-transform",
                         "Ship the feature",
                         binding("standalone base"),
                         EPISODE_TIMEOUT);
         assertTrue(result.success(), result.message());
         assertEquals("Both transformations completed.", result.message());
-        var agent = requireAgent(service.agent("guided-transform"));
+        var agent = requireAgent(service.agent("plan-transform"));
         assertEquals(List.of("create_group", "disband_group"), engine.executed);
         assertEquals(2, agent.history().stream().filter(t -> t.type() == TurnType.REWIND).count());
         assertReturnsToIdle(agent);
@@ -708,7 +711,7 @@ class AgentEndToEndTest {
         static @NonNull AgentToolDefinition planDefinition() {
             var tool =
                     new top.focess.veto.builtin.planning.SubmitPlanTool(
-                            new top.focess.veto.agent.capability.LoopControlCapabilityImpl());
+                            new top.focess.veto.agent.capability.ResponseCapabilityImpl());
             return AgentToolDefinition.from(
                     tool.getName(),
                     ToolDocs.nonNullClass(top.focess.veto.builtin.planning.SubmitPlanTool.class),
@@ -716,15 +719,14 @@ class AgentEndToEndTest {
                     tool.getCapability());
         }
 
-        private final AgentRunner.@NonNull LlmBinding leaderBinding;
+        private final @NonNull LlmBinding leaderBinding;
         private final @NonNull Set<ToolDefinition> leaderTools;
         private final @NonNull UUID groupId = UUID.randomUUID();
         private ToolCallContextHolder.TransformDirective lastDirective;
         private final List<String> executed = new ArrayList<>();
 
         TransformToolEngine(
-                AgentRunner.@NonNull LlmBinding leaderBinding,
-                @NonNull Set<ToolDefinition> leaderTools) {
+                @NonNull LlmBinding leaderBinding, @NonNull Set<ToolDefinition> leaderTools) {
             this.leaderBinding = leaderBinding;
             this.leaderTools = leaderTools;
         }
@@ -765,7 +767,7 @@ class AgentEndToEndTest {
                     ProgramValidator.validate(parsed);
                     ProgramValidator.validateInputs(parsed);
                     ToolCallContextHolder.requestResponse(
-                            new ResponseRequest.Plan(raw, parsed, new GuidedProgram(mapper)));
+                            new ResponseRequest.Plan(raw, parsed, new PlanProgram(mapper)));
                     return ToolResult.success(call.toolName(), call.callId(), "accepted");
                 } catch (Exception e) {
                     return ToolResult.failure(

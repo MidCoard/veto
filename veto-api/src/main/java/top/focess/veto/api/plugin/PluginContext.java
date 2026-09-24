@@ -4,6 +4,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.function.Supplier;
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.api.agent.tool.ToolDocs;
+import top.focess.veto.api.plugin.service.PluginServices;
 
 /**
  * Host metadata, a live read-only lifecycle view, a failure signal, and host-granted services. Host
@@ -66,6 +68,11 @@ public record PluginContext(
     /** Looks up a host-granted service. Absent services stay absent; the plugin must degrade. */
     public <T> @NonNull Optional<T> service(@NonNull Class<T> type) {
         return Optional.ofNullable(hostServices.get(type)).map(type::cast);
+    }
+
+    /** Class-independent discovery of services registered by plugins. */
+    public @NonNull PluginServices services() {
+        return service(ToolDocs.nonNullClass(PluginServices.class)).orElse(PluginServices.EMPTY);
     }
 
     public void reportFailure() {

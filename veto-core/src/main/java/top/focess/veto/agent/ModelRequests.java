@@ -4,7 +4,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.agent.AgentRunner.LlmBinding;
 import top.focess.veto.agent.identity.AgentPersona;
 import top.focess.veto.agent.loop.CompiledPrompt;
 import top.focess.veto.agent.loop.PromptCompiler;
@@ -13,6 +12,7 @@ import top.focess.veto.api.agent.tool.ResponseSubmission;
 import top.focess.veto.api.agent.workflow.GenerateAction;
 import top.focess.veto.api.agent.workflow.Scope;
 import top.focess.veto.api.llm.ChatMessage;
+import top.focess.veto.api.llm.LlmBinding;
 import top.focess.veto.api.llm.LlmOptions;
 import top.focess.veto.api.llm.ResponseContract;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
@@ -30,7 +30,7 @@ final class ModelRequests {
     private final @NonNull LlmBinding binding;
     private final @NonNull ToolResultPresentationMode toolResultPresentation;
     private final String owner;
-    private final ModelTierRegistry guidedTierRegistry;
+    private final ModelTierRegistry planTierRegistry;
     private final @NonNull ResponseValidator responses;
 
     ModelRequests(
@@ -48,7 +48,7 @@ final class ModelRequests {
         this.binding = binding;
         this.toolResultPresentation = presentation;
         this.owner = owner;
-        this.guidedTierRegistry = tiers;
+        this.planTierRegistry = tiers;
         this.responses = responses;
     }
 
@@ -91,7 +91,7 @@ final class ModelRequests {
         @NonNull LlmBinding selected = binding;
         String tier = generation.modelTier();
         if (tier != null) {
-            var registry = guidedTierRegistry;
+            var registry = planTierRegistry;
             String username = owner;
             if (registry == null || username == null)
                 throw new IllegalStateException(

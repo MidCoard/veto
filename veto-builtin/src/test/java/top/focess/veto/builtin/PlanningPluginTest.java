@@ -4,11 +4,13 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
-import top.focess.veto.api.agent.capability.LoopControlCapability;
+import top.focess.veto.api.agent.capability.ResponseCapability;
+import top.focess.veto.api.agent.response.ResponseRequest;
 import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.ToolResult;
 import top.focess.veto.api.agent.workflow.*;
@@ -21,7 +23,7 @@ class PlanningPluginTest {
     void submittedPlanRunsUsingOnlyHostCallbacks() throws Exception {
         var submitted = new AtomicReference<ResponseRequest.Plan>();
         var capability =
-                new LoopControlCapability() {
+                new ResponseCapability() {
                     @Override
                     public void submitPlan(ResponseRequest.@NonNull Plan plan) {
                         submitted.set(plan);
@@ -43,8 +45,14 @@ class PlanningPluginTest {
         execution.configure(10);
         execution.install(plan.program(), "plan-call");
         var delivered = new AtomicReference<String>();
+        var boundaries = new AtomicInteger();
         var runtime =
                 new PlanExecution.Runtime() {
+                    @Override
+                    public void beforeStep() {
+                        boundaries.incrementAndGet();
+                    }
+
                     @Override
                     public boolean running() {
                         return true;
@@ -52,7 +60,7 @@ class PlanningPluginTest {
 
                     @Override
                     public @NonNull ToolResult tool(
-                            @NonNull ToolCall call, @NonNull GuidedStepContext context) {
+                            @NonNull ToolCall call, @NonNull PlanStepContext context) {
                         throw new AssertionError("unexpected tool");
                     }
 
@@ -87,8 +95,8 @@ class PlanningPluginTest {
                         throw new AssertionError("unexpected prompt");
                     }
                 };
-        execution.step(runtime);
-        execution.step(runtime);
+        execution.run(runtime);
+        assertEquals(2, boundaries.get());
         assertFalse(execution.active());
         assertEquals("Welcome", delivered.get());
         assertThrows(

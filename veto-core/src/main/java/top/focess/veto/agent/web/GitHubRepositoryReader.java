@@ -19,7 +19,7 @@ import top.focess.veto.agent.capability.CapabilityAccess;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.agent.tool.ToolErrorCode;
 import top.focess.veto.api.agent.tool.ToolErrors;
-import top.focess.veto.plugin.runtime.PluginManager;
+import top.focess.veto.integration.plugins.PluginManager;
 import top.focess.veto.vault.KeysteadVault;
 
 /** A fixed authenticated operation, never a general credential substitution proxy. */

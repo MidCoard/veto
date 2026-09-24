@@ -25,7 +25,7 @@ import top.focess.veto.api.agent.tool.ToolSecurity;
 import top.focess.veto.api.agent.tool.WorkspaceReadTool;
 import top.focess.veto.api.agent.tool.WorkspaceWriteTool;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
-import top.focess.veto.plugin.runtime.PluginManager;
+import top.focess.veto.integration.plugins.PluginManager;
 
 /**
  * Cross-checks every documented call example against the tool's real runtime argument validator.

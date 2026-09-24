@@ -6,7 +6,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import top.focess.veto.command.PromptHandler;
-import top.focess.veto.plugin.runtime.PluginLifecycleEvents;
+import top.focess.veto.integration.plugins.PluginLifecycleEvents;
 
 /**
  * Unified service for managing user authentication and vault lifecycle. Ensures that login and

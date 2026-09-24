@@ -6,25 +6,25 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
-import top.focess.veto.agent.capability.LoopControlCapabilityImpl;
+import top.focess.veto.agent.capability.ResponseCapabilityImpl;
 import top.focess.veto.agent.tool.*;
 import top.focess.veto.agent.tool.ResponseSubmissions;
 import top.focess.veto.agent.tool.builtin.*;
+import top.focess.veto.api.agent.response.ResponseRequest;
 import top.focess.veto.api.agent.tool.ResponseSubmission;
 import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.ToolExecutionException;
 import top.focess.veto.api.agent.workflow.ActionsProgram;
-import top.focess.veto.api.agent.workflow.ResponseRequest;
-import top.focess.veto.builtin.planning.AnswerWithCitationsTool;
-import top.focess.veto.builtin.planning.GuidedProgram;
+import top.focess.veto.builtin.planning.PlanProgram;
 import top.focess.veto.builtin.planning.SubmitPlanTool;
+import top.focess.veto.builtin.response.AnswerWithCitationsTool;
 
 class ResponseSubmissionToolsTest {
     private final @NonNull ObjectMapper mapper = new ObjectMapper();
 
     @Test
     void planToolIsAvailableWithoutSkills() {
-        var tool = new SubmitPlanTool(new LoopControlCapabilityImpl());
+        var tool = new SubmitPlanTool(new ResponseCapabilityImpl());
         var definition =
                 AgentToolDefinition.from(
                         tool.getName(),
@@ -82,7 +82,7 @@ class ResponseSubmissionToolsTest {
 
     @Test
     void submissionsRequireAuthorizedToolExecution() {
-        var capability = new LoopControlCapabilityImpl();
+        var capability = new ResponseCapabilityImpl();
         assertThrows(
                 ToolDocs.nonNullClass(SecurityException.class),
                 () ->
@@ -90,7 +90,7 @@ class ResponseSubmissionToolsTest {
                                 new ResponseRequest.Plan(
                                         mapper.createArrayNode(),
                                         new ActionsProgram(List.of()),
-                                        new GuidedProgram(mapper))));
+                                        new PlanProgram(mapper))));
         assertThrows(
                 ToolDocs.nonNullClass(SecurityException.class),
                 () ->

@@ -9,9 +9,9 @@ import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import top.focess.veto.agent.Agent;
-import top.focess.veto.agent.AgentResult;
-import top.focess.veto.agent.AgentRunner;
 import top.focess.veto.agent.AgentService;
+import top.focess.veto.api.agent.AgentResult;
+import top.focess.veto.api.llm.LlmBinding;
 import top.focess.veto.contract.IpcFrame;
 import top.focess.veto.contract.IpcMeta;
 import top.focess.veto.session.LlmConfig;
@@ -126,8 +126,8 @@ public class PromptHandler {
         LlmConfig config = opt.get();
         String sessionId = sessionService.activeSession(terminalId).orElseThrow();
 
-        AgentRunner.LlmBinding binding =
-                new AgentRunner.LlmBinding(
+        LlmBinding binding =
+                new LlmBinding(
                         config.provider(),
                         config.model(),
                         config.credKey(),

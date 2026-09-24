@@ -40,6 +40,8 @@ import top.focess.veto.agent.tool.ToolEngineImpl;
 import top.focess.veto.agent.tool.builtin.FixtureLoopTool;
 import top.focess.veto.agent.tool.builtin.UserQuestionRegistry;
 import top.focess.veto.agent.translation.DefaultCapabilityTranslator;
+import top.focess.veto.api.agent.AgentResult;
+import top.focess.veto.api.agent.AgentState;
 import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.tool.AgentTool;
 import top.focess.veto.api.agent.tool.ToolCapability;
@@ -48,6 +50,7 @@ import top.focess.veto.api.agent.tool.ToolResult;
 import top.focess.veto.api.group.DagNode;
 import top.focess.veto.api.group.GroupState;
 import top.focess.veto.api.llm.ChatMessage;
+import top.focess.veto.api.llm.LlmBinding;
 import top.focess.veto.api.llm.LlmOptions;
 import top.focess.veto.api.llm.LlmSystemUsage;
 import top.focess.veto.api.llm.ProviderType;
@@ -76,6 +79,9 @@ import top.focess.veto.group.GroupSpawner;
 import top.focess.veto.group.LeaderBinding;
 import top.focess.veto.group.MateBreakerRegistry;
 import top.focess.veto.group.SkillsetProperties;
+import top.focess.veto.integration.plugins.PluginLifecycleEvents;
+import top.focess.veto.integration.plugins.PluginTestSupport;
+import top.focess.veto.integration.plugins.WorkflowPluginFixture;
 import top.focess.veto.llm.core.UniformLLMCaller;
 import top.focess.veto.memory.TurnLogService;
 import top.focess.veto.memory.TurnRecordEntity;
@@ -97,9 +103,6 @@ import top.focess.veto.monitor.MonitorService;
 import top.focess.veto.monitor.RequestContinuationEntity;
 import top.focess.veto.monitor.RequestContinuationRepository;
 import top.focess.veto.monitor.RequestContinuationStore;
-import top.focess.veto.plugin.runtime.PluginLifecycleEvents;
-import top.focess.veto.plugin.runtime.PluginTestSupport;
-import top.focess.veto.plugin.runtime.WorkflowPluginFixture;
 import top.focess.veto.sandbox.BackgroundTaskManager;
 import top.focess.veto.sandbox.SandboxManager;
 import top.focess.veto.sandbox.TestSandboxFactory;
@@ -2378,8 +2381,8 @@ class AgentRunnerTest {
         assertEquals(originalTask, auditedContinue.payload().get("resume_context"));
     }
 
-    private static AgentRunner.@NonNull LlmBinding binding(@NonNull String systemPrompt) {
-        return new AgentRunner.LlmBinding(
+    private static @NonNull LlmBinding binding(@NonNull String systemPrompt) {
+        return new LlmBinding(
                 ProviderType.DEEPSEEK,
                 "stub-model",
                 "stub-key",

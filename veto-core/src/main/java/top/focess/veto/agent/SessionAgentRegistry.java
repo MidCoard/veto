@@ -16,6 +16,7 @@ import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.identity.AgentPersona;
 import top.focess.veto.agent.identity.Role;
+import top.focess.veto.api.agent.AgentState;
 import top.focess.veto.bus.SessionInvalidations;
 import top.focess.veto.memory.TurnRecordRepository;
 import top.focess.veto.model.AgentEntity;

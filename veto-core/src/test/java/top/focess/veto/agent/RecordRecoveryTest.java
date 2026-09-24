@@ -27,7 +27,7 @@ class RecordRecoveryTest {
     }
 
     @Test
-    void rewindAndGuidedSourceDoNotPretendExecutionFinished() {
+    void rewindAndPlanSourceDoNotPretendExecutionFinished() {
         var prompt = TurnRecord.userPrompt(1, "Work");
         var guide =
                 new TurnRecord(

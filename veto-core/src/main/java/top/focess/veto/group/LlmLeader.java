@@ -17,9 +17,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.Agent;
-import top.focess.veto.agent.AgentResult;
 import top.focess.veto.agent.identity.AgentPersona;
 import top.focess.veto.agent.loop.PromptCompiler;
+import top.focess.veto.api.agent.AgentResult;
 import top.focess.veto.api.group.DagNode;
 
 /**

@@ -326,10 +326,10 @@ class PromptCompileRenderTest {
         assertTrue(
                 prompt.contains("procedural guidance from Veto's configured skill registry"),
                 "skill guidance must remain inside the task and authority boundaries:\n" + prompt);
-        assertFalse(prompt.contains("Guided mode uses two iterations"));
+        assertFalse(prompt.contains("Plan mode uses two iterations"));
         assertFalse(
                 prompt.contains("conditional_goto"),
-                "disabled prompt must not advertise guided programs");
+                "disabled prompt must not advertise plan programs");
         assertBefore(
                 prompt,
                 "\n## Tool result conventions\n",

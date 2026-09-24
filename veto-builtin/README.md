@@ -31,7 +31,17 @@ keyless and the default. Select Brave with `veto.websearch.provider: brave` and 
 `veto.websearch.brave.api-key`; the application binds that value to the builtin plugin's
 `brave-api-key` configuration. BuiltinPlugin closes both providers with its lifecycle.
 
-Other plugins implement `top.focess.veto.api.search.SearchProvider` and register a
-`Contribution.of(StandardContributionPoints.SEARCH_PROVIDERS, "my-search", provider)`.
-Use a unique provider `name()` and select it through `veto.websearch.provider`.
+Other plugins register a named JSON service through `StandardContributionPoints.SERVICES`.
+The search contract is `veto.search:<name>` version 1; select `<name>` through
+`veto.websearch.provider`. See the generic service API and JSON protocol in veto-api/README.md.
 The host registry preserves session selection, authorization and plugin lifecycle checks.
+
+Group lifecycle tools, including create_group, are grouped in `group/GroupTools`.
+Delegation uses the same `HostCapabilityTool` dispatch as other host-backed agent tools.
+
+## Execution ownership
+
+`response/AnswerWithCitationsTool` supports ordinary answers and generated plan answers.
+`planning/PlanProgram` owns plan stepping and its execution loop; API runtime callbacks
+supply authorized model/tool operations. The current configuration is `veto.plan.max-steps`.
+Plan terminology replaces the former guided names in active code and observations.

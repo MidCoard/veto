@@ -20,11 +20,11 @@ import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import top.focess.veto.agent.Agent;
-import top.focess.veto.agent.AgentAction;
-import top.focess.veto.agent.AgentResult;
-import top.focess.veto.agent.AgentState;
 import top.focess.veto.agent.TurnRecord;
 import top.focess.veto.agent.loop.LoopBreaker;
+import top.focess.veto.api.agent.AgentAction;
+import top.focess.veto.api.agent.AgentResult;
+import top.focess.veto.api.agent.AgentState;
 import top.focess.veto.api.group.BlackboardMessage;
 
 /**

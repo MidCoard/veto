@@ -3,17 +3,17 @@ package top.focess.veto.group;
 import org.jspecify.annotations.NonNull;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
-import top.focess.veto.agent.AgentRunner;
 import top.focess.veto.agent.AgentService;
 import top.focess.veto.agent.tool.ToolCallContext;
+import top.focess.veto.api.llm.LlmBinding;
 import top.focess.veto.model.tier.ModelBinding;
 import top.focess.veto.model.tier.ModelTier;
 import top.focess.veto.model.tier.ModelTierRegistry;
 import top.focess.veto.util.Nullness;
 
 /**
- * The Leader's {@link AgentRunner.LlmBinding} - the model the STANDALONE agent is promoted to when
- * it transforms into the Leader of a new group. Resolved from the {@link ModelTierRegistry} for the
+ * The Leader's {@link LlmBinding} - the model the STANDALONE agent is promoted to when it
+ * transforms into the Leader of a new group. Resolved from the {@link ModelTierRegistry} for the
  * tier named by {@code veto.group.leader.tier} (default {@code TOP}); the concrete provider / model
  * / credential come from the active model-tier profile, so switching profiles swaps the Leader's
  * model without touching this binding. Only the system-prompt base stays here (role-specific).
@@ -45,9 +45,9 @@ public class LeaderBinding {
      * session username (read from the calling agent's {@link ToolCallContext} at {@code
      * create_group} time).
      */
-    public AgentRunner.@NonNull LlmBinding binding(@NonNull String owner) {
+    public @NonNull LlmBinding binding(@NonNull String owner) {
         ModelBinding resolved = tierRegistry.resolve(owner, tier);
-        return new AgentRunner.LlmBinding(
+        return new LlmBinding(
                 resolved.provider(),
                 resolved.model(),
                 resolved.credentialKey(),

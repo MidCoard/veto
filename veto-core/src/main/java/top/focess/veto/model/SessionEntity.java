@@ -6,6 +6,7 @@ import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.AgentService;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
+import top.focess.veto.integration.plugins.PluginBindingsConverter;
 import top.focess.veto.llm.core.ToolResultPresentationModeConverter;
 import top.focess.veto.session.SessionService;
 
@@ -17,17 +18,16 @@ import top.focess.veto.session.SessionService;
 @Table(name = "sessions")
 public class SessionEntity {
 
-    @jakarta.persistence.Convert(
-            converter = top.focess.veto.plugin.runtime.PluginBindingsConverter.class)
+    @jakarta.persistence.Convert(converter = PluginBindingsConverter.class)
     @Column(name = "plugin_bindings", columnDefinition = "TEXT")
-    private java.util.List<top.focess.veto.plugin.runtime.PluginBinding> pluginBindings;
+    private java.util.List<top.focess.veto.api.plugin.PluginBinding> pluginBindings;
 
-    public java.util.List<top.focess.veto.plugin.runtime.PluginBinding> getPluginBindings() {
+    public java.util.List<top.focess.veto.api.plugin.PluginBinding> getPluginBindings() {
         return pluginBindings;
     }
 
     public void setPluginBindings(
-            java.util.@NonNull List<top.focess.veto.plugin.runtime.PluginBinding> value) {
+            java.util.@NonNull List<top.focess.veto.api.plugin.PluginBinding> value) {
         if (pluginBindings != null)
             throw new IllegalStateException("Session plugins are immutable");
         pluginBindings = java.util.List.copyOf(value);

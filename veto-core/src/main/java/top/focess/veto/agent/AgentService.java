@@ -43,19 +43,24 @@ import top.focess.veto.agent.tool.ToolCallContextHolder;
 import top.focess.veto.agent.tool.ToolDefinition;
 import top.focess.veto.agent.tool.ToolEngine;
 import top.focess.veto.agent.workspace.Workspace;
+import top.focess.veto.api.agent.AgentResult;
+import top.focess.veto.api.agent.ToolCallEvent;
+import top.focess.veto.api.agent.ToolResultEvent;
+import top.focess.veto.api.llm.LlmBinding;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.bus.DeltaBroker;
 import top.focess.veto.bus.DeltaFrame;
 import top.focess.veto.group.GroupAgentFactory;
 import top.focess.veto.group.GroupRecoveryService;
 import top.focess.veto.i18n.Msg;
+import top.focess.veto.integration.plugins.PluginLifecycleEvents;
+import top.focess.veto.integration.plugins.SessionPlugins;
 import top.focess.veto.llm.config.LlmJacksonConfig;
 import top.focess.veto.llm.core.UniformLLMCaller;
 import top.focess.veto.memory.TurnLogService;
 import top.focess.veto.model.tier.ModelTierRegistry;
 import top.focess.veto.monitor.RequestContinuationStore;
 import top.focess.veto.observability.ObservabilityConfiguration;
-import top.focess.veto.plugin.runtime.PluginLifecycleEvents;
 import top.focess.veto.sandbox.BackgroundTaskManager;
 import top.focess.veto.util.Nullness;
 import top.focess.veto.vault.CredentialVaultConfiguration;
@@ -74,10 +79,10 @@ import top.focess.veto.vault.KeysteadVault;
 @SuppressWarnings(
         "DuplicatedCode") // Standalone and group-agent factories intentionally mirror setup.
 public class AgentService {
-    private top.focess.veto.plugin.runtime.SessionPlugins sessionPlugins;
+    private top.focess.veto.integration.plugins.SessionPlugins sessionPlugins;
 
     @Autowired
-    public void attachSessionPlugins(top.focess.veto.plugin.runtime.@NonNull SessionPlugins value) {
+    public void attachSessionPlugins(@NonNull SessionPlugins value) {
         sessionPlugins = value;
     }
 
@@ -119,8 +124,7 @@ public class AgentService {
         groupRecovery = recovery;
     }
 
-    private void bindForSubmission(
-            @NonNull VetoAgent agent, AgentRunner.@NonNull LlmBinding binding) {
+    private void bindForSubmission(@NonNull VetoAgent agent, @NonNull LlmBinding binding) {
         GroupRecoveryService recovery = groupRecovery;
         if (recovery == null || !recovery.refreshLeaderBinding(agent)) agent.bind(binding);
     }
@@ -131,13 +135,13 @@ public class AgentService {
 
     private final @NonNull SessionAgentRegistry sessionAgents;
 
-    private ModelTierRegistry guidedTierRegistry;
+    private ModelTierRegistry planTierRegistry;
 
-    private final int maxGuidedSteps;
+    private final int maxPlanSteps;
 
     @Autowired
-    void setGuidedTierRegistry(@NonNull ModelTierRegistry registry) {
-        guidedTierRegistry = registry;
+    void setPlanTierRegistry(@NonNull ModelTierRegistry registry) {
+        planTierRegistry = registry;
     }
 
     private final @NonNull ToolEngine toolEngine;
@@ -184,7 +188,7 @@ public class AgentService {
             @NonNull RoleToolFilter roleToolFilter,
             @Value("${veto.workspace.path-mode}") @NonNull String pathMode,
             @Value("${veto.breaker.max_calls_per_episode}") long maxCallsPerEpisode,
-            @Value("${veto.guided.max-steps}") int maxGuidedSteps,
+            @Value("${veto.plan.max-steps}") int maxPlanSteps,
             @NonNull DeployerPolicyConfiguration deployerPolicyConfiguration,
             @Value("${veto.security.screening-mode}") @NonNull String screeningModeRaw,
             DeltaBroker deltaBroker,
@@ -205,10 +209,10 @@ public class AgentService {
         this.defaultWorkspace = Workspace.fromConfig("", "", pathMode);
         this.roleToolFilter = roleToolFilter;
         this.maxCallsPerEpisode = maxCallsPerEpisode;
-        if (maxGuidedSteps <= 0) {
-            throw new IllegalArgumentException("veto.guided.max-steps must be positive");
+        if (maxPlanSteps <= 0) {
+            throw new IllegalArgumentException("veto.plan.max-steps must be positive");
         }
-        this.maxGuidedSteps = maxGuidedSteps;
+        this.maxPlanSteps = maxPlanSteps;
         this.deployerPolicy = deployerPolicyConfiguration.getDeployerPolicy();
         if (this.deployerPolicy == DeployerPolicy.FULL_ACCESS) {
             log.info(
@@ -240,7 +244,7 @@ public class AgentService {
             @NonNull RoleToolFilter roleToolFilter,
             @NonNull String pathMode,
             long maxCallsPerEpisode,
-            int maxGuidedSteps,
+            int maxPlanSteps,
             @NonNull String deployerPolicyRaw,
             @NonNull String screeningModeRaw,
             DeltaBroker deltaBroker,
@@ -257,7 +261,7 @@ public class AgentService {
                 roleToolFilter,
                 pathMode,
                 maxCallsPerEpisode,
-                maxGuidedSteps,
+                maxPlanSteps,
                 policyConfigurationFor(deployerPolicyRaw),
                 screeningModeRaw,
                 deltaBroker,
@@ -283,9 +287,7 @@ public class AgentService {
      * the prompt, and blocks for the result. Returns the {@link AgentResult}.
      */
     public @NonNull AgentResult submit(
-            @NonNull String agentKey,
-            @NonNull String prompt,
-            AgentRunner.@NonNull LlmBinding binding) {
+            @NonNull String agentKey, @NonNull String prompt, @NonNull LlmBinding binding) {
         VetoAgent agent = agents.computeIfAbsent(agentKey, k -> createAgent(k, binding));
         bindForSubmission(agent, binding);
         agent.setLocale(LocaleContextHolder.getLocale());
@@ -311,9 +313,7 @@ public class AgentService {
      * history stays the authoritative read.
      */
     public void submitNow(
-            @NonNull String agentKey,
-            @NonNull String prompt,
-            AgentRunner.@NonNull LlmBinding binding) {
+            @NonNull String agentKey, @NonNull String prompt, @NonNull LlmBinding binding) {
         VetoAgent agent = agents.computeIfAbsent(agentKey, k -> createAgent(k, binding));
         bindForSubmission(agent, binding);
         agent.setLocale(LocaleContextHolder.getLocale());
@@ -324,7 +324,7 @@ public class AgentService {
     public @NonNull AgentResult submit(
             @NonNull String agentKey,
             @NonNull String prompt,
-            AgentRunner.@NonNull LlmBinding binding,
+            @NonNull LlmBinding binding,
             @NonNull Duration timeout)
             throws TimeoutException, InterruptedException {
         VetoAgent agent = agents.computeIfAbsent(agentKey, k -> createAgent(k, binding));
@@ -345,7 +345,7 @@ public class AgentService {
     public @NonNull AgentResult submit(
             @NonNull String agentKey,
             @NonNull String prompt,
-            AgentRunner.@NonNull LlmBinding binding,
+            @NonNull LlmBinding binding,
             @NonNull Duration timeout,
             Consumer<String> messageSink)
             throws TimeoutException, InterruptedException {
@@ -362,7 +362,7 @@ public class AgentService {
     public @NonNull AgentResult submit(
             @NonNull String agentKey,
             @NonNull String prompt,
-            AgentRunner.@NonNull LlmBinding binding,
+            @NonNull LlmBinding binding,
             @NonNull Duration timeout,
             Consumer<String> messageSink,
             Consumer<VetoPrompt> vetoSink)
@@ -379,7 +379,7 @@ public class AgentService {
     public @NonNull AgentResult submit(
             @NonNull String agentKey,
             @NonNull String prompt,
-            AgentRunner.@NonNull LlmBinding binding,
+            @NonNull LlmBinding binding,
             @NonNull Duration timeout,
             Consumer<String> messageSink,
             Consumer<VetoPrompt> vetoSink,
@@ -401,13 +401,13 @@ public class AgentService {
     public @NonNull AgentResult submit(
             @NonNull String agentKey,
             @NonNull String prompt,
-            AgentRunner.@NonNull LlmBinding binding,
+            @NonNull LlmBinding binding,
             @NonNull Duration timeout,
             Consumer<String> messageSink,
             Consumer<VetoPrompt> vetoSink,
             Consumer<String> thoughtSink,
-            Consumer<AgentRunner.ToolCallEvent> toolCallSink,
-            Consumer<AgentRunner.ToolResultEvent> toolResultSink)
+            Consumer<ToolCallEvent> toolCallSink,
+            Consumer<ToolResultEvent> toolResultSink)
             throws TimeoutException, InterruptedException {
         VetoAgent agent = agents.computeIfAbsent(agentKey, k -> createAgent(k, binding));
         bindForSubmission(agent, binding);
@@ -464,7 +464,7 @@ public class AgentService {
     public @NonNull AgentResult submit(
             @NonNull String agentKey,
             @NonNull String prompt,
-            AgentRunner.@NonNull LlmBinding binding,
+            @NonNull LlmBinding binding,
             @NonNull Duration timeout,
             @NonNull UUID userId)
             throws TimeoutException, InterruptedException {
@@ -483,7 +483,7 @@ public class AgentService {
      */
     public @NonNull Agent getOrCreateAgent(
             @NonNull String sessionId,
-            AgentRunner.@NonNull LlmBinding binding,
+            @NonNull LlmBinding binding,
             @NonNull List<TurnRecord> history,
             @NonNull UUID userId) {
         return getOrCreateAgent(sessionId, binding, history, userId, null);
@@ -503,7 +503,7 @@ public class AgentService {
      */
     public @NonNull Agent getOrCreateAgent(
             @NonNull String sessionId,
-            AgentRunner.@NonNull LlmBinding binding,
+            @NonNull LlmBinding binding,
             @NonNull List<TurnRecord> history,
             @NonNull UUID userId,
             String workspaceRoots) {
@@ -524,7 +524,7 @@ public class AgentService {
     public @NonNull Agent getOrCreateAgent(
             @NonNull String sessionId,
             String primaryAgentId,
-            AgentRunner.@NonNull LlmBinding binding,
+            @NonNull LlmBinding binding,
             @NonNull List<TurnRecord> history,
             @NonNull UUID userId,
             String owner,
@@ -543,7 +543,7 @@ public class AgentService {
     public @NonNull Agent getOrCreateAgent(
             @NonNull String sessionId,
             String primaryAgentId,
-            AgentRunner.@NonNull LlmBinding binding,
+            @NonNull LlmBinding binding,
             @NonNull List<TurnRecord> history,
             @NonNull UUID userId,
             String owner,
@@ -564,7 +564,7 @@ public class AgentService {
     public @NonNull Agent getOrCreateAgent(
             @NonNull String sessionId,
             String primaryAgentId,
-            AgentRunner.@NonNull LlmBinding binding,
+            @NonNull LlmBinding binding,
             @NonNull List<TurnRecord> history,
             @NonNull UUID userId,
             String owner,
@@ -647,21 +647,18 @@ public class AgentService {
         }
     }
 
-    private @NonNull VetoAgent createAgent(
-            @NonNull String agentKey, AgentRunner.@NonNull LlmBinding binding) {
+    private @NonNull VetoAgent createAgent(@NonNull String agentKey, @NonNull LlmBinding binding) {
         return createAgent(agentKey, binding, DEFAULT_USER_ID, defaultWorkspace);
     }
 
     private @NonNull VetoAgent createAgent(
-            @NonNull String agentKey,
-            AgentRunner.@NonNull LlmBinding binding,
-            @NonNull UUID userId) {
+            @NonNull String agentKey, @NonNull LlmBinding binding, @NonNull UUID userId) {
         return createAgent(agentKey, binding, userId, defaultWorkspace);
     }
 
     private @NonNull VetoAgent createAgent(
             @NonNull String agentKey,
-            AgentRunner.@NonNull LlmBinding binding,
+            @NonNull LlmBinding binding,
             @NonNull UUID userId,
             @NonNull Workspace workspace) {
         return createAgent(agentKey, null, binding, userId, null, workspace);
@@ -676,7 +673,7 @@ public class AgentService {
     private @NonNull VetoAgent createAgent(
             @NonNull String agentKey,
             String primaryAgentId,
-            AgentRunner.@NonNull LlmBinding binding,
+            @NonNull LlmBinding binding,
             @NonNull UUID userId,
             String owner,
             @NonNull Workspace workspace) {
@@ -693,7 +690,7 @@ public class AgentService {
     private @NonNull VetoAgent createAgent(
             @NonNull String agentKey,
             String primaryAgentId,
-            AgentRunner.@NonNull LlmBinding binding,
+            @NonNull LlmBinding binding,
             @NonNull UUID userId,
             String owner,
             @NonNull Workspace workspace,
@@ -733,7 +730,7 @@ public class AgentService {
                         backgroundTaskManager);
         // Stamp the session owner so group-spawned Mates / Leaders resolve their tier against the
         // user's active model-tier profile via the ToolCallContext.
-        runner.configureGuided(guidedTierRegistry, maxGuidedSteps);
+        runner.configurePlan(planTierRegistry, maxPlanSteps);
         runner.setOwner(owner);
         runner.setToolResultPresentation(toolResultPresentation);
         if (primaryAgentId != null) {
@@ -749,8 +746,7 @@ public class AgentService {
      * transport-addressable). The session registry owns their runtime lifetime while {@code
      * GroupSpawner} manages group membership. Each Mate receives its owner's protected paths.
      */
-    public @NonNull Agent createMate(
-            @NonNull AgentPersona persona, AgentRunner.@NonNull LlmBinding binding) {
+    public @NonNull Agent createMate(@NonNull AgentPersona persona, @NonNull LlmBinding binding) {
         return createMate(persona, binding, DEFAULT_USER_ID, null, defaultWorkspace);
     }
 
@@ -761,7 +757,7 @@ public class AgentService {
      */
     public @NonNull Agent createMate(
             @NonNull AgentPersona persona,
-            AgentRunner.@NonNull LlmBinding binding,
+            @NonNull LlmBinding binding,
             @NonNull Workspace workspace) {
         return createMate(persona, binding, DEFAULT_USER_ID, null, workspace);
     }
@@ -771,9 +767,7 @@ public class AgentService {
      * Mate inherits the Leader's userId so its memory capture is scoped to the same tenant.
      */
     public @NonNull Agent createMate(
-            @NonNull AgentPersona persona,
-            AgentRunner.@NonNull LlmBinding binding,
-            @NonNull UUID userId) {
+            @NonNull AgentPersona persona, @NonNull LlmBinding binding, @NonNull UUID userId) {
         return createMate(persona, binding, userId, null, defaultWorkspace);
     }
 
@@ -784,7 +778,7 @@ public class AgentService {
      */
     public @NonNull Agent createMate(
             @NonNull AgentPersona persona,
-            AgentRunner.@NonNull LlmBinding binding,
+            @NonNull LlmBinding binding,
             @NonNull UUID userId,
             @NonNull Workspace workspace) {
         return createMate(persona, binding, userId, null, workspace);
@@ -799,7 +793,7 @@ public class AgentService {
      */
     public @NonNull Agent createMate(
             @NonNull AgentPersona persona,
-            AgentRunner.@NonNull LlmBinding binding,
+            @NonNull LlmBinding binding,
             @NonNull UUID userId,
             String owner,
             @NonNull Workspace workspace) {
@@ -809,7 +803,7 @@ public class AgentService {
 
     public @NonNull Agent createMate(
             @NonNull AgentPersona persona,
-            AgentRunner.@NonNull LlmBinding binding,
+            @NonNull LlmBinding binding,
             @NonNull UUID userId,
             String owner,
             @NonNull Workspace workspace,
@@ -819,7 +813,7 @@ public class AgentService {
 
     public @NonNull Agent createMate(
             @NonNull AgentPersona persona,
-            AgentRunner.@NonNull LlmBinding binding,
+            @NonNull LlmBinding binding,
             @NonNull UUID userId,
             String owner,
             @NonNull Workspace workspace,
@@ -867,7 +861,7 @@ public class AgentService {
         // user's active model-tier profile via the ToolCallContext.
         if (sessionId != null) runner.setSessionId(sessionId);
         configureContinuations(runner);
-        runner.configureGuided(guidedTierRegistry, maxGuidedSteps);
+        runner.configurePlan(planTierRegistry, maxPlanSteps);
         runner.setOwner(owner);
         runner.setToolResultPresentation(toolResultPresentation);
         if (sessionId != null) {
@@ -878,7 +872,7 @@ public class AgentService {
 
     /** Builds the standalone persona from the active, role-scoped tool catalog. */
     private @NonNull AgentPersona buildPersona(
-            @NonNull String agentKey, AgentRunner.@NonNull LlmBinding binding) {
+            @NonNull String agentKey, @NonNull LlmBinding binding) {
         return buildPersona(agentKey, null, binding);
     }
 
@@ -889,9 +883,7 @@ public class AgentService {
     // absent
     // that (legacy/test path) we mint a fresh UUID just as before.
     private @NonNull AgentPersona buildPersona(
-            @NonNull String agentKey,
-            String primaryAgentId,
-            AgentRunner.@NonNull LlmBinding binding) {
+            @NonNull String agentKey, String primaryAgentId, @NonNull LlmBinding binding) {
         Set<ToolDefinition> tools = roleToolFilter.resolve(Role.STANDALONE);
         var selection = sessionPlugins;
         if (selection != null && primaryAgentId != null) tools = selection.tools(agentKey, tools);

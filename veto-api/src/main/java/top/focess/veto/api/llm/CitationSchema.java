@@ -4,7 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.jspecify.annotations.NonNull;
 
-/** Optional active references in both autonomous answers and guided generation. */
+/** Optional active references in both autonomous answers and plan generation. */
 public final class CitationSchema {
     private CitationSchema() {}
 

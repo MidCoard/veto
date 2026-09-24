@@ -18,7 +18,7 @@ import top.focess.veto.api.agent.tool.ToolResult;
 import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.builtin.web.FinishReadTool;
 import top.focess.veto.builtin.web.WebFetchTool;
-import top.focess.veto.plugin.runtime.PluginTestSupport;
+import top.focess.veto.integration.plugins.PluginTestSupport;
 
 class ReaderExecutionMaskingTest {
     @ParameterizedTest

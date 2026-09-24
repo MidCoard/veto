@@ -12,7 +12,6 @@ import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
-import top.focess.veto.agent.AgentRunner;
 import top.focess.veto.agent.SessionAgentRegistry;
 import top.focess.veto.agent.VetoAgent;
 import top.focess.veto.agent.identity.RoleToolFilter;
@@ -20,6 +19,7 @@ import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.api.group.DagNode;
 import top.focess.veto.api.group.GroupState;
 import top.focess.veto.api.group.NodeEdit;
+import top.focess.veto.api.llm.LlmBinding;
 import top.focess.veto.api.llm.LlmOptions;
 import top.focess.veto.api.llm.ProviderType;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
@@ -46,7 +46,7 @@ class GroupRecoveryServiceTest {
         when(leader.id()).thenReturn("leader");
         when(bindings.binding("owner"))
                 .thenReturn(
-                        new AgentRunner.LlmBinding(
+                        new LlmBinding(
                                 ProviderType.DEEPSEEK,
                                 "model",
                                 "key",

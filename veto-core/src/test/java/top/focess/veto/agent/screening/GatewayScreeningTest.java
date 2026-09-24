@@ -22,7 +22,7 @@ import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.tool.ParamCategory;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.agent.tool.ToolDocs;
-import top.focess.veto.api.agent.workflow.GuidedStepContext;
+import top.focess.veto.api.agent.workflow.PlanStepContext;
 import top.focess.veto.api.llm.ToolCall;
 
 @SuppressWarnings("initialization.field.uninitialized")
@@ -194,7 +194,7 @@ class GatewayScreeningTest {
     }
 
     @Test
-    void guidedContextRetainsUserTaskAndProcessContextWithoutGrantingPermission() throws Exception {
+    void planContextRetainsUserTaskAndProcessContextWithoutGrantingPermission() throws Exception {
         Path file = Files.writeString(root.resolve("read.txt"), "data");
         var seen = new AtomicBoolean();
         var gateway =
@@ -221,7 +221,7 @@ class GatewayScreeningTest {
                         "Read the requested file",
                         null,
                         "existing process target",
-                        new GuidedStepContext(
+                        new PlanStepContext(
                                 "plan",
                                 "next",
                                 1,

@@ -161,3 +161,10 @@ notifications. It obtains its vault access and its detection model as
 host-granted services through `PluginContext`; without them, credential imports
 fail at call time and detection degrades to its deterministic fallback. Script
 packages currently support tools only.
+
+## Host/runtime boundary
+
+This module owns generic plugin lifecycle admission, named JSON service dispatch and
+`ManagedPlanExecution`, which retains plugin admission while a submitted plan runs.
+Spring configuration, session selection, JPA converters and authorization adapters live
+in `veto-core` under `integration.plugins`; portable `PluginBinding` is a veto-api value.

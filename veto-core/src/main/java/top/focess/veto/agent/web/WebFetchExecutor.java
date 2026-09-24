@@ -37,6 +37,7 @@ import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.agent.tool.ToolErrorCode;
 import top.focess.veto.api.agent.tool.ToolErrors;
+import top.focess.veto.api.llm.LlmBinding;
 import top.focess.veto.api.llm.LlmOptions;
 import top.focess.veto.api.llm.LlmSystemUsage;
 import top.focess.veto.api.llm.ToolDefinition;
@@ -245,7 +246,7 @@ public final class WebFetchExecutor {
                             measured,
                             mapper,
                             maxRounds,
-                            new AgentRunner.LlmBinding(
+                            new LlmBinding(
                                     model.provider(),
                                     model.model(),
                                     model.credentialKey(),

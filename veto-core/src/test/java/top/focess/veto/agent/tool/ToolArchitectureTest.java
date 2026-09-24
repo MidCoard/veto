@@ -2,6 +2,8 @@ package top.focess.veto.agent.tool;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import org.jspecify.annotations.NonNull;
@@ -15,7 +17,7 @@ import top.focess.veto.api.agent.tool.NativeTool;
 import top.focess.veto.api.agent.tool.ToolDoc;
 import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
-import top.focess.veto.plugin.runtime.PluginManager;
+import top.focess.veto.integration.plugins.PluginManager;
 
 /** Checks that registered tools expose coherent authoring contracts. */
 @SpringBootTest
@@ -24,6 +26,17 @@ class ToolArchitectureTest {
     @Autowired private @NonNull PluginManager plugins;
     @Autowired private @NonNull ApplicationContext context;
     @Autowired private @NonNull ToolEngine engine;
+
+    @Test
+    void agentRunnerStaysWithinTheCoordinatorLineBudget() throws Exception {
+        var source = Path.of("src/main/java/top/focess/veto/agent/AgentRunner.java");
+        long lines;
+        try (var content = Files.lines(source)) {
+            lines = content.count();
+        }
+        assertTrue(
+                lines <= 1000, "AgentRunner exceeds the 1,000-line architectural limit: " + lines);
+    }
 
     @Test
     void allBuiltinToolsArePluginContributionsWithTheirOriginalPublicNames() {

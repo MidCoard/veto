@@ -12,7 +12,7 @@ import org.junit.jupiter.params.provider.EnumSource;
 import top.focess.veto.agent.TurnRecord;
 import top.focess.veto.agent.TurnType;
 import top.focess.veto.agent.translation.VetoCapabilityTranslator;
-import top.focess.veto.api.agent.workflow.ResponseRequest;
+import top.focess.veto.api.agent.response.ResponseRequest;
 import top.focess.veto.api.llm.ChatMessage;
 import top.focess.veto.api.llm.LlmOptions;
 import top.focess.veto.api.llm.ProviderMessages;

@@ -24,8 +24,8 @@ import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.api.search.SearchProvider;
 import top.focess.veto.builtin.tools.ReadGitHubRepositoryTool;
+import top.focess.veto.integration.plugins.PluginTestSupport;
 import top.focess.veto.llm.core.*;
-import top.focess.veto.plugin.runtime.PluginTestSupport;
 import top.focess.veto.vault.*;
 
 class GitHubRepositoryReaderTest {

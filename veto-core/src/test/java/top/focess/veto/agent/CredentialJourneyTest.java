@@ -33,6 +33,7 @@ import top.focess.veto.agent.workspace.*;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.ToolResult;
+import top.focess.veto.api.llm.LlmBinding;
 import top.focess.veto.api.llm.LlmOptions;
 import top.focess.veto.api.llm.ProviderType;
 import top.focess.veto.api.llm.ToolCall;
@@ -40,12 +41,12 @@ import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.api.llm.VetoResponse;
 import top.focess.veto.api.search.SearchProvider;
 import top.focess.veto.builtin.tools.ReadGitHubRepositoryTool;
+import top.focess.veto.integration.plugins.PluginConfigurations;
+import top.focess.veto.integration.plugins.PluginLifecycleEvents;
+import top.focess.veto.integration.plugins.PluginManager;
+import top.focess.veto.integration.plugins.PluginTestSupport;
+import top.focess.veto.integration.plugins.secrets.SecretProtectionConfiguration;
 import top.focess.veto.llm.core.*;
-import top.focess.veto.plugin.runtime.PluginConfigurations;
-import top.focess.veto.plugin.runtime.PluginLifecycleEvents;
-import top.focess.veto.plugin.runtime.PluginManager;
-import top.focess.veto.plugin.runtime.PluginTestSupport;
-import top.focess.veto.plugin.secrets.SecretProtectionConfiguration;
 import top.focess.veto.sandbox.*;
 import top.focess.veto.vault.*;
 
@@ -121,7 +122,7 @@ class CredentialJourneyTest {
                                 "submit_plan",
                                 new top.focess.veto.builtin.planning.SubmitPlanTool(
                                         new top.focess.veto.agent.capability
-                                                .LoopControlCapabilityImpl())));
+                                                .ResponseCapabilityImpl())));
         when(toolContext.getBeansOfType(PluginManager.class))
                 .thenReturn(Map.of("plugins", plugins));
         var engine =
@@ -295,7 +296,7 @@ class CredentialJourneyTest {
                 service.getOrCreateAgent(
                         session,
                         UUID.randomUUID().toString(),
-                        new AgentRunner.LlmBinding(
+                        new LlmBinding(
                                 ProviderType.DEEPSEEK,
                                 "scripted",
                                 "key",
@@ -312,7 +313,7 @@ class CredentialJourneyTest {
                     service.submit(
                             session,
                             "Read the configuration, import its credential and read example/project",
-                            new AgentRunner.LlmBinding(
+                            new LlmBinding(
                                     ProviderType.DEEPSEEK,
                                     "scripted",
                                     "key",

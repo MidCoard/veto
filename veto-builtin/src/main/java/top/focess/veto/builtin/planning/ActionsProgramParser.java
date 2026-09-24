@@ -18,7 +18,7 @@ import top.focess.veto.api.agent.workflow.ToolAction;
 /**
  * Parses the raw {@code actions} {@link JsonNode} - a flat, ordered array emitted by the agent -
  * into a typed {@link ActionsProgram}. Each action element carries a {@code type} discriminator.
- * The result is validated by {@link ProgramValidator} before guided mode loads it.
+ * The result is validated by {@link ProgramValidator} before plan mode loads it.
  */
 public final class ActionsProgramParser {
 

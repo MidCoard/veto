@@ -16,7 +16,9 @@ import top.focess.veto.agent.intercept.HitlRegistry;
 import top.focess.veto.agent.intercept.IngressDefense;
 import top.focess.veto.agent.loop.PromptCompiler;
 import top.focess.veto.agent.translation.DefaultCapabilityTranslator;
+import top.focess.veto.api.agent.AgentResult;
 import top.focess.veto.api.agent.tool.ToolDocs;
+import top.focess.veto.api.llm.LlmBinding;
 import top.focess.veto.api.llm.LlmOptions;
 import top.focess.veto.api.llm.ProviderType;
 import top.focess.veto.api.llm.VetoResponse;
@@ -76,7 +78,7 @@ class TurnLogWiringTest {
                 service.submit(
                         "turn-log-test",
                         "What is 2 + 2?",
-                        new AgentRunner.LlmBinding(
+                        new LlmBinding(
                                 ProviderType.DEEPSEEK,
                                 "stub-model",
                                 "stub-key",

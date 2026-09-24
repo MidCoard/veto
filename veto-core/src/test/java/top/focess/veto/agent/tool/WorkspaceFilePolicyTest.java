@@ -35,7 +35,7 @@ import top.focess.veto.api.plugin.contract.TextProtection;
 import top.focess.veto.builtin.workspace.DeletePathTool;
 import top.focess.veto.builtin.workspace.ViewFileTool;
 import top.focess.veto.builtin.workspace.WriteToFileTool;
-import top.focess.veto.plugin.runtime.PluginTestSupport;
+import top.focess.veto.integration.plugins.PluginTestSupport;
 
 class WorkspaceFilePolicyTest {
     private static final @NonNull UUID USER = UUID.randomUUID();

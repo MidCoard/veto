@@ -8,8 +8,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import top.focess.veto.integration.plugins.PluginTestSupport;
 import top.focess.veto.observability.AuditLogger;
-import top.focess.veto.plugin.runtime.PluginTestSupport;
 
 @ExtendWith(MockitoExtension.class)
 @SuppressWarnings("initialization.field.uninitialized")

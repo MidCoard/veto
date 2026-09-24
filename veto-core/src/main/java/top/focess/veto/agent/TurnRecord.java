@@ -193,7 +193,7 @@ public record TurnRecord(
             @NonNull ToolResultFormat format,
             @NonNull String content,
             ToolErrorCode errorCode) {
-        // callId is OPTIONAL (absent for synthetic observations — guided-escape, llm-error,
+        // callId is OPTIONAL (absent for synthetic observations — plan-escape, llm-error,
         // tool-not-found), so Map.of's null-hostile builder would throw; use a null-tolerant map.
         Map<String, Object> p = new LinkedHashMap<>();
         if (callId != null) {

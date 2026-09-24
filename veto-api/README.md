@@ -20,11 +20,11 @@ and response text, not provider secrets or mutable native-call state. Input hook
 before input protection; output hooks precede final observation protection. Failures
 stop the operation with a safe host error. Script workers do not support Java hooks.
 
-Search providers now implement `top.focess.veto.api.search.SearchProvider` and register
-through `StandardContributionPoints.SEARCH_PROVIDERS`. DuckDuckGo and Brave ship automatically in `veto-builtin`, which demonstrates
-this registration with no core dependency. Other plugins register additional providers
-through the same API. The host selects by provider name,
-checks session bindings and invokes under plugin lifecycle admission.
+Plugins publish services through `StandardContributionPoints.SERVICES` and discover
+named/versioned handles through `PluginContext.services()`. Inputs and outputs are
+`JsonValue`; consumers import only veto-api, never a provider class or a feature-specific
+Java interface. See the named-services example below. DuckDuckGo and Brave ship in
+builtin and use this same mechanism.
 
 Model-provider, storage and other feature contracts still in core are migration gaps; this
 release does not yet make every feature implementable through the API alone.
@@ -63,10 +63,9 @@ read-only lifecycle state via `state()`, a failure-reporting callback, and
 host-granted services via `service(Class<T>)`; it does not issue permissions or
 approved invocation services. Host services are host-granted authority —
 registration never earns them, and a plugin must degrade when a service is
-absent. The service map is a generic mechanism only: this module (like
-veto-plugin-runtime and veto-core's public surface) carries no plugin-specific
-API, so plugins stay portable to other agent clients; a plugin's own
-host-service contracts live in that plugin's module.
+absent. The class-keyed host service map is separate from `services()`, the named JSON
+service directory used for communication between plugins. New plugin-owned services
+do not require adding feature-specific Java types to veto-api.
 
 `AbstractVetoPlugin` provides lifecycle callbacks without allocating threads or owning
 lifecycle state. Veto's `PluginManager` discovers built-in plugins through
@@ -223,7 +222,7 @@ API; core supplies the authorized capability and owns the role transition.
 continuation callbacks. The built-in plugin owns parsing, plan-language validation
 and interpretation; API-only plugins can supply their own continuation. Runtime
 callbacks preserve host tool authorization, model budgets and cancellation.
-`LoopControlTool` receives a host `LoopControlCapability` to submit a plan or a
+`ResponseTool` receives a host `ResponseCapability` to submit a plan or a
 cited answer. `ResponseSubmission` declares exclusive submission semantics by
 metadata rather than a hard-coded tool name. `ContextualInputSchemaSource` supports
 tool-owned schemas specialized against the live model-visible manifest.
@@ -237,3 +236,47 @@ skill values are API types. Plugins own execution behavior and use these ports f
 authorized host effects. `ReaderSession.Factory` supplies plugin-owned private
 reader tools and document state while the host runs the shared child-agent lifecycle.
 `ReaderExecutionResult` marks outputs eligible to carry host-issued child identities.
+
+## Named services between plugins
+
+A provider returns a normal contribution during initialization:
+
+```java
+Contribution.of(StandardContributionPoints.SERVICES, "normalize",
+    new ServiceRegistration("example:text-normalize", 1, request -> normalize(request)))
+```
+
+A consumer retains its `PluginContext` and invokes after activation:
+
+```java
+var handle = context.services().find("example:text-normalize", 1).orElseThrow();
+JsonValue result = handle.invoke(new JsonValue.StringValue("input"));
+```
+
+`available()` exposes names, major versions and provider IDs. Lookup is exact; duplicate
+name/version pairs fail activation, while different versions may coexist. The registry
+is published after all initialization contributions are collected. Registration is
+startup-only; invocation requires active caller and provider lifecycles and honors
+current session selection when a session is present. A retained handle does not bypass
+those checks. Handlers return bounded JSON values; safe `ServiceException` codes cross
+the boundary, and unexpected implementation diagnostics are hidden. Class-keyed
+`service(Class)` remains exclusively for host-granted Java capabilities.
+
+Search is an example protocol: `veto.search:<provider>` version 1 accepts an object
+with `query`, `allowedDomains`, `blockedDomains` and `maxResults`, and returns an array
+of `{title, url, snippet}` objects. Domain lists may be null. A provider can implement
+this JSON contract directly without importing any search implementation. `SearchServices`
+and `SearchProvider` are optional authoring helpers, not registry dispatch types.
+
+## Agent host contracts
+
+Portable `AgentAction`, `AgentResult`, `AgentState`, `ToolCallEvent` and `ToolResultEvent`
+live in `api.agent`; `LlmBinding` lives in `api.llm`; `PluginBinding` in `api.plugin`.
+General cited-answer/plan submissions use `api.agent.response.ResponseRequest` and
+`ResponseCapability`. `PlanStepContext` and `PlanExecution` describe the plan runtime
+boundary. The builtin owns the plan loop and calls `Runtime.beforeStep()` before each
+step, so host cancellation, budgets and sourced observations remain enforced.
+
+Spring/session/database integration lives in core's `integration.plugins` package.
+Generic lifecycle admission, service dispatch and managed plan execution belong in
+veto-plugin-runtime. These host adapters are not plugin feature implementations.

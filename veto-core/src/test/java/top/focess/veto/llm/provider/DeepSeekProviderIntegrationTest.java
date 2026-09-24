@@ -17,7 +17,7 @@ import top.focess.veto.api.llm.ProviderType;
 import top.focess.veto.api.llm.ResolvedRequest;
 import top.focess.veto.api.llm.VetoRequest;
 import top.focess.veto.api.llm.VetoResponse;
-import top.focess.veto.plugin.runtime.PluginLlmProviders;
+import top.focess.veto.integration.plugins.PluginLlmProviders;
 
 /** Integration test that calls the real DeepSeek API. Requires {@code application-local.yml}. */
 @SpringBootTest

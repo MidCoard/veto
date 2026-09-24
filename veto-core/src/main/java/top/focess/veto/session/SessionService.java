@@ -14,16 +14,18 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import top.focess.veto.agent.Agent;
-import top.focess.veto.agent.AgentRunner;
 import top.focess.veto.agent.AgentService;
 import top.focess.veto.agent.RecordRecovery;
 import top.focess.veto.agent.TurnRecord;
 import top.focess.veto.agent.intercept.HitlRecordRepository;
 import top.focess.veto.agent.workspace.PathResolver;
 import top.focess.veto.agent.workspace.WorkspaceAdmissionPolicy;
+import top.focess.veto.api.llm.LlmBinding;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.controller.SessionController;
 import top.focess.veto.i18n.Msg;
+import top.focess.veto.integration.plugins.PluginLifecycleEvents;
+import top.focess.veto.integration.plugins.SessionPlugins;
 import top.focess.veto.model.AgentEntity;
 import top.focess.veto.model.AgentInstanceRepository;
 import top.focess.veto.model.AgentPatternEntity;
@@ -33,7 +35,6 @@ import top.focess.veto.model.SessionRepository;
 import top.focess.veto.model.tier.ModelBinding;
 import top.focess.veto.model.tier.ModelTierRegistry;
 import top.focess.veto.monitor.RequestContinuationStore;
-import top.focess.veto.plugin.runtime.PluginLifecycleEvents;
 import top.focess.veto.security.UserAdminService;
 
 /**
@@ -55,10 +56,10 @@ public class SessionService {
         hitlRecords = records;
     }
 
-    private top.focess.veto.plugin.runtime.SessionPlugins sessionPlugins;
+    private top.focess.veto.integration.plugins.SessionPlugins sessionPlugins;
 
     @Autowired
-    public void attachSessionPlugins(top.focess.veto.plugin.runtime.@NonNull SessionPlugins value) {
+    public void attachSessionPlugins(@NonNull SessionPlugins value) {
         sessionPlugins = value;
     }
 
@@ -400,7 +401,7 @@ public class SessionService {
         }
 
         ModelBinding resolved = tierRegistry.resolve(owner, agent.getTier());
-        AgentRunner.LlmBinding binding = standaloneBinding(resolved);
+        LlmBinding binding = standaloneBinding(resolved);
         List<TurnRecord> history = historyLoader.load(session.getId(), agent.getId());
         agentService.getOrCreateAgent(
                 session.getId(),
@@ -616,8 +617,8 @@ public class SessionService {
     /**
      * Builds the standalone agent's binding from a resolved tier binding (no prompt-base override).
      */
-    private AgentRunner.@NonNull LlmBinding standaloneBinding(@NonNull ModelBinding resolved) {
-        return new AgentRunner.LlmBinding(
+    private @NonNull LlmBinding standaloneBinding(@NonNull ModelBinding resolved) {
+        return new LlmBinding(
                 resolved.provider(),
                 resolved.model(),
                 resolved.credentialKey(),

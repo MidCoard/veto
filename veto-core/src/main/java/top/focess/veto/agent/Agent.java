@@ -9,6 +9,8 @@ import java.util.function.Consumer;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.drift.ReadHistory;
 import top.focess.veto.agent.identity.AgentPersona;
+import top.focess.veto.api.agent.AgentResult;
+import top.focess.veto.api.agent.AgentState;
 
 /**
  * The identity + API surface of a Veto agent. Holds the persona, tool whitelist, turn history, and

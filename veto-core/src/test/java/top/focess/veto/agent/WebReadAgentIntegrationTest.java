@@ -38,8 +38,10 @@ import top.focess.veto.agent.loop.PromptCompiler;
 import top.focess.veto.agent.tool.ToolEngineImpl;
 import top.focess.veto.agent.translation.DefaultCapabilityTranslator;
 import top.focess.veto.agent.web.WebFetchExecutor;
+import top.focess.veto.api.agent.AgentState;
 import top.focess.veto.api.agent.tool.AgentTool;
 import top.focess.veto.api.agent.tool.ToolDocs;
+import top.focess.veto.api.llm.LlmBinding;
 import top.focess.veto.api.llm.LlmOptions;
 import top.focess.veto.api.llm.ProviderType;
 import top.focess.veto.api.llm.ToolCall;
@@ -176,7 +178,7 @@ class WebReadAgentIntegrationTest {
                                 "submit_plan",
                                 new top.focess.veto.builtin.planning.SubmitPlanTool(
                                         new top.focess.veto.agent.capability
-                                                .LoopControlCapabilityImpl())));
+                                                .ResponseCapabilityImpl())));
         ToolEngineImpl engine =
                 new ToolEngineImpl(mapper, List.of(new WebFetchTool(network)), context);
         engine.afterSingletonsInstantiated();
@@ -221,7 +223,7 @@ class WebReadAgentIntegrationTest {
         HitlRegistry hitl = new HitlRegistry();
         AgentService service = service(engine, parentCaller, mapper, hitl);
         var binding =
-                new AgentRunner.LlmBinding(
+                new LlmBinding(
                         ProviderType.DEEPSEEK,
                         "parent-model",
                         "parent-key",
@@ -464,7 +466,7 @@ class WebReadAgentIntegrationTest {
                                 "submit_plan",
                                 new top.focess.veto.builtin.planning.SubmitPlanTool(
                                         new top.focess.veto.agent.capability
-                                                .LoopControlCapabilityImpl())));
+                                                .ResponseCapabilityImpl())));
         ToolEngineImpl engine =
                 new ToolEngineImpl(mapper, List.of(new WebFetchTool(network)), context);
         engine.afterSingletonsInstantiated();
@@ -501,9 +503,8 @@ class WebReadAgentIntegrationTest {
         ReflectionTestUtils.setField(service, "turnLogService", parentLog);
         UUID sessionId = UUID.randomUUID();
         String session = sessionId.toString();
-        AgentRunner.LlmBinding binding =
-                new AgentRunner.LlmBinding(
-                        ProviderType.DEEPSEEK, "parent", "key", LlmOptions.defaults(), null);
+        LlmBinding binding =
+                new LlmBinding(ProviderType.DEEPSEEK, "parent", "key", LlmOptions.defaults(), null);
         service.getOrCreateAgent(
                 session,
                 UUID.randomUUID().toString(),

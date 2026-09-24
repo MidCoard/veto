@@ -33,11 +33,14 @@ import top.focess.veto.agent.tool.ToolEngine;
 import top.focess.veto.agent.translation.DefaultCapabilityTranslator;
 import top.focess.veto.agent.workspace.PathMode;
 import top.focess.veto.agent.workspace.Workspace;
+import top.focess.veto.api.agent.AgentResult;
+import top.focess.veto.api.agent.AgentState;
 import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.tool.ParamCategory;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.ToolResult;
+import top.focess.veto.api.llm.LlmBinding;
 import top.focess.veto.api.llm.LlmOptions;
 import top.focess.veto.api.llm.ProviderType;
 import top.focess.veto.api.llm.ToolCall;
@@ -195,7 +198,7 @@ class NewRequirementsTest {
                                 return service.submit(
                                         agentKey,
                                         "Run netcat",
-                                        new AgentRunner.LlmBinding(
+                                        new LlmBinding(
                                                 ProviderType.DEEPSEEK,
                                                 "stub",
                                                 "key",
@@ -323,7 +326,7 @@ class NewRequirementsTest {
                 service.submit(
                         agentKey,
                         "Hello assistant",
-                        new AgentRunner.LlmBinding(
+                        new LlmBinding(
                                 ProviderType.DEEPSEEK,
                                 "stub",
                                 "key",

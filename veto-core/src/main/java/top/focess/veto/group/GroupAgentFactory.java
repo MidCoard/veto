@@ -5,10 +5,10 @@ import org.jspecify.annotations.NonNull;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.Agent;
-import top.focess.veto.agent.AgentRunner;
 import top.focess.veto.agent.AgentService;
 import top.focess.veto.agent.identity.AgentPersona;
 import top.focess.veto.agent.workspace.Workspace;
+import top.focess.veto.api.llm.LlmBinding;
 import top.focess.veto.model.tier.ModelBinding;
 import top.focess.veto.model.tier.ModelTierRegistry;
 
@@ -17,11 +17,11 @@ import top.focess.veto.model.tier.ModelTierRegistry;
  * AgentService#createMate}. {@code @Lazy}-injects {@link AgentService} to break the cycle ({@code
  * GroupTools → GroupSpawner → AgentFactory → AgentService → ToolEngine → GroupTools}).
  *
- * <p>The Mate's {@link AgentRunner.LlmBinding} is resolved from the {@link ModelTierRegistry} for
- * the tier carried by the {@link MateBinding} (chosen per-skillset by {@link GroupSpawner}); the
- * concrete provider / model / credential come from the owner's active model-tier profile, so
- * switching profiles swaps every Mate's model at once. The system-prompt base is role-specific and
- * carried on the MateBinding.
+ * <p>The Mate's {@link LlmBinding} is resolved from the {@link ModelTierRegistry} for the tier
+ * carried by the {@link MateBinding} (chosen per-skillset by {@link GroupSpawner}); the concrete
+ * provider / model / credential come from the owner's active model-tier profile, so switching
+ * profiles swaps every Mate's model at once. The system-prompt base is role-specific and carried on
+ * the MateBinding.
  */
 @Component
 public class GroupAgentFactory implements GroupSpawner.AgentFactory {
@@ -47,7 +47,7 @@ public class GroupAgentFactory implements GroupSpawner.AgentFactory {
             throw new IllegalStateException(
                     "Cannot provision a group agent without the session owner");
         }
-        AgentRunner.LlmBinding binding = resolveBinding(owner, mateBinding);
+        LlmBinding binding = resolveBinding(owner, mateBinding);
         Workspace workspace = mateBinding.workspace();
         if (workspace == null) {
             throw new IllegalStateException(
@@ -64,10 +64,10 @@ public class GroupAgentFactory implements GroupSpawner.AgentFactory {
                 mateBinding.sessionId());
     }
 
-    private AgentRunner.@NonNull LlmBinding resolveBinding(
+    private @NonNull LlmBinding resolveBinding(
             @NonNull String owner, @NonNull MateBinding mateBinding) {
         ModelBinding resolved = tierRegistry.resolve(owner, mateBinding.tier());
-        return new AgentRunner.LlmBinding(
+        return new LlmBinding(
                 resolved.provider(),
                 resolved.model(),
                 resolved.credentialKey(),

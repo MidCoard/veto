@@ -9,9 +9,9 @@ import top.focess.veto.api.plugin.contract.PluginFailure;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
 import top.focess.veto.api.plugin.contract.TextProtection;
 import top.focess.veto.command.PromptHandler;
-import top.focess.veto.plugin.runtime.PluginLifecycleEvents;
-import top.focess.veto.plugin.runtime.PluginManager;
-import top.focess.veto.plugin.runtime.PluginTestSupport;
+import top.focess.veto.integration.plugins.PluginLifecycleEvents;
+import top.focess.veto.integration.plugins.PluginManager;
+import top.focess.veto.integration.plugins.PluginTestSupport;
 
 class AuthLifecycleManagerTest {
     @Test

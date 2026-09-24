@@ -38,24 +38,14 @@ class BuiltinSearchProviderTest {
             assertEquals("top.focess.builtin", plugin.identity().id());
             var providers =
                     contributions.entries().stream()
-                            .filter(
-                                    e ->
-                                            e.point()
-                                                    .equals(
-                                                            StandardContributionPoints
-                                                                    .SEARCH_PROVIDERS))
+                            .filter(e -> e.point().equals(StandardContributionPoints.SERVICES))
                             .toList();
             assertEquals(
                     List.of("brave", "duckduckgo"),
                     providers.stream().map(e -> e.localId()).sorted().toList());
             assertTrue(
                     providers.stream()
-                            .allMatch(
-                                    e ->
-                                            e.point()
-                                                    .equals(
-                                                            StandardContributionPoints
-                                                                    .SEARCH_PROVIDERS)));
+                            .allMatch(e -> e.point().equals(StandardContributionPoints.SERVICES)));
             plugin.start();
             assertThrows(
                     ClassNotFoundException.class,

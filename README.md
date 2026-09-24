@@ -14,7 +14,7 @@ The web client lives in the separate [veto-ui](https://github.com/MidCoard/veto-
 
 Veto is under active development. The following paths are implemented in this repository:
 
-- autonomous and guided agent-loop execution;
+- autonomous execution and plugin-owned plans;
 - native file, search, command, background-task, web, memory, skill, and group tools;
 - deterministic tool screening, local-SLM advisory screening, permission grants, and HITL vetoes;
 - session history, long-term memory backends, model-tier profiles, and per-user vault storage;
@@ -88,7 +88,7 @@ Important `veto-core` packages:
 | Package | Responsibility |
 | --- | --- |
 | `agent` | Agent lifecycle, runner, loop breaker, and service orchestration |
-| `agent.loop` | Prompt compilation, guided actions, context management, and response enforcement |
+| `agent.loop` | Prompt compilation, context management, and host response enforcement |
 | `agent.intercept` | Gateway results, HITL decisions, permission grants, drift, and ingress handling |
 | `agent.screening` | Deterministic and SLM-assisted relevance/danger computation |
 | `agent.tool` | Unified tool contracts, schemas, engine, validation, and built-in tools |

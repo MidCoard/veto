@@ -14,6 +14,8 @@ import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.agent.identity.AgentPersona;
 import top.focess.veto.agent.identity.Role;
+import top.focess.veto.api.agent.AgentAction;
+import top.focess.veto.api.agent.AgentState;
 import top.focess.veto.api.agent.tool.ToolDocs;
 
 class SessionAgentRegistryTest {

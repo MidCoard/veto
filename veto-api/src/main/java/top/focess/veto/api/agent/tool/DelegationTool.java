@@ -3,7 +3,12 @@ package top.focess.veto.api.agent.tool;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.agent.capability.DelegationCapability;
 
-public interface DelegationTool<T> extends AgentTool<T> {
+public interface DelegationTool<T>
+        extends AgentTool<T>, HostCapabilityTool<T, DelegationCapability> {
+    default @NonNull Class<DelegationCapability> capabilityType() {
+        return ToolDocs.nonNullClass(DelegationCapability.class);
+    }
+
     @NonNull DelegationCapability delegationCapability();
 
     @NonNull String execute(@NonNull T args, @NonNull DelegationCapability capability);

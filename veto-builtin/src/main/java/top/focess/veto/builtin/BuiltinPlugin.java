@@ -12,12 +12,12 @@ import top.focess.veto.api.plugin.PluginIdentity;
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
 import top.focess.veto.api.plugin.contribution.Contribution;
-import top.focess.veto.builtin.agent.CreateGroup;
+import top.focess.veto.api.search.SearchServices;
 import top.focess.veto.builtin.group.*;
 import top.focess.veto.builtin.memory.MemoryTools;
 import top.focess.veto.builtin.monitor.MonitorTools;
-import top.focess.veto.builtin.planning.AnswerWithCitationsTool;
 import top.focess.veto.builtin.planning.SubmitPlanTool;
+import top.focess.veto.builtin.response.AnswerWithCitationsTool;
 import top.focess.veto.builtin.search.BraveSearchProvider;
 import top.focess.veto.builtin.search.DuckDuckGoSearchProvider;
 import top.focess.veto.builtin.tools.*;
@@ -39,7 +39,7 @@ public final class BuiltinPlugin extends AbstractVetoPlugin {
             @NonNull PluginContext context, JsonValue.@NonNull ObjectValue configuration) {
         List<CapabilityTool<?>> tools =
                 List.of(
-                        new CreateGroup(),
+                        new GroupTools.CreateGroup(),
                         new RunCommandTool(),
                         new RunTaskTool(),
                         new ViewTaskTool(),
@@ -88,10 +88,14 @@ public final class BuiltinPlugin extends AbstractVetoPlugin {
         }
         contributions.add(
                 Contribution.of(
-                        StandardContributionPoints.SEARCH_PROVIDERS, "duckduckgo", duckduckgo));
+                        StandardContributionPoints.SERVICES,
+                        "duckduckgo",
+                        SearchServices.registration(duckduckgo)));
         contributions.add(
                 Contribution.of(
-                        StandardContributionPoints.SEARCH_PROVIDERS, "brave", configuredBrave));
+                        StandardContributionPoints.SERVICES,
+                        "brave",
+                        SearchServices.registration(configuredBrave)));
         return new PluginContributions(contributions);
     }
 

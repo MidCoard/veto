@@ -16,7 +16,9 @@ public interface PlanExecution {
     interface Runtime {
         boolean running();
 
-        @NonNull ToolResult tool(@NonNull ToolCall call, @NonNull GuidedStepContext context);
+        default void beforeStep() {}
+
+        @NonNull ToolResult tool(@NonNull ToolCall call, @NonNull PlanStepContext context);
 
         @NonNull Generated generate(
                 @NonNull GenerateAction action, @NonNull ResponseContract contract);
@@ -37,4 +39,6 @@ public interface PlanExecution {
     void install(@NonNull ActionsProgram program, String modelCallId);
 
     void step(@NonNull Runtime runtime);
+
+    void run(@NonNull Runtime runtime);
 }

@@ -25,6 +25,7 @@ import top.focess.veto.api.agent.tool.ParamCategory;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.ToolResult;
+import top.focess.veto.api.llm.LlmBinding;
 import top.focess.veto.api.llm.LlmOptions;
 import top.focess.veto.api.llm.ProviderType;
 import top.focess.veto.api.llm.ToolCall;
@@ -107,8 +108,8 @@ class PersonaToolWhitelistTest {
                         new SandboxManager(TestSandboxFactory.uncontainedSubprocesses())));
     }
 
-    private static AgentRunner.@NonNull LlmBinding binding() {
-        return new AgentRunner.LlmBinding(
+    private static @NonNull LlmBinding binding() {
+        return new LlmBinding(
                 ProviderType.DEEPSEEK, "stub-model", "stub-key", LlmOptions.defaults(), "sys");
     }
 

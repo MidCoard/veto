@@ -74,12 +74,7 @@ class BuiltinPluginTest {
             assertEquals(
                     List.of("brave", "duckduckgo"),
                     contributions.entries().stream()
-                            .filter(
-                                    e ->
-                                            e.point()
-                                                    .equals(
-                                                            StandardContributionPoints
-                                                                    .SEARCH_PROVIDERS))
+                            .filter(e -> e.point().equals(StandardContributionPoints.SERVICES))
                             .map(e -> e.localId())
                             .sorted()
                             .toList());

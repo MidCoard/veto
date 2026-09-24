@@ -10,9 +10,10 @@ import org.jspecify.annotations.Nullable;
 import top.focess.veto.agent.AgentRunner;
 import top.focess.veto.agent.TurnRecord;
 import top.focess.veto.agent.loop.MessageCitations;
+import top.focess.veto.api.agent.response.ResponseRequest;
 import top.focess.veto.api.agent.workflow.ActionsProgram;
 import top.focess.veto.api.agent.workflow.PlanExecution;
-import top.focess.veto.api.agent.workflow.ResponseRequest;
+import top.focess.veto.api.llm.LlmBinding;
 import top.focess.veto.api.llm.VetoResponse;
 
 /**
@@ -35,7 +36,7 @@ public final class ToolCallContextHolder {
     public record TransformDirective(
             @NonNull String brief,
             @NonNull UUID groupId,
-            AgentRunner.@NonNull LlmBinding leaderBinding,
+            @NonNull LlmBinding leaderBinding,
             @NonNull Set<ToolDefinition> leaderTools) {}
 
     /**

@@ -8,7 +8,7 @@ import org.springframework.web.bind.annotation.RestController;
 import top.focess.veto.api.plugin.PluginState;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
 import top.focess.veto.controller.dto.*;
-import top.focess.veto.plugin.runtime.PluginManager;
+import top.focess.veto.integration.plugins.PluginManager;
 import top.focess.veto.plugin.runtime.ScriptPlugin;
 
 /**

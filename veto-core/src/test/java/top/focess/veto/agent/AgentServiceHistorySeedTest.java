@@ -18,6 +18,7 @@ import top.focess.veto.agent.intercept.IngressDefense;
 import top.focess.veto.agent.loop.PromptCompiler;
 import top.focess.veto.agent.translation.DefaultCapabilityTranslator;
 import top.focess.veto.api.agent.tool.ToolDocs;
+import top.focess.veto.api.llm.LlmBinding;
 import top.focess.veto.api.llm.LlmOptions;
 import top.focess.veto.api.llm.ProviderType;
 import top.focess.veto.api.llm.VetoRequest;
@@ -48,7 +49,7 @@ class AgentServiceHistorySeedTest {
         AgentService service = serviceWith(caller);
         UUID sessionId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
-        AgentRunner.LlmBinding binding = binding();
+        LlmBinding binding = binding();
 
         List<TurnRecord> history =
                 List.of(TurnRecord.userPrompt(1, "prior"), TurnRecord.assistantResponse(2, "ok"));
@@ -70,7 +71,7 @@ class AgentServiceHistorySeedTest {
                 };
         AgentService service = serviceWith(caller);
         UUID sessionId = UUID.randomUUID();
-        AgentRunner.LlmBinding binding = binding();
+        LlmBinding binding = binding();
 
         Agent a =
                 service.getOrCreateAgent(
@@ -86,7 +87,7 @@ class AgentServiceHistorySeedTest {
                 };
         AgentService service = serviceWith(caller);
         UUID sessionId = UUID.randomUUID();
-        AgentRunner.LlmBinding binding = binding();
+        LlmBinding binding = binding();
         // Replayed history with a gap (1, 2, 5) so the max is 5, not the turn count.
         List<TurnRecord> history =
                 List.of(
@@ -103,7 +104,7 @@ class AgentServiceHistorySeedTest {
         int turnNumber =
                 assertInstanceOf(
                         ToolDocs.nonNullClass(Integer.class),
-                        requireField(ReflectionTestUtils.getField(runner, "turnNumber")));
+                        requireField(runner.history().getLast().turnNumber()));
         assertEquals(5, turnNumber, "seedHistory advances turnNumber to the max replayed turn");
     }
 
@@ -111,7 +112,7 @@ class AgentServiceHistorySeedTest {
     void restartedAgentRecordsUpdatedSystemAndPreservesEffectiveConversation() throws Exception {
         UUID sessionId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
-        AgentRunner.LlmBinding binding = binding();
+        LlmBinding binding = binding();
         UniformLLMCaller finishingCaller = request -> new VetoResponse("done", null, "done");
 
         AgentService beforeRestart = serviceWith(finishingCaller);
@@ -136,7 +137,7 @@ class AgentServiceHistorySeedTest {
                             resumedRequest.set(request);
                             return new VetoResponse("done", null, "done");
                         });
-        AgentRunner.LlmBinding updatedPromptBinding = binding("updated after restart");
+        LlmBinding updatedPromptBinding = binding("updated after restart");
         Agent resumed =
                 afterRestart.getOrCreateAgent(
                         sessionId.toString(), updatedPromptBinding, replayed, userId);
@@ -196,12 +197,12 @@ class AgentServiceHistorySeedTest {
                         new SandboxManager(TestSandboxFactory.uncontainedSubprocesses())));
     }
 
-    private static AgentRunner.@NonNull LlmBinding binding() {
+    private static @NonNull LlmBinding binding() {
         return binding(null);
     }
 
-    private static AgentRunner.@NonNull LlmBinding binding(String systemPromptBase) {
-        return new AgentRunner.LlmBinding(
+    private static @NonNull LlmBinding binding(String systemPromptBase) {
+        return new LlmBinding(
                 ProviderType.DEEPSEEK,
                 "stub-model",
                 "stub-key",

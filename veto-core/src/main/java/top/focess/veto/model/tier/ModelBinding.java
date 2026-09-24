@@ -7,9 +7,9 @@ import top.focess.veto.vault.KeysteadVault;
 
 /**
  * A concrete model binding resolved from a user's active model-tier profile for one {@link
- * ModelTier}. Carries everything a caller needs to build an {@code AgentRunner.LlmBinding}: the
- * provider, model id, the vault credential-key name (resolved per-user downstream), sampling
- * defaults, and an optional base-URL override.
+ * ModelTier}. Carries everything a caller needs to build an {@code LlmBinding}: the provider, model
+ * id, the vault credential-key name (resolved per-user downstream), sampling defaults, and an
+ * optional base-URL override.
  *
  * <p>The {@code credentialKey} is a {@link KeysteadVault} SECURE_NOTE title - a logical name, not
  * the secret itself. Each user stores their own secret under that title.

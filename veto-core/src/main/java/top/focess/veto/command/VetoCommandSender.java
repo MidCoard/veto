@@ -9,8 +9,9 @@ import org.slf4j.LoggerFactory;
 import top.focess.command.AbstractCommandSender;
 import top.focess.command.CommandPermission;
 import top.focess.command.CommandSender;
-import top.focess.veto.agent.AgentRunner;
 import top.focess.veto.agent.intercept.VetoPrompt;
+import top.focess.veto.api.agent.ToolCallEvent;
+import top.focess.veto.api.agent.ToolResultEvent;
 import top.focess.veto.contract.IpcFrame;
 import top.focess.veto.contract.Version;
 import top.focess.veto.terminal.IpcServer;
@@ -205,11 +206,11 @@ public final class VetoCommandSender extends AbstractCommandSender {
      * Streams a tool call the agent is about to execute to the terminal as a {@link
      * IpcFrame.ToolCall} frame, so the terminal can render a Claude-Code-style indicator and the
      * user can see exactly which tool the agent invoked with which arguments. Receives the agent's
-     * domain {@link AgentRunner.ToolCallEvent} and constructs the terminal wire frame HERE, at the
-     * transport edge (the agent emits domain events and never builds an {@code IpcFrame}). Called
-     * on the agent virtual thread after the TOOL_CALL turn has been durably persisted.
+     * domain {@link ToolCallEvent} and constructs the terminal wire frame HERE, at the transport
+     * edge (the agent emits domain events and never builds an {@code IpcFrame}). Called on the
+     * agent virtual thread after the TOOL_CALL turn has been durably persisted.
      */
-    public void sendToolCall(AgentRunner.@NonNull ToolCallEvent call) {
+    public void sendToolCall(@NonNull ToolCallEvent call) {
         ipcServer.send(terminalId, new IpcFrame.ToolCall(call.toolName(), call.args()));
     }
 
@@ -218,11 +219,10 @@ public final class VetoCommandSender extends AbstractCommandSender {
      * IpcFrame.ToolResult} frame. The body is the self-describing "Observation (tool(args)) [...]"
      * text the model sees, so the terminal can render a single result and the user can verify which
      * call it belongs to without tracking call/result pairs. Receives the agent's domain {@link
-     * AgentRunner.ToolResultEvent} and constructs the terminal wire frame here, at the transport
-     * edge. Called on the agent virtual thread after the TOOL_RESPONSE turn has been durably
-     * persisted.
+     * ToolResultEvent} and constructs the terminal wire frame here, at the transport edge. Called
+     * on the agent virtual thread after the TOOL_RESPONSE turn has been durably persisted.
      */
-    public void sendToolResult(AgentRunner.@NonNull ToolResultEvent result) {
+    public void sendToolResult(@NonNull ToolResultEvent result) {
         ipcServer.send(terminalId, new IpcFrame.ToolResult(result.body(), result.success()));
     }
 
