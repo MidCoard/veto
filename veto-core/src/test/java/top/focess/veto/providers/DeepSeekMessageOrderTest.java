@@ -14,6 +14,7 @@ import top.focess.veto.api.llm.LlmOptions;
 import top.focess.veto.api.llm.ProviderMessages;
 import top.focess.veto.api.llm.ProviderType;
 import top.focess.veto.api.llm.ResolvedRequest;
+import top.focess.veto.api.llm.ResponseContract;
 import top.focess.veto.api.llm.VetoRequest;
 
 class DeepSeekMessageOrderTest {
@@ -64,8 +65,9 @@ class DeepSeekMessageOrderTest {
                             "test-key",
                             LlmOptions.defaults(),
                             messages,
-                            mapper.createObjectNode(),
-                            null);
+                            null,
+                            true,
+                            ResponseContract.ordinary());
             var client =
                     new DeepSeekLlmClient(
                             url, "test-secret", "DeepSeek", mapper, ProviderTestPrompts.PROMPTS);

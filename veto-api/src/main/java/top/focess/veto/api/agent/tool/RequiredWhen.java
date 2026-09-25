@@ -18,12 +18,24 @@ import org.jspecify.annotations.NonNull;
 @Target(ElementType.RECORD_COMPONENT)
 public @interface RequiredWhen {
 
-    /** Name of the sibling record component that selects the applicable variant. */
+    /**
+     * Names the discriminator that controls this requirement.
+     *
+     * @return name of the sibling record component that selects the applicable variant
+     */
     @NonNull String field();
 
-    /** Serialized discriminator values for which the annotated component is required. */
+    /**
+     * Lists the discriminator values that activate this requirement.
+     *
+     * @return serialized discriminator values that require the annotated component
+     */
     @NonNull String @NonNull [] values();
 
-    /** Whether a textual value containing only whitespace is also rejected centrally. */
+    /**
+     * Controls whether whitespace-only text counts as missing.
+     *
+     * @return whether textual values containing only whitespace are rejected centrally
+     */
     boolean rejectBlank() default false;
 }

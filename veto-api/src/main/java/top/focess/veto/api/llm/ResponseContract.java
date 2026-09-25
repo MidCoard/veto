@@ -5,16 +5,28 @@ import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.llm.exceptions.ModelSchemaException;
 
-/** The response channel required by one runtime invocation, independently of provider syntax. */
+/**
+ * The response channel required by one runtime invocation, independently of provider syntax.
+ *
+ * @param mode validation mode for this request
+ * @param completionTool required completion tool name, empty outside completion mode
+ * @param completionOnly whether completion mode accepts only the named completion tool
+ */
 public record ResponseContract(
         @NonNull Mode mode, @NonNull String completionTool, boolean completionOnly) {
+    /** The kind of response accepted from a model invocation. */
     public enum Mode {
+        /** Ordinary text and available native tools. */
         ORDINARY,
+        /** A single generation submission when native control tools are available. */
         GENERATION,
+        /** Exactly a plain-text true or false answer. */
         PREDICATE,
+        /** Exactly one completion tool call without accompanying text. */
         COMPLETION
     }
 
+    /** Rejects completion-specific fields in other modes and requires a named completion tool. */
     public ResponseContract {
         if (mode == Mode.COMPLETION && completionTool.isBlank())
             throw new IllegalArgumentException(
@@ -23,23 +35,50 @@ public record ResponseContract(
             throw new IllegalArgumentException("Only completion contracts name a completion tool");
     }
 
+    /**
+     * Creates the ordinary response contract.
+     *
+     * @return a contract accepting ordinary text and available tools
+     */
     public static @NonNull ResponseContract ordinary() {
         return new ResponseContract(Mode.ORDINARY, "", false);
     }
 
+    /**
+     * Creates the generation response contract.
+     *
+     * @return the generation-submission contract
+     */
     public static @NonNull ResponseContract generation() {
         return new ResponseContract(Mode.GENERATION, "", false);
     }
 
+    /**
+     * Creates the boolean-predicate response contract.
+     *
+     * @return a contract requiring a plain-text boolean predicate
+     */
     public static @NonNull ResponseContract predicate() {
         return new ResponseContract(Mode.PREDICATE, "", false);
     }
 
+    /**
+     * Creates a completion-tool contract.
+     *
+     * @param tool required completion tool name
+     * @param only whether all other native tools are disallowed
+     * @return completion contract
+     */
     public static @NonNull ResponseContract completion(@NonNull String tool, boolean only) {
         return new ResponseContract(Mode.COMPLETION, tool, only);
     }
 
-    /** Data for the shared provider/retry instruction template; names come from this request. */
+    /**
+     * Returns data for the shared provider/retry instruction template.
+     *
+     * @param request request whose currently available tool names are included
+     * @return immutable instruction data for this contract
+     */
     public @NonNull Map<String, Object> promptData(@NonNull VetoRequest request) {
         return Map.of(
                 "responseMode",
@@ -54,7 +93,14 @@ public record ResponseContract(
                 completionOnly);
     }
 
-    /** Used both on decoded provider output and by the loop's test/custom caller boundary. */
+    /**
+     * Validates decoded provider output and custom caller responses against this contract.
+     *
+     * @param request request defining available native tools
+     * @param text decoded assistant text, or {@code null} when absent
+     * @param calls decoded native tool names
+     * @throws ModelSchemaException if the response violates the mode or calls unavailable tools
+     */
     public void validate(@NonNull VetoRequest request, String text, @NonNull List<String> calls) {
         String answer = text == null ? "" : text.strip();
         for (String name : calls) {

@@ -10,6 +10,7 @@ import top.focess.veto.api.llm.ChatMessage;
 import top.focess.veto.api.llm.LlmOptions;
 import top.focess.veto.api.llm.LlmSystemUsage;
 import top.focess.veto.api.llm.ProviderType;
+import top.focess.veto.api.llm.ResponseContract;
 import top.focess.veto.api.llm.VetoRequest;
 import top.focess.veto.llm.core.*;
 
@@ -26,10 +27,11 @@ class RecordTokenCounterTest {
                 ProviderType.DEEPSEEK,
                 "model",
                 "key",
-                new LlmOptions(null, null, 4096, null),
+                new LlmOptions(null, null, 4096, null, null),
                 messages,
                 null,
-                null);
+                true,
+                ResponseContract.ordinary());
     }
 
     @Test

@@ -264,7 +264,16 @@ class PluginAgentHostsTest {
             when(implementation.initialize(any(), any()))
                     .thenReturn(new PluginContributions(List.of()));
             plugin = new ManagedPlugin(implementation, executor);
-            plugin.initialize(new PluginContext(identity), new JsonValue.ObjectValue(Map.of()));
+            plugin.initialize(
+                    new PluginContext(
+                            identity,
+                            () -> {},
+                            () -> {
+                                throw new IllegalStateException(
+                                        "Plugin context is not bound to a lifecycle owner");
+                            },
+                            Map.of()),
+                    new JsonValue.ObjectValue(Map.of()));
             plugin.start();
             session.setPrimaryAgentId(parent);
             scope = new PluginStorage.SessionScope("token", "owner", session.getId());

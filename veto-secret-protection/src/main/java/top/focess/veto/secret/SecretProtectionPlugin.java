@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -79,6 +80,11 @@ public final class SecretProtectionPlugin extends AbstractVetoPlugin {
     @Override
     public @NonNull PluginIdentity identity() {
         return new PluginIdentity("top.focess.secret-protection", "1.0.100");
+    }
+
+    @Override
+    public @NonNull Set<@NonNull String> historicalIds() {
+        return Set.of("org.veto.secret-protection");
     }
 
     @Override

@@ -57,7 +57,7 @@ public class SessionPlugins {
         var ids =
                 requested == null
                         ? available.stream().map(p -> p.identity().id()).toList()
-                        : requested;
+                        : requested.stream().map(manager::canonicalId).toList();
         if (ids.size() != Set.copyOf(ids).size())
             throw new IllegalArgumentException("Duplicate plugin selection");
         return ids.stream()
@@ -135,12 +135,15 @@ public class SessionPlugins {
             sessions.saveAndFlush(session);
         }
         for (var binding : bindings) {
-            var installed =
-                    manager.plugins().stream()
-                            .filter(plugin -> plugin.identity().id().equals(binding.id()))
-                            .findFirst()
-                            .orElse(null);
-            if (installed != null && !binding.equals(binding(installed)))
+            ManagedPlugin installed;
+            try {
+                installed = manager.plugin(binding.id());
+            } catch (IllegalArgumentException missing) {
+                installed = null;
+            }
+            if (installed != null
+                    && (!binding.version().equals(installed.identity().version())
+                            || !binding.revision().equals(binding(installed).revision())))
                 throw new IllegalStateException(
                         "Session requires the pinned plugin revision: " + binding.id());
         }
@@ -157,8 +160,7 @@ public class SessionPlugins {
             @NonNull String activeTask) {
         var entries = manager.catalog().entries(StandardContributionPoints.AGENT_CONFIGURATION);
         if (entries.isEmpty()) return null;
-        var selected =
-                bindings(session).stream().map(PluginBinding::id).collect(Collectors.toSet());
+        var selected = selectedIds(session);
         AgentConfiguration.Intent result = null;
         for (var entry : entries) {
             String namespace = entry.source().namespace();
@@ -211,10 +213,7 @@ public class SessionPlugins {
             @NonNull WorkflowOperation<T> operation) {
         var entries = manager.catalog().entries(StandardContributionPoints.WORKFLOW);
         if (entries.isEmpty()) return initial;
-        var ids =
-                bindings(scope.sessionId()).stream()
-                        .map(PluginBinding::id)
-                        .collect(Collectors.toSet());
+        var ids = selectedIds(scope.sessionId());
         T result = initial;
         for (var entry : entries) {
             if (!ids.contains(entry.source().namespace())) continue;
@@ -240,7 +239,7 @@ public class SessionPlugins {
     }
 
     public @NonNull List<ModelResponsePolicy.Exchange> responsePolicies(@NonNull String sessionId) {
-        var ids = bindings(sessionId).stream().map(PluginBinding::id).collect(Collectors.toSet());
+        var ids = selectedIds(sessionId);
         List<ModelResponsePolicy.Exchange> result = new ArrayList<>();
         for (var entry : manager.catalog().entries(StandardContributionPoints.MODEL_RESPONSE)) {
             if (!ids.contains(entry.source().namespace())) continue;
@@ -284,10 +283,7 @@ public class SessionPlugins {
             @NonNull ContributionPoint<? extends TextProtection> point,
             TextProtection.@NonNull Scope scope,
             @NonNull String text) {
-        var ids =
-                bindings(scope.sessionId()).stream()
-                        .map(PluginBinding::id)
-                        .collect(Collectors.toSet());
+        var ids = selectedIds(scope.sessionId());
         String result = text;
         for (var entry : manager.catalog().entries(point)) {
             if (!ids.contains(entry.source().namespace())) continue;
@@ -314,10 +310,7 @@ public class SessionPlugins {
                 () -> {
                     if (manager.catalog().entries(StandardContributionPoints.AGENT_WORK).isEmpty())
                         return List.of();
-                    var ids =
-                            bindings(sessionId).stream()
-                                    .map(PluginBinding::id)
-                                    .collect(Collectors.toSet());
+                    var ids = selectedIds(sessionId);
                     return manager.catalog().entries(StandardContributionPoints.AGENT_WORK).stream()
                             .filter(entry -> ids.contains(entry.source().namespace()))
                             .map(
@@ -331,18 +324,19 @@ public class SessionPlugins {
     }
 
     public boolean has(@NonNull String sessionId, @NonNull ContributionPoint<?> point) {
-        var ids = bindings(sessionId).stream().map(PluginBinding::id).collect(Collectors.toSet());
+        var ids = selectedIds(sessionId);
         return manager.catalog().entries(point).stream()
                 .anyMatch(entry -> ids.contains(entry.source().namespace()));
     }
 
     public boolean includes(@NonNull String sessionId, @NonNull String pluginId) {
-        return bindings(sessionId).stream().anyMatch(p -> p.id().equals(pluginId));
+        String canonical = manager.canonicalId(pluginId);
+        return selectedIds(sessionId).contains(canonical);
     }
 
     public @NonNull Set<ToolDefinition> tools(
             @NonNull String sessionId, @NonNull Set<ToolDefinition> tools) {
-        var ids = bindings(sessionId).stream().map(PluginBinding::id).collect(Collectors.toSet());
+        var ids = selectedIds(sessionId);
         return tools.stream()
                 .filter(
                         t -> {
@@ -350,5 +344,11 @@ public class SessionPlugins {
                             return provenance == null || ids.contains(provenance.pluginId());
                         })
                 .collect(Collectors.toUnmodifiableSet());
+    }
+
+    private @NonNull Set<String> selectedIds(@NonNull String sessionId) {
+        return bindings(sessionId).stream()
+                .map(binding -> manager.canonicalId(binding.id()))
+                .collect(Collectors.toSet());
     }
 }

@@ -14,6 +14,10 @@ import org.jspecify.annotations.NonNull;
 @Retention(RetentionPolicy.RUNTIME)
 public @interface SecurityHint {
 
-    /** What category of security check this parameter requires. */
+    /**
+     * Selects the argument-specific security check.
+     *
+     * @return the category of security check this parameter requires
+     */
     @NonNull ParamCategory value();
 }

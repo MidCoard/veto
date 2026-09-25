@@ -13,10 +13,18 @@ import org.jspecify.annotations.NonNull;
  */
 public interface ToolErrorCode {
 
-    /** The enum constant name; satisfied by every nested group enum. */
+    /**
+     * Provides the stable symbolic name of this error.
+     *
+     * @return the enum constant or plugin-defined error name
+     */
     @NonNull String name();
 
-    /** The wire and persisted representation: the constant name as a plain string. */
+    /**
+     * Serializes this error for wire and durable representations.
+     *
+     * @return the wire and persisted representation as a plain string
+     */
     default @NonNull String id() {
         return name();
     }
@@ -24,6 +32,9 @@ public interface ToolErrorCode {
     /**
      * Parses a wire or persisted code across every group, returning null for null, blank, or
      * malformed names so legacy history payloads never crash the reader.
+     *
+     * @param name wire or persisted error name
+     * @return a known or plugin-defined code, or {@code null} when malformed
      */
     static ToolErrorCode parse(String name) {
         if (name == null || name.isBlank()) {
@@ -34,8 +45,13 @@ public interface ToolErrorCode {
         return name.matches("[A-Za-z][A-Za-z0-9_.:-]{0,127}") ? new Named(name) : null;
     }
 
-    /** A plugin-defined code needs no entry in a host enum. */
+    /**
+     * A plugin-defined code that needs no entry in a host enum.
+     *
+     * @param name valid stable plugin-defined error name
+     */
     record Named(@NonNull String name) implements ToolErrorCode {
+        /** Validates the stable plugin-defined name. */
         public Named {
             if (!name.matches("[A-Za-z][A-Za-z0-9_.:-]{0,127}"))
                 throw new IllegalArgumentException("Invalid tool error name");

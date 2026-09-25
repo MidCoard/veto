@@ -1,3 +1,8 @@
+/**
+ * Immutable process intents, execution results, and invocation-scoped managed-process handles.
+ * Process effects require prior host admission and retained handles confer no independent
+ * authority.
+ */
 @DefaultQualifier(
         value = Nullable.class,
         locations = {

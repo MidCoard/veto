@@ -21,7 +21,14 @@ public record ToolResult(
         @NonNull String content,
         ToolErrorCode errorCode) {
 
-    /** A successful result with no declared encoding; success carries no error code. */
+    /**
+     * Creates a successful result with no declared encoding and no error code.
+     *
+     * @param toolName executed tool name
+     * @param callId provider call identifier, or {@code null}
+     * @param content canonical result content
+     * @return the successful result
+     */
     public static @NonNull ToolResult success(
             @NonNull String toolName, String callId, @NonNull String content) {
         return new ToolResult(
@@ -33,7 +40,15 @@ public record ToolResult(
                 null);
     }
 
-    /** A failed result; failures always carry an explicit error code. */
+    /**
+     * Creates a failed result with an explicit error code.
+     *
+     * @param toolName executed tool name
+     * @param callId provider call identifier, or {@code null}
+     * @param content canonical diagnostic content
+     * @param errorCode stable machine-readable failure code
+     * @return the failed result
+     */
     public static @NonNull ToolResult failure(
             @NonNull String toolName,
             String callId,
@@ -48,10 +63,21 @@ public record ToolResult(
                 errorCode);
     }
 
+    /**
+     * Tests the status without requiring callers to compare enum constants.
+     *
+     * @return whether the host classified execution as successful
+     */
     public boolean success() {
         return status == ToolResultStatus.SUCCESS;
     }
 
+    /**
+     * Copies this result with replacement content and unchanged metadata.
+     *
+     * @param replacement new canonical content
+     * @return the copied result
+     */
     public @NonNull ToolResult withContent(@NonNull String replacement) {
         return new ToolResult(toolName, callId, status, format, replacement, errorCode);
     }

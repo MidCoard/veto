@@ -159,7 +159,15 @@ class ManagedPluginStoppingResourcesTest {
             @NonNull TestPlugin plugin, @NonNull ExecutorService lifecycle) throws PluginFailure {
         var managed = new ManagedPlugin(plugin, lifecycle);
         managed.initialize(
-                new PluginContext(plugin.identity()), new JsonValue.ObjectValue(Map.of()));
+                new PluginContext(
+                        plugin.identity(),
+                        () -> {},
+                        () -> {
+                            throw new IllegalStateException(
+                                    "Plugin context is not bound to a lifecycle owner");
+                        },
+                        Map.of()),
+                new JsonValue.ObjectValue(Map.of()));
         managed.start();
         return managed;
     }

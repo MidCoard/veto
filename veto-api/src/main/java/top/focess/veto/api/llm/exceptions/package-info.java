@@ -1,3 +1,4 @@
+/** Provider-neutral model and credential failure types. */
 @DefaultQualifier(
         value = Nullable.class,
         locations = {

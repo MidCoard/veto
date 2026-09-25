@@ -9,6 +9,13 @@ import org.jspecify.annotations.NonNull;
 public final class ProviderMessages {
     private ProviderMessages() {}
 
+    /**
+     * Groups non-system messages into the boundaries required by the selected provider protocol.
+     * Opaque native-state batches retain their original call/result order.
+     *
+     * @param request compiled provider request
+     * @return immutable ordered message groups
+     */
     public static @NonNull List<List<ChatMessage>> groups(@NonNull VetoRequest request) {
         List<List<ChatMessage>> result = new ArrayList<>();
         if (request.messages().isEmpty())

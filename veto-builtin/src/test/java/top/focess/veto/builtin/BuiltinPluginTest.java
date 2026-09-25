@@ -23,7 +23,14 @@ class BuiltinPluginTest {
         try (plugin) {
             var contributions =
                     plugin.initialize(
-                            new PluginContext(plugin.identity()),
+                            new PluginContext(
+                                    plugin.identity(),
+                                    () -> {},
+                                    () -> {
+                                        throw new IllegalStateException(
+                                                "Plugin context is not bound to a lifecycle owner");
+                                    },
+                                    Map.of()),
                             new JsonValue.ObjectValue(Map.of()));
             plugin.start();
             assertEquals(

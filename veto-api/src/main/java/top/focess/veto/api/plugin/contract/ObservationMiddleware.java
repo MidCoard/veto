@@ -9,6 +9,14 @@ import org.jspecify.annotations.NonNull;
  */
 @FunctionalInterface
 public interface ObservationMiddleware {
+    /**
+     * Transforms one protected observation.
+     *
+     * @param observation protected observation text
+     * @param cancellation cooperative cancellation signal
+     * @return transformed observation text
+     * @throws PluginFailure when transformation cannot complete
+     */
     @NonNull String transform(@NonNull String observation, @NonNull Cancellation cancellation)
             throws PluginFailure;
 }

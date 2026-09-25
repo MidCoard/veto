@@ -28,6 +28,7 @@ class PluginManagerDiscoveryTest {
     void serviceLoaderDiscoversTheSecretProtectionPlugin() throws Exception {
         try (var plugins = PluginTestSupport.manager()) {
             var plugin = plugins.plugin("top.focess.secret-protection");
+            assertSame(plugin, plugins.plugin("org.veto.secret-protection"));
             assertEquals(PluginState.ACTIVE, plugin.state());
             assertFalse(
                     plugins.catalog()

@@ -44,6 +44,11 @@ class ProcessToolsTest {
                 new ProcessRuntime(
                         new PluginContext(
                                 new PluginIdentity("test", "1.0.0"),
+                                () -> {},
+                                () -> {
+                                    throw new IllegalStateException(
+                                            "Plugin context is not bound to a lifecycle owner");
+                                },
                                 Map.of(
                                         ToolDocs.nonNullClass(PluginHost.class),
                                         host,

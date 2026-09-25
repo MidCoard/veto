@@ -109,6 +109,11 @@ class SearchServiceClientTest {
             @NonNull PluginHost host, @NonNull PluginServices services) {
         return new PluginContext(
                 new PluginIdentity("top.focess.builtin", "1.0.0"),
+                () -> {},
+                () -> {
+                    throw new IllegalStateException(
+                            "Plugin context is not bound to a lifecycle owner");
+                },
                 Map.of(
                         ToolDocs.nonNullClass(PluginHost.class), host,
                         ToolDocs.nonNullClass(PluginServices.class), services));

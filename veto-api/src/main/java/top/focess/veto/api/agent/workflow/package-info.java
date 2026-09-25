@@ -1,3 +1,4 @@
+/** Plugin-authored work submitted through the host's authorized agent workflow. */
 @DefaultQualifier(
         value = Nullable.class,
         locations = {

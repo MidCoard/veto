@@ -9,6 +9,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import org.checkerframework.framework.qual.DefaultQualifier;
@@ -32,6 +33,7 @@ import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.plugin.PluginBinding;
 import top.focess.veto.api.plugin.PluginIdentity;
 import top.focess.veto.api.plugin.PluginState;
+import top.focess.veto.api.plugin.VetoPlugin;
 import top.focess.veto.api.plugin.contract.FrontendContribution;
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.contract.PluginFailure;
@@ -108,7 +110,10 @@ class ScopedPluginStorageTest {
 
     private ManagedPlugin plugin(String id) {
         @NonNull ManagedPlugin result = mock();
+        @NonNull VetoPlugin implementation = mock();
         when(result.identity()).thenReturn(new PluginIdentity(id, "1.0.0"));
+        when(result.implementation()).thenReturn(implementation);
+        when(implementation.historicalIds()).thenReturn(Set.of());
         when(result.state()).thenReturn(PluginState.ACTIVE);
         return result;
     }

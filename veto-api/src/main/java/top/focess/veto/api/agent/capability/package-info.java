@@ -1,3 +1,4 @@
+/** Call-scoped host capabilities exposed to admitted agent tools. */
 @DefaultQualifier(
         value = Nullable.class,
         locations = {

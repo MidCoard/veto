@@ -27,10 +27,10 @@ import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.llm.LocalModelCompletion;
 import top.focess.veto.api.llm.PromptRenderer;
 import top.focess.veto.api.llm.TextEmbedding;
-import top.focess.veto.api.plugin.PluginBinding;
 import top.focess.veto.api.plugin.PluginContext;
 import top.focess.veto.api.plugin.PluginContributions;
 import top.focess.veto.api.plugin.PluginHost;
+import top.focess.veto.api.plugin.PluginIdentity;
 import top.focess.veto.api.plugin.PluginState;
 import top.focess.veto.api.plugin.VetoPlugin;
 import top.focess.veto.api.plugin.agent.AgentHost;
@@ -86,7 +86,7 @@ public final class PluginManager implements AutoCloseable {
                                     && selected.stream()
                                             .anyMatch(
                                                     binding ->
-                                                            binding.id()
+                                                            canonicalId(binding.id())
                                                                     .equals(
                                                                             plugin.identity()
                                                                                     .id())))
@@ -127,6 +127,7 @@ public final class PluginManager implements AutoCloseable {
             Executors.newSingleThreadExecutor(
                     Thread.ofPlatform().daemon(true).name("veto-plugin-manager").factory());
     private final @NonNull List<ManagedPlugin> plugins;
+    private final @NonNull Map<String, String> aliases;
     private final @NonNull List<Registration> registrations;
     private final @NonNull ContributionCatalog catalog;
     private final @NonNull Map<@NonNull String, @NonNull String> toolNames;
@@ -190,10 +191,27 @@ public final class PluginManager implements AutoCloseable {
                 }
             }
             var allIds = new HashSet<String>();
-            List<Registration> registered = new ArrayList<>();
             for (var plugin : staged) {
                 if (!allIds.add(plugin.identity().id()))
                     throw new IllegalArgumentException("Duplicate plugin identity");
+            }
+            var aliasLookup = new HashMap<String, String>();
+            for (var plugin : staged) {
+                var historicalIds = plugin.implementation().historicalIds();
+                if (historicalIds == null)
+                    throw new IllegalArgumentException("Plugin historical IDs must not be null");
+                for (String alias : historicalIds) {
+                    if (alias == null)
+                        throw new IllegalArgumentException("Plugin historical ID must not be null");
+                    String validated = new PluginIdentity(alias, "0.0.0").id();
+                    if (allIds.contains(validated)
+                            || aliasLookup.putIfAbsent(validated, plugin.identity().id()) != null)
+                        throw new IllegalArgumentException("Duplicate plugin identity or alias");
+                }
+            }
+            aliases = Map.copyOf(aliasLookup);
+            List<Registration> registered = new ArrayList<>();
+            for (var plugin : staged) {
                 var pluginServices = new HashMap<Class<?>, Object>(services);
                 Object optionalGrants = pluginServices.remove(PluginServiceGrants.class);
                 if (optionalGrants instanceof PluginServiceGrants grants)
@@ -260,15 +278,22 @@ public final class PluginManager implements AutoCloseable {
                         new Registration(
                                 plugin,
                                 plugin.initialize(
-                                        new PluginContext(plugin.identity(), pluginServices),
+                                        new PluginContext(
+                                                plugin.identity(),
+                                                () -> {},
+                                                () -> {
+                                                    throw new IllegalStateException(
+                                                            "Plugin context is not bound to a lifecycle owner");
+                                                },
+                                                pluginServices),
                                         configurations.forPlugin(plugin.identity().id()))));
             }
             var builder = new ContributionCatalog.Builder();
             // Define every standard point up front so an unpopulated point yields an empty entry
             // list rather than a registration error. The "no contributor -> unchanged" contract
             // (see applyObservationMiddleware) and lifecycle dispatch depend on this: the floor
-            // secret-protection plugin normally populates them, but the host must not break when a
-            // deployment runs without it.
+            // optional plugins may populate them, but the host must not break when a deployment
+            // runs without contributors.
             for (var point : StandardContributionPoints.ALL) {
                 if (point == StandardContributionPoints.TOOLS)
                     builder.define(
@@ -334,9 +359,13 @@ public final class PluginManager implements AutoCloseable {
 
     public @NonNull ManagedPlugin plugin(@NonNull String id) {
         return plugins.stream()
-                .filter(plugin -> plugin.identity().id().equals(PluginBinding.canonicalId(id)))
+                .filter(plugin -> plugin.identity().id().equals(canonicalId(id)))
                 .findFirst()
                 .orElseThrow(() -> new IllegalArgumentException("Unknown plugin identity"));
+    }
+
+    public @NonNull String canonicalId(@NonNull String id) {
+        return aliases.getOrDefault(id, id);
     }
 
     public @NonNull String toolName(@NonNull ContributionEntry<Tool> entry) {
@@ -364,8 +393,7 @@ public final class PluginManager implements AutoCloseable {
     /**
      * Session-less observation masking: threads the text through every ACTIVE plugin's {@code
      * veto:observation-middleware} contribution in catalog order, regardless of session bindings.
-     * With no contributor the text is returned unchanged; the floor ships on the runtime classpath
-     * as the secret-protection plugin.
+     * With no contributor the text is returned unchanged.
      */
     public @NonNull String applyObservationMiddleware(@NonNull String text) {
         String result = text;

@@ -28,7 +28,15 @@ class ManagedPluginStateTest {
             var observer = new Observer(false);
             var managed = new ManagedPlugin(observer, control);
             managed.initialize(
-                    new PluginContext(observer.identity()), new JsonValue.ObjectValue(Map.of()));
+                    new PluginContext(
+                            observer.identity(),
+                            () -> {},
+                            () -> {
+                                throw new IllegalStateException(
+                                        "Plugin context is not bound to a lifecycle owner");
+                            },
+                            Map.of()),
+                    new JsonValue.ObjectValue(Map.of()));
             managed.start();
             var entered = new CountDownLatch(1);
             var release = new CountDownLatch(1);
@@ -73,7 +81,14 @@ class ManagedPluginStateTest {
             var observer = new Observer(false);
             try (var managed = new ManagedPlugin(observer, control)) {
                 managed.initialize(
-                        new PluginContext(observer.identity()),
+                        new PluginContext(
+                                observer.identity(),
+                                () -> {},
+                                () -> {
+                                    throw new IllegalStateException(
+                                            "Plugin context is not bound to a lifecycle owner");
+                                },
+                                Map.of()),
                         new JsonValue.ObjectValue(Map.of()));
                 managed.start();
                 assertEquals(
@@ -131,7 +146,14 @@ class ManagedPluginStateTest {
             try {
                 assertEquals(PluginState.NEW, managed.state());
                 managed.initialize(
-                        new PluginContext(observer.identity()),
+                        new PluginContext(
+                                observer.identity(),
+                                () -> {},
+                                () -> {
+                                    throw new IllegalStateException(
+                                            "Plugin context is not bound to a lifecycle owner");
+                                },
+                                Map.of()),
                         new JsonValue.ObjectValue(Map.of()));
                 var context = observer.context();
                 assertEquals(PluginState.INITIALIZED, context.state());
@@ -159,7 +181,14 @@ class ManagedPluginStateTest {
             var managed = new ManagedPlugin(observer, executor);
             try {
                 managed.initialize(
-                        new PluginContext(observer.identity()),
+                        new PluginContext(
+                                observer.identity(),
+                                () -> {},
+                                () -> {
+                                    throw new IllegalStateException(
+                                            "Plugin context is not bound to a lifecycle owner");
+                                },
+                                Map.of()),
                         new JsonValue.ObjectValue(Map.of()));
                 assertThrows(PluginFailure.class, managed::start);
                 assertEquals(PluginState.FAILED, observer.context().state());

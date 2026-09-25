@@ -9,6 +9,11 @@ import java.lang.annotation.*;
 @Retention(RetentionPolicy.RUNTIME)
 @Target(ElementType.TYPE)
 public @interface ToolInputSchema {
+    /**
+     * Selects the source of the complete schema.
+     *
+     * @return schema source instantiated by the host for the annotated argument type
+     */
     @org.jspecify.annotations.NonNull
     Class<? extends InputSchemaSource> value();
 }

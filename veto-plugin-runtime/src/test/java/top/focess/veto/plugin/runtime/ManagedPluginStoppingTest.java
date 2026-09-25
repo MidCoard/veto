@@ -59,7 +59,15 @@ class ManagedPluginStoppingTest {
                 var calls = Executors.newVirtualThreadPerTaskExecutor()) {
             var managed = new ManagedPlugin(plugin, lifecycle);
             managed.initialize(
-                    new PluginContext(plugin.identity()), new JsonValue.ObjectValue(Map.of()));
+                    new PluginContext(
+                            plugin.identity(),
+                            () -> {},
+                            () -> {
+                                throw new IllegalStateException(
+                                        "Plugin context is not bound to a lifecycle owner");
+                            },
+                            Map.of()),
+                    new JsonValue.ObjectValue(Map.of()));
             managed.start();
             managed.ownResource(() -> blocked.complete(true));
             var entered = new CountDownLatch(1);
@@ -119,7 +127,15 @@ class ManagedPluginStoppingTest {
                 var calls = Executors.newVirtualThreadPerTaskExecutor()) {
             var managed = new ManagedPlugin(plugin, lifecycle);
             managed.initialize(
-                    new PluginContext(plugin.identity()), new JsonValue.ObjectValue(Map.of()));
+                    new PluginContext(
+                            plugin.identity(),
+                            () -> {},
+                            () -> {
+                                throw new IllegalStateException(
+                                        "Plugin context is not bound to a lifecycle owner");
+                            },
+                            Map.of()),
+                    new JsonValue.ObjectValue(Map.of()));
             managed.start();
             var entered = new CountDownLatch(1);
             var result =

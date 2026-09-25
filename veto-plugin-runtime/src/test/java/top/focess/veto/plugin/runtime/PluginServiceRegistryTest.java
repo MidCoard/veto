@@ -85,7 +85,15 @@ class PluginServiceRegistryTest {
 
     private static final class TestPlugin extends AbstractVetoPlugin {
         final @NonNull String id;
-        @NonNull PluginContext context = new PluginContext(new PluginIdentity("unbound", "1.0.0"));
+        @NonNull PluginContext context =
+                new PluginContext(
+                        new PluginIdentity("unbound", "1.0.0"),
+                        () -> {},
+                        () -> {
+                            throw new IllegalStateException(
+                                    "Plugin context is not bound to a lifecycle owner");
+                        },
+                        Map.of());
 
         TestPlugin(@NonNull String id) {
             this.id = id;
@@ -154,6 +162,11 @@ class PluginServiceRegistryTest {
                         runtime.initialize(
                                 new PluginContext(
                                         runtime.identity(),
+                                        () -> {},
+                                        () -> {
+                                            throw new IllegalStateException(
+                                                    "Plugin context is not bound to a lifecycle owner");
+                                        },
                                         Map.of(
                                                 ToolDocs.nonNullClass(PluginServices.class),
                                                 registry.forPlugin(runtime))),

@@ -86,7 +86,7 @@ public abstract class AbstractLlmProvider implements LLMProviderStrategy {
         // flows through here, so logging here fires regardless of which LlmClient adapter the
         // provider picks. Per turn only the tool list is surfaced at this layer (each tool's name +
         // input schema) - that is the actionable surface for debugging tool/path resolution. The
-        // system prompt, role-mapped message flow, userPrompt and responseSchema are NOT logged
+        // System prompt, role-mapped message flow, and userPrompt are NOT logged.
         // here; the full exchange remains in the audit trail via auditLogger.logLLMExchange below.
         // No secrets live on VetoRequest - apiKey is on ResolvedRequest and is never logged.
         var vetoRequest = request.request();

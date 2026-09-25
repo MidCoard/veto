@@ -9,7 +9,7 @@ import top.focess.veto.api.llm.NativeToolState;
 class NativeToolStateTest {
     @Test
     void persistsProviderAndVersionAndReadsLegacyGeminiState() {
-        var state = new NativeToolState("gemini-model", "batch", "{}", 0);
+        var state = new NativeToolState("GEMINI", 1, "gemini-model", "batch", "{}", 0);
         var payload = state.toPayload();
         assertEquals("GEMINI", payload.get("provider"));
         assertEquals(1, payload.get("version"));
@@ -42,7 +42,7 @@ class NativeToolStateTest {
     @Test
     void signedStateCannotBeReplayedByAnotherProviderModelOrVersion() {
         assertTrue(
-                new NativeToolState("gemini-model", "batch", "{}", 0)
+                new NativeToolState("GEMINI", 1, "gemini-model", "batch", "{}", 0)
                         .supports("GEMINI", "gemini-model"));
         assertFalse(
                 new NativeToolState("OTHER", 1, "gemini-model", "batch", "{}", 0)
@@ -51,7 +51,7 @@ class NativeToolStateTest {
                 new NativeToolState("GEMINI", 2, "gemini-model", "batch", "{}", 0)
                         .supports("GEMINI", "gemini-model"));
         assertFalse(
-                new NativeToolState("gemini-model", "batch", "{}", 0)
+                new NativeToolState("GEMINI", 1, "gemini-model", "batch", "{}", 0)
                         .supports("GEMINI", "other-model"));
     }
 }

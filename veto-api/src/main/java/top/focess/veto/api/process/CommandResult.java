@@ -17,6 +17,11 @@ public record CommandResult(
         @NonNull String stderr,
         @NonNull List<Integer> perCommand) {
 
+    /**
+     * Checks whether the command chain exited successfully.
+     *
+     * @return whether the chain's overall exit code is zero
+     */
     public boolean success() {
         return exitCode == 0;
     }

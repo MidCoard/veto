@@ -9,6 +9,13 @@ import org.jspecify.annotations.NonNull;
  * <p>The host supplies source identity and qualifies the local ID. Relative ordering is restricted
  * to this exact contribution point. Constructing this value registers no authority or lifecycle
  * admission.
+ *
+ * @param <T> implementation contract type
+ * @param point registration contract implemented by the value
+ * @param localId source-local ID qualified by the host
+ * @param implementation contributed implementation
+ * @param before same-point contribution IDs that must follow this entry
+ * @param after same-point contribution IDs that must precede this entry
  */
 public record Contribution<T extends @NonNull Object>(
         @NonNull ContributionPoint<T> point,
@@ -16,6 +23,7 @@ public record Contribution<T extends @NonNull Object>(
         @NonNull T implementation,
         @NonNull Set<@NonNull ContributionId> before,
         @NonNull Set<@NonNull ContributionId> after) {
+    /** Validates the contract and defensively copies ordering constraints. */
     public Contribution {
         new ContributionId("local:" + localId);
         if (!point.contract().isInstance(implementation))
@@ -26,7 +34,15 @@ public record Contribution<T extends @NonNull Object>(
             throw new IllegalArgumentException("Too many ordering constraints");
     }
 
-    /** Creates a contribution without ordering constraints. */
+    /**
+     * Creates a contribution without ordering constraints.
+     *
+     * @param <T> implementation contract type
+     * @param point registration contract
+     * @param localId source-local ID
+     * @param implementation contributed implementation
+     * @return a contribution with empty ordering sets
+     */
     public static <T extends @NonNull Object> @NonNull Contribution<T> of(
             @NonNull ContributionPoint<T> point,
             @NonNull String localId,

@@ -2,7 +2,6 @@ package top.focess.veto.agent.loop;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -204,7 +203,6 @@ class SystemPromptDumpTest {
                         1.0);
         write("STANDALONE-plan-tool.md", planned.systemMessage());
         assertTrue(planned.systemMessage().contains("conditional_goto"));
-        assertNull(planned.responseSchema());
         assertTrue(
                 planned.tools().stream()
                         .anyMatch(tool -> tool.name().equals(builtinName("submit_plan"))));

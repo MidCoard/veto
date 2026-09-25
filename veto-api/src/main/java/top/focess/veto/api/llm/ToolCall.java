@@ -35,6 +35,14 @@ public record ToolCall(
         @JsonProperty("call_id") @NonNull String callId,
         @JsonIgnore NativeToolState nativeState) {
 
+    /**
+     * Creates a call, assigning a call ID when one is absent and copying its JSON arguments.
+     *
+     * @param toolName tool selected by the model
+     * @param args decoded JSON arguments
+     * @param callId existing call ID, or {@code null} to assign one
+     * @param nativeState optional provider-owned replay state
+     */
     public ToolCall(
             @NonNull String toolName,
             @NonNull Map<@NonNull String, Object> args,
@@ -47,16 +55,34 @@ public record ToolCall(
                 callId == null ? "call_" + UUID.randomUUID().toString().substring(0, 8) : callId;
     }
 
+    /**
+     * Creates a call without provider-owned replay state.
+     *
+     * @param toolName tool selected by the model
+     * @param args decoded JSON arguments
+     * @param callId existing call ID, or {@code null} to assign one
+     */
     public ToolCall(
             @NonNull String toolName, @NonNull Map<@NonNull String, Object> args, String callId) {
         this(toolName, args, callId, null);
     }
 
+    /**
+     * Attaches provider-owned replay state without changing the call ID or arguments.
+     *
+     * @param state opaque provider state
+     * @return copy carrying the state
+     */
     public @NonNull ToolCall withNativeState(@NonNull NativeToolState state) {
         return new ToolCall(toolName, args, callId, state);
     }
 
-    /** Creates a call with a harness-assigned id. */
+    /**
+     * Creates a call with a harness-assigned ID.
+     *
+     * @param toolName tool selected by the model
+     * @param args decoded JSON arguments
+     */
     public ToolCall(@NonNull String toolName, @NonNull Map<@NonNull String, Object> args) {
         this(toolName, args, null);
     }

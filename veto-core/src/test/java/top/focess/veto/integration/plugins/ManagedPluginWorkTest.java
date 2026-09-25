@@ -20,7 +20,15 @@ class ManagedPluginWorkTest {
             var plugin = new BuiltinPlugin();
             var managed = new ManagedPlugin(plugin, executor);
             managed.initialize(
-                    new PluginContext(plugin.identity()), new JsonValue.ObjectValue(Map.of()));
+                    new PluginContext(
+                            plugin.identity(),
+                            () -> {},
+                            () -> {
+                                throw new IllegalStateException(
+                                        "Plugin context is not bound to a lifecycle owner");
+                            },
+                            Map.of()),
+                    new JsonValue.ObjectValue(Map.of()));
             managed.start();
             var delegate = mock(requireNonNull(PluginWork.class));
             var runtime = mock(requireNonNull(PluginWork.Runtime.class));

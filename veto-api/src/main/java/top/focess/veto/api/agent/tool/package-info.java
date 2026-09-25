@@ -1,3 +1,4 @@
+/** Tool contracts, schema metadata, security declarations, and execution results. */
 @DefaultQualifier(
         value = Nullable.class,
         locations = {

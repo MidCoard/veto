@@ -69,7 +69,15 @@ class CompositeAgentWorkSourceTest {
             var managed = new ManagedPlugin(plugin, executor);
             try {
                 managed.initialize(
-                        new PluginContext(plugin.identity()), new JsonValue.ObjectValue(Map.of()));
+                        new PluginContext(
+                                plugin.identity(),
+                                () -> {},
+                                () -> {
+                                    throw new IllegalStateException(
+                                            "Plugin context is not bound to a lifecycle owner");
+                                },
+                                Map.of()),
+                        new JsonValue.ObjectValue(Map.of()));
                 managed.start();
                 var signal = new PluginAwait("delivery", new CompletableFuture<Boolean>());
                 var awaiting = managed.ownAwait(signal);

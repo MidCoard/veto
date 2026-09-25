@@ -117,7 +117,7 @@ class HistoryPromptTest {
         var mapper =
                 new ObjectMapper()
                         .registerModule(new com.fasterxml.jackson.datatype.jsr310.JavaTimeModule());
-        var state = new NativeToolState("test", "batch", "signed-parts", 0);
+        var state = new NativeToolState("GEMINI", 1, "test", "batch", "signed-parts", 0);
         var call = new ToolCall("read", Map.of()).withNativeState(state);
         var turn = TurnRecord.toolCall(2, call);
         var restored =

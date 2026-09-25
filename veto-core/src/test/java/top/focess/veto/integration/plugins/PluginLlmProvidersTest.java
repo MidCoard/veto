@@ -55,8 +55,9 @@ class PluginLlmProvidersTest {
                             "test-reference",
                             LlmOptions.defaults(),
                             List.of(),
-                            null,
-                            url);
+                            url,
+                            true,
+                            ResponseContract.ordinary());
             var response =
                     providers
                             .require(ProviderType.DEEPSEEK)

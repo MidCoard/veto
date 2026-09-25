@@ -13,10 +13,22 @@ import java.util.Objects;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import top.focess.veto.api.plugin.PluginContext;
+import top.focess.veto.api.plugin.PluginIdentity;
 import top.focess.veto.api.plugin.contract.PluginFailure;
 
 class ScriptPluginTest {
     private static final @NonNull ObjectMapper JSON = new ObjectMapper();
+
+    private static @NonNull PluginContext context(@NonNull PluginIdentity identity) {
+        return new PluginContext(
+                identity,
+                () -> {},
+                () -> {
+                    throw new IllegalStateException("Plugin context has no lifecycle owner");
+                },
+                Map.of());
+    }
 
     private static @NonNull Path node() {
         for (String part :
@@ -56,7 +68,7 @@ class ScriptPluginTest {
             var script = new ScriptPluginLoader(node, timeout).load(root);
             managed = new ManagedPlugin(script, executor);
             managed.initialize(
-                    new top.focess.veto.api.plugin.PluginContext(script.identity()),
+                    context(script.identity()),
                     new top.focess.veto.api.plugin.contract.JsonValue.ObjectValue(Map.of()));
             managed.start();
             return new LoadedScript(script, managed, executor);
@@ -155,7 +167,7 @@ class ScriptPluginTest {
         try {
             for (var managed : java.util.List.of(first, second)) {
                 managed.initialize(
-                        new top.focess.veto.api.plugin.PluginContext(managed.identity()),
+                        context(managed.identity()),
                         new top.focess.veto.api.plugin.contract.JsonValue.ObjectValue(Map.of()));
                 managed.start();
             }

@@ -32,7 +32,14 @@ class SecretProtectionPluginTest {
             @NonNull Map<@NonNull Class<?>, @NonNull Object> services)
             throws PluginFailure {
         return plugin.initialize(
-                        new PluginContext(plugin.identity(), services),
+                        new PluginContext(
+                                plugin.identity(),
+                                () -> {},
+                                () -> {
+                                    throw new IllegalStateException(
+                                            "Plugin context is not bound to a lifecycle owner");
+                                },
+                                services),
                         new JsonValue.ObjectValue(Map.of()))
                 .entries();
     }

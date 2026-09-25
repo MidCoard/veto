@@ -45,7 +45,15 @@ public final class WorkflowPluginFixture implements AutoCloseable {
                 };
         runtime = new ManagedPlugin(implementation, lifecycle);
         runtime.initialize(
-                new PluginContext(runtime.identity()), new JsonValue.ObjectValue(Map.of()));
+                new PluginContext(
+                        runtime.identity(),
+                        () -> {},
+                        () -> {
+                            throw new IllegalStateException(
+                                    "Plugin context is not bound to a lifecycle owner");
+                        },
+                        Map.of()),
+                new JsonValue.ObjectValue(Map.of()));
         runtime.start();
         var builder = new ContributionCatalog.Builder();
         for (var point : StandardContributionPoints.ALL) builder.define(point, ignored -> {});
@@ -61,6 +69,7 @@ public final class WorkflowPluginFixture implements AutoCloseable {
         when(manager.catalog()).thenReturn(catalog);
         when(manager.plugins()).thenReturn(List.of(runtime));
         when(manager.plugin("fixture.workflow")).thenReturn(runtime);
+        when(manager.canonicalId(anyString())).thenAnswer(invocation -> invocation.getArgument(0));
         when(manager.toolName(anyString(), anyString()))
                 .thenAnswer(
                         invocation -> {

@@ -15,6 +15,7 @@ import org.springframework.test.context.ActiveProfiles;
 import top.focess.veto.api.llm.LlmOptions;
 import top.focess.veto.api.llm.ProviderType;
 import top.focess.veto.api.llm.ResolvedRequest;
+import top.focess.veto.api.llm.ResponseContract;
 import top.focess.veto.api.llm.VetoRequest;
 import top.focess.veto.api.llm.VetoResponse;
 import top.focess.veto.integration.plugins.PluginLlmProviders;
@@ -53,7 +54,8 @@ class DeepSeekProviderIntegrationTest {
                         LlmOptions.defaults(),
                         List.of(),
                         null,
-                        null);
+                        true,
+                        ResponseContract.ordinary());
 
         ResolvedRequest resolved = new ResolvedRequest(request, "https://api.deepseek.com", apiKey);
         VetoResponse response = providers.require(ProviderType.DEEPSEEK).execute(resolved);
@@ -72,7 +74,7 @@ class DeepSeekProviderIntegrationTest {
     @Test
     void shouldHandleTemperatureZero() {
         // Temperature 0 should give deterministic output
-        LlmOptions options = new LlmOptions(0.0, null, 4096, Duration.ofSeconds(30));
+        LlmOptions options = new LlmOptions(0.0, null, 4096, Duration.ofSeconds(30), null);
         VetoRequest request =
                 new VetoRequest(
                         "You are a helpful assistant.",
@@ -84,7 +86,8 @@ class DeepSeekProviderIntegrationTest {
                         options,
                         List.of(),
                         null,
-                        null);
+                        true,
+                        ResponseContract.ordinary());
 
         ResolvedRequest resolved = new ResolvedRequest(request, "https://api.deepseek.com", apiKey);
         VetoResponse response = providers.require(ProviderType.DEEPSEEK).execute(resolved);

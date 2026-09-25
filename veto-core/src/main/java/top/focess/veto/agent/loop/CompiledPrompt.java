@@ -1,6 +1,5 @@
 package top.focess.veto.agent.loop;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import java.util.List;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.llm.ChatMessage;
@@ -18,7 +17,6 @@ import top.focess.veto.api.llm.VetoRequest;
  *     on a user message, every tool_result immediately follows its tool_call, and no tool_call
  *     dangles unanswered - the shape every strict provider accepts.
  * @param tools the flat, provider-translated tool list (full whitelist, every cycle)
- * @param responseSchema legacy compatibility slot; ordinary native-response turns leave it null
  * @param trimmedTurns removed messages for isolated readers; standard conversations retain all
  *     effective messages and reject input-budget overflow
  */
@@ -26,6 +24,5 @@ public record CompiledPrompt(
         @NonNull String systemMessage,
         @NonNull List<ChatMessage> messages,
         @NonNull List<ToolDefinition> tools,
-        JsonNode responseSchema,
         int trimmedTurns,
         long estimatedTokens) {}

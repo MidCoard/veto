@@ -26,6 +26,7 @@ import top.focess.veto.api.llm.LlmSystemUsage;
 import top.focess.veto.api.llm.ProviderMessages;
 import top.focess.veto.api.llm.ProviderType;
 import top.focess.veto.api.llm.ResolvedRequest;
+import top.focess.veto.api.llm.ResponseContract;
 import top.focess.veto.api.llm.ToolDefinition;
 import top.focess.veto.api.llm.VetoRequest;
 import top.focess.veto.api.llm.exceptions.ModelSchemaException;
@@ -131,7 +132,8 @@ class AnthropicLlmClientTest {
                                 ChatMessage.assistantToolCall("prior", "view_file", "{}", "", null),
                                 ChatMessage.toolResult("prior", "Known content")),
                         null,
-                        null);
+                        true,
+                        ResponseContract.ordinary());
         var client = new AnthropicLlmClient(sdk, new ObjectMapper(), ProviderTestPrompts.PROMPTS);
         assertEquals(
                 "Finished",
@@ -192,9 +194,9 @@ class AnthropicLlmClientTest {
                         "key",
                         LlmOptions.defaults(),
                         List.of(),
-                        schema,
                         null,
-                        false);
+                        false,
+                        ResponseContract.ordinary());
         var client = new AnthropicLlmClient(sdk, new ObjectMapper(), ProviderTestPrompts.PROMPTS);
         client.complete(new ResolvedRequest(request, null, "unused"));
         var sent = ArgumentCaptor.forClass(ToolDocs.nonNullClass(MessageCreateParams.class));
@@ -277,7 +279,8 @@ class AnthropicLlmClientTest {
                         LlmOptions.defaults(),
                         List.of(),
                         null,
-                        null);
+                        true,
+                        ResponseContract.ordinary());
         var client = new AnthropicLlmClient(sdk, new ObjectMapper(), ProviderTestPrompts.PROMPTS);
         var nativeCall = mock(ToolDocs.nonNullClass(ContentBlock.class), RETURNS_DEEP_STUBS);
         when(nativeCall.isToolUse()).thenReturn(true);
@@ -358,7 +361,8 @@ class AnthropicLlmClientTest {
                                 ChatMessage.user(
                                         "[Runtime recovery observation] old-attempt was interrupted")),
                         null,
-                        null);
+                        true,
+                        ResponseContract.ordinary());
         Object actual =
                 ReflectionTestUtils.invokeMethod(
                         new AnthropicLlmClient(
@@ -398,7 +402,8 @@ class AnthropicLlmClientTest {
                                 ChatMessage.assistant("answer"),
                                 ChatMessage.toolResult("call", "result")),
                         null,
-                        null);
+                        true,
+                        ResponseContract.ordinary());
         Object actual =
                 ReflectionTestUtils.invokeMethod(
                         new AnthropicLlmClient(
@@ -427,7 +432,8 @@ class AnthropicLlmClientTest {
                 LlmOptions.defaults(),
                 List.of(),
                 null,
-                null);
+                true,
+                ResponseContract.ordinary());
     }
 
     private static @NonNull ContentBlock text(@NonNull String value) {

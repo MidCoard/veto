@@ -1,3 +1,4 @@
+/** Risk classifications used while screening requested tool effects. */
 @DefaultQualifier(
         value = Nullable.class,
         locations = {

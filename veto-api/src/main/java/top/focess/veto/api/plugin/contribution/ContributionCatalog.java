@@ -12,9 +12,9 @@ import java.util.function.Consumer;
 import org.jspecify.annotations.NonNull;
 
 /**
- * Shared registration substrate for builtins and plugins. It never invokes contributions, grants
- * authority, starts plugins or publishes a catalog into a running application. The host owns those
- * actions after successful validation/startup.
+ * Immutable, validated snapshot of startup contributions. This shared registration substrate for
+ * builtins and plugins never invokes contributions, grants authority, starts plugins, or publishes
+ * a catalog into a running application. The host owns those actions after validation and startup.
  */
 public final class ContributionCatalog {
     private final @NonNull Map<ContributionId, Definition<?>> definitions;
@@ -27,6 +27,14 @@ public final class ContributionCatalog {
         this.entries = List.copyOf(entries);
     }
 
+    /**
+     * Returns entries for the exact defined point in deterministic dependency order.
+     *
+     * @param <T> implementation contract type
+     * @param point contribution point whose entries are requested
+     * @return immutable ordered entries, possibly empty
+     * @throws IllegalArgumentException if the point was not defined with the same contract
+     */
     public <T extends @NonNull Object> @NonNull List<ContributionEntry<T>> entries(
             @NonNull ContributionPoint<T> point) {
         Definition<?> definition = definitions.get(point.id());
@@ -62,7 +70,8 @@ public final class ContributionCatalog {
     }
 
     /**
-     * Single-threaded bootstrap only. Do not expose this builder to contribution implementations.
+     * Host bootstrap builder; mutable until its first successful {@link #freeze()} call. Use it
+     * during single-threaded bootstrap only; do not expose it to contribution implementations.
      */
     public static final class Builder {
         private final Map<ContributionId, Definition<?>> definitions = new LinkedHashMap<>();
@@ -72,13 +81,29 @@ public final class ContributionCatalog {
         private boolean frozen;
         private final List<Consumer<ContributionCatalog>> catalogValidators = new ArrayList<>();
 
-        /** Host-owned cross-point validation runs before any snapshot is returned. */
+        /** Creates an empty mutable catalog builder for single-threaded host bootstrap. */
+        public Builder() {}
+
+        /**
+         * Adds host-owned cross-point validation that runs before any snapshot is returned.
+         *
+         * @param validator validation performed against the completed catalog
+         * @return this builder
+         */
         public @NonNull Builder validateWith(@NonNull Consumer<ContributionCatalog> validator) {
             mutable();
             catalogValidators.add(validator);
             return this;
         }
 
+        /**
+         * Defines one recognized point and its implementation validator.
+         *
+         * @param <T> implementation contract type
+         * @param point recognized contribution point
+         * @param validator validator for implementations at the point
+         * @return this builder
+         */
         public <T extends @NonNull Object> @NonNull Builder define(
                 @NonNull ContributionPoint<T> point, @NonNull Consumer<T> validator) {
             mutable();
@@ -87,7 +112,12 @@ public final class ContributionCatalog {
             return this;
         }
 
-        /** Requires at least one contribution. Exact required providers remain host policy. */
+        /**
+         * Requires at least one contribution. Exact required providers remain host policy.
+         *
+         * @param point point that must have an implementation
+         * @return this builder
+         */
         public @NonNull Builder require(@NonNull ContributionPoint<?> point) {
             mutable();
             Definition<?> definition = definitions.get(point.id());
@@ -96,7 +126,13 @@ public final class ContributionCatalog {
             return this;
         }
 
-        /** Atomic per-source staging: a rejected batch contributes nothing. */
+        /**
+         * Atomically stages one source so a rejected batch contributes nothing.
+         *
+         * @param source host-attributed source
+         * @param contributions complete contribution batch from that source
+         * @return this builder
+         */
         public @NonNull Builder stage(
                 @NonNull ContributionSource source,
                 @NonNull List<? extends Contribution<?>> contributions) {
@@ -117,7 +153,12 @@ public final class ContributionCatalog {
             return this;
         }
 
-        /** Discards a failed optional startup before snapshot creation. */
+        /**
+         * Discards a failed optional startup before snapshot creation.
+         *
+         * @param sourceNamespace namespace to discard
+         * @return this builder
+         */
         public @NonNull Builder discard(@NonNull String sourceNamespace) {
             mutable();
             staged.values().removeIf(entry -> entry.source().namespace().equals(sourceNamespace));
@@ -125,7 +166,11 @@ public final class ContributionCatalog {
             return this;
         }
 
-        /** Checks cardinality, required points and ordering before freezing the builder. */
+        /**
+         * Checks cardinality, required points and ordering before freezing the builder.
+         *
+         * @return the immutable validated catalog
+         */
         public @NonNull ContributionCatalog freeze() {
             mutable();
             List<Staged> ordered = new ArrayList<>();

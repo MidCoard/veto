@@ -205,6 +205,11 @@ class PluginSearchServiceIntegrationTest {
         var context =
                 new PluginContext(
                         fixture.runtime.identity(),
+                        () -> {},
+                        () -> {
+                            throw new IllegalStateException(
+                                    "Plugin context is not bound to a lifecycle owner");
+                        },
                         Map.of(
                                 ToolDocs.nonNullClass(PluginHost.class),
                                 host,

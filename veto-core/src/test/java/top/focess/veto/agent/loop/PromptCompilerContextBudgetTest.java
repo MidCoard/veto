@@ -27,6 +27,7 @@ import top.focess.veto.api.agent.tool.ToolResult;
 import top.focess.veto.api.llm.ChatMessage;
 import top.focess.veto.api.llm.LlmOptions;
 import top.focess.veto.api.llm.ProviderType;
+import top.focess.veto.api.llm.ResponseContract;
 import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.api.llm.VetoRequest;
@@ -150,8 +151,9 @@ class PromptCompilerContextBudgetTest {
                             "unused",
                             new LlmOptions(null, null, 1000, null, 12000),
                             messages,
-                            schema,
-                            null);
+                            null,
+                            true,
+                            ResponseContract.ordinary());
             assertEquals(messages, compiler.fitRequest(fits).messages());
             var outputHeavy =
                     new VetoRequest(
@@ -163,8 +165,9 @@ class PromptCompilerContextBudgetTest {
                             fits.credentialKey(),
                             new LlmOptions(null, null, 11000, null, 12000),
                             messages,
-                            schema,
-                            null);
+                            null,
+                            true,
+                            ResponseContract.ordinary());
             assertThrows(IllegalStateException.class, () -> compiler.fitRequest(outputHeavy));
             assertEquals(messages, outputHeavy.messages());
             var localCeiling = PromptCompiler.isolated(translator, mapper, "Reader rules", 1000);
@@ -346,8 +349,9 @@ class PromptCompilerContextBudgetTest {
                         fallback.credentialKey(),
                         new LlmOptions(0.2, null, 7000, null, 128000),
                         fallback.messages(),
-                        fallback.responseSchema(),
-                        fallback.baseUrl());
+                        fallback.baseUrl(),
+                        true,
+                        ResponseContract.ordinary());
         var compiler = compiler(32000);
         assertSame(configured, compiler.fitRequest(configured));
         assertThrows(IllegalStateException.class, () -> compiler.fitRequest(fallback));
@@ -361,8 +365,9 @@ class PromptCompilerContextBudgetTest {
                         configured.credentialKey(),
                         new LlmOptions(0.2, null, 7000, null, 32000),
                         configured.messages(),
-                        configured.responseSchema(),
-                        configured.baseUrl());
+                        configured.baseUrl(),
+                        true,
+                        ResponseContract.ordinary());
         assertThrows(IllegalStateException.class, () -> compiler.fitRequest(small));
         assertEquals(fallback.messages(), configured.messages());
     }
@@ -417,8 +422,9 @@ class PromptCompilerContextBudgetTest {
                 "unused",
                 LlmOptions.defaults(),
                 messages,
-                mapper.createObjectNode(),
-                null);
+                null,
+                true,
+                ResponseContract.ordinary());
     }
 
     @Test
@@ -446,21 +452,7 @@ class PromptCompilerContextBudgetTest {
     }
 
     @Test
-    void countsResponseSchemaAndToolArguments() {
-        var schema = mapper.createObjectNode().put("description", "s".repeat(4000));
-        var request =
-                new VetoRequest(
-                        "system",
-                        "continue",
-                        List.of(),
-                        ProviderType.DEEPSEEK,
-                        "test-model",
-                        "unused",
-                        LlmOptions.defaults(),
-                        List.of(ChatMessage.user("continue")),
-                        schema,
-                        null);
-        assertThrows(IllegalStateException.class, () -> compiler(1000).fitRequest(request));
+    void countsToolArguments() {
         var toolHistory =
                 List.of(
                         ChatMessage.user("read"),
@@ -490,8 +482,9 @@ class PromptCompilerContextBudgetTest {
                         "unused",
                         request.options(),
                         request.messages(),
-                        request.responseSchema(),
-                        null);
+                        null,
+                        true,
+                        ResponseContract.ordinary());
         assertThrows(IllegalStateException.class, () -> compiler.fitRequest(other));
         assertThrows(
                 IllegalArgumentException.class,

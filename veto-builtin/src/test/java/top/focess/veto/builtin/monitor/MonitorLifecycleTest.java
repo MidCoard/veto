@@ -40,6 +40,11 @@ class MonitorLifecycleTest {
         return new MonitorRuntime(
                 new PluginContext(
                         new PluginIdentity("top.focess.builtin", "1.0.100"),
+                        () -> {},
+                        () -> {
+                            throw new IllegalStateException(
+                                    "Plugin context is not bound to a lifecycle owner");
+                        },
                         Map.of(PluginHost.class, host, PluginStorage.class, storage)));
     }
 

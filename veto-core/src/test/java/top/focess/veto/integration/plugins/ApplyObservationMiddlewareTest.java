@@ -85,7 +85,14 @@ class ApplyObservationMiddlewareTest {
             var plugin = new ManagedPlugin(stub, lifecycle);
             var contributions =
                     plugin.initialize(
-                            new PluginContext(stub.identity()),
+                            new PluginContext(
+                                    stub.identity(),
+                                    () -> {},
+                                    () -> {
+                                        throw new IllegalStateException(
+                                                "Plugin context is not bound to a lifecycle owner");
+                                    },
+                                    Map.of()),
                             new JsonValue.ObjectValue(Map.of()));
             builder.stage(
                     new ContributionSource(

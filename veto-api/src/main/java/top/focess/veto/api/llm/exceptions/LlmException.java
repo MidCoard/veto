@@ -11,6 +11,7 @@ import org.jspecify.annotations.NonNull;
  */
 public class LlmException extends RuntimeException {
 
+    /** Whether the host may retry this failure after a backoff. */
     private final boolean retryable;
 
     /**

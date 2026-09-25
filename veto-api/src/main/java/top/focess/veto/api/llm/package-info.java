@@ -1,3 +1,4 @@
+/** Provider-neutral model request, response, message, and routing contracts. */
 @DefaultQualifier(
         value = Nullable.class,
         locations = {

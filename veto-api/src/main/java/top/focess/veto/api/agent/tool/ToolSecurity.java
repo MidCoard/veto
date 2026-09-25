@@ -12,12 +12,24 @@ import top.focess.veto.api.agent.screening.Danger;
 @Target(ElementType.TYPE)
 public @interface ToolSecurity {
 
-    /** Which execution boundary owns the tool's effect. */
+    /**
+     * Selects the authority boundary for the tool's effects.
+     *
+     * @return the execution boundary that owns the tool's effect
+     */
     @NonNull ToolCapability capability();
 
-    /** Danger assigned before argument-, policy-, and model-aware escalation. */
+    /**
+     * Establishes the minimum deterministic risk classification.
+     *
+     * @return danger assigned before argument-, policy-, and model-aware escalation
+     */
     @NonNull Danger defaultDanger();
 
-    /** Whether this tool always requires semantic screening. */
+    /**
+     * Requires model-assisted screening even when deterministic checks are satisfied.
+     *
+     * @return whether this tool always requires semantic screening
+     */
     boolean requiresSemanticScreening() default false;
 }

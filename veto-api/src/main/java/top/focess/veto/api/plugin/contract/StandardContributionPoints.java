@@ -18,6 +18,7 @@ import top.focess.veto.api.plugin.service.ServiceRegistration;
 public final class StandardContributionPoints {
     private StandardContributionPoints() {}
 
+    /** Agent profile configuration policies. */
     public static final @NonNull ContributionPoint<AgentConfiguration> AGENT_CONFIGURATION =
             new ContributionPoint<>(
                     new ContributionId("veto:agent-configuration"),
@@ -25,6 +26,7 @@ public final class StandardContributionPoints {
                     AgentConfiguration.class,
                     ContributionPoint.Cardinality.MULTIPLE);
 
+    /** Plugin-owned agent work inboxes. */
     public static final @NonNull ContributionPoint<AgentWorkSource> AGENT_WORK =
             new ContributionPoint<>(
                     new ContributionId("veto:agent-work"),
@@ -32,6 +34,7 @@ public final class StandardContributionPoints {
                     AgentWorkSource.class,
                     ContributionPoint.Cardinality.MULTIPLE);
 
+    /** Model transport providers. */
     public static final @NonNull ContributionPoint<LlmProvider> LLM_PROVIDERS =
             new ContributionPoint<>(
                     new ContributionId("veto:llm-providers"),
@@ -39,6 +42,7 @@ public final class StandardContributionPoints {
                     ToolDocs.nonNullClass(LlmProvider.class),
                     ContributionPoint.Cardinality.MULTIPLE);
 
+    /** Named JSON service registrations. */
     public static final @NonNull ContributionPoint<ServiceRegistration> SERVICES =
             new ContributionPoint<>(
                     new ContributionId("veto:services"),
@@ -46,6 +50,7 @@ public final class StandardContributionPoints {
                     ServiceRegistration.class,
                     ContributionPoint.Cardinality.MULTIPLE);
 
+    /** Per-exchange model response policies. */
     public static final @NonNull ContributionPoint<ModelResponsePolicy> MODEL_RESPONSE =
             new ContributionPoint<>(
                     new ContributionId("veto:model-response"),
@@ -53,6 +58,7 @@ public final class StandardContributionPoints {
                     ModelResponsePolicy.class,
                     ContributionPoint.Cardinality.MULTIPLE);
 
+    /** Ordered session workflow hooks. */
     public static final @NonNull ContributionPoint<WorkflowHook> WORKFLOW =
             new ContributionPoint<>(
                     new ContributionId("veto:workflow"),
@@ -60,6 +66,7 @@ public final class StandardContributionPoints {
                     WorkflowHook.class,
                     ContributionPoint.Cardinality.MULTIPLE);
 
+    /** Trusted frontend modules and backend action handlers. */
     public static final @NonNull ContributionPoint<FrontendContribution> FRONTEND =
             new ContributionPoint<>(
                     new ContributionId("veto:frontend"),
@@ -67,24 +74,31 @@ public final class StandardContributionPoints {
                     FrontendContribution.class,
                     ContributionPoint.Cardinality.MULTIPLE);
 
+    /** Protection applied to view-file observations. */
     public static final @NonNull ContributionPoint<FileObservation> FILE_OBSERVATION =
             new ContributionPoint<>(
                     new ContributionId("veto:file-observation"),
                     1,
                     FileObservation.class,
                     ContributionPoint.Cardinality.MULTIPLE);
+
+    /** Protection applied to user input. */
     public static final @NonNull ContributionPoint<InputProtection> INPUT_PROTECTION =
             new ContributionPoint<>(
                     new ContributionId("veto:input-protection"),
                     1,
                     InputProtection.class,
                     ContributionPoint.Cardinality.MULTIPLE);
+
+    /** Protection applied while reading file content. */
     public static final @NonNull ContributionPoint<FileProtection> FILE_PROTECTION =
             new ContributionPoint<>(
                     new ContributionId("veto:file-protection"),
                     1,
                     FileProtection.class,
                     ContributionPoint.Cardinality.MULTIPLE);
+
+    /** Permanent-data deletion participants. */
     public static final @NonNull ContributionPoint<DataLifecycle> DATA_LIFECYCLE =
             new ContributionPoint<>(
                     new ContributionId("veto:data-lifecycle"),
@@ -92,6 +106,7 @@ public final class StandardContributionPoints {
                     ToolDocs.nonNullClass(DataLifecycle.class),
                     ContributionPoint.Cardinality.MULTIPLE);
 
+    /** Best-effort owner, session, and agent lifecycle notifications. */
     public static final @NonNull ContributionPoint<SessionLifecycle> SESSION_LIFECYCLE =
             new ContributionPoint<>(
                     new ContributionId("veto:session-lifecycle"),
@@ -99,7 +114,11 @@ public final class StandardContributionPoints {
                     SessionLifecycle.class,
                     ContributionPoint.Cardinality.MULTIPLE);
 
-    /** Semantic validator registered by the application, not hard-coded in the catalog. */
+    /**
+     * Validates that every tool category refers to a registered category.
+     *
+     * @param catalog completed contribution catalog to validate
+     */
     public static void validateToolCategories(@NonNull ContributionCatalog catalog) {
         var categories = new HashSet<ContributionId>();
         for (var entry : catalog.entries(CATEGORIES)) categories.add(entry.id());
@@ -109,6 +128,7 @@ public final class StandardContributionPoints {
         }
     }
 
+    /** Portable schema-authored JSON tools. */
     public static final @NonNull ContributionPoint<Tool> TOOLS =
             new ContributionPoint<>(
                     new ContributionId("veto:tools"),
@@ -134,18 +154,23 @@ public final class StandardContributionPoints {
                 ContributionPoint.Cardinality.MULTIPLE);
     }
 
+    /** Tool presentation categories. */
     public static final @NonNull ContributionPoint<ToolCategory> CATEGORIES =
             new ContributionPoint<>(
                     new ContributionId("veto:tool-categories"),
                     1,
                     ToolCategory.class,
                     ContributionPoint.Cardinality.MULTIPLE);
+
+    /** Static prompt resources. */
     public static final @NonNull ContributionPoint<PromptContribution> PROMPTS =
             new ContributionPoint<>(
                     new ContributionId("veto:prompts"),
                     1,
                     PromptContribution.class,
                     ContributionPoint.Cardinality.MULTIPLE);
+
+    /** Ordered ordinary observation transforms. */
     public static final @NonNull ContributionPoint<ObservationMiddleware> OBSERVATION =
             new ContributionPoint<>(
                     new ContributionId("veto:observation-middleware"),

@@ -17,6 +17,7 @@ import top.focess.veto.api.llm.ChatMessage;
 import top.focess.veto.api.llm.LlmOptions;
 import top.focess.veto.api.llm.ProviderMessages;
 import top.focess.veto.api.llm.ProviderType;
+import top.focess.veto.api.llm.ResponseContract;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.api.llm.VetoRequest;
 import top.focess.veto.api.llm.VetoResponse;
@@ -240,7 +241,8 @@ class MessageCitationsTest {
                 LlmOptions.defaults(),
                 messages,
                 null,
-                null);
+                true,
+                ResponseContract.ordinary());
     }
 
     private static @NonNull VetoResponse response(int index, @NonNull String quote) {

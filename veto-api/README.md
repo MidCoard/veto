@@ -221,8 +221,27 @@ and fails closed; the Java interface itself is not an OS sandbox.
 code is trusted application code. It must dispose owned registrations on teardown and gains no
 backend authority by rendering a component.
 
+## Source migration notes
+
+The Java authoring API follows the version of the `veto-api` artifact. It does not expose a
+separate SPI-version constant. Script manifests and frontend contribution protocols keep their
+own independently validated version fields.
+
+| Removed source API | Migration |
+|---|---|
+| `VetoPlugin.API_VERSION` | Depend on the intended `veto-api` artifact version; do not compare it with script or frontend protocol versions. |
+| `PluginBinding.canonicalId(String)` | Treat `PluginBinding.id()` as the exact persisted identity. A renamed plugin declares its own former IDs through `VetoPlugin.historicalIds()`; the host resolves them generically and rejects collisions. |
+| Unmanaged `PluginContext` convenience constructors | Hosts and tests must supply the failure reporter, live state reader, and exact host-service map explicitly. |
+| `VetoRequest.responseSchema` and convenience constructors | Use `ResponseContract` for host-owned response validation and call the canonical constructor with explicit `nativeToolsEnabled` and contract values. |
+| Four-argument `LlmOptions` constructor | Pass the optional context-window value explicitly as the fifth argument; use `null` for the portable default. |
+| Three-argument `LlmClient.RawCompletion` constructor | Pass both native-state and native-call lists to the canonical constructor. |
+| Four-argument `NativeToolState` constructor | Pass the provider and state-format version explicitly. Durable legacy payloads still default missing values through `fromPayload`. |
+
+These are source compatibility breaks for Java plugins. Existing stored bindings retain their
+original IDs; an installed plugin may keep them readable by declaring unique historical IDs.
+
 ## Build and verify
 
-From the repository root, run `gradlew.bat :veto-api:test :veto-api:javadoc`. The module
-Javadocs describe individual contracts. Use only `top.focess.veto.api` types from plugin code
-and keep host implementation types out of plugin artifacts.
+From the repository root, run `gradlew.bat :veto-api:check`. This compiles and tests the module
+and requires warning-free generated Javadocs. Use only `top.focess.veto.api` types from plugin
+code and keep host implementation types out of plugin artifacts.

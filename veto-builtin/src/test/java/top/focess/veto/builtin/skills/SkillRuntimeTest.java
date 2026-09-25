@@ -160,6 +160,11 @@ class SkillRuntimeTest {
             return new SkillRuntime(
                     new PluginContext(
                             new PluginIdentity("test", "1.0.0"),
+                            () -> {},
+                            () -> {
+                                throw new IllegalStateException(
+                                        "Plugin context is not bound to a lifecycle owner");
+                            },
                             Map.of(
                                     ToolDocs.nonNullClass(CatalogueAccess.class),
                                     resources,

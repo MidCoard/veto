@@ -290,7 +290,6 @@ class PlanExecutionTest {
                 [{"id":"answer","label":"Answer","type":"generate","prompt":"Quote the meeting time","response_mode":"CITATIONS","inputs":{},"outputs":{"answer":"message"}},
                  {"id":"stop","label":"Finish","type":"STOP","result_binding":"answer"}]
                 """);
-                            assertNull(request.responseSchema());
                             assertTrue(
                                     request.tools().stream()
                                             .allMatch(
@@ -920,7 +919,6 @@ class PlanExecutionTest {
                                                 request.credentialKey(),
                                                 request.options(),
                                                 request.messages(),
-                                                request.responseSchema(),
                                                 request.baseUrl(),
                                                 false,
                                                 ResponseContract.generation());
@@ -1178,9 +1176,6 @@ class PlanExecutionTest {
                 ResponseContract.Mode.GENERATION, planRequests.get(1).responseContract().mode());
         assertFalse(planRequests.get(1).systemPrompt().contains("### `submit_plan`"));
         assertFalse(planRequests.get(1).systemPrompt().contains("### `view_file`"));
-        assertEquals(planRequests.get(0).responseSchema(), planRequests.get(1).responseSchema());
-        assertNull(planRequests.get(0).responseSchema());
-        assertNull(ordinaryRequests.get(0).responseSchema());
         assertTrue(
                 planRequests.get(0).tools().stream().anyMatch(t -> t.name().equals("submit_plan")));
         assertTrue(

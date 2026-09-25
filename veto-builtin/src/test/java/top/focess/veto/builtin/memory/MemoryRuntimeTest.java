@@ -53,7 +53,14 @@ class MemoryRuntimeTest {
         if (backend != null)
             services.put(ToolDocs.nonNullClass(MemoryBackendFactory.class), backend);
         return new MemoryRuntime(
-                new PluginContext(new PluginIdentity("top.focess.builtin", "1.0.0"), services),
+                new PluginContext(
+                        new PluginIdentity("top.focess.builtin", "1.0.0"),
+                        () -> {},
+                        () -> {
+                            throw new IllegalStateException(
+                                    "Plugin context is not bound to a lifecycle owner");
+                        },
+                        services),
                 new JsonValue.ObjectValue(
                         Map.of("memory-store", new JsonValue.StringValue(profile))));
     }

@@ -11,6 +11,7 @@ import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.llm.LlmOptions;
 import top.focess.veto.api.llm.ProviderType;
 import top.focess.veto.api.llm.ResolvedRequest;
+import top.focess.veto.api.llm.ResponseContract;
 import top.focess.veto.api.llm.VetoRequest;
 import top.focess.veto.api.llm.VetoResponse;
 import top.focess.veto.api.llm.exceptions.LlmException;
@@ -42,7 +43,8 @@ class DefaultUniformLLMCallerTest {
                 LlmOptions.defaults(),
                 List.of(),
                 null,
-                null);
+                true,
+                ResponseContract.ordinary());
     }
 
     private @NonNull LlmEgress egressReturning(@NonNull String apiKey) {

@@ -1,7 +1,6 @@
 package top.focess.veto.agent.loop;
 
 import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
@@ -183,13 +182,11 @@ public class PromptCompiler {
 
     /** Measures the final scoped request, including any correction observation added to it. */
     public long estimateRequest(@NonNull VetoRequest request, double correctionFactor) {
-        if (isolatedInstructions != null)
-            return isolatedSize(request.messages(), request.tools(), request.responseSchema());
+        if (isolatedInstructions != null) return isolatedSize(request.messages(), request.tools());
         return requireBudget(
                 request.systemPrompt(),
                 request.messages(),
                 request.tools(),
-                request.responseSchema(),
                 correctionFactor,
                 Long.MAX_VALUE);
     }
@@ -200,7 +197,6 @@ public class PromptCompiler {
                     request.systemPrompt(),
                     request.messages(),
                     request.tools(),
-                    request.responseSchema(),
                     correctionFactor,
                     request.options().contextWindowTokens() != null
                             ? request.options().inputBudget()
@@ -213,7 +209,6 @@ public class PromptCompiler {
                         fitIsolatedBudget(
                                 conversation,
                                 request.tools(),
-                                request.responseSchema(),
                                 request.options().contextWindowTokens() == null
                                         ? maxInputTokens
                                         : Math.min(
@@ -227,7 +222,6 @@ public class PromptCompiler {
                 request.credentialKey(),
                 request.options(),
                 messages,
-                request.responseSchema(),
                 request.baseUrl(),
                 request.nativeToolsEnabled(),
                 request.responseContract());
@@ -314,14 +308,13 @@ public class PromptCompiler {
         if (isolatedInstructions != null) {
             List<ChatMessage> messages =
                     fitIsolatedBudget(
-                            conversation, flatTools, null, maxInputTokens, toolResultPresentation);
+                            conversation, flatTools, maxInputTokens, toolResultPresentation);
             return new CompiledPrompt(
                     systemMessage,
                     messages,
                     flatTools,
-                    null,
                     Math.max(0, conversation.size() - messages.size()),
-                    isolatedSize(messages, flatTools, null));
+                    isolatedSize(messages, flatTools));
         }
         List<ChatMessage> messages =
                 wellFormed(conversation, conversation, interruptedResult(toolResultPresentation));
@@ -339,12 +332,11 @@ public class PromptCompiler {
                         systemMessage,
                         messages,
                         flatTools,
-                        null,
                         correctionFactor,
                         inputBudgetOverride != null
                                 ? inputBudgetOverride
                                 : inputBudget(provider, model));
-        return new CompiledPrompt(systemMessage, messages, flatTools, null, 0, estimate);
+        return new CompiledPrompt(systemMessage, messages, flatTools, 0, estimate);
     }
 
     /** Builds the system prompt stored in a newly created AGENT_INIT record. */
@@ -413,7 +405,6 @@ public class PromptCompiler {
                 request.credentialKey(),
                 request.options(),
                 messages,
-                request.responseSchema(),
                 request.baseUrl(),
                 request.nativeToolsEnabled(),
                 request.responseContract());
@@ -493,25 +484,20 @@ public class PromptCompiler {
     }
 
     private @NonNull List<ChatMessage> fitIsolatedBudget(
-            @NonNull List<ChatMessage> conversation,
-            @NonNull List<ToolDefinition> tools,
-            JsonNode schema) {
-        return fitIsolatedBudget(conversation, tools, schema, maxInputTokens);
+            @NonNull List<ChatMessage> conversation, @NonNull List<ToolDefinition> tools) {
+        return fitIsolatedBudget(conversation, tools, maxInputTokens);
     }
 
     private @NonNull List<ChatMessage> fitIsolatedBudget(
             @NonNull List<ChatMessage> conversation,
             @NonNull List<ToolDefinition> tools,
-            JsonNode schema,
             long budget) {
-        return fitIsolatedBudget(
-                conversation, tools, schema, budget, ToolResultPresentationMode.BASIC);
+        return fitIsolatedBudget(conversation, tools, budget, ToolResultPresentationMode.BASIC);
     }
 
     private @NonNull List<ChatMessage> fitIsolatedBudget(
             @NonNull List<ChatMessage> conversation,
             @NonNull List<ToolDefinition> tools,
-            JsonNode schema,
             long budget,
             @NonNull ToolResultPresentationMode presentation) {
         List<ChatMessage> messages =
@@ -519,7 +505,7 @@ public class PromptCompiler {
                         wellFormed(conversation, conversation, interruptedResult(presentation)));
         // The opening user message is the invocation's objective. Always retain it while removing
         // old call/result pairs; never substitute a later tool error as the task anchor.
-        while (isolatedSize(messages, tools, schema) > budget) {
+        while (isolatedSize(messages, tools) > budget) {
             if (messages.size() <= 3)
                 throw new IllegalStateException(
                         "Isolated agent's latest observation exceeds its input budget");
@@ -539,17 +525,14 @@ public class PromptCompiler {
     }
 
     private long isolatedSize(
-            @NonNull List<ChatMessage> messages,
-            @NonNull List<ToolDefinition> tools,
-            JsonNode schema) {
+            @NonNull List<ChatMessage> messages, @NonNull List<ToolDefinition> tools) {
         // Serialized UTF-8 bytes conservatively account for content, reasoning, tool arguments,
-        // tool definitions, schema, and message framing without assuming English token density.
+        // tool definitions, and message framing without assuming English token density.
         try {
             return objectMapper.writeValueAsBytes(messages).length
                     + objectMapper.writeValueAsBytes(
                                     tools.stream().map(ToolDefinition::wireView).toList())
                             .length
-                    + (schema == null ? 4 : objectMapper.writeValueAsBytes(schema).length)
                     + 256L;
         } catch (Exception error) {
             throw new IllegalStateException("Could not measure isolated model input", error);
@@ -896,7 +879,6 @@ public class PromptCompiler {
             @NonNull String system,
             @NonNull List<ChatMessage> messages,
             @NonNull List<ToolDefinition> tools,
-            JsonNode schema,
             double factor,
             long budget) {
         if (!Double.isFinite(factor) || factor <= 0) {
@@ -904,8 +886,7 @@ public class PromptCompiler {
         }
         long bytes;
         try {
-            // Count the system once; include tool arguments, reasoning, catalog, schema and
-            // framing.
+            // Count the system once; include tool arguments, reasoning, catalog, and framing.
             bytes =
                     objectMapper.writeValueAsBytes(
                                     Map.of(
@@ -916,9 +897,7 @@ public class PromptCompiler {
                                                     .filter(m -> !"system".equals(m.role()))
                                                     .toList(),
                                             "tools",
-                                            tools,
-                                            "schema",
-                                            schema != null ? schema : objectMapper.nullNode()))
+                                            tools))
                             .length;
             // Native signed parts are deliberately hidden from ordinary message JSON. Include
             // their durable wire size so signatures cannot bypass the context budget.

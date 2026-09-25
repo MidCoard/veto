@@ -11,6 +11,12 @@ public final class ToolJson {
 
     private ToolJson() {}
 
+    /**
+     * Serializes a record as one JSON value or throws a structured tool failure.
+     *
+     * @param value record to encode
+     * @return encoded JSON object text
+     */
     public static @NonNull String object(@NonNull Record value) {
         return encode(value);
     }

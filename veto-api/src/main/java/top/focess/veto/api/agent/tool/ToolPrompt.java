@@ -10,5 +10,10 @@ import org.jspecify.annotations.NonNull;
 @Retention(RetentionPolicy.RUNTIME)
 @Target(ElementType.TYPE)
 public @interface ToolPrompt {
+    /**
+     * Selects the prompt resource associated with the tool.
+     *
+     * @return MDC resource identifier compiled while the tool is available
+     */
     @NonNull String value();
 }

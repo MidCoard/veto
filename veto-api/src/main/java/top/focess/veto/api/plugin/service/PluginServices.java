@@ -14,23 +14,51 @@ import top.focess.veto.api.plugin.contract.JsonValue;
  * handles recheck caller and provider admission on every invocation.
  */
 public interface PluginServices {
-    /** Public protocol identity and host-attributed provider plugin ID. */
+    /**
+     * Public protocol identity and host-attributed provider plugin ID.
+     *
+     * @param name protocol name
+     * @param version exact major protocol version
+     * @param providerId host-attributed provider plugin ID
+     */
     record Descriptor(@NonNull String name, int version, @NonNull String providerId) {}
 
+    /** Revocable handle pinned to one exact provider registration. */
     interface Handle {
-        /** Describes the exact protocol and provider pinned by this handle. */
+        /**
+         * Describes the protocol and provider pinned by this handle.
+         *
+         * @return the exact protocol and provider pinned by this handle
+         */
         @NonNull Descriptor descriptor();
 
-        /** Invokes the bounded JSON protocol after current lifecycle and selection checks. */
+        /**
+         * Invokes the bounded JSON protocol after current lifecycle and selection checks.
+         *
+         * @param request bounded JSON request
+         * @return the provider's bounded JSON response
+         * @throws ServiceException when admission, validation, timeout, or provider execution fails
+         */
         @NonNull JsonValue invoke(@NonNull JsonValue request) throws ServiceException;
     }
 
-    /** Returns the currently published descriptors visible to this caller. */
+    /**
+     * Lists services currently visible to this caller.
+     *
+     * @return currently published descriptors visible to this caller
+     */
     @NonNull List<Descriptor> available();
 
-    /** Exact name and major-version lookup; absence is a supported availability result. */
+    /**
+     * Performs an exact name and major-version lookup.
+     *
+     * @param name public protocol name
+     * @param version exact major protocol version
+     * @return the matching revocable handle, or an empty value when unavailable
+     */
     @NonNull Optional<Handle> find(@NonNull String name, int version);
 
+    /** Directory used when no named services are available; it is always empty. */
     PluginServices EMPTY =
             new PluginServices() {
                 public @NonNull List<Descriptor> available() {

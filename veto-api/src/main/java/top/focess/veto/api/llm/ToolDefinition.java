@@ -36,6 +36,7 @@ public record ToolDefinition(
         @NonNull List<String> returnExamples,
         @NonNull List<ToolResultFormat> resultFormats) {
 
+    /** Copies and orders schema and prompt-side collections. */
     public ToolDefinition {
         inputSchema = ordered(inputSchema);
         examples = List.copyOf(examples);
@@ -47,6 +48,9 @@ public record ToolDefinition(
      * The wire-facing view actually sent to providers: name, description, and input schema.
      * Prompt-side metadata (examples, documentation, return examples) is excluded, so input-budget
      * accounting measures what the request really carries.
+     *
+     * @param tool complete tool definition
+     * @return provider-facing fields without prompt-only metadata
      */
     public static @NonNull Map<String, Object> wireView(@NonNull ToolDefinition tool) {
         return Map.of(

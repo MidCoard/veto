@@ -240,8 +240,6 @@ class WebFetchExecutorLoopTest {
         assertTrue(initialOutline.path("outline").size() <= 24);
         assertTrue(requests.get(2).messages().getLast().content().contains("s300"));
         for (VetoRequest request : requests) {
-            var schema = request.responseSchema();
-            assertNull(schema, "The reader uses native tools, not a JSON response envelope");
             int bytes =
                     request.messages().stream()
                             .mapToInt(
@@ -264,7 +262,6 @@ class WebFetchExecutorLoopTest {
                                                             .map(ToolDefinition::wireView)
                                                             .toList())
                                             .length
-                                    + (schema == null ? 4 : mapper.writeValueAsBytes(schema).length)
                             <= 32000,
                     "Each child request stays within its configured input bound");
         }

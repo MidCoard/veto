@@ -11,6 +11,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Supplier;
 import org.checkerframework.framework.qual.DefaultQualifier;
@@ -108,11 +109,15 @@ public class ScopedPluginStorage implements PluginStorageFactory {
     private final class Bound implements PluginStorage {
         private final ManagedPlugin plugin;
         private final String namespace;
+        private final Set<String> selectionIds;
         private final Map<String, Grant> grants = new HashMap<>();
 
         Bound(ManagedPlugin plugin) {
             this.plugin = plugin;
             namespace = plugin.identity().id();
+            var ids = new java.util.HashSet<>(plugin.implementation().historicalIds());
+            ids.add(namespace);
+            selectionIds = Set.copyOf(ids);
         }
 
         private void admitted() {
@@ -150,7 +155,7 @@ public class ScopedPluginStorage implements PluginStorageFactory {
                 throw new SecurityException("Session scope no longer exists");
             var bindings = session.getPluginBindings();
             if (bindings == null
-                    || bindings.stream().noneMatch(binding -> namespace.equals(binding.id())))
+                    || bindings.stream().noneMatch(binding -> selectionIds.contains(binding.id())))
                 throw new SecurityException("Plugin is not selected for this session");
             return session;
         }

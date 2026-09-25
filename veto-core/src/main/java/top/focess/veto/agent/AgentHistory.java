@@ -54,7 +54,7 @@ final class AgentHistory {
             // the next one so a duplicate is never persisted (the DB would reject it and leave the
             // durable log inconsistent with the in-memory history). history only grows, so its
             // last element carries the max turn_number.
-            int highWater = history.isEmpty() ? 0 : history.get(history.size() - 1).turnNumber();
+            int highWater = history.isEmpty() ? 0 : history.getLast().turnNumber();
             numbered = turn.turnNumber() <= highWater ? turn.withTurnNumber(highWater + 1) : turn;
             if (required && turnLogService != null) {
                 turnLogService.logRequired(numbered, session.get(), userId, agentId);

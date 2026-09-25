@@ -34,6 +34,7 @@ import top.focess.veto.api.llm.LlmOptions;
 import top.focess.veto.api.llm.LlmSystemUsage;
 import top.focess.veto.api.llm.ProviderType;
 import top.focess.veto.api.llm.ResolvedRequest;
+import top.focess.veto.api.llm.ResponseContract;
 import top.focess.veto.api.llm.ToolDefinition;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.api.llm.VetoRequest;
@@ -315,10 +316,11 @@ class NativeReasoningWireTest {
                 type,
                 model,
                 "key",
-                new LlmOptions(0.5, 0.9, 4096, null),
+                new LlmOptions(0.5, 0.9, 4096, null, null),
                 history,
                 null,
-                null);
+                true,
+                ResponseContract.ordinary());
     }
 
     private static @NonNull String wire(@NonNull ProviderType type) {

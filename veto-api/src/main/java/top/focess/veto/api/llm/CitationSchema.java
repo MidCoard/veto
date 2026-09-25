@@ -8,6 +8,12 @@ import org.jspecify.annotations.NonNull;
 public final class CitationSchema {
     private CitationSchema() {}
 
+    /**
+     * Builds the JSON Schema used for exact-quote citation declarations.
+     *
+     * @param mapper mapper that owns the created nodes
+     * @return citation-array schema root
+     */
     public static @NonNull ObjectNode create(@NonNull ObjectMapper mapper) {
         ObjectNode array = mapper.createObjectNode().put("type", "array").put("maxItems", 32);
         array.put(

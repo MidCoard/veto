@@ -12,7 +12,17 @@ import java.lang.annotation.Target;
 @Target(ElementType.RECORD_COMPONENT)
 @Retention(RetentionPolicy.RUNTIME)
 public @interface ArraySize {
+    /**
+     * Sets the lower cardinality bound.
+     *
+     * @return minimum accepted array length, inclusive
+     */
     int min();
 
+    /**
+     * Sets the upper cardinality bound.
+     *
+     * @return maximum accepted array length, inclusive
+     */
     int max();
 }

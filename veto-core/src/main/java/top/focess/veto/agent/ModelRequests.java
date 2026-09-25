@@ -85,7 +85,6 @@ final class ModelRequests {
                         request.credentialKey(),
                         request.options(),
                         messages,
-                        request.responseSchema(),
                         request.baseUrl(),
                         request.nativeToolsEnabled(),
                         ResponseContract.completion(tool, true));
@@ -150,7 +149,6 @@ final class ModelRequests {
                         selected.credentialKey(),
                         options,
                         messages,
-                        original.responseSchema(),
                         selected.baseUrl(),
                         !tools.isEmpty(),
                         original.responseContract());
@@ -195,8 +193,9 @@ final class ModelRequests {
                 b.credentialKey(),
                 b.options(),
                 messages,
-                compiled.responseSchema(),
-                b.baseUrl());
+                b.baseUrl(),
+                true,
+                ResponseContract.ordinary());
     }
 
     @NonNull VetoRequest injectSchemaRejection(
@@ -219,7 +218,6 @@ final class ModelRequests {
                 request.credentialKey(),
                 request.options(),
                 augmented,
-                request.responseSchema(),
                 request.baseUrl(),
                 request.nativeToolsEnabled(),
                 request.responseContract());
@@ -241,7 +239,8 @@ final class ModelRequests {
                 binding.credentialKey(),
                 binding.options(),
                 List.of(systemPrompt, userPrompt),
-                null,
-                binding.baseUrl());
+                binding.baseUrl(),
+                true,
+                ResponseContract.ordinary());
     }
 }

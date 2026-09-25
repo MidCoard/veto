@@ -18,6 +18,7 @@ import top.focess.veto.api.llm.LlmOptions;
 import top.focess.veto.api.llm.LlmSystemUsage;
 import top.focess.veto.api.llm.ProviderType;
 import top.focess.veto.api.llm.ResolvedRequest;
+import top.focess.veto.api.llm.ResponseContract;
 import top.focess.veto.api.llm.VetoRequest;
 import top.focess.veto.secret.references.SecretCandidateStore;
 
@@ -83,7 +84,8 @@ class ProtectedProviderBodyTest {
                                             "read", "view_file", "{}", "", null),
                                     ChatMessage.toolResult("read", file)),
                             null,
-                            null);
+                            true,
+                            ResponseContract.ordinary());
             var client =
                     new AnthropicLlmClient(sdk, new ObjectMapper(), ProviderTestPrompts.PROMPTS);
             // Repeat the same protected history as a resend/recovery boundary check.

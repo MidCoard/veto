@@ -251,7 +251,8 @@ class NativeToolResponsesTest {
                 LlmOptions.defaults(),
                 List.of(),
                 null,
-                null);
+                true,
+                ResponseContract.ordinary());
     }
 
     @Test
@@ -283,7 +284,7 @@ class NativeToolResponsesTest {
 
     @Test
     void trustedAdapterStateIsAttachedAfterParsingWithoutChangingArguments() {
-        var state = new NativeToolState("test", "batch", "signed", 0);
+        var state = new NativeToolState("GEMINI", 1, "test", "batch", "signed", 0);
         @NonNull AuditLogger logger = mock();
         var provider =
                 new AbstractLlmProvider(mapper, logger) {

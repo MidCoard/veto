@@ -25,6 +25,7 @@ import top.focess.veto.api.llm.LlmOptions;
 import top.focess.veto.api.llm.LlmSystemUsage;
 import top.focess.veto.api.llm.ProviderType;
 import top.focess.veto.api.llm.ResolvedRequest;
+import top.focess.veto.api.llm.ResponseContract;
 import top.focess.veto.api.llm.ToolDefinition;
 import top.focess.veto.api.llm.VetoRequest;
 import top.focess.veto.api.llm.exceptions.ModelSchemaException;
@@ -78,7 +79,8 @@ class AnthropicNativeToolWireTest {
                             LlmOptions.defaults(),
                             List.of(ChatMessage.user("Read")),
                             null,
-                            null);
+                            true,
+                            ResponseContract.ordinary());
             var client =
                     new AnthropicLlmClient(sdk, new ObjectMapper(), ProviderTestPrompts.PROMPTS);
             var error =
@@ -195,7 +197,8 @@ class AnthropicNativeToolWireTest {
                             LlmOptions.defaults(),
                             List.of(ChatMessage.user("Read")),
                             null,
-                            null);
+                            true,
+                            ResponseContract.ordinary());
             var firstRaw = client.complete(new ResolvedRequest(first, null, "unused"));
             assertEquals("", firstRaw.rawResponse());
             var call = firstRaw.nativeCalls().getFirst();
@@ -220,7 +223,8 @@ class AnthropicNativeToolWireTest {
                                             null),
                                     ChatMessage.toolResult("runtime-1", "file contents")),
                             null,
-                            null);
+                            true,
+                            ResponseContract.ordinary());
             assertEquals(
                     "Read complete",
                     mapper.readTree(

@@ -139,6 +139,8 @@ final class GeminiLlmClient extends LlmClient {
             // SDK JSON round-trip retains bytes and original part boundaries, including signatures.
             states.add(
                     new NativeToolState(
+                            "GEMINI",
+                            1,
                             request.modelName(),
                             batch,
                             Content.builder().role("model").parts(segment).build().toJson(),

@@ -12,6 +12,12 @@ import org.jspecify.annotations.Nullable;
 public final class JsonValues {
     private JsonValues() {}
 
+    /**
+     * Converts a bounded object value to ordinary immutable-compatible Java JSON values.
+     *
+     * @param value bounded plugin object
+     * @return immutable-compatible Java values keyed by member name
+     */
     public static Map<String, @Nullable Object> toMap(JsonValue.ObjectValue value) {
         Map<String, @Nullable Object> result = new LinkedHashMap<>();
         value.values().forEach((key, item) -> result.put(key, toJava(item)));
@@ -30,6 +36,12 @@ public final class JsonValues {
         };
     }
 
+    /**
+     * Converts a Jackson JSON tree to the bounded plugin wire representation.
+     *
+     * @param node Jackson tree to convert
+     * @return the bounded plugin JSON value
+     */
     public static JsonValue from(JsonNode node) {
         if (node.isNull()) return JsonValue.NullValue.INSTANCE;
         if (node.isTextual()) return new JsonValue.StringValue(node.textValue());

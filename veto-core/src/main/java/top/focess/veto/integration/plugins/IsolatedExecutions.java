@@ -233,7 +233,6 @@ public final class IsolatedExecutions {
                                                         request.tools().stream()
                                                                 .map(ToolDefinition::wireView)
                                                                 .toList()))
-                                        + bytes(json(request.responseSchema()))
                                         + limits.framingReserveBytes();
                         scope.observationBudget = Math.max(0, inputBudget - overhead);
                         scope.calls.incrementAndGet();
@@ -255,7 +254,6 @@ public final class IsolatedExecutions {
                                         request.credentialKey(),
                                         remaining,
                                         request.messages(),
-                                        request.responseSchema(),
                                         request.baseUrl(),
                                         request.nativeToolsEnabled(),
                                         request.responseContract());

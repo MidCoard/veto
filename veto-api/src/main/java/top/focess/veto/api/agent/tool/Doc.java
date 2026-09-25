@@ -17,5 +17,10 @@ import org.jspecify.annotations.NonNull;
 @Retention(RetentionPolicy.RUNTIME)
 public @interface Doc {
 
+    /**
+     * Supplies the parameter description placed in the generated schema.
+     *
+     * @return the model-visible parameter description
+     */
     @NonNull String value();
 }

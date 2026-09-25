@@ -1,10 +1,10 @@
 package top.focess.veto.api.agent;
 
 /**
- * The volatile runtime state machine for an agent's virtual thread ( ).
+ * The volatile runtime state machine for an agent's virtual thread.
  *
- * <p>State is <b>never persisted</b> — only configuration and turn history history are durable. The
- * state lives on the agent's own virtual thread and is mutated only by that thread's loop.
+ * <p>State is <b>never persisted</b> — only configuration and turn history are durable. The state
+ * lives on the agent's own virtual thread and is mutated only by that thread's loop.
  *
  * <ul>
  *   <li>{@code IDLE} — the virtual thread is running but blocked on {@code actionQueue.take}.
@@ -16,14 +16,24 @@ package top.focess.veto.api.agent;
  * </ul>
  */
 public enum AgentState {
+    /** Alive and waiting for the next action. */
     IDLE,
+    /** Running model or workflow logic. */
     RUNNING,
+    /** Waiting for a tool operation to complete. */
     WAITING,
+    /** Waiting for a human decision on a screened operation. */
     INTERCEPTED,
+    /** Explicitly paused until resumed. */
     PAUSED,
+    /** Permanently stopped. */
     TERMINATED;
 
-    /** Whether the agent's session is still alive (not terminated). */
+    /**
+     * Reports whether the agent session can still process actions.
+     *
+     * @return {@code true} unless this state is {@link #TERMINATED}
+     */
     public boolean isSessionAlive() {
         return this != TERMINATED;
     }

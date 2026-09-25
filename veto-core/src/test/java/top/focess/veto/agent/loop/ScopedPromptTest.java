@@ -70,7 +70,6 @@ class ScopedPromptTest {
                             LlmOptions.defaults(),
                             messages,
                             null,
-                            null,
                             citations,
                             contract);
             var scoped =

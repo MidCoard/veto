@@ -38,6 +38,12 @@ public final class ToolSchemaReferences {
 
     private ToolSchemaReferences() {}
 
+    /**
+     * Normalizes local references so a schema can be embedded under another document root.
+     *
+     * @param schema original tool schema
+     * @return independent normalized schema tree
+     */
     public static @NonNull JsonNode inlineForEmbedding(@NonNull JsonNode schema) {
         return normalize(schema, schema, new HashSet<>(), false);
     }

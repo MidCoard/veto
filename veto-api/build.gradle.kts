@@ -1,3 +1,5 @@
+import org.gradle.external.javadoc.StandardJavadocDocletOptions
+
 plugins {
     `java-library`
     id("com.diffplug.spotless") version "6.25.0"
@@ -40,4 +42,13 @@ tasks.withType<JavaCompile> {
 
 tasks.withType<Test> {
     useJUnitPlatform()
+}
+
+tasks.withType<Javadoc> {
+    (options as StandardJavadocDocletOptions).addStringOption("Xmaxwarns", "1000")
+    (options as StandardJavadocDocletOptions).addBooleanOption("Werror", true)
+}
+
+tasks.named("check") {
+    dependsOn(tasks.named("javadoc"))
 }

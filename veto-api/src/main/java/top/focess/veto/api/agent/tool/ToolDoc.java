@@ -35,37 +35,67 @@ public @interface ToolDoc {
     /**
      * One-liner for the manifest header — what the tool is. REQUIRED: every documented tool must
      * state what it is.
+     *
+     * @return the manifest description
      */
     @NonNull String description();
 
-    /** What the tool does after a valid call reaches its handler. */
+    /**
+     * Describes the tool's behavior after validation and admission.
+     *
+     * @return what the tool does after a valid call reaches its handler
+     */
     @NonNull String behavior();
 
-    /** Positive selection guidance. */
+    /**
+     * Explains the situations in which the tool is appropriate.
+     *
+     * @return positive selection guidance
+     */
     @NonNull String whenToUse();
 
-    /** Negative selection guidance and alternatives. */
+    /**
+     * Explains unsuitable situations and preferred alternatives.
+     *
+     * @return negative selection guidance and alternatives
+     */
     @NonNull String whenNotToUse();
 
-    /** Normative success and failure content shapes. */
+    /**
+     * Defines the model-visible success and failure shapes.
+     *
+     * @return normative success and failure content shapes
+     */
     @NonNull String resultContract();
 
-    /** Non-duplicative limits, recovery guidance, and edge conditions. */
+    /**
+     * Describes operational limits and recovery behavior.
+     *
+     * @return non-duplicative limits, recovery guidance, and edge conditions
+     */
     @NonNull String errorsAndEdgeCases();
 
-    /** Agent-facing access restrictions and obligations. */
+    /**
+     * Describes access restrictions that callers must respect.
+     *
+     * @return agent-facing access restrictions and obligations
+     */
     @NonNull String security();
 
     /**
      * Content encoding of a successful result: {@link ToolResultFormat#JSON}, {@link
      * ToolResultFormat#PLAINTEXT}, or both. Failure is not a content format; it is carried by the
      * tool result's separate success flag and normally contains a plain diagnostic body.
+     *
+     * @return supported successful-result encodings
      */
     @NonNull ToolResultFormat @NonNull [] resultFormats();
 
     /**
      * Concrete usage examples (arguments-object strings). REQUIRED: one or more concrete arguments
      * objects passed to a native call.
+     *
+     * @return concrete argument examples
      */
     @NonNull String @NonNull [] examples();
 
@@ -79,6 +109,8 @@ public @interface ToolDoc {
      * conventions, never here. The normative shapes stay owned by {@link #resultContract()}; these
      * examples illustrate them. Rendered as fenced blocks after {@link #resultContract()}.
      * REQUIRED.
+     *
+     * @return representative results aligned with {@link #examples()}
      */
     @NonNull String @NonNull [] returnExamples();
 }

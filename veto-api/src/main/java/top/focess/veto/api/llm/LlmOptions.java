@@ -13,6 +13,7 @@ import org.jspecify.annotations.NonNull;
  * @param topP the nucleus sampling top-P value
  * @param maxTokens the maximum number of tokens to generate
  * @param timeout the timeout duration for the call
+ * @param contextWindowTokens model context-window size, or null for the portable default
  */
 public record LlmOptions(
         Double temperature,
@@ -20,14 +21,21 @@ public record LlmOptions(
         Integer maxTokens,
         Duration timeout,
         Integer contextWindowTokens) {
-    public LlmOptions(Double temperature, Double topP, Integer maxTokens, Duration timeout) {
-        this(temperature, topP, maxTokens, timeout, null);
-    }
-
+    /**
+     * Resolves the configured context-window size.
+     *
+     * @return the configured context window or the portable 128,000-token default
+     */
     public int contextWindowOrDefault() {
         return contextWindowTokens != null ? contextWindowTokens : 128000;
     }
 
+    /**
+     * Reserves the configured output allowance and a ten-percent safety margin.
+     *
+     * @return maximum input-token budget
+     * @throws IllegalStateException when the output allowance consumes the context window
+     */
     public long inputBudget() {
         long available = contextWindowOrDefault() - (long) maxTokensOrDefault();
         if (available <= 0)
@@ -36,7 +44,7 @@ public record LlmOptions(
     }
 
     private static final @NonNull LlmOptions DEFAULTS =
-            new LlmOptions(null, null, 4096, Duration.ofSeconds(60));
+            new LlmOptions(null, null, 4096, Duration.ofSeconds(60), null);
 
     /**
      * Returns sensible defaults: no sampling overrides, 4096 max tokens, 60s timeout.

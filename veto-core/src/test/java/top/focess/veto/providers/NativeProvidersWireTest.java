@@ -28,6 +28,7 @@ import top.focess.veto.api.llm.NativeToolState;
 import top.focess.veto.api.llm.ProviderMessages;
 import top.focess.veto.api.llm.ProviderType;
 import top.focess.veto.api.llm.ResolvedRequest;
+import top.focess.veto.api.llm.ResponseContract;
 import top.focess.veto.api.llm.ToolDefinition;
 import top.focess.veto.api.llm.VetoRequest;
 import top.focess.veto.api.llm.exceptions.ModelSchemaException;
@@ -282,9 +283,9 @@ class NativeProvidersWireTest {
                             "key",
                             LlmOptions.defaults(),
                             List.of(ChatMessage.user("Generate")),
-                            MAPPER.readTree(
-                                    "{\"type\":\"object\",\"properties\":{\"message\":{\"type\":\"string\"}}}"),
-                            null);
+                            null,
+                            true,
+                            ResponseContract.ordinary());
             reply.set(wire(type, "", true));
             assertThrows(
                     ToolDocs.nonNullClass(ModelSchemaException.class),
@@ -313,7 +314,8 @@ class NativeProvidersWireTest {
                 LlmOptions.defaults(),
                 history,
                 null,
-                null);
+                true,
+                ResponseContract.ordinary());
     }
 
     private static @NonNull String wire(

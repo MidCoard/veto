@@ -34,7 +34,8 @@ class SourceReceiptTest {
                 LlmOptions.defaults(),
                 List.of(ChatMessage.user("Launch Friday.").withSourceTurns(List.of(1))),
                 null,
-                null);
+                true,
+                ResponseContract.ordinary());
     }
 
     private static @NonNull List<SourceEvidence.Declaration> declaration() {

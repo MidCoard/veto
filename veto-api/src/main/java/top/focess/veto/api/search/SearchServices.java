@@ -15,10 +15,23 @@ import top.focess.veto.api.plugin.service.ServiceRegistration;
 public final class SearchServices {
     private SearchServices() {}
 
+    /**
+     * Returns the version-one named-service protocol identity for a provider.
+     *
+     * @param provider provider's short name
+     * @return service name under the {@code veto.search:} namespace
+     */
     public static @NonNull String name(@NonNull String provider) {
         return "veto.search:" + provider;
     }
 
+    /**
+     * Encodes a search request for the named JSON service.
+     *
+     * @param query search query
+     * @param options filters and result cap
+     * @return portable JSON request object
+     */
     public static @NonNull JsonValue request(
             @NonNull String query, @NonNull SearchOptions options) {
         return new JsonValue.ObjectValue(
@@ -54,6 +67,13 @@ public final class SearchServices {
         throw new IllegalArgumentException("Expected string");
     }
 
+    /**
+     * Decodes search results returned by the named JSON service.
+     *
+     * @param value portable JSON result array
+     * @return immutable list of decoded hits
+     * @throws IllegalArgumentException if the protocol payload is malformed
+     */
     public static @NonNull List<SearchResult> results(@NonNull JsonValue value) {
         if (!(value instanceof JsonValue.ArrayValue array))
             throw new IllegalArgumentException("Expected search results");
@@ -71,6 +91,12 @@ public final class SearchServices {
         return List.copyOf(result);
     }
 
+    /**
+     * Wraps a provider as a version-one named JSON service.
+     *
+     * @param provider search backend owned by the registering plugin
+     * @return named-service registration for the contribution catalog
+     */
     public static @NonNull ServiceRegistration registration(@NonNull SearchProvider provider) {
         return new ServiceRegistration(
                 name(provider.name()),
