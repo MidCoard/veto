@@ -3,7 +3,6 @@ package top.focess.veto.agent.tool;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.util.List;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.agent.tool.ToolDoc;
@@ -36,7 +35,7 @@ public sealed interface ToolDefinition permits LocalToolDefinition, RemoteToolDe
      * Plugin provenance, or null for a host-shipped tool. Independent of the security/effect
      * capability and of the execution flavour.
      */
-    default @Nullable Provenance provenance() {
+    default Provenance provenance() {
         return null;
     }
 

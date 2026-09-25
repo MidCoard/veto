@@ -3,7 +3,6 @@ package top.focess.veto.agent.tool;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.util.List;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.agent.tool.ToolResultFormat;
@@ -28,7 +27,7 @@ public record RemoteToolDefinition(
         @NonNull Danger defaultDanger,
         @NonNull List<@NonNull ToolResultFormat> resultFormats,
         @NonNull JsonNode inputSchema,
-        @Nullable Provenance provenance)
+        Provenance provenance)
         implements ToolDefinition {
 
     public RemoteToolDefinition {

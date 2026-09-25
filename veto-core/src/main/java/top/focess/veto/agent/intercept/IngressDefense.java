@@ -6,7 +6,6 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.Map;
 import java.util.function.UnaryOperator;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
@@ -77,8 +76,7 @@ public class IngressDefense {
         this(new SemanticMasker(), (PluginManager) null);
     }
 
-    private IngressDefense(
-            @Nullable SemanticMasker semanticMasker, @Nullable PluginManager plugins) {
+    private IngressDefense(SemanticMasker semanticMasker, PluginManager plugins) {
         this.semanticMasker = semanticMasker;
         this.observationFloor =
                 plugins == null ? UnaryOperator.identity() : plugins::applyObservationMiddleware;

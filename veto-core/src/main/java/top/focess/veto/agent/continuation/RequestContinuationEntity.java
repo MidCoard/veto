@@ -5,7 +5,6 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 
 /** The last committed reasoning budget reservation for one originating request. */
 @Entity
@@ -21,7 +20,7 @@ public class RequestContinuationEntity {
     @Column(nullable = false)
     private long consumedCalls;
 
-    private @Nullable Long grantedCalls;
+    private Long grantedCalls;
 
     protected RequestContinuationEntity() {}
 
@@ -30,10 +29,7 @@ public class RequestContinuationEntity {
     }
 
     public RequestContinuationEntity(
-            @NonNull String id,
-            @NonNull String task,
-            long consumedCalls,
-            @Nullable Long grantedCalls) {
+            @NonNull String id, @NonNull String task, long consumedCalls, Long grantedCalls) {
         if (grantedCalls != null && grantedCalls < -1)
             throw new IllegalArgumentException("Invalid request allowance");
         if (consumedCalls < 0) throw new IllegalArgumentException("Negative request call count");
@@ -51,7 +47,7 @@ public class RequestContinuationEntity {
         return task;
     }
 
-    public @Nullable Long getGrantedCalls() {
+    public Long getGrantedCalls() {
         return grantedCalls;
     }
 

@@ -81,7 +81,9 @@ public class LlmClientFactory implements AutoCloseable {
      * @param apiKey the API key for authentication
      * @return the client instance
      */
-    @SuppressWarnings("unchecked")
+    // Builders come from plugin code that can violate the @NonNull contract at runtime; the
+    // null guard converts that into a clear failure instead of leaking null from a @NonNull API.
+    @SuppressWarnings({"unchecked", "ConstantValue"})
     public <T> @NonNull T get(
             @NonNull Class<T> clientType, String baseUrl, @NonNull String apiKey) {
         ConcurrentHashMap<String, Object> cache = caches.get(clientType);

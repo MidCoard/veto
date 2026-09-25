@@ -69,6 +69,8 @@ public class MemoryEntity {
         this.createdAt = memory.createdAt();
     }
 
+    // valueOf is nullable to the NullnessChecker; the guard refines parsedTier before construction.
+    @SuppressWarnings("ConstantValue")
     public static @NonNull Memory toMemory(@NonNull MemoryEntity e) {
         MemoryTier parsedTier = MemoryTier.valueOf(e.tier);
         if (parsedTier == null) throw new IllegalStateException("Memory row has no tier");

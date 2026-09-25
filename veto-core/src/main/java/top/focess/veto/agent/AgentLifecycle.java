@@ -739,7 +739,7 @@ final class AgentLifecycle {
         var resolved =
                 AgentProfiles.resolve(
                         runtime.agentId, owner, profile, available, runtime.baseBinding, tiers);
-        var transition = intent == null ? null : intent.transition();
+        var transition = intent.transition();
         boolean changing =
                 transition != null && !transition.key().equals(runtime.configurationTransition);
         String summary = changing ? summarizeForRoleChange() : "";

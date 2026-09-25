@@ -11,8 +11,7 @@ import top.focess.veto.api.plugin.contract.PluginFailure;
 /** Namespaces inbox identities and admits every callback through its owning plugin lifecycle. */
 @NullMarked
 public final class CompositeAgentWorkSource implements AgentWorkSource {
-    public record Entry(
-            @NonNull String id, @NonNull ManagedPlugin plugin, @NonNull AgentWorkSource source) {}
+    public record Entry(String id, ManagedPlugin plugin, AgentWorkSource source) {}
 
     private final Supplier<List<Entry>> entries;
 
@@ -49,6 +48,9 @@ public final class CompositeAgentWorkSource implements AgentWorkSource {
         return key.substring(prefix.length());
     }
 
+    // The plugin handle is owned by the entries supplier and closed by its lifecycle owner.
+    // The @NonNull bound is required so T satisfies Operation<T>.
+    @SuppressWarnings({"resource", "NullableProblems"})
     private static <T extends @NonNull Object> T invoke(
             Entry entry, ManagedPlugin.Operation<T> action) {
         try {

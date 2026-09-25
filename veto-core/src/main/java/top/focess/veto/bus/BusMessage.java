@@ -7,26 +7,26 @@ import org.jspecify.annotations.NonNull;
 public sealed interface BusMessage {
     @NonNull String type();
 
-    public record Welcome(
+    record Welcome(
             @NonNull String type,
             @NonNull String sessionId,
             @NonNull String timestamp,
             @NonNull String version)
             implements BusMessage {}
 
-    public record Failure(@NonNull String type, @NonNull String message) implements BusMessage {}
+    record Failure(@NonNull String type, @NonNull String message) implements BusMessage {}
 
-    public record SequencedFailure(@NonNull String type, @NonNull String message, long seq)
+    record SequencedFailure(@NonNull String type, @NonNull String message, long seq)
             implements BusMessage {}
 
-    public record Heartbeat(@NonNull String type, @NonNull JsonNode seq, @NonNull String timestamp)
+    record Heartbeat(@NonNull String type, @NonNull JsonNode seq, @NonNull String timestamp)
             implements BusMessage {}
 
-    public record Received(
+    record Received(
             @NonNull String type, @NonNull String taskType, long seq, @NonNull String timestamp)
             implements BusMessage {}
 
-    public record DagPayload(
+    record DagPayload(
             @NonNull String type,
             @NonNull String source,
             @NonNull String taskType,
@@ -34,7 +34,7 @@ public sealed interface BusMessage {
             @NonNull String timestamp)
             implements BusMessage {}
 
-    public record VetoResult(
+    record VetoResult(
             @NonNull String type,
             long seq,
             @NonNull String decision,
@@ -45,13 +45,11 @@ public sealed interface BusMessage {
             @NonNull String timestamp)
             implements BusMessage {}
 
-    public record Subscribed(@NonNull String type, @NonNull String topic, @NonNull String timestamp)
+    record Subscribed(@NonNull String type, @NonNull String topic, @NonNull String timestamp)
             implements BusMessage {}
 
-    public record Unsubscribed(@NonNull String type, @NonNull String timestamp)
-            implements BusMessage {}
+    record Unsubscribed(@NonNull String type, @NonNull String timestamp) implements BusMessage {}
 
-    public record Echo(
-            @NonNull String type, @NonNull String data, long seq, @NonNull String timestamp)
+    record Echo(@NonNull String type, @NonNull String data, long seq, @NonNull String timestamp)
             implements BusMessage {}
 }

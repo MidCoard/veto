@@ -169,12 +169,12 @@ public final class PlanProgram implements PlanExecution {
         scope.put("CURRENT_STEPS", currentSteps);
         switch (action) {
             case ToolAction tool -> {
-                @NonNull ToolCall call = new ToolCall(tool.tool(), tool.resolveInputs(scope));
-                @NonNull ToolResult result;
+                ToolCall call = new ToolCall(tool.tool(), tool.resolveInputs(scope));
+                ToolResult result;
 
-                @NonNull Map<String, String> sources =
+                Map<String, String> sources =
                         PlanStepContext.sources(objectMapper, tool.inputs(), planSources);
-                @NonNull PlanStepContext context =
+                PlanStepContext context =
                         new PlanStepContext(
                                 programModelCallId,
                                 tool.id(),
@@ -190,8 +190,7 @@ public final class PlanProgram implements PlanExecution {
                 tool.outputs()
                         .keySet()
                         .forEach(key -> planSources.put(key, tool.id() + ":" + call.callId()));
-                if (tool.outputs() != null)
-                    tool.outputs().keySet().forEach(generatedCitations::remove);
+                tool.outputs().keySet().forEach(generatedCitations::remove);
                 programCounter++;
                 if (!result.success() && runtime.running()) {
                     boolean handled =
@@ -206,8 +205,8 @@ public final class PlanProgram implements PlanExecution {
                 }
             }
             case GenerateAction gen -> {
-                @NonNull Generated generated = runtime.generate(gen, ResponseContract.generation());
-                @NonNull VetoResponse response = generated.response();
+                Generated generated = runtime.generate(gen, ResponseContract.generation());
+                VetoResponse response = generated.response();
                 scope.bindGenerate(gen.outputs(), response);
                 gen.outputs()
                         .keySet()
@@ -217,18 +216,16 @@ public final class PlanProgram implements PlanExecution {
                                                 key, gen.id() + ":" + generated.modelCallId()));
                 String generatedMessage = response.message();
                 Source generatedSources = generated.citations();
-                if (gen.outputs() != null) {
-                    for (Map.Entry<String, String> output : gen.outputs().entrySet()) {
-                        generatedCitations.remove(output.getKey());
-                        if ("message".equals(output.getValue()) && generatedMessage != null)
-                            generatedCitations.put(
-                                    output.getKey(),
-                                    new GeneratedCitation(
-                                            scope,
-                                            generatedMessage,
-                                            generatedSources,
-                                            generated.modelCallId()));
-                    }
+                for (Map.Entry<String, String> output : gen.outputs().entrySet()) {
+                    generatedCitations.remove(output.getKey());
+                    if ("message".equals(output.getValue()) && generatedMessage != null)
+                        generatedCitations.put(
+                                output.getKey(),
+                                new GeneratedCitation(
+                                        scope,
+                                        generatedMessage,
+                                        generatedSources,
+                                        generated.modelCallId()));
                 }
                 scope.put("step_ok:" + gen.id(), true);
                 programCounter++;
@@ -237,7 +234,7 @@ public final class PlanProgram implements PlanExecution {
             case ConditionalGotoAction cg -> {
                 boolean passed;
                 if (cg.check() instanceof Check.Llm check) {
-                    @NonNull GenerateAction judgment =
+                    GenerateAction judgment =
                             new GenerateAction(
                                     cg.id(),
                                     cg.label(),
@@ -264,7 +261,7 @@ public final class PlanProgram implements PlanExecution {
             }
             case StopAction stop -> {
                 String resultBinding = stop.resultBinding();
-                @NonNull String result =
+                String result =
                         resultBinding != null
                                 ? scope.opt(resultBinding)
                                         .map(Object::toString)
@@ -288,11 +285,9 @@ public final class PlanProgram implements PlanExecution {
                 generatedCitations.clear();
                 activeProgram = null;
                 programCounter = 0;
-                return;
             }
             default -> {
                 escape(runtime, "unknown action: " + action);
-                return;
             }
         }
     }

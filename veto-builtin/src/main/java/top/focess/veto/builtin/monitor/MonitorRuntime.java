@@ -83,20 +83,19 @@ public final class MonitorRuntime implements AutoCloseable {
 
     public AgentWorkSource work() {
         return new AgentWorkSource() {
-            public @NonNull List<Observation> pending(@NonNull Scope scope) {
+            public List<Observation> pending(Scope scope) {
                 return ready ? service.pending(scope) : List.of();
             }
 
-            public void started(@NonNull Scope scope, @NonNull Observation value) {
+            public void started(Scope scope, Observation value) {
                 service.started(scope, value);
             }
 
-            public void completed(
-                    @NonNull Scope scope, @NonNull Observation value, boolean success) {
+            public void completed(Scope scope, Observation value, boolean success) {
                 service.completed(scope, value, success);
             }
 
-            public void cancelled(@NonNull Scope scope, @NonNull Observation value) {
+            public void cancelled(Scope scope, Observation value) {
                 service.cancelled(scope, value);
             }
         };
@@ -144,7 +143,7 @@ public final class MonitorRuntime implements AutoCloseable {
         host.await("create_task", service.awaitGroup(host.invocation("create_task")));
     }
 
-    public @NonNull List<MonitorRecord> storedRecords() {
+    public List<MonitorRecord> storedRecords() {
         var source = repository;
         if (source == null) return List.of();
         var mapper = new ObjectMapper().findAndRegisterModules();

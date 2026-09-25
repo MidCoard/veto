@@ -178,6 +178,6 @@ public final class FindFilesTool implements WorkspaceReadTool<FindFilesTool.Args
             @NonNull String pattern,
             @NonNull List<String> matches,
             boolean truncated,
-            @org.jspecify.annotations.Nullable String truncationReason,
+            String truncationReason,
             int skippedEntries) {}
 }

@@ -2,6 +2,7 @@ package example;
 
 import java.util.List;
 import java.util.Optional;
+import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.plugin.PluginContext;
 import top.focess.veto.api.plugin.PluginContributions;
 import top.focess.veto.api.plugin.PluginIdentity;
@@ -16,12 +17,12 @@ public final class TextConsumerPlugin implements VetoPlugin {
     private Optional<PluginContext> context = Optional.empty();
     private Optional<PluginServices.Handle> textService = Optional.empty();
 
-    public PluginIdentity identity() {
+    public @NonNull PluginIdentity identity() {
         return new PluginIdentity("example.consumer", "1.0.0");
     }
 
-    public PluginContributions initialize(
-            PluginContext context, JsonValue.ObjectValue configuration) {
+    public @NonNull PluginContributions initialize(
+            @NonNull PluginContext context, JsonValue.@NonNull ObjectValue configuration) {
         this.context = Optional.of(context);
         return new PluginContributions(List.of());
     }

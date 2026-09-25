@@ -2,7 +2,6 @@ package top.focess.veto.integration.plugins;
 
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.plugin.runtime.*;
 
 /**
  * Host-granted authority handed to plugins through {@code PluginContext} host services.

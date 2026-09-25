@@ -14,13 +14,6 @@ import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.agent.capability.NetworkEgressCapability;
 import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.tool.*;
-import top.focess.veto.api.agent.tool.Doc;
-import top.focess.veto.api.agent.tool.NetworkEgressTool;
-import top.focess.veto.api.agent.tool.ToolCapability;
-import top.focess.veto.api.agent.tool.ToolDoc;
-import top.focess.veto.api.agent.tool.ToolDocs;
-import top.focess.veto.api.agent.tool.ToolResultFormat;
-import top.focess.veto.api.agent.tool.ToolSecurity;
 
 @ToolSecurity(capability = ToolCapability.NETWORK_EGRESS, defaultDanger = Danger.DANGEROUS)
 @ToolDoc(

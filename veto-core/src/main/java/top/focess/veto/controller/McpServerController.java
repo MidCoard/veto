@@ -13,7 +13,6 @@ import top.focess.veto.agent.mcp.transport.McpTransport;
 import top.focess.veto.agent.tool.RemoteToolDefinition;
 import top.focess.veto.agent.tool.ToolEngineImpl;
 import top.focess.veto.controller.dto.*;
-import top.focess.veto.controller.dto.DiscoverMcpServerRequest;
 
 /** Admin-only registration of external MCP servers and their discovered tool schemas. */
 @RestController

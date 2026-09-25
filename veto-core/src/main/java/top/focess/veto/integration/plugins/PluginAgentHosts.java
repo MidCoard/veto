@@ -137,6 +137,8 @@ public final class PluginAgentHosts implements PluginAgentHostFactory {
         };
     }
 
+    @SuppressWarnings(
+            "IgnoreResultOfCall") // WHY: UUID.fromString here only validates the caller-supplied id
     private synchronized AgentHost.@NonNull Child openChild(
             @NonNull ManagedPlugin plugin,
             @NonNull PluginStorage storage,

@@ -101,6 +101,9 @@ public final class PluginManager implements AutoCloseable {
 
     private static final class ServiceAccess
             implements BiPredicate<@NonNull String, @NonNull String> {
+        @SuppressWarnings(
+                "NullableProblems") // WHY: bound lazily by Spring, so NullnessChecker needs this
+        // @Nullable
         private @Nullable ObjectProvider<SessionPlugins> sessions;
 
         public boolean test(@NonNull String caller, @NonNull String provider) {
@@ -151,6 +154,9 @@ public final class PluginManager implements AutoCloseable {
                 new PluginConfigurations());
     }
 
+    // WHY: staged ManagedPlugin handles are owned by this manager and closed in close(), and the
+    // historical-ID null guards stay because third-party plugins can break the @NonNull contract.
+    @SuppressWarnings({"resource", "ConstantValue"})
     @Autowired
     public PluginManager(
             @Value("${veto.plugins.paths:}") @NonNull String paths,
@@ -283,7 +289,8 @@ public final class PluginManager implements AutoCloseable {
                                                 () -> {},
                                                 () -> {
                                                     throw new IllegalStateException(
-                                                            "Plugin context is not bound to a lifecycle owner");
+                                                            "Plugin context is not bound to a"
+                                                                    + " lifecycle owner");
                                                 },
                                                 pluginServices),
                                         configurations.forPlugin(plugin.identity().id()))));
@@ -395,6 +402,8 @@ public final class PluginManager implements AutoCloseable {
      * veto:observation-middleware} contribution in catalog order, regardless of session bindings.
      * With no contributor the text is returned unchanged.
      */
+    @SuppressWarnings(
+            "resource") // WHY: ManagedPlugin handle is owned by this manager, closed in close()
     public @NonNull String applyObservationMiddleware(@NonNull String text) {
         String result = text;
         for (var entry : catalog.entries(StandardContributionPoints.OBSERVATION)) {

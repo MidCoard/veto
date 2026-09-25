@@ -101,7 +101,7 @@ public final class NativeToolArgumentValidator {
             return resolved;
         }
         if (node.isObject()) {
-            ObjectNode resolved = ((ObjectNode) node).deepCopy();
+            ObjectNode resolved = node.deepCopy();
             node.properties()
                     .forEach(
                             entry ->
@@ -116,7 +116,7 @@ public final class NativeToolArgumentValidator {
             return resolved;
         }
         if (node.isArray()) {
-            ArrayNode resolved = ((ArrayNode) node).deepCopy();
+            ArrayNode resolved = node.deepCopy();
             for (int index = 0; index < node.size(); index++)
                 resolved.set(
                         index,
@@ -229,7 +229,7 @@ public final class NativeToolArgumentValidator {
     }
 
     private static void validateNode(
-            @NonNull JsonNode originalValue,
+            @NonNull JsonNode value,
             @NonNull JsonNode schema,
             @NonNull String path,
             @NonNull List<String> issues,
@@ -240,7 +240,6 @@ public final class NativeToolArgumentValidator {
                 issues.add("parameter '" + displayPath(path) + "' is forbidden by its schema");
             return;
         }
-        JsonNode value = originalValue;
         if (deferredPaths.contains(path)) return;
         var variants = schema.path("anyOf");
         if (variants.isArray()) {

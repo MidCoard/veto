@@ -56,7 +56,7 @@ public final class ScriptPluginLoader implements PluginLoader<ScriptPlugin> {
         byte[] script = ScriptPlugin.readFile(root.resolve(entry));
         PluginSchema.require(
                 manifest.path("tools").isArray()
-                        && manifest.path("tools").size() >= 1
+                        && !manifest.path("tools").isEmpty()
                         && manifest.path("tools").size() <= 32);
         List<ScriptTool> descriptors = new ArrayList<>();
         var toolIds = new java.util.HashSet<String>();

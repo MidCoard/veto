@@ -2,7 +2,6 @@ package top.focess.veto.builtin.response;
 
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import top.focess.veto.api.agent.control.SourceEvidence;
 import top.focess.veto.api.llm.VetoResponse;
 import top.focess.veto.api.plugin.contract.ModelResponsePolicy;
@@ -12,7 +11,7 @@ public final class CitationResponsePolicy implements ModelResponsePolicy {
     public @NonNull Exchange open() {
         return new Exchange() {
             private int repairs;
-            private @Nullable Result candidate;
+            private Result candidate;
 
             public @NonNull Result check(
                     @NonNull VetoResponse response, @NonNull SourceEvidence evidence) {
@@ -59,7 +58,7 @@ public final class CitationResponsePolicy implements ModelResponsePolicy {
                 return result;
             }
 
-            public @Nullable Result rejected(int failures) {
+            public Result rejected(int failures) {
                 return failures >= 2 ? candidate : null;
             }
         };

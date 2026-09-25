@@ -210,7 +210,7 @@ final class AgentRuntimeState {
         return Nullness.requireNonNull(continuations, "Runtime is not initialized");
     }
 
-    private AgentOutput output;
+    private final AgentOutput output;
 
     @NonNull AgentOutput output() {
         return Nullness.requireNonNull(output, "Runtime is not initialized");

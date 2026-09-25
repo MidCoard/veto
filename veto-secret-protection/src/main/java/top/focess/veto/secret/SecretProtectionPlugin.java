@@ -22,23 +22,8 @@ import top.focess.veto.api.credentials.CredentialImportAccess;
 import top.focess.veto.api.llm.LocalModelCompletion;
 import top.focess.veto.api.llm.PromptRenderer;
 import top.focess.veto.api.plugin.*;
-import top.focess.veto.api.plugin.AbstractVetoPlugin;
-import top.focess.veto.api.plugin.PluginContext;
-import top.focess.veto.api.plugin.PluginContributions;
-import top.focess.veto.api.plugin.PluginIdentity;
 import top.focess.veto.api.plugin.contract.*;
-import top.focess.veto.api.plugin.contract.FileObservation;
-import top.focess.veto.api.plugin.contract.FileProtection;
-import top.focess.veto.api.plugin.contract.FrontendContribution;
-import top.focess.veto.api.plugin.contract.InputProtection;
-import top.focess.veto.api.plugin.contract.JsonValue;
-import top.focess.veto.api.plugin.contract.ObservationMiddleware;
-import top.focess.veto.api.plugin.contract.PluginFailure;
-import top.focess.veto.api.plugin.contract.SessionLifecycle;
-import top.focess.veto.api.plugin.contract.StandardContributionPoints;
-import top.focess.veto.api.plugin.contract.TextProtection;
 import top.focess.veto.api.plugin.contribution.*;
-import top.focess.veto.api.plugin.contribution.Contribution;
 import top.focess.veto.secret.detection.MdcSecretDetectionModel;
 import top.focess.veto.secret.detection.SlmSecretDetector;
 import top.focess.veto.secret.references.SecretCandidateStore;
@@ -112,39 +97,30 @@ public final class SecretProtectionPlugin extends AbstractVetoPlugin {
                         Contribution.of(
                                 StandardContributionPoints.INPUT_PROTECTION,
                                 "input",
-                                (InputProtection)
-                                        (scope, source, text) ->
-                                                candidates
-                                                        .capture(scope(scope), source, text)
-                                                        .text()),
+                                (scope, source, text) ->
+                                        candidates.capture(scope(scope), source, text).text()),
                         Contribution.of(
                                 StandardContributionPoints.FILE_OBSERVATION,
                                 "observation",
-                                (FileObservation)
-                                        (scope, source, text) -> {
-                                            var output = new StringBuilder();
-                                            for (var segment :
-                                                    candidates.referenceSegments(
-                                                            scope(scope), text))
-                                                output.append(
-                                                        segment.reference()
-                                                                ? segment.text()
-                                                                : detector.mask(segment.text()));
-                                            return output.toString();
-                                        }),
+                                (scope, source, text) -> {
+                                    var output = new StringBuilder();
+                                    for (var segment :
+                                            candidates.referenceSegments(scope(scope), text))
+                                        output.append(
+                                                segment.reference()
+                                                        ? segment.text()
+                                                        : detector.mask(segment.text()));
+                                    return output.toString();
+                                }),
                         Contribution.of(
                                 StandardContributionPoints.FILE_PROTECTION,
                                 "file",
-                                (FileProtection)
-                                        (scope, source, text) ->
-                                                candidates
-                                                        .captureFile(scope(scope), source, text)
-                                                        .text()),
+                                (scope, source, text) ->
+                                        candidates.captureFile(scope(scope), source, text).text()),
                         Contribution.of(
                                 StandardContributionPoints.OBSERVATION,
                                 "observation-mask",
-                                (ObservationMiddleware)
-                                        (observation, cancellation) -> detector.mask(observation)),
+                                (observation, cancellation) -> detector.mask(observation)),
                         Contribution.of(
                                 StandardContributionPoints.SESSION_LIFECYCLE,
                                 "lifecycle",

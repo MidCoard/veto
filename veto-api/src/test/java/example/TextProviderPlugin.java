@@ -1,6 +1,7 @@
 package example;
 
 import java.util.List;
+import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.plugin.PluginContext;
 import top.focess.veto.api.plugin.PluginContributions;
 import top.focess.veto.api.plugin.PluginIdentity;
@@ -13,12 +14,12 @@ import top.focess.veto.api.plugin.service.ServiceRegistration;
 
 /** Compilation fixture for the provider documented in veto-api/README.md. */
 public final class TextProviderPlugin implements VetoPlugin {
-    public PluginIdentity identity() {
+    public @NonNull PluginIdentity identity() {
         return new PluginIdentity("example.text", "1.0.0");
     }
 
-    public PluginContributions initialize(
-            PluginContext context, JsonValue.ObjectValue configuration) {
+    public @NonNull PluginContributions initialize(
+            @NonNull PluginContext context, JsonValue.@NonNull ObjectValue configuration) {
         var service =
                 new ServiceRegistration(
                         "example:text",

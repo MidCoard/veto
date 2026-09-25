@@ -8,7 +8,6 @@ import com.fasterxml.jackson.databind.node.TextNode;
 import java.util.HashSet;
 import java.util.Set;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import top.focess.veto.api.agent.control.ControlHost;
 import top.focess.veto.api.agent.tool.ControlSubmission;
 
@@ -16,7 +15,7 @@ import top.focess.veto.api.agent.tool.ControlSubmission;
 public final class PlanPreflight {
     private PlanPreflight() {}
 
-    public static @Nullable String validate(
+    public static String validate(
             @NonNull ActionsProgram program,
             @NonNull ControlHost host,
             @NonNull ObjectMapper mapper) {

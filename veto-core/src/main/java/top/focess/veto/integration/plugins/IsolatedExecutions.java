@@ -162,16 +162,7 @@ public final class IsolatedExecutions {
         if (INVOCATIONS.putIfAbsent(parent, invocation) != null)
             throw new SecurityException("This call already opened an isolated execution");
         ModelBinding model = resolve(owner, spec.tiers());
-        var requested = spec.limits();
-        var limits =
-                new IsolatedAgent.Limits(
-                        Math.min(requested.calls(), callCeiling),
-                        requested.timeout().compareTo(Duration.ofSeconds(secondsCeiling)) < 0
-                                ? requested.timeout()
-                                : Duration.ofSeconds(secondsCeiling),
-                        Math.min(requested.inputTokens(), inputCeiling),
-                        Math.min(requested.outputTokens(), outputCeiling),
-                        requested.framingReserveBytes());
+        var limits = limits(spec);
         if (spec.terminal().reservedCalls() >= limits.calls())
             throw new IllegalArgumentException("No nonterminal call budget");
         var scope =
@@ -314,6 +305,18 @@ public final class IsolatedExecutions {
         }
     }
 
+    private IsolatedAgent.Limits limits(IsolatedAgent.Spec spec) {
+        var requested = spec.limits();
+        return new IsolatedAgent.Limits(
+                Math.min(requested.calls(), callCeiling),
+                requested.timeout().compareTo(Duration.ofSeconds(secondsCeiling)) < 0
+                        ? requested.timeout()
+                        : Duration.ofSeconds(secondsCeiling),
+                Math.min(requested.inputTokens(), inputCeiling),
+                Math.min(requested.outputTokens(), outputCeiling),
+                requested.framingReserveBytes());
+    }
+
     private String render(AgentProfile.Prompt prompt) {
         return PromptCompiler.compileDocument(prompt.resource(), JsonValues.toMap(prompt.data()))
                 .text();
@@ -333,7 +336,7 @@ public final class IsolatedExecutions {
     }
 
     private ModelBinding resolve(String owner, List<String> tiers) {
-        @Nullable ModelTierConfigException failure = null;
+        ModelTierConfigException failure = null;
         for (String tier : tiers) {
             try {
                 return models.resolve(owner, Nullness.requireNonNull(ModelTier.valueOf(tier)));
@@ -463,7 +466,7 @@ public final class IsolatedExecutions {
         }
     }
 
-    public final class Child implements IsolatedAgent {
+    public static final class Child implements IsolatedAgent {
         private final Scope scope;
         private final IsolatedAgent.Tools tools;
         private final VetoAgent agent;
@@ -600,7 +603,8 @@ public final class IsolatedExecutions {
                     long remaining = deadline - System.nanoTime();
                     if (remaining <= 0)
                         throw new IllegalStateException(
-                                "Isolated execution did not terminate within the close deadline; cleanup remains pending");
+                                "Isolated execution did not terminate within the close deadline;"
+                                        + " cleanup remains pending");
                     try {
                         if (agent.awaitTermination(Duration.ofNanos(remaining))) {
                             cleanup();

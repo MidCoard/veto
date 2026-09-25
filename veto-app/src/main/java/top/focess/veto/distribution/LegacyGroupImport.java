@@ -183,8 +183,8 @@ public final class LegacyGroupImport implements ApplicationRunner {
                             + " records or sessions; source retained");
     }
 
-    static @NonNull List<GroupHistoryView> unreplaced(
-            @NonNull List<GroupHistoryView> legacy, @NonNull List<GroupHistoryView> durable) {
+    static List<GroupHistoryView> unreplaced(
+            List<GroupHistoryView> legacy, List<GroupHistoryView> durable) {
         return legacy.stream()
                 .filter(
                         old -> {

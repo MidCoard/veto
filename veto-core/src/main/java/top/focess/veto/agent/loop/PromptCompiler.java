@@ -234,8 +234,8 @@ public class PromptCompiler {
      * @param sessionWorkspace the per-session workspace (the session's actual roots, from the
      *     Gateway). Mounted into the system prompt and used to resolve VETO.md (The Law) so the
      *     prompt reflects the session's real roots, not the default bean workspace.
-     * @param systemPromptBase optional compiled profile guidance; it never replaces persona
-     *     identity or skills context. Role/tools/boundaries are persona-driven.
+     * @param prompt optional compiled profile guidance; it never replaces persona identity or
+     *     skills context. Role/tools/boundaries are persona-driven.
      * @param history the raw, append-only turn history (oldest->newest)
      */
     public @NonNull CompiledPrompt compileProfile(
@@ -578,9 +578,13 @@ public class PromptCompiler {
                     && Boolean.TRUE.equals(turn.payload().get("provider_reasoning"))) continue;
             if (turn.type() == TurnType.ASSISTANT_RESPONSE
                     && Boolean.TRUE.equals(turn.payload().get("native_response_text"))
-                    && nativeCalls.contains(turn.payload().get("model_call_id"))) continue;
+                    && turn.payload().get("model_call_id") instanceof String modelCallId
+                    && nativeCalls.contains(modelCallId)) continue;
             var state = NativeToolState.fromPayload(turn.payload().get("native_state"));
-            var textTurn = nativeText.get(turn.payload().get("model_call_id"));
+            var textTurn =
+                    turn.payload().get("model_call_id") instanceof String modelCallId
+                            ? nativeText.get(modelCallId)
+                            : null;
             if (turn.type() == TurnType.TOOL_CALL
                     && state != null
                     && state.position() == 0

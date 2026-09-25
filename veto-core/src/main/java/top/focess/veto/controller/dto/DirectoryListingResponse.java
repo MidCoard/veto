@@ -6,7 +6,5 @@ import org.jspecify.annotations.*;
 
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record DirectoryListingResponse(
-        @Nullable String path,
-        @Nullable String parent,
-        @NonNull List<DirectoryEntryResponse> entries)
+        String path, String parent, @NonNull List<DirectoryEntryResponse> entries)
         implements RestResponse {}

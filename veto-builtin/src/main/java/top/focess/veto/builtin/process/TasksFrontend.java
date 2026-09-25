@@ -43,7 +43,6 @@ public final class TasksFrontend {
             throws PluginFailure {
         try {
             String agent = scope.agentId();
-            if (agent == null) throw new IllegalArgumentException("Agent scope required");
             var owned = new BackgroundTasks.Scope(scope.ownerId(), scope.sessionId(), agent);
             int offset = Math.max(0, number(arguments, "offset", 0));
             if (action.equals("list")) {

@@ -447,11 +447,11 @@ public class MonitorService implements AgentWorkSource, SessionLifecycle, Proces
                     new MonitorRecord(
                             id,
                             owner,
-                            session.toString(),
+                            session,
                             group.leaderId(),
                             "RESOURCE_EVENT",
                             "Group task outcomes",
-                            group.id().toString(),
+                            group.id(),
                             null,
                             "ACTIVE",
                             Map.of(),

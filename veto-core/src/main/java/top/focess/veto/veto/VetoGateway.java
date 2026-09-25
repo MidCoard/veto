@@ -4,7 +4,6 @@ import jakarta.annotation.PostConstruct;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
@@ -32,7 +31,7 @@ public class VetoGateway {
 
     private final @NonNull VetoGatewayConfiguration config;
     private final @NonNull LlamaCppBridge llamaCppBridge;
-    private final @Nullable PluginManager plugins;
+    private final PluginManager plugins;
     private final @NonNull AuditLogger auditLogger;
 
     private final @NonNull AtomicLong totalVetoes = new AtomicLong(0);
@@ -51,7 +50,7 @@ public class VetoGateway {
     VetoGateway(
             @NonNull VetoGatewayConfiguration config,
             @NonNull LlamaCppBridge llamaCppBridge,
-            @Nullable PluginManager plugins,
+            PluginManager plugins,
             @NonNull AuditLogger auditLogger) {
         this.config = config;
         this.llamaCppBridge = llamaCppBridge;
@@ -63,7 +62,8 @@ public class VetoGateway {
     public void init() {
         if (!config.isEnabled()) {
             log.warn(
-                    "gateway VetoGateway: DISABLED by configuration. ALL data will pass through unchecked!");
+                    "gateway VetoGateway: DISABLED by configuration. ALL data will pass through"
+                            + " unchecked!");
             return;
         }
 

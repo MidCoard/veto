@@ -9,7 +9,7 @@ import top.focess.veto.api.plugin.PluginState;
 public record PluginResponse(
         @NonNull String id,
         @NonNull String version,
-        @Nullable String sha256,
+        String sha256,
         boolean active,
         @NonNull List<String> hooks,
         @NonNull List<String> tools,

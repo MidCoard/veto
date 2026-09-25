@@ -10,7 +10,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.SmartInitializingSingleton;
@@ -98,7 +97,7 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
     private volatile @NonNull ToolCatalog catalog = ToolCatalog.empty();
     private boolean initialized;
     // Injected after construction and read from worker threads; volatile for safe publication.
-    private volatile @Nullable SessionPlugins sessionPlugins;
+    private volatile SessionPlugins sessionPlugins;
 
     @Autowired
     public void attachSessionPlugins(@NonNull SessionPlugins value) {
@@ -230,6 +229,9 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
     }
 
     @Override
+    @SuppressWarnings(
+            "resource") // WHY: ManagedPlugin handle is owned by the plugin catalog, closed
+    // elsewhere
     public PreparedInvocation prepare(
             @NonNull ToolCall call,
             @NonNull ToolDefinition definition,
@@ -289,6 +291,9 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
     }
 
     @Override
+    @SuppressWarnings(
+            "ThrowFromFinallyBlock") // WHY: a failed invocation finish must surface; receipts are
+    // discarded first
     public @NonNull ToolResult execute(@NonNull ToolCall call, @NonNull ToolDefinition def) {
         String callId = call.callId();
         ToolCallContextHolder.setCurrentCallId(callId);
@@ -359,6 +364,9 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
 
     // ── Flavour dispatch ───────────────────────────────────────────────────────
 
+    @SuppressWarnings(
+            "resource") // WHY: ManagedPlugin handle is owned by the plugin catalog, closed
+    // elsewhere
     private @NonNull ToolResult executePlugin(
             @NonNull ToolCall call, RegisteredTool.@NonNull Plugin registration) {
         RemoteToolDefinition definition = registration.definition();
@@ -376,7 +384,7 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
             var descriptor = registration.descriptor();
             JsonNode arguments = mapper.valueToTree(call.args());
             PluginSchema.validate(definition.inputSchema(), arguments);
-            @NonNull Cancellation cancellation =
+            Cancellation cancellation =
                     () ->
                             Thread.currentThread().isInterrupted()
                                     || registration.runtime().state() != PluginState.ACTIVE;
@@ -406,6 +414,9 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
         }
     }
 
+    @SuppressWarnings(
+            "resource") // WHY: ManagedPlugin handle is owned by the plugin catalog, closed
+    // elsewhere
     private @NonNull ToolResult executeLocalCall(
             @NonNull ToolCall call, RegisteredTool.@NonNull Local registration) throws Exception {
         LocalToolDefinition definition = registration.definition();

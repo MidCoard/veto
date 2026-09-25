@@ -5,7 +5,6 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import top.focess.veto.secret.api.SecretDetectionModel;
 
 /**
@@ -21,10 +20,10 @@ public final class SlmSecretDetector implements SecretDetector {
     private static final System.@NonNull Logger log =
             System.getLogger("top.focess.veto.secret.detection.SlmSecretDetector");
 
-    private final @Nullable SecretDetectionModel model;
+    private final SecretDetectionModel model;
     private volatile boolean degradedLogged;
 
-    public SlmSecretDetector(@Nullable SecretDetectionModel model) {
+    public SlmSecretDetector(SecretDetectionModel model) {
         this.model = model;
     }
 

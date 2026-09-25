@@ -3,7 +3,6 @@ package top.focess.veto.agent.capability;
 import java.io.IOException;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
@@ -17,7 +16,7 @@ import top.focess.veto.integration.plugins.SessionPlugins;
 /** File capture bound to the screened native file read and its owned session. */
 @Component
 public final class ProtectedWorkspaceReadCapabilityImpl implements WorkspaceReadCapability {
-    private final @Nullable SessionPlugins plugins;
+    private final SessionPlugins plugins;
 
     @Autowired
     public ProtectedWorkspaceReadCapabilityImpl(@NonNull ObjectProvider<SessionPlugins> plugins) {
@@ -30,7 +29,7 @@ public final class ProtectedWorkspaceReadCapabilityImpl implements WorkspaceRead
     }
 
     /** Host dispatch binds protection to the same pinned selection used for this invocation. */
-    public ProtectedWorkspaceReadCapabilityImpl(@Nullable SessionPlugins plugins) {
+    public ProtectedWorkspaceReadCapabilityImpl(SessionPlugins plugins) {
         this.plugins = plugins;
     }
 

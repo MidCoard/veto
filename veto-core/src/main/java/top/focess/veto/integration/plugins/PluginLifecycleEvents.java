@@ -15,7 +15,6 @@ import top.focess.veto.api.plugin.contract.DataLifecycle;
 import top.focess.veto.api.plugin.contract.PluginFailure;
 import top.focess.veto.api.plugin.contract.SessionLifecycle;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
-import top.focess.veto.plugin.runtime.*;
 import top.focess.veto.vault.UserRegistry;
 
 /**
@@ -30,6 +29,9 @@ public class PluginLifecycleEvents {
 
     private final @NonNull PluginManager manager;
 
+    @SuppressWarnings(
+            "NullableProblems") // WHY: lazily attached and no package @DefaultQualifier, so
+    // NullnessChecker needs this @Nullable
     private @Nullable UserRegistry users;
 
     @Autowired

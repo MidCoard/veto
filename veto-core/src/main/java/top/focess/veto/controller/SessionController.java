@@ -16,7 +16,6 @@ import top.focess.veto.agent.TurnRecord;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.contract.IpcFrame;
 import top.focess.veto.controller.dto.*;
-import top.focess.veto.controller.dto.CreateSessionRequest;
 import top.focess.veto.i18n.Msg;
 import top.focess.veto.model.SessionEntity;
 import top.focess.veto.session.SessionHistoryLoader;

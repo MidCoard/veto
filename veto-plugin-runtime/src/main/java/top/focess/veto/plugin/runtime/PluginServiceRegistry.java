@@ -62,12 +62,16 @@ public final class PluginServiceRegistry {
 
     private @NonNull PluginServices view(@Nullable ManagedPlugin caller) {
         return new PluginServices() {
+            // Owner handles are registered by bind() and closed by the host plugin lifecycle.
+            @SuppressWarnings("resource")
             private boolean visible(Entry entry) {
                 return allowed.test(
                         caller == null ? "" : caller.identity().id(),
                         entry.owner().identity().id());
             }
 
+            // Owner handles are registered by bind() and closed by the host plugin lifecycle.
+            @SuppressWarnings("resource")
             public @NonNull List<Descriptor> available() {
                 return entries.values().stream()
                         .filter(this::visible)
@@ -88,6 +92,8 @@ public final class PluginServiceRegistry {
                 if (entry == null || !visible(entry)) return Optional.empty();
                 return Optional.of(
                         new Handle() {
+                            // Owner handle is closed by the host plugin lifecycle.
+                            @SuppressWarnings("resource")
                             public @NonNull Descriptor descriptor() {
                                 return new Descriptor(name, version, entry.owner().identity().id());
                             }
@@ -103,6 +109,8 @@ public final class PluginServiceRegistry {
         };
     }
 
+    // Owner handles are registered by bind() and closed by the host plugin lifecycle.
+    @SuppressWarnings("resource")
     private static @NonNull JsonValue invokeService(
             @Nullable ManagedPlugin caller, @NonNull Entry entry, @NonNull JsonValue request)
             throws ServiceException {

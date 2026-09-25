@@ -26,5 +26,5 @@ public interface HostCapabilityTool<T, C extends @NonNull Capability> extends Ca
      * @return model-visible result content
      * @throws Exception when execution cannot produce a successful result
      */
-    @NonNull String execute(@NonNull T args, @NonNull C capability) throws Exception;
+    @NonNull String execute(@NonNull T args, C capability) throws Exception;
 }

@@ -159,6 +159,10 @@ public final class AgentRunner implements Runnable {
         runtime.continuations().signalWork();
     }
 
+    @SuppressWarnings(
+            "NonAtomicOperationOnVolatileField") // WHY: the runner thread is the only writer of
+    // control in this loop; volatile publishes state
+    // to readers
     public void run() {
         runtime.runningThread = Thread.currentThread();
         // Stamp the session owner onto the agent's virtual thread so credential resolution on the
@@ -282,7 +286,7 @@ public final class AgentRunner implements Runnable {
                         } catch (BreakerTripException e) {
                             runtime.lifecycle().completeBreaker();
                         } catch (Exception e) {
-                            if (taskCancellation != null && taskCancellation.cancelled) {
+                            if (taskCancellation.cancelled) {
                                 synchronized (runtime) {
                                     // Wait for cancelTask to finish sending the one interrupt.
                                     AgentLifecycle.clearTaskInterrupt();
@@ -384,7 +388,6 @@ public final class AgentRunner implements Runnable {
             }
             ModelExchange.Result exchange;
             if (accepted instanceof ToolCallContextHolder.ResponseDirective.Finish answer) {
-                pending = null;
                 if (!answer.publish()) {
                     String result = answer.response().message();
                     runtime.lifecycle().currentRequest().message = result == null ? "" : result;

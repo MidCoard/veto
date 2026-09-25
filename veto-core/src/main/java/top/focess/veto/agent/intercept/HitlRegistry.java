@@ -755,8 +755,8 @@ public class HitlRegistry {
             @NonNull String toolName,
             @NonNull Map<@NonNull String, Object> args,
             @NonNull List<@NonNull String> options,
-            @org.jspecify.annotations.Nullable String danger,
-            @org.jspecify.annotations.Nullable String relevance) {
+            String danger,
+            String relevance) {
         public PendingVeto {
             options = List.copyOf(options);
         }

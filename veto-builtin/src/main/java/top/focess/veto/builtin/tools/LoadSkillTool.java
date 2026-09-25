@@ -117,12 +117,7 @@ public final class LoadSkillTool implements AgentTool<LoadSkillTool.Args>, ToolP
                             + args.skillName()
                             + "' is not registered or its stored content failed verification.");
         }
-        String instructions = skill.get();
-        return instructions == null
-                ? ToolErrors.failure(
-                        ToolErrorCode.GENERIC.TOOL_FAILURE,
-                        "Skill unavailable: the registered skill has no loaded body.")
-                : instructions;
+        return skill.get();
     }
 
     public record Args(@Doc("The exact name of an advertised skill.") @NonNull String skillName) {}

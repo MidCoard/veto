@@ -14,7 +14,6 @@ import top.focess.veto.llm.config.LlmJacksonConfig;
 import top.focess.veto.llm.provider.AbstractLlmProvider;
 import top.focess.veto.llm.provider.LLMProviderStrategy;
 import top.focess.veto.observability.AuditLogger;
-import top.focess.veto.plugin.runtime.*;
 
 /** Adapts installed provider contributions to core audit/retry orchestration. */
 @Component
@@ -36,6 +35,9 @@ public final class PluginLlmProviders {
                             return candidate == type;
                         }
 
+                        @SuppressWarnings(
+                                "NullableProblems") // WHY: no package @DefaultQualifier, so
+                        // NullnessChecker needs this @Nullable
                         public @Nullable String defaultBaseUrl() {
                             return implementation.defaultBaseUrl();
                         }
@@ -76,5 +78,8 @@ public final class PluginLlmProviders {
         return provider;
     }
 
+    @SuppressWarnings(
+            "NullableProblems") // WHY: no package @DefaultQualifier, so NullnessChecker needs these
+    // @Nullable components
     private record Outcome(LlmClient.@Nullable RawCompletion result, @Nullable Exception failure) {}
 }

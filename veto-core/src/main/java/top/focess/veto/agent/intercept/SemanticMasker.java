@@ -8,7 +8,6 @@ import java.util.function.UnaryOperator;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
@@ -55,7 +54,7 @@ public class SemanticMasker {
                     "(?i)\\b(secret|token|password|api[_-]?key|credential|private[_-]?key)\\b");
 
     private final LlamaCppBridge bridge;
-    private final @Nullable PluginManager plugins;
+    private final PluginManager plugins;
 
     public SemanticMasker() {
         this(null, (PluginManager) null);
@@ -69,7 +68,7 @@ public class SemanticMasker {
         this.plugins = plugins.getIfAvailable();
     }
 
-    private SemanticMasker(@Nullable LlamaCppBridge bridge, @Nullable PluginManager plugins) {
+    private SemanticMasker(LlamaCppBridge bridge, PluginManager plugins) {
         this.bridge = bridge;
         this.plugins = plugins;
     }

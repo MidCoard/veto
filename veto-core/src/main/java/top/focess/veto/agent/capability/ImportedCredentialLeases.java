@@ -5,7 +5,6 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.tool.ToolCallContext;
@@ -54,7 +53,7 @@ public final class ImportedCredentialLeases {
         return lease;
     }
 
-    public static void releaseInvocation(@Nullable ToolCallContext context) {
+    public static void releaseInvocation(ToolCallContext context) {
         if (context == null) return;
         var leases = ACTIVE.remove(context);
         if (leases != null) leases.forEach(Lease::close);

@@ -18,7 +18,7 @@ import top.focess.veto.api.plugin.contract.ModelResponsePolicy;
 
 /** Response enforcement and ephemeral correction, bounded by the runner's shared call budget. */
 final class ModelExchange {
-    private static final Logger log =
+    private static final @NonNull Logger log =
             LoggerFactory.getLogger("top.focess.veto.agent.ModelExchange");
 
     interface Runtime {

@@ -4,16 +4,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import top.focess.veto.api.agent.control.ControlHost;
 import top.focess.veto.api.agent.tool.*;
-import top.focess.veto.api.agent.tool.ControlSubmission;
-import top.focess.veto.api.agent.tool.ControlTool;
-import top.focess.veto.api.agent.tool.Doc;
-import top.focess.veto.api.agent.tool.ToolDoc;
-import top.focess.veto.api.agent.tool.ToolDocs;
-import top.focess.veto.api.agent.tool.ToolInputSchema;
-import top.focess.veto.api.agent.tool.ToolResultFormat;
 
 @ControlSubmission(ControlSubmission.Kind.EXECUTE)
 @ToolPrompt("plan-system-prompt")
@@ -48,7 +40,7 @@ import top.focess.veto.api.agent.tool.ToolResultFormat;
             "Plan rejected before execution: duplicate action id: greet"
         })
 public final class SubmitPlanTool implements ControlTool<SubmitPlanTool.Args> {
-    private final @Nullable ControlHost capability;
+    private final ControlHost capability;
     private final @NonNull PlanConfig configuration;
     private static final @NonNull ObjectMapper MAPPER = new ObjectMapper();
 
@@ -64,7 +56,7 @@ public final class SubmitPlanTool implements ControlTool<SubmitPlanTool.Args> {
         this(capability, PlanConfig.defaults());
     }
 
-    public SubmitPlanTool(@Nullable ControlHost capability, @NonNull PlanConfig configuration) {
+    public SubmitPlanTool(ControlHost capability, @NonNull PlanConfig configuration) {
         this.capability = capability;
         this.configuration = configuration;
     }

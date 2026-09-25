@@ -36,6 +36,8 @@ public final class GroupFrontend {
         }
     }
 
+    // The explicit type witness is required for NullnessChecker inference of the mapped row type.
+    @SuppressWarnings("RedundantTypeArguments")
     public @NonNull JsonValue handle(
             FrontendContribution.@NonNull Scope scope,
             @NonNull String action,

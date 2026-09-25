@@ -37,8 +37,6 @@ import top.focess.veto.builtin.search.SearchServiceClient;
 import top.focess.veto.builtin.skills.SkillRuntime;
 import top.focess.veto.builtin.tools.*;
 import top.focess.veto.builtin.web.*;
-import top.focess.veto.builtin.web.ReaderConfig;
-import top.focess.veto.builtin.web.WebReader;
 import top.focess.veto.builtin.workspace.*;
 
 /** Built-in tool implementations registered through the same API as third-party plugins. */

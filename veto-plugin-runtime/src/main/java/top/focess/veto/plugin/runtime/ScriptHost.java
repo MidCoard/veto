@@ -37,8 +37,9 @@ public final class ScriptHost implements AutoCloseable {
     }
 
     private void ensureStarted() throws IOException {
-        if (process != null) {
-            if (!process.isAlive()) throw new IOException("Script host stopped");
+        var current = process;
+        if (current != null) {
+            if (!current.isAlive()) throw new IOException("Script host stopped");
             return;
         }
         var resource = ScriptHost.class.getResourceAsStream("script-host.mjs");
@@ -52,8 +53,9 @@ public final class ScriptHost implements AutoCloseable {
                 new ProcessBuilder(node.toString(), "--experimental-vm-modules", file.toString());
         builder.environment().clear();
         builder.redirectError(ProcessBuilder.Redirect.DISCARD);
-        process = builder.start();
-        process.onExit().thenRun(this::failAll);
+        var started = builder.start();
+        process = started;
+        started.onExit().thenRun(this::failAll);
     }
 
     private void failAll() {

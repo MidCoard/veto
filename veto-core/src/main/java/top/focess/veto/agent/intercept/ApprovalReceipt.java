@@ -8,7 +8,10 @@ public record ApprovalReceipt(
         @NonNull VetoOption decision,
         InterceptResolution.@NonNull Source decisionSource,
         @NonNull String resolvedAt) {
-    public static @Nullable ApprovalReceipt fromStored(@Nullable Object value) {
+    // valueOf results are nullable to the NullnessChecker; the guard refines them for the
+    // @NonNull record components.
+    @SuppressWarnings("ConstantValue")
+    public static ApprovalReceipt fromStored(Object value) {
         if (value instanceof ApprovalReceipt receipt) return receipt;
         if (!(value instanceof Map<?, ?> fields)
                 || !(fields.get("decision") instanceof String decision)

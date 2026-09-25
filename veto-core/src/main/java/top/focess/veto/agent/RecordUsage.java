@@ -11,12 +11,12 @@ public final class RecordUsage {
 
     private RecordUsage() {}
 
-    public static @NonNull List<UsageMeasurement> decode(@Nullable Object value) {
+    public static @NonNull List<UsageMeasurement> decode(Object value) {
         if (value == null) return List.of();
         return JSON.convertValue(value, new TypeReference<List<UsageMeasurement>>() {});
     }
 
-    public static @NonNull List<UsageMeasurement> read(@Nullable String json) {
+    public static @NonNull List<UsageMeasurement> read(String json) {
         if (json == null || json.isBlank()) return List.of();
         try {
             return JSON.readValue(json, new TypeReference<List<UsageMeasurement>>() {});

@@ -9,8 +9,6 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import top.focess.veto.controller.dto.*;
-import top.focess.veto.controller.dto.AuthCredentials;
-import top.focess.veto.controller.dto.CreateUserRequest;
 import top.focess.veto.i18n.Msg;
 import top.focess.veto.vault.*;
 

@@ -78,7 +78,11 @@ public final class PluginSchema {
         require(matches);
         if (schema.has("enum")) {
             boolean found = false;
-            for (var candidate : schema.path("enum")) if (candidate.equals(value)) found = true;
+            for (var candidate : schema.path("enum"))
+                if (candidate.equals(value)) {
+                    found = true;
+                    break;
+                }
             require(found);
         }
         if (value.isObject()) {

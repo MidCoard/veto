@@ -90,24 +90,25 @@ class SkillRuntimeTest {
             this.id = id;
         }
 
-        public String identity() {
+        public @NonNull String identity() {
             return id;
         }
 
-        public List<File> files(String directory, String filename) {
+        public @NonNull List<@NonNull File> files(
+                @NonNull String directory, @NonNull String filename) {
             return body.isEmpty()
                     ? List.of()
                     : List.of(
                             new File() {
-                                public String identity() {
+                                public @NonNull String identity() {
                                     return id + "-file";
                                 }
 
-                                public String relativePath() {
+                                public @NonNull String relativePath() {
                                     return "review/SKILL.md";
                                 }
 
-                                public String read() {
+                                public @NonNull String read() {
                                     return body;
                                 }
                             });
@@ -122,11 +123,11 @@ class SkillRuntimeTest {
         final Map<String, PluginStorage.Entry> saved = new LinkedHashMap<>();
         final CatalogueAccess resources =
                 new CatalogueAccess() {
-                    public Optional<CatalogueTree> shared(String name) {
+                    public @NonNull Optional<CatalogueTree> shared(@NonNull String name) {
                         return Optional.of(personal);
                     }
 
-                    public CatalogueTree workspace() {
+                    public @NonNull CatalogueTree workspace() {
                         return project;
                     }
                 };

@@ -38,8 +38,6 @@ public interface MemoryStore {
 
     void deleteSession(@NonNull UUID userId, @NonNull UUID sessionId);
 
-    /**
-     * A search result: the memory + its similarity score (1.0 = identical embedding, 0.0 =
-     * orthogonal).
-     */
+    // A search result: the memory + its similarity score (1.0 = identical embedding, 0.0 =
+    // orthogonal).
 }

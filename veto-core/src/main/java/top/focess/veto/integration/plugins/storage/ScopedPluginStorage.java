@@ -97,8 +97,8 @@ public class ScopedPluginStorage implements PluginStorageFactory {
                 .executeUpdate();
     }
 
-    private <T extends @NonNull Object> T transaction(Supplier<T> operation) {
-        @Nullable T result = transactions.execute(status -> operation.get());
+    private <T> T transaction(Supplier<T> operation) {
+        T result = transactions.execute(status -> operation.get());
         if (result == null)
             throw new IllegalStateException("Storage transaction returned no result");
         return result;
@@ -126,6 +126,7 @@ public class ScopedPluginStorage implements PluginStorageFactory {
                 throw new IllegalStateException("Plugin is not active");
         }
 
+        @SuppressWarnings("ConstantValue") // WHY: EntityManager.find returns null for a missing row
         private synchronized Scope issue(String owner, @Nullable String session) {
             admitted();
             UserEntity user = database.find(ToolDocs.nonNullClass(UserEntity.class), owner);
@@ -149,6 +150,7 @@ public class ScopedPluginStorage implements PluginStorageFactory {
             return scope;
         }
 
+        @SuppressWarnings("ConstantValue") // WHY: EntityManager.find returns null for a missing row
         private SessionEntity validateSession(String owner, String id) {
             SessionEntity session = database.find(ToolDocs.nonNullClass(SessionEntity.class), id);
             if (session == null || !session.getOwner().equals(owner))
@@ -160,6 +162,7 @@ public class ScopedPluginStorage implements PluginStorageFactory {
             return session;
         }
 
+        @SuppressWarnings("ConstantValue") // WHY: EntityManager.find returns null for a missing row
         private synchronized Grant validate(Scope scope) {
             admitted();
             Grant grant = grants.get(scope.token());
@@ -174,6 +177,8 @@ public class ScopedPluginStorage implements PluginStorageFactory {
         }
 
         @Override
+        @SuppressWarnings(
+                "resource") // WHY: the invocation scope is owned by its opener, closed elsewhere
         public SessionScope currentSession() {
             var callback = PluginInvocationScope.current();
             if (callback != null)
@@ -223,7 +228,8 @@ public class ScopedPluginStorage implements PluginStorageFactory {
                         if (kind == Kind.SESSION) {
                             var sessions =
                                     database.createQuery(
-                                                    "select s from SessionEntity s where s.id > :after order by s.id",
+                                                    "select s from SessionEntity s where s.id >"
+                                                            + " :after order by s.id",
                                                     ToolDocs.nonNullClass(SessionEntity.class))
                                             .setParameter("after", after)
                                             .setMaxResults(pageSize + 1)
@@ -247,7 +253,9 @@ public class ScopedPluginStorage implements PluginStorageFactory {
                         }
                         var rows =
                                 database.createQuery(
-                                                "select distinct r.scope from PluginRecord r where r.plugin = :plugin and r.kind = :kind and r.scope > :after order by r.scope",
+                                                "select distinct r.scope from PluginRecord r where"
+                                                        + " r.plugin = :plugin and r.kind = :kind and"
+                                                        + " r.scope > :after order by r.scope",
                                                 String.class)
                                         .setParameter("plugin", namespace)
                                         .setParameter("kind", kind.name())
@@ -259,7 +267,9 @@ public class ScopedPluginStorage implements PluginStorageFactory {
                         for (String identity : rows.subList(0, count)) {
                             var records =
                                     database.createQuery(
-                                                    "select r from PluginRecord r where r.plugin = :plugin and r.kind = :kind and r.scope = :scope",
+                                                    "select r from PluginRecord r where r.plugin ="
+                                                            + " :plugin and r.kind = :kind and r.scope"
+                                                            + " = :scope",
                                                     PluginRecord.class)
                                             .setParameter("plugin", namespace)
                                             .setParameter("kind", kind.name())
@@ -270,10 +280,7 @@ public class ScopedPluginStorage implements PluginStorageFactory {
                             var record = records.getFirst();
                             if (record.user == null) continue;
                             try {
-                                scopes.add(
-                                        issue(
-                                                record.user.getUsername(),
-                                                kind == Kind.SESSION ? identity : null));
+                                scopes.add(issue(record.user.getUsername(), null));
                             } catch (SecurityException ignored) {
                                 /* Deleted or no longer selected scopes are not recoverable. */
                             }
@@ -314,7 +321,8 @@ public class ScopedPluginStorage implements PluginStorageFactory {
 
             private List<PluginRecord> find(String key) {
                 return database.createQuery(
-                                "select r from PluginRecord r where r.plugin = :plugin and r.kind = :kind and r.scope = :scope and r.key = :key",
+                                "select r from PluginRecord r where r.plugin = :plugin and r.kind ="
+                                        + " :kind and r.scope = :scope and r.key = :key",
                                 PluginRecord.class)
                         .setParameter("plugin", namespace)
                         .setParameter("kind", kind)
@@ -346,7 +354,11 @@ public class ScopedPluginStorage implements PluginStorageFactory {
                             String after = cursor(cursorBinding + ":" + prefix, cursor);
                             var rows =
                                     database.createQuery(
-                                                    "select r from PluginRecord r where r.plugin = :plugin and r.kind = :kind and r.scope = :scope and r.key > :after and substring(r.key, 1, :length) = :prefix order by r.key",
+                                                    "select r from PluginRecord r where r.plugin ="
+                                                            + " :plugin and r.kind = :kind and r.scope"
+                                                            + " = :scope and r.key > :after and"
+                                                            + " substring(r.key, 1, :length) = :prefix"
+                                                            + " order by r.key",
                                                     PluginRecord.class)
                                             .setParameter("plugin", namespace)
                                             .setParameter("kind", kind)
@@ -384,7 +396,13 @@ public class ScopedPluginStorage implements PluginStorageFactory {
                                     var affected = find(key);
                                     int updated =
                                             database.createQuery(
-                                                            "update PluginRecord r set r.payload = :payload, r.schemaVersion = :schema, r.revision = :revision where r.plugin = :plugin and r.kind = :kind and r.scope = :scope and r.key = :key and r.revision = :expected")
+                                                            "update PluginRecord r set r.payload ="
+                                                                    + " :payload, r.schemaVersion ="
+                                                                    + " :schema, r.revision = :revision"
+                                                                    + " where r.plugin = :plugin and"
+                                                                    + " r.kind = :kind and r.scope ="
+                                                                    + " :scope and r.key = :key and"
+                                                                    + " r.revision = :expected")
                                                     .setParameter("payload", payload)
                                                     .setParameter(
                                                             "schema", document.schemaVersion())
@@ -440,7 +458,10 @@ public class ScopedPluginStorage implements PluginStorageFactory {
                             var affected = find(key);
                             int deleted =
                                     database.createQuery(
-                                                    "delete from PluginRecord r where r.plugin = :plugin and r.kind = :kind and r.scope = :scope and r.key = :key and r.revision = :revision")
+                                                    "delete from PluginRecord r where r.plugin ="
+                                                            + " :plugin and r.kind = :kind and r.scope"
+                                                            + " = :scope and r.key = :key and"
+                                                            + " r.revision = :revision")
                                             .setParameter("plugin", namespace)
                                             .setParameter("kind", kind)
                                             .setParameter("scope", identity)

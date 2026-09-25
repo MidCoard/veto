@@ -29,7 +29,7 @@ final class ModelReasoning {
         if (model.startsWith("o1-mini")
                 || model.startsWith("o1-preview")
                 || model.contains("-chat")) return false;
-        return model.matches("(?:o[134](?:-.*)?|gpt-5(?:[.-].*)?)");
+        return model.matches("o[134](?:-.*)?|gpt-5(?:[.-].*)?");
     }
 
     static boolean gemini(@NonNull String model) {

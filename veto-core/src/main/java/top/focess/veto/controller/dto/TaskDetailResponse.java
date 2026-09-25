@@ -12,8 +12,8 @@ public record TaskDetailResponse(
         @NonNull String dagStatus,
         @NonNull Map<String, Object> parameters,
         @NonNull Set<String> dependencies,
-        @Nullable String sourceComponent,
-        @Nullable String targetComponent,
+        String sourceComponent,
+        String targetComponent,
         @NonNull String createdAt,
         @NonNull String updatedAt,
         @NonNull String timestamp)

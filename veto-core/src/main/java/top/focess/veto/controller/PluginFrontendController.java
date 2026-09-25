@@ -13,10 +13,6 @@ import top.focess.veto.agent.SessionAgentRegistry;
 import top.focess.veto.api.plugin.PluginBinding;
 import top.focess.veto.api.plugin.PluginState;
 import top.focess.veto.api.plugin.contract.*;
-import top.focess.veto.api.plugin.contract.FrontendContribution;
-import top.focess.veto.api.plugin.contract.JsonValue;
-import top.focess.veto.api.plugin.contract.PluginFailure;
-import top.focess.veto.api.plugin.contract.StandardContributionPoints;
 import top.focess.veto.integration.plugins.PluginManager;
 import top.focess.veto.integration.plugins.SessionPlugins;
 import top.focess.veto.integration.plugins.storage.PluginInvocationScope;
@@ -106,6 +102,8 @@ public final class PluginFrontendController {
     }
 
     @PostMapping("/actions")
+    @SuppressWarnings(
+            "ConstantValue") // WHY: Jackson may deserialize missing fields as null despite @NonNull
     public @NonNull ResponseEntity<JsonNode> act(
             @PathVariable @NonNull String name, @RequestBody @NonNull ActionRequest request) {
         var session = session(name);

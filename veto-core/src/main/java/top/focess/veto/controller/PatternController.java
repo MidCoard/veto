@@ -7,7 +7,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 import top.focess.veto.controller.dto.*;
-import top.focess.veto.controller.dto.CreatePatternRequest;
 import top.focess.veto.i18n.Msg;
 import top.focess.veto.model.AgentPatternEntity;
 import top.focess.veto.model.AgentPatternRepository;

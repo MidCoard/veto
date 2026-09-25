@@ -249,6 +249,9 @@ public final class GroupHistoryStore {
         return load(sessionId, new GroupRegistry());
     }
 
+    // latest is assigned only inside the page loop; the NullnessChecker needs the guard to refine
+    // it.
+    @SuppressWarnings("ConstantValue")
     public @NonNull List<GroupHistoryView> load(
             @NonNull String sessionId, @NonNull GroupRegistry registry) {
         var store = session(sessionId);

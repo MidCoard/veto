@@ -5,21 +5,20 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import org.jspecify.annotations.*;
 import top.focess.veto.api.llm.LlmSystemUsage;
 import top.focess.veto.api.llm.VetoRequest;
-import top.focess.veto.llm.core.*;
 
 /** Raw provider measurements. Display differences are derived from the ordered request history. */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record UsageMeasurement(
-        @Nullable String modelCallId,
+        String modelCallId,
         long inputTokens,
         long outputTokens,
-        @Nullable Long cacheReadInputTokens,
-        @Nullable Long cacheCreationInputTokens,
+        Long cacheReadInputTokens,
+        Long cacheCreationInputTokens,
         long contextMaxTokens,
-        @Nullable String model,
-        @Nullable String provider,
-        @Nullable String purpose) {
+        String model,
+        String provider,
+        String purpose) {
     public static @NonNull UsageMeasurement measured(
             @NonNull VetoRequest request, LlmSystemUsage.@NonNull Usage usage) {
         return new UsageMeasurement(

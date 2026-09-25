@@ -46,6 +46,9 @@ final class AgentPluginHooks {
         return context;
     }
 
+    @SuppressWarnings(
+            "IgnoreResultOfCall") // WHY: interrupt flag is cleared deliberately before signalling
+    // cancellation
     private void checkCancellation() {
         if (cancelled.getAsBoolean()) {
             Thread.interrupted();
@@ -53,8 +56,8 @@ final class AgentPluginHooks {
         }
     }
 
-    <T extends @NonNull Object> @NonNull T workflow(
-            @NonNull T initial, SessionPlugins.@NonNull WorkflowOperation<T> operation) {
+    <T extends @NonNull Object> T workflow(
+            T initial, SessionPlugins.@NonNull WorkflowOperation<T> operation) {
         var selected = plugins.get();
         if (selected == null
                 || !selected.has(context.sessionId(), StandardContributionPoints.WORKFLOW))

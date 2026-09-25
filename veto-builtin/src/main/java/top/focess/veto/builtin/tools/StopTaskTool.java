@@ -127,8 +127,5 @@ public final class StopTaskTool implements NativeTool<StopTaskTool.Args> {
     @com.fasterxml.jackson.annotation.JsonInclude(
             com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
     public record Result(
-            @NonNull String status,
-            @NonNull String taskId,
-            boolean alive,
-            @org.jspecify.annotations.Nullable Integer exitCode) {}
+            @NonNull String status, @NonNull String taskId, boolean alive, Integer exitCode) {}
 }

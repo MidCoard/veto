@@ -58,7 +58,7 @@ final class RequestEvidence implements SourceEvidence {
 
     private final @NonNull Object boundary;
     private final @NonNull Object requestIdentity;
-    private final @Nullable String modelCallId;
+    private final String modelCallId;
     private final @NonNull VetoRequest request;
     private final @NonNull List<TurnRecord> history;
     private final @NonNull BooleanSupplier active;
@@ -67,7 +67,7 @@ final class RequestEvidence implements SourceEvidence {
             @NonNull Object requestIdentity,
             @NonNull Object boundary,
             @NonNull VetoRequest request,
-            @Nullable String modelCallId,
+            String modelCallId,
             @NonNull List<TurnRecord> history,
             @NonNull BooleanSupplier active) {
         this.requestIdentity = requestIdentity;
@@ -84,8 +84,8 @@ final class RequestEvidence implements SourceEvidence {
 
     private record Issued(
             @NonNull Object requestIdentity,
-            @Nullable String modelCallId,
-            @Nullable String outputMessage,
+            String modelCallId,
+            String outputMessage,
             @NonNull Object boundary,
             @NonNull VetoRequest request,
             @NonNull List<VetoResponse.Citation> citations,
@@ -184,8 +184,7 @@ final class RequestEvidence implements SourceEvidence {
         return issued.bound();
     }
 
-    static @Nullable String modelCallId(
-            SourceEvidence.@Nullable Receipt receipt, @NonNull Object boundary) {
+    static String modelCallId(SourceEvidence.@Nullable Receipt receipt, @NonNull Object boundary) {
         if (receipt == null) return null;
         bound(receipt, boundary);
         return ((Issued) receipt).modelCallId();

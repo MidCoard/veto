@@ -7,8 +7,8 @@ public record HistoryTurnResponse(
         @NonNull String type,
         java.util.@NonNull Map<String, Object> payload,
         @NonNull String timestamp,
-        @Nullable Long tokenCount,
-        @Nullable Long usedTokens,
-        @Nullable String tokenCountSource,
+        Long tokenCount,
+        Long usedTokens,
+        String tokenCountSource,
         java.util.@NonNull List<top.focess.veto.agent.UsageMeasurement> llmUsage)
         implements RestResponse {}

@@ -21,7 +21,7 @@ import top.focess.veto.api.llm.VetoResponse;
 
 /** Builds bounded, provenance-preserving summaries without mutating history. */
 final class HistoryCompactor {
-    private static final Logger log =
+    private static final @NonNull Logger log =
             LoggerFactory.getLogger("top.focess.veto.agent.HistoryCompactor");
     private final @NonNull ObjectMapper objectMapper;
     private final @NonNull BiFunction<ChatMessage, ChatMessage, VetoRequest> requestFactory;
@@ -82,7 +82,7 @@ final class HistoryCompactor {
             ChatMessage systemPrompt =
                     PromptCompiler.compileMessage(
                             "runtime-compaction", Map.of("index", i + 1, "count", chunks.size()));
-            @NonNull String rawSummary =
+            String rawSummary =
                     callCompactor(
                             systemPrompt,
                             ChatMessage.user(
@@ -106,7 +106,7 @@ final class HistoryCompactor {
                 List<JsonNode> pair = List.of(summaries.get(i), summaries.get(i + 1));
                 Map<Integer, String> sources =
                         CompactionSupport.summaryOrigins(pair, originalOrigins);
-                @NonNull String raw =
+                String raw =
                         callCompactor(
                                 PromptCompiler.compileMessage("runtime-compaction-merge", Map.of()),
                                 PromptCompiler.compileMessage(
@@ -124,12 +124,12 @@ final class HistoryCompactor {
             @NonNull ChatMessage systemPrompt,
             @NonNull ChatMessage userPrompt,
             @NonNull Map<Integer, String> sourceOrigins) {
-        @NonNull VetoRequest request = requestFactory.apply(systemPrompt, userPrompt);
+        VetoRequest request = requestFactory.apply(systemPrompt, userPrompt);
         if (compactionInputChars(request) > CompactionSupport.MAX_INPUT_CHARS) {
             log.warn("Compaction input exceeds its rendered size limit; original history retained");
             return "{}";
         }
-        @NonNull VetoResponse response = invoke.apply(request);
+        VetoResponse response = invoke.apply(request);
         String message = response.message();
         if (message == null || message.isBlank()) return "{}";
         try {

@@ -96,6 +96,9 @@ public final class ActionsProgramParser {
         return value.booleanValue();
     }
 
+    // valueOf on the nested ResponseMode enum is nullable to the NullnessChecker; the guard refines
+    // it.
+    @SuppressWarnings("ConstantValue")
     private static GenerateAction.@NonNull ResponseMode responseMode(@NonNull JsonNode node) {
         if (!node.has("response_mode")) return GenerateAction.ResponseMode.TEXT;
         JsonNode value = node.path("response_mode");

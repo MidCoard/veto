@@ -183,8 +183,8 @@ public final class StoredMonitorRepository implements MonitorRepository {
         for (JsonValue part : parts.values()) {
             if (part instanceof JsonValue.StringValue key) {
                 try {
-                    var chunk = store.get(key.value());
-                    if (chunk.isPresent()) store.delete(key.value(), chunk.get().revision());
+                    store.get(key.value())
+                            .ifPresent(chunk -> store.delete(key.value(), chunk.revision()));
                 } catch (RuntimeException ignored) {
                     // A cleanup race never turns an already committed aggregate into a failed
                     // write.

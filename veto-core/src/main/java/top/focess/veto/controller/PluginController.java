@@ -28,6 +28,8 @@ public class PluginController {
     }
 
     @GetMapping
+    @SuppressWarnings(
+            "resource") // WHY: ManagedPlugin handles are owned by PluginManager, closed elsewhere
     public @NonNull List<PluginResponse> list() {
         authorization.requireAdmin();
         return plugins.plugins().stream()

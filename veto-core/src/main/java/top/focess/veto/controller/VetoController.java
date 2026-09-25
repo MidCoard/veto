@@ -9,8 +9,6 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import top.focess.veto.controller.dto.*;
-import top.focess.veto.controller.dto.CheckVetoRequest;
-import top.focess.veto.controller.dto.ProcessVetoRequest;
 import top.focess.veto.i18n.Msg;
 import top.focess.veto.veto.VetoGateway;
 

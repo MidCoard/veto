@@ -10,6 +10,7 @@ import org.checkerframework.checker.nullness.qual.NonNull;
 import org.checkerframework.framework.qual.DefaultQualifier;
 import org.checkerframework.framework.qual.TypeUseLocation;
 import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
 import top.focess.veto.api.agent.capability.NetworkEgressCapability;
 import top.focess.veto.api.agent.tool.ToolErrorCode;
 import top.focess.veto.api.agent.tool.ToolErrors;
@@ -40,7 +41,7 @@ public final class WebReader {
     public String read(String objective, NetworkEgressCapability network) {
         long started = System.nanoTime();
         try (var destination = network.openApprovedDestination("url")) {
-            var document = new AtomicReference<WebReadSession>();
+            var document = new AtomicReference<@Nullable WebReadSession>();
             var child =
                     host.get()
                             .isolate(

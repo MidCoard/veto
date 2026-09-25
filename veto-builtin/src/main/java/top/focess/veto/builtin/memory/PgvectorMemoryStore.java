@@ -114,10 +114,10 @@ public class PgvectorMemoryStore implements MemoryStore {
                         .setParameter("tiers", query.tiers().stream().map(Enum::name).toList())
                         .setParameter("floor", query.scoreFloor())
                         .setParameter("limit", limit);
-        if (query.sessionFilter() != null)
-            nativeQuery.setParameter("session", query.sessionFilter().toString());
-        if (query.projectFilter() != null)
-            nativeQuery.setParameter("project", query.projectFilter().toString());
+        var sessionFilter = query.sessionFilter();
+        if (sessionFilter != null) nativeQuery.setParameter("session", sessionFilter.toString());
+        var projectFilter = query.projectFilter();
+        if (projectFilter != null) nativeQuery.setParameter("project", projectFilter.toString());
         List<?> rows = nativeQuery.getResultList();
         List<ScoredMemory> matches = new ArrayList<>();
         for (Object result : rows) {
@@ -127,11 +127,9 @@ public class PgvectorMemoryStore implements MemoryStore {
             }
             Memory m = rowToMemory(row);
             // Tenant/tier already filtered in SQL; apply session/project in Java.
-            var sessionFilter = query.sessionFilter();
             if (sessionFilter != null && !sessionFilter.equals(m.sessionId())) {
                 continue;
             }
-            var projectFilter = query.projectFilter();
             if (projectFilter != null && !projectFilter.equals(m.projectId())) {
                 continue;
             }

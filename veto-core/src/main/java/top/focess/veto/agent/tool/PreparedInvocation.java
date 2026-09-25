@@ -23,6 +23,8 @@ public final class PreparedInvocation {
     private final @NonNull String facts;
     private final @NonNull AtomicBoolean consumed = new AtomicBoolean();
 
+    @SuppressWarnings(
+            "resource") // WHY: the Running handle is owned by PluginProcessHosts, closed elsewhere
     PreparedInvocation(
             @NonNull ManagedPlugin plugin,
             PluginHost.@NonNull Invocation invocation,
@@ -93,6 +95,8 @@ public final class PreparedInvocation {
     }
 
     /** Bounded host facts suitable for persisted screening reasons; never plugin advisory data. */
+    @SuppressWarnings(
+            "resource") // WHY: the Running handle is owned by PluginProcessHosts, closed elsewhere
     public @NonNull String summary() {
         if (intent instanceof ToolPreparation.ProcessIntent process)
             return "process commands="

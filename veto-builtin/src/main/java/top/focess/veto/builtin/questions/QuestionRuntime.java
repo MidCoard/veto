@@ -8,18 +8,17 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.function.Predicate;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import top.focess.veto.api.plugin.PluginHost;
 import top.focess.veto.api.plugin.contract.FrontendContribution.Scope;
 import top.focess.veto.api.plugin.contract.SessionLifecycle;
 
 /** Plugin-owned, in-memory rendezvous. Only the host supplies invocation identities. */
 public final class QuestionRuntime implements SessionLifecycle, AutoCloseable {
-    private final @Nullable PluginHost host;
+    private final PluginHost host;
     private final @NonNull ConcurrentHashMap<Key, Pending> pending = new ConcurrentHashMap<>();
     private boolean closed;
 
-    public QuestionRuntime(@Nullable PluginHost host) {
+    public QuestionRuntime(PluginHost host) {
         this.host = host;
     }
 

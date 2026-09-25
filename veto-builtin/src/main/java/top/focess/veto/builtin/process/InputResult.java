@@ -1,9 +1,6 @@
 package top.focess.veto.builtin.process;
 
-import java.time.*;
-import java.util.*;
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.api.agent.tool.*;
 
 public record InputResult(@NonNull InputStatus status, int bytes, boolean closeQueued) {
     public static @NonNull InputResult failure(@NonNull InputStatus status) {

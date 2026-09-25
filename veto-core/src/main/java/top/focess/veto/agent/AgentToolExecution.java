@@ -234,8 +234,8 @@ final class AgentToolExecution {
                     executeOneConfirmedCall(call, screenedInvocations.get(call.callId()), batch);
                     if (batch.control != null) return batch.control;
                     if (runtime.configurationRevision != configuration) {
-                        return batch.control; // Remaining calls were authored for the previous
-                        // configuration.
+                        // Remaining calls were authored for the previous configuration.
+                        return null;
                     }
                 }
             }
@@ -468,7 +468,6 @@ final class AgentToolExecution {
                 if (resolvedCall == null) {
                     throw new VetoRefusedException(true);
                 }
-                call = resolvedCall;
                 runtime.lifecycle().transitionTo(AgentState.RUNNING);
             }
         }

@@ -42,6 +42,8 @@ public class PluginHostConfiguration {
     private final CompletableFuture<Void> ready = new CompletableFuture<>();
 
     @EventListener(ApplicationReadyEvent.class)
+    @SuppressWarnings(
+            "DataFlowIssue") // WHY: a CompletableFuture<Void> can only be completed with null
     public void ready() {
         ready.complete(null);
     }

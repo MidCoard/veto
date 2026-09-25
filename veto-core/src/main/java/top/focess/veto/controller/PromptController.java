@@ -15,7 +15,6 @@ import top.focess.veto.agent.AgentService;
 import top.focess.veto.agent.ProtectedInputException;
 import top.focess.veto.api.llm.LlmBinding;
 import top.focess.veto.controller.dto.*;
-import top.focess.veto.controller.dto.SubmitPromptRequest;
 import top.focess.veto.i18n.Msg;
 import top.focess.veto.session.SessionService;
 import top.focess.veto.session.SessionService.SessionConfig;
@@ -100,7 +99,8 @@ public class PromptController {
                     .body(
                             new CodedErrorResponse(
                                     "PROTECTED_INPUT_UNAVAILABLE",
-                                    "Protected input could not be processed; retry or use credential settings"));
+                                    "Protected input could not be processed; retry or use"
+                                            + " credential settings"));
         } catch (Exception e) {
             log.warn("Prompt submit failed for session {}", name, e);
             return ResponseEntity.internalServerError()

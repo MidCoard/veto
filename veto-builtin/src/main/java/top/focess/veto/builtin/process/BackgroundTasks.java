@@ -257,7 +257,7 @@ public final class BackgroundTasks implements SessionLifecycle, AutoCloseable {
                 } else if (line.size() < MAX_LINE_BYTES) line.write(value);
                 else truncated = true;
             }
-            if (line.size() != 0 || truncated) emit(task, line, truncated);
+            if (line.size() != 0) emit(task, line, truncated);
         } catch (IOException ignored) {
             // Pipe closure is not evidence of process termination; confirm below.
         } finally {
@@ -314,6 +314,8 @@ public final class BackgroundTasks implements SessionLifecycle, AutoCloseable {
         }
     }
 
+    // Task instances are registry-owned; the parameter is the stable shared exit-state monitor.
+    @SuppressWarnings("SynchronizationOnLocalVariableOrMethodParameter")
     private void finish(@NonNull Task task) {
         synchronized (task) {
             if (!task.alive || task.process.isAlive()) return;

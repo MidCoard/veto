@@ -189,8 +189,7 @@ public final class GroupRuntime
             groups.put(group);
         }
         restored.add(key(context.scope().sessionId(), context.agentId()));
-        var base = own == null ? GroupProfiles.standalone(context) : own;
-        AgentProfile profile = base;
+        AgentProfile profile = own == null ? GroupProfiles.standalone(context) : own;
         if (group != null) {
             String profileKey = group.groupId() + "/leader";
             var savedProfile = history.profile(context.scope().sessionId(), profileKey);
@@ -459,6 +458,9 @@ public final class GroupRuntime
         }
     }
 
+    // valueOf on the nested NodeState enum is nullable to the NullnessChecker; the guard refines
+    // it.
+    @SuppressWarnings("ConstantValue")
     static @NonNull DagNode restoreNode(GroupHistoryView.@NonNull Node saved) {
         boolean interrupted =
                 Set.of("PENDING", "RUNNING", "CANCEL_REQUESTED", "INTERRUPTED")

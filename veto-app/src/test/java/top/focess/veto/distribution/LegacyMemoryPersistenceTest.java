@@ -22,7 +22,7 @@ import top.focess.veto.builtin.memory.MemoryRepository;
 import top.focess.veto.builtin.memory.MemoryTier;
 import top.focess.veto.builtin.memory.embedder.Embedder;
 
-@DataJpaTest
+@DataJpaTest(properties = "veto.observability.audit-log-path=${java.io.tmpdir}/veto-test-audit")
 @ContextConfiguration(classes = LegacyMemoryPersistenceTest.Configuration.class)
 class LegacyMemoryPersistenceTest {
     @SpringBootConfiguration

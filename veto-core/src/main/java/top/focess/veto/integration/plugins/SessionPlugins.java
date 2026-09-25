@@ -30,7 +30,6 @@ import top.focess.veto.api.plugin.storage.PluginStorage;
 import top.focess.veto.integration.plugins.storage.PluginInvocationScope;
 import top.focess.veto.model.SessionRepository;
 import top.focess.veto.plugin.runtime.*;
-import top.focess.veto.plugin.runtime.CompositeAgentWorkSource;
 import top.focess.veto.session.SessionHistoryLoader;
 
 /**
@@ -52,6 +51,9 @@ public class SessionPlugins {
         this.history = history;
     }
 
+    @SuppressWarnings(
+            "NullableProblems") // WHY: no package @DefaultQualifier, so NullnessChecker needs this
+    // @Nullable for callers passing null
     public @NonNull List<PluginBinding> selection(@Nullable List<String> requested) {
         var available = manager.plugins();
         var ids =
@@ -150,6 +152,9 @@ public class SessionPlugins {
         return bindings;
     }
 
+    @SuppressWarnings(
+            "NullableProblems") // WHY: no package @DefaultQualifier, so NullnessChecker needs this
+    // @Nullable for callers passing null
     public AgentConfiguration.@Nullable Intent configure(
             @NonNull String owner,
             @NonNull String session,
@@ -203,13 +208,13 @@ public class SessionPlugins {
 
     @FunctionalInterface
     public interface WorkflowOperation<T extends @NonNull Object> {
-        @NonNull T apply(@NonNull WorkflowHook hook, @NonNull T current) throws PluginFailure;
+        T apply(@NonNull WorkflowHook hook, T current) throws PluginFailure;
     }
 
     /** Selected, pinned hooks execute in contribution order with lifecycle admission. */
-    public <T extends @NonNull Object> @NonNull T workflow(
+    public <T extends @NonNull Object> T workflow(
             WorkflowHook.@NonNull Context scope,
-            @NonNull T initial,
+            T initial,
             @NonNull WorkflowOperation<T> operation) {
         var entries = manager.catalog().entries(StandardContributionPoints.WORKFLOW);
         if (entries.isEmpty()) return initial;

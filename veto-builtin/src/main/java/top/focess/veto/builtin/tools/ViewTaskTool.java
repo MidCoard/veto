@@ -5,7 +5,6 @@ import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CancellationException;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.tool.Doc;
 import top.focess.veto.api.agent.tool.NativeTool;
@@ -164,17 +163,14 @@ public final class ViewTaskTool implements NativeTool<ViewTaskTool.Args> {
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record TaskSummary(
-            @NonNull String taskId,
-            @NonNull String command,
-            boolean alive,
-            @Nullable Integer exitCode) {}
+            @NonNull String taskId, @NonNull String command, boolean alive, Integer exitCode) {}
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record TaskDetail(
             @NonNull String taskId,
             @NonNull String command,
             boolean alive,
-            @Nullable Integer exitCode,
+            Integer exitCode,
             long pid,
             @NonNull String startedAt,
             long uptimeSeconds,

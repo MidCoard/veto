@@ -1,7 +1,6 @@
 package top.focess.veto.api.agent.workflow;
 
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import top.focess.veto.api.plugin.contract.JsonValue;
 
 /**
@@ -11,4 +10,4 @@ import top.focess.veto.api.plugin.contract.JsonValue;
  * @param sourceCallId originating model call identifier, or {@code null} when none exists
  * @param data immutable workflow-owned structured context
  */
-public record ActionContext(@Nullable String sourceCallId, JsonValue.@NonNull ObjectValue data) {}
+public record ActionContext(String sourceCallId, JsonValue.@NonNull ObjectValue data) {}

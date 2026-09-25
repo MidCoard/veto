@@ -20,7 +20,7 @@ import org.jspecify.annotations.NonNull;
 public record Contribution<T extends @NonNull Object>(
         @NonNull ContributionPoint<T> point,
         @NonNull String localId,
-        @NonNull T implementation,
+        T implementation,
         @NonNull Set<@NonNull ContributionId> before,
         @NonNull Set<@NonNull ContributionId> after) {
     /** Validates the contract and defensively copies ordering constraints. */
@@ -44,9 +44,7 @@ public record Contribution<T extends @NonNull Object>(
      * @return a contribution with empty ordering sets
      */
     public static <T extends @NonNull Object> @NonNull Contribution<T> of(
-            @NonNull ContributionPoint<T> point,
-            @NonNull String localId,
-            @NonNull T implementation) {
+            @NonNull ContributionPoint<T> point, @NonNull String localId, T implementation) {
         return new Contribution<>(point, localId, implementation, Set.of(), Set.of());
     }
 }

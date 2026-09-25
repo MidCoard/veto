@@ -11,6 +11,4 @@ import org.jspecify.annotations.NonNull;
  * @param implementation registered implementation
  */
 public record ContributionEntry<T extends @NonNull Object>(
-        @NonNull ContributionId id,
-        @NonNull ContributionSource source,
-        @NonNull T implementation) {}
+        @NonNull ContributionId id, @NonNull ContributionSource source, T implementation) {}

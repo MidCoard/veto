@@ -193,6 +193,8 @@ public final class PluginProcessHosts implements PluginProcessHostFactory {
             }
         }
 
+        @SuppressWarnings(
+                "resource") // WHY: the Running handle is owned by the caller, closed elsewhere
         public @NonNull InputWrite prepareInput(@NonNull Running running) {
             var context = context();
             var prepared = prepared(context);
@@ -215,7 +217,7 @@ public final class PluginProcessHosts implements PluginProcessHostFactory {
             byte[] bytes = intent.bytes();
             boolean eof = intent.closeStdin();
             return new InputWrite() {
-                private final AtomicBoolean consumed = new AtomicBoolean();
+                private final @NonNull AtomicBoolean consumed = new AtomicBoolean();
 
                 public int byteCount() {
                     return bytes.length;
@@ -260,6 +262,9 @@ public final class PluginProcessHosts implements PluginProcessHostFactory {
         private final @NonNull AtomicBoolean stopped = new AtomicBoolean();
         private volatile boolean stdinClosed;
         private volatile boolean timedOut;
+
+        @SuppressWarnings("NullableProblems") // WHY: scheduled in startDeadline(); no package
+        // @DefaultQualifier
         private @Nullable ScheduledFuture<?> deadline;
 
         private RunningProcess(
@@ -281,6 +286,8 @@ public final class PluginProcessHosts implements PluginProcessHostFactory {
             this.sandboxId = sandboxId;
         }
 
+        @SuppressWarnings(
+                "resource") // WHY: the timer is shut down from the process exit callback below
         private void startDeadline() {
             var timer =
                     Executors.newSingleThreadScheduledExecutor(

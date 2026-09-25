@@ -35,7 +35,6 @@ final class ModelRequests {
     private final @NonNull ToolResultPresentationMode toolResultPresentation;
     private final String owner;
     private final ModelTierRegistry modelTierRegistry;
-    private final @NonNull ModelResponseValidation responses;
 
     ModelRequests(
             @NonNull PromptCompiler compiler,
@@ -55,7 +54,6 @@ final class ModelRequests {
         this.toolResultPresentation = presentation;
         this.owner = owner;
         this.modelTierRegistry = tiers;
-        this.responses = responses;
     }
 
     @NonNull VetoRequest completionRequest(
@@ -73,7 +71,7 @@ final class ModelRequests {
                         message.promptSources().stream()
                                 .anyMatch(source -> source.source().equals(resource + ".mdc")));
         messages.add(PromptCompiler.compileMessage(resource, data));
-        @NonNull VetoRequest scoped =
+        VetoRequest scoped =
                 new VetoRequest(
                         request.systemPrompt(),
                         request.userPrompt(),
@@ -93,7 +91,7 @@ final class ModelRequests {
 
     @NonNull VetoRequest generationRequest(
             @NonNull VetoRequest original, PluginWork.@NonNull ModelInput generation) {
-        @NonNull LlmBinding selected = binding;
+        LlmBinding selected = binding;
         String tier = generation.modelTier();
         if (tier != null) {
             var registry = modelTierRegistry;
@@ -131,7 +129,7 @@ final class ModelRequests {
                 PromptCompiler.compileMessage(
                         "runtime-generation",
                         Map.of("prompt", generation.prompt(), "inputs", generation.inputs()));
-        @NonNull String prompt = generated.content();
+        String prompt = generated.content();
         messages.add(generated);
         var allowed = generation.allowedTools();
         var tools =
@@ -139,7 +137,7 @@ final class ModelRequests {
         if (tools.size() != allowed.size())
             throw new IllegalArgumentException(
                     "Generated invocation requested an unavailable tool");
-        @NonNull VetoRequest scoped =
+        VetoRequest scoped =
                 new VetoRequest(
                         original.systemPrompt(),
                         prompt,
@@ -183,7 +181,7 @@ final class ModelRequests {
 
     @NonNull VetoRequest buildRequest(@NonNull CompiledPrompt compiled) {
         List<ChatMessage> messages = new ArrayList<>(compiled.messages());
-        @NonNull LlmBinding b = binding;
+        LlmBinding b = binding;
         return new VetoRequest(
                 compiled.systemMessage(),
                 messages.get(messages.size() - 1).content(),

@@ -126,18 +126,23 @@ public final class SearchServices {
                     } catch (HttpTimeoutException failure) {
                         throw new ServiceException(ServiceException.Code.TIMEOUT);
                     }
-                    List<JsonValue> values = new ArrayList<>();
-                    for (var result : results)
-                        values.add(
-                                new JsonValue.ObjectValue(
-                                        Map.of(
-                                                "title",
-                                                new JsonValue.StringValue(result.title()),
-                                                "url",
-                                                new JsonValue.StringValue(result.url()),
-                                                "snippet",
-                                                new JsonValue.StringValue(result.snippet()))));
-                    return new JsonValue.ArrayValue(values);
+                    return encodeResults(results);
                 });
+    }
+
+    private static JsonValue.@NonNull ArrayValue encodeResults(
+            @NonNull List<SearchResult> results) {
+        List<JsonValue> values = new ArrayList<>();
+        for (var result : results)
+            values.add(
+                    new JsonValue.ObjectValue(
+                            Map.of(
+                                    "title",
+                                    new JsonValue.StringValue(result.title()),
+                                    "url",
+                                    new JsonValue.StringValue(result.url()),
+                                    "snippet",
+                                    new JsonValue.StringValue(result.snippet()))));
+        return new JsonValue.ArrayValue(values);
     }
 }

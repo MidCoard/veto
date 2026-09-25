@@ -14,7 +14,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import top.focess.veto.api.resources.CatalogueTree;
 
 /** Generic bounded catalogue snapshots; never traverses links or returns host paths. */
@@ -73,7 +72,7 @@ public final class ReadOnlyCatalogueTree implements CatalogueTree {
     private static void verify(@NonNull Path root, @NonNull Path path) throws IOException {
         if (!path.startsWith(root) || !path.toRealPath().startsWith(root.toRealPath()))
             throw new SecurityException("Catalogue path escaped root");
-        for (@Nullable Path current = path;
+        for (Path current = path;
                 current != null && current.startsWith(root);
                 current = current.getParent())
             if (Files.isSymbolicLink(current))

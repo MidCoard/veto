@@ -749,7 +749,7 @@ public class AgentService {
         var toolResultPresentation = session.getToolResultPresentation();
         hitlRegistry.setWorkspace(scoped.id(), workspace);
         ReadHistory readHistory = new ReadHistory();
-        String protectionOwner = owner == null || owner.isBlank() ? userId.toString() : owner;
+        String protectionOwner = owner.isBlank() ? userId.toString() : owner;
         ProtectedSet scopedProtectedSet = protectedSetFor(protectionOwner, workspace);
         Gateway gateway =
                 new Gateway(

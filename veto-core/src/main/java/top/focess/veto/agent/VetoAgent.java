@@ -48,7 +48,7 @@ public class VetoAgent implements Agent {
         this.userInteractionEnabled = userInteractionEnabled;
         // Legacy await/result compatibility lives at the facade; production callers retain handles.
         runner.onBackgroundRequest(request -> latestRequest = request);
-        executionThread = Thread.ofVirtual().name("agent-" + id).start(runner::run);
+        executionThread = Thread.ofVirtual().name("agent-" + id).start(runner);
     }
 
     public boolean hasPendingWork() {

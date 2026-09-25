@@ -16,7 +16,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.slf4j.LoggerFactory;
 import top.focess.veto.api.llm.ChatMessage;
 import top.focess.veto.api.llm.LlmClient;
@@ -157,9 +156,7 @@ final class DeepSeekLlmClient extends LlmClient {
                                     item.path("call_id").asText()));
                 }
             }
-            content =
-                    NativeToolResponses.normalize(
-                            objectMapper, request, content == null ? "" : content, nativeCalls);
+            content = NativeToolResponses.normalize(objectMapper, request, content, nativeCalls);
 
             JsonNode usage = response.path("usage");
             if (usage.path("input_tokens").isNumber() && usage.path("output_tokens").isNumber()) {
@@ -311,12 +308,12 @@ final class DeepSeekLlmClient extends LlmClient {
     private record ResponsesRequest(
             @NonNull String model,
             @NonNull String instructions,
-            @Nullable List<Function> tools,
-            @JsonProperty("tool_choice") @Nullable String toolChoice,
+            List<Function> tools,
+            @JsonProperty("tool_choice") String toolChoice,
             @NonNull Reasoning reasoning,
             @NonNull List<?> input,
-            @JsonProperty("max_output_tokens") @Nullable Integer maxOutputTokens,
-            @Nullable Double temperature) {}
+            @JsonProperty("max_output_tokens") Integer maxOutputTokens,
+            Double temperature) {}
 
     /** Replays calls and results as native Responses API items, preserving their pairing. */
     private @NonNull InputItem toInputItem(@NonNull ChatMessage msg) {

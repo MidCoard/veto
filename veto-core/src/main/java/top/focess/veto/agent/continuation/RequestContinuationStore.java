@@ -3,7 +3,6 @@ package top.focess.veto.agent.continuation;
 import java.util.Optional;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -17,8 +16,7 @@ public class RequestContinuationStore {
         this.repository = repository;
     }
 
-    public record Checkpoint(
-            @NonNull String task, long consumedCalls, @Nullable Long grantedCalls) {
+    public record Checkpoint(@NonNull String task, long consumedCalls, Long grantedCalls) {
         public Checkpoint(@NonNull String task, long consumedCalls) {
             this(task, consumedCalls, null);
         }
@@ -51,7 +49,7 @@ public class RequestContinuationStore {
             @NonNull String request,
             @NonNull String task,
             long calls,
-            @Nullable Long grantedCalls) {
+            Long grantedCalls) {
         if (calls < 0 || (grantedCalls != null && grantedCalls < -1))
             throw new IllegalArgumentException("Invalid request checkpoint");
         String id = key(session, agent, request);

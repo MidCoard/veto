@@ -20,7 +20,8 @@ import top.focess.veto.bus.DeltaFrame;
 
 /** Best-effort transport notifications; never owns execution or persistence. */
 final class AgentEvents {
-    private static final Logger log = LoggerFactory.getLogger("top.focess.veto.agent.AgentEvents");
+    private static final @NonNull Logger log =
+            LoggerFactory.getLogger("top.focess.veto.agent.AgentEvents");
     private final @NonNull String agentId;
     private final @NonNull ObjectMapper objectMapper;
     private final @NonNull AgentEventSink eventSink;
@@ -161,7 +162,7 @@ final class AgentEvents {
             @NonNull ToolCall call,
             ApprovalDecision.@NonNull Prompt p,
             @NonNull List<VetoOption> offered) {
-        @NonNull String callId = call.callId();
+        String callId = call.callId();
         log.info(
                 "VETO_REQUIRED agent={} callId={} tool={} scenario={} options={}",
                 agentId,

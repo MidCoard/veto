@@ -94,9 +94,8 @@ public final class WebFetchTool implements NetworkEgressTool<WebFetchTool.Args> 
             return ToolErrors.failure(
                     ToolErrorCode.VALIDATION.INVALID_ARGUMENTS,
                     "Invalid arguments: the reading objective exceeds 4000 characters.");
-        URI uri;
         try {
-            uri = URI.create(args.url().trim());
+            URI.create(args.url().trim());
         } catch (IllegalArgumentException e) {
             return ToolErrors.failure(
                     ToolErrorCode.VALIDATION.INVALID_ARGUMENTS,

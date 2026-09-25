@@ -6,7 +6,6 @@ import org.checkerframework.framework.qual.DefaultQualifier;
 import org.checkerframework.framework.qual.TypeUseLocation;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.NullMarked;
-import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
@@ -56,7 +55,7 @@ public final class LegacyMonitorImport implements ApplicationRunner {
 
     @Override
     public void run(ApplicationArguments arguments) throws Exception {
-        @Nullable BuiltinPlugin builtin = null;
+        BuiltinPlugin builtin = null;
         for (var plugin : plugins.plugins())
             if (plugin.implementation() instanceof BuiltinPlugin value) builtin = value;
         if (builtin == null) return;
@@ -82,7 +81,7 @@ public final class LegacyMonitorImport implements ApplicationRunner {
                         MonitorRecord record =
                                 mapper.readValue(
                                         payload, ToolDocs.nonNullClass(MonitorRecord.class));
-                        if (record == null || !record.id().equals(id))
+                        if (!record.id().equals(id))
                             throw new IllegalArgumentException("Invalid legacy identity");
                         var session = sessions.findById(record.sessionId());
                         if (session.isEmpty() || !session.get().getOwner().equals(record.owner())) {

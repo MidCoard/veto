@@ -4,7 +4,6 @@ import java.time.Instant;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import org.checkerframework.checker.nullness.qual.Nullable;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.agent.tool.ToolErrorCode;
 import top.focess.veto.api.agent.tool.ToolResult;
@@ -26,14 +25,14 @@ public record TurnRecord(
         int turnNumber,
         @NonNull TurnType type,
         @NonNull Map<String, Object> payload,
-        @Nullable Instant timestamp,
+        Instant timestamp,
         java.util.@NonNull List<UsageMeasurement> llmUsage) {
 
     public TurnRecord(
             int turnNumber,
             @NonNull TurnType type,
             @NonNull Map<String, Object> payload,
-            @Nullable Instant timestamp) {
+            Instant timestamp) {
         this(
                 turnNumber,
                 type,

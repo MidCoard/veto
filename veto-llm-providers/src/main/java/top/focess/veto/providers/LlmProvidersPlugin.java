@@ -22,15 +22,7 @@ public final class LlmProvidersPlugin extends AbstractVetoPlugin {
     @Override
     protected @NonNull PluginContributions onInitialize(
             @NonNull PluginContext context, JsonValue.@NonNull ObjectValue configuration) {
-        PromptRenderer prompts =
-                (source, data) ->
-                        context.service(ToolDocs.nonNullClass(PromptRenderer.class))
-                                .orElseThrow(
-                                        () ->
-                                                new IllegalStateException(
-                                                        "Host prompt compiler unavailable"))
-                                .compile(source, data);
-        var factory = new LlmClientFactory(new ObjectMapper(), prompts);
+        var factory = createFactory(context);
         clients = factory;
         new LlmClientRegistration(factory).registerBuilders();
         return new PluginContributions(
@@ -42,6 +34,18 @@ public final class LlmProvidersPlugin extends AbstractVetoPlugin {
                                                 type.name().toLowerCase(Locale.ROOT),
                                                 new Provider(type, factory)))
                         .toList());
+    }
+
+    private static @NonNull LlmClientFactory createFactory(@NonNull PluginContext context) {
+        PromptRenderer prompts =
+                (source, data) ->
+                        context.service(ToolDocs.nonNullClass(PromptRenderer.class))
+                                .orElseThrow(
+                                        () ->
+                                                new IllegalStateException(
+                                                        "Host prompt compiler unavailable"))
+                                .compile(source, data);
+        return new LlmClientFactory(new ObjectMapper(), prompts);
     }
 
     private record Provider(@NonNull ProviderType type, @NonNull LlmClientFactory factory)

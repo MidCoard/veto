@@ -13,7 +13,6 @@ import top.focess.veto.agent.ProtectedInputException;
 import top.focess.veto.agent.SessionAgentRegistry;
 import top.focess.veto.api.agent.AgentState;
 import top.focess.veto.controller.dto.*;
-import top.focess.veto.controller.dto.SubmitPromptRequest;
 import top.focess.veto.session.SessionService;
 import top.focess.veto.vault.KeysteadVault;
 
@@ -65,7 +64,8 @@ public class AgentPromptController {
                     .body(
                             new CodedErrorResponse(
                                     "PROTECTED_INPUT_UNAVAILABLE",
-                                    "Protected input could not be processed; retry or use credential settings"));
+                                    "Protected input could not be processed; retry or use"
+                                            + " credential settings"));
         } catch (IllegalStateException error) {
             return ResponseEntity.status(HttpStatus.CONFLICT)
                     .body(new ErrorResponse("Agent is no longer available"));

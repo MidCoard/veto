@@ -11,7 +11,8 @@ import top.focess.veto.memory.TurnLogService;
 
 /** Owns synchronized history snapshots, durable numbering and turn persistence. */
 final class AgentHistory {
-    private static final Logger log = LoggerFactory.getLogger("top.focess.veto.agent.AgentHistory");
+    private static final @NonNull Logger log =
+            LoggerFactory.getLogger("top.focess.veto.agent.AgentHistory");
     private final @NonNull List<TurnRecord> history = new ArrayList<>();
     private final TurnLogService turnLogService;
     private final @NonNull Supplier<UUID> session;
@@ -43,7 +44,7 @@ final class AgentHistory {
     }
 
     @NonNull TurnRecord append(@NonNull TurnRecord turn, boolean required) {
-        @NonNull TurnRecord numbered;
+        TurnRecord numbered;
         synchronized (this) {
             // turn_number is the durable unique key (uk_turn_records_agent_turn on
             // session_id, agent_id, turn_number). The in-memory history's high-water mark is the
@@ -78,7 +79,7 @@ final class AgentHistory {
         TurnRecord updated = null;
         synchronized (this) {
             for (int i = history.size() - 1; i >= 0; i--) {
-                @NonNull TurnRecord candidate = history.get(i);
+                TurnRecord candidate = history.get(i);
                 if (candidate.turnNumber() <= throughTurn
                         && candidate.type() != TurnType.TOKEN_USAGE) {
                     updated = RecordUsage.add(candidate, measurement);

@@ -17,5 +17,5 @@ public record QualityReport(
         @JsonProperty("invalid_details") @NonNull List<InvalidRecord> invalidDetails,
         @NonNull String status,
         @JsonProperty("output_file") @NonNull String outputFile) {
-    public record InvalidRecord(int line, @Nullable JsonNode id, @NonNull List<String> errors) {}
+    public record InvalidRecord(int line, JsonNode id, @NonNull List<String> errors) {}
 }

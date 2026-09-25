@@ -60,8 +60,8 @@ public final class TrainingResponses {
             double progress,
             @NonNull String phase,
             @NonNull String message,
-            @Nullable Instant startedAt,
-            @Nullable Instant completedAt,
+            Instant startedAt,
+            Instant completedAt,
             @NonNull String trainedModelPath,
             @NonNull String error,
             TrainingProgress.@Nullable EvaluationReport evaluation)

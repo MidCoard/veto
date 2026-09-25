@@ -13,7 +13,6 @@ import org.springframework.web.server.ResponseStatusException;
 import top.focess.veto.agent.AgentService;
 import top.focess.veto.agent.intercept.HitlRegistry;
 import top.focess.veto.controller.dto.*;
-import top.focess.veto.controller.dto.ResolveVetoRequest;
 import top.focess.veto.i18n.Msg;
 import top.focess.veto.session.SessionService;
 import top.focess.veto.vault.KeysteadVault;

@@ -10,11 +10,6 @@ import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import top.focess.veto.api.agent.workflow.PluginAwait;
 import top.focess.veto.api.plugin.*;
-import top.focess.veto.api.plugin.PluginContext;
-import top.focess.veto.api.plugin.PluginContributions;
-import top.focess.veto.api.plugin.PluginIdentity;
-import top.focess.veto.api.plugin.PluginState;
-import top.focess.veto.api.plugin.VetoPlugin;
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.contract.PluginFailure;
 
@@ -136,11 +131,12 @@ public final class ManagedPlugin implements AutoCloseable {
         return plugin.identity();
     }
 
-    public final @NonNull PluginState state() {
+    public @NonNull PluginState state() {
         return state;
     }
 
     @FunctionalInterface
+    @SuppressWarnings("NullableProblems") // the @NonNull bound is required by the NullnessChecker
     public interface Operation<T extends @NonNull Object> {
         @NonNull T run() throws PluginFailure;
     }
@@ -195,7 +191,7 @@ public final class ManagedPlugin implements AutoCloseable {
     }
 
     /** Admission checks the stop state atomically; handlers run outside the control thread. */
-    public final <T extends @NonNull Object> @NonNull T execute(@NonNull Operation<T> operation)
+    public <T extends @NonNull Object> @NonNull T execute(@NonNull Operation<T> operation)
             throws PluginFailure {
         if (Boolean.TRUE.equals(controlling.get()))
             throw new PluginFailure(PluginFailure.Code.NOT_READY);
@@ -231,7 +227,7 @@ public final class ManagedPlugin implements AutoCloseable {
     }
 
     @Override
-    public final void close() {
+    public void close() {
         requireExternalControl();
         if (closed.isDone()) return;
         submit(
@@ -249,7 +245,7 @@ public final class ManagedPlugin implements AutoCloseable {
     }
 
     /** Failure callbacks only report an event; cleanup always runs on the control thread. */
-    protected final void fail() {
+    private void fail() {
         submit(
                 () -> {
                     failOnControlThread();

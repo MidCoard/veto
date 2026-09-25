@@ -14,9 +14,6 @@ import top.focess.veto.api.agent.tool.ToolExecutionException;
 import top.focess.veto.api.http.ApprovedHttpDestination;
 import top.focess.veto.api.plugin.agent.IsolatedAgent;
 import top.focess.veto.builtin.web.model.*;
-import top.focess.veto.builtin.web.model.Execution;
-import top.focess.veto.builtin.web.model.FinishReadArgs;
-import top.focess.veto.builtin.web.model.Result;
 
 /** Document state and effect boundary owned by exactly one reader AgentRunner. */
 public final class WebReadSession implements WebDocumentCapability, IsolatedAgent.Tools {

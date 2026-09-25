@@ -911,6 +911,8 @@ public class GroupOrchestrator {
     }
 
     /** Records completion of an explicitly disbanded group. */
+    // The removed GroupSpawner is a shared handle owned by GroupRuntime and closed there.
+    @SuppressWarnings("resource")
     public void onGroupDisbanded(@NonNull UUID groupId) {
         retiringMates.removeIf(key -> key.startsWith(groupId + ":"));
         cancellationSpawners.remove(groupId);

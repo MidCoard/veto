@@ -194,7 +194,8 @@ public class TrainingManager {
                             Path dataPath = resolveTrainingDataPath(trainingDir, requestDataPath);
                             if (!runQualityFilter(pythonDir, dataPath)) {
                                 progress.fail(
-                                        "Quality filter failed — training data contains invalid records");
+                                        "Quality filter failed — training data contains invalid"
+                                                + " records");
                                 running.set(false);
                                 return;
                             }
@@ -311,7 +312,7 @@ public class TrainingManager {
      *
      * @return the quality filter report as a Map, or null on failure
      */
-    public @org.jspecify.annotations.Nullable QualityReport runStandaloneQualityCheck() {
+    public QualityReport runStandaloneQualityCheck() {
         Path trainingDir = Path.of(config.getTrainingDir()).toAbsolutePath();
         Path pythonDir = trainingDir.resolve("python");
         Path dataPath = trainingDir.resolve("data").resolve("veto_training_data.jsonl");

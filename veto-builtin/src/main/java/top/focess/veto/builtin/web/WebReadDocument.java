@@ -142,11 +142,11 @@ public final class WebReadDocument {
 
     private @NonNull Segment segment(@NonNull String id) {
         var match = segments.stream().filter(s -> s.id().equals(id)).findFirst();
-        if (match.isEmpty())
-            return ToolErrors.failure(
-                    ToolErrorCode.VALIDATION.INVALID_ARGUMENTS,
-                    "Invalid arguments: the segment id is unknown.");
-        return match.get();
+        return match.orElseGet(
+                () ->
+                        ToolErrors.failure(
+                                ToolErrorCode.VALIDATION.INVALID_ARGUMENTS,
+                                "Invalid arguments: the segment id is unknown."));
     }
 
     @NonNull Evidence evidence(@NonNull String id) {
