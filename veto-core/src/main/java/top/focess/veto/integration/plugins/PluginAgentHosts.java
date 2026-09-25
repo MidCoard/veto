@@ -7,6 +7,8 @@ import java.util.concurrent.CompletableFuture;
 import java.util.function.Supplier;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
@@ -35,6 +37,9 @@ import top.focess.veto.vault.UserContext;
 /** Per-plugin, session-bound child execution. No feature policy lives here. */
 @Component
 public final class PluginAgentHosts implements PluginAgentHostFactory {
+    private static final @NonNull Logger log =
+            LoggerFactory.getLogger("top.focess.veto.integration.plugins.PluginAgentHosts");
+
     private final @NonNull ObjectProvider<AgentService> service;
     private final @NonNull SessionRepository sessions;
     private final @NonNull AgentInstanceRepository identities;
@@ -150,9 +155,8 @@ public final class PluginAgentHosts implements PluginAgentHostFactory {
             @NonNull AgentProfile profile) {
         String owner = scopes.authorizeSession(storage, scope);
         if (!vault.isUnlocked(owner)) throw new SecurityException("Session owner is locked");
-        // UUID.fromString only validates the caller-supplied id; the parsed value is not needed.
-        //noinspection IgnoreResultOfCall
-        UUID.fromString(id);
+        UUID parsedId = UUID.fromString(id);
+        log.debug("Opening plugin child agent id={}", parsedId);
         if (id.equals(parentId)) throw new SecurityException("Child cannot replace its parent");
         var session = sessions.findById(scope.sessionId()).orElseThrow();
         var parent =

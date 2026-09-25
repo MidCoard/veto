@@ -48,9 +48,8 @@ final class AgentPluginHooks {
 
     private void checkCancellation() {
         if (cancelled.getAsBoolean()) {
-            // The interrupt flag is cleared deliberately before signalling cancellation.
-            //noinspection IgnoreResultOfCall
-            Thread.interrupted();
+            // Clear any pending interrupt so cleanup does not inherit the cancellation signal.
+            AgentLifecycle.clearTaskInterrupt();
             throw new CancellationException("Task cancelled");
         }
     }

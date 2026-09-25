@@ -2,6 +2,8 @@ package top.focess.veto.builtin.web;
 
 import java.net.URI;
 import org.jspecify.annotations.NonNull;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import top.focess.veto.api.agent.capability.NetworkEgressCapability;
 import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.tool.Doc;
@@ -47,6 +49,9 @@ import top.focess.veto.api.agent.tool.ToolSecurity;
             "Invalid arguments: url and objective must not be blank."
         })
 public final class WebFetchTool implements NetworkEgressTool<WebFetchTool.Args> {
+    private static final @NonNull Logger log =
+            LoggerFactory.getLogger("top.focess.veto.builtin.web.WebFetchTool");
+
     private final NetworkEgressCapability network;
     private final @NonNull WebReader reader;
 
@@ -99,9 +104,8 @@ public final class WebFetchTool implements NetworkEgressTool<WebFetchTool.Args> 
                     ToolErrorCode.VALIDATION.INVALID_ARGUMENTS,
                     "Invalid arguments: the reading objective exceeds 4000 characters.");
         try {
-            // URI.create only validates the url format; the parsed value is not needed.
-            //noinspection IgnoreResultOfCall
-            URI.create(args.url().trim());
+            URI parsed = URI.create(args.url().trim());
+            log.debug("web_fetch accepted url host={}", parsed.getHost());
         } catch (IllegalArgumentException e) {
             return ToolErrors.failure(
                     ToolErrorCode.VALIDATION.INVALID_ARGUMENTS,
