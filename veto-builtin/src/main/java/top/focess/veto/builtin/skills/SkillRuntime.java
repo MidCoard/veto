@@ -31,6 +31,7 @@ public final class SkillRuntime implements AutoCloseable {
     private volatile boolean closed;
     private static final @NonNull YAMLMapper YAML = new YAMLMapper();
 
+    /** Resolves catalogue, storage and host services and reads the skills directory setting. */
     public SkillRuntime(
             @NonNull PluginContext context, JsonValue.@NonNull ObjectValue configuration) {
         resources = context.service(ToolDocs.nonNullClass(CatalogueAccess.class)).orElse(null);
@@ -43,6 +44,7 @@ public final class SkillRuntime implements AutoCloseable {
                         : ".veto/skills";
     }
 
+    /** Returns the workspace skill catalogue, sorted by name. */
     public @NonNull List<CatalogueItem> catalogue(@NonNull CatalogueTree workspace) {
         return selected(workspace).values().stream()
                 .sorted(Comparator.comparing(Skill::name))
@@ -79,6 +81,7 @@ public final class SkillRuntime implements AutoCloseable {
         }
     }
 
+    /** Validates skill identity and integrity anchors, returning its instructions when trusted. */
     public @NonNull Optional<String> load(@NonNull String name) {
         if (closed || resources == null || host == null || storage == null)
             throw new SecurityException("Skills are unavailable");
@@ -158,6 +161,7 @@ public final class SkillRuntime implements AutoCloseable {
         }
     }
 
+    /** Returns the hex SHA-256 hash of the given text. */
     public static @NonNull String hash(@NonNull String text) {
         try {
             return HexFormat.of()
@@ -169,11 +173,13 @@ public final class SkillRuntime implements AutoCloseable {
         }
     }
 
+    /** Closes the runtime and discards cached catalogues. */
     public void close() {
         closed = true;
         catalogues.clear();
     }
 
+    /** An advertised skill name and description. */
     public record CatalogueItem(@NonNull String name, @NonNull String description) {}
 
     record Skill(

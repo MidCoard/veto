@@ -4,6 +4,7 @@ import static top.focess.veto.util.LogValues.safe;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.LongNode;
 import java.io.IOException;
 import java.time.Instant;
 import java.util.concurrent.ConcurrentHashMap;
@@ -14,6 +15,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.*;
+import org.springframework.web.socket.handler.ConcurrentWebSocketSessionDecorator;
 import org.springframework.web.socket.handler.TextWebSocketHandler;
 import top.focess.veto.bus.BusMessage.*;
 import top.focess.veto.model.SessionRepository;
@@ -43,6 +45,7 @@ public class VetoWebSocketHandler extends TextWebSocketHandler {
 
     private final @NonNull AtomicLong messageCounter = new AtomicLong(0);
 
+    /** Creates the handler with its JSON codec, veto gateway, and session registry. */
     public VetoWebSocketHandler(
             @NonNull ObjectMapper objectMapper,
             @NonNull VetoGateway vetoGateway,
@@ -59,9 +62,7 @@ public class VetoWebSocketHandler extends TextWebSocketHandler {
             session.close(CloseStatus.POLICY_VIOLATION.withReason("authentication required"));
             return;
         }
-        sessions.add(
-                new org.springframework.web.socket.handler.ConcurrentWebSocketSessionDecorator(
-                        session, 10000, 1024 * 1024));
+        sessions.add(new ConcurrentWebSocketSessionDecorator(session, 10000, 1024 * 1024));
         sessionUsers.put(session.getId(), authenticatedUser);
         log.info("WS Bus: Authenticated client '{}' connected", session.getId());
 
@@ -129,7 +130,7 @@ public class VetoWebSocketHandler extends TextWebSocketHandler {
         JsonNode suppliedSequence = msg.get("seq");
         JsonNode responseSequence =
                 suppliedSequence == null || suppliedSequence.isNull()
-                        ? com.fasterxml.jackson.databind.node.LongNode.valueOf(seq)
+                        ? LongNode.valueOf(seq)
                         : suppliedSequence;
         sendJson(
                 session,

@@ -19,6 +19,7 @@ public class SessionCommand extends VetoCommand {
 
     private final @NonNull SessionService service;
 
+    /** Constructs the {@code /session} command over the given session service. */
     public SessionCommand(@NonNull SessionService service) {
         super("session", "Manage sessions", "ses");
         this.service = service;

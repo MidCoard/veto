@@ -28,14 +28,17 @@ public final class PlanProgram implements PlanExecution {
     private final @NonNull Map<String, String> planSources = new HashMap<>();
     private final @NonNull Map<String, GeneratedCitation> generatedCitations = new HashMap<>();
 
+    /** Creates a runner with default configuration and the standard answer tool. */
     public PlanProgram(@NonNull ObjectMapper mapper) {
         this(mapper, PlanConfig.defaults());
     }
 
+    /** Creates a runner with the given configuration and the standard answer tool. */
     public PlanProgram(@NonNull ObjectMapper mapper, @NonNull PlanConfig configuration) {
         this(mapper, configuration, "answer_with_citations");
     }
 
+    /** Creates a runner; {@code answerTool} receives CITATIONS-mode generations. */
     public PlanProgram(
             @NonNull ObjectMapper mapper, @NonNull PlanConfig configuration, String answerTool) {
         this.answerTool = answerTool;
@@ -106,10 +109,12 @@ public final class PlanProgram implements PlanExecution {
         };
     }
 
+    /** Returns the current binding scope. */
     public @NonNull Scope scope() {
         return scope;
     }
 
+    /** Whether a program is installed and has not escaped. */
     public boolean active() {
         return activeProgram != null;
     }
@@ -135,6 +140,7 @@ public final class PlanProgram implements PlanExecution {
                         + " bindings.");
     }
 
+    /** Installs a freshly accepted program, clearing prior scope and provenance. */
     public void install(@NonNull ActionsProgram program, String modelCallId) {
         scope = new Scope(objectMapper);
         generatedCitations.clear();
@@ -153,6 +159,7 @@ public final class PlanProgram implements PlanExecution {
         }
     }
 
+    /** Executes the next action of the installed program; escapes on counter or limit failures. */
     public void step(@NonNull Runtime runtime) {
         ActionsProgram program = activeProgram;
         if (program == null) return;
@@ -286,9 +293,7 @@ public final class PlanProgram implements PlanExecution {
                 activeProgram = null;
                 programCounter = 0;
             }
-            default -> {
-                escape(runtime, "unknown action: " + action);
-            }
+            default -> escape(runtime, "unknown action: " + action);
         }
     }
 }

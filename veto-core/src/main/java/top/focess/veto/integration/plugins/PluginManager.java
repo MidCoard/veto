@@ -59,6 +59,7 @@ import top.focess.veto.plugin.runtime.*;
 public final class PluginManager implements AutoCloseable {
     private final @NonNull Map<String, Map<Class<?>, Object>> grantedServices = new HashMap<>();
 
+    /** Returns the host service of the given type granted to the plugin, or null when absent. */
     public <T> @Nullable T hostService(@NonNull String plugin, @NonNull Class<T> type) {
         Object value = grantedServices.getOrDefault(plugin, Map.of()).get(type);
         return value == null ? null : type.cast(value);
@@ -68,11 +69,16 @@ public final class PluginManager implements AutoCloseable {
     private final @NonNull PluginServiceRegistry serviceRegistry =
             new PluginServiceRegistry(serviceAccess);
 
+    /** Binds the session-selection provider used to gate cross-plugin service access. */
     @Autowired
     public void bindServiceSessions(@NonNull ObjectProvider<SessionPlugins> sessions) {
         serviceAccess.sessions = sessions;
     }
 
+    /**
+     * Owns, per plugin, a release action that invalidates the plugin frontend of every session
+     * selecting it when the plugin shuts down.
+     */
     @Autowired
     public void bindLifecycleInvalidations(
             @NonNull ObjectProvider<SessionRepository> sessions,
@@ -118,10 +124,12 @@ public final class PluginManager implements AutoCloseable {
         }
     }
 
+    /** Host-side view of the plugin service registry. */
     public @NonNull PluginServices services() {
         return serviceRegistry.forHost();
     }
 
+    /** Service-registry view scoped to the plugin with the given identity. */
     public @NonNull PluginServices services(@NonNull String caller) {
         return serviceRegistry.forPlugin(plugin(caller));
     }
@@ -135,9 +143,11 @@ public final class PluginManager implements AutoCloseable {
     private final @NonNull ContributionCatalog catalog;
     private final @NonNull Map<@NonNull String, @NonNull String> toolNames;
 
+    /** A started plugin paired with the contributions it declared at initialization. */
     public record Registration(
             @NonNull ManagedPlugin plugin, @NonNull PluginContributions contributions) {}
 
+    /** Convenience constructor using default operator configuration. */
     public PluginManager(
             @NonNull String paths,
             @NonNull String nodeCommand,
@@ -154,6 +164,12 @@ public final class PluginManager implements AutoCloseable {
                 new PluginConfigurations());
     }
 
+    /**
+     * Discovers built-in and script plugins, binds per-plugin host services, validates all
+     * contributions, and starts every plugin; any failure closes the staged plugins.
+     *
+     * @throws IOException when discovery, validation, or activation fails
+     */
     // WHY: staged ManagedPlugin handles are owned by this manager and closed in close(), and the
     // historical-ID null guards stay because third-party plugins can break the @NonNull contract.
     @SuppressWarnings({"resource", "ConstantValue"})
@@ -357,6 +373,7 @@ public final class PluginManager implements AutoCloseable {
         return registrations;
     }
 
+    /** Returns the loaded script-package plugins, excluding built-ins. */
     public @NonNull List<ScriptPlugin> scriptPlugins() {
         List<ScriptPlugin> scripts = new ArrayList<>();
         for (var plugin : plugins)
@@ -364,6 +381,7 @@ public final class PluginManager implements AutoCloseable {
         return List.copyOf(scripts);
     }
 
+    /** Returns the managed plugin for the given (alias-resolved) id; throws when unknown. */
     public @NonNull ManagedPlugin plugin(@NonNull String id) {
         return plugins.stream()
                 .filter(plugin -> plugin.identity().id().equals(canonicalId(id)))
@@ -371,10 +389,12 @@ public final class PluginManager implements AutoCloseable {
                 .orElseThrow(() -> new IllegalArgumentException("Unknown plugin identity"));
     }
 
+    /** Maps a historical plugin id to its canonical identity; unknown ids pass through. */
     public @NonNull String canonicalId(@NonNull String id) {
         return aliases.getOrDefault(id, id);
     }
 
+    /** Resolves the runtime tool name of the given contributed tool entry. */
     public @NonNull String toolName(@NonNull ContributionEntry<Tool> entry) {
         return toolName(entry.source().namespace(), entry.id().value());
     }

@@ -28,6 +28,7 @@ public class HeartbeatManager {
     private ScheduledFuture<?> heartbeatFuture;
     private volatile WebSocketBus bus;
 
+    /** Creates the manager driven by the {@code veto.bus} heartbeat configuration. */
     public HeartbeatManager(@NonNull BusConfiguration config) {
         this.config = config;
     }

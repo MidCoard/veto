@@ -2,6 +2,7 @@ package top.focess.veto.builtin.web.model;
 
 import org.jspecify.annotations.NonNull;
 
+/** Reader-run usage statistics reported with the result. */
 public record Execution(
         @NonNull String id,
         @NonNull String model,

@@ -12,6 +12,7 @@ public final class PluginTextEmbeddings implements TextEmbedding {
     private final @NonNull ManagedPlugin plugin;
     private final @NonNull TextEmbedding model;
 
+    /** Wraps the host embedding model with invocation-bound admission for the plugin. */
     public PluginTextEmbeddings(@NonNull ManagedPlugin plugin, @NonNull TextEmbedding model) {
         this.plugin = plugin;
         this.model = model;

@@ -45,14 +45,17 @@ public final class GroupRuntime
     private ScheduledExecutorService scheduler;
     private volatile boolean activationReady = true;
 
+    /** Defers configuration until {@link #start} signals that host startup completed. */
     public void awaitHostReady() {
         activationReady = false;
     }
 
+    /** Creates the runtime from the plugin context with empty configuration. */
     public GroupRuntime(@NonNull PluginContext context) {
         this(context, new JsonValue.ObjectValue(Map.of()));
     }
 
+    /** Creates the runtime, resolving host services and wiring spawner and orchestrator. */
     public GroupRuntime(@NonNull PluginContext context, JsonValue.@NonNull ObjectValue config) {
         configuration = new GroupConfig(config.values());
         configuration.tickMillis();
@@ -96,19 +99,23 @@ public final class GroupRuntime
         readyRuntime.set(this);
     }
 
+    /** Capability behind the Leader's group-control tools. */
     public @NonNull GroupControlCapability operations() {
         return operations;
     }
 
+    /** Capability behind the {@code create_group} delegation tool. */
     public @NonNull DelegationCapability delegation() {
         return operations;
     }
 
+    /** Group history store; fails when plugin storage is unavailable. */
     public @NonNull GroupHistoryStore history() {
         if (history == null) throw new IllegalStateException("Group storage unavailable");
         return history;
     }
 
+    /** Registry of the groups currently owned by this runtime. */
     public @NonNull GroupRegistry registry() {
         return groups;
     }
@@ -360,6 +367,7 @@ public final class GroupRuntime
                 .toList();
     }
 
+    /** Marks the host ready and begins ticking active groups on a daemon scheduler. */
     public synchronized void start() {
         activationReady = true;
         if (scheduler != null) return;

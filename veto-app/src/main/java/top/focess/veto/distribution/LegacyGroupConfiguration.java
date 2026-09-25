@@ -27,6 +27,7 @@ import top.focess.veto.integration.plugins.PluginConfigurations;
 public final class LegacyGroupConfiguration implements BeanPostProcessor, Ordered {
     private final Environment environment;
 
+    /** Creates the bridge reading legacy group properties from the given environment. */
     public LegacyGroupConfiguration(Environment environment) {
         this.environment = environment;
     }
@@ -71,6 +72,9 @@ public final class LegacyGroupConfiguration implements BeanPostProcessor, Ordere
         if (value != null) values.put(newKey, value);
     }
 
+    /**
+     * Bindable {@code veto.group.skillsets.<id>} entry holding an optional tier and prompt base.
+     */
     public static final class Skillset {
         private @Nullable String tier;
         private @Nullable String systemPromptBase;

@@ -46,6 +46,7 @@ public final class LegacyGroupImport implements ApplicationRunner {
     private final ObjectMapper mapper;
     private final LegacyGroupOwnership ownership;
 
+    /** Wires the import with its database, plugin, session, record, and ownership collaborators. */
     public LegacyGroupImport(
             DataSource database,
             PluginManager plugins,

@@ -71,14 +71,17 @@ public class GroupOrchestrator {
      */
     private final @NonNull ConcurrentMap<UUID, ReentrantLock> tickLocks = new ConcurrentHashMap<>();
 
+    /** Test-friendly orchestrator with an isolated registry, blackboard, and default leader. */
     public GroupOrchestrator() {
         this(new GroupRegistry(), new Blackboard(), new HeuristicLeader(), null);
     }
 
+    /** Creates an orchestrator with the default leader heuristic and no lazy provisioning. */
     public GroupOrchestrator(@NonNull GroupRegistry registry, @NonNull Blackboard blackboard) {
         this(registry, blackboard, new HeuristicLeader(), null);
     }
 
+    /** Creates an orchestrator; a null {@code provisioner} disables lazy Mate provisioning. */
     public GroupOrchestrator(
             @NonNull GroupRegistry registry,
             @NonNull Blackboard blackboard,
@@ -90,6 +93,7 @@ public class GroupOrchestrator {
         this.provisioner = provisioner;
     }
 
+    /** The heuristic driving mate assignment and verification decisions. */
     public @NonNull HeuristicLeader getLeader() {
         return leader;
     }
@@ -103,9 +107,11 @@ public class GroupOrchestrator {
      */
     @FunctionalInterface
     public interface MateProvisioner {
+        /** Creates and starts a Mate for the group's skillset and returns its id. */
         @NonNull String provision(@NonNull UUID groupId, @NonNull String skillset);
     }
 
+    /** Runs the group's close action under its tick lock and records the disbandment. */
     public void closeGroup(@NonNull UUID group, @NonNull Runnable close) {
         withGroupLock(
                 group,
@@ -143,6 +149,7 @@ public class GroupOrchestrator {
         return addNode(groupId, nodeId, description, skillset, dependsOn, null);
     }
 
+    /** Adds a node pinned to {@code mateId} when given; see the base {@link #addNode} contract. */
     public @NonNull NodeEdit addNode(
             @NonNull UUID groupId,
             @NonNull String nodeId,
@@ -153,6 +160,7 @@ public class GroupOrchestrator {
         return addNode(groupId, nodeId, description, skillset, dependsOn, mateId, false);
     }
 
+    /** Adds a node; {@code newMate} forces a fresh collaborator instead of reusing one. */
     public @NonNull NodeEdit addNode(
             @NonNull UUID groupId,
             @NonNull String nodeId,
@@ -164,6 +172,7 @@ public class GroupOrchestrator {
         return addNode(groupId, nodeId, description, skillset, dependsOn, mateId, newMate, null);
     }
 
+    /** Full add-node entry point, stamping the originating request id onto the new node. */
     public @NonNull NodeEdit addNode(
             @NonNull UUID groupId,
             @NonNull String nodeId,
@@ -288,6 +297,7 @@ public class GroupOrchestrator {
                 });
     }
 
+    /** Cancels a task node, confirming execution exit for running attempts; idempotent. */
     public @NonNull NodeEdit cancelTask(
             @NonNull UUID groupId, @NonNull String taskId, @NonNull GroupSpawner spawner) {
         return withGroupLock(
@@ -374,6 +384,7 @@ public class GroupOrchestrator {
         return group.withDag(dag);
     }
 
+    /** Removes an idle mate after confirming execution exit; unfinished tasks block removal. */
     public @NonNull NodeEdit removeMate(
             @NonNull UUID groupId, @NonNull String mateId, @NonNull GroupSpawner spawner) {
         return withGroupLock(
@@ -910,8 +921,8 @@ public class GroupOrchestrator {
         return group.withState(GroupState.COMPLETED, Instant.now());
     }
 
-    /** Records completion of an explicitly disbanded group. */
     // The removed GroupSpawner is a shared handle owned by GroupRuntime and closed there.
+    /** Records completion of an explicitly disbanded group. */
     @SuppressWarnings("resource")
     public void onGroupDisbanded(@NonNull UUID groupId) {
         retiringMates.removeIf(key -> key.startsWith(groupId + ":"));

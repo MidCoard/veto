@@ -18,6 +18,7 @@ public final class CapabilityAccess {
         return context;
     }
 
+    /** Checks invocation authority for the expected capability on the current tool context. */
     public static @NonNull ToolCallContext require(@NonNull ToolCapability expected) {
         ToolCallContext context = ToolCallContextHolder.get();
         if (context == null) throw denied();

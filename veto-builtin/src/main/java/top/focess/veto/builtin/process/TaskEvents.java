@@ -35,11 +35,13 @@ public final class TaskEvents implements BackgroundTasks.Listener, AutoCloseable
     private final @NonNull Map<UUID, Scope> instances = new LinkedHashMap<>();
     private final @NonNull Set<UUID> closedInstances = new HashSet<>();
 
+    /** Drops pending notifications for a closed owner. */
     public synchronized void ownerClosed(@NonNull String owner) {
         closedOwners.add(owner);
         pending.values().removeIf(value -> value.scope().owner().equals(owner));
     }
 
+    /** Drops pending notifications for a closed session. */
     public synchronized void sessionClosed(@NonNull String owner, @NonNull String session) {
         closedSessions.add(owner + ":" + session);
         pending.values()
@@ -49,6 +51,7 @@ public final class TaskEvents implements BackgroundTasks.Listener, AutoCloseable
                                         && value.scope().session().equals(session));
     }
 
+    /** Marks the scope instances closed and drops its pending notifications. */
     public synchronized void agentClosed(@NonNull Scope scope) {
         instances.forEach(
                 (id, owned) -> {
@@ -62,11 +65,13 @@ public final class TaskEvents implements BackgroundTasks.Listener, AutoCloseable
                 || closedSessions.contains(scope.owner() + ":" + scope.session());
     }
 
+    /** Creates the notifier over the given host and process observer. */
     public TaskEvents(@NonNull PluginHost host, @NonNull ProcessObserver observer) {
         this.host = host;
         this.observer = observer;
     }
 
+    /** Starts the retry scheduler; no-op when closed or already started. */
     public synchronized void start() {
         if (closed || scheduler != null) return;
         var timer =

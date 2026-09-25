@@ -87,12 +87,17 @@ public final class IsolatedExecutions {
     private static final ConcurrentHashMap<String, Scope> PRIVATE_CONTEXTS =
             new ConcurrentHashMap<>();
 
+    /**
+     * Throws when the given context belongs to an isolated execution rather than a real parent
+     * invocation.
+     */
     public static void requireNonIsolatedParent(ToolCallContext context) {
         if (PRIVATE_CONTEXTS.containsKey(context.agentId()))
             throw new SecurityException(
                     "Isolated execution requires an explicitly delegated destination");
     }
 
+    /** Closes the isolated child, if any, that the given tool invocation opened. */
     public static void finishInvocation(@Nullable ToolCallContext context) {
         if (context == null) return;
         var invocation = INVOCATIONS.get(context);
@@ -102,6 +107,7 @@ public final class IsolatedExecutions {
         }
     }
 
+    /** Finishes the invocation's isolated child, if any, and forgets its bookkeeping. */
     public static void releaseInvocation(@Nullable ToolCallContext context) {
         try {
             finishInvocation(context);
@@ -122,6 +128,7 @@ public final class IsolatedExecutions {
     private final int inputCeiling;
     private final int outputCeiling;
 
+    /** Creates the engine with operator-configured ceilings; every ceiling must be positive. */
     public IsolatedExecutions(
             @Qualifier(LlmJacksonConfig.LLM_OBJECT_MAPPER) ObjectMapper mapper,
             UniformLLMCaller caller,
@@ -149,6 +156,10 @@ public final class IsolatedExecutions {
             throw new IllegalArgumentException("Invalid isolated execution ceiling");
     }
 
+    /**
+     * Opens an isolated child for the current authorized parent invocation, clamped to host
+     * ceilings. The {@code admitted} supplier must stay true for the child's whole lifetime.
+     */
     public Child open(
             IsolatedAgent.Spec spec, IsolatedAgent.Factory factory, BooleanSupplier admitted) {
         var current = ToolCallContextHolder.get();
@@ -398,12 +409,14 @@ public final class IsolatedExecutions {
             return parent;
         }
 
+        /** Binds the one HTTP destination grant this execution may use; binding twice fails. */
         public void bind(HttpDestinationGrant grant) {
             authorizeParent();
             if (destination != null) throw new SecurityException("Destination already bound");
             destination = grant;
         }
 
+        /** Verifies the caller is still the original parent invocation and it is not cancelled. */
         public void authorizeParent() {
             var context = ToolCallContextHolder.get();
             if (context == null
@@ -414,6 +427,7 @@ public final class IsolatedExecutions {
                 throw new CancellationException("Parent invocation cancelled");
         }
 
+        /** Throws {@link CancellationException} once closed, cancelled, or past the deadline. */
         public void check() {
             checkTools.run();
             if (closed
@@ -425,6 +439,7 @@ public final class IsolatedExecutions {
                 throw new CancellationException("Isolated execution deadline exceeded");
         }
 
+        /** Verifies the current tool invocation is the given private tool of this execution. */
         public void authorize(String operation) {
             if (!privateTools.contains(operation))
                 throw new SecurityException("Operation is not a private tool");
@@ -439,12 +454,14 @@ public final class IsolatedExecutions {
             check();
         }
 
+        /** True while the parent invocation remains admitted and the deadline has not passed. */
         public boolean provenanceLive() {
             return !parentThread.isInterrupted()
                     && admitted.getAsBoolean()
                     && System.nanoTime() < deadline;
         }
 
+        /** Input bytes still available for observations in the next model call. */
         public int observationBudgetBytes() {
             return observationBudget;
         }
@@ -459,6 +476,7 @@ public final class IsolatedExecutions {
                     output.get());
         }
 
+        /** Settles the declaring invocation with the result through the terminal tool. */
         public void complete(String result) {
             authorize(terminal.tool());
             completed = true;
@@ -466,6 +484,7 @@ public final class IsolatedExecutions {
         }
     }
 
+    /** A live isolated child agent; owned by the opening parent invocation and closed with it. */
     public static final class Child implements IsolatedAgent {
         private final Scope scope;
         private final IsolatedAgent.Tools tools;
@@ -477,6 +496,7 @@ public final class IsolatedExecutions {
         private final AtomicLong terminationDeadline = new AtomicLong();
         private Runnable onClosed = () -> {};
 
+        /** Registers the close callback, run immediately when the child is already closed. */
         public synchronized void onClosed(Runnable callback) {
             if (closed) callback.run();
             else onClosed = callback;
@@ -535,6 +555,7 @@ public final class IsolatedExecutions {
             return runner.budgetExhausted();
         }
 
+        /** Submits the single request this child accepts; a second submission fails. */
         public synchronized AgentHost.Request submit(String prompt) {
             scope.authorizeParent();
             scope.check();
@@ -561,6 +582,7 @@ public final class IsolatedExecutions {
             };
         }
 
+        /** True once closed after {@code complete} and the submitted request succeeded. */
         public boolean settledSuccessfully() {
             var active = request;
             return closed
@@ -571,6 +593,7 @@ public final class IsolatedExecutions {
                     && active.result().join().success();
         }
 
+        /** Blocks until the child agent terminates or the timeout elapses; true when terminated. */
         public boolean awaitTermination(Duration timeout) throws InterruptedException {
             return agent.awaitTermination(timeout);
         }
@@ -587,6 +610,11 @@ public final class IsolatedExecutions {
             }
         }
 
+        /**
+         * Terminates the child and releases its private tools, waiting briefly for exit.
+         *
+         * @throws IllegalStateException when termination does not finish within the close deadline
+         */
         public void close() {
             if (closed) return;
             scope.closed = true;

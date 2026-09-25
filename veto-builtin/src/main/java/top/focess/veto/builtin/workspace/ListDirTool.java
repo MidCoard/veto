@@ -90,6 +90,7 @@ import top.focess.veto.api.agent.tool.WorkspaceReadTool;
         })
 public final class ListDirTool implements WorkspaceReadTool<ListDirTool.Args> {
 
+    /** Model-facing arguments of {@code list_dir}. */
     public record Args(
             @SecurityHint(ParamCategory.FILESYSTEM_PATH) @Doc("Absolute path to list contents of.")
                     @NonNull String absolutePath) {}

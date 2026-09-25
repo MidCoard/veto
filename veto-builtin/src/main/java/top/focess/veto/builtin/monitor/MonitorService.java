@@ -13,6 +13,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.stream.Collectors;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -49,6 +50,10 @@ public class MonitorService implements AgentWorkSource, SessionLifecycle, Proces
     private final @NonNull Map<PluginHost.Invocation, PluginAwait> foreground =
             new LinkedHashMap<>();
 
+    /**
+     * Returns (reusing when possible) the foreground wait that holds the invocation open while
+     * group work remains.
+     */
     public synchronized @NonNull PluginAwait awaitGroup(PluginHost.@NonNull Invocation invocation) {
         var existing = foreground.get(invocation);
         if (existing != null && !existing.ready().isDone()) return existing;
@@ -57,6 +62,7 @@ public class MonitorService implements AgentWorkSource, SessionLifecycle, Proces
         return signal;
     }
 
+    /** Completes and drops foreground waits whose group work has disappeared. */
     public synchronized void refreshForeground() {
         var iterator = foreground.entrySet().iterator();
         while (iterator.hasNext()) {
@@ -71,12 +77,14 @@ public class MonitorService implements AgentWorkSource, SessionLifecycle, Proces
         }
     }
 
+    /** Fails and clears every foreground wait; used when the monitor stops. */
     public synchronized void closeWaits() {
         for (var signal : foreground.values())
             signal.ready().completeExceptionally(new IllegalStateException("Monitor stopped"));
         foreground.clear();
     }
 
+    /** Creates the service over the given repository, mapper, group source and plugin host. */
     public MonitorService(
             @NonNull MonitorRepository repository,
             @NonNull ObjectMapper mapper,
@@ -88,6 +96,7 @@ public class MonitorService implements AgentWorkSource, SessionLifecycle, Proces
         this.host = host;
     }
 
+    /** Reloads persisted monitors from the repository. */
     public synchronized void restore() {
         restoreImported(repository.findAll());
     }
@@ -114,6 +123,7 @@ public class MonitorService implements AgentWorkSource, SessionLifecycle, Proces
         }
     }
 
+    /** Creates a one-shot timer without request correlation. */
     public synchronized @NonNull MonitorRecord createTimer(
             @NonNull String owner,
             @NonNull String sessionId,
@@ -123,6 +133,10 @@ public class MonitorService implements AgentWorkSource, SessionLifecycle, Proces
         return createTimer(owner, sessionId, agentId, purpose, dueAt, null);
     }
 
+    /**
+     * Creates a one-shot timer due at the given instant, validating purpose, horizon and per-agent
+     * limits.
+     */
     public synchronized @NonNull MonitorRecord createTimer(
             @NonNull String owner,
             @NonNull String sessionId,
@@ -165,6 +179,7 @@ public class MonitorService implements AgentWorkSource, SessionLifecycle, Proces
         return record;
     }
 
+    /** Returns every monitor owned by the given session. */
     public synchronized @NonNull List<MonitorRecord> list(
             @NonNull String owner, @NonNull String sessionId) {
         return records.values().stream()
@@ -172,6 +187,10 @@ public class MonitorService implements AgentWorkSource, SessionLifecycle, Proces
                 .toList();
     }
 
+    /**
+     * Applies {@code pause}, {@code resume} or {@code cancel} to a timer owned by the calling
+     * agent.
+     */
     public synchronized @NonNull MonitorRecord control(
             @NonNull String owner,
             @NonNull String sessionId,
@@ -205,6 +224,7 @@ public class MonitorService implements AgentWorkSource, SessionLifecycle, Proces
         return updated;
     }
 
+    /** Returns events ready for delivery to the given agent in the session. */
     public synchronized @NonNull List<Event> pending(
             @NonNull String agentId, @NonNull String sessionId) {
         return records.values().stream()
@@ -218,6 +238,7 @@ public class MonitorService implements AgentWorkSource, SessionLifecycle, Proces
                 .toList();
     }
 
+    /** Records delivery of the event; unknown or unowned events are ignored. */
     public synchronized void acknowledge(@NonNull String agentId, @NonNull Event event) {
         MonitorRecord r = records.get(event.monitorId());
         if (r == null || !r.agentId().equals(agentId)) return;
@@ -283,6 +304,7 @@ public class MonitorService implements AgentWorkSource, SessionLifecycle, Proces
         }
     }
 
+    /** Cancels all monitors of a terminating agent. */
     public synchronized void cancelForAgent(@NonNull String agentId) {
         terminatedAgents.add(agentId);
         for (MonitorRecord r : List.copyOf(records.values())) {
@@ -296,6 +318,7 @@ public class MonitorService implements AgentWorkSource, SessionLifecycle, Proces
         return hasUndeliveredGroup(agentId, null);
     }
 
+    /** Whether any active group monitor holds a ready event for the given request. */
     public synchronized boolean hasUndeliveredGroup(@NonNull String agentId, String requestId) {
         for (GroupObservations.View group : groups.snapshot()) {
             if (group.leaderId().equals(agentId)) observeGroup(group);
@@ -313,20 +336,27 @@ public class MonitorService implements AgentWorkSource, SessionLifecycle, Proces
                                         && r.state().equals("ACTIVE"));
     }
 
+    /** Whether the agent leads a live group with unfinished nodes, in any request. */
     public boolean hasGroupWork(@NonNull String agentId) {
         return hasGroupWork(agentId, null);
     }
 
+    /** Whether the agent leads a live group with unfinished nodes for the given request. */
     public boolean hasGroupWork(@NonNull String agentId, String requestId) {
         return groups.snapshot().stream()
                 .filter(g -> g.leaderId().equals(agentId) && g.state() != GroupState.DISBANDED)
                 .anyMatch(g -> unfinished(g.nodes(), requestId));
     }
 
+    /** Advances monitors one tick using the current time. */
     public void tick() {
         tickAt(Instant.now());
     }
 
+    /**
+     * Advances monitors to the given instant: flushes completions, observes groups, fires due
+     * timers.
+     */
     public void tickAt(@NonNull Instant now) {
         List<MonitorRecord> snapshot;
         synchronized (this) {
@@ -617,9 +647,7 @@ public class MonitorService implements AgentWorkSource, SessionLifecycle, Proces
                             return true;
                         });
         var removed =
-                list(owner, session).stream()
-                        .map(MonitorRecord::id)
-                        .collect(java.util.stream.Collectors.toSet());
+                list(owner, session).stream().map(MonitorRecord::id).collect(Collectors.toSet());
         records.keySet().removeAll(removed);
         completionWrites
                 .entrySet()

@@ -29,16 +29,25 @@ public class SessionInvalidations {
                     new ArrayBlockingQueue<>(512),
                     Thread.ofPlatform().daemon().name("session-invalidations").factory());
 
+    /** Creates the invalidator on top of the frame broker and agent registry. */
     public SessionInvalidations(
             @NonNull DeltaBroker broker, @NonNull AgentInstanceRepository agents) {
         this.broker = broker;
         this.agents = agents;
     }
 
+    /**
+     * Invalidates the named resources of a session; delivery waits for the active transaction to
+     * commit, if any.
+     */
     public void changed(@NonNull UUID sessionId, @NonNull String @NonNull ... resources) {
         afterCommit(() -> send(sessionId, resources));
     }
 
+    /**
+     * Invalidates the named resources of the session owning {@code agentId}; a no-op if the agent
+     * is unknown.
+     */
     public void agentChanged(@NonNull String agentId, @NonNull String @NonNull ... resources) {
         afterCommit(
                 () ->
@@ -96,6 +105,7 @@ public class SessionInvalidations {
                         error);
     }
 
+    /** Stops the delivery executor. */
     @PreDestroy
     public void close() {
         delivery.shutdownNow();

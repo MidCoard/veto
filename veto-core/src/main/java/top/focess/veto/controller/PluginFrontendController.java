@@ -30,6 +30,7 @@ public final class PluginFrontendController {
     private final @NonNull PluginManager plugins;
     private final @NonNull SessionAgentRegistry agents;
 
+    /** Creates the controller with its authorization, session, plugin, and agent collaborators. */
     public PluginFrontendController(
             @NonNull RequestAuthorization authorization,
             @NonNull SessionRepository sessions,
@@ -43,6 +44,9 @@ public final class PluginFrontendController {
         this.agents = agents;
     }
 
+    /**
+     * A frontend module contributed by a plugin bound to the session, with its tool display names.
+     */
     public record Module(
             @NonNull String id,
             @NonNull String pluginId,
@@ -50,6 +54,7 @@ public final class PluginFrontendController {
             @NonNull String source,
             @NonNull Map<String, String> tools) {}
 
+    /** Invocation of a frontend module action on behalf of one of the session's agents. */
     public record ActionRequest(
             @NonNull String moduleId,
             @NonNull String agentId,
@@ -66,6 +71,7 @@ public final class PluginFrontendController {
         return selected.bindings(session.getId()).stream().map(PluginBinding::id).toList();
     }
 
+    /** Lists the frontend modules contributed by the session's active bound plugins. */
     @GetMapping
     public @NonNull ResponseEntity<List<Module>> list(@PathVariable @NonNull String name) {
         var ids = ids(session(name));
@@ -101,6 +107,10 @@ public final class PluginFrontendController {
         return Map.copyOf(names);
     }
 
+    /**
+     * Runs a frontend module action scoped to the session's owner, id, and a known agent. 400 on
+     * malformed requests, 404 on unknown session/agent/module, 503 on plugin failure.
+     */
     @PostMapping("/actions")
     @SuppressWarnings(
             "ConstantValue") // WHY: Jackson may deserialize missing fields as null despite @NonNull

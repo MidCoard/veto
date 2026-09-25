@@ -26,6 +26,7 @@ public final class MemoryRuntime implements DataLifecycle {
     private final @NonNull Embedder embedder;
     private MemoryStore store;
 
+    /** Selects the memory backend named in the configuration and wires the embedder. */
     public MemoryRuntime(
             @NonNull PluginContext context, JsonValue.@NonNull ObjectValue configuration) {
         this.context = context;
@@ -141,6 +142,7 @@ public final class MemoryRuntime implements DataLifecycle {
         };
     }
 
+    /** Returns a scope-checked read capability for {@code recall_memory}. */
     public @NonNull MemoryReadCapability reader() {
         return (query, tier, limit, floor) -> {
             synchronized (MemoryRuntime.this) {
@@ -160,6 +162,7 @@ public final class MemoryRuntime implements DataLifecycle {
         };
     }
 
+    /** Returns a scope-checked write capability bound to the calling tool name. */
     public @NonNull MemoryWriteCapability writer(@NonNull String tool) {
         return new MemoryWriteCapability() {
             public @NonNull MemoryId add(@NonNull String content, UUID projectId) {

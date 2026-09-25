@@ -20,6 +20,7 @@ public record LlmConfig(
         String baseUrl,
         @NonNull LlmOptions options) {
 
+    /** Convenience constructor that applies the default {@link LlmOptions}. */
     public LlmConfig(
             @NonNull ProviderType provider,
             @NonNull String model,

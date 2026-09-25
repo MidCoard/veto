@@ -7,6 +7,10 @@ import org.jspecify.annotations.NonNull;
 public final class RecordRecovery {
     private RecordRecovery() {}
 
+    /**
+     * Whether the recorded history ends mid-episode (an unfinished prompt, thought, tool call or an
+     * interrupted execution), so a resumed session must be told the prior work is not pending.
+     */
     public static boolean requiresExplicitContinuation(@NonNull List<TurnRecord> records) {
         boolean unfinished = false;
         for (TurnRecord record : records) {

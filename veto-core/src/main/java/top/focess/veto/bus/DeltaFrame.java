@@ -43,6 +43,7 @@ public record DeltaFrame(
         String text,
         Map<String, JsonNode> attrs) {
 
+    /** Classification of the streaming update a frame carries. */
     public enum Kind {
         ASSISTANT_THOUGHT,
         ASSISTANT_MESSAGE,
@@ -63,6 +64,7 @@ public record DeltaFrame(
         EPISODE_DONE
     }
 
+    /** Normalizes a missing timestamp, text, or attribute map so the accessors stay non-null. */
     public DeltaFrame {
         if (emittedAt == null) {
             emittedAt = Instant.now();
@@ -143,6 +145,7 @@ public record DeltaFrame(
         }
     }
 
+    /** Returns a new {@link Builder} for a frame. */
     public static @NonNull Builder builder() {
         return new Builder();
     }
@@ -175,6 +178,7 @@ public record DeltaFrame(
             return this;
         }
 
+        /** Adds an arbitrary JSON attribute. */
         public @NonNull Builder attr(@NonNull String key, @NonNull JsonNode value) {
             this.attrs.put(key, value);
             return this;
@@ -200,6 +204,11 @@ public record DeltaFrame(
             return attr(key, BooleanNode.valueOf(value));
         }
 
+        /**
+         * Builds the frame, stamping it with the current time.
+         *
+         * @throws IllegalStateException if the session id or kind was never set
+         */
         public @NonNull DeltaFrame build() {
             if (sessionId == null) {
                 throw new IllegalStateException("DeltaFrame sessionId is required");

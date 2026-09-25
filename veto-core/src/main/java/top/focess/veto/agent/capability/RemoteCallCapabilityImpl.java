@@ -15,6 +15,7 @@ public final class RemoteCallCapabilityImpl implements RemoteCallCapability {
     private final @NonNull SseMcpTransport transport;
     private final @NonNull McpJsonRpcClient client;
 
+    /** Binds the capability to a registered tool definition, transport, and client. */
     public RemoteCallCapabilityImpl(
             @NonNull RemoteToolDefinition definition,
             @NonNull SseMcpTransport transport,

@@ -25,24 +25,37 @@ public final class ToolCallContextHolder {
 
     /** Validated control flow, separate from the model's text/tool-call result. */
     public sealed interface ResponseDirective {
+        /** Suspend the current request until the awaited plugin signal completes. */
         record Await(@NonNull String requestId, @NonNull PluginAwait signal)
                 implements ResponseDirective {}
 
+        /** Run the given plugin work as this call's effect. */
         record Execute(@NonNull PluginWork work) implements ResponseDirective {}
 
+        /**
+         * Terminate the loop with a finished response. {@code publish} controls whether the result
+         * is surfaced as a normal model output.
+         */
         record Finish(
                 @NonNull VetoResponse response, SourceEvidence.Receipt citations, boolean publish)
                 implements ResponseDirective {
+            /** Convenience constructor that publishes the finished response. */
             public Finish(@NonNull VetoResponse response, SourceEvidence.Receipt citations) {
                 this(response, citations, true);
             }
         }
     }
 
+    /** Installs the control host available to control tools for the current call. */
     public static void installControl(@NonNull ControlHost control) {
         state().control = control;
     }
 
+    /**
+     * The control host for the current call.
+     *
+     * @throws SecurityException if no admitted model call installed one
+     */
     public static @NonNull ControlHost control() {
         var control = state().control;
         if (control == null)
@@ -51,6 +64,7 @@ public final class ToolCallContextHolder {
         return control;
     }
 
+    /** Records the single control result for this call; a second transfer is rejected. */
     public static void transfer(@NonNull ResponseDirective result) {
         var current = state();
         if (current.response != null)
@@ -69,12 +83,16 @@ public final class ToolCallContextHolder {
                 new ResponseDirective.Finish(new VetoResponse(null, null, result), null, false);
     }
 
+    /**
+     * Rewraps a pending {@link ResponseDirective.Execute} result, binding its work to a runtime.
+     */
     public static void guardWork(@NonNull UnaryOperator<PluginWork> guard) {
         var current = state();
         if (current.response instanceof ResponseDirective.Execute execution)
             current.response = new ResponseDirective.Execute(guard.apply(execution.work()));
     }
 
+    /** Records an await control result bound to the live request id; requires a live request. */
     public static void await(@NonNull PluginAwait wait) {
         var current = state();
         var context = current.context;
@@ -85,6 +103,7 @@ public final class ToolCallContextHolder {
         current.response = new ResponseDirective.Await(requestId, wait);
     }
 
+    /** Rewraps a pending {@link ResponseDirective.Await} signal, binding it to a runtime. */
     public static void guardAwait(@NonNull UnaryOperator<PluginAwait> guard) {
         var current = state();
         if (current.response instanceof ResponseDirective.Await awaiting)
@@ -93,6 +112,7 @@ public final class ToolCallContextHolder {
                             awaiting.requestId(), guard.apply(awaiting.signal()));
     }
 
+    /** Removes and returns this thread's pending control result, or {@code null} if none is set. */
     public static ResponseDirective drainResponse() {
         var state = STATE.get();
         if (state == null) return null;
@@ -103,12 +123,21 @@ public final class ToolCallContextHolder {
 
     private static final @NonNull ThreadLocal<@Nullable Boolean> NO_EFFECTS = new ThreadLocal<>();
 
+    /**
+     * Asserts that effectful host operations are permitted now.
+     *
+     * @throws SecurityException during a preparation/presentation phase that forbids effects
+     */
     public static void requireEffects() {
         if (Boolean.TRUE.equals(NO_EFFECTS.get()))
             throw new SecurityException(
                     "Effectful host operations are unavailable during preparation/presentation");
     }
 
+    /**
+     * Runs {@code operation} with the call context cleared and effects disabled, restoring the
+     * prior state afterwards. Used for preparation and presentation, which must not touch the host.
+     */
     public static <T> T withoutEffects(@NonNull Supplier<T> operation) {
         var previous = STATE.get();
         var previousGuard = NO_EFFECTS.get();
@@ -146,6 +175,7 @@ public final class ToolCallContextHolder {
         state().currentCallId = callId;
     }
 
+    /** The call id currently executing on this thread, or {@code null} if none is set. */
     public static String currentCallId() {
         ThreadState state = STATE.get();
         return state == null ? null : state.currentCallId;

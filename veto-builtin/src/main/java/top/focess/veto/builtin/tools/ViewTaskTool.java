@@ -84,20 +84,24 @@ import top.focess.veto.builtin.process.TaskInfo;
 public final class ViewTaskTool implements NativeTool<ViewTaskTool.Args> {
     private final TaskControlCapability capability;
 
+    /** Declaration-only instance; the host supplies the capability at execution time. */
     public ViewTaskTool() {
         this.capability = null;
     }
 
+    /** Creates an instance bound to the given host capability. */
     public ViewTaskTool(@NonNull TaskControlCapability capability) {
         this.capability = capability;
     }
 
+    /** Model-facing arguments of {@code view_task}. */
     public record Args(
             @Doc("The task id (from run_task). Omit to list every task the calling agent owns.")
                     String taskId,
             @Doc(
                             "Wait for exit and drained output. Requires taskId. Default false returns immediately.")
                     Boolean waitForExit) {
+        /** Convenience constructor without the wait flag. */
         public Args(String taskId) {
             this(taskId, false);
         }
@@ -118,11 +122,13 @@ public final class ViewTaskTool implements NativeTool<ViewTaskTool.Args> {
         return execute(args, taskControlCapability());
     }
 
+    /** Returns the host-supplied capability; throws if none was injected. */
     public @NonNull TaskControlCapability taskControlCapability() {
         if (capability == null) throw new SecurityException("Host must supply tool capability");
         return capability;
     }
 
+    /** Runs the tool against the supplied capability. */
     public @NonNull String execute(@NonNull Args args, @NonNull TaskControlCapability capability) {
         String taskId = args.taskId();
         if (taskId == null || taskId.isBlank()) {
@@ -159,12 +165,15 @@ public final class ViewTaskTool implements NativeTool<ViewTaskTool.Args> {
         }
     }
 
+    /** JSON result payload listing every owned task. */
     public record TaskList(int count, @NonNull List<TaskSummary> tasks) {}
 
+    /** One-line summary of a listed task. */
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record TaskSummary(
             @NonNull String taskId, @NonNull String command, boolean alive, Integer exitCode) {}
 
+    /** Detailed single-task view returned by {@code view_task}. */
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record TaskDetail(
             @NonNull String taskId,

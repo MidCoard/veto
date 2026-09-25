@@ -28,8 +28,16 @@ public class LlmClientFactory implements AutoCloseable {
     private final @NonNull ConcurrentHashMap<Class<?>, ClientBuilder<?>> builders =
             new ConcurrentHashMap<>();
 
+    /** Builds a new SDK client of type {@code T} for the given endpoint and credentials. */
     @FunctionalInterface
     public interface ClientBuilder<T> {
+        /**
+         * Creates a client instance.
+         *
+         * @param baseUrl the base URL for the API, or {@code null} to use the SDK default
+         * @param apiKey the API key for authentication
+         * @return the newly built client
+         */
         @NonNull T build(String baseUrl, @NonNull String apiKey);
     }
 

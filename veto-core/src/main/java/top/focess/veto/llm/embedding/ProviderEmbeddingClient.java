@@ -32,6 +32,7 @@ public final class ProviderEmbeddingClient implements TextEmbedding {
     private final @NonNull CredentialResolver resolver;
     private final @NonNull ObjectMapper mapper;
 
+    /** Creates a client with the default 30-second request timeout. */
     public ProviderEmbeddingClient(
             @NonNull EmbeddingProfile props,
             @NonNull CredentialResolver resolver,

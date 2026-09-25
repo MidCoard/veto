@@ -48,6 +48,7 @@ public sealed interface ApprovalDecision
             Danger danger,
             Relevance relevance)
             implements ApprovalDecision {
+        /** Defensively copies the offered option list. */
         public Prompt {
             options = List.copyOf(options);
         }

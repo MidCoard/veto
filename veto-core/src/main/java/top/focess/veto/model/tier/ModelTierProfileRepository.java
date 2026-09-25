@@ -20,6 +20,7 @@ public interface ModelTierProfileRepository extends JpaRepository<ModelTierProfi
     /** The owner's currently-active profile, if any (at most one is active per owner). */
     @NonNull Optional<ModelTierProfileEntity> findByOwnerAndActiveTrue(@NonNull String owner);
 
+    /** Delete the owner's profile with the given name. */
     void deleteByNameAndOwner(@NonNull String name, @NonNull String owner);
 
     /** Bulk-delete every profile owned by {@code owner} (used by user-deletion cascade). */

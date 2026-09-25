@@ -58,6 +58,7 @@ public class KeysteadVault {
     private final @NonNull ConcurrentHashMap<String, VaultHandle> handles =
             new ConcurrentHashMap<>();
 
+    /** Constructs the vault with per-user keystead files under the configured vault home. */
     public KeysteadVault(@NonNull CredentialVaultConfiguration config) {
         this.vaultBase = Path.of(config.getVaultHome(), "keystead");
     }
@@ -227,6 +228,10 @@ public class KeysteadVault {
         return null;
     }
 
+    /**
+     * Whether a vault is unlocked for the current request: the {@link UserContext} user's handle
+     * when a context is set, otherwise any open handle (single-user CLI path).
+     */
     public boolean isUnlocked() {
         String user = UserContext.get();
         if (user != null) {
@@ -471,6 +476,7 @@ public class KeysteadVault {
 
     /** Thrown when an operation is attempted on a locked vault. */
     public static class VaultLockedException extends RuntimeException {
+        /** Constructs the exception with the given detail message. */
         public VaultLockedException(@NonNull String message) {
             super(message);
         }

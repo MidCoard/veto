@@ -7,6 +7,7 @@ import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import top.focess.veto.agent.loop.PromptCompiler;
 import top.focess.veto.integration.plugins.PluginManager;
@@ -38,7 +39,8 @@ public class VetoGateway {
     private final @NonNull AtomicLong totalPasses = new AtomicLong(0);
     private final @NonNull AtomicLong totalRedactions = new AtomicLong(0);
 
-    @org.springframework.beans.factory.annotation.Autowired
+    /** Spring entry point; the plugin manager is optional (masking is skipped without it). */
+    @Autowired
     public VetoGateway(
             @NonNull VetoGatewayConfiguration config,
             @NonNull LlamaCppBridge llamaCppBridge,
@@ -58,6 +60,7 @@ public class VetoGateway {
         this.auditLogger = auditLogger;
     }
 
+    /** Reports the effective gateway state at startup: disabled, SLM availability, enforcement. */
     @PostConstruct
     public void init() {
         if (!config.isEnabled()) {
@@ -270,19 +273,23 @@ public class VetoGateway {
             @NonNull String reason,
             int redactionCount) {
 
+        /** A clean pass-through result carrying the payload unchanged. */
         public static @NonNull VetoResult pass(@NonNull String payload, @NonNull String reason) {
             return new VetoResult(VetoDecision.PASS, payload, reason, 0);
         }
 
+        /** A hard-block result; the payload is dropped (empty processed payload). */
         public static @NonNull VetoResult block(@NonNull String reason) {
             return new VetoResult(VetoDecision.BLOCK, "", reason, 0);
         }
 
+        /** True when the payload may flow onward (passed or redacted); false only for BLOCK. */
         public boolean isAllowed() {
             return decision == VetoDecision.PASS || decision == VetoDecision.REDACT;
         }
     }
 
+    /** The gateway's verdict for an outbound payload. */
     public enum VetoDecision {
         PASS, // No redaction needed
         REDACT, // Redactions applied, payload is safe

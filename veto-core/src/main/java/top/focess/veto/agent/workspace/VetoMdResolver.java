@@ -36,6 +36,7 @@ public record VetoMdResolver(@NonNull List<@NonNull WorkspaceRoot> roots) {
         return List.copyOf(result);
     }
 
+    /** One readable Law file: its root, relative path, override flag, and stripped content. */
     public record LawSource(
             @NonNull Path root,
             @NonNull String relativePath,

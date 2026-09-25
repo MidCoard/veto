@@ -14,6 +14,7 @@ public class KeysteadCredentialExistenceChecker implements CredentialExistenceCh
 
     private final @NonNull KeysteadVault vault;
 
+    /** Constructs the checker delegating existence lookups to the given vault. */
     public KeysteadCredentialExistenceChecker(@NonNull KeysteadVault vault) {
         this.vault = vault;
     }

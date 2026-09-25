@@ -57,6 +57,7 @@ public final class CompactionSupport {
         return result;
     }
 
+    /** The turn numbers present in the supplied history records. */
     public static @NonNull Set<Integer> sourceTurns(@NonNull JsonNode records) {
         Set<Integer> result = new HashSet<>();
         for (var record : records) result.add(record.path("number").asInt());
@@ -81,6 +82,7 @@ public final class CompactionSupport {
         };
     }
 
+    /** Origin label per turn number, derived from the durable record metadata. */
     public static @NonNull Map<Integer, String> sourceOrigins(@NonNull JsonNode records) {
         Map<Integer, String> result = new LinkedHashMap<>();
         for (JsonNode record : records)

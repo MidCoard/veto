@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import java.util.*;
 import org.jspecify.annotations.*;
 
+/** Payload carrying full details of one task, including parameters and dependencies. */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record TaskDetailResponse(
         @NonNull String status,

@@ -17,14 +17,20 @@ public class ToolResultPresenter {
 
     private final @NonNull ObjectMapper mapper;
 
+    /** Creates the presenter with the shared JSON mapper. */
     public ToolResultPresenter(@NonNull ObjectMapper mapper) {
         this.mapper = mapper;
     }
 
+    /** Presents a result in {@link ToolResultPresentationMode#BASIC} mode. */
     public @NonNull String present(@NonNull ToolResult result) {
         return present(result, ToolResultPresentationMode.BASIC);
     }
 
+    /**
+     * Presents a result as plain content in basic mode, or as a JSON envelope carrying status,
+     * format, content, and error code in a detailed mode.
+     */
     public @NonNull String present(
             @NonNull ToolResult result, @NonNull ToolResultPresentationMode mode) {
         if (!mode.detailed()) {
@@ -47,6 +53,7 @@ public class ToolResultPresenter {
         }
     }
 
+    /** Presents ad-hoc result fields, equivalent to building the {@link ToolResult} first. */
     public @NonNull String present(
             @NonNull String toolName,
             String callId,

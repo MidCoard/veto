@@ -40,6 +40,7 @@ public class TamperProofStore {
     // In-memory hash chain tail (last record's hash for integrity)
     private volatile @NonNull String chainTailHash = "";
 
+    /** Creates the store rooted at the configured audit log path; call {@link #initialize()}. */
     public TamperProofStore(@NonNull ObservabilityConfiguration config) {
         this.config = config;
         this.auditDir = Path.of(config.getAuditLogPath());

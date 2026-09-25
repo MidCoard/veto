@@ -256,6 +256,7 @@ final class WindowsAppContainerLauncher {
         boolean ConvertStringSidToSidW(WString stringSid, PointerByReference sid);
     }
 
+    /** Win32 {@code SECURITY_CAPABILITIES} describing the AppContainer launch identity. */
     @Structure.FieldOrder({"appContainerSid", "capabilities", "capabilityCount", "reserved"})
     public static class SecurityCapabilities extends Structure {
         public Pointer appContainerSid;
@@ -264,12 +265,14 @@ final class WindowsAppContainerLauncher {
         public int reserved;
     }
 
+    /** Win32 {@code SID_AND_ATTRIBUTES}: one capability SID entry. */
     @Structure.FieldOrder({"sid", "attributes"})
     public static class SidAndAttributes extends Structure {
         public Pointer sid;
         public int attributes;
     }
 
+    /** Win32 {@code STARTUPINFOEX} carrying the process-thread attribute list. */
     @Structure.FieldOrder({"startupInfo", "attributeList"})
     public static class StartupInfoEx extends Structure {
         public WinBase.@NonNull STARTUPINFO startupInfo = new WinBase.STARTUPINFO();

@@ -35,6 +35,10 @@ public record GroupHistoryView(
         this(id, leaderId, brief, state, createdAt, nodes, historical, live, changes, null);
     }
 
+    /**
+     * Marks a non-live group that was still running as {@code INTERRUPTED}, flagging its unfinished
+     * nodes; live and terminal snapshots are returned unchanged.
+     */
     public @NonNull GroupHistoryView withoutRuntime() {
         if (live || (!state.equals("ACTIVE") && !state.equals("RECOVERING"))) return this;
         List<Node> interrupted =
@@ -71,6 +75,7 @@ public record GroupHistoryView(
                 mates);
     }
 
+    /** Presentation form of one DAG node, with its report text already resolved. */
     public record Node(
             @NonNull String id,
             @NonNull String description,
@@ -82,6 +87,7 @@ public record GroupHistoryView(
             int retries,
             String requestId,
             String dispatchId) {
+        /** Compatibility constructor for nodes without request or dispatch identities. */
         public Node(
                 @NonNull String id,
                 @NonNull String description,
@@ -105,8 +111,10 @@ public record GroupHistoryView(
         }
     }
 
+    /** One recorded group state transition with the node set observed at that moment. */
     public record Change(@NonNull Instant at, @NonNull String state, @NonNull List<Node> nodes) {}
 
+    /** Projects a live group's DAG into presentation nodes. */
     public static @NonNull List<Node> nodes(@NonNull Group group) {
         return group.dag().nodes().stream()
                 .map(

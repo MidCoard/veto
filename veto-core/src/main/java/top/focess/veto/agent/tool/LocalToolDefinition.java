@@ -13,6 +13,7 @@ import top.focess.veto.api.agent.tool.ToolResultFormat;
 /** Tool-class documentation and independent argument schemas for local tools. */
 public sealed interface LocalToolDefinition extends ToolDefinition
         permits NativeToolDefinition, AgentToolDefinition {
+    /** Optional workspace presentation callback, or {@code null} when the tool declares none. */
     default ToolPresentation presentation() {
         return null;
     }

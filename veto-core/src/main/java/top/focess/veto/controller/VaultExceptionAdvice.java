@@ -17,6 +17,7 @@ import top.focess.veto.vault.KeysteadVault;
 @RestControllerAdvice
 public class VaultExceptionAdvice {
 
+    /** Renders a locked-vault failure as 423 with a localized "log in first" message. */
     @ExceptionHandler(KeysteadVault.VaultLockedException.class)
     public @NonNull ResponseEntity<RestResponse> vaultLocked() {
         return ResponseEntity.status(HttpStatus.LOCKED)

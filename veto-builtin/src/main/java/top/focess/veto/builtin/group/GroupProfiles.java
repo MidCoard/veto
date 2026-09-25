@@ -33,6 +33,7 @@ public final class GroupProfiles {
                 && localIds.contains(local);
     }
 
+    /** Profile for a non-group agent: the base profile minus agent- and group-control tools. */
     public static @NonNull AgentProfile standalone(AgentConfiguration.@NonNull Context context) {
         var base = context.base();
         return new AgentProfile(
@@ -54,6 +55,7 @@ public final class GroupProfiles {
                 base.metadata());
     }
 
+    /** Builds a Leader or Mate role profile with default group configuration. */
     public static @NonNull AgentProfile role(
             AgentConfiguration.@NonNull Context context,
             @NonNull String name,
@@ -62,6 +64,7 @@ public final class GroupProfiles {
         return role(context, name, description, leader, GroupConfig.defaults(), null);
     }
 
+    /** Builds a role profile; capability filtering differs for Leaders and Mates. */
     public static @NonNull AgentProfile role(
             AgentConfiguration.@NonNull Context context,
             @NonNull String name,

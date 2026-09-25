@@ -40,6 +40,7 @@ public class ModelTierProfileEntity {
     @Column(name = "created_at", nullable = false)
     private @NonNull Instant createdAt = Instant.EPOCH;
 
+    /** JPA no-arg constructor. */
     protected ModelTierProfileEntity() {}
 
     /**
@@ -53,6 +54,13 @@ public class ModelTierProfileEntity {
         this(name, owner, false);
     }
 
+    /**
+     * Create a profile with an explicit active flag (used to auto-activate a user's first profile).
+     *
+     * @param name the profile name (unique per owner)
+     * @param owner the owning username
+     * @param active whether the profile starts active
+     */
     public ModelTierProfileEntity(@NonNull String name, @NonNull String owner, boolean active) {
         this.id = UUID.randomUUID().toString();
         this.name = name;

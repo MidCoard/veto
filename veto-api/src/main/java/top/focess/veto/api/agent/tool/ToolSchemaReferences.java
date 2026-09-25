@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 import org.jspecify.annotations.NonNull;
 
@@ -59,7 +60,7 @@ public final class ToolSchemaReferences {
         // Definitions are expanded at their use sites. Keeping root-relative references inside
         // unused definitions would accidentally address an enclosing tool-input document.
         result.remove(
-                java.util.List.of(
+                List.of(
                         "$defs",
                         "definitions",
                         "$id",

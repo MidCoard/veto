@@ -11,11 +11,19 @@ public final class RecordUsage {
 
     private RecordUsage() {}
 
+    /**
+     * Coerces an already-parsed metadata value into usage measurements ({@code null} yields none).
+     */
     public static @NonNull List<UsageMeasurement> decode(Object value) {
         if (value == null) return List.of();
         return JSON.convertValue(value, new TypeReference<List<UsageMeasurement>>() {});
     }
 
+    /**
+     * Parses usage measurements from their persisted JSON form.
+     *
+     * @throws IllegalStateException if the JSON is present but malformed
+     */
     public static @NonNull List<UsageMeasurement> read(String json) {
         if (json == null || json.isBlank()) return List.of();
         try {
@@ -25,6 +33,7 @@ public final class RecordUsage {
         }
     }
 
+    /** Returns a copy of {@code turn} with {@code usage} appended to its measurement list. */
     public static @NonNull TurnRecord add(
             @NonNull TurnRecord turn, @NonNull UsageMeasurement usage) {
         turn = RecordTokenCounter.withoutEstimate(turn);
@@ -34,6 +43,10 @@ public final class RecordUsage {
                 turn.turnNumber(), turn.type(), turn.payload(), turn.timestamp(), values);
     }
 
+    /**
+     * Folds legacy standalone {@code TOKEN_USAGE} records back onto the content turn they measure,
+     * dropping estimates, so accounting rides as record metadata rather than as separate turns.
+     */
     public static @NonNull List<TurnRecord> contentRecords(@NonNull List<TurnRecord> raw) {
         List<TurnRecord> result = new ArrayList<>();
         for (var turn : raw) {

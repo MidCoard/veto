@@ -169,6 +169,12 @@ public sealed interface IpcFrame
     /** Marker interface for all seq-based server response frames. */
     sealed interface SeqResponse extends ServerFrame
             permits Welcome, CompleteResult, HintResult, Error {
+        /**
+         * Returns the sequence number echoed from the initiating sequenced client request.
+         *
+         * @return the sequence number; {@code 0} when not correlated to a sequenced request (e.g.
+         *     an {@link Error} replying to a {@link Request})
+         */
         long seq();
     }
 
@@ -275,6 +281,13 @@ public sealed interface IpcFrame
      * @param seq echoed from the initiating frame; 0 when not correlated to a sequenced request
      */
     record Error(@NonNull String content, long seq) implements SeqResponse, TerminalResponse {
+        /**
+         * Creates an uncorrelated error ({@code seq = 0}), e.g. a reply to a {@link Request} which
+         * carries no sequence number.
+         *
+         * @param content error description
+         * @return the error frame
+         */
         public static @NonNull Error ofError(@NonNull String content) {
             return new Error(content, 0);
         }

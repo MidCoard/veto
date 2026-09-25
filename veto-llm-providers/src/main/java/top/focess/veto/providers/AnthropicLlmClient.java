@@ -19,6 +19,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import org.jspecify.annotations.NonNull;
@@ -138,8 +139,7 @@ final class AnthropicLlmClient extends LlmClient {
                         .strip();
 
         String stop = message.stopReason().map(Object::toString).orElse("");
-        if (java.util.Set.of("max_tokens", "model_context_window_exceeded", "pause_turn")
-                .contains(stop))
+        if (Set.of("max_tokens", "model_context_window_exceeded", "pause_turn").contains(stop))
             throw new ModelSchemaException(
                     "Anthropic response was truncated (stop_reason="
                             + stop

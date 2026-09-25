@@ -30,6 +30,7 @@ public record RemoteToolDefinition(
         Provenance provenance)
         implements ToolDefinition {
 
+    /** Compact constructor: deep-copies the schema and freezes result formats defensively. */
     public RemoteToolDefinition {
         inputSchema = inputSchema.deepCopy();
         resultFormats = List.copyOf(resultFormats);

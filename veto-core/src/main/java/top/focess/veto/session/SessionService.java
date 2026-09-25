@@ -53,6 +53,7 @@ import top.focess.veto.security.UserAdminService;
 public class SessionService {
     private ScopedPluginStorage pluginStorage;
 
+    /** Setter-injects the scoped plugin storage (avoids a constructor dependency cycle). */
     @Autowired
     public void attachPluginStorage(@NonNull ScopedPluginStorage storage) {
         pluginStorage = storage;
@@ -60,13 +61,15 @@ public class SessionService {
 
     private HitlRecordRepository hitlRecords;
 
+    /** Setter-injects the HITL record repository used when deleting sessions. */
     @Autowired
     public void attachHitlRecords(@NonNull HitlRecordRepository records) {
         hitlRecords = records;
     }
 
-    private top.focess.veto.integration.plugins.SessionPlugins sessionPlugins;
+    private SessionPlugins sessionPlugins;
 
+    /** Setter-injects the plugin selection source applied to newly created sessions. */
     @Autowired
     public void attachSessionPlugins(@NonNull SessionPlugins value) {
         sessionPlugins = value;
@@ -74,6 +77,7 @@ public class SessionService {
 
     private PluginLifecycleEvents lifecycleEvents;
 
+    /** Setter-injects the plugin lifecycle event sink notified on session deletion. */
     @Autowired
     public void attachLifecycleEvents(@NonNull PluginLifecycleEvents events) {
         lifecycleEvents = events;
@@ -81,6 +85,7 @@ public class SessionService {
 
     private RequestContinuationStore continuations;
 
+    /** Setter-injects the request-continuation store purged when a session is deleted. */
     @Autowired
     public void attachContinuations(@NonNull RequestContinuationStore store) {
         continuations = store;
@@ -98,6 +103,7 @@ public class SessionService {
     private final @NonNull ConcurrentHashMap<String, String> activeSessions =
             new ConcurrentHashMap<>();
 
+    /** Full constructor used by Spring, including the workspace admission policy. */
     @Autowired
     public SessionService(
             @NonNull SessionRepository sessions,
@@ -183,6 +189,7 @@ public class SessionService {
                 owner, patternName, sessionName, workspaceRoots, ToolResultPresentationMode.BASIC);
     }
 
+    /** Creates a session with an explicit tool-result presentation mode; the root index is 0. */
     @Transactional
     public @NonNull SessionEntity createSession(
             @NonNull String owner,
@@ -194,6 +201,7 @@ public class SessionService {
                 owner, patternName, sessionName, workspaceRoots, 0, toolResultPresentation);
     }
 
+    /** Creates a session with an explicit current workspace-root index; no plugins are bound. */
     @Transactional
     public @NonNull SessionEntity createSession(
             @NonNull String owner,
@@ -212,6 +220,15 @@ public class SessionService {
                 null);
     }
 
+    /**
+     * Full session-creation path. Admits and materializes the workspace roots, resolves the session
+     * name (auto-generated and workspace-unique when null/empty, otherwise uniqueness-checked),
+     * applies the optional plugin selection, and persists the session with its primary agent
+     * instantiated from the pattern. Does NOT auto-activate.
+     *
+     * @throws IllegalArgumentException if the pattern is unknown, the workspace is rejected, the
+     *     root index is out of range, or the name is already taken in this workspace
+     */
     @Transactional
     public @NonNull SessionEntity createSession(
             @NonNull String owner,
@@ -446,6 +463,7 @@ public class SessionService {
                 .flatMap(session -> activate(terminalId, session.getName(), owner, cwd));
     }
 
+    /** Detaches the terminal from its active session; the session itself persists. */
     public void deactivate(@NonNull String terminalId) {
         activeSessions.remove(terminalId);
     }
@@ -514,10 +532,16 @@ public class SessionService {
         return true;
     }
 
+    /** The id of the terminal's active session, if attached to one. */
     public @NonNull Optional<String> activeSession(@NonNull String terminalId) {
         return Optional.ofNullable(activeSessions.get(terminalId));
     }
 
+    /**
+     * Resolves the LLM config for the terminal's active session, re-resolved from the owner's
+     * current tier profile on every call. Empty when the terminal, session, or primary agent is
+     * gone.
+     */
     public @NonNull Optional<LlmConfig> resolveLlmConfig(@NonNull String terminalId) {
         String sessionId = activeSessions.get(terminalId);
         if (sessionId == null) return Optional.empty();
@@ -669,6 +693,7 @@ public class SessionService {
                 resolved.llmOptions());
     }
 
+    /** The in-memory agent serving the terminal's active session, if one is running. */
     public @NonNull Optional<Agent> activeAgent(@NonNull String terminalId) {
         String sessionId = activeSessions.get(terminalId);
         if (sessionId == null) return Optional.empty();

@@ -33,6 +33,7 @@ public class AuthController {
     private final @NonNull KeysteadVault vault;
     private final @NonNull AuthLifecycleManager authLifecycleManager;
 
+    /** Creates the controller with user-registry, session, vault, and lifecycle collaborators. */
     public AuthController(
             @NonNull UserRegistry userRegistry,
             @NonNull SessionManager sessionManager,

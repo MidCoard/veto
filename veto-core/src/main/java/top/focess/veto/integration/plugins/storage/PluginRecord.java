@@ -67,5 +67,6 @@ public class PluginRecord {
     @OnDelete(action = OnDeleteAction.CASCADE)
     @Nullable SessionEntity session;
 
+    /** JPA provider constructor. */
     protected PluginRecord() {}
 }

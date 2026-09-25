@@ -52,8 +52,10 @@ public class MemoryEntity {
     @NonNull
     private Instant createdAt = Instant.EPOCH;
 
+    /** JPA proxy constructor. */
     protected MemoryEntity() {}
 
+    /** Creates a persistable row from the given memory. */
     public MemoryEntity(@NonNull Memory memory) {
         this.id = memory.id().value().toString();
         this.userId = memory.userId().toString();
@@ -69,6 +71,7 @@ public class MemoryEntity {
         this.createdAt = memory.createdAt();
     }
 
+    /** Restores a {@link Memory} from its persisted row. */
     // valueOf is nullable to the NullnessChecker; the guard refines parsedTier before construction.
     @SuppressWarnings("ConstantValue")
     public static @NonNull Memory toMemory(@NonNull MemoryEntity e) {

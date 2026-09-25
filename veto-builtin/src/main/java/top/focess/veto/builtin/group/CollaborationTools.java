@@ -10,9 +10,11 @@ import top.focess.veto.api.agent.tool.ToolErrorCode;
 import top.focess.veto.api.agent.tool.ToolErrors;
 import top.focess.veto.api.agent.tool.ToolResultFormat;
 
+/** Leader-facing collaboration tools for managing mates and their assigned tasks. */
 public final class CollaborationTools {
     private CollaborationTools() {}
 
+    /** {@code cancel_group_task} - cancel one group task and confirm execution exit. */
     @ToolDoc(
             resultFormats = {ToolResultFormat.PLAINTEXT},
             description = "Cancel one group task and confirm execution exit.",
@@ -41,14 +43,17 @@ public final class CollaborationTools {
     public static final class CancelTask implements GroupControlTool<CancelTask.Args> {
         private final GroupControlCapability capability;
 
+        /** Declaration-only instance; the host supplies the capability at execution time. */
         public CancelTask() {
             this.capability = null;
         }
 
+        /** Creates an instance bound to the given host capability. */
         public CancelTask(@NonNull GroupControlCapability capability) {
             this.capability = capability;
         }
 
+        /** Model-facing arguments of {@code cancel_group_task}. */
         public record Args(@Doc("Existing task id.") @NonNull String taskId) {}
 
         @Override
@@ -80,6 +85,7 @@ public final class CollaborationTools {
         }
     }
 
+    /** {@code remove_mate} - remove an idle collaborator from the group. */
     @ToolDoc(
             resultFormats = {ToolResultFormat.PLAINTEXT},
             description = "Remove an idle collaborator from your group.",
@@ -107,14 +113,17 @@ public final class CollaborationTools {
     public static final class RemoveMate implements GroupControlTool<RemoveMate.Args> {
         private final GroupControlCapability capability;
 
+        /** Declaration-only instance; the host supplies the capability at execution time. */
         public RemoveMate() {
             this.capability = null;
         }
 
+        /** Creates an instance bound to the given host capability. */
         public RemoveMate(@NonNull GroupControlCapability capability) {
             this.capability = capability;
         }
 
+        /** Model-facing arguments of {@code remove_mate}. */
         public record Args(@Doc("Existing collaborator id.") @NonNull String mateId) {}
 
         @Override
@@ -146,6 +155,7 @@ public final class CollaborationTools {
         }
     }
 
+    /** {@code create_mate} - create a named collaborator in the group. */
     @ToolDoc(
             resultFormats = {ToolResultFormat.PLAINTEXT},
             description = "Create a named collaborator in your group.",
@@ -174,14 +184,17 @@ public final class CollaborationTools {
     public static final class CreateMate implements GroupControlTool<CreateMate.Args> {
         private final GroupControlCapability capability;
 
+        /** Declaration-only instance; the host supplies the capability at execution time. */
         public CreateMate() {
             this.capability = null;
         }
 
+        /** Creates an instance bound to the given host capability. */
         public CreateMate(@NonNull GroupControlCapability capability) {
             this.capability = capability;
         }
 
+        /** Model-facing arguments of {@code create_mate}. */
         public record Args(
                 @Doc("Display name, such as Alice.") @NonNull String name,
                 @Doc("The collaborator responsibility.") @NonNull String responsibility) {}
@@ -215,6 +228,7 @@ public final class CollaborationTools {
         }
     }
 
+    /** {@code create_task} - assign one concrete task to an existing collaborator. */
     @ToolDoc(
             resultFormats = {ToolResultFormat.PLAINTEXT},
             description = "Assign one concrete task to an existing collaborator.",
@@ -247,19 +261,23 @@ public final class CollaborationTools {
         private final GroupControlCapability capability;
         private final @NonNull Runnable await;
 
+        /** Declaration-only instance; the host supplies the capability at execution time. */
         public CreateTask() {
             this(null, () -> {});
         }
 
+        /** Creates an instance bound to the given host capability. */
         public CreateTask(@NonNull GroupControlCapability capability) {
             this(capability, () -> {});
         }
 
+        /** Creates an instance that runs {@code await} after each successful registration. */
         public CreateTask(GroupControlCapability capability, @NonNull Runnable await) {
             this.capability = capability;
             this.await = await;
         }
 
+        /** Model-facing arguments of {@code create_task}. */
         public record Args(
                 @Doc("Unique task id within the group.") @NonNull String taskId,
                 @Doc("Concrete instructions and expected result.") @NonNull String description,

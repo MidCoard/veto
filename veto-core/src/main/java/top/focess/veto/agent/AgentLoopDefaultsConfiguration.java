@@ -18,6 +18,7 @@ import top.focess.veto.llm.config.LlmJacksonConfig;
 @Configuration
 public class AgentLoopDefaultsConfiguration {
 
+    /** The default {@link CapabilityTranslator}, overridable by an embedding application. */
     @Bean
     @ConditionalOnMissingBean(CapabilityTranslator.class)
     public @NonNull CapabilityTranslator defaultCapabilityTranslator(

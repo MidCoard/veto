@@ -1,5 +1,6 @@
 package top.focess.veto.builtin.tools;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.tool.Doc;
@@ -74,14 +75,17 @@ import top.focess.veto.builtin.process.TaskControlCapability;
 public final class StopTaskTool implements NativeTool<StopTaskTool.Args> {
     private final TaskControlCapability capability;
 
+    /** Declaration-only instance; the host supplies the capability at execution time. */
     public StopTaskTool() {
         this.capability = null;
     }
 
+    /** Creates an instance bound to the given host capability. */
     public StopTaskTool(@NonNull TaskControlCapability capability) {
         this.capability = capability;
     }
 
+    /** Model-facing arguments of {@code stop_task}. */
     public record Args(@NonNull @Doc("The task id (from run_task).") String taskId) {}
 
     @Override
@@ -99,11 +103,13 @@ public final class StopTaskTool implements NativeTool<StopTaskTool.Args> {
         return execute(args, taskControlCapability());
     }
 
+    /** Returns the host-supplied capability; throws if none was injected. */
     public @NonNull TaskControlCapability taskControlCapability() {
         if (capability == null) throw new SecurityException("Host must supply tool capability");
         return capability;
     }
 
+    /** Runs the tool against the supplied capability. */
     public @NonNull String execute(@NonNull Args args, @NonNull TaskControlCapability capability) {
         var before = capability.status(args.taskId());
         if (before.isEmpty())
@@ -124,8 +130,8 @@ public final class StopTaskTool implements NativeTool<StopTaskTool.Args> {
                         info.exitCode()));
     }
 
-    @com.fasterxml.jackson.annotation.JsonInclude(
-            com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+    /** JSON result payload of {@code stop_task}. */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
     public record Result(
             @NonNull String status, @NonNull String taskId, boolean alive, Integer exitCode) {}
 }

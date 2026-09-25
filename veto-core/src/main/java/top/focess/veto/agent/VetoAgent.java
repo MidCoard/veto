@@ -35,10 +35,16 @@ public class VetoAgent implements Agent {
     private final @NonNull Thread executionThread;
     private volatile @NonNull RequestHandle latestRequest = new RequestHandle(new Object());
 
+    /** Creates a user-interactive agent and starts its runner on a virtual thread. */
     public VetoAgent(@NonNull AgentPersona persona, @NonNull AgentRunner runner) {
         this(persona, runner, true);
     }
 
+    /**
+     * Creates an agent and starts its runner on a virtual thread.
+     *
+     * @param userInteractionEnabled whether the agent may accept direct user prompts
+     */
     public VetoAgent(
             @NonNull AgentPersona persona,
             @NonNull AgentRunner runner,
@@ -51,10 +57,12 @@ public class VetoAgent implements Agent {
         executionThread = Thread.ofVirtual().name("agent-" + id).start(runner);
     }
 
+    /** Whether the agent is running or has queued work still to process. */
     public boolean hasPendingWork() {
         return runner.hasPendingWork();
     }
 
+    /** Whether this agent accepts direct user prompts (false for read-only/plugin children). */
     public boolean userInteractionEnabled() {
         return userInteractionEnabled;
     }
@@ -67,10 +75,12 @@ public class VetoAgent implements Agent {
         runner.enqueue(new AgentAction.DirectUserPromptAction(prompt));
     }
 
+    /** Attaches the plugin work source the agent polls for autonomous observations. */
     public void attachWorkSource(@NonNull AgentWorkSource service) {
         runner.attachWorkSource(service);
     }
 
+    /** Signals that plugin work may be available, waking the runner to claim it. */
     public void signalWork() {
         runner.signalWork();
     }
@@ -100,10 +110,12 @@ public class VetoAgent implements Agent {
         return runner.state();
     }
 
+    /** The provenance of plugins contributing tools to this agent's latest context. */
     public @NonNull PluginContextSnapshot pluginContext() {
         return runner.pluginContext();
     }
 
+    /** The reason the agent is parked (approval, question, breaker, etc.), or {@code null}. */
     public String executionWaitReason() {
         return runner.executionWaitReason();
     }
@@ -136,14 +148,17 @@ public class VetoAgent implements Agent {
         return latestRequest.result();
     }
 
+    /** Registers a callback run once when the agent's execution thread terminates. */
     public void onTermination(@NonNull Runnable callback) {
         runner.onTermination(callback);
     }
 
+    /** The session this agent belongs to. */
     public @NonNull UUID sessionId() {
         return runner.sessionId();
     }
 
+    /** Closes the runner for host shutdown (as opposed to explicit agent deletion). */
     public void shutdown() {
         runner.shutdown();
     }
@@ -210,10 +225,12 @@ public class VetoAgent implements Agent {
         runner.seedHistory(history);
     }
 
+    /** The model binding (provider/model/credential) currently in effect. */
     public @NonNull LlmBinding binding() {
         return runner.binding();
     }
 
+    /** Enqueues a re-resolution of the agent's plugin-supplied configuration. */
     public void refreshConfiguration() {
         runner.refreshConfiguration();
     }

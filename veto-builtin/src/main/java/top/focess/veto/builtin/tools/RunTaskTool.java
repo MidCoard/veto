@@ -104,14 +104,17 @@ import top.focess.veto.builtin.process.TaskInfo;
 public final class RunTaskTool implements PreparedTool<RunTaskTool.Args> {
     private final ProcessExecutionCapability capability;
 
+    /** Declaration-only instance; the host supplies the capability at execution time. */
     public RunTaskTool() {
         this.capability = null;
     }
 
+    /** Creates an instance bound to the given host capability. */
     public RunTaskTool(@NonNull ProcessExecutionCapability capability) {
         this.capability = capability;
     }
 
+    /** Model-facing arguments of {@code run_task}. */
     public record Args(
             @SecurityHint(ParamCategory.SHELL_COMMAND)
                     @Doc("Exactly one command: {executable, args}. Background mode does not chain.")
@@ -155,11 +158,13 @@ public final class RunTaskTool implements PreparedTool<RunTaskTool.Args> {
         return execute(args, processExecutionCapability());
     }
 
+    /** Returns the host-supplied capability; throws if none was injected. */
     public @NonNull ProcessExecutionCapability processExecutionCapability() {
         if (capability == null) throw new SecurityException("Host must supply tool capability");
         return capability;
     }
 
+    /** Runs the tool against the supplied capability. */
     public @NonNull String execute(
             @NonNull Args args, @NonNull ProcessExecutionCapability capability) {
         int timeout = args.timeout();
@@ -212,6 +217,7 @@ public final class RunTaskTool implements PreparedTool<RunTaskTool.Args> {
                         timeout == 0 ? maximumTimeout : Math.min(timeout, maximumTimeout)));
     }
 
+    /** JSON result payload of {@code run_task}. */
     public record Result(
             @NonNull String status,
             @NonNull String nextStep,

@@ -9,6 +9,10 @@ public final class ManagedPluginWork implements PluginWork {
     private final @NonNull ManagedPlugin plugin;
     private final @NonNull PluginWork delegate;
 
+    /**
+     * Binds deferred work to its submitting plugin so execution re-acquires that plugin's
+     * admission.
+     */
     public ManagedPluginWork(@NonNull ManagedPlugin plugin, @NonNull PluginWork delegate) {
         this.plugin = plugin;
         this.delegate = delegate;

@@ -11,14 +11,17 @@ import top.focess.veto.api.plugin.agent.AgentHost;
 
 /** Plugin-owned member lifetime; all execution authority is carried by host child handles. */
 public final class GroupSpawner implements GroupOrchestrator.MateProvisioner, AutoCloseable {
+    /** Opens host child agents for new group members. */
     @FunctionalInterface
     public interface AgentFactory {
+        /** Opens a child agent with the given display name and responsibility. */
         AgentHost.@NonNull Child open(
                 @NonNull Group group,
                 @NonNull String id,
                 @NonNull String name,
                 @NonNull String responsibility);
 
+        /** Opens a child agent for a skillset label; defaults to using the skillset as its name. */
         default AgentHost.@NonNull Child openSkilled(
                 @NonNull Group group, @NonNull String id, @NonNull String skillset) {
             return open(group, id, skillset, skillset);
@@ -30,6 +33,7 @@ public final class GroupSpawner implements GroupOrchestrator.MateProvisioner, Au
     private final @NonNull AgentFactory factory;
     private final @NonNull Map<UUID, Map<String, MateAgent>> live = new ConcurrentHashMap<>();
 
+    /** Creates a spawner opening members through the given factory. */
     public GroupSpawner(
             @NonNull GroupRegistry registry,
             @NonNull Blackboard board,
@@ -39,6 +43,7 @@ public final class GroupSpawner implements GroupOrchestrator.MateProvisioner, Au
         this.factory = factory;
     }
 
+    /** Lazily provisions a mate for the responsibility and returns its new id. */
     public @NonNull String provision(@NonNull UUID group, @NonNull String responsibility) {
         var current = registry.get(group);
         if (current == null) throw new IllegalArgumentException("Unknown group");
@@ -47,6 +52,7 @@ public final class GroupSpawner implements GroupOrchestrator.MateProvisioner, Au
         return id;
     }
 
+    /** Creates and starts a mate with an explicit display name; returns its new id. */
     public @NonNull String createNamedMate(
             @NonNull UUID groupId, @NonNull String name, @NonNull String responsibility) {
         Group group = registry.get(groupId);
@@ -73,6 +79,7 @@ public final class GroupSpawner implements GroupOrchestrator.MateProvisioner, Au
         mate.start();
     }
 
+    /** Reopens every mate recorded in the group roster after a runtime restart. */
     public void restoreMates(@NonNull Group group) {
         group.mates().forEach((id, responsibility) -> start(group, id, id, responsibility, null));
     }
@@ -109,6 +116,7 @@ public final class GroupSpawner implements GroupOrchestrator.MateProvisioner, Au
         if (members != null) members.remove(id);
     }
 
+    /** Stops all members, requiring confirmed exits, then disbands the group in the registry. */
     public void disband(@NonNull UUID group) {
         for (var id : List.copyOf(live.getOrDefault(group, Map.of()).keySet()))
             if (!stopMateAndConfirm(group, id))
@@ -117,6 +125,7 @@ public final class GroupSpawner implements GroupOrchestrator.MateProvisioner, Au
         registry.disband(group, Instant.now());
     }
 
+    /** Stops the group's members during runtime shutdown; reports unconfirmed exits. */
     public void stopRuntime(@NonNull UUID group) {
         var members = live.get(group);
         if (members == null) return;
@@ -151,6 +160,7 @@ public final class GroupSpawner implements GroupOrchestrator.MateProvisioner, Au
         if (failure != null) throw failure;
     }
 
+    /** Stops members of every live group. */
     public void close() {
         List.copyOf(live.keySet()).forEach(this::stopRuntime);
     }

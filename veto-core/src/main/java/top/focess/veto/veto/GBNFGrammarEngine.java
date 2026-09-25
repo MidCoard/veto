@@ -24,6 +24,7 @@ public class GBNFGrammarEngine {
     private final @NonNull ConcurrentHashMap<String, String> grammarCache =
             new ConcurrentHashMap<>();
 
+    /** Creates the engine bound to the shared local-model configuration. */
     public GBNFGrammarEngine(@NonNull SlmConfiguration config) {
         this.config = config;
     }

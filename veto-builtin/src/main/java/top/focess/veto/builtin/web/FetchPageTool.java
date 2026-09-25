@@ -28,6 +28,7 @@ import top.focess.veto.api.agent.tool.ToolSecurity;
         },
         examples = {"{}"})
 public final class FetchPageTool implements WebDocumentTool<FetchPageTool.Args> {
+    /** Model-facing arguments of {@code fetch_page}. */
     public record Args() {}
 
     private final @NonNull WebDocumentCapability document;

@@ -34,17 +34,20 @@ public class PluginLifecycleEvents {
     // NullnessChecker needs this @Nullable
     private @Nullable UserRegistry users;
 
+    /** Attaches the user registry used to resolve permanent-deletion identities. */
     @Autowired
     public void attachUsers(@NonNull UserRegistry users) {
         this.users = users;
     }
 
+    /** Required owner-deletion preparation; fails closed when a contributor is unavailable. */
     public void beforeOwnerDeleted(@NonNull String owner) {
         if (manager.catalog().entries(StandardContributionPoints.DATA_LIFECYCLE).isEmpty()) return;
         String identity = userIdentity(owner);
         requiredDeletion(lifecycle -> lifecycle.prepareOwnerDeletion(owner, identity));
     }
 
+    /** Required session-deletion preparation; fails closed when a contributor is unavailable. */
     public void beforeSessionDeleted(@NonNull String owner, @NonNull String session) {
         if (manager.catalog().entries(StandardContributionPoints.DATA_LIFECYCLE).isEmpty()) return;
         String identity = userIdentity(owner);
@@ -83,22 +86,27 @@ public class PluginLifecycleEvents {
         }
     }
 
+    /** Creates the dispatcher over the installed plugin catalog. */
     public PluginLifecycleEvents(@NonNull PluginManager manager) {
         this.manager = manager;
     }
 
+    /** Best-effort notification that the owner's vault was opened. */
     public void ownerOpened(@NonNull String ownerId) {
         dispatch(lifecycle -> lifecycle.onOwnerOpen(ownerId));
     }
 
+    /** Best-effort notification that the owner's vault was closed. */
     public void ownerClosed(@NonNull String ownerId) {
         dispatch(lifecycle -> lifecycle.onOwnerClosed(ownerId));
     }
 
+    /** Best-effort notification that a session ended. */
     public void sessionClosed(@NonNull String ownerId, @NonNull String sessionId) {
         dispatch(lifecycle -> lifecycle.onSessionClosed(ownerId, sessionId));
     }
 
+    /** Best-effort notification that a session agent terminated. */
     public void agentTerminated(
             @NonNull String ownerId, @NonNull String sessionId, @NonNull String agentId) {
         dispatch(lifecycle -> lifecycle.onAgentTerminated(ownerId, sessionId, agentId));

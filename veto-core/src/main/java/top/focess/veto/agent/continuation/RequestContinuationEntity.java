@@ -22,12 +22,15 @@ public class RequestContinuationEntity {
 
     private Long grantedCalls;
 
+    /** JPA proxy constructor. */
     protected RequestContinuationEntity() {}
 
+    /** Creates a row with no granted-call allowance. */
     public RequestContinuationEntity(@NonNull String id, @NonNull String task, long consumedCalls) {
         this(id, task, consumedCalls, null);
     }
 
+    /** Creates a row, rejecting negative consumed counts and allowances below -1. */
     public RequestContinuationEntity(
             @NonNull String id, @NonNull String task, long consumedCalls, Long grantedCalls) {
         if (grantedCalls != null && grantedCalls < -1)

@@ -107,6 +107,7 @@ public final class ReplaceFileContentTool
         implements WorkspaceWriteTool<ReplaceFileContentTool.Args> {
     private static final int MAX_TEXT_BYTES = 16 * 1024 * 1024;
 
+    /** Model-facing arguments of {@code replace_file_content}. */
     public record Args(
             @SecurityHint(ParamCategory.FILESYSTEM_PATH) @Doc("Absolute path of the file to patch.")
                     @NonNull String absolutePath,
@@ -215,5 +216,6 @@ public final class ReplaceFileContentTool
         return newline < 0 ? content.length() : newline + 1;
     }
 
+    /** JSON result payload of {@code replace_file_content}. */
     public record Result(@NonNull String status, @NonNull String file) {}
 }

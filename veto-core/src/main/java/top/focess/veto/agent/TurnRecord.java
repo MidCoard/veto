@@ -28,6 +28,10 @@ public record TurnRecord(
         Instant timestamp,
         java.util.@NonNull List<UsageMeasurement> llmUsage) {
 
+    /**
+     * Convenience constructor that defaults a null timestamp to now and decodes any usage carried
+     * in the payload.
+     */
     public TurnRecord(
             int turnNumber,
             @NonNull TurnType type,
@@ -41,6 +45,10 @@ public record TurnRecord(
                 RecordUsage.decode(payload.get("llmUsage")));
     }
 
+    /**
+     * Canonical constructor: copies the usage list, strips usage keys from an unmodifiable
+     * null-tolerant payload copy, and normalizes a missing timestamp before publication.
+     */
     public TurnRecord {
         llmUsage = java.util.List.copyOf(llmUsage);
         var content = new LinkedHashMap<>(payload);
@@ -141,6 +149,7 @@ public record TurnRecord(
                 success ? null : ToolErrorCode.GENERIC.TOOL_FAILURE);
     }
 
+    /** A tool response built from a structured {@link ToolResult}. */
     public static @NonNull TurnRecord toolResponse(int turnNumber, @NonNull ToolResult result) {
         return toolResponse(
                 turnNumber,
@@ -172,6 +181,7 @@ public record TurnRecord(
         return new TurnRecord(turnNumber, TurnType.TOOL_RESPONSE, payload, null);
     }
 
+    /** A tool response with explicit status, format and error code; {@code callId} may be null. */
     public static @NonNull TurnRecord toolResponse(
             int turnNumber,
             String callId,

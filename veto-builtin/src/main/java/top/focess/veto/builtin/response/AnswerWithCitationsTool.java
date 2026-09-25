@@ -9,6 +9,7 @@ import top.focess.veto.api.agent.tool.*;
 import top.focess.veto.api.llm.VetoResponse;
 import top.focess.veto.api.llm.exceptions.ModelSchemaException;
 
+/** {@code answer_with_citations} - submit the final answer with validated citation links. */
 @ControlSubmission(ControlSubmission.Kind.FINISH)
 @ToolPrompt("builtin-sourced-answers")
 @ToolDoc(
@@ -44,10 +45,12 @@ import top.focess.veto.api.llm.exceptions.ModelSchemaException;
 public final class AnswerWithCitationsTool implements ControlTool<AnswerWithCitationsTool.Args> {
     private final ControlHost capability;
 
+    /** Declaration-only instance; the host supplies the capability at execution time. */
     public AnswerWithCitationsTool() {
         this.capability = null;
     }
 
+    /** Creates an instance bound to the given control host. */
     public AnswerWithCitationsTool(@NonNull ControlHost capability) {
         this.capability = capability;
     }
@@ -111,6 +114,7 @@ public final class AnswerWithCitationsTool implements ControlTool<AnswerWithCita
         return "{\"status\":\"accepted\"}";
     }
 
+    /** Model-facing arguments of {@code answer_with_citations}. */
     public record Args(
             @NonNull
                     @StringConstraint(minLength = 1)
@@ -123,6 +127,7 @@ public final class AnswerWithCitationsTool implements ControlTool<AnswerWithCita
                             "Nonempty array of declarations for every cite: link. Do not call this tool with [] or for an answer without citation links; reply in plain text instead.")
                     List<@NonNull Citation> citations) {}
 
+    /** One {@code cite:} link declaration with its supporting sources. */
     public record Citation(
             @NonNull
                     @StringConstraint(minLength = 1, maxLength = 64, pattern = "^[A-Za-z0-9_-]+$")
@@ -134,6 +139,7 @@ public final class AnswerWithCitationsTool implements ControlTool<AnswerWithCita
                             "Nonempty array of exact passages supporting this citation, even when there is only one passage.")
                     List<@NonNull Source> sources) {}
 
+    /** An exact passage copied from a visible conversation message. */
     public record Source(
             @Doc(
                             "Optional disambiguation index supplied by a tool error when a quote has multiple sources. Omit normally; never guess or count messages.")

@@ -1,14 +1,18 @@
 package top.focess.veto.controller.dto;
 
+import java.util.List;
+import java.util.Map;
 import org.jspecify.annotations.*;
+import top.focess.veto.agent.UsageMeasurement;
 
+/** Payload describing one turn of session history, including token usage details. */
 public record HistoryTurnResponse(
         int turnNumber,
         @NonNull String type,
-        java.util.@NonNull Map<String, Object> payload,
+        @NonNull Map<String, Object> payload,
         @NonNull String timestamp,
         Long tokenCount,
         Long usedTokens,
         String tokenCountSource,
-        java.util.@NonNull List<top.focess.veto.agent.UsageMeasurement> llmUsage)
+        @NonNull List<UsageMeasurement> llmUsage)
         implements RestResponse {}

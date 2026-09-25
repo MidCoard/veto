@@ -11,6 +11,7 @@ import top.focess.veto.api.plugin.contract.JsonValue;
 public final class PluginJson {
     private PluginJson() {}
 
+    /** Converts a Jackson node into the plugin-contract {@link JsonValue} tree. */
     public static @NonNull JsonValue fromNode(@NonNull JsonNode node) {
         if (node.isNull()) return JsonValue.NullValue.INSTANCE;
         if (node.isBoolean()) return new JsonValue.BooleanValue(node.booleanValue());
@@ -30,11 +31,13 @@ public final class PluginJson {
         throw new IllegalArgumentException("Unsupported plugin JSON value");
     }
 
+    /** Converts a Jackson node into a {@link JsonValue.ObjectValue}, rejecting non-object input. */
     public static JsonValue.@NonNull ObjectValue object(@NonNull JsonNode node) {
         if (fromNode(node) instanceof JsonValue.ObjectValue object) return object;
         throw new IllegalArgumentException("Expected plugin JSON object");
     }
 
+    /** Converts a plugin-contract {@link JsonValue} tree into a Jackson node. */
     public static @NonNull JsonNode toNode(@NonNull JsonValue value) {
         var json = JsonNodeFactory.instance;
         return switch (value) {

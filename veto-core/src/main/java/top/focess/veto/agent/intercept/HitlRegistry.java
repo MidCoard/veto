@@ -1,5 +1,6 @@
 package top.focess.veto.agent.intercept;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -59,6 +60,7 @@ import top.focess.veto.util.Nullness;
 public class HitlRegistry {
     private SessionInvalidations invalidations;
 
+    /** Binds the invalidation bus so transports are notified when pending vetoes change. */
     @Autowired
     public void attachInvalidations(@NonNull SessionInvalidations invalidations) {
         this.invalidations = invalidations;
@@ -107,6 +109,10 @@ public class HitlRegistry {
     private final @NonNull ConcurrentHashMap<@NonNull String, @NonNull UUID> sessions =
             new ConcurrentHashMap<>();
 
+    /**
+     * Binds the agent to its session and, on a session change, restores that session's durable
+     * grants as the agent's live grant set.
+     */
     public void setSession(@NonNull String agentId, @NonNull UUID sessionId) {
         UUID previous = sessions.put(agentId, sessionId);
         HitlHistory history = durableHistory;
@@ -120,15 +126,18 @@ public class HitlRegistry {
 
     private HitlHistory durableHistory;
 
+    /** The agent's durable decision history; empty when persistence is not attached. */
     public @NonNull List<HitlHistory.Decision> decisions(@NonNull String agent) {
         HitlHistory history = durableHistory;
         return history == null ? List.of() : history.decisions(agent);
     }
 
+    /** Records an automatic approval of an internal (agent-capability) tool call. */
     public void recordInternalApproval(@NonNull String agent, @NonNull ToolCall call) {
         record(agent, call.callId(), "AUTO", "APPROVE", "AGENT_TOOL_CAPABILITY", null);
     }
 
+    /** Wires the durable approval-history store (absent in embedded runners). */
     @Autowired
     public void attachHistory(@NonNull HitlHistory history) {
         durableHistory = history;
@@ -448,6 +457,11 @@ public class HitlRegistry {
         return register(agentId, callId, call, def, options, danger, null);
     }
 
+    /**
+     * Full registration entry point the shorter overloads delegate to: stashes the complete
+     * screening context (options, danger, relevance) for grant-building and transport display, and
+     * notifies the invalidation bus when the pending set changes.
+     */
     public @NonNull CompletableFuture<@NonNull InterceptResolution> register(
             @NonNull String agentId,
             @NonNull String callId,
@@ -747,8 +761,7 @@ public class HitlRegistry {
      * offered to the user. Entries without a stashed call are skipped. CRITICAL refusals expose
      * only the option to decline and end the hold; they cannot be approved.
      */
-    @com.fasterxml.jackson.annotation.JsonInclude(
-            com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+    @JsonInclude(JsonInclude.Include.NON_NULL)
     public record PendingVeto(
             @NonNull String agentId,
             @NonNull String callId,
@@ -757,11 +770,13 @@ public class HitlRegistry {
             @NonNull List<@NonNull String> options,
             String danger,
             String relevance) {
+        /** Defensively copies the offered option list. */
         public PendingVeto {
             options = List.copyOf(options);
         }
     }
 
+    /** Transport-facing snapshot of the agent's unresolved pending vetoes. */
     public @NonNull List<PendingVeto> pendingFor(@NonNull String agentId) {
         List<PendingVeto> out = new ArrayList<>();
         String prefix = agentId + "|";

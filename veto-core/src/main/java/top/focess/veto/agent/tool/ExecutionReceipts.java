@@ -26,6 +26,10 @@ public final class ExecutionReceipts {
     private static final ConcurrentHashMap<ToolCallContext, Receipt> PENDING =
             new ConcurrentHashMap<>();
 
+    /**
+     * Records a single-use receipt for the current call. Rejects any context, call-id, or validity
+     * mismatch and a second publication for the same context.
+     */
     public static void publish(ToolCallContext context, String id, BooleanSupplier valid) {
         if (!context.equals(ToolCallContextHolder.get())
                 || !context.executionPermit().callId().equals(ToolCallContextHolder.currentCallId())
@@ -35,6 +39,10 @@ public final class ExecutionReceipts {
             throw new SecurityException("Execution receipt already published");
     }
 
+    /**
+     * Consumes the receipt published for the current context, returning its id only when the call
+     * id matches and the receipt is still valid; otherwise {@code null}.
+     */
     public static @Nullable String consume(String callId) {
         var context = ToolCallContextHolder.get();
         if (context == null) return null;
@@ -46,6 +54,9 @@ public final class ExecutionReceipts {
                 : null;
     }
 
+    /**
+     * Drops any unconsumed receipt for the given context; a no-op when the context is {@code null}.
+     */
     public static void discard(@Nullable ToolCallContext context) {
         if (context != null) PENDING.remove(context);
     }

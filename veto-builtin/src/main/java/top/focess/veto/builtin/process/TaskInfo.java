@@ -4,6 +4,7 @@ import java.time.*;
 import java.util.*;
 import org.jspecify.annotations.NonNull;
 
+/** Immutable snapshot of a background task identity and lifecycle state. */
 public record TaskInfo(
         @NonNull String taskId,
         @NonNull String agentId,
@@ -18,6 +19,7 @@ public record TaskInfo(
         @NonNull UUID taskInstanceId,
         String requestId) {
 
+    /** Compatibility constructor without request correlation. */
     public TaskInfo(
             @NonNull String taskId,
             @NonNull String agentId,

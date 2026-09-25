@@ -12,16 +12,20 @@ import org.springframework.transaction.annotation.Transactional;
 public class RequestContinuationStore {
     private final @NonNull RequestContinuationRepository repository;
 
+    /** Creates the store over its repository. */
     public RequestContinuationStore(@NonNull RequestContinuationRepository repository) {
         this.repository = repository;
     }
 
+    /** The committed task, consumed-call count, and optional granted-call allowance. */
     public record Checkpoint(@NonNull String task, long consumedCalls, Long grantedCalls) {
+        /** Checkpoint with no explicit granted-call allowance. */
         public Checkpoint(@NonNull String task, long consumedCalls) {
             this(task, consumedCalls, null);
         }
     }
 
+    /** Deletes every continuation row belonging to the session. */
     @Transactional
     public void deleteSession(@NonNull String session) {
         repository.deleteByIdStartingWith(UUID.fromString(session) + ":");
@@ -32,6 +36,7 @@ public class RequestContinuationStore {
         return session + ":" + agent.length() + ":" + agent + ":" + request;
     }
 
+    /** Commits a checkpoint with no explicit allowance in its own transaction. */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void save(
             @NonNull UUID session,
@@ -42,6 +47,7 @@ public class RequestContinuationStore {
         save(session, agent, request, task, calls, null);
     }
 
+    /** Commits a checkpoint in its own transaction; consumed calls and grants never regress. */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void save(
             @NonNull UUID session,
@@ -70,6 +76,7 @@ public class RequestContinuationStore {
         repository.saveAndFlush(new RequestContinuationEntity(id, task, calls, grantedCalls));
     }
 
+    /** Loads the committed checkpoint for one session/agent/request, if any. */
     @Transactional
     public @NonNull Optional<Checkpoint> load(
             @NonNull UUID session, @NonNull String agent, @NonNull String request) {

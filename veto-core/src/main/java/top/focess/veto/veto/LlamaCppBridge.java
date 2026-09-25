@@ -50,6 +50,7 @@ public class LlamaCppBridge {
 
     private volatile boolean available = false;
 
+    /** Creates the bridge; the llama.cpp subprocess is started lazily by {@link #start()}. */
     public LlamaCppBridge(
             @NonNull SlmConfiguration config, @NonNull GBNFGrammarEngine grammarEngine) {
         this.config = config;

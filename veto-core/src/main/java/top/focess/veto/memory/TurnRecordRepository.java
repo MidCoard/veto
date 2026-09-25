@@ -4,20 +4,27 @@ import java.util.List;
 import java.util.Optional;
 import org.jspecify.annotations.NonNull;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Spring Data JPA repository for {@link TurnRecordEntity} — the durable per-turn audit/replay log.
  */
 @Repository
 public interface TurnRecordRepository extends JpaRepository<TurnRecordEntity, String> {
+    /** One agent's single turn, located by the unique (session, agent, turn) key. */
     @NonNull Optional<TurnRecordEntity> findBySessionIdAndAgentIdAndTurnNumber(
             String sessionId, String agentId, int turnNumber);
 
-    @org.springframework.data.jpa.repository.Modifying
-    @org.springframework.transaction.annotation.Transactional
+    /**
+     * Rewrites the payload and usage of one existing turn in place; returns the number of updated
+     * rows (0 when no turn matches).
+     */
+    @Modifying
+    @Transactional
     @Query(
             "update TurnRecordEntity t set t.payload = :payload, t.llmUsage = :usage where"
                     + " t.sessionId = :sessionId and t.userId = :userId and t.agentId = :agentId and"
@@ -30,6 +37,7 @@ public interface TurnRecordRepository extends JpaRepository<TurnRecordEntity, St
             @Param("payload") String payload,
             @Param("usage") String usage);
 
+    /** The distinct non-null agent ids that have turns in a session. */
     @Query(
             "select distinct t.agentId from TurnRecordEntity t where t.sessionId = :sessionId and"
                     + " t.agentId is not null")

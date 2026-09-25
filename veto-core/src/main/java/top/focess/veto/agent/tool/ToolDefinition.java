@@ -61,6 +61,7 @@ public sealed interface ToolDefinition permits LocalToolDefinition, RemoteToolDe
     /** The deterministic danger assigned before argument-, policy-, and model-aware escalation. */
     @NonNull Danger defaultDanger();
 
+    /** The JSON Schema describing this tool's argument object, as advertised to the model. */
     @NonNull JsonNode inputSchema();
 
     /** Successful result content encodings. Failure status is carried separately. */

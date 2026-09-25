@@ -28,6 +28,7 @@ public record MonitorRecord(
         activations = activations == null ? Map.of() : Map.copyOf(activations);
     }
 
+    /** Compatibility constructor without activation states or request id. */
     public MonitorRecord(
             @NonNull String id,
             @NonNull String owner,
@@ -47,6 +48,7 @@ public record MonitorRecord(
                 createdAt, delivered, Map.of());
     }
 
+    /** Compatibility constructor without a request id. */
     public MonitorRecord(
             @NonNull String id,
             @NonNull String owner,
@@ -80,6 +82,7 @@ public record MonitorRecord(
                 null);
     }
 
+    /** Delivery lifecycle state of a single event activation. */
     public enum ActivationState {
         APPENDED,
         RUNNING,
@@ -89,12 +92,15 @@ public record MonitorRecord(
         INTERRUPTED
     }
 
+    /** Timestamped activation state of one event. */
     public record Activation(@NonNull ActivationState state, @NonNull Instant updatedAt) {}
 
+    /** Activation states keyed by event id; never null. */
     public @NonNull Map<String, Activation> activationStates() {
         return activations == null ? Map.of() : activations;
     }
 
+    /** Returns a copy with the given event moved to the next activation state. */
     public @NonNull MonitorRecord withActivation(
             @NonNull String eventId, @NonNull ActivationState next) {
         var states = new LinkedHashMap<>(activationStates());
@@ -117,6 +123,7 @@ public record MonitorRecord(
                 requestId);
     }
 
+    /** Events ready for dispatch: pending ones plus delivered ones still in APPENDED state. */
     public @NonNull List<Event> readyEvents() {
         var events = new LinkedHashMap<String, Event>();
         for (Event event : pending) events.put(event.id(), event);
@@ -128,6 +135,7 @@ public record MonitorRecord(
         return List.copyOf(events.values());
     }
 
+    /** Returns a copy marking every RUNNING activation as INTERRUPTED. */
     public @NonNull MonitorRecord interruptedActivations() {
         MonitorRecord next = this;
         for (var entry : activationStates().entrySet())
@@ -136,6 +144,7 @@ public record MonitorRecord(
         return next;
     }
 
+    /** Compatibility constructor without delivered events, activations or request id. */
     public MonitorRecord(
             @NonNull String id,
             @NonNull String owner,
@@ -154,10 +163,12 @@ public record MonitorRecord(
                 createdAt, List.of());
     }
 
+    /** Delivered events; never null. */
     public @NonNull List<Event> deliveredEvents() {
         return delivered == null ? List.of() : delivered;
     }
 
+    /** Returns a copy with the event moved from pending to delivered and marked APPENDED. */
     public @NonNull MonitorRecord acknowledge(@NonNull Event event) {
         List<Event> receipt = new ArrayList<>(deliveredEvents());
         if (receipt.stream().noneMatch(e -> e.id().equals(event.id()))) receipt.add(event);
@@ -183,6 +194,7 @@ public record MonitorRecord(
                 : next.withActivation(event.id(), ActivationState.APPENDED);
     }
 
+    /** An observation triggered by this monitor. */
     public record Event(
             @NonNull String id,
             @NonNull String monitorId,
@@ -191,6 +203,7 @@ public record MonitorRecord(
             @NonNull Instant occurredAt,
             String requestId,
             String dispatchId) {
+        /** Compatibility constructor without request/dispatch correlation. */
         public Event(
                 @NonNull String id,
                 @NonNull String monitorId,
@@ -201,6 +214,7 @@ public record MonitorRecord(
         }
     }
 
+    /** Returns a copy with the given state, seen markers and pending events. */
     public @NonNull MonitorRecord update(
             @NonNull String nextState,
             @NonNull Map<String, String> nextSeen,

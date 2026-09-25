@@ -34,10 +34,12 @@ public class Scope {
     private final Scope parent;
     private final @NonNull ObjectMapper objectMapper;
 
+    /** Creates a root scope. */
     public Scope(@NonNull ObjectMapper objectMapper) {
         this(objectMapper, null);
     }
 
+    /** Creates a scope reading through to the given parent. */
     public Scope(@NonNull ObjectMapper objectMapper, Scope parent) {
         this.objectMapper = objectMapper;
         this.parent = parent;
@@ -58,23 +60,26 @@ public class Scope {
         return UNDEFINED;
     }
 
+    /** Whether the variable is bound in this scope or any ancestor. */
     public boolean contains(String var) {
         String key = var == null ? "" : (var.startsWith("$") ? var.substring(1) : var);
         return bindings.containsKey(key) || (parent != null && parent.contains(var));
     }
 
+    /** Binds the variable in this scope, replacing any previous value. */
     public void put(@NonNull String var, @NonNull Object value) {
         String key = var.startsWith("$") ? var.substring(1) : var;
         bindings.put(key, value);
     }
 
-    /**
-     * Resolves a {@code $var|literal} spec to a concrete value (literal if no {@code $} prefix).
-     */
+    /** Creates a nested scope that reads through to this one. */
     public @NonNull Scope child() {
         return new Scope(objectMapper, this);
     }
 
+    /**
+     * Resolves a {@code $var|literal} spec to a concrete value (literal if no {@code $} prefix).
+     */
     public @NonNull Object resolveValue(Object spec) {
         if (spec == null) return NullNode.getInstance();
         if (spec instanceof JsonNode node) {
@@ -232,6 +237,7 @@ public class Scope {
         return sb.toString();
     }
 
+    /** Returns the bound value, or an empty optional when the slot is unset. */
     public @NonNull Optional<Object> opt(@NonNull String var) {
         Object v = get(var);
         return v == UNDEFINED ? Optional.empty() : Optional.of(v);

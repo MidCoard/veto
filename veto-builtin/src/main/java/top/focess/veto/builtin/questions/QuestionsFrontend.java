@@ -17,10 +17,12 @@ public final class QuestionsFrontend {
     private final @NonNull QuestionRuntime runtime;
     private final @NonNull ObjectMapper mapper = new ObjectMapper();
 
+    /** Creates a frontend backed by the given question runtime. */
     public QuestionsFrontend(@NonNull QuestionRuntime runtime) {
         this.runtime = runtime;
     }
 
+    /** Serves the bundled interactions script and routes its actions to {@link #handle}. */
     public @NonNull FrontendContribution contribution() {
         try (var stream =
                 ToolDocs.nonNullClass(QuestionsFrontend.class)
@@ -33,6 +35,7 @@ public final class QuestionsFrontend {
         }
     }
 
+    /** Answers frontend actions ({@code list}, {@code answer}, {@code cancel}). */
     public @NonNull JsonValue handle(
             FrontendContribution.@NonNull Scope scope,
             @NonNull String action,

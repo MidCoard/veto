@@ -36,6 +36,7 @@ public class TurnLogService {
     private volatile boolean enabled = true;
     private DeltaBroker deltaBroker;
 
+    /** Optional setter injection: publishes record-update deltas when a broker is present. */
     @Autowired(required = false)
     public void setDeltaBroker(@NonNull DeltaBroker deltaBroker) {
         this.deltaBroker = deltaBroker;
@@ -71,6 +72,7 @@ public class TurnLogService {
         }
     }
 
+    /** Creates the service; the repository is optional (logging is a no-op without it). */
     @Autowired
     public TurnLogService(
             @Autowired(required = false) TurnRecordRepository turnRecordRepository,

@@ -28,11 +28,13 @@ public class RoutingBusService {
     private final @NonNull ConcurrentMap<String, CompletableFuture<DAGPayload>> pendingFutures =
             new ConcurrentHashMap<>();
 
+    /** Creates the service on top of the WebSocket transport and bus configuration. */
     public RoutingBusService(@NonNull WebSocketBus webSocketBus, @NonNull BusConfiguration config) {
         this.webSocketBus = webSocketBus;
         this.config = config;
     }
 
+    /** Registers the fallback route for unhandled messages at startup. */
     @PostConstruct
     public void init() {
         // Register fallback route for unhandled messages
@@ -48,6 +50,7 @@ public class RoutingBusService {
                 config.getGrpc().getPort());
     }
 
+    /** Disconnects the WebSocket transport at shutdown. */
     @PreDestroy
     public void shutdown() {
         webSocketBus.disconnect();

@@ -21,6 +21,7 @@ public class SessionManager {
 
     private final @NonNull ConcurrentHashMap<String, Session> sessions = new ConcurrentHashMap<>();
 
+    /** Creates and registers a session for the user, returning its opaque token. */
     public @NonNull String createSession(@NonNull String username) {
         String token = UUID.randomUUID().toString();
         sessions.put(token, new Session(token, username, Instant.now()));
@@ -28,10 +29,12 @@ public class SessionManager {
         return token;
     }
 
+    /** Returns the session bound to the token, or empty when the token is unknown. */
     public @NonNull Optional<Session> validate(@NonNull String token) {
         return Optional.ofNullable(sessions.get(token));
     }
 
+    /** Removes the session bound to the token; no-op when the token is unknown. */
     public void invalidate(@NonNull String token) {
         Session removed = sessions.remove(token);
         if (removed != null) {
@@ -43,6 +46,7 @@ public class SessionManager {
         return sessions.size();
     }
 
+    /** An active authenticated session bound to an opaque token. */
     public record Session(
             @NonNull String token, @NonNull String username, @NonNull Instant createdAt) {}
 }

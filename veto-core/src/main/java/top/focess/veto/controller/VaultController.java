@@ -26,6 +26,7 @@ public class VaultController {
 
     private final @NonNull KeysteadVault vault;
 
+    /** Creates the controller with the credential vault. */
     public VaultController(@NonNull KeysteadVault vault) {
         this.vault = vault;
     }
@@ -71,6 +72,7 @@ public class VaultController {
         return ResponseEntity.noContent().build();
     }
 
+    /** Deletes the credential note under the title; 404 when no such note exists. */
     @DeleteMapping("/notes/{title}")
     public @NonNull ResponseEntity<Void> delete(@PathVariable @NonNull String title) {
         requireUser();

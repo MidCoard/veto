@@ -28,6 +28,7 @@ public final class WebReadSession implements WebDocumentCapability, IsolatedAgen
     private volatile Result result;
     private volatile ToolExecutionException failure;
 
+    /** Creates the session reading the given approved destination under the reader runtime. */
     public WebReadSession(
             IsolatedAgent.@NonNull Runtime runtime, @NonNull ApprovedHttpDestination destination) {
         this.runtime = runtime;
@@ -143,15 +144,18 @@ public final class WebReadSession implements WebDocumentCapability, IsolatedAgen
                 usage.outputTokens());
     }
 
+    /** Rethrows the recorded reader failure, if any. */
     public void check() {
         var error = failure;
         if (error != null) throw error;
     }
 
+    /** Returns the settled finish result, or null when the reader did not complete. */
     public Result result() {
         return result;
     }
 
+    /** Returns the recorded reader failure, or null when none occurred. */
     public ToolExecutionException failure() {
         return failure;
     }
@@ -172,6 +176,7 @@ public final class WebReadSession implements WebDocumentCapability, IsolatedAgen
         document = null;
     }
 
+    /** Validates the finish arguments and assembles the settled read result. */
     public static @NonNull Result finish(
             @NonNull FinishReadArgs value,
             @NonNull WebReadDocument document,

@@ -63,8 +63,10 @@ public class ModelTierBindingEntity {
         contextWindowTokens = value;
     }
 
+    /** JPA no-arg constructor. */
     protected ModelTierBindingEntity() {}
 
+    /** Create an empty binding for one tier of a profile; all configuration fields start unset. */
     public ModelTierBindingEntity(@NonNull String profileId, @NonNull ModelTier tier) {
         this.id = UUID.randomUUID().toString();
         this.profileId = profileId;

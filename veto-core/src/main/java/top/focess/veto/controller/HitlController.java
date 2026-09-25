@@ -35,6 +35,7 @@ public class HitlController {
     private final @NonNull HitlRegistry hitlRegistry;
     private final @NonNull KeysteadVault vault;
 
+    /** Creates the controller with session, agent, HITL-registry, and vault collaborators. */
     public HitlController(
             @NonNull SessionService sessionService,
             @NonNull AgentService agentService,

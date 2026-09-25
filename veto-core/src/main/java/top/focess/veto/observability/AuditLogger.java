@@ -25,6 +25,7 @@ public class AuditLogger {
 
     private final @NonNull AtomicLong totalRecordsWritten = new AtomicLong(0);
 
+    /** Creates the logger; the store is initialized by {@link #init()}. */
     public AuditLogger(
             @NonNull ObservabilityConfiguration config,
             @NonNull TamperProofStore tamperProofStore) {
@@ -32,6 +33,7 @@ public class AuditLogger {
         this.tamperProofStore = tamperProofStore;
     }
 
+    /** Initializes the underlying tamper-proof store (directories + hash-chain tail). */
     @PostConstruct
     public void init() {
         tamperProofStore.initialize();
@@ -40,6 +42,7 @@ public class AuditLogger {
                 config.isEncryptionEnabled());
     }
 
+    /** Logs the record count written during this session on shutdown. */
     @PreDestroy
     public void shutdown() {
         log.info(

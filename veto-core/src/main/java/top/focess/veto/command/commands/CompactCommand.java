@@ -18,6 +18,7 @@ public class CompactCommand extends VetoCommand {
 
     private final @NonNull PromptHandler promptHandler;
 
+    /** Constructs the {@code /compact} command resolving the active agent via the handler. */
     public CompactCommand(@NonNull PromptHandler promptHandler) {
         super("compact", "Summarize and compact the active agent's history segment");
         this.promptHandler = promptHandler;

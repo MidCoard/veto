@@ -32,12 +32,14 @@ public class ModelTierController {
     private final @NonNull ModelTierProfileService profiles;
     private final @NonNull KeysteadVault vault;
 
+    /** Creates the controller with the profile service and vault. */
     public ModelTierController(
             @NonNull ModelTierProfileService profiles, @NonNull KeysteadVault vault) {
         this.profiles = profiles;
         this.vault = vault;
     }
 
+    /** Lists the current user's profiles, each with its name, active flag, and creation time. */
     @GetMapping
     public @NonNull List<ModelTierProfileResponse> list() {
         return profiles.listProfiles(requireUser()).stream()
@@ -45,6 +47,7 @@ public class ModelTierController {
                 .toList();
     }
 
+    /** Creates a new empty profile; 400 without a name, 409 if the name already exists. */
     @PostMapping
     public @NonNull ModelTierProfileResponse create(
             @RequestBody @NonNull CreateModelTierProfileRequest body) {
@@ -68,6 +71,7 @@ public class ModelTierController {
                                         Msg.get("error.tier.profileMissingAfterCreate")));
     }
 
+    /** Makes the named profile the user's active one; 404 if it does not exist. */
     @PostMapping("/{name}/activate")
     public @NonNull ResponseEntity<Void> activate(@PathVariable @NonNull String name) {
         String user = requireUser();
@@ -79,6 +83,7 @@ public class ModelTierController {
         return ResponseEntity.noContent().build();
     }
 
+    /** Deletes the named profile; 404 if it does not exist. */
     @DeleteMapping("/{name}")
     public @NonNull ResponseEntity<Void> delete(@PathVariable @NonNull String name) {
         String user = requireUser();
@@ -89,6 +94,7 @@ public class ModelTierController {
         return ResponseEntity.noContent().build();
     }
 
+    /** Lists the tier bindings of a profile; 404 if the profile does not exist. */
     @GetMapping("/{name}/bindings")
     public @NonNull List<ModelTierBindingResponse> bindings(@PathVariable @NonNull String name) {
         String user = requireUser();

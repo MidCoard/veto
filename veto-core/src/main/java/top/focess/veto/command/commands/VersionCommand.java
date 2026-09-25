@@ -19,6 +19,7 @@ import top.focess.veto.contract.Version;
  */
 public class VersionCommand extends VetoCommand {
 
+    /** Constructs the {@code /version} command. */
     public VersionCommand() {
         super("version", "Show veto-core and veto-terminal versions", "ver");
     }

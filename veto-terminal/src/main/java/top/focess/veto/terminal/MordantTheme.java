@@ -16,6 +16,11 @@ public final class MordantTheme implements Theme {
 
     private final @NonNull Terminal terminal;
 
+    /**
+     * Constructs a theme backed by the given Mordant terminal.
+     *
+     * @param terminal the Mordant terminal providing ANSI capability detection and styling
+     */
     public MordantTheme(@NonNull Terminal terminal) {
         this.terminal = terminal;
     }

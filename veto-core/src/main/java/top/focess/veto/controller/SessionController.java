@@ -44,6 +44,7 @@ public class SessionController {
     private final @NonNull SessionRecordService recordService;
     private final @NonNull SessionAgentRegistry agentRegistry;
 
+    /** Creates the controller with session, vault, history, record, and agent-registry services. */
     public SessionController(
             @NonNull SessionService service,
             @NonNull KeysteadVault vault,
@@ -57,6 +58,7 @@ public class SessionController {
         this.agentRegistry = agentRegistry;
     }
 
+    /** Lists the current user's sessions; empty when not logged in. */
     @GetMapping
     public @NonNull List<SessionEntity> list() {
         String user = vault.currentUser();
@@ -93,6 +95,7 @@ public class SessionController {
                 body.pluginIds());
     }
 
+    /** Deletes an owned session by name; 404 when the user has no such session. */
     @DeleteMapping("/{name}")
     public @NonNull ResponseEntity<?> delete(@PathVariable @NonNull String name) {
         String user = vault.currentUser();
@@ -172,6 +175,7 @@ public class SessionController {
                 .toList();
     }
 
+    /** Live busy/idle state per running agent of an owned session. */
     public record ExecutionState(@NonNull String agentId, boolean busy) {}
 
     /** Complete session roster, with live state overlaid on durable agent identities. */

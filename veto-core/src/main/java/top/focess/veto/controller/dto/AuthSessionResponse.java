@@ -3,6 +3,7 @@ package top.focess.veto.controller.dto;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import org.jspecify.annotations.*;
 
+/** Payload returned on successful authentication, carrying the new session token and user role. */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record AuthSessionResponse(
         @NonNull String status,

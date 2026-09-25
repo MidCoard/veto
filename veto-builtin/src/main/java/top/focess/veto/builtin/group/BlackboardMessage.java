@@ -30,6 +30,7 @@ public record BlackboardMessage(
         this(messageId, groupId, senderId, receiverId, type, payload, turnSeq, null);
     }
 
+    /** Direction and intent of a blackboard message between the Leader and its Mates. */
     public enum MessageType {
         /** Leader → Mate: a task or revision instruction (the Leader's authored text). */
         TASK_DISPATCH,

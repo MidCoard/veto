@@ -26,6 +26,7 @@ public class PathResolver {
     private final @NonNull PathMode pathMode;
     private final int currentRootIndex;
 
+    /** Creates a resolver over {@code roots} with {@code currentRootIndex} as operational root. */
     public PathResolver(
             @NonNull List<@NonNull WorkspaceRoot> roots,
             @NonNull PathMode pathMode,

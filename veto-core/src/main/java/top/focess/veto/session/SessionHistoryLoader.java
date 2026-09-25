@@ -10,6 +10,7 @@ import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
+import top.focess.veto.agent.RecordUsage;
 import top.focess.veto.agent.TurnRecord;
 import top.focess.veto.agent.TurnType;
 import top.focess.veto.memory.TurnRecordEntity;
@@ -31,11 +32,13 @@ public class SessionHistoryLoader {
     private final @NonNull TurnRecordRepository repo;
     private final @NonNull ObjectMapper mapper;
 
+    /** Creates the loader over the durable turn-record log. */
     public SessionHistoryLoader(@NonNull TurnRecordRepository repo, @NonNull ObjectMapper mapper) {
         this.repo = repo;
         this.mapper = mapper;
     }
 
+    /** Loads every agent's turns in a session, merged by turn number (the whole-session replay). */
     public @NonNull List<TurnRecord> load(@NonNull String sessionId) {
         List<TurnRecordEntity> rows = repo.findBySessionIdOrderByTurnNumberAsc(sessionId);
         return mapRows(rows, sessionId);
@@ -70,10 +73,8 @@ public class SessionHistoryLoader {
                                 payload,
                                 row.getTimestamp(),
                                 row.getLlmUsage() == null
-                                        ? top.focess.veto.agent.RecordUsage.decode(
-                                                payload.get("llmUsage"))
-                                        : top.focess.veto.agent.RecordUsage.read(
-                                                row.getLlmUsage())));
+                                        ? RecordUsage.decode(payload.get("llmUsage"))
+                                        : RecordUsage.read(row.getLlmUsage())));
             } catch (Exception e) {
                 // A single bad row must not abort replay of the rest.
                 log.warn(

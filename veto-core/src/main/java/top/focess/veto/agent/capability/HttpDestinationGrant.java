@@ -47,6 +47,7 @@ public final class HttpDestinationGrant implements ApprovedHttpDestination {
             throw new SecurityException("Approved destination invocation changed or ended");
     }
 
+    /** Binds this grant to an isolated child runtime and its approved operation. */
     public synchronized void bind(IsolatedAgent.Runtime runtime, String operation) {
         parent();
         if (child != null
@@ -59,6 +60,7 @@ public final class HttpDestinationGrant implements ApprovedHttpDestination {
         this.operation = operation;
     }
 
+    /** Requires the bound operation to be one of the given private tool names. */
     public void requireOperation(Set<String> tools) {
         var bound = operation;
         if (bound == null || !tools.contains(bound))
@@ -83,6 +85,7 @@ public final class HttpDestinationGrant implements ApprovedHttpDestination {
         return target.deadline();
     }
 
+    /** Fetches the screened destination once; later calls return the cached document. */
     public HttpDocument fetch() {
         long deadline = authorizeFetch();
         var value = cached;
@@ -98,6 +101,7 @@ public final class HttpDestinationGrant implements ApprovedHttpDestination {
         }
     }
 
+    /** Publishes execution receipts for a successfully settled child of this grant. */
     public void publish(IsolatedAgent handle) {
         parent();
         if (!(handle instanceof IsolatedExecutions.Child execution)
@@ -110,6 +114,7 @@ public final class HttpDestinationGrant implements ApprovedHttpDestination {
         ExecutionReceipts.publish(parent, scope.id(), scope::provenanceLive);
     }
 
+    /** Ends the grant and discards any cached document. */
     public synchronized void close() {
         closed = true;
         cached = null;

@@ -17,6 +17,7 @@ public class SecurityContextInterceptor implements HandlerInterceptor {
 
     private final @NonNull SessionManager sessionManager;
 
+    /** Creates the interceptor with the session manager used to validate tokens. */
     public SecurityContextInterceptor(@NonNull SessionManager sessionManager) {
         this.sessionManager = sessionManager;
     }

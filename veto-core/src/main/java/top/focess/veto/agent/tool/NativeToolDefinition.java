@@ -25,10 +25,12 @@ public record NativeToolDefinition(
         Provenance provenance,
         ToolPresentation presentation)
         implements LocalToolDefinition {
+    /** Compact constructor: freezes the parameter hints into an unmodifiable copy. */
     public NativeToolDefinition {
         paramHints = Map.copyOf(paramHints);
     }
 
+    /** Full constructor including plugin provenance; presentation defaults to {@code null}. */
     public NativeToolDefinition(
             @NonNull String name,
             @NonNull String description,

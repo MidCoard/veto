@@ -93,6 +93,7 @@ import top.focess.veto.api.agent.tool.WorkspaceWriteTool;
 public final class WriteToFileTool implements WorkspaceWriteTool<WriteToFileTool.Args> {
     private static final int MAX_TEXT_BYTES = 16 * 1024 * 1024;
 
+    /** Model-facing arguments of {@code write_to_file}. */
     public record Args(
             @SecurityHint(ParamCategory.FILESYSTEM_PATH) @Doc("Absolute path of the file to write.")
                     @NonNull String absolutePath,
@@ -136,5 +137,6 @@ public final class WriteToFileTool implements WorkspaceWriteTool<WriteToFileTool
         }
     }
 
+    /** JSON result payload of {@code write_to_file}. */
     public record Result(@NonNull String status, @NonNull String file, int bytes) {}
 }

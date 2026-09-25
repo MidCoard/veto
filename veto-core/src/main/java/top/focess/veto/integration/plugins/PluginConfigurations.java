@@ -56,6 +56,7 @@ public final class PluginConfigurations {
         this.configuration = configuration;
     }
 
+    /** Operator-configured values for the given plugin id as JSON; empty when none are set. */
     public JsonValue.@NonNull ObjectValue forPlugin(@NonNull String id) {
         Map<@NonNull String, @NonNull JsonValue> values = new LinkedHashMap<>();
         configuration

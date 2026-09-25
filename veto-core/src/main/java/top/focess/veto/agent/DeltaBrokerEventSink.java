@@ -15,6 +15,9 @@ public final class DeltaBrokerEventSink implements AgentEventSink {
     private final @NonNull UUID sessionId;
     private final DeltaBroker broker;
 
+    /**
+     * @param broker the session broker to publish to; {@code null} disables publication entirely
+     */
     public DeltaBrokerEventSink(
             @NonNull String agentId, @NonNull UUID sessionId, DeltaBroker broker) {
         this.agentId = agentId;

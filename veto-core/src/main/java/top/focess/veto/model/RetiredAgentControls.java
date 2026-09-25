@@ -13,6 +13,9 @@ import org.springframework.stereotype.Component;
 public class RetiredAgentControls implements ApplicationRunner {
     private final @NonNull JdbcTemplate jdbc;
 
+    /**
+     * @param jdbc template used to run the column-drop DDL at startup
+     */
     public RetiredAgentControls(@NonNull JdbcTemplate jdbc) {
         this.jdbc = jdbc;
     }

@@ -40,6 +40,7 @@ public class WebSocketBus extends TextWebSocketHandler {
     private final @NonNull Map<@NonNull String, @NonNull Consumer<String>> messageRouteTable =
             new ConcurrentHashMap<>();
 
+    /** Creates the transport with its configuration, codec, and heartbeat/reconnection helpers. */
     public WebSocketBus(
             @NonNull BusConfiguration config,
             @NonNull ObjectMapper objectMapper,
@@ -174,6 +175,7 @@ public class WebSocketBus extends TextWebSocketHandler {
         return current != null && current.isOpen();
     }
 
+    /** Stops heartbeats and closes the backend connection if one is open. */
     public void disconnect() {
         heartbeatManager.stop();
         WebSocketSession current = session;

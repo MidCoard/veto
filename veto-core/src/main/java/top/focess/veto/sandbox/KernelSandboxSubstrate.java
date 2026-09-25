@@ -69,6 +69,10 @@ public class KernelSandboxSubstrate {
     private final @NonNull MacOsSeatbeltSandbox macOsSeatbelt = new MacOsSeatbeltSandbox();
     private final @NonNull LinuxBubblewrapSandbox linuxBubblewrap = new LinuxBubblewrapSandbox();
 
+    /**
+     * Loads the platform's native sandbox bindings. Load failures degrade to an unavailable wall
+     * ({@link #isAvailable()} reports {@code false}) rather than throwing.
+     */
     public KernelSandboxSubstrate() {
         WindowsKernel32 w = null;
         Kernel32 wk = null;
@@ -204,6 +208,10 @@ public class KernelSandboxSubstrate {
         return prepareCommand(targetCommand, profile, profile.workspaceRoot());
     }
 
+    /**
+     * Variant of {@link #prepareCommand(List, SandboxProfile)} that wraps the target for an
+     * explicit working directory instead of the profile's workspace root.
+     */
     public @NonNull PreparedCommand prepareCommand(
             @NonNull List<@NonNull String> targetCommand,
             @NonNull SandboxProfile profile,
@@ -316,6 +324,10 @@ public class KernelSandboxSubstrate {
             return command;
         }
 
+        /**
+         * Blocks until the launched bootstrap signals readiness. No-op for non-gated wrappers;
+         * throws if the bootstrap exits early or the readiness timeout elapses.
+         */
         public void awaitReady(@NonNull Process bootstrap) {
             if (!gated) {
                 return;
@@ -342,6 +354,10 @@ public class KernelSandboxSubstrate {
             throw new IllegalStateException("Sandbox bootstrap readiness timed out");
         }
 
+        /**
+         * Opens the launch gate so the gated bootstrap starts the target, then closes the parent
+         * handles. For non-gated wrappers this only closes the handles.
+         */
         public void release() {
             if (!gated) {
                 close();
@@ -563,21 +579,27 @@ public class KernelSandboxSubstrate {
 
     /** Minimal JNA interface for the Windows kernel32 calls we need. */
     public interface WindowsKernel32 extends Library {
+        /** Win32 {@code CreateJobObjectW}: creates the Job Object for one sandboxed tree. */
         WinNT.HANDLE CreateJobObjectW(Pointer lpJobAttributes, String lpName);
 
+        /** Win32 {@code SetInformationJobObject}: applies one limit class to the Job. */
         boolean SetInformationJobObject(
                 WinNT.HANDLE hJob,
                 int JobObjectInfoClass,
                 Structure lpJobObjectInfo,
                 int cbJobObjectInfoLength);
 
+        /** Win32 {@code AssignProcessToJobObject}: puts the child under the Job's limits. */
         boolean AssignProcessToJobObject(WinNT.HANDLE hJob, WinNT.HANDLE hProcess);
 
+        /** Win32 {@code CreateEventW}: creates the named gate/ready event for the bootstrap. */
         WinNT.HANDLE CreateEventW(
                 Pointer eventAttributes, boolean manualReset, boolean initialState, WString name);
 
+        /** Win32 {@code SetEvent}: signals the launch gate. */
         boolean SetEvent(WinNT.HANDLE event);
 
+        /** Win32 {@code WaitForSingleObject}: waits for the bootstrap readiness event. */
         int WaitForSingleObject(WinNT.HANDLE handle, int milliseconds);
     }
 
@@ -640,6 +662,7 @@ public class KernelSandboxSubstrate {
         public BaseTSD.@NonNull SIZE_T PeakProcessMemoryUsed;
         public BaseTSD.@NonNull SIZE_T PeakJobMemoryUsed;
 
+        /** Allocates the nested structures so JNA sees the complete Win32 layout. */
         public JobObjectExtendedLimitInformation() {
             BasicLimitInformation = new JobObjectBasicLimitInformation();
             IoInfo = new IoCounters();
@@ -680,6 +703,7 @@ public class KernelSandboxSubstrate {
         private JobObjectLimit() {}
     }
 
+    /** Win32 {@code JOBOBJECT_CPU_RATE_CONTROL_INFORMATION}. */
     public static class JobObjectCpuRateControlInformation extends Structure {
         public int ControlFlags;
         public int CpuRate;
@@ -690,6 +714,7 @@ public class KernelSandboxSubstrate {
         }
     }
 
+    /** Win32 {@code JOBOBJECT_BASIC_UI_RESTRICTIONS}. */
     public static class JobObjectBasicUiRestrictions extends Structure {
         public int UIRestrictionsClass;
 
@@ -699,6 +724,7 @@ public class KernelSandboxSubstrate {
         }
     }
 
+    /** {@code JOBOBJECT_CPU_RATE_CONTROL} flag values (subset). */
     public static final class JobObjectCpuRateControl {
         public static final int JOB_OBJECT_CPU_RATE_CONTROL_ENABLE = 0x1;
         public static final int JOB_OBJECT_CPU_RATE_CONTROL_HARD_CAP = 0x4;
@@ -706,12 +732,14 @@ public class KernelSandboxSubstrate {
         private JobObjectCpuRateControl() {}
     }
 
+    /** {@code JOBOBJECT_UILIMIT} flag values (subset). */
     public static final class JobObjectUiLimit {
         public static final int JOB_OBJECT_UILIMIT_ALL = 0x000000FF;
 
         private JobObjectUiLimit() {}
     }
 
+    /** Process access rights used when opening the sandboxed child (subset). */
     public static final class ProcessAccess {
         public static final int PROCESS_TERMINATE = 0x0001;
         public static final int PROCESS_SET_QUOTA = 0x0100;

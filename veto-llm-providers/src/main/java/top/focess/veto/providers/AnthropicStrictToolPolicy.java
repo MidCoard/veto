@@ -3,6 +3,8 @@ package top.focess.veto.providers;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.util.HashSet;
 import java.util.Set;
+import java.util.regex.Pattern;
+import java.util.regex.PatternSyntaxException;
 import org.jspecify.annotations.NonNull;
 
 /**
@@ -160,9 +162,9 @@ final class AnthropicStrictToolPolicy {
                 return false;
         }
         try {
-            java.util.regex.Pattern.compile(text);
+            Pattern.compile(text);
             return true;
-        } catch (java.util.regex.PatternSyntaxException invalid) {
+        } catch (PatternSyntaxException invalid) {
             return false;
         }
     }

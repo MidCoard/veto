@@ -78,14 +78,17 @@ import top.focess.veto.builtin.process.TaskControlCapability;
 public final class InputTaskTool implements PreparedTool<InputTaskTool.Args> {
     private final TaskControlCapability capability;
 
+    /** Declaration-only instance; the host supplies the capability at execution time. */
     public InputTaskTool() {
         this.capability = null;
     }
 
+    /** Creates an instance bound to the given host capability. */
     public InputTaskTool(@NonNull TaskControlCapability capability) {
         this.capability = capability;
     }
 
+    /** Model-facing arguments of {@code input_task}. */
     public record Args(
             @NonNull @Doc("Task id returned by run_task.") String taskId,
             @NonNull @SecurityHint(ParamCategory.PROCESS_INPUT) @Doc("UTF-8 text to queue.")
@@ -120,11 +123,13 @@ public final class InputTaskTool implements PreparedTool<InputTaskTool.Args> {
         return execute(args, taskControlCapability());
     }
 
+    /** Returns the host-supplied capability; throws if none was injected. */
     public @NonNull TaskControlCapability taskControlCapability() {
         if (capability == null) throw new SecurityException("Host must supply tool capability");
         return capability;
     }
 
+    /** Runs the tool against the supplied capability. */
     public @NonNull String execute(@NonNull Args args, @NonNull TaskControlCapability capability) {
         if (args.content().isEmpty() && !args.appendNewline() && !args.closeStdin()) {
             return ToolErrors.failure(
@@ -168,6 +173,7 @@ public final class InputTaskTool implements PreparedTool<InputTaskTool.Args> {
                         queued.closeQueued()));
     }
 
+    /** JSON result payload of {@code input_task}. */
     public record Result(
             @NonNull String status,
             @NonNull String taskId,

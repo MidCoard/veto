@@ -27,6 +27,7 @@ public final class ImportedCredentialLeases {
     private final @NonNull ObjectProvider<PluginManager> plugins;
     private final @NonNull ObjectProvider<SessionPlugins> selections;
 
+    /** Creates the lease authority over the given vault, session, and plugin state. */
     public ImportedCredentialLeases(
             @NonNull KeysteadVault vault,
             @NonNull SessionRepository sessions,
@@ -38,6 +39,7 @@ public final class ImportedCredentialLeases {
         this.selections = selections;
     }
 
+    /** Opens an invocation-confined lease for the credential reference in the named argument. */
     public @NonNull ImportedCredentialLease open(
             @NonNull String argument, @NonNull String service) {
         var context = CapabilityAccess.require(ToolCapability.NETWORK_EGRESS);
@@ -53,6 +55,7 @@ public final class ImportedCredentialLeases {
         return lease;
     }
 
+    /** Closes every lease still open for a finished invocation. */
     public static void releaseInvocation(ToolCallContext context) {
         if (context == null) return;
         var leases = ACTIVE.remove(context);

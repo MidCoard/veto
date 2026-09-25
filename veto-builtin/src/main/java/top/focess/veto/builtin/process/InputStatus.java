@@ -1,5 +1,6 @@
 package top.focess.veto.builtin.process;
 
+/** Result codes for stdin queue attempts. */
 public enum InputStatus {
     QUEUED,
     TASK_NOT_FOUND,

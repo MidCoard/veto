@@ -88,10 +88,12 @@ public final class AskUserTool
 
     private final @NonNull QuestionRuntime runtime;
 
+    /** Creates an instance bound to the given question runtime. */
     public AskUserTool(@NonNull QuestionRuntime runtime) {
         this.runtime = runtime;
     }
 
+    /** Model-facing arguments of {@code ask_user}. */
     public record Args(
             @ArraySize(min = 1, max = MAX_QUESTIONS)
                     @NonNull
@@ -216,5 +218,6 @@ public final class AskUserTool
         return value.codePointCount(0, value.length());
     }
 
+    /** JSON result payload of {@code ask_user}: answers keyed by question id. */
     public record Result(@NonNull Map<String, String> answers) {}
 }

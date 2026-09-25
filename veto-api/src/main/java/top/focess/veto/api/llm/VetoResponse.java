@@ -1,6 +1,7 @@
 package top.focess.veto.api.llm;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import java.util.List;
 import org.jspecify.annotations.NonNull;
@@ -15,8 +16,7 @@ import org.jspecify.annotations.NonNull;
  * @param message optional assistant response text
  * @param citations optional resolved citations attached by the response workflow
  */
-@com.fasterxml.jackson.annotation.JsonInclude(
-        com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public record VetoResponse(
         String thought,
         @JsonIgnore List<@NonNull ToolCall> calls,

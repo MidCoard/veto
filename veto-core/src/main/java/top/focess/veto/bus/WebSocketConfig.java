@@ -23,6 +23,7 @@ public class WebSocketConfig implements WebSocketConfigurer {
     private final @NonNull VetoWebSocketAuthInterceptor authInterceptor;
     private final @NonNull BusConfiguration busConfiguration;
 
+    /** Creates the configuration with its handler, auth interceptor, and bus settings. */
     public WebSocketConfig(
             @NonNull VetoWebSocketHandler vetoWebSocketHandler,
             @NonNull VetoWebSocketAuthInterceptor authInterceptor,

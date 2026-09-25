@@ -28,6 +28,7 @@ public class LegacyGroupOwnership {
     private final SessionRepository sessions;
     private final SessionPlugins selection;
 
+    /** Creates the authority from its agent, session, and plugin-selection repositories. */
     public LegacyGroupOwnership(
             AgentInstanceRepository agents, SessionRepository sessions, SessionPlugins selection) {
         this.agents = agents;
@@ -35,6 +36,7 @@ public class LegacyGroupOwnership {
         this.selection = selection;
     }
 
+    /** Claims unowned legacy mates for the namespace, rejecting any identity mismatch. */
     @Transactional
     public void claim(String sessionId, GroupHistoryView view, String namespace) {
         var mates = view.mates();

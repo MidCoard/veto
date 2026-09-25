@@ -120,11 +120,16 @@ public final class PreparedInvocation {
         return intent;
     }
 
+    /** Re-checks that a prepared input effect's target process is still valid and alive. */
     public void revalidate() {
         if (intent instanceof ToolPreparation.InputIntent input)
             PluginProcessHosts.validateInput(plugin, invocation, input.process());
     }
 
+    /**
+     * Confirms this prepared effect belongs to the given owner and the current call context,
+     * rejecting any mismatch, then {@linkplain #revalidate() revalidates} it.
+     */
     public void authorize(@NonNull ManagedPlugin owner, @NonNull ToolCallContext context) {
         if (plugin != owner
                 || !call.equals(context.executionPermit().call())
@@ -135,6 +140,7 @@ public final class PreparedInvocation {
         revalidate();
     }
 
+    /** Marks the prepared effect consumed, rejecting a second consumption of the same effect. */
     public void consume() {
         if (!consumed.compareAndSet(false, true))
             throw new SecurityException("Prepared effect already consumed");

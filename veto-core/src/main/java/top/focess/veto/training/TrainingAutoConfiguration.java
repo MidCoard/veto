@@ -21,12 +21,16 @@ public class TrainingAutoConfiguration {
     private final @NonNull TrainingManager trainingManager;
     private final @NonNull LlamaCppBridge llamaCppBridge;
 
+    /** Create the auto-configuration for the given training manager and bridge. */
     public TrainingAutoConfiguration(
             @NonNull TrainingManager trainingManager, @NonNull LlamaCppBridge llamaCppBridge) {
         this.trainingManager = trainingManager;
         this.llamaCppBridge = llamaCppBridge;
     }
 
+    /**
+     * Register the deploy callback that restarts the LlamaCppBridge with the newly deployed model.
+     */
     @PostConstruct
     public void registerDeployCallback() {
         trainingManager.setDeployCallback(

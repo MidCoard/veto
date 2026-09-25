@@ -78,6 +78,7 @@ public final class ToolExecutionBoundary {
     private final @NonNull Map<String, ScreenedInvocation> pending = new ConcurrentHashMap<>();
     private final @NonNull Set<ScreenedInvocation> approved = ConcurrentHashMap.newKeySet();
 
+    /** Wires the screening, HITL and ingress-defense authorities for one agent's tool calls. */
     public ToolExecutionBoundary(
             @NonNull String agentId,
             @NonNull UUID sessionId,

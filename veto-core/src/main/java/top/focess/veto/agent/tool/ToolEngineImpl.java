@@ -99,11 +99,15 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
     // Injected after construction and read from worker threads; volatile for safe publication.
     private volatile SessionPlugins sessionPlugins;
 
+    /**
+     * Injects the session-plugin selection after construction; volatile for worker-thread reads.
+     */
     @Autowired
     public void attachSessionPlugins(@NonNull SessionPlugins value) {
         sessionPlugins = value;
     }
 
+    /** Spring constructor wiring the LLM object mapper, native tool beans, and bean context. */
     @Autowired
     public ToolEngineImpl(
             @Qualifier(LlmJacksonConfig.LLM_OBJECT_MAPPER) @NonNull ObjectMapper mapper,

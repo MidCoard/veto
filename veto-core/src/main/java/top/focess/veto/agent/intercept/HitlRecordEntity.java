@@ -26,8 +26,10 @@ public class HitlRecordEntity {
     @Lob private @NonNull String grantJson = "";
     private @NonNull Instant createdAt = Instant.now();
 
+    /** JPA no-arg constructor. */
     protected HitlRecordEntity() {}
 
+    /** Constructs one history row for a single HITL event. */
     public HitlRecordEntity(
             @NonNull String sessionId,
             @NonNull String agentId,

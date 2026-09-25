@@ -87,6 +87,7 @@ public final class DeletePathTool implements WorkspaceWriteTool<DeletePathTool.A
     private static final int MAX_ENTRIES = 50_000;
     private static final @NonNull Duration MAX_DURATION = Duration.ofSeconds(10);
 
+    /** Model-facing arguments of {@code delete_path}. */
     public record Args(
             @NonNull @SecurityHint(ParamCategory.FILESYSTEM_PATH) @Doc("Absolute path to delete.")
                     String absolutePath,
@@ -166,6 +167,7 @@ public final class DeletePathTool implements WorkspaceWriteTool<DeletePathTool.A
         }
     }
 
+    /** JSON result payload of {@code delete_path}. */
     public record Result(
             @NonNull String status,
             @NonNull String path,

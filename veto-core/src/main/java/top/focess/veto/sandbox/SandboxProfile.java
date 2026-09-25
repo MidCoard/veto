@@ -40,6 +40,7 @@ public record SandboxProfile(
         @NonNull Set<@NonNull Path> readExecuteRoots,
         @NonNull Set<@NonNull Path> readWriteExecuteRoots) {
 
+    /** Canonicalizes all paths to absolute-normal form and validates the resource caps. */
     public SandboxProfile {
         workspaceRoot = workspaceRoot.toAbsolutePath().normalize();
         deniedPaths =

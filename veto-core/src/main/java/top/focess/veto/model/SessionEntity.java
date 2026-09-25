@@ -2,10 +2,12 @@ package top.focess.veto.model;
 
 import jakarta.persistence.*;
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.AgentService;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
+import top.focess.veto.api.plugin.PluginBinding;
 import top.focess.veto.integration.plugins.PluginBindingsConverter;
 import top.focess.veto.llm.core.ToolResultPresentationModeConverter;
 import top.focess.veto.session.SessionService;
@@ -18,19 +20,24 @@ import top.focess.veto.session.SessionService;
 @Table(name = "sessions")
 public class SessionEntity {
 
-    @jakarta.persistence.Convert(converter = PluginBindingsConverter.class)
+    @Convert(converter = PluginBindingsConverter.class)
     @Column(name = "plugin_bindings", columnDefinition = "TEXT")
-    private java.util.List<top.focess.veto.api.plugin.PluginBinding> pluginBindings;
+    private List<PluginBinding> pluginBindings;
 
-    public java.util.List<top.focess.veto.api.plugin.PluginBinding> getPluginBindings() {
+    public List<PluginBinding> getPluginBindings() {
         return pluginBindings;
     }
 
-    public void setPluginBindings(
-            java.util.@NonNull List<top.focess.veto.api.plugin.PluginBinding> value) {
+    /**
+     * Set the session's plugin bindings once; a session's plugin selection is immutable after the
+     * first set.
+     *
+     * @throws IllegalStateException if bindings were already set
+     */
+    public void setPluginBindings(@NonNull List<PluginBinding> value) {
         if (pluginBindings != null)
             throw new IllegalStateException("Session plugins are immutable");
-        pluginBindings = java.util.List.copyOf(value);
+        pluginBindings = List.copyOf(value);
     }
 
     @Id private @NonNull String id = "";
@@ -68,8 +75,10 @@ public class SessionEntity {
     @Column(name = "last_active_at")
     private Instant lastActiveAt;
 
+    /** JPA no-arg constructor. */
     protected SessionEntity() {}
 
+    /** Create a session with no workspace roots (falls back to the JVM working dir on use). */
     public SessionEntity(@NonNull String owner, @NonNull String name) {
         this(owner, name, null);
     }
@@ -84,6 +93,12 @@ public class SessionEntity {
         this(owner, name, workspaceRoots, ToolResultPresentationMode.BASIC);
     }
 
+    /**
+     * @param owner the session owner
+     * @param name the session name
+     * @param workspaceRoots CSV of host paths backing the session's workspace
+     * @param toolResultPresentation the session-start tool-result presentation mode
+     */
     public SessionEntity(
             @NonNull String owner,
             @NonNull String name,
@@ -92,6 +107,12 @@ public class SessionEntity {
         this(owner, name, workspaceRoots, 0, toolResultPresentation);
     }
 
+    /**
+     * Canonical full constructor. The presentation mode is stored in canonical form and the session
+     * starts with {@code lastActiveAt} equal to its creation time.
+     *
+     * @param currentWorkspaceRootIndex index of the root used for relative paths and execution
+     */
     public SessionEntity(
             @NonNull String owner,
             @NonNull String name,
@@ -132,6 +153,7 @@ public class SessionEntity {
         this.workspaceRoots = workspaceRoots;
     }
 
+    /** Index of the workspace root used for relative paths; legacy null rows mean index 0. */
     public int getCurrentWorkspaceRootIndex() {
         return currentWorkspaceRootIndex == null ? 0 : currentWorkspaceRootIndex;
     }
@@ -144,6 +166,7 @@ public class SessionEntity {
         this.primaryAgentId = primaryAgentId;
     }
 
+    /** The session-start presentation mode, canonicalized; legacy null rows mean BASIC. */
     public @NonNull ToolResultPresentationMode getToolResultPresentation() {
         return ToolResultPresentationMode.canonicalize(toolResultPresentation);
     }
@@ -156,6 +179,7 @@ public class SessionEntity {
         return lastActiveAt;
     }
 
+    /** Refresh {@code lastActiveAt} to now. */
     public void touch() {
         this.lastActiveAt = Instant.now();
     }

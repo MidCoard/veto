@@ -17,6 +17,14 @@ public final class MdcSecretDetectionModel implements SecretDetectionModel {
     private final @NonNull PromptRenderer prompts;
     private final @NonNull String grammar;
 
+    /**
+     * Builds a detection model over host local inference, loading the plugin-owned GBNF detection
+     * grammar from the classpath.
+     *
+     * @param model the host local-model completion resource
+     * @param prompts the host prompt renderer used to compile the detection prompt
+     * @throws IllegalStateException if the bundled detection grammar is missing or unreadable
+     */
     public MdcSecretDetectionModel(
             @NonNull LocalModelCompletion model, @NonNull PromptRenderer prompts) {
         this.model = model;
@@ -31,10 +39,18 @@ public final class MdcSecretDetectionModel implements SecretDetectionModel {
         }
     }
 
+    /** Reports availability of the underlying host local model. */
     public boolean isAvailable() {
         return model.isAvailable();
     }
 
+    /**
+     * Compiles the detection prompt with the given data and runs a grammar-constrained completion.
+     *
+     * @param source the prompt-template source identifier to compile
+     * @param data bindings substituted into the prompt; {@code null} values are dropped
+     * @return the constrained completion, or empty when the model produces none
+     */
     public @NonNull Optional<String> complete(
             @NonNull String source, @NonNull Map<String, ?> data) {
         Map<String, Object> bound = new HashMap<>();

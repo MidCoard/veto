@@ -35,6 +35,7 @@ public final class SandboxBootstrap {
         System.exit(run(args));
     }
 
+    /** Whether {@code args} begins with a Veto sandbox bootstrap marker (Windows or Linux). */
     public static boolean isInvocation(@NonNull String @NonNull [] args) {
         return args.length > 0 && (MARKER.equals(args[0]) || LINUX_CHILD_MARKER.equals(args[0]));
     }

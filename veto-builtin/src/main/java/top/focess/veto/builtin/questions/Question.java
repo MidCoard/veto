@@ -4,6 +4,7 @@ import java.util.*;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.agent.tool.*;
 
+/** A single multiple-choice question posed to the user. */
 public record Question(
         @StringConstraint(minLength = 1, maxLength = 12)
                 @NonNull

@@ -86,6 +86,7 @@ import top.focess.veto.api.agent.tool.WorkspaceReadTool;
 public final class ViewFileTool implements WorkspaceReadTool<ViewFileTool.Args> {
     private final WorkspaceReadCapability protectedFiles;
 
+    /** Creates an instance bound to the given protected-files capability. */
     public ViewFileTool(@NonNull WorkspaceReadCapability protectedFiles) {
         this.protectedFiles = protectedFiles;
     }

@@ -23,6 +23,7 @@ public final class ProcessRuntime implements SessionLifecycle {
     private final @NonNull BackgroundTasks tasks;
     private TaskEvents events;
 
+    /** Creates the runtime bound to the context-supplied process host. */
     public ProcessRuntime(@NonNull PluginContext context) {
         this.context = context;
         tasks =
@@ -35,6 +36,7 @@ public final class ProcessRuntime implements SessionLifecycle {
                                                                 "Process host unavailable")));
     }
 
+    /** Registers the event notifier and wires it as the task listener. */
     public void events(@NonNull TaskEvents events) {
         this.events = events;
         tasks.listener(events);
@@ -62,6 +64,7 @@ public final class ProcessRuntime implements SessionLifecycle {
         tasks.onOwnerClosed(owner);
     }
 
+    /** Returns the volatile background-task registry. */
     public @NonNull BackgroundTasks tasks() {
         return tasks;
     }
@@ -78,6 +81,7 @@ public final class ProcessRuntime implements SessionLifecycle {
                         .invocation(tool));
     }
 
+    /** Returns a scope-checked execution capability for the named tool. */
     public @NonNull ProcessExecutionCapability execution(@NonNull String tool) {
         return new ProcessExecutionCapability() {
             @Override
@@ -110,6 +114,7 @@ public final class ProcessRuntime implements SessionLifecycle {
         };
     }
 
+    /** Returns a scope-checked task-control capability for the named tool. */
     public @NonNull TaskControlCapability control(@NonNull String tool) {
         return new TaskControlCapability() {
             @Override

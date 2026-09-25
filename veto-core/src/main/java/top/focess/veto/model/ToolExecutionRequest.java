@@ -18,11 +18,16 @@ public class ToolExecutionRequest {
     private volatile String resultPayload;
     private volatile String errorMessage;
 
+    /** Create a request with a random id and no credential, session, or workflow context. */
     public ToolExecutionRequest(
             @NonNull String capabilityName, @NonNull Map<String, Object> arguments) {
         this(UUID.randomUUID().toString(), capabilityName, arguments, Set.of(), "", "");
     }
 
+    /**
+     * Create a {@code PENDING} request with defensive immutable copies of {@code arguments} and
+     * {@code requiredCredentials} (null treated as empty).
+     */
     public ToolExecutionRequest(
             @NonNull String id,
             @NonNull String capabilityName,
@@ -102,11 +107,13 @@ public class ToolExecutionRequest {
         this.status = ToolExecutionStatus.RUNNING;
     }
 
+    /** Mark the request {@code VETOED}, recording the veto reason as the error message. */
     public synchronized void markVetoed(@NonNull String reason) {
         this.status = ToolExecutionStatus.VETOED;
         this.errorMessage = reason;
     }
 
+    /** Lifecycle status of a tool execution request. */
     public enum ToolExecutionStatus {
         PENDING,
         RUNNING,

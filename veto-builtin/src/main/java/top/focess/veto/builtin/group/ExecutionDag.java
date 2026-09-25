@@ -28,6 +28,7 @@ public record ExecutionDag(@NonNull UUID groupId, @NonNull List<DagNode> nodes) 
         return hasUnfinishedWork(node -> true);
     }
 
+    /** Unfinished work restricted to the nodes belonging to the given request, if any. */
     public boolean hasUnfinishedWork(String requestId) {
         return hasUnfinishedWork(node -> Objects.equals(requestId, node.requestId()));
     }

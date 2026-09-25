@@ -18,10 +18,14 @@ public final class QuestionRuntime implements SessionLifecycle, AutoCloseable {
     private final @NonNull ConcurrentHashMap<Key, Pending> pending = new ConcurrentHashMap<>();
     private boolean closed;
 
+    /** Creates the rendezvous; {@code host} may be null in declaration-only setups. */
     public QuestionRuntime(PluginHost host) {
         this.host = host;
     }
 
+    /**
+     * Registers the questions for the current invocation and blocks until answered or cancelled.
+     */
     public @NonNull AnswerBatch ask(@NonNull List<Question> questions) throws InterruptedException {
         var currentHost = host;
         if (currentHost == null) throw new IllegalStateException("Question host unavailable");
@@ -36,6 +40,7 @@ public final class QuestionRuntime implements SessionLifecycle, AutoCloseable {
         }
     }
 
+    /** Registers a question batch for the invocation; fails when the call id is already pending. */
     public synchronized @NonNull CompletableFuture<AnswerBatch> register(
             PluginHost.@NonNull Invocation invocation, @NonNull List<Question> questions) {
         if (closed) throw new IllegalStateException("Question runtime closed");
@@ -65,12 +70,14 @@ public final class QuestionRuntime implements SessionLifecycle, AutoCloseable {
         return future;
     }
 
+    /** A registered batch awaiting answers, as shown by the frontend. */
     public record PendingQuestionBatch(@NonNull String callId, @NonNull List<Question> questions) {
         public PendingQuestionBatch {
             questions = List.copyOf(questions);
         }
     }
 
+    /** Returns the pending batches for the scope, ordered by call id. */
     public @NonNull List<PendingQuestionBatch> pendingFor(@NonNull Scope scope) {
         return pending.values().stream()
                 .filter(value -> value.key().scope().equals(scope))
@@ -79,6 +86,7 @@ public final class QuestionRuntime implements SessionLifecycle, AutoCloseable {
                 .toList();
     }
 
+    /** Completes a pending batch with validated answers; returns whether it settled. */
     public boolean answer(
             @NonNull Scope scope,
             @NonNull String callId,
@@ -94,6 +102,7 @@ public final class QuestionRuntime implements SessionLifecycle, AutoCloseable {
         return value.future().complete(new AnswerBatch(Map.copyOf(answers), false));
     }
 
+    /** Completes a pending batch as cancelled; returns whether it settled. */
     public boolean cancel(@NonNull Scope scope, @NonNull String callId) {
         var value = pending.get(new Key(scope, callId));
         return value != null && value.future().complete(new AnswerBatch(Map.of(), true));

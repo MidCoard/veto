@@ -26,6 +26,7 @@ public class LocalSlmScreeningProvider implements SlmScreeningProvider {
 
     private final @NonNull LlamaCppBridge bridge;
 
+    /** Creates the provider backed by the given local llama.cpp bridge. */
     public LocalSlmScreeningProvider(@NonNull LlamaCppBridge bridge) {
         this.bridge = bridge;
     }

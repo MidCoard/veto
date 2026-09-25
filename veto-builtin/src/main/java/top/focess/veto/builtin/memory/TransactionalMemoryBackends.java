@@ -16,6 +16,7 @@ import top.focess.veto.builtin.memory.embedder.Embedder;
 
 /** Trusted builtin adapter. Owns schema compatibility and cleanup without core feature SQL. */
 public final class TransactionalMemoryBackends implements MemoryBackendFactory {
+    /** Account identity used to migrate legacy name-keyed rows to UUID-keyed rows. */
     public record Account(
             @NonNull String name,
             @NonNull UUID identity,
@@ -32,6 +33,7 @@ public final class TransactionalMemoryBackends implements MemoryBackendFactory {
     private final @NonNull Supplier<@NonNull List<Account>> accounts;
     private final @NonNull TransactionTemplate transactions;
 
+    /** Creates the backend factory over the given persistence infrastructure. */
     public TransactionalMemoryBackends(
             @NonNull EntityManager database,
             @NonNull DataSource source,

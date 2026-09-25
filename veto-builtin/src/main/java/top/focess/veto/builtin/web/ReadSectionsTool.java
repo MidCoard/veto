@@ -40,6 +40,7 @@ import top.focess.veto.api.agent.tool.ToolSecurity;
             "{\"ids\":[\"s1\",\"s2\",\"s3\",\"s4\",\"s5\",\"s6\",\"s7\",\"s8\",\"s9\"]}"
         })
 public final class ReadSectionsTool implements WebDocumentTool<ReadSectionsTool.Args> {
+    /** Model-facing arguments of {@code read_sections}. */
     public record Args(
             @Doc("One to eight section IDs from the fetched document, in reading order.")
                     @NonNull List<@NonNull String> ids) {}

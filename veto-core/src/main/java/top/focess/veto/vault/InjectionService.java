@@ -26,6 +26,7 @@ public class InjectionService {
     // Active injection sessions - cleared after use
     private final @NonNull Map<String, Map<String, String>> activeInjections = new HashMap<>();
 
+    /** Constructs the injection service reading secrets from the given vault. */
     public InjectionService(@NonNull KeysteadVault vault) {
         this.vault = vault;
     }

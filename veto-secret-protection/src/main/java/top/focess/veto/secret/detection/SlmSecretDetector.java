@@ -23,6 +23,10 @@ public final class SlmSecretDetector implements SecretDetector {
     private final SecretDetectionModel model;
     private volatile boolean degradedLogged;
 
+    /**
+     * @param model the local detection model, or {@code null} to fall back to the deterministic
+     *     patterns alone
+     */
     public SlmSecretDetector(SecretDetectionModel model) {
         this.model = model;
     }

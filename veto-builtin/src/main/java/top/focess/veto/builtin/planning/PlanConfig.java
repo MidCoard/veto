@@ -9,10 +9,12 @@ public record PlanConfig(int maxSteps) {
         if (maxSteps < 1) throw new IllegalArgumentException("plan-max-steps must be positive");
     }
 
+    /** Returns the builtin default step ceiling. */
     public static @NonNull PlanConfig defaults() {
         return new PlanConfig(1000);
     }
 
+    /** Reads {@code plan-max-steps} from plugin configuration, falling back to defaults. */
     public static @NonNull PlanConfig from(JsonValue.@NonNull ObjectValue configuration) {
         var value = configuration.values().get("plan-max-steps");
         if (value == null) return defaults();

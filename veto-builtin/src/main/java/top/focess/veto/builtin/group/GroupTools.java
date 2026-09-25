@@ -73,14 +73,17 @@ public final class GroupTools {
 
         private final DelegationCapability capability;
 
+        /** Declaration-only instance; the host supplies the capability at execution time. */
         public CreateGroup() {
             this.capability = null;
         }
 
+        /** Creates an instance bound to the given host capability. */
         public CreateGroup(@NonNull DelegationCapability capability) {
             this.capability = capability;
         }
 
+        /** Model-facing arguments of {@code create_group}. */
         public record Args(
                 @SecurityHint(ParamCategory.GENERIC)
                         @Doc("Short brief of the work to be done and the expected result.")
@@ -163,14 +166,17 @@ public final class GroupTools {
 
         private final GroupControlCapability capability;
 
+        /** Declaration-only instance; the host supplies the capability at execution time. */
         public DisbandGroup() {
             this.capability = null;
         }
 
+        /** Creates an instance bound to the given host capability. */
         public DisbandGroup(@NonNull GroupControlCapability capability) {
             this.capability = capability;
         }
 
+        /** Model-facing arguments of {@code disband_group}; the tool takes no input. */
         public record Args() {}
 
         @Override
@@ -268,14 +274,17 @@ public final class GroupTools {
 
         private final GroupControlCapability capability;
 
+        /** Declaration-only instance; the host supplies the capability at execution time. */
         public InspectGroup() {
             this.capability = null;
         }
 
+        /** Creates an instance bound to the given host capability. */
         public InspectGroup(@NonNull GroupControlCapability capability) {
             this.capability = capability;
         }
 
+        /** Model-facing arguments of {@code inspect_group}. */
         public record Args(
                 @SecurityHint(ParamCategory.GENERIC)
                         @Doc("Last consumed Blackboard sequence; omit or use 0 for the first read.")
@@ -337,6 +346,7 @@ public final class GroupTools {
         }
     }
 
+    /** {@code post_message} - record a Leader note in the group's blackboard. */
     @ToolDoc(
             resultFormats = {ToolResultFormat.PLAINTEXT},
             description = "Record a Leader note in the group's Blackboard.",
@@ -374,14 +384,17 @@ public final class GroupTools {
 
         private final GroupControlCapability capability;
 
+        /** Declaration-only instance; the host supplies the capability at execution time. */
         public PostMessage() {
             this.capability = null;
         }
 
+        /** Creates an instance bound to the given host capability. */
         public PostMessage(@NonNull GroupControlCapability capability) {
             this.capability = capability;
         }
 
+        /** Model-facing arguments of {@code post_message}. */
         public record Args(
                 @SecurityHint(ParamCategory.GENERIC)
                         @Doc("Note type: ARTIFACT_REF, LOG_REF, FEEDBACK or STATUS.")

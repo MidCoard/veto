@@ -8,5 +8,6 @@ import top.focess.veto.api.llm.ToolCall;
 
 /** Calls only the remote tool and endpoint bound at registration, for the authorized caller. */
 public sealed interface RemoteCallCapability extends Capability permits RemoteCallCapabilityImpl {
+    /** Invokes the bound remote tool with the call's arguments and returns its JSON result. */
     @NonNull JsonNode call(@NonNull ToolCall call) throws IOException;
 }

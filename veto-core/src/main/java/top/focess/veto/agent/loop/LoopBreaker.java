@@ -37,6 +37,7 @@ public final class LoopBreaker {
         restore(consumedCalls, maxCallsPerEpisode < 0 ? -1 : maxCallsPerEpisode);
     }
 
+    /** Restores both consumed calls and granted allowance from a checkpoint. */
     public void restore(long consumedCalls, long allowance) {
         if (consumedCalls < 0 || allowance < -1)
             throw new IllegalArgumentException("Invalid model-call checkpoint");

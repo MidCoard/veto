@@ -16,6 +16,12 @@ public final class ToolContractValidator {
 
     private ToolContractValidator() {}
 
+    /**
+     * Validates a definition's result formats and, for local tools, its documentation and examples,
+     * then applies the flavour-specific capability/parameter rules.
+     *
+     * @throws IllegalArgumentException if any contract check fails
+     */
     public static void validate(@NonNull ToolDefinition definition) {
         validateResultFormats(definition);
         if (definition instanceof LocalToolDefinition) {

@@ -19,5 +19,6 @@ public interface ModelTierBindingRepository extends JpaRepository<ModelTierBindi
     @NonNull Optional<ModelTierBindingEntity> findByProfileIdAndTier(
             @NonNull String profileId, @NonNull ModelTier tier);
 
+    /** Delete every binding belonging to a profile. */
     void deleteByProfileId(@NonNull String profileId);
 }

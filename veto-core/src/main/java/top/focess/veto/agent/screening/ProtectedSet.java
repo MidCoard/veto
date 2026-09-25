@@ -16,10 +16,12 @@ import org.jspecify.annotations.NonNull;
  */
 public record ProtectedSet(@NonNull Set<Path> paths) {
 
+    /** Compact constructor: canonicalizes every path to an absolute, normalized form. */
     public ProtectedSet {
         paths = canonicalizeAll(paths);
     }
 
+    /** The empty set used under {@link DeployerPolicy#FULL_ACCESS}. */
     public static @NonNull ProtectedSet empty() {
         return new ProtectedSet(Set.of());
     }

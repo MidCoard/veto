@@ -14,6 +14,7 @@ import top.focess.veto.integration.plugins.PluginConfigurations;
 public final class LegacyReaderConfiguration implements BeanPostProcessor, Ordered {
     private final @NonNull Environment environment;
 
+    /** Creates the bridge reading the legacy webfetch properties from the given environment. */
     public LegacyReaderConfiguration(@NonNull Environment environment) {
         this.environment = environment;
     }

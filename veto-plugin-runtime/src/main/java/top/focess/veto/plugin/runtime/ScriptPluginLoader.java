@@ -8,6 +8,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Set;
@@ -21,10 +22,12 @@ public final class ScriptPluginLoader implements PluginLoader<ScriptPlugin> {
     private final @org.jspecify.annotations.Nullable ScriptHost host;
     private final @NonNull Duration timeout;
 
+    /** Creates a loader that gives each loaded plugin its own script host. */
     public ScriptPluginLoader(@NonNull Path node, @NonNull Duration timeout) {
         this(node, timeout, null);
     }
 
+    /** Creates a loader whose loaded plugins share the given script host. */
     public ScriptPluginLoader(
             @NonNull Path node,
             @NonNull Duration timeout,
@@ -34,6 +37,7 @@ public final class ScriptPluginLoader implements PluginLoader<ScriptPlugin> {
         this.timeout = timeout;
     }
 
+    /** Validates and snapshots the package in the given directory without executing it. */
     public @NonNull ScriptPlugin load(@NonNull Path directory) throws IOException {
         PluginSchema.require(node.isAbsolute() && Files.isExecutable(node));
         long millis = timeout.toMillis();
@@ -59,7 +63,7 @@ public final class ScriptPluginLoader implements PluginLoader<ScriptPlugin> {
                         && !manifest.path("tools").isEmpty()
                         && manifest.path("tools").size() <= 32);
         List<ScriptTool> descriptors = new ArrayList<>();
-        var toolIds = new java.util.HashSet<String>();
+        var toolIds = new HashSet<String>();
         for (JsonNode tool : manifest.path("tools")) {
             PluginSchema.fields(
                     tool, Set.of("id", "description", "handler", "inputSchema", "outputSchema"));

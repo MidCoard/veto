@@ -27,12 +27,15 @@ public final class BackgroundTasks implements SessionLifecycle, AutoCloseable {
     private static final int MAX_INPUT_BYTES = 65536;
     private static final int MAX_QUEUED_BYTES = 262144;
 
+    /** Owner/session/agent triple that owns a task. */
     public record Scope(@NonNull String owner, @NonNull String session, @NonNull String agent) {
+        /** Derives the scope from a plugin invocation. */
         public static @NonNull Scope from(PluginHost.@NonNull Invocation invocation) {
             return new Scope(invocation.owner(), invocation.sessionId(), invocation.agentId());
         }
     }
 
+    /** Why a background task terminated. */
     public enum ExitCause {
         NATURAL,
         AGENT_STOP,
@@ -41,13 +44,16 @@ public final class BackgroundTasks implements SessionLifecycle, AutoCloseable {
         SHUTDOWN
     }
 
+    /** Kind of task lifecycle change reported to a {@link Listener}. */
     public enum Change {
         STARTED,
         EXITED,
         REMOVED
     }
 
+    /** Observer of task lifecycle changes. */
     public interface Listener {
+        /** Called when a task starts, exits or is removed. */
         void changed(
                 @NonNull Scope scope,
                 @NonNull TaskInfo info,
@@ -55,11 +61,14 @@ public final class BackgroundTasks implements SessionLifecycle, AutoCloseable {
                 @NonNull Change change);
     }
 
+    /** A resolved task with its running process and stdin availability. */
     public record Target(
             @NonNull TaskInfo info, ProcessHost.@NonNull Running process, boolean stdinAvailable) {}
 
+    /** Outcome of a stop-or-remove request: applied status plus final task info. */
     public record Action(@NonNull String status, @NonNull TaskInfo task) {}
 
+    /** A character-offset slice of task output, with total size and continuation offset. */
     public record TextPage(@NonNull String text, int total, Integer nextOffset) {}
 
     private final @NonNull Supplier<@NonNull ProcessHost> host;
@@ -68,14 +77,17 @@ public final class BackgroundTasks implements SessionLifecycle, AutoCloseable {
     private volatile Listener listener;
     private boolean closed;
 
+    /** Creates the registry, pulling approved processes from the given host supplier. */
     public BackgroundTasks(@NonNull Supplier<@NonNull ProcessHost> host) {
         this.host = host;
     }
 
+    /** Registers the lifecycle observer. */
     public void listener(@NonNull Listener listener) {
         this.listener = listener;
     }
 
+    /** Starts an approved host process as a new background task. */
     public synchronized @NonNull TaskInfo start() {
         if (closed) throw new IllegalStateException("Process tasks are closed");
         var process = host.get().startApproved();
@@ -87,6 +99,7 @@ public final class BackgroundTasks implements SessionLifecycle, AutoCloseable {
         return task.info();
     }
 
+    /** Returns the scoped tasks, alive first. */
     public @NonNull List<TaskInfo> list(@NonNull Scope scope) {
         return tasks.values().stream()
                 .filter(task -> task.scope.equals(scope))
@@ -99,6 +112,7 @@ public final class BackgroundTasks implements SessionLifecycle, AutoCloseable {
                 .toList();
     }
 
+    /** Resolves an owned task for input or control; empty when unknown. */
     public @NonNull Optional<Target> target(@NonNull Scope scope, @NonNull String id) {
         Task task = owned(scope, id);
         if (task == null) return Optional.empty();
@@ -108,10 +122,12 @@ public final class BackgroundTasks implements SessionLifecycle, AutoCloseable {
         }
     }
 
+    /** Returns the current info of an owned task; empty when unknown. */
     public @NonNull Optional<TaskInfo> status(@NonNull Scope scope, @NonNull String id) {
         return Optional.ofNullable(owned(scope, id)).map(Task::info);
     }
 
+    /** Blocks until the task output drains and the process exits. */
     public @NonNull Optional<TaskInfo> awaitExit(@NonNull Scope scope, @NonNull String id)
             throws InterruptedException {
         Task task = owned(scope, id);
@@ -121,6 +137,7 @@ public final class BackgroundTasks implements SessionLifecycle, AutoCloseable {
         return Optional.of(task.info());
     }
 
+    /** Returns the last {@code lines} lines of task output; empty when unknown. */
     public @NonNull Optional<String> output(@NonNull Scope scope, @NonNull String id, int lines) {
         Task task = owned(scope, id);
         if (task == null) return Optional.empty();
@@ -134,6 +151,7 @@ public final class BackgroundTasks implements SessionLifecycle, AutoCloseable {
         }
     }
 
+    /** Returns one character-offset page of output for the exact task instance. */
     public @NonNull TextPage outputPage(
             @NonNull Scope scope,
             @NonNull String id,
@@ -169,6 +187,7 @@ public final class BackgroundTasks implements SessionLifecycle, AutoCloseable {
         }
     }
 
+    /** Returns the recorded stdin write failures of an owned task. */
     public @NonNull List<@NonNull String> inputFailures(@NonNull Scope scope, @NonNull String id) {
         Task task = owned(scope, id);
         if (task == null) return List.of();
@@ -177,6 +196,7 @@ public final class BackgroundTasks implements SessionLifecycle, AutoCloseable {
         }
     }
 
+    /** Validates and enqueues the host-prepared stdin write for an owned task. */
     public @NonNull InputResult queueInput(@NonNull Scope scope, @NonNull String id) {
         Task task = owned(scope, id);
         if (task == null) return InputResult.failure(InputStatus.TASK_NOT_FOUND);
@@ -201,6 +221,7 @@ public final class BackgroundTasks implements SessionLifecycle, AutoCloseable {
         }
     }
 
+    /** Requests task termination with the given cause; empty when unknown. */
     public @NonNull Optional<TaskInfo> stop(
             @NonNull Scope scope, @NonNull String id, @NonNull ExitCause cause) {
         Task task = owned(scope, id);
@@ -209,6 +230,7 @@ public final class BackgroundTasks implements SessionLifecycle, AutoCloseable {
         return Optional.of(task.info());
     }
 
+    /** Stops a running task or removes an exited one; fails on a stale instance. */
     public @NonNull Action stopOrRemove(
             @NonNull Scope scope, @NonNull String id, @NonNull UUID instance) {
         Task task = require(scope, id, instance);
@@ -222,6 +244,7 @@ public final class BackgroundTasks implements SessionLifecycle, AutoCloseable {
         return new Action("removed", task.info());
     }
 
+    /** Returns info for the exact task instance; fails when no longer available. */
     public @NonNull TaskInfo exact(
             @NonNull Scope scope, @NonNull String id, @NonNull UUID instance) {
         return require(scope, id, instance).info();

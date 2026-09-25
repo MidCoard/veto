@@ -74,8 +74,9 @@ import top.focess.veto.vault.KeysteadVault;
 @SuppressWarnings(
         "DuplicatedCode") // Standalone and group-agent factories intentionally mirror setup.
 public class AgentService {
-    private top.focess.veto.integration.plugins.SessionPlugins sessionPlugins;
+    private SessionPlugins sessionPlugins;
 
+    /** Injects the per-session plugin selection threaded into created runners. */
     @Autowired
     public void attachSessionPlugins(@NonNull SessionPlugins value) {
         sessionPlugins = value;
@@ -84,11 +85,13 @@ public class AgentService {
     private RequestContinuationStore continuationStore;
     private KeysteadVault executionVault;
 
+    /** Injects the vault that gates autonomous plugin work on the owner's credentials. */
     @Autowired
     public void attachExecutionVault(@NonNull KeysteadVault vault) {
         executionVault = vault;
     }
 
+    /** Injects the durable store used to reload request continuations across restarts. */
     @Autowired
     public void attachContinuationStore(@NonNull RequestContinuationStore store) {
         continuationStore = store;
@@ -107,6 +110,7 @@ public class AgentService {
 
     private PluginLifecycleEvents lifecycleEvents;
 
+    /** Injects the bus used to publish agent lifecycle events to plugins. */
     @Autowired
     public void attachLifecycleEvents(@NonNull PluginLifecycleEvents events) {
         lifecycleEvents = events;
@@ -160,6 +164,7 @@ public class AgentService {
     private final @NonNull ConcurrentHashMap<@NonNull String, @NonNull VetoAgent> agents =
             new ConcurrentHashMap<>();
 
+    /** Spring-wired constructor: assembles the shared service from its collaborators and config. */
     @Autowired
     public AgentService(
             @NonNull ToolEngine toolEngine,
@@ -509,6 +514,7 @@ public class AgentService {
                 ToolResultPresentationMode.BASIC);
     }
 
+    /** Gets or creates the session agent with an explicit tool-result presentation mode. */
     public @NonNull Agent getOrCreateAgent(
             @NonNull String sessionId,
             String primaryAgentId,
@@ -530,6 +536,11 @@ public class AgentService {
                 toolResultPresentation);
     }
 
+    /**
+     * Gets or creates the session agent, additionally selecting which of the session's workspace
+     * roots is active. The workspace and presentation are fixed at first creation; later calls with
+     * different values reuse the existing agent.
+     */
     public @NonNull Agent getOrCreateAgent(
             @NonNull String sessionId,
             String primaryAgentId,
@@ -845,6 +856,10 @@ public class AgentService {
         return buildWorkspace(workspaceRoots, 0);
     }
 
+    /**
+     * Builds a per-session workspace from a CSV of host paths, selecting the active root by index.
+     * Null/blank {@code workspaceRoots} falls back to the default and requires index 0.
+     */
     public @NonNull Workspace buildWorkspace(String workspaceRoots, int currentWorkspaceRootIndex) {
         if (workspaceRoots == null || workspaceRoots.isBlank()) {
             if (currentWorkspaceRootIndex != 0) {

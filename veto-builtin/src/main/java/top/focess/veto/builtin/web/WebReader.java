@@ -33,11 +33,16 @@ public final class WebReader {
     private final ReaderConfig configuration;
     private final ObjectMapper mapper = new ObjectMapper();
 
+    /** Creates the reader over the given agent-host supplier and configuration. */
     public WebReader(Supplier<AgentHost> host, ReaderConfig configuration) {
         this.host = host;
         this.configuration = configuration;
     }
 
+    /**
+     * Runs one isolated read of the approved URL toward the objective; returns the JSON result or a
+     * tool failure.
+     */
     public String read(String objective, NetworkEgressCapability network) {
         long started = System.nanoTime();
         try (var destination = network.openApprovedDestination("url")) {

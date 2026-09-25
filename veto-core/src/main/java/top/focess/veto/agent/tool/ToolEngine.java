@@ -26,6 +26,11 @@ public interface ToolEngine {
             "NullableProblems") // JSpecify and Checker defaults disagree on this override contract.
     ToolDefinition resolveDefinition(@NonNull String toolName);
 
+    /**
+     * Prepares a plugin effect for a single call without executing it, returning the host-created
+     * binding to be authorized and consumed later. Returns {@code null} for tools with no
+     * preparation phase.
+     */
     default PreparedInvocation prepare(
             @NonNull ToolCall call,
             @NonNull ToolDefinition definition,

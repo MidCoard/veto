@@ -16,6 +16,8 @@ import com.openai.models.chat.completions.ChatCompletionSystemMessageParam;
 import com.openai.models.chat.completions.ChatCompletionToolMessageParam;
 import com.openai.models.chat.completions.ChatCompletionUserMessageParam;
 import java.util.ArrayList;
+import java.util.List;
+import java.util.Set;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.llm.ChatMessage;
 import top.focess.veto.api.llm.LlmClient;
@@ -25,6 +27,7 @@ import top.focess.veto.api.llm.PromptRenderer;
 import top.focess.veto.api.llm.ResolvedRequest;
 import top.focess.veto.api.llm.VetoRequest;
 import top.focess.veto.api.llm.exceptions.ModelCapabilityException;
+import top.focess.veto.api.llm.exceptions.ModelSchemaException;
 
 /**
  * Adapter wrapping an {@link OpenAIClient} for OpenAI and OpenAI-compatible providers (DeepSeek,
@@ -115,16 +118,15 @@ final class OpenAiLlmClient extends LlmClient {
         }
         if (completion.choices().isEmpty())
             throw new ModelCapabilityException(providerName + " returned no choices");
-        if (java.util.Set.of("length", "content_filter")
+        if (Set.of("length", "content_filter")
                 .contains(completion.choices().getFirst().finishReason().toString()))
-            throw new top.focess.veto.api.llm.exceptions.ModelSchemaException(
+            throw new ModelSchemaException(
                     "OpenAI returned an incomplete response; no calls were executed");
         var message = completion.choices().getFirst().message();
         var calls = new ArrayList<NativeToolResponses.Call>();
-        for (var toolCall : message.toolCalls().orElse(java.util.List.of())) {
+        for (var toolCall : message.toolCalls().orElse(List.of())) {
             if (!toolCall.isFunction())
-                throw new top.focess.veto.api.llm.exceptions.ModelSchemaException(
-                        "Unsupported native tool call type");
+                throw new ModelSchemaException("Unsupported native tool call type");
             var function = toolCall.asFunction();
             calls.add(
                     new NativeToolResponses.Call(

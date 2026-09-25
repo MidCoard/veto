@@ -8,6 +8,7 @@ import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -55,6 +56,7 @@ public class ScopedPluginStorage implements PluginStorageFactory {
     private final ObjectMapper mapper;
     private final int maxBytes;
 
+    /** Creates the storage engine; {@code maxBytes} caps one plugin document, must be positive. */
     public ScopedPluginStorage(
             EntityManager database,
             PlatformTransactionManager transactions,
@@ -67,6 +69,7 @@ public class ScopedPluginStorage implements PluginStorageFactory {
         this.maxBytes = maxBytes;
     }
 
+    /** Exposes this factory as a host service so the manager can bind per-plugin storage. */
     @Bean
     public PluginHostServices storageHostServices() {
         return new PluginHostServices(Map.of(PluginStorageFactory.class, this));
@@ -91,6 +94,7 @@ public class ScopedPluginStorage implements PluginStorageFactory {
                 .executeUpdate();
     }
 
+    /** Called inside the permanent deletion transaction even when no plugin is loaded. */
     public void deleteUser(String username) {
         database.createQuery("delete from PluginRecord r where r.user.username = :owner")
                 .setParameter("owner", username)
@@ -115,7 +119,7 @@ public class ScopedPluginStorage implements PluginStorageFactory {
         Bound(ManagedPlugin plugin) {
             this.plugin = plugin;
             namespace = plugin.identity().id();
-            var ids = new java.util.HashSet<>(plugin.implementation().historicalIds());
+            var ids = new HashSet<>(plugin.implementation().historicalIds());
             ids.add(namespace);
             selectionIds = Set.copyOf(ids);
         }

@@ -11,6 +11,7 @@ public final class CapabilityResolver {
 
     private CapabilityResolver() {}
 
+    /** Resolves the call-scoped implementation of {@code capabilityType} for this call. */
     public static <C extends Capability> @NonNull C require(@NonNull Class<C> capabilityType) {
         Capability capability;
         if (capabilityType == WorkspaceReadCapability.class) {

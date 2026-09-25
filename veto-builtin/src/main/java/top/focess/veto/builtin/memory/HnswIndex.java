@@ -199,6 +199,7 @@ public class HnswIndex {
         }
     }
 
+    /** Returns the number of indexed vectors. */
     public int size() {
         return vectors.size();
     }

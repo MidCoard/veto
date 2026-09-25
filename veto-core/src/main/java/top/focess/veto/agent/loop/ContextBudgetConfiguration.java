@@ -15,6 +15,7 @@ public class ContextBudgetConfiguration {
         return modelInputTokens;
     }
 
+    /** Binds the per-model budgets; every value must be positive. Stored as an immutable copy. */
     public void setModelInputTokens(@NonNull Map<String, Integer> values) {
         if (values.values().stream().anyMatch(value -> value == null || value <= 0)) {
             throw new IllegalArgumentException("Model input budgets must be positive");

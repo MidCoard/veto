@@ -10,16 +10,19 @@ public record GroupConfig(@NonNull Map<String, JsonValue> values) {
         values = Map.copyOf(values);
     }
 
+    /** Configuration with no overrides; every setting falls back to its built-in default. */
     public static @NonNull GroupConfig defaults() {
         return new GroupConfig(Map.of());
     }
 
+    /** Group orchestration tick interval in milliseconds; always positive. */
     public long tickMillis() {
         long value = Long.parseLong(text("group-tick-interval-ms", "1000"));
         if (value < 1) throw new IllegalArgumentException("Group tick interval must be positive");
         return value;
     }
 
+    /** Model tier for the Leader, or for a Mate with the given legacy skillset label. */
     public @NonNull String tier(boolean leader, String legacySkillset) {
         String base =
                 text(leader ? "group-leader-tier" : "group-mate-tier", leader ? "TOP" : "MID");
@@ -28,6 +31,7 @@ public record GroupConfig(@NonNull Map<String, JsonValue> values) {
                 : base;
     }
 
+    /** Extra prompt guidance for the Leader, or for a Mate with the given legacy skillset label. */
     public @NonNull String guidance(boolean leader, String legacySkillset) {
         String base = text(leader ? "group-leader-guidance" : "group-mate-guidance", "");
         return !leader && legacySkillset != null

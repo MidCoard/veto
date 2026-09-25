@@ -139,6 +139,7 @@ public final class ScriptPlugin extends AbstractVetoPlugin {
         return digest;
     }
 
+    /** Reports whether this plugin is currently registered with its script host. */
     public boolean active() {
         return host.registered(digest);
     }

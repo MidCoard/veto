@@ -27,8 +27,10 @@ public final class SecretCandidateStore {
     private final @NonNull Set<SessionKey> retiredSessions = new HashSet<>();
     private static final @NonNull Pattern REFERENCE = Pattern.compile("\\[SECRET_REF:([^]]+)]");
 
+    /** Owner/session/agent identity that bounds a captured secret candidate. */
     public record Scope(@NonNull String owner, @NonNull String session, @NonNull String agent) {}
 
+    /** Lifecycle state of a captured candidate. */
     public enum State {
         AVAILABLE,
         IMPORTED,
@@ -36,6 +38,7 @@ public final class SecretCandidateStore {
         DISCARDED
     }
 
+    /** Immutable metadata describing a captured candidate; never contains the secret value. */
     public record Descriptor(
             @NonNull String reference,
             @NonNull String sourceId,
@@ -45,8 +48,10 @@ public final class SecretCandidateStore {
             @NonNull Instant expiresAt,
             @NonNull State state) {}
 
+    /** Result of a capture pass: the masked text and the candidates it produced. */
     public record Capture(@NonNull String text, @NonNull List<Descriptor> candidates) {}
 
+    /** Confirmation returned after a candidate is imported into the owner's vault. */
     public record ImportReceipt(
             @NonNull String credentialRef, @NonNull String service, @NonNull String label) {}
 
@@ -91,10 +96,20 @@ public final class SecretCandidateStore {
     private final int maxValueBytes;
     private volatile @NonNull SecretDetector detector;
 
+    /** Creates a store with production defaults: UTC clock, 30-minute TTL, and standard limits. */
     public SecretCandidateStore() {
         this(Clock.systemUTC(), Duration.ofMinutes(30), 64, 256 * 1024, 16 * 1024);
     }
 
+    /**
+     * Creates a store with explicit limits and the deterministic detector.
+     *
+     * @param clock the time source driving expiry
+     * @param ttl how long a captured value stays available before expiring
+     * @param maxCount the maximum number of retained live candidates
+     * @param maxBytes the maximum total UTF-8 bytes of retained secret values
+     * @param maxValueBytes the maximum UTF-8 bytes of a single secret value
+     */
     public SecretCandidateStore(
             @NonNull Clock clock,
             @NonNull Duration ttl,
@@ -104,6 +119,16 @@ public final class SecretCandidateStore {
         this(clock, ttl, maxCount, maxBytes, maxValueBytes, SecretDetector.deterministic());
     }
 
+    /**
+     * Creates a store with explicit limits and detection engine.
+     *
+     * @param clock the time source driving expiry
+     * @param ttl how long a captured value stays available before expiring
+     * @param maxCount the maximum number of retained live candidates
+     * @param maxBytes the maximum total UTF-8 bytes of retained secret values
+     * @param maxValueBytes the maximum UTF-8 bytes of a single secret value
+     * @param detector the secret detector used to find capture-worthy spans
+     */
     public SecretCandidateStore(
             @NonNull Clock clock,
             @NonNull Duration ttl,
@@ -126,6 +151,13 @@ public final class SecretCandidateStore {
         detector = value;
     }
 
+    /**
+     * Detects credential-class secrets in the input and replaces each with a {@code [SECRET_REF:*]}
+     * marker, retaining the value for later reveal or import within the scope.
+     *
+     * @throws IllegalStateException if the scope is closed or retired, an embedded reference is
+     *     unresolvable, or candidate capacity is exceeded
+     */
     public synchronized @NonNull Capture capture(
             @NonNull Scope scope, @NonNull String sourceId, @NonNull String input) {
         return capture(scope, sourceId, input, false);
@@ -240,6 +272,7 @@ public final class SecretCandidateStore {
         return new Capture(text.toString(), List.copyOf(captured));
     }
 
+    /** A span of input that is either plain text or an already-captured reference marker. */
     public record ReferenceSegment(@NonNull String text, boolean reference) {}
 
     /** Snapshot validated references; callers may mask plain segments without holding this lock. */
@@ -263,6 +296,7 @@ public final class SecretCandidateStore {
         return List.copyOf(segments);
     }
 
+    /** Returns the descriptor for a reference within the scope, or empty if unknown or expired. */
     public synchronized @NonNull Optional<Descriptor> describe(
             @NonNull Scope scope, @NonNull String reference) {
         expire();
@@ -340,6 +374,7 @@ public final class SecretCandidateStore {
         return receipt;
     }
 
+    /** Discards the captured values of one owner/session; does not block future captures. */
     public synchronized void discardSession(@NonNull String owner, @NonNull String session) {
         entries.values().stream()
                 .filter(
@@ -349,27 +384,37 @@ public final class SecretCandidateStore {
                 .forEach(entry -> entry.discard(State.DISCARDED));
     }
 
+    /**
+     * Discards the captured values of one owner/session/agent scope; does not block future
+     * captures.
+     */
     public synchronized void discardAgent(@NonNull Scope scope) {
         entries.values().stream()
                 .filter(entry -> entry.scope.equals(scope))
                 .forEach(entry -> entry.discard(State.DISCARDED));
     }
 
+    /** Discards the captured values of one owner; does not block future captures. */
     public synchronized void discardOwner(@NonNull String owner) {
         entries.values().stream()
                 .filter(entry -> entry.scope.owner().equals(owner))
                 .forEach(entry -> entry.discard(State.DISCARDED));
     }
 
+    /**
+     * Discards an owner's captures and blocks further capture, reveal, and import for that owner.
+     */
     public synchronized void closeOwner(@NonNull String owner) {
         closedOwners.add(owner);
         discardOwner(owner);
     }
 
+    /** Lifts a prior {@link #closeOwner} block, allowing capture for the owner again. */
     public synchronized void openOwner(@NonNull String owner) {
         closedOwners.remove(owner);
     }
 
+    /** Discards a session's captures and blocks further capture, reveal, and import for it. */
     public synchronized void retireSession(@NonNull String owner, @NonNull String session) {
         retiredSessions.add(new SessionKey(owner, session));
         discardSession(owner, session);
@@ -383,6 +428,7 @@ public final class SecretCandidateStore {
         retiredSessions.clear();
     }
 
+    /** Discards candidates past their TTL and trims discarded tombstones above the size bound. */
     public synchronized void expire() {
         Instant now = clock.instant();
         entries.values().stream()

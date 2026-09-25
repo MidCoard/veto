@@ -18,15 +18,18 @@ public class RequestAuthorization {
 
     private final @NonNull Predicate<@NonNull String> administrator;
 
+    /** Creates the authorizer using the user registry's admin check. */
     @Autowired
     public RequestAuthorization(@NonNull UserRegistry users) {
         this(users::isAdmin);
     }
 
+    /** Creates the authorizer with an explicit administrator predicate. */
     public RequestAuthorization(@NonNull Predicate<@NonNull String> administrator) {
         this.administrator = administrator;
     }
 
+    /** Returns the request-scoped username, or throws 401 if the request is unauthenticated. */
     public @NonNull String requireUser() {
         String username = UserContext.get();
         if (username == null) {
@@ -35,6 +38,7 @@ public class RequestAuthorization {
         return username;
     }
 
+    /** Requires an authenticated administrator; throws 401 or 403 otherwise. */
     public void requireAdmin() {
         String username = requireUser();
         if (!administrator.test(username)) {
@@ -42,6 +46,10 @@ public class RequestAuthorization {
         }
     }
 
+    /**
+     * Resolves the primary agent id of a session owned by the current vault user; throws 401 when
+     * unauthenticated or 404 when the session is unknown.
+     */
     public static @NonNull String requireAgentId(
             @NonNull String name, @NonNull SessionService sessions, @NonNull KeysteadVault vault) {
         String user = vault.currentUser();

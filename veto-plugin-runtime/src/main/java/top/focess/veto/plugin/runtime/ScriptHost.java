@@ -18,19 +18,23 @@ public final class ScriptHost implements AutoCloseable {
     private @Nullable Path hostFile;
     private long sequence;
 
+    /** Creates a host that will lazily launch the given Node binary with a per-call timeout. */
     public ScriptHost(@NonNull Path node, long timeoutMillis) {
         this.node = node;
         this.timeoutMillis = timeoutMillis;
     }
 
+    /** Registers a plugin key and the failure listener invoked if the shared process dies. */
     public void register(@NonNull String key, @NonNull Runnable failure) {
         registrations.put(key, failure);
     }
 
+    /** Reports whether the given plugin key is currently registered with this host. */
     public boolean registered(@NonNull String key) {
         return registrations.containsKey(key);
     }
 
+    /** Returns the OS process id of the shared worker, or {@code -1} if it is not running. */
     public long processId() {
         var current = process;
         return current == null ? -1 : current.pid();
@@ -65,6 +69,7 @@ public final class ScriptHost implements AutoCloseable {
                 });
     }
 
+    /** Invokes a registered plugin's handler in the shared process and returns its JSON result. */
     public @NonNull JsonNode invoke(
             @NonNull String key,
             @NonNull Path entry,
@@ -82,6 +87,7 @@ public final class ScriptHost implements AutoCloseable {
                         .set("arguments", arguments));
     }
 
+    /** Unregisters a plugin key and best-effort unloads it from the running process. */
     public void unregister(@NonNull String key) {
         if (registrations.remove(key) == null) return;
         var current = process;

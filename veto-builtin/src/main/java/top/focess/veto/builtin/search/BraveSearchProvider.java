@@ -31,6 +31,7 @@ public class BraveSearchProvider implements SearchProvider, AutoCloseable {
     private final @NonNull ObjectMapper mapper = new ObjectMapper();
     private final @Nullable String apiKey;
 
+    /** Creates the provider authenticating with the given Brave API key. */
     public BraveSearchProvider(@Nullable String apiKey) {
         this(
                 apiKey,

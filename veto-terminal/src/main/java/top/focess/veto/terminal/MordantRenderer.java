@@ -15,6 +15,11 @@ public final class MordantRenderer {
 
     private final @NonNull LineReader reader;
 
+    /**
+     * Constructs a renderer bound to the given reader's interactive prompt.
+     *
+     * @param reader the JLine reader whose active input line output is printed above
+     */
     public MordantRenderer(@NonNull LineReader reader) {
         this.reader = reader;
     }

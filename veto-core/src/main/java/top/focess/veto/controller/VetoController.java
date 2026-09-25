@@ -25,6 +25,7 @@ public class VetoController {
 
     private final @NonNull VetoGateway vetoGateway;
 
+    /** Creates the controller with the veto gateway it delegates to. */
     public VetoController(@NonNull VetoGateway vetoGateway) {
         this.vetoGateway = vetoGateway;
     }

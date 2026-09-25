@@ -19,6 +19,7 @@ public record UsageMeasurement(
         String model,
         String provider,
         String purpose) {
+    /** Builds a measurement from a provider usage sample for one model request. */
     public static @NonNull UsageMeasurement measured(
             @NonNull VetoRequest request, LlmSystemUsage.@NonNull Usage usage) {
         return new UsageMeasurement(
@@ -33,6 +34,7 @@ public record UsageMeasurement(
                 null);
     }
 
+    /** A copy attributed to a specific model call id. */
     public @NonNull UsageMeasurement forRequest(@NonNull String callId) {
         return new UsageMeasurement(
                 callId,
@@ -46,6 +48,7 @@ public record UsageMeasurement(
                 null);
     }
 
+    /** A copy tagged as compaction usage with a fresh call id. */
     public @NonNull UsageMeasurement forCompaction() {
         return new UsageMeasurement(
                 java.util.UUID.randomUUID().toString(),

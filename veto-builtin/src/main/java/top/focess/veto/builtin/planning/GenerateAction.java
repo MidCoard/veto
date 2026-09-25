@@ -22,6 +22,7 @@ public record GenerateAction(
         @NonNull ResponseMode responseMode)
         implements Action {
 
+    /** Output contract for a generate action: plain text or citation-bearing answer. */
     public enum ResponseMode {
         TEXT,
         CITATIONS

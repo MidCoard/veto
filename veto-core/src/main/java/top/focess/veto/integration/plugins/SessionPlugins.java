@@ -42,6 +42,7 @@ public class SessionPlugins {
     private final @NonNull SessionRepository sessions;
     private final @NonNull SessionHistoryLoader history;
 
+    /** Creates the selection service over the plugin manager and session stores. */
     public SessionPlugins(
             @NonNull PluginManager manager,
             @NonNull SessionRepository sessions,
@@ -51,6 +52,10 @@ public class SessionPlugins {
         this.history = history;
     }
 
+    /**
+     * Resolves the requested ids (null selects every installed plugin) to pinned bindings;
+     * duplicates and unknown or inactive plugins are rejected.
+     */
     @SuppressWarnings(
             "NullableProblems") // WHY: no package @DefaultQualifier, so NullnessChecker needs this
     // @Nullable for callers passing null
@@ -81,6 +86,10 @@ public class SessionPlugins {
         return new PluginBinding(plugin.identity().id(), plugin.identity().version(), revision);
     }
 
+    /**
+     * Returns the session's pinned bindings, migrating legacy sessions from their earliest recorded
+     * manifest; fails when an installed plugin no longer matches the pinned revision.
+     */
     public @NonNull List<PluginBinding> bindings(@NonNull String sessionId) {
         var session =
                 sessions.findById(sessionId)
@@ -152,6 +161,10 @@ public class SessionPlugins {
         return bindings;
     }
 
+    /**
+     * Collects the single agent-configuration intent of the selected contributors; null when no
+     * contributor applies, and conflicting intents fail.
+     */
     @SuppressWarnings(
             "NullableProblems") // WHY: no package @DefaultQualifier, so NullnessChecker needs this
     // @Nullable for callers passing null
@@ -206,8 +219,10 @@ public class SessionPlugins {
         return result;
     }
 
+    /** One fold step applied to a single workflow hook contribution. */
     @FunctionalInterface
     public interface WorkflowOperation<T extends @NonNull Object> {
+        /** Applies the hook to the current value and returns the transformed value. */
         T apply(@NonNull WorkflowHook hook, T current) throws PluginFailure;
     }
 
@@ -243,6 +258,7 @@ public class SessionPlugins {
         return result;
     }
 
+    /** Opens the model-response policies of the session's selected plugins in catalog order. */
     public @NonNull List<ModelResponsePolicy.Exchange> responsePolicies(@NonNull String sessionId) {
         var ids = selectedIds(sessionId);
         List<ModelResponsePolicy.Exchange> result = new ArrayList<>();
@@ -284,6 +300,7 @@ public class SessionPlugins {
         return List.copyOf(result);
     }
 
+    /** Threads text through the selected plugins' contributions to the protection point. */
     public @NonNull String protect(
             @NonNull ContributionPoint<? extends TextProtection> point,
             TextProtection.@NonNull Scope scope,
@@ -310,6 +327,7 @@ public class SessionPlugins {
         return result;
     }
 
+    /** Returns a lazily resolved composite work source of the session's selected plugins. */
     public @NonNull AgentWorkSource workSource(@NonNull String sessionId) {
         return new CompositeAgentWorkSource(
                 () -> {
@@ -328,17 +346,20 @@ public class SessionPlugins {
                 });
     }
 
+    /** True when a plugin selected by the session contributes to the given point. */
     public boolean has(@NonNull String sessionId, @NonNull ContributionPoint<?> point) {
         var ids = selectedIds(sessionId);
         return manager.catalog().entries(point).stream()
                 .anyMatch(entry -> ids.contains(entry.source().namespace()));
     }
 
+    /** True when the session selects the given plugin, resolved through historical aliases. */
     public boolean includes(@NonNull String sessionId, @NonNull String pluginId) {
         String canonical = manager.canonicalId(pluginId);
         return selectedIds(sessionId).contains(canonical);
     }
 
+    /** Keeps only the tool definitions whose provenance plugin is selected by the session. */
     public @NonNull Set<ToolDefinition> tools(
             @NonNull String sessionId, @NonNull Set<ToolDefinition> tools) {
         var ids = selectedIds(sessionId);

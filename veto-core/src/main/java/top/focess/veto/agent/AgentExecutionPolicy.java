@@ -18,6 +18,7 @@ import top.focess.veto.api.plugin.agent.IsolatedAgent;
             TypeUseLocation.UPPER_BOUND
         })
 public record AgentExecutionPolicy(IsolatedAgent.@Nullable Terminal terminal, Runnable check) {
+    /** The default policy: no terminal tool and a no-op host effect guard. */
     public static AgentExecutionPolicy ordinary() {
         return new AgentExecutionPolicy(null, () -> {});
     }

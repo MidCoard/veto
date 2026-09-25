@@ -37,6 +37,7 @@ public class TaskController {
     private final @NonNull ConcurrentHashMap<String, OwnedTask> taskStore =
             new ConcurrentHashMap<>();
 
+    /** Creates the controller with the routing bus and request authorizer. */
     public TaskController(
             @NonNull RoutingBusService routingBusService,
             @NonNull RequestAuthorization authorization) {

@@ -15,14 +15,17 @@ import top.focess.veto.integration.plugins.PluginConfigurations;
 public final class LegacySkillConfiguration implements BeanPostProcessor, Ordered {
     private final @NonNull Environment environment;
 
+    /** Creates the bridge reading the legacy skills properties from the given environment. */
     public LegacySkillConfiguration(@NonNull Environment environment) {
         this.environment = environment;
     }
 
+    /** Runs last, after property binding and before consumers read the configuration bean. */
     public int getOrder() {
         return Ordered.LOWEST_PRECEDENCE;
     }
 
+    /** Grants the personal skills catalogue root and maps the legacy project directory setting. */
     public @NonNull Object postProcessBeforeInitialization(
             @NonNull Object bean, @NonNull String name) {
         if (!(bean instanceof PluginConfigurations configuration)) return bean;

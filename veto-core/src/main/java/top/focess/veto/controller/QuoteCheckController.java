@@ -34,6 +34,7 @@ public class QuoteCheckController {
                     new ArrayBlockingQueue<>(16),
                     Thread.ofVirtual().name("quote-check-", 0).factory());
 
+    /** Creates the controller with session, vault, and quote-check collaborators. */
     public QuoteCheckController(
             @NonNull SessionService sessions,
             @NonNull KeysteadVault vault,
@@ -43,6 +44,10 @@ public class QuoteCheckController {
         this.quotes = quotes;
     }
 
+    /**
+     * Asynchronously checks a quotation against one turn of an agent's records in an owned session.
+     * Times out after 10 seconds; 503 when the bounded executor queue is full.
+     */
     @PostMapping("/api/sessions/{name}/agents/{agent}/records/{turn}/quote-check")
     public @NonNull CompletableFuture<List<Check>> check(
             @PathVariable @NonNull String name,
@@ -67,10 +72,12 @@ public class QuoteCheckController {
         }
     }
 
+    /** Stops the quote-check executor. */
     @PreDestroy
     public void close() {
         executor.shutdownNow();
     }
 
+    /** Quotation check payload: the quoted {@code body} text to verify. */
     public record Request(String body) {}
 }

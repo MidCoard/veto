@@ -36,6 +36,7 @@ import top.focess.veto.vault.UserRegistry;
 public class UserAdminService {
     private PluginLifecycleEvents pluginEvents;
 
+    /** Setter-injects the plugin lifecycle event sink notified on user/session deletion. */
     @Autowired
     public void attachPluginEvents(@NonNull PluginLifecycleEvents events) {
         pluginEvents = events;
@@ -43,6 +44,7 @@ public class UserAdminService {
 
     private ScopedPluginStorage pluginStorage;
 
+    /** Setter-injects the scoped plugin storage purged on user deletion. */
     @Autowired
     public void attachPluginStorage(@NonNull ScopedPluginStorage storage) {
         pluginStorage = storage;
@@ -50,6 +52,7 @@ public class UserAdminService {
 
     private HitlRecordRepository hitlRecords;
 
+    /** Setter-injects the HITL record repository purged on user deletion. */
     @Autowired
     public void attachHitlRecords(@NonNull HitlRecordRepository records) {
         hitlRecords = records;
@@ -57,6 +60,7 @@ public class UserAdminService {
 
     private RequestContinuationStore continuations;
 
+    /** Setter-injects the request-continuation store purged on user deletion. */
     @Autowired
     public void attachContinuations(@NonNull RequestContinuationStore store) {
         continuations = store;
@@ -72,6 +76,7 @@ public class UserAdminService {
     private final @NonNull KeysteadVault vault;
     private final @NonNull AuthLifecycleManager auth;
 
+    /** Creates the service over the user, pattern, session, agent, vault, and auth stores. */
     public UserAdminService(
             @NonNull UserRegistry users,
             @NonNull AgentPatternRepository patterns,

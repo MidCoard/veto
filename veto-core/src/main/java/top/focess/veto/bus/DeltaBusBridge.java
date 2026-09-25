@@ -28,6 +28,7 @@ public class DeltaBusBridge {
     private final @NonNull VetoWebSocketHandler handler;
     private AutoCloseable subscription;
 
+    /** Creates the bridge between the frame broker and the WebSocket handler it forwards to. */
     public DeltaBusBridge(@NonNull DeltaBroker broker, @NonNull VetoWebSocketHandler handler) {
         this.broker = broker;
         this.handler = handler;

@@ -10,11 +10,17 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
+/** Spring Data JPA access to {@link AgentPatternEntity} (user-owned agent patterns). */
 @Repository
 public interface AgentPatternRepository extends JpaRepository<AgentPatternEntity, String> {
 
+    /** All patterns owned by {@code owner}. */
     @NonNull List<AgentPatternEntity> findByOwner(@NonNull String owner);
 
+    /**
+     * The owner's pattern with the given name; throws {@code NonUniqueResultException} if legacy
+     * duplicate rows share the {@code (name, owner)} pair (see {@link #existsByNameAndOwner}).
+     */
     @NonNull Optional<AgentPatternEntity> findByNameAndOwner(
             @NonNull String name, @NonNull String owner);
 

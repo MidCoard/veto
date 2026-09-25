@@ -43,6 +43,7 @@ public record Group(
         mates = Map.copyOf(mates);
     }
 
+    /** Creates an ACTIVE group without an owning session or agent handles. */
     public static @NonNull Group create(
             @NonNull String leaderId,
             @NonNull String userId,
@@ -85,6 +86,7 @@ public record Group(
                 ToolResultPresentationMode.BASIC);
     }
 
+    /** Creates an ACTIVE group with the given tool-result presentation mode. */
     public static @NonNull Group create(
             @NonNull String leaderId,
             @NonNull String userId,
@@ -104,6 +106,7 @@ public record Group(
                 toolResultPresentation);
     }
 
+    /** Creates an ACTIVE group bound to the given agent session handles. */
     public static @NonNull Group create(
             @NonNull String leaderId,
             @NonNull String userId,
@@ -125,6 +128,10 @@ public record Group(
                 null);
     }
 
+    /**
+     * Creates an ACTIVE group with a fresh random id; the DAG is re-stamped when its group id
+     * differs.
+     */
     public static @NonNull Group create(
             @NonNull String leaderId,
             @NonNull String userId,
@@ -153,6 +160,7 @@ public record Group(
                 sessionId);
     }
 
+    /** Returns a copy of this group with the given execution DAG. */
     public @NonNull Group withDag(@NonNull ExecutionDag newDag) {
         return new Group(
                 groupId,
@@ -171,6 +179,9 @@ public record Group(
                 sessionId);
     }
 
+    /**
+     * Returns a copy in the given state; disbanding stamps {@code disbandedAt} with {@code when}.
+     */
     public @NonNull Group withState(@NonNull GroupState newState, @NonNull Instant when) {
         return new Group(
                 groupId,
@@ -189,6 +200,7 @@ public record Group(
                 sessionId);
     }
 
+    /** Returns a copy with the mate registered under the given skillset label. */
     public @NonNull Group withMate(@NonNull String mateId, @NonNull String skillset) {
         Map<String, String> next = new LinkedHashMap<>(mates);
         next.put(mateId, skillset);
@@ -209,6 +221,7 @@ public record Group(
                 sessionId);
     }
 
+    /** Returns a copy without the mate; unchanged when the mate is not a member. */
     public @NonNull Group withoutMate(@NonNull String mateId) {
         if (!mates.containsKey(mateId)) {
             return this;
@@ -232,6 +245,7 @@ public record Group(
                 sessionId);
     }
 
+    /** True while the group is in {@link GroupState#ACTIVE}. */
     public boolean isActive() {
         return state == GroupState.ACTIVE;
     }

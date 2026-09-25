@@ -1,6 +1,7 @@
 package top.focess.veto.builtin.response;
 
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.NonNull;
@@ -19,10 +20,12 @@ public final class ResponseEnforcer {
 
     private ResponseEnforcer() {}
 
+    /** Enforces the response contract without tool-catalog restrictions. */
     public static @NonNull VetoResponse enforce(@NonNull VetoResponse response) {
         return enforce(response, Set.of());
     }
 
+    /** Enforces the response contract, restricting calls to the allowed tool names. */
     public static @NonNull VetoResponse enforce(
             @NonNull VetoResponse response, @NonNull Set<@NonNull String> allowedToolNames) {
         validateCalls(response, allowedToolNames);
@@ -56,29 +59,9 @@ public final class ResponseEnforcer {
                             + " in message and declare the same id in citations with sources"
                             + " containing an exact quote from the source. Omit message_index"
                             + " normally; the runtime locates the quote.");
-        var linkedIds = new HashSet<String>();
-        var links = CITATION_LINK.matcher(prose);
-        while (links.find()) {
-            String id = links.group(1);
-            if (id != null) linkedIds.add(id);
-        }
+        var linkedIds = collectLinkedIds(prose);
         var citations = response.citations();
-        if (citations != null) {
-            if (citations.size() > 32)
-                throw new ModelSchemaException("At most 32 citations are allowed");
-            var ids = new HashSet<String>();
-            for (var citation : citations) {
-                if (!ids.add(citation.id()))
-                    throw new ModelSchemaException("Citations need unique ids");
-                if (!linkedIds.contains(citation.id()))
-                    throw new ModelSchemaException(
-                            "Each declared citation must be linked in message using [label](cite:"
-                                    + citation.id()
-                                    + "). Bare markers and code examples are not links. If this"
-                                    + " answer does not need source links, reply in ordinary text"
-                                    + " instead of calling answer_with_citations.");
-            }
-        }
+        validateCitations(citations, linkedIds);
         if (message != null) {
             var ids = new HashSet<String>();
             if (citations != null) for (var citation : citations) ids.add(citation.id());
@@ -91,5 +74,35 @@ public final class ResponseEnforcer {
         if (calls == null && (message == null || message.isBlank()))
             throw new ModelSchemaException("message required (no native tool calls to execute)");
         return response;
+    }
+
+    private static @NonNull Set<@NonNull String> collectLinkedIds(@NonNull String prose) {
+        var linkedIds = new HashSet<String>();
+        var links = CITATION_LINK.matcher(prose);
+        while (links.find()) {
+            String id = links.group(1);
+            if (id != null) linkedIds.add(id);
+        }
+        return linkedIds;
+    }
+
+    private static void validateCitations(
+            List<VetoResponse.@NonNull Citation> citations,
+            @NonNull Set<@NonNull String> linkedIds) {
+        if (citations == null) return;
+        if (citations.size() > 32)
+            throw new ModelSchemaException("At most 32 citations are allowed");
+        var ids = new HashSet<String>();
+        for (var citation : citations) {
+            if (!ids.add(citation.id()))
+                throw new ModelSchemaException("Citations need unique ids");
+            if (!linkedIds.contains(citation.id()))
+                throw new ModelSchemaException(
+                        "Each declared citation must be linked in message using [label](cite:"
+                                + citation.id()
+                                + "). Bare markers and code examples are not links. If this"
+                                + " answer does not need source links, reply in ordinary text"
+                                + " instead of calling answer_with_citations.");
+        }
     }
 }

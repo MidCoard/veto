@@ -20,12 +20,14 @@ public record PlanStepContext(
         inputSources = Map.copyOf(inputSources);
     }
 
+    /** Projects this provenance into the runner action context. */
     public @NonNull ActionContext context() {
         return new ActionContext(
                 programModelCallId,
                 (JsonValue.ObjectValue) JsonValues.from(new ObjectMapper().valueToTree(this)));
     }
 
+    /** Maps each {@code $}-prefixed input path to the id of the step that produced it. */
     public static @NonNull Map<String, String> sources(
             @NonNull ObjectMapper mapper,
             @NonNull Map<String, Object> inputs,

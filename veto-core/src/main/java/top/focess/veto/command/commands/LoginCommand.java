@@ -8,11 +8,16 @@ import top.focess.veto.command.VetoCommand;
 import top.focess.veto.command.VetoCommandSender;
 import top.focess.veto.vault.*;
 
+/**
+ * Authenticates the terminal user and unlocks their vault. The password is always prompted with
+ * masked input, never accepted as an argument.
+ */
 public class LoginCommand extends VetoCommand {
 
     private final @NonNull UserRegistry users;
     private final @NonNull AuthLifecycleManager authLifecycleManager;
 
+    /** Constructs the {@code /login} command over the given user registry and auth lifecycle. */
     public LoginCommand(
             @NonNull UserRegistry users, @NonNull AuthLifecycleManager authLifecycleManager) {
         super("login", "Sign in to your account");

@@ -8,6 +8,7 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.NoSuchElementException;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.plugin.contract.FrontendContribution;
@@ -20,10 +21,12 @@ public final class GroupFrontend {
     private final @NonNull GroupRuntime runtime;
     private final @NonNull ObjectMapper mapper = new ObjectMapper().findAndRegisterModules();
 
+    /** Creates a frontend backed by the given group runtime. */
     public GroupFrontend(@NonNull GroupRuntime runtime) {
         this.runtime = runtime;
     }
 
+    /** Serves the bundled groups script and routes its actions to {@link #handle}. */
     public @NonNull FrontendContribution contribution() {
         try (var stream =
                 ToolDocs.nonNullClass(GroupFrontend.class)
@@ -37,6 +40,9 @@ public final class GroupFrontend {
     }
 
     // The explicit type witness is required for NullnessChecker inference of the mapped row type.
+    /**
+     * Answers paged frontend actions ({@code list}, {@code nodes}, {@code changes}, {@code text}).
+     */
     @SuppressWarnings("RedundantTypeArguments")
     public @NonNull JsonValue handle(
             FrontendContribution.@NonNull Scope scope,
@@ -155,7 +161,7 @@ public final class GroupFrontend {
             throw new IllegalArgumentException("Unknown group action");
         } catch (IllegalArgumentException
                 | IndexOutOfBoundsException
-                | java.util.NoSuchElementException error) {
+                | NoSuchElementException error) {
             throw new PluginFailure(PluginFailure.Code.INVALID_ARGUMENTS);
         } catch (RuntimeException error) {
             throw new PluginFailure(PluginFailure.Code.INTERNAL_FAILURE);

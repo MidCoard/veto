@@ -194,6 +194,12 @@ public class IngressDefense {
         return maskAndFrame(call, def, result, mask, readHistory);
     }
 
+    /**
+     * Masks and frames the substitute observation returned when a read hits a protected file: the
+     * protected text replaces the raw result as the observation body, while the semantic masker (if
+     * present) still assesses the raw result for a high-risk signal. The reserved refusal prefix is
+     * neutralized either way.
+     */
     public @NonNull String frameProtectedFile(
             @NonNull ToolCall call,
             @NonNull ToolDefinition def,

@@ -74,6 +74,7 @@ import top.focess.veto.api.agent.tool.WorkspaceReadTool;
         })
 public final class FindFilesTool implements WorkspaceReadTool<FindFilesTool.Args> {
 
+    /** Model-facing arguments of {@code find_files}. */
     public record Args(
             @NonNull
                     @SecurityHint(ParamCategory.FILESYSTEM_PATH)
@@ -173,6 +174,7 @@ public final class FindFilesTool implements WorkspaceReadTool<FindFilesTool.Args
         return regex.append('$').toString();
     }
 
+    /** JSON result payload of {@code find_files}. */
     public record Result(
             @NonNull String base,
             @NonNull String pattern,

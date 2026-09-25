@@ -97,11 +97,13 @@ public class Gateway {
         return screen(call, def, null);
     }
 
+    /** Convenience overload screening with the agent's thought as the only SLM context. */
     public @NonNull GatewayResult screen(
             @NonNull ToolCall call, @NonNull ToolDefinition def, String thought) {
         return screen(call, def, null, thought);
     }
 
+    /** Convenience overload with an active task and thought, but no execution context. */
     public @NonNull GatewayResult screen(
             @NonNull ToolCall call,
             @NonNull ToolDefinition def,
@@ -110,6 +112,7 @@ public class Gateway {
         return screen(call, def, activeTask, thought, null);
     }
 
+    /** Convenience overload with no GUIDE plan step. */
     public @NonNull GatewayResult screen(
             @NonNull ToolCall call,
             @NonNull ToolDefinition def,
@@ -130,6 +133,10 @@ public class Gateway {
         return screen(call, def, activeTask, thought, executionContext, planStep, null);
     }
 
+    /**
+     * Full screening entry point all shorter overloads delegate to. A {@link PreparedInvocation}
+     * replaces the execution context with its facts and is bound to the captured permit.
+     */
     public @NonNull GatewayResult screen(
             @NonNull ToolCall call,
             @NonNull ToolDefinition def,

@@ -28,6 +28,7 @@ public class VectorIndexMemoryStore implements MemoryStore {
     /** Memories are stored separately so we can attach metadata for the search result. */
     private final @NonNull ConcurrentMap<UUID, Memory> store = new ConcurrentHashMap<>();
 
+    /** Creates a store backed by the given in-memory vector index. */
     public VectorIndexMemoryStore(@NonNull VectorIndex index, @NonNull Embedder embedder) {
         this.index = index;
         this.embedder = embedder;

@@ -64,6 +64,7 @@ public class TurnRecordEntity {
     @Column(name = "timestamp", nullable = false)
     private @NonNull Instant timestamp = Instant.EPOCH;
 
+    /** JPA no-arg constructor; use {@link #of} to build a populated row. */
     protected TurnRecordEntity() {}
 
     /** Build a row from a captured {@link TurnRecord} + its tenant/session/agent keys. */

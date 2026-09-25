@@ -209,6 +209,7 @@ final class LinuxSandboxBootstrap {
         }
     }
 
+    /** Linux {@code sock_filter}: one cBPF instruction of the seccomp program. */
     @Structure.FieldOrder({"code", "jt", "jf", "k"})
     public static class SockFilter extends Structure {
         public short code;
@@ -216,6 +217,7 @@ final class LinuxSandboxBootstrap {
         public byte jf;
         public int k;
 
+        /** No-arg constructor required by JNA. */
         public SockFilter() {}
 
         SockFilter(short code, int jt, int jf, int k) {
@@ -226,6 +228,7 @@ final class LinuxSandboxBootstrap {
         }
     }
 
+    /** Linux {@code sock_fprog}: the cBPF program handed to {@code prctl(PR_SET_SECCOMP)}. */
     @Structure.FieldOrder({"len", "filter"})
     public static class SockFprog extends Structure {
         public short len;

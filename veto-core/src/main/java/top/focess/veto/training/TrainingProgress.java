@@ -33,10 +33,12 @@ public class TrainingProgress {
     /** Optional evaluation report attached after evaluation. */
     private volatile EvaluationReport evaluation = null;
 
+    /** Create an idle progress tracker. */
     public TrainingProgress() {}
 
     // ── Mutators ──
 
+    /** Reset all state and mark the run as preparing data. */
     public void start() {
         this.status = Status.PREPARING_DATA;
         this.progress = 0.0;
@@ -49,6 +51,7 @@ public class TrainingProgress {
         this.evaluation = null;
     }
 
+    /** Mark the run as completed and record the trained model path. */
     public void complete(@NonNull String modelPath) {
         this.status = Status.COMPLETED;
         this.progress = 1.0;
@@ -58,6 +61,7 @@ public class TrainingProgress {
         this.completedAt = Instant.now();
     }
 
+    /** Mark the run as failed with the given error message. */
     public void fail(@NonNull String error) {
         this.status = Status.FAILED;
         this.currentPhase = "failed";
@@ -66,6 +70,7 @@ public class TrainingProgress {
         this.completedAt = Instant.now();
     }
 
+    /** Mark the run as cancelled by the user. */
     public void cancel() {
         this.status = Status.CANCELLED;
         this.currentPhase = "cancelled";
@@ -73,6 +78,10 @@ public class TrainingProgress {
         this.completedAt = Instant.now();
     }
 
+    /**
+     * Update the current phase, progress fraction, and message, deriving the {@link Status} from
+     * the phase name.
+     */
     public void updatePhase(@NonNull String phase, double progress, @NonNull String message) {
         this.currentPhase = phase;
         this.progress = progress;
@@ -131,6 +140,7 @@ public class TrainingProgress {
 
     // ── Record for evaluation report (mirrors Python schema) ──
 
+    /** Evaluation metrics produced by evaluate.py, mirroring its JSON schema. */
     public record EvaluationReport(
             String modelPath,
             String datasetPath,
@@ -141,10 +151,13 @@ public class TrainingProgress {
             @NonNull DecisionAccuracy decisionAccuracy,
             @NonNull RedactionAccuracy redactionAccuracy,
             @NonNull StructuralValidation structuralValidation) {
+        /** GBNF-constrained output compliance: count and rate of valid JSON responses. */
         public record GbnfCompliance(int validJsonCount, double validJsonRate) {}
 
+        /** Decision correctness: correct/total counts and accuracy ratio. */
         public record DecisionAccuracy(int correct, int total, double accuracy) {}
 
+        /** Redaction detection precision/recall metrics. */
         public record RedactionAccuracy(
                 int truePositives,
                 int falsePositives,
@@ -153,6 +166,7 @@ public class TrainingProgress {
                 double recall,
                 double f1) {}
 
+        /** Structural validation correctness: correct/total counts and accuracy ratio. */
         public record StructuralValidation(int correct, int total, double accuracy) {}
     }
 }

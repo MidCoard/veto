@@ -48,6 +48,7 @@ import top.focess.veto.vault.UserContext;
 public final class AgentRunner implements Runnable {
     private final @NonNull AgentRuntimeState runtime;
 
+    /** Creates a runner with no session owner, deriving the session id from the persona id. */
     public AgentRunner(
             @NonNull String agentId,
             @NonNull AgentPersona persona,
@@ -80,6 +81,11 @@ public final class AgentRunner implements Runnable {
                 UUID.fromString(agentId));
     }
 
+    /**
+     * Creates a runner bound to an explicit session owner and session id. Does not start the loop;
+     * submit {@link #run()} to a thread (a virtual thread per {@link VetoAgent}) to begin draining
+     * the action queue.
+     */
     public AgentRunner(
             @NonNull String agentId,
             @NonNull AgentPersona persona,
@@ -116,10 +122,12 @@ public final class AgentRunner implements Runnable {
         runtime.initializeComponents();
     }
 
+    /** Attaches the vault that gates autonomous plugin work on the owner's unlocked credentials. */
     public void attachExecutionVault(@NonNull KeysteadVault vault) {
         runtime.continuations().attachExecutionVault(vault);
     }
 
+    /** The reason execution is parked (approval, question, breaker, etc.), or {@code null}. */
     public String executionWaitReason() {
         return runtime.lifecycle().executionWaitReason();
     }
@@ -128,25 +136,35 @@ public final class AgentRunner implements Runnable {
         runtime.lifecycle().configureModelTiers(registry);
     }
 
+    /**
+     * Cancels the task identified by its result future and waits for its execution to exit.
+     *
+     * @return whether the task settled within {@code timeout}; false if it is not owned by this
+     *     runner or did not settle in time
+     */
     public boolean cancelTask(
             @NonNull CompletableFuture<AgentResult> result, @NonNull Duration timeout)
             throws InterruptedException {
         return runtime.lifecycle().cancelTask(result, timeout);
     }
 
+    /** The plugin provenance snapshot for the agent's latest model context. */
     public @NonNull PluginContextSnapshot pluginContext() {
         return runtime.lifecycle().pluginContext();
     }
 
+    /** Sets how tool results are rendered to the model for subsequent turns. */
     public void setToolResultPresentation(
             @NonNull ToolResultPresentationMode toolResultPresentation) {
         runtime.lifecycle().setToolResultPresentation(toolResultPresentation);
     }
 
+    /** Attaches the durable store used to reload request continuations across restarts. */
     public void attachContinuationStore(@NonNull RequestContinuationStore store) {
         runtime.continuations().attachContinuationStore(store);
     }
 
+    /** Attaches the plugin work source polled for autonomous observations. */
     public void attachWorkSource(@NonNull AgentWorkSource service) {
         runtime.continuations().attachWorkSource(service);
     }
@@ -155,10 +173,15 @@ public final class AgentRunner implements Runnable {
         runtime.backgroundRequestListener = listener;
     }
 
+    /** Signals that plugin work may be available, waking the loop to claim it. */
     public void signalWork() {
         runtime.continuations().signalWork();
     }
 
+    /**
+     * The agent's execution loop: drains the action queue on this (virtual) thread, running one
+     * episode per dequeued request until the agent is terminated or the thread is interrupted.
+     */
     @SuppressWarnings(
             "NonAtomicOperationOnVolatileField") // WHY: the runner thread is the only writer of
     // control in this loop; volatile publishes state
@@ -544,121 +567,156 @@ public final class AgentRunner implements Runnable {
         }
     }
 
+    /**
+     * Seeds replayed history before the first episode (idempotent). If the replay shows an episode
+     * left unfinished, the agent is parked in the {@code INTERRUPTED} wait so the next prompt
+     * records an explicit continuation boundary.
+     */
     public void seedHistory(@NonNull List<TurnRecord> replayed) {
         if (runtime.output().seedHistory(replayed))
             runtime.lifecycle().saveExecutionWait(Wait.INTERRUPTED);
     }
 
+    /** Whether the agent is running or has queued work still to process. */
     public boolean hasPendingWork() {
         return runtime.lifecycle().hasPendingWork();
     }
 
+    /** Enqueues a new episode for {@code action} and returns the handle that owns its result. */
     public @NonNull RequestHandle startTask(
             Consumer<AgentResult> callback, @NonNull AgentAction action) {
         return runtime.lifecycle().startTask(callback, action);
     }
 
+    /** Enqueues an action without retaining a result handle (fire-and-forget). */
     public void enqueue(@NonNull AgentAction action) {
         runtime.lifecycle().enqueue(action);
     }
 
+    /** Replaces the base model binding used for subsequent configuration resolution. */
     public void bind(@NonNull LlmBinding binding) {
         runtime.lifecycle().bind(binding);
     }
 
+    /** The model binding currently in effect. */
     public @NonNull LlmBinding binding() {
         return runtime.lifecycle().binding();
     }
 
+    /** Subscribes a listener for user-facing messages emitted by the agent. */
     public void addMessageListener(@NonNull Consumer<String> listener) {
         runtime.output().addMessageListener(listener);
     }
 
+    /** Unsubscribes a user-facing-message listener. */
     public void removeMessageListener(@NonNull Consumer<String> listener) {
         runtime.output().removeMessageListener(listener);
     }
 
+    /** Subscribes a listener for the agent's interim reasoning thoughts. */
     public void addThoughtListener(@NonNull Consumer<String> listener) {
         runtime.output().addThoughtListener(listener);
     }
 
+    /** Unsubscribes an interim-thought listener. */
     public void removeThoughtListener(@NonNull Consumer<String> listener) {
         runtime.output().removeThoughtListener(listener);
     }
 
+    /** Subscribes a listener notified when a tool call parks for HITL approval. */
     public void addVetoListener(@NonNull Consumer<VetoPrompt> listener) {
         runtime.output().addVetoListener(listener);
     }
 
+    /** Unsubscribes a HITL-veto listener. */
     public void removeVetoListener(@NonNull Consumer<VetoPrompt> listener) {
         runtime.output().removeVetoListener(listener);
     }
 
+    /** Subscribes a listener notified as each tool call turn is appended. */
     public void addToolCallListener(@NonNull Consumer<ToolCallEvent> listener) {
         runtime.output().addToolCallListener(listener);
     }
 
+    /** Unsubscribes a tool-call listener. */
     public void removeToolCallListener(@NonNull Consumer<ToolCallEvent> listener) {
         runtime.output().removeToolCallListener(listener);
     }
 
+    /** Subscribes a listener notified as each tool result turn is appended. */
     public void addToolResultListener(@NonNull Consumer<ToolResultEvent> listener) {
         runtime.output().addToolResultListener(listener);
     }
 
+    /** Unsubscribes a tool-result listener. */
     public void removeToolResultListener(@NonNull Consumer<ToolResultEvent> listener) {
         runtime.output().removeToolResultListener(listener);
     }
 
+    /** The agent's current lifecycle state. */
     public @NonNull AgentState state() {
         return runtime.lifecycle().state();
     }
 
+    /** The durable turn history, oldest first. */
     public @NonNull List<TurnRecord> history() {
         return runtime.output().history();
     }
 
+    /** The read-history used for drift detection. */
     public @NonNull ReadHistory readHistory() {
         return runtime.lifecycle().readHistory();
     }
 
+    /** The tool names this agent is authorized to call. */
     public @NonNull Set<String> whitelistedToolsView() {
         return runtime.lifecycle().whitelistedToolsView();
     }
 
+    /** Sets the terminal policy and host effect guard applied to each episode. */
     public void setExecutionPolicy(@NonNull AgentExecutionPolicy policy) {
         runtime.lifecycle().setExecutionPolicy(policy);
     }
 
+    /** Whether the current episode has consumed its model-call budget. */
     public boolean budgetExhausted() {
         RequestHandle request = runtime.control.request();
         return request != null && request.episode.breaker().shouldTrip();
     }
 
+    /** The agent's stable identity (its persona id). */
     public @NonNull String agentId() {
         return runtime.lifecycle().agentId();
     }
 
+    /** Enqueues a re-resolution of the agent's plugin-supplied configuration. */
     public void refreshConfiguration() {
         runtime.lifecycle().enqueue(new AgentAction.ConfigurationAction());
     }
 
+    /** Sets the locale used to render agent-thread messages (null resets to English). */
     public void setLocale(Locale locale) {
         runtime.lifecycle().setLocale(locale);
     }
 
+    /** The locale currently used for agent-thread messages. */
     public @NonNull Locale locale() {
         return runtime.lifecycle().locale();
     }
 
+    /** The persona currently in effect. */
     public @NonNull AgentPersona personaView() {
         return runtime.lifecycle().personaView();
     }
 
+    /** Attaches the session's resolved plugin selection. */
     public void attachSessionPlugins(@NonNull SessionPlugins value) {
         runtime.lifecycle().attachSessionPlugins(value);
     }
 
+    /**
+     * Applies a new persona, re-scoping the tool whitelist and bumping the configuration revision.
+     */
     public void applyPersona(@NonNull AgentPersona persona) {
         runtime.lifecycle().applyPersona(persona);
     }
@@ -667,18 +725,22 @@ public final class AgentRunner implements Runnable {
         runtime.lifecycle().onTermination(callback);
     }
 
+    /** The session this runner belongs to. */
     public @NonNull UUID sessionId() {
         return runtime.lifecycle().sessionId();
     }
 
+    /** Closes the runner for host shutdown, interrupting any in-flight episode. */
     public void shutdown() {
         runtime.lifecycle().close(ExecutionControl.CloseReason.SHUTDOWN);
     }
 
+    /** Requests termination of the agent (agent deleted); the loop exits at its next boundary. */
     public void terminate() {
         runtime.lifecycle().terminate();
     }
 
+    /** Attaches the bus used to publish agent lifecycle events to plugins. */
     public void attachLifecycleEvents(@NonNull PluginLifecycleEvents events) {
         runtime.lifecycle().attachLifecycleEvents(events);
     }

@@ -10,6 +10,7 @@ import org.jspecify.annotations.NonNull;
 public final class RecordTokenCounter {
     private RecordTokenCounter() {}
 
+    /** Strips every token-count field so the turn carries no measurement (nor any estimate). */
     public static @NonNull TurnRecord unmeasured(@NonNull TurnRecord turn) {
         Map<String, Object> payload = new LinkedHashMap<>(turn.payload());
         payload.remove("usedTokens");
@@ -23,6 +24,7 @@ public final class RecordTokenCounter {
                 turn.turnNumber(), turn.type(), payload, turn.timestamp(), turn.llmUsage());
     }
 
+    /** Drops estimated/request-delta counts, keeping only genuine provider measurements. */
     public static @NonNull TurnRecord withoutEstimate(@NonNull TurnRecord turn) {
         return turn.type() == TurnType.ASSISTANT_THOUGHT
                         || "estimated".equals(turn.payload().get("tokenCountSource"))
@@ -31,6 +33,9 @@ public final class RecordTokenCounter {
                 : turn;
     }
 
+    /**
+     * The measured token count in a payload, or {@code null} when it is absent or only estimated.
+     */
     public static Long count(@NonNull Map<String, Object> payload) {
         if (hasRequestDelta(payload)) return null;
         if (!"measured".equals(payload.get("tokenCountSource"))) return null;

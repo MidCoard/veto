@@ -15,6 +15,9 @@ import top.focess.veto.api.agent.capability.NetworkEgressCapability;
 import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.tool.*;
 
+/**
+ * {@code read_github_repository} - read GitHub repository information using an imported credential.
+ */
 @ToolSecurity(capability = ToolCapability.NETWORK_EGRESS, defaultDanger = Danger.DANGEROUS)
 @ToolDoc(
         description = "Read GitHub repository information using an imported credential.",
@@ -46,14 +49,17 @@ public final class ReadGitHubRepositoryTool
     private final NetworkEgressCapability capability;
     private final @NonNull HttpClient client;
 
+    /** Declaration-only instance; the host supplies the capability at execution time. */
     public ReadGitHubRepositoryTool() {
         this(null, newClient());
     }
 
+    /** Creates an instance bound to the given host capability. */
     public ReadGitHubRepositoryTool(@NonNull NetworkEgressCapability capability) {
         this(capability, newClient());
     }
 
+    /** Creates an instance with an explicit HTTP client. */
     public ReadGitHubRepositoryTool(
             NetworkEgressCapability capability, @NonNull HttpClient client) {
         this.capability = capability;
@@ -72,6 +78,7 @@ public final class ReadGitHubRepositoryTool
         client.close();
     }
 
+    /** Model-facing arguments of {@code read_github_repository}. */
     public record Args(
             @Doc("Imported credential_ref; never a plaintext token.") @NonNull String credentialRef,
             @Doc("GitHub repository owner login, not the credential owner.")

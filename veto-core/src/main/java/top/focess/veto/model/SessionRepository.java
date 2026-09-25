@@ -6,9 +6,11 @@ import org.jspecify.annotations.NonNull;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
+/** Spring Data JPA access to {@link SessionEntity} (per-user conversation sessions). */
 @Repository
 public interface SessionRepository extends JpaRepository<SessionEntity, String> {
 
+    /** All sessions owned by {@code owner}. */
     @NonNull List<SessionEntity> findByOwner(@NonNull String owner);
 
     /**
@@ -17,6 +19,11 @@ public interface SessionRepository extends JpaRepository<SessionEntity, String> 
      */
     @NonNull Optional<SessionEntity> findFirstByOwnerOrderByLastActiveAtDesc(@NonNull String owner);
 
+    /**
+     * The owner's session with the given name; throws {@code NonUniqueResultException} if legacy
+     * rows share the {@code (owner, name)} pair (see {@link
+     * #findFirstByNameAndOwnerOrderByLastActiveAtDesc}).
+     */
     @NonNull Optional<SessionEntity> findByNameAndOwner(
             @NonNull String name, @NonNull String owner);
 

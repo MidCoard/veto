@@ -40,6 +40,7 @@ public class FsController {
 
     private final @NonNull KeysteadVault vault;
 
+    /** Creates the controller with the vault used to check authentication. */
     public FsController(@NonNull KeysteadVault vault) {
         this.vault = vault;
     }
@@ -103,8 +104,14 @@ public class FsController {
                 body(dir.toString(), parent != null ? parent.toString() : null, entries));
     }
 
+    /** Directory to create: the existing {@code parent} path and the new child {@code name}. */
     public record CreateDirectoryRequest(String parent, String name) {}
 
+    /**
+     * Creates a single child directory under an existing, readable parent. Validates the name
+     * against portable filename rules; 409 when it already exists, 400 when the parent is invalid
+     * or creation fails. Returns 201 with the created path.
+     */
     @PostMapping("/directories")
     public @NonNull ResponseEntity<?> createDirectory(
             @RequestBody @NonNull CreateDirectoryRequest request) {

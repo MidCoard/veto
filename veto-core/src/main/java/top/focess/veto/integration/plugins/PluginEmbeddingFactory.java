@@ -8,5 +8,6 @@ import top.focess.veto.plugin.runtime.ManagedPlugin;
 /** Host-only binding factory, removed before services are delivered to a plugin. */
 @FunctionalInterface
 public interface PluginEmbeddingFactory {
+    /** Returns the embedding service bound to the plugin activation, empty when none is granted. */
     @NonNull Optional<TextEmbedding> bind(@NonNull ManagedPlugin plugin);
 }

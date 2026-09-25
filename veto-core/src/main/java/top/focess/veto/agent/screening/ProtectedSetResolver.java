@@ -20,6 +20,7 @@ public class ProtectedSetResolver {
     private final @NonNull CredentialVaultConfiguration vault;
     private final @NonNull Path launchDirectory;
 
+    /** Spring constructor resolving protected paths relative to the process launch directory. */
     @Autowired
     public ProtectedSetResolver(
             @NonNull DeployerPolicyConfiguration policyConfiguration,
@@ -43,6 +44,11 @@ public class ProtectedSetResolver {
         this.launchDirectory = launchDirectory.toAbsolutePath().normalize();
     }
 
+    /**
+     * Builds the effective protected set for a user and workspace under the given policy, combining
+     * deployer defaults, standard application paths, and configured entries. Returns the empty set
+     * under {@link DeployerPolicy#FULL_ACCESS}.
+     */
     public @NonNull ProtectedSet resolve(
             @NonNull DeployerPolicy policy,
             @NonNull String vetoUserId,

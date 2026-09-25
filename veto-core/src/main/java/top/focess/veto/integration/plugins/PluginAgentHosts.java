@@ -43,6 +43,7 @@ public final class PluginAgentHosts implements PluginAgentHostFactory {
     private final @NonNull SessionHistoryLoader history;
     private final @NonNull KeysteadVault vault;
 
+    /** Creates the factory over the agent, session, identity, history, and vault services. */
     public PluginAgentHosts(
             @NonNull ObjectProvider<AgentService> service,
             @NonNull SessionRepository sessions,
@@ -62,6 +63,7 @@ public final class PluginAgentHosts implements PluginAgentHostFactory {
 
     private @NonNull Supplier<@Nullable IsolatedExecutions> isolated = () -> null;
 
+    /** Attaches the optional isolated-execution engine used by {@code AgentHost.isolate}. */
     @Autowired
     public void attachIsolatedProvider(@NonNull ObjectProvider<IsolatedExecutions> value) {
         isolated = value::getIfAvailable;
@@ -71,11 +73,13 @@ public final class PluginAgentHosts implements PluginAgentHostFactory {
         isolated = () -> value;
     }
 
+    /** Exposes this factory as a host service so the manager can bind it per plugin. */
     @Bean
     public @NonNull PluginHostServices agentHostServices() {
         return new PluginHostServices(Map.of(PluginAgentHostFactory.class, this));
     }
 
+    /** Returns the agent host for one plugin activation; every effect re-authorizes its session. */
     public @NonNull AgentHost bind(@NonNull ManagedPlugin plugin, @NonNull PluginStorage storage) {
         return new AgentHost() {
             public @NonNull Session session(PluginStorage.@NonNull SessionScope scope) {
@@ -137,8 +141,6 @@ public final class PluginAgentHosts implements PluginAgentHostFactory {
         };
     }
 
-    @SuppressWarnings(
-            "IgnoreResultOfCall") // WHY: UUID.fromString here only validates the caller-supplied id
     private synchronized AgentHost.@NonNull Child openChild(
             @NonNull ManagedPlugin plugin,
             @NonNull PluginStorage storage,
@@ -148,6 +150,8 @@ public final class PluginAgentHosts implements PluginAgentHostFactory {
             @NonNull AgentProfile profile) {
         String owner = scopes.authorizeSession(storage, scope);
         if (!vault.isUnlocked(owner)) throw new SecurityException("Session owner is locked");
+        // UUID.fromString only validates the caller-supplied id; the parsed value is not needed.
+        //noinspection IgnoreResultOfCall
         UUID.fromString(id);
         if (id.equals(parentId)) throw new SecurityException("Child cannot replace its parent");
         var session = sessions.findById(scope.sessionId()).orElseThrow();

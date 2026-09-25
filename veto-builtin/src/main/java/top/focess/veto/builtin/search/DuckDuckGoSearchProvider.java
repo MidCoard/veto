@@ -41,6 +41,7 @@ public class DuckDuckGoSearchProvider implements SearchProvider, AutoCloseable {
     private final @NonNull HttpClient httpClient;
     private final @NonNull String endpoint;
 
+    /** Creates the provider with the default HTTP client and endpoint. */
     public DuckDuckGoSearchProvider() {
         this(createHttpClient(), ENDPOINT);
     }

@@ -28,10 +28,12 @@ public final class MonitorFrontend {
     private final MonitorService service;
     private final ObjectMapper mapper = new ObjectMapper().findAndRegisterModules();
 
+    /** Creates a frontend backed by the given monitor service. */
     public MonitorFrontend(MonitorService service) {
         this.service = service;
     }
 
+    /** Serves the bundled monitors script and routes its actions to {@link #handle}. */
     public FrontendContribution contribution() {
         try (var stream =
                 ToolDocs.nonNullClass(MonitorFrontend.class)
@@ -44,6 +46,10 @@ public final class MonitorFrontend {
         }
     }
 
+    /**
+     * Answers paged frontend actions ({@code list}, {@code purpose}, {@code content}, {@code
+     * details}).
+     */
     public JsonValue handle(
             FrontendContribution.Scope scope, String action, JsonValue.ObjectValue args)
             throws PluginFailure {

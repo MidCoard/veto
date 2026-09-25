@@ -52,14 +52,17 @@ public record Memory(
             attrs = Map.copyOf(attrs);
         }
 
+        /** Source reference pointing at the tool call that produced this memory. */
         public static @NonNull SourceRef callId(@NonNull String callId) {
             return new SourceRef("call_id", Map.of("call_id", callId));
         }
 
+        /** Source reference spanning the given conversation turn range. */
         public static @NonNull SourceRef turnRange(int from, int to) {
             return new SourceRef("turn_range", Map.of("from", from, "to", to));
         }
 
+        /** Source reference naming the insight producer, e.g. a tool name. */
         public static @NonNull SourceRef insightOrigin(@NonNull String origin) {
             return new SourceRef("insight_origin", Map.of("origin", origin));
         }

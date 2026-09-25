@@ -14,6 +14,7 @@ import java.util.Iterator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.regex.Pattern;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.agent.tool.RequiredWhen;
 import top.focess.veto.api.agent.tool.ToolDocs;
@@ -28,11 +29,18 @@ public final class NativeToolArgumentValidator {
 
     private NativeToolArgumentValidator() {}
 
+    /** Validates arguments against the record-derived schema, deferring no paths. */
     public static void validate(
             @NonNull String toolName, @NonNull JsonNode arguments, @NonNull Class<?> argsClass) {
         validate(toolName, arguments, argsClass, Set.of());
     }
 
+    /**
+     * Validates arguments against the schema compiled from {@code argsClass}, including conditional
+     * {@code @RequiredWhen} requirements, skipping only the explicitly deferred paths.
+     *
+     * @throws ToolExecutionException listing every violation if the arguments are invalid
+     */
     public static void validate(
             @NonNull String toolName,
             @NonNull JsonNode arguments,
@@ -283,8 +291,7 @@ public final class NativeToolArgumentValidator {
                             Set.of());
                 boolean matchedProperty = properties.has(name);
                 for (var pattern : schema.path("patternProperties").properties()) {
-                    if (!java.util.regex.Pattern.compile(pattern.getKey()).matcher(name).find())
-                        continue;
+                    if (!Pattern.compile(pattern.getKey()).matcher(name).find()) continue;
                     matchedProperty = true;
                     validateNode(
                             value.path(name),
@@ -344,9 +351,7 @@ public final class NativeToolArgumentValidator {
             if (schema.has("maxLength") && length > schema.path("maxLength").asInt())
                 issues.add("parameter '" + displayPath(path) + "' is too long");
             if (schema.has("pattern")
-                    && !java.util.regex.Pattern.compile(schema.path("pattern").asText())
-                            .matcher(text)
-                            .find())
+                    && !Pattern.compile(schema.path("pattern").asText()).matcher(text).find())
                 issues.add(
                         "parameter '"
                                 + displayPath(path)

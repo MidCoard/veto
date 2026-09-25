@@ -2,6 +2,7 @@ package top.focess.veto.training;
 
 import static top.focess.veto.util.LogValues.safe;
 
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
@@ -61,17 +62,20 @@ public class TrainingManager {
     /** Callback interface for model deployment (wired to LlamaCppBridge restart). */
     @FunctionalInterface
     public interface ModelDeployCallback {
+        /** Deploy the GGUF model at the given path. */
         void deploy(@NonNull String modelPath);
     }
 
     private ModelDeployCallback deployCallback = null;
 
+    /** Create the manager with its training configuration and JSON mapper. */
     public TrainingManager(
             @NonNull TrainingConfiguration config, @NonNull ObjectMapper objectMapper) {
         this.config = config;
         this.objectMapper = objectMapper;
     }
 
+    /** Log the effective training configuration at startup. */
     @PostConstruct
     public void init() {
         log.info(
@@ -80,6 +84,7 @@ public class TrainingManager {
                 config.getTrainingDir());
     }
 
+    /** Cancel any running training and shut down the process monitor executor. */
     @PreDestroy
     public void shutdown() {
         if (running.get()) {
@@ -505,12 +510,8 @@ public class TrainingManager {
                     objectMapper
                             .readerFor(
                                     ToolDocs.nonNullClass(TrainingProgress.EvaluationReport.class))
-                            .with(
-                                    com.fasterxml.jackson.databind.DeserializationFeature
-                                            .FAIL_ON_MISSING_CREATOR_PROPERTIES)
-                            .with(
-                                    com.fasterxml.jackson.databind.DeserializationFeature
-                                            .FAIL_ON_NULL_CREATOR_PROPERTIES)
+                            .with(DeserializationFeature.FAIL_ON_MISSING_CREATOR_PROPERTIES)
+                            .with(DeserializationFeature.FAIL_ON_NULL_CREATOR_PROPERTIES)
                             .readValue(reportPath.toFile());
 
             if (evalReport == null) throw new IllegalArgumentException("Missing evaluation report");
@@ -747,10 +748,12 @@ public class TrainingManager {
 
     // ── Public accessors ──
 
+    /** Get the mutable progress state of the current or most recent training run. */
     public @NonNull TrainingProgress getProgress() {
         return progress;
     }
 
+    /** Whether a training run is currently in progress. */
     public boolean isRunning() {
         return running.get();
     }

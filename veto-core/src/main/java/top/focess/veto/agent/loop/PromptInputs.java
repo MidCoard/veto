@@ -27,6 +27,10 @@ public final class PromptInputs {
 
     private PromptInputs() {}
 
+    /**
+     * Assembles the standard fact set bound into the system-prompt entry: persona, workspace, law
+     * sources, guidance, environment, policy, presentation mode, and the tool catalogue.
+     */
     public static @NonNull Map<String, Object> standard(
             @NonNull AgentPersona persona,
             @NonNull Workspace workspace,
@@ -71,13 +75,17 @@ public final class PromptInputs {
         return "/" + (name == null ? "" : name.toString());
     }
 
+    /** Host operating-system facts exposed to prompts. */
     public record Environment(@NonNull String os, @NonNull String arch, boolean windows) {}
 
+    /** One mounted workspace root and whether it is the operational (current) root. */
     public record Root(
             @NonNull String hostPath, @NonNull String mountedPath, boolean operational) {}
 
+    /** The workspace's path mode and its mounted roots. */
     public record WorkspaceInput(@NonNull String pathMode, @NonNull List<Root> roots) {}
 
+    /** One tool's catalogue entry: flattened argument rows, examples, result formats, docs. */
     public record ToolInput(
             @NonNull String name,
             @NonNull String description,
@@ -87,6 +95,7 @@ public final class PromptInputs {
             @NonNull List<Format> formats,
             @NonNull ToolDocumentation documentation) {}
 
+    /** One flattened tool-argument row, with dotted/{@code []} paths for nested schemas. */
     public record ArgumentInput(
             @NonNull String name,
             @NonNull String type,
@@ -94,17 +103,21 @@ public final class PromptInputs {
             boolean required,
             @NonNull String description) {}
 
+    /** One tool result format the tool advertises. */
     public record Format(@NonNull String id, @NonNull String description) {}
 
+    /** The agent's identity facts as bound into the prompt. */
     public record Persona(
             @NonNull String name, @NonNull String description, @NonNull String role) {}
 
+    /** One resolved VETO.md law source: where it came from and its content. */
     public record LawSource(
             @NonNull String root,
             @NonNull String file,
             boolean override,
             @NonNull String content) {}
 
+    /** Captures the current host's OS/arch facts. */
     public static @NonNull Environment environment() {
         String os = System.getProperty("os.name", "unknown");
         return new Environment(
@@ -113,6 +126,7 @@ public final class PromptInputs {
                 os.toLowerCase(Locale.ROOT).contains("win"));
     }
 
+    /** Projects the workspace's path mode and roots into prompt input facts. */
     public static @NonNull WorkspaceInput workspace(@NonNull Workspace workspace) {
         Path operational = workspace.pathResolver().operationalRoot();
         return new WorkspaceInput(
@@ -129,6 +143,7 @@ public final class PromptInputs {
                         .toList());
     }
 
+    /** Projects the tool catalogue into name-sorted prompt input rows, bounding example counts. */
     public static @NonNull List<ToolInput> tools(@NonNull List<ToolDefinition> tools) {
         return tools.stream()
                 .sorted(Comparator.comparing(ToolDefinition::name))

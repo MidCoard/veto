@@ -17,6 +17,9 @@ import top.focess.veto.veto.LlamaCppBridge;
 /** Generic, host-granted storage and local-model resources. No plugin earns authority by name. */
 @Configuration(proxyBeanMethods = false)
 public class HostResourceConfiguration {
+    /**
+     * Assembles credential-import access and local-model completion when the backing beans exist.
+     */
     @Bean
     public @NonNull PluginHostServices pluginHostServices(
             @NonNull ObjectProvider<KeysteadVault> vaultProvider,

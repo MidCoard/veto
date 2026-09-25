@@ -147,10 +147,12 @@ public final class WebSearchTool implements NativeTool<WebSearchTool.Args> {
 
     private final @NonNull SearchProvider provider;
 
+    /** Creates an instance searching through the given provider. */
     public WebSearchTool(@NonNull SearchProvider provider) {
         this.provider = provider;
     }
 
+    /** Model-facing arguments of {@code web_search}. */
     public record Args(
             @SecurityHint(ParamCategory.GENERIC) @Doc("Search query (at least 2 characters).")
                     @NonNull String query,

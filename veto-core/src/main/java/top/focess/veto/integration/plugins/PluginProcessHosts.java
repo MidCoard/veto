@@ -39,6 +39,7 @@ public final class PluginProcessHosts implements PluginProcessHostFactory {
     private final @NonNull PluginStorageFactory scopes;
     private final @NonNull SessionAgentRegistry agents;
 
+    /** Creates the factory over the sandbox, storage-scope, and agent-registry services. */
     public PluginProcessHosts(
             @NonNull SandboxManager sandbox,
             @NonNull PluginStorageFactory scopes,
@@ -48,16 +49,19 @@ public final class PluginProcessHosts implements PluginProcessHostFactory {
         this.agents = agents;
     }
 
+    /** Exposes this factory as a host service so the manager can bind it per plugin. */
     @Bean
     public @NonNull PluginHostServices processHostServices() {
         return new PluginHostServices(Map.of(PluginProcessHostFactory.class, this));
     }
 
+    /** Returns the process host for one plugin activation and its scoped storage. */
     public @NonNull ProcessHost bind(
             @NonNull ManagedPlugin plugin, @NonNull PluginStorage storage) {
         return new Bound(plugin, storage);
     }
 
+    /** Verifies the running process belongs to the invocation's scope and may still take input. */
     public static void validateInput(
             @NonNull ManagedPlugin plugin,
             PluginHost.@NonNull Invocation invocation,

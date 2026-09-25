@@ -45,6 +45,7 @@ public final class ManagedPlugin implements AutoCloseable {
         stoppingResources.putIfAbsent(identity, release);
     }
 
+    /** Runs the callback under admission once the plugin reaches ACTIVE; revocation cancels it. */
     public void whenActive(@NonNull Runnable callback) {
         active.thenRunAsync(
                 () -> {
@@ -66,11 +67,13 @@ public final class ManagedPlugin implements AutoCloseable {
         resources.putIfAbsent(release, release);
     }
 
+    /** Registers a host resource under an identity; returns {@code false} if already present. */
     public synchronized boolean ownResource(@NonNull Object identity, @NonNull Runnable release) {
         if (state != PluginState.ACTIVE) throw new IllegalStateException("Plugin is not active");
         return resources.putIfAbsent(identity, release) == null;
     }
 
+    /** Drops a previously owned resource so its release callback no longer runs on cleanup. */
     public void releaseResource(@NonNull Object identity) {
         resources.remove(identity);
         stoppingResources.remove(identity);
@@ -114,10 +117,12 @@ public final class ManagedPlugin implements AutoCloseable {
                             new IllegalStateException("Plugin stopped while awaiting work"));
     }
 
+    /** Stable per-activation identity used to namespace awaits and work continuations. */
     public @NonNull String bindingId() {
         return "plugin:" + identity().id() + ":" + identity().version() + ":" + activationId;
     }
 
+    /** Wraps an implementation whose lifecycle transitions will run on the given executor. */
     public ManagedPlugin(@NonNull VetoPlugin plugin, @NonNull ExecutorService lifecycle) {
         this.plugin = plugin;
         this.lifecycle = lifecycle;
@@ -135,12 +140,15 @@ public final class ManagedPlugin implements AutoCloseable {
         return state;
     }
 
+    /** A unit of plugin work admitted only while the plugin lifecycle permits it. */
     @FunctionalInterface
     @SuppressWarnings("NullableProblems") // the @NonNull bound is required by the NullnessChecker
     public interface Operation<T extends @NonNull Object> {
+        /** Performs the admitted work, or throws {@link PluginFailure} if it cannot complete. */
         @NonNull T run() throws PluginFailure;
     }
 
+    /** Initializes the plugin on the control executor, returning its declared contributions. */
     public @NonNull PluginContributions initialize(
             @NonNull PluginContext context, JsonValue.@NonNull ObjectValue configuration)
             throws PluginFailure {
@@ -171,6 +179,7 @@ public final class ManagedPlugin implements AutoCloseable {
                         }));
     }
 
+    /** Transitions an initialized plugin to ACTIVE on the control executor. */
     public void start() throws PluginFailure {
         requireExternalControl();
         await(
@@ -191,6 +200,7 @@ public final class ManagedPlugin implements AutoCloseable {
     }
 
     /** Admission checks the stop state atomically; handlers run outside the control thread. */
+    @SuppressWarnings("NullableProblems") // the @NonNull bound is required by the NullnessChecker
     public <T extends @NonNull Object> @NonNull T execute(@NonNull Operation<T> operation)
             throws PluginFailure {
         if (Boolean.TRUE.equals(controlling.get()))
@@ -345,6 +355,7 @@ public final class ManagedPlugin implements AutoCloseable {
         return result;
     }
 
+    @SuppressWarnings("NullableProblems") // the @NonNull bound is required by the NullnessChecker
     private static <T extends @NonNull Object> @NonNull T await(
             @NonNull CompletableFuture<T> result) throws PluginFailure {
         try {

@@ -23,17 +23,20 @@ public record InterceptResolution(
         boolean maskObservation,
         @NonNull Source source) {
 
+    /** Where the resolution came from; drives the recorded source and the refusal wording. */
     public enum Source {
         CLIENT_RESPONSE,
         LIFECYCLE_CANCEL,
         INVALID_RESPONSE
     }
 
+    /** Convenience constructor defaulting the source to {@link Source#CLIENT_RESPONSE}. */
     public InterceptResolution(
             @NonNull VetoOption option, Map<String, Object> editedArgs, boolean maskObservation) {
         this(option, editedArgs, maskObservation, Source.CLIENT_RESPONSE);
     }
 
+    /** Human-readable attribution of the refusal for the synthesized refusal observation. */
     public @NonNull String refusalReason() {
         return switch (source) {
             case CLIENT_RESPONSE -> "declined by the client (" + option.name() + ")";

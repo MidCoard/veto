@@ -43,6 +43,7 @@ public final class MemoryTools {
         }
     }
 
+    /** Renders scored memories as the plain-text tool result. */
     public static @NonNull String formatResults(@NonNull List<ScoredMemory> results) {
         if (results.isEmpty()) {
             return "no matching memories";
@@ -132,14 +133,17 @@ public final class MemoryTools {
 
         private final MemoryReadCapability capability;
 
+        /** Declaration-only instance; the host supplies the capability at execution time. */
         public RecallMemory() {
             this.capability = null;
         }
 
+        /** Creates an instance bound to the given host capability. */
         public RecallMemory(@NonNull MemoryReadCapability capability) {
             this.capability = capability;
         }
 
+        /** Model-facing arguments of {@code recall_memory}. */
         public record Args(
                 @SecurityHint(ParamCategory.GENERIC) @Doc("Free-text query to embed + search.")
                         @NonNull String query) {}
@@ -243,19 +247,23 @@ public final class MemoryTools {
 
         private final MemoryWriteCapability capability;
 
+        /** Declaration-only instance; the host supplies the capability at execution time. */
         public WriteMemory() {
             this.capability = null;
         }
 
+        /** Creates an instance bound to the given host capability. */
         public WriteMemory(@NonNull MemoryWriteCapability capability) {
             this.capability = capability;
         }
 
+        /** Operation selected by the model: store new content or promote an existing memory. */
         public enum Mode {
             WRITE,
             PROMOTE
         }
 
+        /** Model-facing arguments of {@code write_memory}. */
         public record Args(
                 @Doc("Required operation: WRITE new durable memory or PROMOTE existing memory.")
                         @NonNull Mode mode,
@@ -386,14 +394,17 @@ public final class MemoryTools {
 
         private final MemoryWriteCapability capability;
 
+        /** Declaration-only instance; the host supplies the capability at execution time. */
         public ForgetMemory() {
             this.capability = null;
         }
 
+        /** Creates an instance bound to the given host capability. */
         public ForgetMemory(@NonNull MemoryWriteCapability capability) {
             this.capability = capability;
         }
 
+        /** Model-facing arguments of {@code forget_memory}. */
         public record Args(
                 @SecurityHint(ParamCategory.GENERIC) @Doc("The memory id to forget.")
                         @NonNull String memoryId) {}

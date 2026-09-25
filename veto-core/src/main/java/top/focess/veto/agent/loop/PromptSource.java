@@ -20,11 +20,16 @@ public final class PromptSource {
 
     private PromptSource() {}
 
+    /** The render of one version-1 source: its id, text, and per-line provenance spans. */
     public record Rendered(
             @NonNull String id, @NonNull String text, @NonNull List<PromptSpan> sources) {}
 
     private record Condition(boolean parent, int line, int blockLine) {}
 
+    /**
+     * Renders a version-1 source, validating its header, declared variables, conditionals, blocks,
+     * and includes; failures raise a coded {@link IllegalArgumentException}.
+     */
     public static @NonNull Rendered compile(
             @NonNull String name,
             @NonNull String source,

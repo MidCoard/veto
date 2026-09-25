@@ -38,6 +38,7 @@ public class DefaultUniformLLMCaller implements UniformLLMCaller {
     private final @NonNull LlmEgress egress;
     private PluginLlmProviders plugins;
 
+    /** Setter-injects the plugin LLM providers used when no built-in strategy matches. */
     @Autowired
     public void attachPluginProviders(@NonNull PluginLlmProviders value) {
         plugins = value;

@@ -35,6 +35,11 @@ public class DefaultModelTierService implements ModelTierRegistry, ModelTierProf
     private final @NonNull ModelTierBindingRepository bindingRepo;
     private final @NonNull CredentialExistenceChecker credentialChecker;
 
+    /**
+     * @param profileRepo per-user profile storage
+     * @param bindingRepo per-tier binding storage
+     * @param credentialChecker vault lookup used to validate {@code credKey} values at set-time
+     */
     public DefaultModelTierService(
             @NonNull ModelTierProfileRepository profileRepo,
             @NonNull ModelTierBindingRepository bindingRepo,

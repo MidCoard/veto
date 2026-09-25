@@ -33,6 +33,7 @@ import top.focess.veto.api.http.ApprovedHttpDestination;
 import top.focess.veto.api.http.HttpDocument;
 import top.focess.veto.integration.plugins.IsolatedExecutions;
 
+/** Fetches screened HTTP destinations under host-enforced timeout, size, and redirect rules. */
 @Component
 public final class NetworkEgressCapabilityImpl implements NetworkEgressCapability {
 
@@ -47,6 +48,7 @@ public final class NetworkEgressCapabilityImpl implements NetworkEgressCapabilit
     private final int maxChars;
     private final boolean allowPrivateAddresses;
 
+    /** Creates the capability with its configured timeout, body cap, and address policy. */
     @Autowired
     public NetworkEgressCapabilityImpl(
             @Value("${veto.http.timeout-seconds:30}") int timeoutSeconds,
@@ -72,6 +74,7 @@ public final class NetworkEgressCapabilityImpl implements NetworkEgressCapabilit
 
     private ImportedCredentialLeases credentials;
 
+    /** Attaches the host credential-lease authority used for imported credentials. */
     @Autowired
     public void attachCredentials(@NonNull ImportedCredentialLeases value) {
         credentials = value;

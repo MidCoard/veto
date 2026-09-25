@@ -11,6 +11,10 @@ import top.focess.veto.api.agent.tool.ToolPresentation;
 public final class ToolPresentations {
     private ToolPresentations() {}
 
+    /**
+     * Computes the tool's presentation state against a read-only view of the session workspace
+     * roots, with host effects disabled. Tools without a presentation are always available.
+     */
     public static ToolPresentation.@NonNull State inspect(
             @NonNull ToolDefinition definition, @NonNull List<@NonNull Path> roots) {
         if (!(definition instanceof LocalToolDefinition local))
@@ -35,6 +39,11 @@ public final class ToolPresentations {
         }
     }
 
+    /**
+     * Enforces that the tool is available in this workspace.
+     *
+     * @throws SecurityException if its presentation reports the tool unavailable
+     */
     public static void requireAvailable(
             @NonNull ToolDefinition definition, @NonNull List<@NonNull Path> roots) {
         if (!inspect(definition, roots).available())

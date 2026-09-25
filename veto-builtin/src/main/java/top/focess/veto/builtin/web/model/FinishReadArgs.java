@@ -4,6 +4,7 @@ import java.util.List;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.agent.tool.Doc;
 
+/** Model-facing arguments of the reader-internal {@code finish_read} tool. */
 public record FinishReadArgs(
         @Doc("complete, partial, or not_found, according to evidence and document coverage.")
                 @NonNull String outcome,

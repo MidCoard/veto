@@ -9,14 +9,17 @@ import top.focess.veto.controller.dto.RestResponse;
 public final class TrainingResponses {
     private TrainingResponses() {}
 
+    /** Simple success/message response for training actions. */
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record Action(boolean success, @NonNull String message) implements RestResponse {}
 
+    /** Action response carrying the current {@link TrainingProgress} snapshot. */
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record ActionProgress(
             boolean success, @NonNull String message, @NonNull TrainingProgress progress)
             implements RestResponse {}
 
+    /** Response for a successfully started training run. */
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record Started(
             boolean success,
@@ -25,22 +28,27 @@ public final class TrainingResponses {
             @NonNull TrainingProgress progress)
             implements RestResponse {}
 
+    /** Response for a failed training start, carrying the error message. */
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record Failed(boolean success, @NonNull String message, @NonNull String error)
             implements RestResponse {}
 
+    /** Response for a successful model deployment, carrying the deployed target path. */
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record Deployed(boolean success, @NonNull String message, @NonNull String targetPath)
             implements RestResponse {}
 
+    /** Response carrying a standalone {@link QualityReport}. */
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record Quality(boolean success, @NonNull String message, @NonNull QualityReport report)
             implements RestResponse {}
 
+    /** Response carrying the latest {@link TrainingProgress.EvaluationReport}. */
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record Evaluation(boolean success, TrainingProgress.@NonNull EvaluationReport evaluation)
             implements RestResponse {}
 
+    /** Training system status: configuration summary plus the current progress snapshot. */
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record Status(
             boolean running,
@@ -54,6 +62,7 @@ public final class TrainingResponses {
             @NonNull TrainingProgress progress)
             implements RestResponse {}
 
+    /** Detailed training progress snapshot response. */
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record Progress(
             @NonNull String status,

@@ -61,6 +61,7 @@ public record ToolExecutionPermit(
                     Set.of(),
                     null);
 
+    /** Convenience constructor for a call with no HTTP destinations. */
     public ToolExecutionPermit(
             @NonNull ToolCall call,
             @NonNull ToolCapability capability,
@@ -86,6 +87,10 @@ public record ToolExecutionPermit(
                 Map.of());
     }
 
+    /**
+     * Convenience constructor taking the preparation before the HTTP destinations; delegates to the
+     * canonical form.
+     */
     public ToolExecutionPermit(
             @NonNull ToolCall call,
             @NonNull ToolCapability capability,
@@ -112,6 +117,7 @@ public record ToolExecutionPermit(
                 preparation);
     }
 
+    /** Returns a copy of this permit bound to the given prepared invocation. */
     public @NonNull ToolExecutionPermit withPreparation(@NonNull PreparedInvocation prepared) {
         return new ToolExecutionPermit(
                 call,
@@ -127,6 +133,7 @@ public record ToolExecutionPermit(
                 prepared);
     }
 
+    /** Normalizes collections to immutable copies and canonicalizes all captured paths. */
     public ToolExecutionPermit {
         httpDestinations = Map.copyOf(httpDestinations);
         filesystemPaths = Map.copyOf(filesystemPaths);
@@ -147,6 +154,7 @@ public record ToolExecutionPermit(
         return call.callId();
     }
 
+    /** The shared permit binding no captured targets (e.g. not-screened agent tools). */
     public static @NonNull ToolExecutionPermit empty() {
         return EMPTY;
     }
@@ -261,6 +269,10 @@ public record ToolExecutionPermit(
         return null;
     }
 
+    /**
+     * Whether this permit authorizes the exact given call right now: identical call, matching
+     * capability and remote binding, and a {@link CallerBinding} for the runtime caller.
+     */
     public boolean authorizes(
             @NonNull ToolCall call,
             @NonNull ToolDefinition definition,
@@ -280,6 +292,7 @@ public record ToolExecutionPermit(
                 && Objects.equals(caller.sessionId(), context.sessionId());
     }
 
+    /** The runtime identity (agent, user, owner, session) an authorization is bound to. */
     public record CallerBinding(
             @NonNull String agentId, @NonNull UUID userId, String owner, UUID sessionId) {}
 
@@ -314,10 +327,12 @@ public record ToolExecutionPermit(
         return true;
     }
 
+    /** The requested (pre-canonicalization) path strings of all captured filesystem arguments. */
     public @NonNull List<@NonNull String> requestedPaths() {
         return filesystemPaths.values().stream().map(AuthorizedPath::requestedPath).toList();
     }
 
+    /** The authorized path captured for {@code argumentName}, or null when it was not captured. */
     public AuthorizedPath path(@NonNull String argumentName) {
         return filesystemPaths.get(argumentName);
     }
@@ -407,6 +422,7 @@ public record ToolExecutionPermit(
                     || (size == current.size && lastModifiedMillis == current.lastModifiedMillis);
         }
 
+        /** Captures the target's no-follow identity; MISSING or UNAVAILABLE when unreadable. */
         public static @NonNull FileIdentity capture(Path path) {
             if (path == null) {
                 return unavailable();
@@ -429,14 +445,17 @@ public record ToolExecutionPermit(
             }
         }
 
+        /** Identity for a target that did not exist at capture time. */
         public static @NonNull FileIdentity missing() {
             return new FileIdentity(State.MISSING, "", 0, 0, false, false);
         }
 
+        /** Identity for a target whose attributes could not be read at capture time. */
         public static @NonNull FileIdentity unavailable() {
             return new FileIdentity(State.UNAVAILABLE, "", 0, 0, false, false);
         }
 
+        /** Whether the target existed and its attributes were readable when captured. */
         public enum State {
             PRESENT,
             MISSING,

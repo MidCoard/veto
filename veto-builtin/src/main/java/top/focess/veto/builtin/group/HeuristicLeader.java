@@ -40,10 +40,12 @@ public class HeuristicLeader {
     private final int maxRetries;
     private final int pivotThreshold;
 
+    /** Creates the leader heuristic with the default retry and pivot thresholds. */
     public HeuristicLeader() {
         this(DEFAULT_MAX_RETRIES, DEFAULT_PIVOT_THRESHOLD);
     }
 
+    /** Creates the leader heuristic with explicit retry and pivot thresholds. */
     public HeuristicLeader(int maxRetries, int pivotThreshold) {
         this.maxRetries = maxRetries;
         this.pivotThreshold = pivotThreshold;

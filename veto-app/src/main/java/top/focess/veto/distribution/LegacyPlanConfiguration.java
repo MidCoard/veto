@@ -14,6 +14,7 @@ import top.focess.veto.integration.plugins.PluginConfigurations;
 public final class LegacyPlanConfiguration implements BeanPostProcessor, Ordered {
     private final @NonNull Environment environment;
 
+    /** Creates the bridge reading the legacy plan property from the given environment. */
     public LegacyPlanConfiguration(@NonNull Environment environment) {
         this.environment = environment;
     }

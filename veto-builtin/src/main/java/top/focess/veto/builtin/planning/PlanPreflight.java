@@ -15,6 +15,10 @@ import top.focess.veto.api.agent.tool.ControlSubmission;
 public final class PlanPreflight {
     private PlanPreflight() {}
 
+    /**
+     * Pre-validates the whole program against the role tools; returns the answer-tool name when
+     * CITATIONS generation is possible, otherwise {@code null}.
+     */
     public static String validate(
             @NonNull ActionsProgram program,
             @NonNull ControlHost host,
@@ -62,6 +66,10 @@ public final class PlanPreflight {
         return answer;
     }
 
+    /**
+     * Normalizes an input tree: unescapes {@code $$} literals and records {@code $} binding paths
+     * as deferred.
+     */
     public static @NonNull JsonNode prepare(
             @NonNull JsonNode value, @NonNull String path, @NonNull Set<String> deferred) {
         if (value.isTextual()) {

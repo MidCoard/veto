@@ -14,6 +14,7 @@ import top.focess.veto.integration.plugins.PluginConfigurations;
 public final class LegacyMemoryConfiguration implements BeanPostProcessor, Ordered {
     private final @NonNull Environment environment;
 
+    /** Creates the bridge reading the legacy memory store property from the given environment. */
     public LegacyMemoryConfiguration(@NonNull Environment environment) {
         this.environment = environment;
     }

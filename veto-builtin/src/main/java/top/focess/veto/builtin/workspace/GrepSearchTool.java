@@ -96,6 +96,7 @@ import top.focess.veto.api.agent.tool.WorkspaceReadTool;
         })
 public final class GrepSearchTool implements WorkspaceReadTool<GrepSearchTool.Args> {
 
+    /** Model-facing arguments of {@code grep_search}. */
     public record Args(
             @SecurityHint(ParamCategory.FILESYSTEM_PATH) @Doc("Absolute path to search under.")
                     @NonNull String absolutePath,

@@ -478,6 +478,7 @@ final class WindowsWorkspaceSecurity {
         return access;
     }
 
+    /** Win32 {@code TRUSTEE_W}: the SID-form trustee an ACL entry applies to. */
     @Structure.FieldOrder({
         "pMultipleTrustee",
         "multipleTrusteeOperation",
@@ -493,6 +494,7 @@ final class WindowsWorkspaceSecurity {
         public Pointer ptstrName;
     }
 
+    /** Win32 {@code EXPLICIT_ACCESS_W}: one grant/deny entry merged into the DACL. */
     @Structure.FieldOrder({"grfAccessPermissions", "grfAccessMode", "grfInheritance", "trustee"})
     public static class ExplicitAccess extends Structure {
         public int grfAccessPermissions;

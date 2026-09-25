@@ -36,12 +36,14 @@ public final class MonitorRuntime implements AutoCloseable {
     private @Nullable ScheduledExecutorService scheduler;
     private final List<MonitorEntity> imported = new ArrayList<>();
 
+    /** Creates the runtime, discovering the group observation source from the context. */
     public MonitorRuntime(PluginContext context) {
         this(
                 context,
                 context.service(ToolDocs.nonNullClass(GroupObservations.class)).orElse(List::of));
     }
 
+    /** Creates the runtime with an explicit group observation source. */
     public MonitorRuntime(PluginContext context, GroupObservations groups) {
         host = context.service(PluginHost.class).orElse(null);
         repository =
@@ -67,6 +69,7 @@ public final class MonitorRuntime implements AutoCloseable {
                         host);
     }
 
+    /** Persists a legacy monitor row; returns whether it was newly inserted. */
     public synchronized boolean importLegacy(MonitorEntity row) {
         if (repository == null) throw new IllegalStateException("Plugin storage unavailable");
         boolean inserted = repository.importLegacy(row);
@@ -74,6 +77,7 @@ public final class MonitorRuntime implements AutoCloseable {
         return inserted;
     }
 
+    /** Restores previously imported rows into the service and clears the pending list. */
     public synchronized void reloadImported() {
         service.restoreImported(List.copyOf(imported));
         imported.clear();
@@ -81,6 +85,7 @@ public final class MonitorRuntime implements AutoCloseable {
 
     private volatile boolean ready;
 
+    /** Returns the monitor view of the host agent-work-source contract. */
     public AgentWorkSource work() {
         return new AgentWorkSource() {
             public List<Observation> pending(Scope scope) {
@@ -101,10 +106,12 @@ public final class MonitorRuntime implements AutoCloseable {
         };
     }
 
+    /** Returns the underlying monitor service. */
     public MonitorService service() {
         return service;
     }
 
+    /** Returns scope-checked monitor operations for the monitor tools. */
     public MonitorOperations operations() {
         return new MonitorOperations() {
             private PluginHost.Invocation scope(String tool) {
@@ -138,11 +145,13 @@ public final class MonitorRuntime implements AutoCloseable {
         };
     }
 
+    /** Blocks the current invocation while group work awaits delivery. */
     public void awaitGroup() {
         if (host == null) throw new IllegalStateException("Plugin host unavailable");
         host.await("create_task", service.awaitGroup(host.invocation("create_task")));
     }
 
+    /** Deserializes every persisted monitor record; empty when storage is unavailable. */
     public List<MonitorRecord> storedRecords() {
         var source = repository;
         if (source == null) return List.of();
@@ -161,6 +170,7 @@ public final class MonitorRuntime implements AutoCloseable {
                 .toList();
     }
 
+    /** Restores persisted monitors and starts the tick scheduler; no-op when already started. */
     public synchronized void start() {
         if (repository == null || scheduler != null) return;
         service.restore();

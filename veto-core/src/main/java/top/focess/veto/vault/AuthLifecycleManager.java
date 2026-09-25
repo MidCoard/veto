@@ -20,6 +20,7 @@ import top.focess.veto.integration.plugins.PluginLifecycleEvents;
 public class AuthLifecycleManager {
     private PluginLifecycleEvents lifecycleEvents;
 
+    /** Setter-injected plugin lifecycle hooks notified on owner login/logout. */
     @Autowired
     public void attachLifecycleEvents(@NonNull PluginLifecycleEvents events) {
         lifecycleEvents = events;
@@ -31,6 +32,7 @@ public class AuthLifecycleManager {
     private final @NonNull KeysteadVault vault;
     private final @NonNull PromptHandler promptHandler;
 
+    /** Constructs the manager over the given vault and terminal prompt handler. */
     public AuthLifecycleManager(
             @NonNull KeysteadVault vault, @NonNull PromptHandler promptHandler) {
         this.vault = vault;

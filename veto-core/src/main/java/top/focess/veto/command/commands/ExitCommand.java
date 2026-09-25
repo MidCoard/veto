@@ -8,8 +8,10 @@ import top.focess.veto.command.TerminateException;
 import top.focess.veto.command.VetoCommand;
 import top.focess.veto.command.VetoCommandSender;
 
+/** Terminates the terminal session ({@code /exit}, alias {@code /quit}). */
 public class ExitCommand extends VetoCommand {
 
+    /** Constructs the {@code /exit} command. */
     public ExitCommand() {
         super("exit", "Quit the terminal", "quit");
     }

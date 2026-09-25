@@ -56,10 +56,15 @@ public class SemanticMasker {
     private final LlamaCppBridge bridge;
     private final PluginManager plugins;
 
+    /** No-dependency constructor — no SLM bridge and an identity mask floor. */
     public SemanticMasker() {
         this(null, (PluginManager) null);
     }
 
+    /**
+     * Spring-injected constructor; the SLM bridge is optional and the observation-middleware floor
+     * degrades to identity when no plugin manager is bound.
+     */
     @Autowired
     public SemanticMasker(
             @Autowired(required = false) LlamaCppBridge bridge,

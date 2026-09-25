@@ -100,10 +100,12 @@ import top.focess.veto.builtin.process.ProcessExecutionCapability;
 public final class RunCommandTool implements PreparedTool<RunCommandTool.Args> {
     private final ProcessExecutionCapability capability;
 
+    /** Declaration-only instance; the host supplies the capability at execution time. */
     public RunCommandTool() {
         this.capability = null;
     }
 
+    /** Creates an instance bound to the given host capability. */
     public RunCommandTool(@NonNull ProcessExecutionCapability capability) {
         this.capability = capability;
     }
@@ -117,6 +119,7 @@ public final class RunCommandTool implements PreparedTool<RunCommandTool.Args> {
                             "Literal argv array. Veto and the process launcher do not expand globs or environment variables.")
                     @NonNull List<@NonNull String> args) {}
 
+    /** Model-facing arguments of {@code run_command}. */
     public record Args(
             @SecurityHint(ParamCategory.SHELL_COMMAND)
                     @Doc(
@@ -171,11 +174,13 @@ public final class RunCommandTool implements PreparedTool<RunCommandTool.Args> {
         return execute(args, processExecutionCapability());
     }
 
+    /** Returns the host-supplied capability; throws if none was injected. */
     public @NonNull ProcessExecutionCapability processExecutionCapability() {
         if (capability == null) throw new SecurityException("Host must supply tool capability");
         return capability;
     }
 
+    /** Runs the tool against the supplied capability. */
     public @NonNull String execute(
             @NonNull Args args, @NonNull ProcessExecutionCapability capability) {
         if (args.timeout() < 0)

@@ -18,6 +18,7 @@ public final class SearchServiceClient implements SearchProvider {
     private final @NonNull PluginContext context;
     private final @NonNull String selected;
 
+    /** Reads the {@code search-provider} selection from configuration, defaulting to duckduckgo. */
     public SearchServiceClient(
             @NonNull PluginContext context, JsonValue.@NonNull ObjectValue configuration) {
         this.context = context;

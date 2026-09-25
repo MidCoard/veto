@@ -1,6 +1,7 @@
 package top.focess.veto.api.agent.tool;
 
 import java.lang.annotation.*;
+import org.jspecify.annotations.NonNull;
 
 /**
  * Explicit schema for records with a discriminated parameter language. Runtime validation still
@@ -14,6 +15,5 @@ public @interface ToolInputSchema {
      *
      * @return schema source instantiated by the host for the annotated argument type
      */
-    @org.jspecify.annotations.NonNull
-    Class<? extends InputSchemaSource> value();
+    @NonNull Class<? extends InputSchemaSource> value();
 }

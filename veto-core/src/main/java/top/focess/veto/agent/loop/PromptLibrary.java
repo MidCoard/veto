@@ -18,19 +18,23 @@ public final class PromptLibrary {
 
     private PromptLibrary() {}
 
+    /** Compiles the named bundled entry against the bound data. */
     public static PromptDocument.@NonNull Result compile(
             @NonNull String entry, @NonNull Map<String, ?> data) {
         return PromptDocument.compile(entry, data, SOURCES);
     }
 
+    /** The entry's compiled text, stripped. */
     public static @NonNull String text(@NonNull String entry, @NonNull Map<String, ?> data) {
         return compile(entry, data).text().strip();
     }
 
+    /** The entry's compiled text with no bound data. */
     public static @NonNull String text(@NonNull String entry) {
         return text(entry, Map.of());
     }
 
+    /** Compiles an entry that must produce exactly one message. */
     public static @NonNull ChatMessage message(
             @NonNull String entry, @NonNull Map<String, ?> data) {
         var result = compile(entry, data);
@@ -39,6 +43,7 @@ public final class PromptLibrary {
         return result.messages().getFirst();
     }
 
+    /** The raw source text of a bundled entry. */
     public static @NonNull String source(@NonNull String entry) {
         String value = SOURCES.get(entry);
         if (value == null) throw new IllegalArgumentException("Unknown prompt source: " + entry);

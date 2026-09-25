@@ -10,12 +10,17 @@ import top.focess.veto.security.SignupMode;
 import top.focess.veto.security.SignupPolicy;
 import top.focess.veto.vault.*;
 
+/**
+ * Creates a new account ({@code /signup}). The first account becomes the bootstrap administrator;
+ * afterwards the configured {@link SignupPolicy} mode governs whether self-signup is allowed.
+ */
 public class SignupCommand extends VetoCommand {
 
     private final @NonNull UserRegistry users;
     private final @NonNull AuthLifecycleManager authLifecycleManager;
     private final @NonNull SignupPolicy policy;
 
+    /** Constructs the {@code /signup} command over the registry, auth lifecycle, and policy. */
     public SignupCommand(
             @NonNull UserRegistry users,
             @NonNull AuthLifecycleManager authLifecycleManager,

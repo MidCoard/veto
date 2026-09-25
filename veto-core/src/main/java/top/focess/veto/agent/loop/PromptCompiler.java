@@ -71,14 +71,17 @@ public class PromptCompiler {
         return PromptLibrary.compile(entry, data);
     }
 
+    /** Compiles the entry and returns its stripped text. */
     public static @NonNull String compileText(@NonNull String entry, @NonNull Map<String, ?> data) {
         return compileDocument(entry, data).text().strip();
     }
 
+    /** Compiles the entry with no bound data. */
     public static @NonNull String compileText(@NonNull String entry) {
         return compileText(entry, Map.of());
     }
 
+    /** Compiles an entry that must produce exactly one message. */
     public static @NonNull ChatMessage compileMessage(
             @NonNull String entry, @NonNull Map<String, ?> data) {
         var result = compileDocument(entry, data);
@@ -117,6 +120,7 @@ public class PromptCompiler {
         modelInputTokens = configuration.getModelInputTokens();
     }
 
+    /** Convenience constructor with a default {@link ToolResultPresenter} over the given mapper. */
     public PromptCompiler(
             @NonNull CapabilityTranslator translator,
             @NonNull SystemPromptResolver systemPromptResolver,
@@ -130,6 +134,7 @@ public class PromptCompiler {
                 deployerPolicyRaw);
     }
 
+    /** Spring constructor; the raw deployer-policy setting is parsed into the bound policy. */
     @Autowired
     public PromptCompiler(
             @NonNull CapabilityTranslator translator,
@@ -191,6 +196,11 @@ public class PromptCompiler {
                 Long.MAX_VALUE);
     }
 
+    /**
+     * Enforces the request's input budget. Standard agents must already fit (nothing is removed;
+     * overflow throws); isolated tool agents get their oldest call/result pairs trimmed while the
+     * opening objective message is retained.
+     */
     public @NonNull VetoRequest fitRequest(@NonNull VetoRequest request, double correctionFactor) {
         if (isolatedInstructions == null) {
             requireBudget(
@@ -256,6 +266,7 @@ public class PromptCompiler {
                 inputBudgetOverride);
     }
 
+    /** Convenience overload using the basic tool-result presentation. */
     public @NonNull CompiledPrompt compile(
             @NonNull AgentPersona persona,
             @NonNull Workspace sessionWorkspace,
@@ -271,6 +282,7 @@ public class PromptCompiler {
                 ToolResultPresentationMode.BASIC);
     }
 
+    /** Convenience overload with no input-budget override. */
     public @NonNull CompiledPrompt compile(
             @NonNull AgentPersona persona,
             @NonNull Workspace sessionWorkspace,
@@ -288,6 +300,11 @@ public class PromptCompiler {
                 null);
     }
 
+    /**
+     * Full compilation entry point: translates the tool manifest, resolves the history into a
+     * well-formed message window, and enforces the input budget (isolated tool agents are trimmed
+     * to fit instead of failing).
+     */
     public @NonNull CompiledPrompt compile(
             @NonNull AgentPersona persona,
             @NonNull Workspace sessionWorkspace,
@@ -349,6 +366,7 @@ public class PromptCompiler {
                 .text();
     }
 
+    /** {@link #linkSystemSource} with the profile prompt compiled into the guidance slot. */
     public PromptSource.@NonNull Rendered linkSystemProfile(
             @NonNull AgentPersona persona,
             @NonNull Workspace sessionWorkspace,
@@ -358,6 +376,10 @@ public class PromptCompiler {
                 persona, sessionWorkspace, renderProfilePrompt(prompt), toolResultPresentation);
     }
 
+    /**
+     * Renders the system prompt source (text plus provenance spans) without assembling messages or
+     * enforcing the budget.
+     */
     public PromptSource.@NonNull Rendered linkSystemSource(
             @NonNull AgentPersona persona,
             @NonNull Workspace sessionWorkspace,
@@ -384,6 +406,10 @@ public class PromptCompiler {
         return scopeRequest(request, persona, workspace, renderProfilePrompt(prompt), presentation);
     }
 
+    /**
+     * Replaces the request's system message with one rendered from the given base against the
+     * request's actual tool manifest; conversation messages keep their identities and order.
+     */
     public @NonNull VetoRequest scopeRequest(
             @NonNull VetoRequest request,
             @NonNull AgentPersona persona,
@@ -674,6 +700,10 @@ public class PromptCompiler {
         return withRecordedSource(turn, message, true);
     }
 
+    /**
+     * Builds a USER_PROMPT turn from a compiled MDC entry, recording the rendered message and its
+     * provenance spans in the payload.
+     */
     public static @NonNull TurnRecord sourcedUserPrompt(
             int number, @NonNull String entry, @NonNull Map<String, ?> data) {
         ChatMessage message = PromptCompiler.compileMessage(entry, data);

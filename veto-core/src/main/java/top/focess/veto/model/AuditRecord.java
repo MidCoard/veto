@@ -26,6 +26,10 @@ public class AuditRecord {
     private final @NonNull AuditAction action;
     private final boolean vetoApplied;
 
+    /**
+     * Create a record for one audited action. Both payloads are stored only as SHA-256 hashes, and
+     * the record's own hash is computed at construction, chaining onto {@code previousRecordHash}.
+     */
     @SuppressWarnings("method.invocation")
     public AuditRecord(
             @NonNull String dagPayloadId,
@@ -76,6 +80,13 @@ public class AuditRecord {
         }
     }
 
+    /**
+     * Re-validate this record: its stored hash must still match its contents, and its chain link
+     * must match the preceding record's actual hash.
+     *
+     * @param actualPreviousHash the hash of the record expected to precede this one
+     * @return true if the record is untampered and correctly chained
+     */
     public boolean verifyIntegrity(@NonNull String actualPreviousHash) {
         String recomputed = computeHash();
         return currentHash.equals(recomputed) && previousRecordHash.equals(actualPreviousHash);
@@ -130,6 +141,7 @@ public class AuditRecord {
         return vetoApplied;
     }
 
+    /** The kind of audited event a record captures. */
     public enum AuditAction {
         TOOL_EXECUTION,
         VETO_INTERCEPTION,

@@ -28,6 +28,10 @@ public final class MessageCitations {
 
     private MessageCitations() {}
 
+    /**
+     * The citation-check outcome bound to one request: its identity plus the per-citation status
+     * and exact evidence matches, consumable as plugin work.
+     */
     public record Bound(
             @NonNull String requestId,
             @NonNull String provider,
@@ -189,6 +193,11 @@ public final class MessageCitations {
         return expected != null;
     }
 
+    /**
+     * Checks the response's resolved citations against the durable turn history, producing a
+     * per-citation status ({@code matched}/{@code ambiguous}/{@code unavailable}/{@code not_found})
+     * and the exact evidence locations for the matches.
+     */
     public static @NonNull Bound bind(
             @NonNull VetoRequest request,
             @NonNull VetoResponse response,

@@ -51,6 +51,7 @@ public class MateAgent {
     private @NonNull CompletableFuture<Boolean> dispatchExited =
             CompletableFuture.completedFuture(true);
 
+    /** Cancels the given dispatch and waits for execution exit; true when the exit is confirmed. */
     public boolean cancelDispatch(@NonNull String dispatchId, @NonNull Duration timeout)
             throws InterruptedException {
         AgentHost.Request task;
@@ -74,6 +75,7 @@ public class MateAgent {
         }
     }
 
+    /** Creates a mate with the default dispatch and result polling intervals. */
     public MateAgent(
             @NonNull String mateId,
             @NonNull UUID groupId,
@@ -83,6 +85,7 @@ public class MateAgent {
         this(mateId, groupId, skillset, agent, blackboard, 200, 1_000);
     }
 
+    /** Creates a mate with explicit polling intervals; polling begins on {@link #start}. */
     public MateAgent(
             @NonNull String mateId,
             @NonNull UUID groupId,

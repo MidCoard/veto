@@ -13,6 +13,9 @@ import org.jspecify.annotations.NonNull;
  */
 public class ModelTierConfigException extends RuntimeException {
 
+    /**
+     * @param message user-facing description of the missing model-tier configuration step
+     */
     public ModelTierConfigException(@NonNull String message) {
         super(message);
     }

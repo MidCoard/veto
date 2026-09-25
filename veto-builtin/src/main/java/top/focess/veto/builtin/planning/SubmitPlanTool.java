@@ -7,6 +7,7 @@ import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.agent.control.ControlHost;
 import top.focess.veto.api.agent.tool.*;
 
+/** {@code submit_plan} - validate and install a complete actions program for execution. */
 @ControlSubmission(ControlSubmission.Kind.EXECUTE)
 @ToolPrompt("plan-system-prompt")
 @ToolDoc(
@@ -44,18 +45,22 @@ public final class SubmitPlanTool implements ControlTool<SubmitPlanTool.Args> {
     private final @NonNull PlanConfig configuration;
     private static final @NonNull ObjectMapper MAPPER = new ObjectMapper();
 
+    /** Declaration-only instance; the host supplies the capability at execution time. */
     public SubmitPlanTool() {
         this(null, PlanConfig.defaults());
     }
 
+    /** Declaration-only instance with the given plan configuration. */
     public SubmitPlanTool(@NonNull PlanConfig configuration) {
         this(null, configuration);
     }
 
+    /** Creates an instance bound to the given control host with default configuration. */
     public SubmitPlanTool(@NonNull ControlHost capability) {
         this(capability, PlanConfig.defaults());
     }
 
+    /** Creates an instance bound to the given control host and configuration. */
     public SubmitPlanTool(ControlHost capability, @NonNull PlanConfig configuration) {
         this.capability = capability;
         this.configuration = configuration;
@@ -98,6 +103,7 @@ public final class SubmitPlanTool implements ControlTool<SubmitPlanTool.Args> {
         return "{\"status\":\"accepted\"}";
     }
 
+    /** Model-facing arguments of {@code submit_plan}. */
     @ToolInputSchema(PlanProgramSchema.class)
     public record Args(
             @NonNull @Doc("Complete ordered plan, ending with STOP.")

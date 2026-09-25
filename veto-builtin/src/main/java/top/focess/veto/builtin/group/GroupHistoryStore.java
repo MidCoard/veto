@@ -26,16 +26,19 @@ public final class GroupHistoryStore {
     private final @NonNull Map<String, PluginStorage.SessionScope> scopes =
             new ConcurrentHashMap<>();
 
+    /** Registers a session scope so its store can be resolved without a lookup scan. */
     public void scope(PluginStorage.@NonNull SessionScope scope) {
         scopes.put(scope.sessionId(), scope);
     }
 
     private final @NonNull ObjectMapper mapper = new ObjectMapper().findAndRegisterModules();
 
+    /** Creates a store persisting group history into the given plugin storage. */
     public GroupHistoryStore(@NonNull PluginStorage storage) {
         this.storage = storage;
     }
 
+    /** Resolves the storage store of the given session, scanning scopes when not cached. */
     public PluginStorage.@NonNull Store session(@NonNull String id) {
         var cached = scopes.get(id);
         if (cached != null) return storage.session(cached);
@@ -69,6 +72,7 @@ public final class GroupHistoryStore {
             JsonNode data,
             @NonNull Map<String, String> metadata) {}
 
+    /** Persists an agent profile as a fresh immutable chunked blob under its session. */
     public void profile(
             @NonNull String session, @NonNull String agent, @NonNull AgentProfile profile) {
         var store = session(session);
@@ -128,6 +132,7 @@ public final class GroupHistoryStore {
         }
     }
 
+    /** Reads back a stored agent profile, or {@code null} when the agent has none. */
     public AgentProfile profile(@NonNull String session, @NonNull String agent) {
         var entry = session(session).get("group-profile/" + agent).orElse(null);
         if (entry == null) return null;
@@ -170,6 +175,7 @@ public final class GroupHistoryStore {
         }
     }
 
+    /** Appends the group's current state to its history; a no-op for session-less groups. */
     public void save(@NonNull Group group) {
         var session = group.sessionId();
         if (session == null) return;
@@ -190,6 +196,10 @@ public final class GroupHistoryStore {
                 null);
     }
 
+    /**
+     * Atomically appends one history event; returns {@code false} when {@code importId} is already
+     * present in the chain.
+     */
     public boolean append(
             @NonNull String sessionId,
             @NonNull GroupHistoryView view,
@@ -245,12 +255,14 @@ public final class GroupHistoryStore {
         throw new PluginStorage.Conflict();
     }
 
+    /** Latest snapshot of every group in the session, without live-registry checks. */
     public @NonNull List<GroupHistoryView> latestSnapshots(@NonNull String sessionId) {
         return load(sessionId, new GroupRegistry());
     }
 
     // latest is assigned only inside the page loop; the NullnessChecker needs the guard to refine
     // it.
+    /** Rebuilds each group's latest snapshot and full change chain from storage. */
     @SuppressWarnings("ConstantValue")
     public @NonNull List<GroupHistoryView> load(
             @NonNull String sessionId, @NonNull GroupRegistry registry) {

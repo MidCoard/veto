@@ -15,6 +15,7 @@ import top.focess.veto.api.agent.tool.ToolErrors;
 import top.focess.veto.api.agent.tool.ToolResultFormat;
 import top.focess.veto.api.agent.tool.ToolSecurity;
 
+/** {@code web_fetch} - read a web page with an objective-driven isolated reader agent. */
 @ToolSecurity(capability = ToolCapability.NETWORK_EGRESS, defaultDanger = Danger.ELEVATED)
 @ToolDoc(
         description = "Read a webpage for a specific question and return supporting excerpts.",
@@ -49,15 +50,18 @@ public final class WebFetchTool implements NetworkEgressTool<WebFetchTool.Args> 
     private final NetworkEgressCapability network;
     private final @NonNull WebReader reader;
 
+    /** Creates an instance without a network capability; the host supplies it at execution time. */
     public WebFetchTool(@NonNull WebReader reader) {
         this(reader, null);
     }
 
+    /** Creates an instance bound to the given reader and network capability. */
     public WebFetchTool(@NonNull WebReader reader, NetworkEgressCapability network) {
         this.reader = reader;
         this.network = network;
     }
 
+    /** Model-facing arguments of {@code web_fetch}. */
     public record Args(
             @SecurityHint(ParamCategory.URL) @Doc("Absolute HTTP(S) URL to read.")
                     @NonNull String url,
@@ -95,6 +99,8 @@ public final class WebFetchTool implements NetworkEgressTool<WebFetchTool.Args> 
                     ToolErrorCode.VALIDATION.INVALID_ARGUMENTS,
                     "Invalid arguments: the reading objective exceeds 4000 characters.");
         try {
+            // URI.create only validates the url format; the parsed value is not needed.
+            //noinspection IgnoreResultOfCall
             URI.create(args.url().trim());
         } catch (IllegalArgumentException e) {
             return ToolErrors.failure(

@@ -22,6 +22,7 @@ public final class PluginInvocationScope implements AutoCloseable {
     final String owner;
     final String session;
 
+    /** Installs this owner/session context as current on this thread until {@link #close()}. */
     public PluginInvocationScope(String owner, String session) {
         this.owner = owner;
         this.session = session;

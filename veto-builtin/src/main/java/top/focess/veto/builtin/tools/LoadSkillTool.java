@@ -79,10 +79,12 @@ public final class LoadSkillTool implements AgentTool<LoadSkillTool.Args>, ToolP
 
     private final SkillRuntime runtime;
 
+    /** Declaration-only instance; the host supplies the capability at execution time. */
     public LoadSkillTool() {
         this.runtime = null;
     }
 
+    /** Creates an instance bound to the given skill runtime. */
     public LoadSkillTool(@NonNull SkillRuntime runtime) {
         this.runtime = runtime;
     }
@@ -91,6 +93,7 @@ public final class LoadSkillTool implements AgentTool<LoadSkillTool.Args>, ToolP
         return ToolCapability.PLUGIN_LOCAL;
     }
 
+    /** Advertises the workspace skill catalogue to the tool presentation. */
     public @NonNull State describe(@NonNull CatalogueTree workspace) {
         var catalogue = runtime == null ? List.of() : runtime.catalogue(workspace);
         return new State(!catalogue.isEmpty(), Map.of("skills", catalogue));
@@ -109,16 +112,17 @@ public final class LoadSkillTool implements AgentTool<LoadSkillTool.Args>, ToolP
     @Override
     public @NonNull String execute(@NonNull Args args) throws Exception {
         if (runtime == null) throw new SecurityException("Skill runtime unavailable");
-        var skill = runtime.load(args.skillName());
-        if (skill.isEmpty()) {
-            return ToolErrors.failure(
-                    ToolErrorCode.VALIDATION.SKILL_NOT_FOUND,
-                    "Skill not found: '"
-                            + args.skillName()
-                            + "' is not registered or its stored content failed verification.");
-        }
-        return skill.get();
+        return runtime.load(args.skillName())
+                .orElseGet(
+                        () ->
+                                ToolErrors.failure(
+                                        ToolErrorCode.VALIDATION.SKILL_NOT_FOUND,
+                                        "Skill not found: '"
+                                                + args.skillName()
+                                                + "' is not registered or its stored content failed"
+                                                + " verification."));
     }
 
+    /** Model-facing arguments of {@code load_skill}. */
     public record Args(@Doc("The exact name of an advertised skill.") @NonNull String skillName) {}
 }

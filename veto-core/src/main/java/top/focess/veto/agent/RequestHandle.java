@@ -79,18 +79,27 @@ public final class RequestHandle {
         }
     }
 
+    /** The id of the episode this request drives. */
     public @NonNull String requestId() {
         return requestId;
     }
 
+    /** The future completed with this request's {@link AgentResult} when the episode settles. */
     public @NonNull CompletableFuture<AgentResult> result() {
         return result;
     }
 
+    /** Completes once execution can no longer produce effects for this request. */
     public @NonNull CompletableFuture<Boolean> settled() {
         return settled;
     }
 
+    /**
+     * Blocks until the request's result is available or the timeout elapses.
+     *
+     * @throws TimeoutException if the result is not available within {@code timeout}
+     * @throws IllegalStateException if the episode failed with a non-result error
+     */
     public @NonNull AgentResult await(@NonNull Duration timeout)
             throws TimeoutException, InterruptedException {
         try {

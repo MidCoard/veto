@@ -19,6 +19,11 @@ import top.focess.veto.model.tier.ModelTier;
 import top.focess.veto.model.tier.ModelTierConfigException;
 import top.focess.veto.model.tier.ModelTierRegistry;
 
+/**
+ * Manages the user's agent patterns ({@code /pattern}, alias {@code /ap}). A pattern binds a name
+ * to a model tier; the concrete provider/model/credential come from the owner's active model-tier
+ * profile, resolved live through the {@link ModelTierRegistry}.
+ */
 public class PatternCommand extends VetoCommand {
 
     private static final @NonNull Logger log =
@@ -27,6 +32,7 @@ public class PatternCommand extends VetoCommand {
     private final @NonNull AgentPatternRepository repo;
     private final @NonNull ModelTierRegistry tierRegistry;
 
+    /** Constructs the {@code /pattern} command over the pattern repository and tier registry. */
     public PatternCommand(
             @NonNull AgentPatternRepository repo, @NonNull ModelTierRegistry tierRegistry) {
         super("pattern", "Manage agent patterns", "ap");

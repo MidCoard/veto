@@ -42,6 +42,7 @@ public class PgvectorMemoryStore implements MemoryStore {
     private final @NonNull Embedder embedder;
     private volatile boolean provisioned = false;
 
+    /** Creates a store persisting memories in the pgvector table via native SQL. */
     public PgvectorMemoryStore(@NonNull EntityManager em, @NonNull Embedder embedder) {
         this.em = em;
         this.embedder = embedder;

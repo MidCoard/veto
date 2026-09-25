@@ -37,6 +37,9 @@ public final class LegacyMonitorContinuations implements ApplicationRunner {
     private final AgentInstanceRepository agents;
     private final SessionPlugins selection;
 
+    /**
+     * Creates the runner with its database, plugin, session, agent, and selection collaborators.
+     */
     public LegacyMonitorContinuations(
             DataSource database,
             PluginManager plugins,

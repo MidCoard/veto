@@ -8,6 +8,7 @@ import top.focess.veto.plugin.runtime.ManagedPlugin;
 
 /** Host-only adapters: bind each definition to its exact execution implementation. */
 sealed interface RegisteredTool {
+    /** The tool definition this registration binds to its execution implementation. */
     @NonNull ToolDefinition definition();
 
     /** An out-of-process script plugin tool, executed through the plugin runtime. */
@@ -24,6 +25,7 @@ sealed interface RegisteredTool {
             ManagedPlugin runtime)
             implements RegisteredTool {}
 
+    /** An external MCP tool, executed through its bound remote-call capability. */
     record Remote(
             @NonNull RemoteToolDefinition definition, @NonNull RemoteCallCapability capability)
             implements RegisteredTool {}

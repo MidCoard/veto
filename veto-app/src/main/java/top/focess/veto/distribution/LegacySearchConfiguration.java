@@ -16,14 +16,19 @@ import top.focess.veto.integration.plugins.PluginConfigurations;
 public final class LegacySearchConfiguration implements BeanPostProcessor, Ordered {
     private final @NonNull Environment environment;
 
+    /** Creates the bridge reading the legacy websearch properties from the given environment. */
     public LegacySearchConfiguration(@NonNull Environment environment) {
         this.environment = environment;
     }
 
+    /** Runs last, after property binding and before consumers read the configuration bean. */
     public int getOrder() {
         return Ordered.LOWEST_PRECEDENCE;
     }
 
+    /**
+     * Maps legacy search provider and API key onto builtin configuration, which takes precedence.
+     */
     public @NonNull Object postProcessBeforeInitialization(
             @NonNull Object bean, @NonNull String name) {
         if (!(bean instanceof PluginConfigurations configurations)) return bean;

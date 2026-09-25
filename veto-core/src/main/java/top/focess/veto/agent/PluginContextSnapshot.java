@@ -12,9 +12,17 @@ import top.focess.veto.agent.tool.ToolDefinition;
 /** Safe provenance for tools available to an agent or included in its latest model request. */
 public record PluginContextSnapshot(
         boolean lastRequest, @NonNull List<@NonNull Participant> plugins) {
+    /** One contributing plugin: its id, version and the distinct tool names it supplied. */
     public record Participant(
             @NonNull String id, @NonNull String version, @NonNull List<@NonNull String> tools) {}
 
+    /**
+     * Groups the given tools by their plugin provenance into a snapshot; tools without provenance
+     * are omitted.
+     *
+     * @param lastRequest whether the tools reflect the latest model request rather than the agent's
+     *     full whitelist
+     */
     public static @NonNull PluginContextSnapshot from(
             @NonNull Collection<? extends @NonNull ToolDefinition> tools, boolean lastRequest) {
         var grouped = new LinkedHashMap<@NonNull String, @NonNull Group>();

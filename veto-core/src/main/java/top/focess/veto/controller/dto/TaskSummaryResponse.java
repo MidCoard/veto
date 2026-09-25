@@ -3,6 +3,7 @@ package top.focess.veto.controller.dto;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import org.jspecify.annotations.*;
 
+/** Payload summarizing one task's id, type, status, and creation time. */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record TaskSummaryResponse(
         @NonNull String id,

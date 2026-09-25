@@ -72,6 +72,7 @@ import top.focess.veto.api.agent.tool.WorkspaceWriteTool;
         })
 public final class MovePathTool implements WorkspaceWriteTool<MovePathTool.Args> {
 
+    /** Model-facing arguments of {@code move_path}. */
     public record Args(
             @NonNull @SecurityHint(ParamCategory.FILESYSTEM_PATH) @Doc("Absolute source path.")
                     String sourceAbsolutePath,
@@ -117,6 +118,7 @@ public final class MovePathTool implements WorkspaceWriteTool<MovePathTool.Args>
         }
     }
 
+    /** JSON result payload of {@code move_path}. */
     public record Result(
             @NonNull String status,
             @NonNull String source,

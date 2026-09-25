@@ -40,6 +40,9 @@ public final class LegacyMonitorImport implements ApplicationRunner {
     private final SessionPlugins selection;
     private final ObjectMapper mapper;
 
+    /**
+     * Creates the runner with its database, plugin, session, selection, and mapper collaborators.
+     */
     public LegacyMonitorImport(
             DataSource database,
             PluginManager plugins,

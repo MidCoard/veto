@@ -53,6 +53,7 @@ public class AgentPatternEntity {
     @Column(name = "credential_key", nullable = false)
     private @NonNull String credentialKey = "";
 
+    /** JPA no-arg constructor. */
     protected AgentPatternEntity() {}
 
     /**

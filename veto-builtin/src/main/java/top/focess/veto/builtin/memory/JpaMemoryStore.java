@@ -23,6 +23,7 @@ public class JpaMemoryStore implements MemoryStore {
     private final @NonNull MemoryRepository repository;
     private final @NonNull Embedder embedder;
 
+    /** Creates a store persisting memories through the given JPA repository. */
     public JpaMemoryStore(@NonNull MemoryRepository repository, @NonNull Embedder embedder) {
         this.repository = repository;
         this.embedder = embedder;

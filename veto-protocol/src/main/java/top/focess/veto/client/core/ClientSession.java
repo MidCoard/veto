@@ -107,6 +107,11 @@ public final class ClientSession {
     private int turnCount;
     private String sessionId;
 
+    /**
+     * Constructs a session that drives rendering through the given view.
+     *
+     * @param view the presentation seam receiving render events (fired outside the session lock)
+     */
     public ClientSession(@NonNull ClientView view) {
         this.view = view;
     }
@@ -409,6 +414,7 @@ public final class ClientSession {
         }
     }
 
+    /** Atomic snapshot of session metadata (username, turn count, session id) for rendering. */
     public @NonNull SessionMeta snapshot() {
         synchronized (lock) {
             return new SessionMeta(username, turnCount, sessionId);

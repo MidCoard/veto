@@ -14,6 +14,7 @@ public class ObservabilityConfiguration {
     private boolean encryptionEnabled = true;
     private @NonNull String encryptionKey = "default-veto-audit-key-change-me";
 
+    /** The configured audit log directory. @throws IllegalStateException if never set */
     public @NonNull String getAuditLogPath() {
         if (auditLogPath == null) {
             throw new IllegalStateException("An explicit audit log path is required");
@@ -21,6 +22,7 @@ public class ObservabilityConfiguration {
         return auditLogPath;
     }
 
+    /** Sets the audit log directory. @throws IllegalArgumentException if not an absolute path */
     public void setAuditLogPath(@NonNull String auditLogPath) {
         if (!Path.of(auditLogPath).isAbsolute()) {
             throw new IllegalArgumentException("Audit log path must be absolute");

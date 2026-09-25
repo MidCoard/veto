@@ -46,11 +46,10 @@ final class AgentPluginHooks {
         return context;
     }
 
-    @SuppressWarnings(
-            "IgnoreResultOfCall") // WHY: interrupt flag is cleared deliberately before signalling
-    // cancellation
     private void checkCancellation() {
         if (cancelled.getAsBoolean()) {
+            // The interrupt flag is cleared deliberately before signalling cancellation.
+            //noinspection IgnoreResultOfCall
             Thread.interrupted();
             throw new CancellationException("Task cancelled");
         }

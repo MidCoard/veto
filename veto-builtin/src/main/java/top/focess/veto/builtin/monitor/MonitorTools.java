@@ -10,9 +10,11 @@ import top.focess.veto.api.agent.tool.ToolErrorCode;
 import top.focess.veto.api.agent.tool.ToolErrors;
 import top.focess.veto.api.agent.tool.ToolResultFormat;
 
+/** Agent-facing monitor tools for scheduling and managing wake-ups. */
 public final class MonitorTools {
     private MonitorTools() {}
 
+    /** {@code create_monitor} - schedule a single wake-up within the next 30 days. */
     @ToolDoc(
             resultFormats = {ToolResultFormat.JSON},
             description = "Schedule one wake-up within the next 30 days.",
@@ -43,14 +45,17 @@ public final class MonitorTools {
     public static final class CreateMonitor implements MonitorTool<CreateMonitor.Args> {
         private final MonitorOperations capability;
 
+        /** Declaration-only instance; the host supplies the capability at execution time. */
         public CreateMonitor() {
             this.capability = null;
         }
 
+        /** Creates an instance bound to the given host capability. */
         public CreateMonitor(@NonNull MonitorOperations capability) {
             this.capability = capability;
         }
 
+        /** Model-facing arguments of {@code create_monitor}. */
         public record Args(
                 @Doc("What to do when woken.") @NonNull String purpose,
                 @Doc("Delay in seconds; mutually exclusive with at.") Long afterSeconds,
@@ -81,6 +86,7 @@ public final class MonitorTools {
         }
     }
 
+    /** {@code inspect_monitor} - list registered monitors and pending notifications. */
     @ToolDoc(
             resultFormats = {ToolResultFormat.JSON},
             description = "Inspect your registered Monitors and pending notifications.",
@@ -102,14 +108,17 @@ public final class MonitorTools {
     public static final class InspectMonitor implements MonitorTool<InspectMonitor.Args> {
         private final MonitorOperations capability;
 
+        /** Declaration-only instance; the host supplies the capability at execution time. */
         public InspectMonitor() {
             this.capability = null;
         }
 
+        /** Creates an instance bound to the given host capability. */
         public InspectMonitor(@NonNull MonitorOperations capability) {
             this.capability = capability;
         }
 
+        /** Model-facing arguments of {@code inspect_monitor}. */
         public record Args() {}
 
         @Override
@@ -136,6 +145,7 @@ public final class MonitorTools {
         }
     }
 
+    /** {@code pause_monitor} - pause a scheduled monitor without stopping its observed work. */
     @ToolDoc(
             resultFormats = {ToolResultFormat.JSON},
             description = "Pause a scheduled Monitor without stopping its observed work.",
@@ -164,14 +174,17 @@ public final class MonitorTools {
     public static final class PauseMonitor implements MonitorTool<PauseMonitor.Args> {
         private final MonitorOperations capability;
 
+        /** Declaration-only instance; the host supplies the capability at execution time. */
         public PauseMonitor() {
             this.capability = null;
         }
 
+        /** Creates an instance bound to the given host capability. */
         public PauseMonitor(@NonNull MonitorOperations capability) {
             this.capability = capability;
         }
 
+        /** Model-facing arguments of {@code pause_monitor}. */
         public record Args(
                 @Doc("The Monitor id returned at creation.") @NonNull String monitorId) {}
 
@@ -199,6 +212,7 @@ public final class MonitorTools {
         }
     }
 
+    /** {@code resume_monitor} - resume a paused monitor without stopping its observed work. */
     @ToolDoc(
             resultFormats = {ToolResultFormat.JSON},
             description = "Resume a scheduled Monitor without stopping its observed work.",
@@ -227,14 +241,17 @@ public final class MonitorTools {
     public static final class ResumeMonitor implements MonitorTool<ResumeMonitor.Args> {
         private final MonitorOperations capability;
 
+        /** Declaration-only instance; the host supplies the capability at execution time. */
         public ResumeMonitor() {
             this.capability = null;
         }
 
+        /** Creates an instance bound to the given host capability. */
         public ResumeMonitor(@NonNull MonitorOperations capability) {
             this.capability = capability;
         }
 
+        /** Model-facing arguments of {@code resume_monitor}. */
         public record Args(
                 @Doc("The Monitor id returned at creation.") @NonNull String monitorId) {}
 
@@ -262,6 +279,7 @@ public final class MonitorTools {
         }
     }
 
+    /** {@code cancel_monitor} - cancel a scheduled monitor without stopping its observed work. */
     @ToolDoc(
             resultFormats = {ToolResultFormat.JSON},
             description = "Cancel a scheduled Monitor without stopping its observed work.",
@@ -290,14 +308,17 @@ public final class MonitorTools {
     public static final class CancelMonitor implements MonitorTool<CancelMonitor.Args> {
         private final MonitorOperations capability;
 
+        /** Declaration-only instance; the host supplies the capability at execution time. */
         public CancelMonitor() {
             this.capability = null;
         }
 
+        /** Creates an instance bound to the given host capability. */
         public CancelMonitor(@NonNull MonitorOperations capability) {
             this.capability = capability;
         }
 
+        /** Model-facing arguments of {@code cancel_monitor}. */
         public record Args(
                 @Doc("The Monitor id returned at creation.") @NonNull String monitorId) {}
 

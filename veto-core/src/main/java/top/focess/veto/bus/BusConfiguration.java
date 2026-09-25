@@ -29,6 +29,7 @@ public class BusConfiguration {
         this.grpc = grpc;
     }
 
+    /** WebSocket transport settings: port, path, heartbeat, reconnection, and allowed origins. */
     public static class WebSocketConfig {
         private int port = 9090;
         private @NonNull String path = "/veto/bus";
@@ -93,6 +94,7 @@ public class BusConfiguration {
         }
     }
 
+    /** gRPC transport settings. */
     public static class GrpcConfig {
         private int port = 9091;
 

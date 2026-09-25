@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.regex.Matcher;
@@ -214,6 +215,6 @@ public final class SecretMasker {
 
     private static @NonNull String tag(@NonNull String category) {
         if (category.startsWith("[REDACTED_")) return category;
-        return "[REDACTED_" + category.toUpperCase(java.util.Locale.ROOT).replace('-', '_') + "]";
+        return "[REDACTED_" + category.toUpperCase(Locale.ROOT).replace('-', '_') + "]";
     }
 }

@@ -21,6 +21,7 @@ public class UserAdminCommand extends VetoCommand {
     private final @NonNull UserAdminService admin;
     private final @NonNull SignupPolicy policy;
 
+    /** Constructs the {@code /user} command over the admin service and signup policy. */
     public UserAdminCommand(@NonNull UserAdminService admin, @NonNull SignupPolicy policy) {
         super("user", "Manage user accounts (admin)", "users");
         this.admin = admin;

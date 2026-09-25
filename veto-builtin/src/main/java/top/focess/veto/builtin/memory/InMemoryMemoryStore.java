@@ -31,6 +31,7 @@ public class InMemoryMemoryStore implements MemoryStore {
     private final @NonNull Embedder embedder;
     private final @NonNull ConcurrentMap<MemoryId, Memory> store = new ConcurrentHashMap<>();
 
+    /** Creates a store that embeds content with the given embedder. */
     public InMemoryMemoryStore(@NonNull Embedder embedder) {
         this.embedder = embedder;
     }

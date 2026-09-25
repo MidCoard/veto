@@ -52,17 +52,20 @@ public final class BuiltinPlugin extends AbstractVetoPlugin {
     private @Nullable TaskEvents taskEvents;
     private @Nullable SkillRuntime skills;
 
+    /** Returns the skill runtime; fails until the plugin is initialized. */
     public @NonNull SkillRuntime skillRuntime() {
         if (skills == null) throw new IllegalStateException("Builtin not initialized");
         return skills;
     }
 
+    /** Returns the group runtime; fails until the plugin is initialized. */
     public @NonNull GroupRuntime groupRuntime() {
         var runtime = groups;
         if (runtime == null) throw new IllegalStateException("Builtin is not initialized");
         return runtime;
     }
 
+    /** Returns the monitor runtime; fails until the plugin is initialized. */
     public @NonNull MonitorRuntime monitorRuntime() {
         var runtime = monitors;
         if (runtime == null) throw new IllegalStateException("Builtin is not initialized");

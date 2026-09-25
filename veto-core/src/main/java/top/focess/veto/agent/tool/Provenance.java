@@ -15,6 +15,7 @@ public record Provenance(
         @NonNull String bindingId,
         @NonNull String pluginVersion,
         String localId) {
+    /** Convenience constructor for provenance with no contribution-local id. */
     public Provenance(
             @NonNull String pluginId, @NonNull String bindingId, @NonNull String pluginVersion) {
         this(pluginId, bindingId, pluginVersion, null);

@@ -27,12 +27,14 @@ public class GroupTickScheduler {
     private final @NonNull GroupOrchestrator orchestrator;
     private final @NonNull GroupRegistry registry;
 
+    /** Creates a scheduler ticking the given orchestrator over the registry's groups. */
     public GroupTickScheduler(
             @NonNull GroupOrchestrator orchestrator, @NonNull GroupRegistry registry) {
         this.orchestrator = orchestrator;
         this.registry = registry;
     }
 
+    /** Ticks every active group once; a failing group does not stall the others. */
     public void tickActiveGroups() {
         Map<UUID, Group> snapshot = registry.snapshot();
         if (snapshot.isEmpty()) {

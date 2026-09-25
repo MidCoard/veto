@@ -10,6 +10,7 @@ import top.focess.veto.api.plugin.contract.FrontendContribution;
 public final class ToolsFrontend {
     private ToolsFrontend() {}
 
+    /** Serves the bundled tools script; every frontend action is rejected. */
     public static @NonNull FrontendContribution contribution() {
         try (var stream =
                 ToolDocs.nonNullClass(ToolsFrontend.class)

@@ -20,6 +20,10 @@ public class DAGPayload {
     private final String sourceComponent;
     private final String targetComponent;
 
+    /**
+     * Create a {@code PENDING} payload with defensive immutable copies of {@code parameters} and
+     * {@code dependencies} (null treated as empty).
+     */
     public DAGPayload(
             @NonNull String id,
             @NonNull String taskType,
@@ -102,6 +106,7 @@ public class DAGPayload {
         return targetComponent;
     }
 
+    /** Return a copy of this payload with the given status and a refreshed update time. */
     public @NonNull DAGPayload withStatus(@NonNull DAGPayloadStatus newStatus) {
         Map<String, Object> newParams = new HashMap<>(parameters);
         return new DAGPayload(
@@ -116,6 +121,10 @@ public class DAGPayload {
                 targetComponent);
     }
 
+    /**
+     * Return a copy of this payload with {@code newParams} merged over the existing parameters and
+     * a refreshed update time.
+     */
     public @NonNull DAGPayload withUpdatedParameters(@NonNull Map<String, Object> newParams) {
         Map<String, Object> merged = new HashMap<>(this.parameters);
         merged.putAll(newParams);
@@ -131,6 +140,7 @@ public class DAGPayload {
                 targetComponent);
     }
 
+    /** Lifecycle status of a DAG payload routed through the communication bus. */
     public enum DAGPayloadStatus {
         PENDING,
         RUNNING,
@@ -140,10 +150,12 @@ public class DAGPayload {
         CANCELLED
     }
 
+    /** Create a builder for a new payload. */
     public static @NonNull Builder builder() {
         return new Builder();
     }
 
+    /** Fluent builder for {@link DAGPayload}; {@code taskType} is the only required field. */
     public static class Builder {
         private String id;
         private String taskType;
@@ -192,6 +204,11 @@ public class DAGPayload {
             return this;
         }
 
+        /**
+         * Build the payload; a missing id defaults to a random UUID.
+         *
+         * @throws IllegalStateException if no task type was set
+         */
         public @NonNull DAGPayload build() {
             String requiredTaskType = taskType;
             if (requiredTaskType == null) {

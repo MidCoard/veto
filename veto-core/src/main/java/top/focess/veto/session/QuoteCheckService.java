@@ -13,12 +13,20 @@ public class QuoteCheckService {
     private final @NonNull TurnRecordRepository repository;
     private final @NonNull ObjectMapper mapper;
 
+    /** Creates the service over the durable turn-record log. */
     public QuoteCheckService(
             @NonNull TurnRecordRepository repository, @NonNull ObjectMapper mapper) {
         this.repository = repository;
         this.mapper = mapper;
     }
 
+    /**
+     * Returns the citation checks saved with one agent turn's assistant response, after verifying
+     * the stored response still matches {@code expectedBody}.
+     *
+     * @throws IllegalArgumentException if the answer is missing, was tampered with, exceeds the
+     *     quotation limit, or its citations cannot be read
+     */
     public @NonNull List<@NonNull Check> check(
             @NonNull String session,
             @NonNull String agent,
@@ -51,14 +59,17 @@ public class QuoteCheckService {
         }
     }
 
+    /** One citation check with its verification status, located matches, and message references. */
     public record Check(
             @NonNull String id,
             @NonNull String status,
             @NonNull List<@NonNull Match> matches,
             @NonNull List<@NonNull Reference> references) {}
 
+    /** A referenced message index and its verification status. */
     public record Reference(int messageIndex, @NonNull String status) {}
 
+    /** A located quote match: source turn, kind, field, URL, and excerpt offsets. */
     public record Match(
             int turn,
             @NonNull String kind,

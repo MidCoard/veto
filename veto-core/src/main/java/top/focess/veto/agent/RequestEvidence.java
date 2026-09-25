@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import java.util.function.BooleanSupplier;
+import java.util.stream.IntStream;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import top.focess.veto.agent.loop.MessageCitations;
@@ -131,7 +132,7 @@ final class RequestEvidence implements SourceEvidence {
     public @NonNull List<Message> messages() {
         check();
         var groups = ProviderMessages.groups(request);
-        return java.util.stream.IntStream.range(0, groups.size())
+        return IntStream.range(0, groups.size())
                 .mapToObj(
                         index ->
                                 new Message(

@@ -24,16 +24,25 @@ public final class ReadOnlyCatalogueTree implements CatalogueTree {
     private final @NonNull List<@NonNull Path> roots;
     private final @NonNull Runnable authorize;
 
+    /**
+     * Creates a catalogue over the given roots. The {@code authorize} callback runs before every
+     * access and must throw once the presentation grant has expired.
+     */
     public ReadOnlyCatalogueTree(@NonNull List<@NonNull Path> roots, @NonNull Runnable authorize) {
         this.roots = roots.stream().map(path -> path.toAbsolutePath().normalize()).toList();
         this.authorize = authorize;
     }
 
+    /** Stable content-agnostic identity of the root set, released only after authorization. */
     public @NonNull String identity() {
         authorize.run();
         return hash(roots.toString());
     }
 
+    /**
+     * Lists matching catalogue files under a relative {@code directory}, refusing traversal outside
+     * the roots, symbolic links, and entries beyond the file-count or size limits.
+     */
     public @NonNull List<CatalogueTree.@NonNull File> files(
             @NonNull String directory, @NonNull String fileName) throws IOException {
         authorize.run();
@@ -129,6 +138,7 @@ public final class ReadOnlyCatalogueTree implements CatalogueTree {
                 && a.size() == b.size();
     }
 
+    /** SHA-256 hex digest of the given text. */
     public static @NonNull String hash(@NonNull String text) {
         try {
             return HexFormat.of()

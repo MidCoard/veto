@@ -37,6 +37,7 @@ public class UserRegistry {
 
     private final @NonNull UserRepository repo;
 
+    /** Constructs the registry persisting through the given repository. */
     public UserRegistry(@NonNull UserRepository repo) {
         this.repo = repo;
     }
@@ -95,6 +96,7 @@ public class UserRegistry {
         return repo.count() > 0;
     }
 
+    /** Looks up a user by exact username. */
     @Transactional(readOnly = true)
     public @NonNull Optional<UserEntity> findByUsername(@NonNull String username) {
         return repo.findById(username);

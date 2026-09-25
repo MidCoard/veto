@@ -25,6 +25,7 @@ public final class PromptDocument {
     private static final @NonNull Pattern VALUE = Pattern.compile("\\{\\{([^{}]+)}}");
     private static final int MAX_OUTPUT = 4_000_000;
 
+    /** The compile of one version-2 entry: text, provenance spans, messages, named blocks. */
     public record Result(
             @NonNull String text,
             @NonNull List<PromptSpan> sources,
@@ -128,6 +129,11 @@ public final class PromptDocument {
         this.sources = sources;
     }
 
+    /**
+     * Compiles the named version-2 entry from the supplied trusted sources against the bound data.
+     * Undeclared variables, unknown includes, and malformed directives fail with a coded {@link
+     * IllegalArgumentException}.
+     */
     public static @NonNull Result compile(
             @NonNull String entry,
             @NonNull Map<String, ?> data,

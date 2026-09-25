@@ -36,6 +36,7 @@ public class TrainingController {
     private final @NonNull TrainingConfiguration config;
     private final @NonNull RequestAuthorization authorization;
 
+    /** Create the controller with its collaborators. */
     public TrainingController(
             @NonNull TrainingManager trainingManager,
             @NonNull TrainingConfiguration config,

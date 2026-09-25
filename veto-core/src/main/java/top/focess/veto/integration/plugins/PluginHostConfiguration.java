@@ -34,6 +34,7 @@ import top.focess.veto.vault.UserContext;
 public class PluginHostConfiguration {
     private @Nullable DeltaBroker broker;
 
+    /** Attaches the delta broker used to publish plugin events to sessions. */
     @Autowired
     public void attachBroker(DeltaBroker broker) {
         this.broker = broker;
@@ -41,6 +42,7 @@ public class PluginHostConfiguration {
 
     private final CompletableFuture<Void> ready = new CompletableFuture<>();
 
+    /** Releases callbacks registered through {@code PluginHost.whenReady} once startup finished. */
     @EventListener(ApplicationReadyEvent.class)
     @SuppressWarnings(
             "DataFlowIssue") // WHY: a CompletableFuture<Void> can only be completed with null
@@ -48,6 +50,7 @@ public class PluginHostConfiguration {
         ready.complete(null);
     }
 
+    /** Provides the generic runtime {@code PluginHost} (invocation, publish, invalidate, wake). */
     @Bean
     public PluginHostServices runtimeHostServices(
             ObjectProvider<SessionAgentRegistry> agents,

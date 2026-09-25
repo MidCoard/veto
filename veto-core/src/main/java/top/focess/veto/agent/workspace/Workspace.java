@@ -18,6 +18,7 @@ public record Workspace(
     private static final @NonNull Logger log =
             LoggerFactory.getLogger("top.focess.veto.agent.workspace.Workspace");
 
+    /** Validates the roots and current index, warning on root-name collisions. */
     public Workspace {
         if (roots.isEmpty()) {
             throw new IllegalArgumentException("workspace must have >= 1 root");
@@ -50,6 +51,7 @@ public record Workspace(
         }
     }
 
+    /** A {@link PathResolver} over this workspace's roots and path mode. */
     public @NonNull PathResolver pathResolver() {
         return new PathResolver(roots, pathMode, currentRootIndex);
     }
@@ -67,6 +69,7 @@ public record Workspace(
         return roots.get(currentRootIndex).hostPath();
     }
 
+    /** A {@link VetoMdResolver} that merges the Law across this workspace's roots. */
     public @NonNull VetoMdResolver vetoMdResolver() {
         return new VetoMdResolver(roots);
     }
@@ -87,6 +90,7 @@ public record Workspace(
         return fromConfig(legacyRoot, rootsCsv, pathMode, 0);
     }
 
+    /** Builds a {@link Workspace} from deployer config, selecting the current root by index. */
     public static @NonNull Workspace fromConfig(
             @NonNull String legacyRoot,
             @NonNull String rootsCsv,

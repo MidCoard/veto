@@ -29,6 +29,7 @@ import top.focess.veto.vault.UserRegistry;
 /** Optional distribution wiring. All feature backends and schema types are owned by builtin. */
 @Configuration
 public class BuiltinMemoryInfrastructure {
+    /** Host services granting builtin transactional memory backends and optional embeddings. */
     @Bean
     public @NonNull PluginHostServices builtinMemoryServices(
             @NonNull ObjectProvider<MemoryRepository> repositories,

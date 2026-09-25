@@ -17,6 +17,10 @@ import top.focess.veto.model.tier.ModelTierRegistry;
 import top.focess.veto.util.Nullness;
 import top.focess.veto.vault.KeysteadVault;
 
+/**
+ * Per-user agent patterns: named model-tier choices whose concrete binding is resolved from the
+ * user's active tier profile at creation time and reused by session creation.
+ */
 @RestController
 @RequestMapping("/api/patterns")
 public class PatternController {
@@ -25,6 +29,7 @@ public class PatternController {
     private final @NonNull KeysteadVault vault;
     private final @NonNull ModelTierRegistry tierRegistry;
 
+    /** Creates the controller with the pattern repository, vault, and tier registry. */
     public PatternController(
             @NonNull AgentPatternRepository repo,
             @NonNull KeysteadVault vault,
@@ -34,12 +39,18 @@ public class PatternController {
         this.tierRegistry = tierRegistry;
     }
 
+    /** Lists the current user's patterns; empty when not logged in. */
     @GetMapping
     public @NonNull List<AgentPatternEntity> list() {
         String user = vault.currentUser();
         return user != null ? repo.findByOwner(user) : List.of();
     }
 
+    /**
+     * Creates a pattern for the current user, resolving its model binding from the active tier
+     * profile. 400 on missing fields, unknown tier, or an unconfigured profile; 409 on a duplicate
+     * name.
+     */
     @PostMapping
     public @NonNull AgentPatternEntity create(@RequestBody @NonNull CreatePatternRequest body) {
         String user = vault.currentUser();
@@ -75,6 +86,7 @@ public class PatternController {
         return repo.save(p);
     }
 
+    /** Deletes the current user's pattern with the given name; a missing name is a no-op. */
     @DeleteMapping("/{name}")
     public @NonNull ResponseEntity<?> delete(@PathVariable @NonNull String name) {
         String user = vault.currentUser();

@@ -11,6 +11,7 @@ import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import top.focess.veto.agent.RecordUsage;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.memory.TurnRecordEntity;
 import top.focess.veto.memory.TurnRecordRepository;
@@ -26,12 +27,18 @@ public class SessionRecordService {
     private final @NonNull TurnRecordRepository repository;
     private final @NonNull ObjectMapper mapper;
 
+    /** Creates the service over the durable turn-record log. */
     public SessionRecordService(
             @NonNull TurnRecordRepository repository, @NonNull ObjectMapper mapper) {
         this.repository = repository;
         this.mapper = mapper;
     }
 
+    /**
+     * Builds the annotated multi-agent trace for one session: decodes every stored turn, projects
+     * each agent's stream through the rewind replay, merges them by timestamp, and adds the tool
+     * usage projection.
+     */
     public @NonNull SessionRecordsView load(
             @NonNull String sessionId,
             @NonNull String sessionName,
@@ -95,8 +102,8 @@ public class SessionRecordService {
                     0,
                     0,
                     row.getLlmUsage() == null
-                            ? top.focess.veto.agent.RecordUsage.decode(payload.get("llmUsage"))
-                            : top.focess.veto.agent.RecordUsage.read(row.getLlmUsage()));
+                            ? RecordUsage.decode(payload.get("llmUsage"))
+                            : RecordUsage.read(row.getLlmUsage()));
         } catch (RuntimeException e) {
             log.warn("Skipping unparseable session record {} in {}", row.getId(), sessionId, e);
             return null;
@@ -114,6 +121,7 @@ public class SessionRecordService {
         }
     }
 
+    /** The session trace payload for veto-ui: counts, presentation mode, tool usage, records. */
     public record SessionRecordsView(
             @NonNull String sessionId,
             @NonNull String sessionName,

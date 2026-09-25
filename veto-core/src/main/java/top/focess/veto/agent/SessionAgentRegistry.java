@@ -28,6 +28,7 @@ import top.focess.veto.model.AgentInstanceRepository;
 public final class SessionAgentRegistry {
     private SessionInvalidations invalidations;
 
+    /** Injects the invalidation bus used to notify subscribers when session agents change. */
     @Autowired
     public void attachInvalidations(@NonNull SessionInvalidations invalidations) {
         this.invalidations = invalidations;
@@ -36,12 +37,17 @@ public final class SessionAgentRegistry {
     private static final @NonNull Logger log =
             LoggerFactory.getLogger("top.focess.veto.agent.SessionAgentRegistry");
 
+    /**
+     * A live agent's registration: its session, optional parent linkage (for spawned children) and
+     * whether it is ephemeral (not surfaced in durable session records).
+     */
     public record Entry(
             @NonNull UUID sessionId,
             String parentAgentId,
             String parentCallId,
             @NonNull VetoAgent agent,
             boolean ephemeral) {
+        /** Convenience constructor for a non-ephemeral, parentless registration. */
         public Entry(
                 @NonNull UUID sessionId,
                 String parentAgentId,
@@ -62,6 +68,7 @@ public final class SessionAgentRegistry {
         turns = null;
     }
 
+    /** Database-backed registry that persists agent lifecycle alongside runtime ownership. */
     @Autowired
     public SessionAgentRegistry(
             @NonNull AgentInstanceRepository repository, @NonNull TurnRecordRepository turns) {
@@ -69,6 +76,7 @@ public final class SessionAgentRegistry {
         this.turns = turns;
     }
 
+    /** A session agent's inspectable state, merging durable records with any live runtime. */
     public record AgentSummary(
             @NonNull String id,
             @NonNull String name,
@@ -151,6 +159,11 @@ public final class SessionAgentRegistry {
         return result.values().stream().sorted(Comparator.comparing(AgentSummary::id)).toList();
     }
 
+    /**
+     * Registers a fresh top-level agent for its runner's session and returns the started agent.
+     *
+     * @throws IllegalStateException if the registry is closed or the persona id is already live
+     */
     public synchronized @NonNull VetoAgent start(
             @NonNull AgentPersona persona, @NonNull AgentRunner runner) {
         if (closed || live.containsKey(persona.id())) {
@@ -162,6 +175,7 @@ public final class SessionAgentRegistry {
         return agent;
     }
 
+    /** Registers an already-constructed agent under a session (no parent linkage). */
     public synchronized void register(@NonNull UUID sessionId, @NonNull VetoAgent agent) {
         register(new Entry(sessionId, null, null, agent));
     }
@@ -224,6 +238,7 @@ public final class SessionAgentRegistry {
         return startChild(sessionId, parentAgentId, parentCallId, persona, runner, false);
     }
 
+    /** Starts a spawned child, marking whether it may present prompts directly to the user. */
     public synchronized @NonNull VetoAgent startChild(
             @NonNull UUID sessionId,
             @NonNull String parentAgentId,
@@ -241,6 +256,7 @@ public final class SessionAgentRegistry {
                 false);
     }
 
+    /** Starts an ephemeral child that is excluded from the session's durable agent records. */
     public synchronized @NonNull VetoAgent startIsolated(
             @NonNull UUID sessionId,
             @NonNull String parentAgentId,
@@ -278,6 +294,7 @@ public final class SessionAgentRegistry {
         return live.values().stream().filter(entry -> entry.sessionId().equals(sessionId)).toList();
     }
 
+    /** Stops the agent only if it is still the registered instance; returns whether it stopped. */
     public synchronized boolean stopIfSame(@NonNull String id, @NonNull VetoAgent expected) {
         Entry entry = live.get(id);
         if (entry == null || entry.agent() != expected) return false;
@@ -285,6 +302,7 @@ public final class SessionAgentRegistry {
         return true;
     }
 
+    /** Terminates an agent and its descendants, then records its end time. No-op if not live. */
     public synchronized void stop(@NonNull String agentId) {
         Entry entry = live.remove(agentId);
         if (entry == null) return;
@@ -314,10 +332,12 @@ public final class SessionAgentRegistry {
         }
     }
 
+    /** Terminates every live agent registered under the given session. */
     public synchronized void stopSession(@NonNull UUID sessionId) {
         agents(sessionId).forEach(entry -> stop(entry.agent().id()));
     }
 
+    /** Closes the registry and stops all live agents (invoked on context shutdown). */
     @PreDestroy
     public synchronized void close() {
         closed = true;

@@ -4,6 +4,7 @@ import org.jspecify.annotations.NonNull;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
+/** Spring Data JPA repository for {@link UserEntity} rows keyed by username. */
 @Repository
 public interface UserRepository extends JpaRepository<UserEntity, String> {
 

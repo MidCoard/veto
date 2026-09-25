@@ -22,6 +22,7 @@ public class WebConfig implements WebMvcConfigurer {
 
     private final @NonNull SecurityContextInterceptor interceptor;
 
+    /** Creates the configuration with the interceptor it registers on all API paths. */
     public WebConfig(@NonNull SecurityContextInterceptor interceptor) {
         this.interceptor = interceptor;
     }

@@ -10,5 +10,6 @@ import top.focess.veto.api.plugin.VetoPlugin;
  * responsibilities.
  */
 public interface PluginLoader<P extends VetoPlugin> {
+    /** Loads an inactive plugin instance from the given package directory. */
     @NonNull P load(@NonNull Path directory) throws IOException;
 }

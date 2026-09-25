@@ -21,12 +21,14 @@ public class PluginController {
     private final @NonNull PluginManager plugins;
     private final @NonNull RequestAuthorization authorization;
 
+    /** Creates the controller with the plugin manager and request authorizer. */
     public PluginController(
             @NonNull PluginManager plugins, @NonNull RequestAuthorization authorization) {
         this.plugins = plugins;
         this.authorization = authorization;
     }
 
+    /** Admin-only catalog of installed plugins with their state and contributed point/tool ids. */
     @GetMapping
     @SuppressWarnings(
             "resource") // WHY: ManagedPlugin handles are owned by PluginManager, closed elsewhere

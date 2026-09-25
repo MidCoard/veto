@@ -37,6 +37,7 @@ import top.focess.veto.api.agent.tool.ToolSecurity;
             "{\"query\":\"  \"}"
         })
 public final class FindSectionsTool implements WebDocumentTool<FindSectionsTool.Args> {
+    /** Model-facing arguments of {@code find_sections}. */
     public record Args(
             @Doc(
                             "Nonblank literal keyword, at most 200 characters; case-insensitive with normalized whitespace.")

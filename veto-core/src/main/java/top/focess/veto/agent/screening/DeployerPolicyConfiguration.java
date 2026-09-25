@@ -60,6 +60,12 @@ public class DeployerPolicyConfiguration {
         }
     }
 
+    /**
+     * The protected-path settings for the given policy.
+     *
+     * @throws IllegalArgumentException for {@link DeployerPolicy#FULL_ACCESS}, which has no
+     *     protected set
+     */
     public @NonNull PathProtection protectionFor(@NonNull DeployerPolicy policy) {
         return switch (policy) {
             case FULL_ACCESS ->
@@ -70,6 +76,7 @@ public class DeployerPolicyConfiguration {
         };
     }
 
+    /** The configured scope roots for a scoped policy; empty for FULL_ACCESS and PROTECTED. */
     public @NonNull List<@NonNull String> rootsFor(@NonNull DeployerPolicy policy) {
         return switch (policy) {
             case FULL_ACCESS, PROTECTED -> List.of();

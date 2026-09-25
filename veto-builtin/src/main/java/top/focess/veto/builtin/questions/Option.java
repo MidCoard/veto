@@ -3,6 +3,7 @@ package top.focess.veto.builtin.questions;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.agent.tool.*;
 
+/** One selectable choice offered with a {@link Question}. */
 public record Option(
         @StringConstraint(minLength = 1, maxLength = 120)
                 @NonNull

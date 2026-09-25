@@ -29,6 +29,7 @@ public class ReconnectionHandler {
     private volatile String lastBackendUrl;
     private volatile boolean reconnecting = false;
 
+    /** Creates the handler driven by the {@code veto.bus} reconnection configuration. */
     public ReconnectionHandler(@NonNull BusConfiguration config) {
         this.config = config;
     }

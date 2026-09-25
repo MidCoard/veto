@@ -37,6 +37,15 @@ public final class TerminalStatus {
      */
     private final @NonNull Object statusLock = new Object();
 
+    /**
+     * Constructs a status bar bound to the terminal's JLine {@link Status}, rendering snapshots of
+     * the given session in the given theme's style.
+     *
+     * @param terminal the JLine terminal hosting the bottom status line
+     * @param session the session whose status snapshots are rendered
+     * @param theme the theme used to style the bar text
+     * @throws IllegalStateException if the terminal does not support JLine's status bar
+     */
     public TerminalStatus(
             @NonNull Terminal terminal, @NonNull ClientSession session, @NonNull Theme theme) {
         this.theme = theme;

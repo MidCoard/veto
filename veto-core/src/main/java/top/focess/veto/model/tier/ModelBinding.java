@@ -35,6 +35,7 @@ public record ModelBinding(
         String baseUrl,
         int contextWindowTokens) {
 
+    /** This binding's sampling defaults as {@link LlmOptions} (timeout from the defaults). */
     public @NonNull LlmOptions llmOptions() {
         return new LlmOptions(
                 temperature,
@@ -44,6 +45,7 @@ public record ModelBinding(
                 contextWindowTokens);
     }
 
+    /** Convenience constructor that defaults the context window to 128000 tokens. */
     public ModelBinding(
             @NonNull ProviderType provider,
             @NonNull String model,

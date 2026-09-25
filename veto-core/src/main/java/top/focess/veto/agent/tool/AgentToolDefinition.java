@@ -38,10 +38,12 @@ public record AgentToolDefinition(
         ToolPresentation presentation)
         implements LocalToolDefinition {
 
+    /** Compact constructor: freezes the parameter hints into an unmodifiable copy. */
     public AgentToolDefinition {
         paramHints = Map.copyOf(paramHints);
     }
 
+    /** Convenience constructor for an agent tool with no presentation callback. */
     public AgentToolDefinition(
             @NonNull String name,
             @NonNull String description,
@@ -63,6 +65,7 @@ public record AgentToolDefinition(
                 null);
     }
 
+    /** Convenience constructor for a host-shipped agent tool with no provenance. */
     public AgentToolDefinition(
             @NonNull String name,
             @NonNull String description,

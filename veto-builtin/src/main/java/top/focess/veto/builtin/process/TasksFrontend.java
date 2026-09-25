@@ -20,10 +20,12 @@ public final class TasksFrontend {
     private final @NonNull BackgroundTasks tasks;
     private final @NonNull ObjectMapper mapper = new ObjectMapper();
 
+    /** Creates a frontend backed by the given task registry. */
     public TasksFrontend(@NonNull BackgroundTasks tasks) {
         this.tasks = tasks;
     }
 
+    /** Serves the bundled tasks script and routes its actions to {@link #handle}. */
     public @NonNull FrontendContribution contribution() {
         try (var source =
                 ToolDocs.nonNullClass(TasksFrontend.class)
@@ -36,6 +38,10 @@ public final class TasksFrontend {
         }
     }
 
+    /**
+     * Answers paged frontend actions ({@code list}, {@code output}, {@code detail}, {@code
+     * stopOrRemove}).
+     */
     public @NonNull JsonValue handle(
             FrontendContribution.@NonNull Scope scope,
             @NonNull String action,

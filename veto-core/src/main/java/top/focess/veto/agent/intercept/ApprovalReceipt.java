@@ -8,6 +8,10 @@ public record ApprovalReceipt(
         @NonNull VetoOption decision,
         InterceptResolution.@NonNull Source decisionSource,
         @NonNull String resolvedAt) {
+    /**
+     * Rebuilds a receipt from a stored approval payload; returns null when the value is not a
+     * well-formed receipt.
+     */
     // valueOf results are nullable to the NullnessChecker; the guard refines them for the
     // @NonNull record components.
     @SuppressWarnings("ConstantValue")

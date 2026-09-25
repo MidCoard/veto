@@ -14,6 +14,7 @@ public record ToolCallContext(
         @NonNull ToolResultPresentationMode toolResultPresentation,
         @NonNull ToolExecutionPermit executionPermit,
         String requestId) {
+    /** Convenience constructor with no request id (a non-correlated call). */
     public ToolCallContext(
             @NonNull String agentId,
             @NonNull UUID userId,

@@ -10,11 +10,13 @@ public record Role(@NonNull String name) {
     public static final @NonNull Role LEADER = new Role("LEADER");
     public static final @NonNull Role MATE = new Role("MATE");
 
+    /** Rejects blank or over-long labels. */
     public Role {
         if (name.isBlank() || name.length() > 128)
             throw new IllegalArgumentException("Invalid agent label");
     }
 
+    /** Creates a role from its label; the JSON deserialization entry point. */
     @JsonCreator
     public static @NonNull Role valueOf(@NonNull String name) {
         return new Role(name);

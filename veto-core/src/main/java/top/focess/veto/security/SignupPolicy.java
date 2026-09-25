@@ -25,6 +25,10 @@ public class SignupPolicy {
     private final @NonNull SignupMode mode;
     private final @NonNull String deployerPolicy;
 
+    /**
+     * Parses the raw signup mode (blank defaults to {@link SignupMode#SOLO}) and normalizes the
+     * deployer policy name.
+     */
     public SignupPolicy(
             @Value("${veto.security.signup.mode}") @NonNull String modeRaw,
             @Value("${veto.security.deployer-policy}") @NonNull String deployerPolicyRaw) {

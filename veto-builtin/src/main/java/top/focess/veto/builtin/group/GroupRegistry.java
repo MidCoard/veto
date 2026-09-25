@@ -22,14 +22,17 @@ public class GroupRegistry {
     private GroupHistoryStore historyStore;
     private PluginHost invalidations;
 
+    /** Registers the host used to invalidate cached frontend group views. */
     public void attachInvalidations(@NonNull PluginHost invalidations) {
         this.invalidations = invalidations;
     }
 
+    /** Registers the store that receives a history snapshot on every meaningful change. */
     public void attachHistory(@NonNull GroupHistoryStore historyStore) {
         this.historyStore = historyStore;
     }
 
+    /** Stores the group, persisting history and invalidating frontends when it changed. */
     public void put(@NonNull Group group) {
         Group previous = groups.get(group.groupId());
         GroupHistoryStore store = historyStore;
@@ -46,10 +49,12 @@ public class GroupRegistry {
             events.invalidate(sessionId.toString(), "groups");
     }
 
+    /** Returns the registered group, or {@code null} when the id is unknown. */
     public Group get(@NonNull UUID groupId) {
         return groups.get(groupId);
     }
 
+    /** Transitions the group to {@link GroupState#DISBANDED}; unknown ids are ignored. */
     public void disband(@NonNull UUID groupId, @NonNull Instant when) {
         Group g = groups.get(groupId);
         if (g == null) {
@@ -58,6 +63,7 @@ public class GroupRegistry {
         put(g.withState(GroupState.DISBANDED, when));
     }
 
+    /** Drops the group without frontend invalidation; true when it was registered. */
     public boolean releaseRuntime(@NonNull UUID groupId) {
         var removed = groups.remove(groupId);
         if (removed == null) return false;
@@ -65,6 +71,7 @@ public class GroupRegistry {
         return true;
     }
 
+    /** Removes the group and invalidates its frontend views; true when it was registered. */
     public boolean remove(@NonNull UUID groupId) {
         Group removed = groups.remove(groupId);
         if (removed == null) return false;
@@ -75,6 +82,7 @@ public class GroupRegistry {
         return true;
     }
 
+    /** Immutable copy of all registered groups keyed by id. */
     public @NonNull Map<UUID, Group> snapshot() {
         return Map.copyOf(groups);
     }

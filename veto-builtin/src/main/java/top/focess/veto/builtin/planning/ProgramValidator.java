@@ -268,6 +268,7 @@ public final class ProgramValidator {
 
     /** Thrown when an actions program fails validation. */
     public static final class InvalidProgramException extends RuntimeException {
+        /** Creates the exception with the given validation message. */
         public InvalidProgramException(@NonNull String message) {
             super(message);
         }

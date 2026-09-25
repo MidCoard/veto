@@ -36,6 +36,7 @@ public final class StoredMonitorRepository implements MonitorRepository {
     private final Map<String, Store> sessions = new HashMap<>();
     private final Map<String, Stored> known = new HashMap<>();
 
+    /** Creates the repository over the plugin storage backend. */
     public StoredMonitorRepository(PluginStorage storage) {
         this.storage = storage;
     }

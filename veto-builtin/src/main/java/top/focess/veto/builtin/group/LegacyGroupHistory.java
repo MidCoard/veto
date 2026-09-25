@@ -10,6 +10,7 @@ import org.jspecify.annotations.NonNull;
 
 /** Best-effort reading of old tool evidence, never a claim that missing lifecycle data exists. */
 public final class LegacyGroupHistory {
+    /** One raw session-evidence row (tool call, response, or transcript entry) with its payload. */
     public record SessionRecord(
             @NonNull String agentId,
             @NonNull String type,
@@ -22,6 +23,9 @@ public final class LegacyGroupHistory {
 
     private LegacyGroupHistory() {}
 
+    /**
+     * Reconstructs historical group views from raw session evidence; unknown states stay unknown.
+     */
     public static @NonNull List<GroupHistoryView> read(@NonNull List<SessionRecord> records) {
         Map<String, SessionRecord> calls = new LinkedHashMap<>();
         Map<String, Builder> current = new LinkedHashMap<>();

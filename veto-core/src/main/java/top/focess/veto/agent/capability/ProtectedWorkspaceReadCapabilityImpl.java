@@ -18,6 +18,7 @@ import top.focess.veto.integration.plugins.SessionPlugins;
 public final class ProtectedWorkspaceReadCapabilityImpl implements WorkspaceReadCapability {
     private final SessionPlugins plugins;
 
+    /** Spring construction: uses the session plugin selection when one is available. */
     @Autowired
     public ProtectedWorkspaceReadCapabilityImpl(@NonNull ObjectProvider<SessionPlugins> plugins) {
         this.plugins = plugins.getIfAvailable();

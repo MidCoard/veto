@@ -25,6 +25,7 @@ public class CredentialCommand extends VetoCommand {
 
     private final @NonNull KeysteadVault vault;
 
+    /** Constructs the {@code /credential} command storing secrets in the given vault. */
     public CredentialCommand(@NonNull KeysteadVault vault) {
         super("credential", "Manage per-user API-key credentials", "cred");
         this.vault = vault;

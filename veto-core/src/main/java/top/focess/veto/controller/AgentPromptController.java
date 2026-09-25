@@ -23,6 +23,7 @@ public class AgentPromptController {
     private final @NonNull SessionAgentRegistry agents;
     private final @NonNull KeysteadVault vault;
 
+    /** Creates the controller with session, agent-registry, and vault collaborators. */
     public AgentPromptController(
             @NonNull SessionService sessions,
             @NonNull SessionAgentRegistry agents,
@@ -32,6 +33,11 @@ public class AgentPromptController {
         this.vault = vault;
     }
 
+    /**
+     * Queues a user prompt on the named agent of an owned session. Rejects blank prompts, agents
+     * with direct interaction disabled (403), terminated agents (409), and unparsable protected
+     * input (422); unknown session or agent yields 404. Returns 202 once queued.
+     */
     @PostMapping("/api/sessions/{name}/agents/{agentId}/prompt")
     public @NonNull ResponseEntity<?> prompt(
             @PathVariable @NonNull String name,

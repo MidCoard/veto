@@ -30,6 +30,7 @@ public final class WorkspaceAdmissionPolicy {
     private final @NonNull DeployerPolicy deployerPolicy;
     private final boolean canonicalize;
 
+    /** Builds the policy from deployer configuration, canonicalizing the configured roots. */
     @Autowired
     public WorkspaceAdmissionPolicy(@NonNull DeployerPolicyConfiguration configuration) {
         DeployerPolicy policy = configuration.getDeployerPolicy();
@@ -41,6 +42,7 @@ public final class WorkspaceAdmissionPolicy {
                         .toList();
     }
 
+    /** Creates the policy over explicit deployer roots with canonicalization enabled. */
     public WorkspaceAdmissionPolicy(
             @NonNull List<@NonNull Path> deployerRoots, @NonNull DeployerPolicy deployerPolicy) {
         this(deployerRoots, deployerPolicy, true);

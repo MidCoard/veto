@@ -9,11 +9,13 @@ import top.focess.veto.command.VetoCommand;
 import top.focess.veto.command.VetoCommandSender;
 import top.focess.veto.vault.KeysteadVault;
 
+/** Shows the current user plus aggregate session and turn counts ({@code /status}). */
 public class StatusCommand extends VetoCommand {
 
     private final @NonNull KeysteadVault vault;
     private final @NonNull PromptHandler promptHandler;
 
+    /** Constructs the {@code /status} command over the given vault and prompt handler. */
     public StatusCommand(@NonNull KeysteadVault vault, @NonNull PromptHandler promptHandler) {
         super("status", "Show session info");
         this.vault = vault;

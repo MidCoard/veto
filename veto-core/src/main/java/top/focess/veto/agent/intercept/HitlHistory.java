@@ -12,22 +12,26 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import top.focess.veto.util.Nullness;
 
+/** Durable HITL approval history: recorded decisions and the session grants they created. */
 @Service
 public class HitlHistory {
     private final @NonNull HitlRecordRepository repository;
     private final @NonNull ObjectMapper mapper;
 
+    /** Constructs the history over its JPA store and grant-JSON mapper. */
     public HitlHistory(@NonNull HitlRecordRepository repository, @NonNull ObjectMapper mapper) {
         this.repository = repository;
         this.mapper = mapper;
     }
 
+    /** One recorded HITL event row: the call it concerns, the event, decision, and its source. */
     public record Decision(
             @NonNull String callId,
             @NonNull String event,
             @NonNull String decision,
             @NonNull String source) {}
 
+    /** Every recorded decision for the agent, oldest first. */
     @Transactional(readOnly = true)
     public @NonNull List<Decision> decisions(@NonNull String agent) {
         return repository.findByAgentIdOrderByIdAsc(agent).stream()
@@ -65,6 +69,10 @@ public class HitlHistory {
         }
     }
 
+    /**
+     * Replays the recorded grant events of one session into the currently effective grant set:
+     * RESOLVED adds, REVOKED removes, CLEARED resets.
+     */
     @Transactional(readOnly = true)
     public @NonNull Set<PermissionGrant> grants(@NonNull UUID session, @NonNull String agent) {
         Set<PermissionGrant> result = new LinkedHashSet<>();

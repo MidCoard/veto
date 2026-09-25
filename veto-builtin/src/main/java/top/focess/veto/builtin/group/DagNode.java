@@ -20,6 +20,7 @@ public record DagNode(
         String dispatchId,
         String requestId) {
 
+    /** Compatibility constructor for nodes that carry no request identity. */
     public DagNode(
             @NonNull String nodeId,
             @NonNull String description,
@@ -72,6 +73,7 @@ public record DagNode(
                 null);
     }
 
+    /** Lifecycle state of a DAG node, from first dispatch through completion or abandonment. */
     public enum NodeState {
         PENDING, // not yet dispatched
         RUNNING, // dispatched to a Mate
@@ -84,6 +86,7 @@ public record DagNode(
         STALE // superseded (Mate removed / re-assigned); not to be re-dispatched
     }
 
+    /** Outcome attached to a node; exactly one variant describes its current result. */
     public sealed interface NodeResult
             permits ResultNone, ResultSuccess, ResultArtifact, ResultFailure {}
 
@@ -104,6 +107,7 @@ public record DagNode(
         }
     }
 
+    /** Creates an unassigned {@link NodeState#PENDING} node with an empty result. */
     public static @NonNull DagNode pending(
             @NonNull String nodeId,
             @NonNull String description,

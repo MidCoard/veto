@@ -2,6 +2,7 @@ package top.focess.veto.builtin.group;
 
 import org.jspecify.annotations.NonNull;
 
+/** Outcome of a requested DAG node mutation: either applied or rejected with a reason. */
 public sealed interface NodeEdit {
 
     /** The edit was applied. */

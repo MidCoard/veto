@@ -10,11 +10,16 @@ import top.focess.veto.command.VetoCommand;
 import top.focess.veto.command.VetoCommandSender;
 import top.focess.veto.vault.AuthLifecycleManager;
 
+/**
+ * Signs the current user out, closes their vault, and detaches the terminal's active session
+ * ({@code /logout}).
+ */
 public class LogoutCommand extends VetoCommand {
 
     private final @NonNull AuthLifecycleManager authLifecycleManager;
     private final @NonNull PromptHandler promptHandler;
 
+    /** Constructs the {@code /logout} command over the given auth lifecycle and prompt handler. */
     public LogoutCommand(
             @NonNull AuthLifecycleManager authLifecycleManager,
             @NonNull PromptHandler promptHandler) {

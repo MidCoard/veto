@@ -10,10 +10,14 @@ import top.focess.veto.command.CommandRegistry;
 import top.focess.veto.command.VetoCommand;
 import top.focess.veto.command.VetoCommandSender;
 
+/**
+ * Lists every command the sender's executor permission admits ({@code /help}, alias {@code /h}).
+ */
 public class HelpCommand extends VetoCommand {
 
     private final @NonNull CommandRegistry registry;
 
+    /** Constructs the {@code /help} command reading the given registry. */
     public HelpCommand(@NonNull CommandRegistry registry) {
         super("help", "Show available commands", "h");
         this.registry = registry;

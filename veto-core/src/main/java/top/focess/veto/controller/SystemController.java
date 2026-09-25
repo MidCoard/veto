@@ -16,6 +16,7 @@ import top.focess.veto.controller.dto.*;
 @RequestMapping("/api/system")
 public class SystemController {
 
+    /** Returns the host OS name/arch, path syntax family, separator, and an example root path. */
     @GetMapping("/info")
     public @NonNull SystemInfoResponse info() {
         String osName = System.getProperty("os.name", "unknown");

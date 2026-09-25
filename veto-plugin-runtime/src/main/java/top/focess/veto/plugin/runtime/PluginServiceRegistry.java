@@ -28,10 +28,12 @@ public final class PluginServiceRegistry {
     private boolean bound;
     private final @NonNull BiPredicate<@NonNull String, @NonNull String> allowed;
 
+    /** Creates a registry whose visibility is governed by the given caller-to-owner predicate. */
     public PluginServiceRegistry(@NonNull BiPredicate<@NonNull String, @NonNull String> allowed) {
         this.allowed = allowed;
     }
 
+    /** Binds every catalogued service to its owning plugin; may only be called once. */
     public synchronized void bind(
             @NonNull ContributionCatalog catalog, @NonNull List<ManagedPlugin> plugins) {
         if (bound) throw new IllegalStateException("Services already bound");
@@ -51,6 +53,7 @@ public final class PluginServiceRegistry {
         bound = true;
     }
 
+    /** Returns the service view authorized for the given calling plugin. */
     public @NonNull PluginServices forPlugin(@NonNull ManagedPlugin caller) {
         return view(caller);
     }

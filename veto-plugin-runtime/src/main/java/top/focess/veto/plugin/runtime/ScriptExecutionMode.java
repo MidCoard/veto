@@ -7,6 +7,7 @@ public enum ScriptExecutionMode {
     TRUSTED,
     ISOLATED;
 
+    /** Fails unless this mode can actually run scripts, honoring the trusted-code flag. */
     public void requireAvailable(boolean trustedCode) throws IOException {
         if (this == ISOLATED) {
             throw new IOException(

@@ -41,8 +41,10 @@ public class UserEntity {
     @Column(name = "created_at", nullable = false)
     private @NonNull Instant createdAt = Instant.EPOCH;
 
+    /** JPA-required no-arg constructor. */
     protected UserEntity() {}
 
+    /** Creates a user row with a freshly generated random storage identity. */
     public UserEntity(
             @NonNull String username,
             byte @NonNull [] passwordHash,

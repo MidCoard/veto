@@ -52,6 +52,7 @@ public class ModelTierCommand extends VetoCommand {
     private final @NonNull ModelTierProfileService profileService;
     private final @NonNull ModelTierRegistry tierRegistry;
 
+    /** Constructs the {@code /modeltier} command over the profile service and tier registry. */
     public ModelTierCommand(
             @NonNull ModelTierProfileService profileService,
             @NonNull ModelTierRegistry tierRegistry) {

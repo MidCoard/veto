@@ -59,6 +59,7 @@ public class DangerComputation {
                     ".npmrc",
                     ".pypirc");
 
+    /** Computes danger for a call, first capturing a fresh execution permit for its targets. */
     public @NonNull Danger compute(
             @NonNull ToolDefinition def,
             @NonNull ToolCall call,

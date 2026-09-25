@@ -22,6 +22,7 @@ public class McpServerController {
     private final @NonNull ToolEngineImpl toolEngine;
     private final @NonNull RequestAuthorization authorization;
 
+    /** Creates the controller with the tool engine and request authorizer. */
     public McpServerController(
             @NonNull ToolEngineImpl toolEngine, @NonNull RequestAuthorization authorization) {
         this.toolEngine = toolEngine;

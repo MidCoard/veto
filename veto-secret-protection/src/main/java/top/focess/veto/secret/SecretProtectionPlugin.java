@@ -40,16 +40,27 @@ public final class SecretProtectionPlugin extends AbstractVetoPlugin {
 
     private @Nullable ScheduledExecutorService expiry;
 
+    /** Creates the plugin with a default candidate store and no credential-import host. */
     public SecretProtectionPlugin() {
         this(new SecretCandidateStore());
     }
 
+    /**
+     * Creates the plugin with the given candidate store and credential-import host.
+     *
+     * @param candidates the transient store backing capture, reveal, and import
+     * @param importer the host bridge that authorizes and writes imported credentials
+     */
     public SecretProtectionPlugin(
             @NonNull SecretCandidateStore candidates, @NonNull CredentialImportAccess importer) {
         this.candidates = candidates;
         this.importer = importer;
     }
 
+    /**
+     * Creates the plugin with the given candidate store; credential import stays unavailable until
+     * the host grants it during initialization.
+     */
     public SecretProtectionPlugin(@NonNull SecretCandidateStore candidates) {
         this(
                 candidates,

@@ -20,14 +20,19 @@ import top.focess.veto.api.agent.AgentState;
 public interface Agent {
 
     // --- Identity ---
+    /** The agent's stable identity (its persona id). */
     @NonNull String id();
 
+    /** The persona's display name. */
     @NonNull String name();
 
+    /** The persona currently in effect (identity, role and authorized tools). */
     @NonNull AgentPersona persona();
 
+    /** The tool names this agent is authorized to call. */
     @NonNull Set<String> whitelistedTools();
 
+    /** The agent's current lifecycle state. */
     @NonNull AgentState state();
 
     // --- Execution ---
@@ -56,6 +61,7 @@ public interface Agent {
     }
 
     // --- Lifecycle ---
+    /** Request termination; actual exit is confirmed separately via {@link #awaitTermination}. */
     void terminate(); // Request termination; completion is confirmed separately.
 
     /** Confirm actual execution exit. Implementations without confirmation return false. */
@@ -71,6 +77,7 @@ public interface Agent {
     }
 
     // --- History ---
+    /** The agent's durable turn history, oldest first. */
     @NonNull List<TurnRecord> history();
 
     /** The read-history (for drift detection). */

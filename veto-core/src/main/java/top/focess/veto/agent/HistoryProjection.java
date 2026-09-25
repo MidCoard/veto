@@ -11,17 +11,28 @@ import org.jspecify.annotations.NonNull;
 public final class HistoryProjection {
     private HistoryProjection() {}
 
+    /**
+     * One replayed turn annotated with how it was retired: {@code removedBy} is the REWIND turn
+     * number that dropped it (0 if still active), {@code removedCount} how many turns that rewind
+     * dropped, and {@code superseded} whether a later context update replaced it.
+     */
     public record Entry(
             @NonNull TurnRecord record, int removedBy, int removedCount, boolean superseded) {
+        /** Convenience constructor for an entry that has not been superseded. */
         public Entry(@NonNull TurnRecord record, int removedBy, int removedCount) {
             this(record, removedBy, removedCount, false);
         }
 
+        /** Whether this entry survives in the effective (compiled) view. */
         public boolean active() {
             return removedBy == 0 && !superseded;
         }
     }
 
+    /**
+     * Replays the append-only history into per-turn {@link Entry} records, resolving REWIND and
+     * context-update directives so a caller can see which turns remain effective.
+     */
     public static @NonNull List<Entry> replay(@NonNull List<TurnRecord> history) {
         List<Entry> entries = new ArrayList<>();
         List<Integer> active = new ArrayList<>();
@@ -169,6 +180,7 @@ public final class HistoryProjection {
         return List.copyOf(additions);
     }
 
+    /** The turns that survive replay (rewinds and context updates applied), oldest first. */
     public static @NonNull List<TurnRecord> effective(@NonNull List<TurnRecord> history) {
         return replay(history).stream().filter(Entry::active).map(Entry::record).toList();
     }

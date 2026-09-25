@@ -10,6 +10,9 @@ public record ScriptTool(
         @NonNull String handler,
         @NonNull JsonNode inputSchema,
         @NonNull JsonNode outputSchema) {
+    /**
+     * Validates the descriptor's identifiers, description, and schemas, then copies both schemas.
+     */
     public ScriptTool {
         PluginSchema.require(id.matches("[a-z][a-z0-9_]{0,31}"));
         PluginSchema.require(handler.matches("[a-zA-Z][a-zA-Z0-9_.]{0,95}"));

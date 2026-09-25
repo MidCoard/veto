@@ -17,6 +17,9 @@ import top.focess.veto.util.Nullness;
 public final class AgentProfiles {
     private AgentProfiles() {}
 
+    /**
+     * Projects a host {@link ToolDefinition} into the tool view exposed to configuration intent.
+     */
     public static AgentConfiguration.@NonNull Tool configurationTool(@NonNull ToolDefinition tool) {
         var source = tool.provenance();
         return new AgentConfiguration.Tool(
@@ -26,11 +29,18 @@ public final class AgentProfiles {
                 source == null ? null : source.localId());
     }
 
+    /** A configuration intent resolved against host-owned persona, model binding and prompt. */
     public record Resolved(
             @NonNull AgentPersona persona,
             @NonNull LlmBinding binding,
             AgentProfile.Prompt prompt) {}
 
+    /**
+     * Resolves a requested {@link AgentProfile} against the tools the host actually authorizes and
+     * the owner's model tiers, rejecting any request for tools outside {@code authorized}.
+     *
+     * @throws SecurityException if the profile requests tools not present in {@code authorized}
+     */
     public static @NonNull Resolved resolve(
             @NonNull String id,
             @NonNull String owner,

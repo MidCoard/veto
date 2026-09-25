@@ -17,11 +17,13 @@ public final class LegacySkillImport implements ApplicationRunner {
     private final @NonNull DataSource database;
     private final @NonNull PluginManager plugins;
 
+    /** Creates the import with its database and plugin-manager collaborators. */
     public LegacySkillImport(@NonNull DataSource database, @NonNull PluginManager plugins) {
         this.database = database;
         this.plugins = plugins;
     }
 
+    /** Re-anchors legacy skill hash rows onto builtin without altering the backup table. */
     public void run(ApplicationArguments arguments) throws Exception {
         BuiltinPlugin builtin = null;
         for (var plugin : plugins.plugins())

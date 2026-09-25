@@ -8,6 +8,7 @@ import org.jspecify.annotations.NonNull;
  * Registration never earns an entry here; the host decides what each service is.
  */
 public record PluginHostServices(@NonNull Map<@NonNull Class<?>, @NonNull Object> services) {
+    /** Defensively copies the service map. */
     public PluginHostServices {
         services = Map.copyOf(services);
     }

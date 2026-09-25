@@ -99,14 +99,17 @@ public final class DagTools {
 
         private final GroupControlCapability capability;
 
+        /** Declaration-only instance; the host supplies the capability at execution time. */
         public CreateNode() {
             this.capability = null;
         }
 
+        /** Creates an instance bound to the given host capability. */
         public CreateNode(@NonNull GroupControlCapability capability) {
             this.capability = capability;
         }
 
+        /** Model-facing arguments of {@code create_node}. */
         public record Args(
                 @SecurityHint(ParamCategory.GENERIC)
                         @Doc("New node's id (unique within the plan, e.g. 'node-1').")
@@ -247,14 +250,17 @@ public final class DagTools {
 
         private final GroupControlCapability capability;
 
+        /** Declaration-only instance; the host supplies the capability at execution time. */
         public RemoveNode() {
             this.capability = null;
         }
 
+        /** Creates an instance bound to the given host capability. */
         public RemoveNode(@NonNull GroupControlCapability capability) {
             this.capability = capability;
         }
 
+        /** Model-facing arguments of {@code remove_node}. */
         public record Args(
                 @SecurityHint(ParamCategory.GENERIC) @Doc("The id of the node to retire.")
                         @NonNull String nodeId) {}

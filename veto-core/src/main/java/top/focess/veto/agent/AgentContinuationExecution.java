@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.AgentRuntimeState.ActivatedObservation;
 import top.focess.veto.agent.ExecutionControl.Wait;
@@ -202,7 +203,7 @@ final class AgentContinuationExecution {
         AgentWorkSource service = source();
         if (runtime.control.waiting(Wait.INTERRUPTED)
                 || runtime.control instanceof ExecutionControl.Suspended suspended
-                        && !suspended.waits().equals(java.util.Set.of(Wait.PLUGIN))
+                        && !suspended.waits().equals(Set.of(Wait.PLUGIN))
                 || runtime.control.waiting(Wait.BREAKER)
                 || runtime.control.state() == AgentState.PAUSED
                 || runtime.control.state() == AgentState.INTERCEPTED

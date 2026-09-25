@@ -5,6 +5,7 @@ import org.jspecify.annotations.NonNull;
 
 /** The result of resolving an agent path: which root it landed in, or out-of-scope. */
 public record Resolution(Path hostPath, int rootIndex, boolean inScope) {
+    /** Out-of-scope resolution, optionally carrying the canonicalized host path. */
     public static @NonNull Resolution outOfScope(Path hostPath) {
         return new Resolution(hostPath, -1, false);
     }

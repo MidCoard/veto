@@ -37,6 +37,7 @@ public enum ScreeningMode {
         }
     };
 
+    /** Resolves one (relevance, danger) matrix cell to its auto-approve outcome under this mode. */
     public abstract @NonNull ScreeningOutcome cell(
             @NonNull Relevance relevance, @NonNull Danger danger);
 }

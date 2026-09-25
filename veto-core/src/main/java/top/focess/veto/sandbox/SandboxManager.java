@@ -25,6 +25,7 @@ public class SandboxManager {
     private final @NonNull ConcurrentHashMap<String, SandboxHandle> handles =
             new ConcurrentHashMap<>();
 
+    /** Constructs a manager that delegates all provisioning to the given substrate. */
     public SandboxManager(@NonNull ConstrainedSubprocessSubstrate substrate) {
         this.substrate = substrate;
     }
@@ -51,6 +52,7 @@ public class SandboxManager {
                 });
     }
 
+    /** Deprovisions the session's sandbox and drops its cached handle; no-op when absent. */
     public void deprovision(@NonNull String sessionId) {
         SandboxHandle h = handles.remove(sessionId);
         if (h != null) {

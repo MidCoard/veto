@@ -11,10 +11,12 @@ import top.focess.veto.api.plugin.contract.PluginFailure;
 /** Namespaces inbox identities and admits every callback through its owning plugin lifecycle. */
 @NullMarked
 public final class CompositeAgentWorkSource implements AgentWorkSource {
+    /** An inbox source paired with its owning plugin and identity namespace. */
     public record Entry(String id, ManagedPlugin plugin, AgentWorkSource source) {}
 
     private final Supplier<List<Entry>> entries;
 
+    /** Creates a composite that reads its namespaced entries from the given supplier. */
     public CompositeAgentWorkSource(Supplier<List<Entry>> entries) {
         this.entries = entries;
     }

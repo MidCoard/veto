@@ -20,6 +20,7 @@ public final class VetoWebSocketAuthInterceptor implements HandshakeInterceptor 
 
     private final @NonNull SessionManager sessionManager;
 
+    /** Creates the interceptor validating handshake tokens against the session manager. */
     public VetoWebSocketAuthInterceptor(@NonNull SessionManager sessionManager) {
         this.sessionManager = sessionManager;
     }

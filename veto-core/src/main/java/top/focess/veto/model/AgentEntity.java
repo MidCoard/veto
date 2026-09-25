@@ -23,6 +23,7 @@ import top.focess.veto.model.tier.ModelTier;
 @Table(name = "agent_instances")
 public class AgentEntity {
 
+    /** The agent's role in its session: PRIMARY (user-created) or SUB (spawned by delegation). */
     public enum Role {
         PRIMARY,
         SUB
@@ -65,10 +66,12 @@ public class AgentEntity {
     private String pluginNamespace;
     private Boolean ephemeral;
 
+    /** Whether this agent is ephemeral (excluded from the session roster); null means false. */
     public boolean isEphemeral() {
         return Boolean.TRUE.equals(ephemeral);
     }
 
+    /** Marks this agent ephemeral (excluded from the session roster). */
     public void markEphemeral() {
         ephemeral = true;
     }
@@ -77,6 +80,12 @@ public class AgentEntity {
         return pluginNamespace;
     }
 
+    /**
+     * Claim this agent for a plugin namespace and record its spawning parent agent. Both are
+     * immutable once set.
+     *
+     * @throws SecurityException if ownership (namespace or parent) is already set differently
+     */
     public void claimPlugin(@NonNull String namespace, @NonNull String parent) {
         setPluginNamespace(namespace);
         if (parentAgentId != null && !parentAgentId.equals(parent))
@@ -84,6 +93,11 @@ public class AgentEntity {
         parentAgentId = parent;
     }
 
+    /**
+     * Set the owning plugin namespace; ownership is immutable once set.
+     *
+     * @throws SecurityException if a different namespace was already set
+     */
     public void setPluginNamespace(@NonNull String namespace) {
         if (pluginNamespace != null && !pluginNamespace.equals(namespace))
             throw new SecurityException("Agent plugin ownership is immutable");
@@ -107,10 +121,15 @@ public class AgentEntity {
     @Column(name = "monitor_recovery_version")
     private Integer recoveryVersion;
 
+    /** Whether this agent participates in monitor recovery (recovery version at least 1). */
     public boolean supportsRecovery() {
         return recoveryVersion != null && recoveryVersion >= 1;
     }
 
+    /**
+     * Whether this agent may interact with the user. Falls back to the spawn context when never set
+     * explicitly: agents spawned by a tool call (non-null parent call id) default to false.
+     */
     public boolean isUserInteractionEnabled() {
         return userInteractionEnabled != null ? userInteractionEnabled : parentCallId == null;
     }
@@ -119,6 +138,7 @@ public class AgentEntity {
         userInteractionEnabled = enabled;
     }
 
+    /** JPA no-arg constructor. */
     protected AgentEntity() {}
 
     /** Durable identity for an agent started inside an existing session. */
@@ -133,6 +153,11 @@ public class AgentEntity {
         return entity;
     }
 
+    /**
+     * Record the agent's start: stamps runtime role and responsibility from the persona, links the
+     * spawning parent (if any), sets the start time on first start only, clears any end time, and
+     * enables monitor recovery.
+     */
     public void started(@NonNull AgentPersona persona, String parentAgentId, String parentCallId) {
         recoveryVersion = 1;
         this.runtimeRole = persona.role().name();
@@ -143,6 +168,7 @@ public class AgentEntity {
         endedAt = null;
     }
 
+    /** Record the agent's termination: stamps the final runtime role and the end time. */
     public void ended(@NonNull AgentPersona persona) {
         runtimeRole = persona.role().name();
         endedAt = Instant.now();

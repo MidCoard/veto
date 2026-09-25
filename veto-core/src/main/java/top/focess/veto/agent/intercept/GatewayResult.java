@@ -22,6 +22,7 @@ public sealed interface GatewayResult
     /** The normal screening result. */
     record Screened(@NonNull Screening screening, @NonNull ToolExecutionPermit executionPermit)
             implements GatewayResult {
+        /** Convenience constructor with an empty execution permit. */
         public Screened(@NonNull Screening screening) {
             this(screening, ToolExecutionPermit.empty());
         }
@@ -33,6 +34,7 @@ public sealed interface GatewayResult
             @NonNull String diff,
             @NonNull ToolExecutionPermit executionPermit)
             implements GatewayResult {
+        /** Convenience constructor with an empty execution permit. */
         public DriftResult(@NonNull String path, @NonNull String diff) {
             this(path, diff, ToolExecutionPermit.empty());
         }

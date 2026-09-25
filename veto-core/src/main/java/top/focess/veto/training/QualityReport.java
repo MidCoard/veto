@@ -17,5 +17,6 @@ public record QualityReport(
         @JsonProperty("invalid_details") @NonNull List<InvalidRecord> invalidDetails,
         @NonNull String status,
         @JsonProperty("output_file") @NonNull String outputFile) {
+    /** A single rejected record: its line number, raw id, and validation errors. */
     public record InvalidRecord(int line, JsonNode id, @NonNull List<String> errors) {}
 }

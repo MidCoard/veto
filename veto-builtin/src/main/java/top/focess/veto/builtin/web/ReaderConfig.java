@@ -11,6 +11,7 @@ import top.focess.veto.api.plugin.agent.AgentProfile;
 import top.focess.veto.api.plugin.agent.IsolatedAgent;
 import top.focess.veto.api.plugin.contract.JsonValue;
 
+/** Raw web-reader settings, validated when the isolated reader spec is built. */
 @NullMarked
 @DefaultQualifier(
         value = NonNull.class,
@@ -25,6 +26,7 @@ public record ReaderConfig(Map<String, JsonValue> values) {
         values = Map.copyOf(values);
     }
 
+    /** Returns an empty configuration that uses the builtin defaults. */
     public static ReaderConfig defaults() {
         return new ReaderConfig(Map.of());
     }
@@ -45,6 +47,7 @@ public record ReaderConfig(Map<String, JsonValue> values) {
         }
     }
 
+    /** Builds the isolated reader agent spec, validating tier and limit settings. */
     public IsolatedAgent.Spec spec() {
         String tier = text("reader-model-tier", "LOW");
         List<String> tiers =

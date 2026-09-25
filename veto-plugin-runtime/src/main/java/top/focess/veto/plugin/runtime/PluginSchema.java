@@ -9,6 +9,7 @@ import org.jspecify.annotations.NonNull;
 public final class PluginSchema {
     private PluginSchema() {}
 
+    /** Rejects a schema that uses any constraint outside the supported vocabulary. */
     public static void check(@NonNull JsonNode schema) {
         check(schema, 0);
     }
@@ -63,6 +64,7 @@ public final class PluginSchema {
         else require(!schema.has("items"));
     }
 
+    /** Validates a value against a checked schema, rejecting mismatches and unknown fields. */
     public static void validate(@NonNull JsonNode schema, @NonNull JsonNode value) {
         boolean matches =
                 switch (schema.path("type").asText()) {

@@ -18,7 +18,9 @@ import top.focess.veto.plugin.runtime.ManagedPlugin;
             TypeUseLocation.UPPER_BOUND
         })
 public interface PluginStorageFactory {
+    /** Returns the storage bound to the given plugin activation. */
     PluginStorage bind(ManagedPlugin plugin);
 
+    /** Validates the scope against its issuing binding and returns the session owner. */
     String authorizeSession(PluginStorage storage, PluginStorage.SessionScope scope);
 }

@@ -20,6 +20,7 @@ import top.focess.veto.observability.AuditLogger;
 public final class PluginLlmProviders {
     private final @NonNull Map<ProviderType, LLMProviderStrategy> providers;
 
+    /** Adapts every installed provider contribution; duplicate provider types fail startup. */
     public PluginLlmProviders(
             @NonNull PluginManager manager,
             @Qualifier(LlmJacksonConfig.LLM_OBJECT_MAPPER) @NonNull ObjectMapper mapper,
@@ -71,6 +72,7 @@ public final class PluginLlmProviders {
         providers = Map.copyOf(values);
     }
 
+    /** Returns the strategy for the given provider type; throws when none is registered. */
     public @NonNull LLMProviderStrategy require(@NonNull ProviderType type) {
         var provider = providers.get(type);
         if (provider == null)
