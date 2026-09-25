@@ -284,7 +284,7 @@ class AgentRunnerTest {
                                                                 span ->
                                                                         span.source()
                                                                                 .equals(
-                                                                                        "runtime-completion.mdc")))
+                                                                                        "reader-completion.mdc")))
                                 .count());
                 assertEquals(
                         List.of("finish"), last.tools().stream().map(tool -> tool.name()).toList());
@@ -469,6 +469,7 @@ class AgentRunnerTest {
                     "synthetic-token",
                     PluginTestSupport.reveal(plugins, scope, reference).orElseThrow());
             agent.terminate();
+            assertTrue(agent.awaitTermination(EPISODE_TIMEOUT));
             assertTrue(PluginTestSupport.reveal(plugins, scope, reference).isEmpty());
         } finally {
             service.remove(session);
@@ -1806,7 +1807,13 @@ class AgentRunnerTest {
                             if (seen.size() == 2) {
                                 var agent = active.get();
                                 if (agent == null) throw new AssertionError("Missing agent");
-                                agent.bind(binding("Changed system"));
+                                agent.bind(
+                                        new LlmBinding(
+                                                ProviderType.DEEPSEEK,
+                                                "changed-model",
+                                                "stub-key",
+                                                LlmOptions.defaults(),
+                                                null));
                                 return new VetoResponse(null, null, null);
                             }
                             return new VetoResponse(null, null, "done");
@@ -1822,7 +1829,7 @@ class AgentRunnerTest {
                     agent.submitRequest("Use updated configuration")
                             .await(EPISODE_TIMEOUT)
                             .success());
-            assertNotEquals(seen.get(2).systemPrompt(), seen.get(3).systemPrompt());
+            assertNotEquals(seen.get(2).modelName(), seen.get(3).modelName());
         } finally {
             service.remove("model-snapshot");
         }
@@ -2561,7 +2568,7 @@ class AgentRunnerTest {
             var agent = requireAgent(service.agent(session));
             var checkpoint =
                     new RequestContinuationStore(repository)
-                            .load(UUID.fromString(session), agent.id(), requestIdentity(agent))
+                            .load(agent.sessionId(), agent.id(), requestIdentity(agent))
                             .orElseThrow();
             assertEquals(3, checkpoint.consumedCalls());
             assertEquals(Long.valueOf(3), checkpoint.grantedCalls());
@@ -2639,13 +2646,9 @@ class AgentRunnerTest {
         assertEquals(originalTask, auditedContinue.payload().get("resume_context"));
     }
 
-    private static @NonNull LlmBinding binding(@NonNull String systemPrompt) {
+    private static @NonNull LlmBinding binding(@NonNull String ignoredPrompt) {
         return new LlmBinding(
-                ProviderType.DEEPSEEK,
-                "stub-model",
-                "stub-key",
-                LlmOptions.defaults(),
-                systemPrompt);
+                ProviderType.DEEPSEEK, "stub-model", "stub-key", LlmOptions.defaults(), null);
     }
 
     @ParameterizedTest

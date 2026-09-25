@@ -8,16 +8,4 @@ public record LlmBinding(
         @NonNull String model,
         @NonNull String credentialKey,
         @NonNull LlmOptions options,
-        String systemPromptBase,
-        String baseUrl) {
-
-    /** Convenience constructor for callers that do not override the base URL (null -> default). */
-    public LlmBinding(
-            @NonNull ProviderType provider,
-            @NonNull String model,
-            @NonNull String credentialKey,
-            @NonNull LlmOptions options,
-            String systemPromptBase) {
-        this(provider, model, credentialKey, options, systemPromptBase, null);
-    }
-}
+        String baseUrl) {}

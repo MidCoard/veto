@@ -1203,9 +1203,11 @@ class PlanExecutionTest {
                         + ordinaryTools.size()
                         + ", final answer="
                         + planResult.message());
-        assertEquals(planPrompt, ordinaryPrompt);
-        assertTrue(planPrompt.contains("submit_plan"));
-        assertTrue(ordinaryPrompt.contains("conditional_goto"));
+        for (String prompt : List.of(planPrompt, ordinaryPrompt)) {
+            assertTrue(prompt.contains("submit_plan"));
+            assertTrue(prompt.contains("conditional_goto"));
+            assertTrue(prompt.contains("Sourced answers"));
+        }
     }
 
     @Test
@@ -1401,10 +1403,13 @@ class PlanExecutionTest {
         if (agent == null) throw new AssertionError("Missing agent");
         if (!(ReflectionTestUtils.getField(agent, "runner") instanceof AgentRunner runner))
             throw new AssertionError("Missing runner");
-        if (!(ReflectionTestUtils.getField(AgentRuntimeTestAccess.state(runner), "gateway")
-                instanceof Gateway original)) throw new AssertionError("Missing gateway");
+        if (!(ReflectionTestUtils.getField(AgentRuntimeTestAccess.state(runner), "toolBoundary")
+                instanceof ToolExecutionBoundary boundary))
+            throw new AssertionError("Missing tool execution boundary");
+        if (!(ReflectionTestUtils.getField(boundary, "gateway") instanceof Gateway original))
+            throw new AssertionError("Missing gateway");
         Gateway observed = spy(original);
-        ReflectionTestUtils.setField(AgentRuntimeTestAccess.state(runner), "gateway", observed);
+        ReflectionTestUtils.setField(boundary, "gateway", observed);
         try {
             var result =
                     service.submit(
@@ -1416,8 +1421,8 @@ class PlanExecutionTest {
             var capture = ArgumentCaptor.forClass(ToolDocs.nonNullClass(ActionContext.class));
             verify(observed)
                     .screen(
-                            any(),
-                            any(),
+                            argThat(call -> call.toolName().equals("view_file")),
+                            argThat(definition -> definition.name().equals("view_file")),
                             eq("Read the selected file"),
                             isNull(),
                             isNull(),

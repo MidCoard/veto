@@ -159,7 +159,7 @@ final class AgentLifecycle {
             }
             if (task.cancelled && task == runtime.control.request() && !task.interruptSent) {
                 task.interruptSent = true;
-                runtime.hitlRegistry.declineAll(runtime.agentId);
+                runtime.toolBoundary.declineAll();
                 Thread thread = runtime.runningThread;
                 if (thread != null) thread.interrupt();
             }
@@ -210,10 +210,8 @@ final class AgentLifecycle {
         }
 
         currentRequest().declinedCallSignatures.clear();
-        // Actively tell the agent about background tasks that ended since it last ran — drained
-        // into the context BEFORE the new user prompt so the model reads them together. This is
-        // the push half of the task lifecycle (the UI gets TASK_EXITED live; the agent gets it
-        // here on its next turn instead of having to remember to poll view_task).
+        // Drain plugin observations into the context before the new user prompt so the model
+        // reads them together. Plugins publish any live UI updates through generic plugin events.
         // Fresh UserPromptAction: reset plan state and program counter. An exact "continue" has
         // special semantics only immediately after a breaker trip. Preserve the literal user input
         // in history while attaching the prior task for prompt compilation; otherwise a long,
@@ -663,7 +661,7 @@ final class AgentLifecycle {
 
     void setLocale(Locale locale) {
         runtime.locale = locale != null ? locale : Locale.ENGLISH;
-        runtime.hitlRegistry.setLocale(runtime.agentId, runtime.locale);
+        runtime.toolBoundary.locale(runtime.locale);
     }
 
     @NonNull Locale locale() {
@@ -732,6 +730,7 @@ final class AgentLifecycle {
         if (intent == null) {
             applyPersona(original);
             runtime.binding = runtime.baseBinding;
+            runtime.prompt = null;
             return;
         }
         var profile = intent.profile();
@@ -753,8 +752,11 @@ final class AgentLifecycle {
                         next.whitelistedTools(),
                         next.role(),
                         original.configurationOwner()));
-        if (!runtime.binding.equals(resolved.binding())) runtime.configurationRevision++;
+        if (!runtime.binding.equals(resolved.binding())
+                || !Objects.equals(runtime.prompt, resolved.prompt()))
+            runtime.configurationRevision++;
         runtime.binding = resolved.binding();
+        runtime.prompt = resolved.prompt();
         if (changing) {
             var value = Nullness.requireNonNull(transition);
             restartAfterConfiguration(summary, value.prompt(), JsonValues.toMap(value.data()));
@@ -865,7 +867,7 @@ final class AgentLifecycle {
             }
         }
         notifyExecutionChanged();
-        runtime.hitlRegistry.clear(runtime.agentId);
+        runtime.toolBoundary.clear();
         Thread thread = runtime.runningThread;
         if (thread != null && thread != Thread.currentThread()) thread.interrupt();
     }

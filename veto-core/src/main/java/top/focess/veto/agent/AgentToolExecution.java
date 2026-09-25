@@ -2,14 +2,15 @@ package top.focess.veto.agent;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.agent.AgentRuntimeState.ResolvedCall;
 import top.focess.veto.agent.AgentRuntimeState.VetoRefusedException;
 import top.focess.veto.agent.ExecutionControl.Wait;
+import top.focess.veto.agent.ToolExecutionBoundary.ScreenedInvocation;
 import top.focess.veto.agent.intercept.ApprovalDecision;
 import top.focess.veto.agent.intercept.ApprovalReceipt;
-import top.focess.veto.agent.intercept.GatewayResult;
 import top.focess.veto.agent.intercept.InterceptResolution;
 import top.focess.veto.agent.intercept.LoopInterceptor;
 import top.focess.veto.agent.intercept.RefusalObservation;
@@ -17,7 +18,6 @@ import top.focess.veto.agent.intercept.ToolExecutionPermit;
 import top.focess.veto.agent.intercept.VetoOption;
 import top.focess.veto.agent.intercept.VetoScenario;
 import top.focess.veto.agent.loop.PromptCompiler;
-import top.focess.veto.agent.tool.AgentToolDefinition;
 import top.focess.veto.agent.tool.LocalToolDefinition;
 import top.focess.veto.agent.tool.NativeToolArgumentValidator;
 import top.focess.veto.agent.tool.NativeToolDefinition;
@@ -32,7 +32,6 @@ import top.focess.veto.api.agent.tool.ToolResult;
 import top.focess.veto.api.agent.tool.ToolResultFormat;
 import top.focess.veto.api.agent.tool.ToolResultStatus;
 import top.focess.veto.api.llm.ToolCall;
-import top.focess.veto.api.plugin.PluginHost;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
 import top.focess.veto.api.plugin.contract.TextProtection;
 import top.focess.veto.api.plugin.contract.WorkflowHook;
@@ -93,24 +92,26 @@ final class AgentToolExecution {
 
             // 1. Check phase (screen all calls first)
             List<ApprovalDecision> decisions = new ArrayList<>();
-            List<ToolExecutionPermit> executionPermits = new ArrayList<>();
+            Map<String, ScreenedInvocation> screenedInvocations = new LinkedHashMap<>();
             boolean hasVeto = false;
             boolean hasRefused = false;
             for (ToolCall call : calls) {
                 ToolDefinition def = runtime.toolEngine.resolveDefinition(call.toolName());
                 if (def == null) {
                     decisions.add(ApprovalDecision.AUTO_APPROVE);
-                    executionPermits.add(ToolExecutionPermit.empty());
                 } else {
                     var hookDecision = runtime.hooks().beforeToolHooks(call);
-                    var result =
-                            def instanceof AgentToolDefinition
-                                    ? new GatewayResult.NotScreened()
-                                    : screenToolCall(call, def, thought, batch);
-                    executionPermits.add(result.executionPermit());
-                    ApprovalDecision decision =
-                            runtime.hitlRegistry.decide(
-                                    runtime.agentId, call, def, result, hookDecision);
+                    ScreenedInvocation screened =
+                            runtime.toolBoundary.assess(
+                                    call,
+                                    def,
+                                    runtime.currentTask(),
+                                    thought,
+                                    batch.step,
+                                    runtime.lifecycle().currentRequest().episode.id(),
+                                    hookDecision);
+                    screenedInvocations.put(call.callId(), screened);
+                    ApprovalDecision decision = screened.decision();
                     decisions.add(decision);
                     if (decision instanceof ApprovalDecision.Prompt) hasVeto = true;
                     else if (decision instanceof ApprovalDecision.Refused) hasRefused = true;
@@ -144,8 +145,10 @@ final class AgentToolExecution {
                             throw new IllegalStateException("Refusal without a tool definition");
                         }
                         List<VetoOption> offered = List.of(VetoOption.EXEC_DECLINE);
-                        runtime.hitlRegistry.register(
-                                runtime.agentId, callId, call, def, offered, Danger.CRITICAL, null);
+                        ScreenedInvocation screened = screenedInvocations.get(callId);
+                        if (screened == null)
+                            throw new IllegalStateException("Missing screened invocation");
+                        runtime.toolBoundary.register(screened, offered, Danger.CRITICAL, null);
                         runtime.tools()
                                 .emitVetoRequired(
                                         call,
@@ -171,14 +174,10 @@ final class AgentToolExecution {
                                     "Prompt decision without a tool definition for "
                                             + call.toolName());
                         }
-                        runtime.hitlRegistry.register(
-                                runtime.agentId,
-                                callId,
-                                call,
-                                def,
-                                offered,
-                                p.danger(),
-                                p.relevance());
+                        ScreenedInvocation screened = screenedInvocations.get(callId);
+                        if (screened == null)
+                            throw new IllegalStateException("Missing screened invocation");
+                        runtime.toolBoundary.register(screened, offered, p.danger(), p.relevance());
                         emitVetoRequired(call, p, offered);
                         InterceptResolution resolution = awaitResolution(callId);
 
@@ -232,7 +231,7 @@ final class AgentToolExecution {
                                     false);
                 } else {
                     long configuration = runtime.configurationRevision;
-                    executeOneConfirmedCall(call, executionPermits.get(i), batch);
+                    executeOneConfirmedCall(call, screenedInvocations.get(call.callId()), batch);
                     if (batch.control != null) return batch.control;
                     if (runtime.configurationRevision != configuration) {
                         return batch.control; // Remaining calls were authored for the previous
@@ -251,30 +250,26 @@ final class AgentToolExecution {
     }
 
     @NonNull ToolResult executeOneConfirmedCall(
-            @NonNull ToolCall call,
-            @NonNull ToolExecutionPermit executionPermit,
-            @NonNull ToolBatch batch) {
+            @NonNull ToolCall call, ScreenedInvocation screened, @NonNull ToolBatch batch) {
         ToolDefinition def = runtime.toolEngine.resolveDefinition(call.toolName());
         if (def == null) {
             return toolNotFound(call, batch);
         }
-        return runtime.tools()
-                .executeResolvedCall(
-                        call, def, ApprovalDecision.AUTO_APPROVE, executionPermit, batch);
+        if (screened == null) throw new IllegalStateException("Missing screened invocation");
+        return runtime.tools().executeResolvedCall(screened, batch);
     }
 
     @NonNull ToolResult executeResolvedCall(
-            @NonNull ToolCall call,
-            @NonNull ToolDefinition def,
-            @NonNull ApprovalDecision decision,
-            @NonNull ToolExecutionPermit screenedPermit,
-            @NonNull ToolBatch batch) {
+            @NonNull ScreenedInvocation screened, @NonNull ToolBatch batch) {
+        ToolCall call = screened.call();
+        ToolDefinition def = screened.definition();
         runtime.lifecycle().checkExecutionBoundary();
         runtime.output().appendToolCall(call, batch.modelCallId());
 
         ToolExecutionPermit executionPermit;
+        var authorized = runtime.toolBoundary.authorize(screened);
         try {
-            executionPermit = runtime.gateway.revalidateExecution(call, def, screenedPermit);
+            executionPermit = runtime.toolBoundary.revalidate(authorized);
         } catch (SecurityException e) {
             String observation =
                     "Filesystem target changed after screening; submit a fresh tool call";
@@ -376,7 +371,7 @@ final class AgentToolExecution {
             transformed = transformed.withContent(pluginObservation);
 
             // (g) final ingress defense, immediately before committing the observation to history.
-            String observation;
+            String protectedText = null;
             var selected = runtime.sessionPlugins;
             String currentOwner = runtime.owner;
             if (transformed.success()
@@ -388,7 +383,7 @@ final class AgentToolExecution {
                             runtime.sessionId.toString(),
                             StandardContributionPoints.FILE_OBSERVATION)) {
                 // The owning plugin masks plain segments while preserving SECRET_REF markers.
-                String protectedText =
+                protectedText =
                         selected.protect(
                                 StandardContributionPoints.FILE_OBSERVATION,
                                 new TextProtection.Scope(
@@ -396,14 +391,9 @@ final class AgentToolExecution {
                                         runtime.sessionId.toString(),
                                         runtime.agentId),
                                 transformed.content());
-                observation =
-                        runtime.ingressDefense.frameProtectedFile(
-                                call, def, transformed, protectedText);
-            } else {
-                observation =
-                        runtime.ingressDefense.maskAndFrame(
-                                call, def, transformed, decision, runtime.readHistory);
             }
+            String observation =
+                    runtime.toolBoundary.defend(authorized, transformed, protectedText);
 
             ToolResult observed = transformed.withContent(observation);
             runtime.output().appendToolResponse(observed);
@@ -443,13 +433,16 @@ final class AgentToolExecution {
                     local.name(), runtime.objectMapper.valueToTree(call.args()), local.argsClass());
 
         var hookDecision = runtime.hooks().beforeToolHooks(call);
-        var result =
-                def instanceof AgentToolDefinition
-                        ? new GatewayResult.NotScreened()
-                        : screenToolCall(call, def, null, batch);
-        ToolExecutionPermit executionPermit = result.executionPermit();
-        ApprovalDecision decision =
-                runtime.hitlRegistry.decide(runtime.agentId, call, def, result, hookDecision);
+        ScreenedInvocation screened =
+                runtime.toolBoundary.assess(
+                        call,
+                        def,
+                        runtime.currentTask(),
+                        null,
+                        batch.step,
+                        runtime.lifecycle().currentRequest().episode.id(),
+                        hookDecision);
+        ApprovalDecision decision = screened.decision();
         {
             if (decision instanceof ApprovalDecision.AutoBlock ab) {
                 runtime.output().appendToolCall(call, batch.modelCallId());
@@ -471,19 +464,18 @@ final class AgentToolExecution {
                 throw new VetoRefusedException();
             }
             if (decision instanceof ApprovalDecision.Prompt p) {
-                ResolvedCall resolvedCall = awaitVeto(call, def, p, executionPermit, batch);
+                ToolCall resolvedCall = awaitVeto(screened, p, batch);
                 if (resolvedCall == null) {
                     throw new VetoRefusedException(true);
                 }
-                call = resolvedCall.call();
-                executionPermit = resolvedCall.executionPermit();
+                call = resolvedCall;
                 runtime.lifecycle().transitionTo(AgentState.RUNNING);
             }
         }
 
         runtime.lifecycle().transitionTo(AgentState.WAITING);
         try {
-            return executeResolvedCall(call, def, decision, executionPermit, batch);
+            return executeResolvedCall(screened, batch);
         } finally {
             if (runtime.control.state() == AgentState.WAITING)
                 runtime.lifecycle().transitionTo(AgentState.RUNNING);
@@ -513,7 +505,7 @@ final class AgentToolExecution {
     }
 
     @NonNull InterceptResolution awaitResolution(@NonNull String callId) {
-        InterceptResolution resolution = runtime.hitlRegistry.await(runtime.agentId, callId);
+        InterceptResolution resolution = runtime.toolBoundary.await(callId);
         synchronized (runtime) {
             // cancelTask must finish both declining the wait and interrupting this thread first.
             RequestHandle cancellation = runtime.control.request();
@@ -548,18 +540,16 @@ final class AgentToolExecution {
         return resolution;
     }
 
-    ResolvedCall awaitVeto(
-            @NonNull ToolCall call,
-            @NonNull ToolDefinition def,
+    ToolCall awaitVeto(
+            @NonNull ScreenedInvocation screened,
             ApprovalDecision.@NonNull Prompt p,
-            @NonNull ToolExecutionPermit executionPermit,
             @NonNull ToolBatch batch) {
+        ToolCall call = screened.call();
         runtime.lifecycle().transitionTo(AgentState.INTERCEPTED);
         // Register before advertising the prompt so a fast reply cannot beat registration.
         List<VetoOption> offered = p.options();
         String callId = call.callId();
-        runtime.hitlRegistry.register(
-                runtime.agentId, callId, call, def, offered, p.danger(), p.relevance());
+        runtime.toolBoundary.register(screened, offered, p.danger(), p.relevance());
         emitVetoRequired(call, p, offered);
         InterceptResolution resolution = awaitResolution(callId);
         runtime.lifecycle().transitionTo(AgentState.WAITING);
@@ -573,24 +563,7 @@ final class AgentToolExecution {
                             false);
             return null;
         }
-        return new ResolvedCall(call, executionPermit);
-    }
-
-    @NonNull GatewayResult screenToolCall(
-            @NonNull ToolCall call,
-            @NonNull ToolDefinition definition,
-            String thought,
-            @NonNull ToolBatch batch) {
-        var invocation =
-                new PluginHost.Invocation(
-                        runtime.owner == null ? "" : runtime.owner,
-                        runtime.sessionId.toString(),
-                        runtime.agentId,
-                        runtime.lifecycle().currentRequest().episode.id(),
-                        call.callId());
-        var prepared = runtime.toolEngine.prepare(call, definition, invocation);
-        return runtime.gateway.screen(
-                call, definition, runtime.currentTask(), thought, null, batch.step, prepared);
+        return call;
     }
 
     void emitVetoRequired(

@@ -1,305 +1,228 @@
-## Workflow-core API (2026-09-23)
-
-Shared Java contracts now live under `top.focess.veto.api.*`. This is a Java binary/source
-compatibility change: rebuild existing Java plugins with the new imports and rename
-the ServiceLoader descriptor to
-`META-INF/services/top.focess.veto.api.plugin.VetoPlugin`. Plugin authors depend
-on `veto-api`, never on `veto-core`. Java tools may implement `NativeTool` or
-`AgentTool` and contribute through `StandardContributionPoints.NATIVE_TOOLS`.
-All Java tools share registration and execution. Capabilities describe the operation;
-plugin origin does not require PRIVILEGED or prohibit path/command/URL arguments.
-Registration checks contract coherence, not handler fields. Java plugins are trusted
-code; authority is enforced by call permits and scoped host services, not a Java sandbox.
-
-`StandardContributionPoints.WORKFLOW` accepts `WorkflowHook`: input transformation,
-before/after model callbacks, tool rejection/explicit approval, result transformation,
-and observation transformation. Hooks run in catalog order for the selected pinned
-session, with lifecycle admission and cooperative cancellation. A hook cannot override
-a host refusal; requested approval is per call. Model callbacks expose model metadata
-and response text, not provider secrets or mutable native-call state. Input hooks run
-before input protection; output hooks precede final observation protection. Failures
-stop the operation with a safe host error. Script workers do not support Java hooks.
-
-Plugins publish services through `StandardContributionPoints.SERVICES` and discover
-named/versioned handles through `PluginContext.services()`. Inputs and outputs are
-`JsonValue`; consumers import only veto-api, never a provider class or a feature-specific
-Java interface. See the named-services example below. DuckDuckGo and Brave ship in
-builtin and use this same mechanism.
-
-Model-provider, storage and other feature contracts still in core are migration gaps; this
-release does not yet make every feature implementable through the API alone.
-
 # Veto API — experimental
 
-For building and running Veto, start with the [project README](../README.md).
-This module is the shared authoring contract that both `veto-core` and every
-plugin compile against: the in-process tool-authoring surface
-(`CapabilityTool`, `ToolCapability`, the `@ToolSecurity`/`@ToolDoc`/`@Doc`
-annotations and their supporting types), the contribution registration model,
-and the generic Java plugin lifecycle (the former veto-extension module is
-merged into it). External Java-JAR activation is not available. For working
-script plugins, use the separate [script runtime](../veto-plugin-runtime/README.md).
+`veto-api` is the public Java contract shared by the Veto host and trusted in-process
+plugins. Plugin code depends on this module, not `veto-core`. For portable script plugins,
+see the separate [script runtime](../veto-plugin-runtime/README.md).
 
-## Implemented behavior
+The API is experimental. Rebuild plugins when its Java contracts change. A Java plugin has
+a public no-argument constructor and a service-loader entry at
+`META-INF/services/top.focess.veto.api.plugin.VetoPlugin`.
 
-- `ContributionPoint<T>` identifies a contract by namespaced ID, exact major
-  version, Java class identity and cardinality.
-- `Contribution<T>` supplies an implementation, local ID and within-point
-  ordering constraints. The host supplies source identity and provenance.
-- `ContributionCatalog.Builder` validates and stages contributions atomically
-  per source. It rejects duplicate identities, incompatible contracts, missing
-  ordering targets, cycles and cross-point ordering constraints.
-- `freeze()` validates required points and catalog constraints, then returns an
-  immutable registration snapshot. Implementation objects may still have state.
-- The catalog does not instantiate plugins, grant permissions, start handlers or
-  publish itself into a running application.
+## Choose the right boundary
 
-Registration provenance is not authority. A category or contribution never grants
-access to a host service.
-
-`PluginContributions` is a bounded immutable list of typed
-`Contribution<?>` values. `PluginContext` carries identity metadata, a live
-read-only lifecycle state via `state()`, a failure-reporting callback, and
-host-granted services via `service(Class<T>)`; it does not issue permissions or
-approved invocation services. Host services are host-granted authority —
-registration never earns them, and a plugin must degrade when a service is
-absent. The class-keyed host service map is separate from `services()`, the named JSON
-service directory used for communication between plugins. New plugin-owned services
-do not require adding feature-specific Java types to veto-api.
-
-`AbstractVetoPlugin` provides lifecycle callbacks without allocating threads or owning
-lifecycle state. Veto's `PluginManager` discovers built-in plugins through
-`ServiceLoader` (a public no-arg constructor is required) and owns one shared
-control executor and each
-plugin's `ManagedPlugin` handle. Handles serialize lifecycle transitions and invocation
-admission; tool handlers run on caller threads. Closing a handle drains admitted calls
-and releases the plugin's resources once. The manager shuts down the shared executor
-after closing all handles.
-
-The shipped implementations are [secret protection](../veto-secret-protection/README.md)
-and [builtin tools and search providers](../veto-builtin/README.md), plus the
-[built-in workspace tools](../veto-builtin/README.md). They register through ServiceLoader;
-their tests exercise the actual plugin implementations. Web search compiles and runs
-its module tests without core on the classpath. `veto-builtin` also depends only on
-this API and owns eight workspace tools; other built-in families remain in core.
-
-Workspace plugins implement `WorkspaceReadTool` or `WorkspaceWriteTool`. Host dispatch
-passes a call-scoped capability to the typed `execute` method after authorization;
-the one-argument method rejects execution without that capability. File handles and
-workspace contracts live in `top.focess.veto.api.agent.capability`. Tool error codes,
-exceptions, statuses and JSON result helpers now also belong to the API; update
-imports when rebuilding existing Java tools.
-
-Operators can map qualified contribution IDs to stable public names through
-`veto.plugins.tool-names`. The bundled configuration preserves workspace tool names.
-Aliases retain plugin provenance and do not bypass selection or execution permits.
-
-## Standard contribution points
-
-Each standard contribution point has exactly one contract type; the point ID,
-major version and contract class are fixed together. Plugins may define their
-own points, but the host never invokes a point it does not define.
-
-| Point | Contract type | Contribution |
+| API | Purpose | Authority and availability |
 |---|---|---|
-| `veto:search-providers` | `SearchProvider` | Named search backends, selected by host configuration and session bindings |
-| `veto:workflow` | `WorkflowHook` | Session-scoped input, model, tool and observation callbacks |
-| `veto:native-tools` | `CapabilityTool` | Record-authored Java tools |
-| `veto:tools` | `Tool` | Tool object: description, effect, categories, and either a record- or schema-authored invocation |
-| `veto:tool-categories` | `ToolCategory` | Display label and description |
-| `veto:prompts` | `PromptContribution` | Reserved static resource descriptor; current MDC discovery uses classpath resources |
-| `veto:frontend` | `FrontendContribution` | Browser ESM activation, React registrations and scoped JSON actions |
-| `veto:observation-middleware` | `ObservationMiddleware` | Observation-text transform; chained by the host as the session-less masking hook |
-| `veto:input-protection` | `InputProtection` | User-prompt transform before the prompt enters session history |
-| `veto:file-protection` | `FileProtection` | File-content transform at `view_file` capture |
-| `veto:file-observation` | `FileObservation` | `view_file` observation transform before history, preserving SECRET_REF markers |
-| `veto:session-lifecycle` | `SessionLifecycle` | Owner/session/agent lifecycle notifications (default no-op methods) |
+| `PluginContributions` | Publish tools, hooks, named services, and other implementations | Registration only; acceptance requires startup validation and grants no permission. |
+| `context.service(SomeType.class)` | Obtain an optional Java capability supplied by the host | Host-granted authority keyed by exact Java class identity; calls remain subject to current admission and authorization. |
+| `context.services()` | Find a named, versioned JSON protocol implemented by another plugin | Plugin-to-plugin communication using only `JsonValue`; the directory is populated after initialization. |
+| `PluginHost` | Request host-mediated invocation facts, waits, wake hints, events, and invalidation | Each operation applies its own lifecycle, selection, invocation, and authorization checks. |
+| `context.storage()` | Access this plugin's application, user, or session namespace | Scoped persistence using host-issued scopes; old handles are revalidated and may be revoked. |
 
-The three protection points all extend `TextProtection` (`transform(scope,
-sourceId, text)`), but each has its own contract type so a contribution is bound
-to exactly one invocation site. `ObservationMiddleware` and `SessionLifecycle`
-are session-less: observation transforms carry text and a cancellation signal,
-and lifecycle notifications carry plain owner/session/agent IDs. Masking
-semantics belong to the contributing plugin; there is no shared mask contract.
+Java plugins run as trusted code in the Veto JVM. These APIs make host decisions explicit,
+but they do not sandbox arbitrary Java, remove ambient JVM access, or provide OS process
+isolation. A contribution declaration is never proof that an implementation is confined.
 
-Plugins author tools in one of two ways, mirroring how the host models its own
-tools:
+## Lifecycle and admission
 
-- In-process JAR plugins contribute a `CapabilityTool<T>` (from
-  `top.focess.veto.api.agent.tool`) through the `veto:native-tools` point. The tool
-  declares its arguments as a plain Java record (`getArgsClass()`) and carries
-  the same `@ToolSecurity`/`@ToolDoc` annotations a built-in native tool uses.
-  The host reflects the record into the input schema, validates the call,
-  deserializes the arguments, and executes the handler through its internal tool
-  state exactly like a core native tool — no hand-written JSON schema and no
-  out-of-process hop. Its declared capability selects the ordinary execution authorization boundary.
-- Portable or out-of-process plugins contribute a `Tool` through the
-  `veto:tools` point. `Tool` declares explicit `inputSchema()`/`outputSchema()`
-  JSON and exchanges `JsonValue`; this is the only form a non-Java host process
-  (the script runtime) can consume. `ToolContribution` is the stock carrier.
+The host constructs the plugin, reads `identity()`, and calls `initialize(context,
+configuration)` on its lifecycle executor. Initialization stages contributions and captures
+dependencies; it must not start threads or perform external effects. All plugins finish
+initialization before the host binds the named service directory. A provider therefore
+registers `SERVICES` during `initialize`, while a consumer calls `services().find(...)` only
+in `start` or later. After catalog validation, `start()` makes the plugin ready and the host
+publishes its contributions.
 
-`Tool.Effect` is generic: `PRIVILEGED` marks a tool that crosses a
-host trust boundary (the host applies approval-level screening), `COMPUTATION` and `EXTERNAL_UNKNOWN` stay ordinary
-external effects.
+Contribution handlers run on their caller's thread unless their contract says otherwise.
+Plugins own synchronization inside their implementations. Before shutdown, the host closes
+admission and calls `stopping()` once so the plugin can cancel blocking waits. Previously
+admitted calls may still drain. The host then calls `close()` once, including after partial
+initialization or startup failure. `close()` releases owned resources and tolerates partial state.
 
-`Cancellation` carries a cancellation signal, not an approved invocation.
-These contracts are experimental.
+`context.state()` is a live observation, not an admission token. Named service handles and
+host services recheck current authority. A provider may be absent because it is not installed,
+selected, compatible, or active, so discovery returns `Optional`. Retaining a handle does not
+preserve access after either plugin loses admission. Treat
+`ServiceException.Code.UNAVAILABLE` as current availability and apply a suitable fallback.
 
-## Production integration
+## Minimal named-service plugins
 
-`ToolEngineImpl` consumes immutable snapshots through the internal `ToolCatalog`
-adapter. Spring still discovers built-in beans. Startup validates the complete
-native/internal-agent batch before publishing it; initialization is one-shot.
+This complete provider publishes a versioned JSON protocol:
 
-MCP discovery remains dynamic. Successful additive batches publish a new snapshot;
-conflicting batches leave the previous one intact. Existing definition identities
-are preserved. Dispatch pins the resolved registration and retains the existing
-caller and full-call authorization checks.
+```java
+package example;
 
-`RegisteredTool` and the private `veto:runtime-tools` point are host implementation
-details, not public plugin contracts. The [script runtime](../veto-plugin-runtime/README.md) adds operator-configured plugin
-tools through this catalog. Host-granted services reach plugins through
-`PluginContext`; `WorkflowHook` supplies the session-scoped model/tool callbacks described above.
+import java.util.List;
+import top.focess.veto.api.plugin.PluginContext;
+import top.focess.veto.api.plugin.PluginContributions;
+import top.focess.veto.api.plugin.PluginIdentity;
+import top.focess.veto.api.plugin.VetoPlugin;
+import top.focess.veto.api.plugin.contract.JsonValue;
+import top.focess.veto.api.plugin.contract.PluginFailure;
+import top.focess.veto.api.plugin.contract.StandardContributionPoints;
+import top.focess.veto.api.plugin.contribution.Contribution;
+import top.focess.veto.api.plugin.service.ServiceRegistration;
 
-## Executable browser plugins
+public final class TextProviderPlugin implements VetoPlugin {
+    public PluginIdentity identity() {
+        return new PluginIdentity("example.text", "1.0.0");
+    }
 
-`StandardContributionPoints.FRONTEND` accepts `FrontendContribution(module, handler)`.
-The module is self-contained browser ESM exporting `activate(host)`. Package it
-as a plugin resource and read its source when registering. Java supplies loading,
-registration, lifecycle admission, and authenticated actions; browser UI logic
-lives in JavaScript, or TypeScript/JSX compiled to JavaScript.
+    public PluginContributions initialize(
+            PluginContext context, JsonValue.ObjectValue configuration) {
+        var service = new ServiceRegistration(
+                "example:text", 1,
+                request -> request instanceof JsonValue.StringValue text
+                        ? new JsonValue.StringValue(text.value().trim())
+                        : JsonValue.NullValue.INSTANCE);
+        return new PluginContributions(List.of(
+                Contribution.of(StandardContributionPoints.SERVICES, "text", service)));
+    }
 
-The host provides its React instance, `registerReferenceRenderer(type, Component)`,
-`registerPanel(id, "conversation.footer", Component)`, and a lifecycle abort
-signal. `activate` optionally returns a disposer. Registrations are scoped to the
-selected session/agent and UI surface. Components receive the reference where
-applicable, locale, session, agent, and `context.invoke(action, arguments, signal)`.
-They can use React hooks, custom elements and event handlers.
-
-`GET /api/sessions/{name}/plugin-frontend` returns the selected modules.
-`POST /api/sessions/{name}/plugin-frontend/actions` accepts `moduleId`, `agentId`,
-`action`, and JSON-object `arguments`. The owning plugin's handler receives the
-authenticated owner/session/agent scope and returns `JsonValue`; resource-level
-access checks belong to the handler. These actions are outside model tools and
-history. Responses are not cached. Browser code is trusted application code,
-not a sandbox, and must use the supplied React instance instead of bundling its
-own. Other dependencies must be bundled; relative/bare module imports are not
-resolved. Secret protection uses this executable frontend API for its own reveal
-component and keeps its reveal/reset behavior in the plugin's JavaScript resource.
-The veto-ui repository contains the loader and its tests; this backend milestone does not claim browser acceptance.
-
-## Build and verify
-
-Run from the repository root:
-
-```sh
-./gradlew :veto-api:test :veto-plugin-runtime:test :veto-secret-protection:test :veto-builtin:test
+    public void start() throws PluginFailure {}
+    public void close() throws PluginFailure {}
+}
 ```
 
-The built-in plugin JARs are packaged as dependencies in `:veto-core:bootJar`.
+This complete consumer discovers the exact protocol version after binding and imports no
+provider implementation type:
 
-## Limitations
+```java
+package example;
 
-The manifest and Java SPI are experimental. This module does not install Java packages or provide adapters for other agent clients. The separate script runtime supports a different
-manifest and validates its own descriptors and messages. Java plugins are currently
-discovered from the application classpath; this is not an external JAR installer.
+import java.util.List;
+import java.util.Optional;
+import top.focess.veto.api.plugin.PluginContext;
+import top.focess.veto.api.plugin.PluginContributions;
+import top.focess.veto.api.plugin.PluginIdentity;
+import top.focess.veto.api.plugin.VetoPlugin;
+import top.focess.veto.api.plugin.contract.JsonValue;
+import top.focess.veto.api.plugin.contract.PluginFailure;
+import top.focess.veto.api.plugin.service.PluginServices;
+import top.focess.veto.api.plugin.service.ServiceException;
 
-## LLM and delegation contracts
+public final class TextConsumerPlugin implements VetoPlugin {
+    private Optional<PluginContext> context = Optional.empty();
+    private Optional<PluginServices.Handle> textService = Optional.empty();
 
-`top.focess.veto.api.llm` holds provider requests/results, messages, options,
-provider adapters and the host MDC rendering port. Implement `LlmProvider` and
-contribute it through `StandardContributionPoints.LLM_PROVIDERS` without a core
-dependency. The production example is [veto-llm-providers](../veto-llm-providers/README.md).
-Model tiers, local inference and gateway policy remain host responsibilities.
+    public PluginIdentity identity() {
+        return new PluginIdentity("example.consumer", "1.0.0");
+    }
 
-`DelegationCapability` and `DelegationTool` support agent tools through the same
-plugin registration path. The built-in `create_group` implementation calls this
-API; core supplies the authorized capability and owns the role transition.
+    public PluginContributions initialize(
+            PluginContext context, JsonValue.ObjectValue configuration) {
+        this.context = Optional.of(context);
+        return new PluginContributions(List.of());
+    }
 
-## Plugin-authored planning
+    public void start() throws PluginFailure {
+        textService = context.orElseThrow().services().find("example:text", 1);
+    }
 
-`api.agent.workflow` exposes the program/value contracts and `PlanExecution`
-continuation callbacks. The built-in plugin owns parsing, plan-language validation
-and interpretation; API-only plugins can supply their own continuation. Runtime
-callbacks preserve host tool authorization, model budgets and cancellation.
-`ResponseTool` receives a host `ResponseCapability` to submit a plan or a
-cited answer. `ResponseSubmission` declares exclusive submission semantics by
-metadata rather than a hard-coded tool name. `ContextualInputSchemaSource` supports
-tool-owned schemas specialized against the live model-visible manifest.
+    public JsonValue normalize(String input) throws ServiceException {
+        if (textService.isEmpty()) return new JsonValue.StringValue(input);
+        return textService.orElseThrow().invoke(new JsonValue.StringValue(input));
+    }
 
-## Complete tool capability surface
+    public void close() throws PluginFailure {
+        textService = Optional.empty();
+        context = Optional.empty();
+    }
+}
+```
 
-`HostCapabilityTool<T,C>` supports typed injection of authorized host resource
-operations. Feature-specific domain values and private document tools belong to
-the owning plugin. `AgentHost.isolate` accepts private `NativeTool` instances,
-plugin MDC references, requested limits and a terminal contract. The host owns
-execution, model budgets, actual termination and read-only request facts.
-`ApprovedHttpDestination` delegates one screened parent URL to the exact child
-and private operation; children cannot open broader network grants. Private tool
-capabilities cannot exceed the parent call's approved category. Host-issued
-execution receipts are internal invocation facts, never plugin-supplied output
-annotations or serialized authorization tokens.
+The provider needs no host capability merely to register a service. A real protocol should
+document its JSON request, response, and public error codes. Do not retain context or service
+handles after `close()`.
+
+## Contributions
+
+`ContributionPoint<T>` fixes a namespaced ID, major version, Java contract class, and
+cardinality. `Contribution<T>` supplies a local ID, implementation, and optional ordering
+constraints within that exact point. The host supplies source identity and provenance. A
+plugin returns one immutable batch from `initialize`; the host validates and stages it
+atomically before publication.
+
+The current `StandardContributionPoints` are:
+
+| Constant | Point ID | Contract |
+|---|---|---|
+| `AGENT_CONFIGURATION` | `veto:agent-configuration` | `AgentConfiguration` |
+| `AGENT_WORK` | `veto:agent-work` | `AgentWorkSource` |
+| `SERVICES` | `veto:services` | `ServiceRegistration` |
+| `LLM_PROVIDERS` | `veto:llm-providers` | `LlmProvider` |
+| `WORKFLOW` | `veto:workflow` | `WorkflowHook` |
+| `MODEL_RESPONSE` | `veto:model-response` | `ModelResponsePolicy` |
+| `FRONTEND` | `veto:frontend` | `FrontendContribution` |
+| `FILE_OBSERVATION` | `veto:file-observation` | `FileObservation` |
+| `INPUT_PROTECTION` | `veto:input-protection` | `InputProtection` |
+| `FILE_PROTECTION` | `veto:file-protection` | `FileProtection` |
+| `SESSION_LIFECYCLE` | `veto:session-lifecycle` | `SessionLifecycle` |
+| `DATA_LIFECYCLE` | `veto:data-lifecycle` | `DataLifecycle` |
+| `TOOLS` | `veto:tools` | `Tool` |
+| `NATIVE_TOOLS` | `veto:native-tools` | `CapabilityTool<?>` |
+| `CATEGORIES` | `veto:tool-categories` | `ToolCategory` |
+| `PROMPTS` | `veto:prompts` | `PromptContribution` |
+| `OBSERVATION` | `veto:observation-middleware` | `ObservationMiddleware` |
+
+Use `NATIVE_TOOLS` for record-authored in-process Java tools. Use `TOOLS` and
+`ToolContribution` for schema-authored JSON tools. Registration validates coherence;
+execution still passes through selection, admission, cancellation, and resource checks.
+
+## Host services and PluginHost
+
+`context.service(Class<T>)` returns an optional host object using exact class identity. It is
+the entry point for typed Java boundaries when the host grants them. A plugin must degrade or
+fail safely when an optional service is absent. A retained object cannot turn an expired call,
+stopped plugin, or revoked resource grant into a valid operation.
+
+`PluginHost.invocation(tool)` derives owner, session, agent, request, and call facts from a
+live authorized invocation; plugin-supplied identity text grants nothing. `await` attaches
+foreground waiting to that invocation. `wake` is only a scheduling hint. `publish` and
+`invalidate` require an authorized selected session. `whenReady` runs after host migrations,
+but its callback receives no automatic authorization for later effects.
 
 ## Named services between plugins
 
-A provider returns a normal contribution during initialization:
+`context.services()` is a class-independent directory of name and exact major-version pairs.
+Requests and responses are bounded `JsonValue` trees. `available()` exposes protocol name,
+version, and host-attributed provider ID. Duplicate name/version pairs fail activation;
+distinct major versions may coexist.
 
-```java
-Contribution.of(StandardContributionPoints.SERVICES, "normalize",
-    new ServiceRegistration("example:text-normalize", 1, request -> normalize(request)))
-```
+Lookup and invocation apply caller/provider lifecycle and current selection checks. A retained
+handle pins a descriptor but bypasses no check. Expected public failures use
+`ServiceException`; unexpected provider diagnostics are hidden by the host. Provider classes,
+Java serialization, and arbitrary objects do not cross this boundary.
 
-A consumer retains its `PluginContext` and invokes after activation:
+## Scoped storage
 
-```java
-var handle = context.services().find("example:text-normalize", 1).orElseThrow();
-JsonValue result = handle.invoke(new JsonValue.StringValue("input"));
-```
+`context.storage()` returns `PluginStorage` bound to the current plugin ID. Its application
+store is scoped to that plugin and Veto installation. User and session stores require
+host-issued scopes; caller-created identity strings grant nothing. `currentUser()` and
+`currentSession()` require an authenticated invocation. `scopes(...)` lists only scopes the
+host authorizes for this plugin's recovery or background work.
 
-`available()` exposes names, major versions and provider IDs. Lookup is exact; duplicate
-name/version pairs fail activation, while different versions may coexist. The registry
-is published after all initialization contributions are collected. Registration is
-startup-only; invocation requires active caller and provider lifecycles and honors
-current session selection when a session is present. A retained handle does not bypass
-those checks. Handlers return bounded JSON values; safe `ServiceException` codes cross
-the boundary, and unexpected implementation diagnostics are hidden. Class-keyed
-`service(Class)` remains exclusively for host-granted Java capabilities.
+`put` is compare-and-set: a null expected revision inserts only when absent, while a non-null
+revision must match. `delete` also requires the current revision. Conflicts are explicit, and
+a recreated entry does not reuse its old revision. Plugins own document schema versions.
 
-Search is an example protocol: `veto.search:<provider>` version 1 accepts an object
-with `query`, `allowedDomains`, `blockedDomains` and `maxResults`, and returns an array
-of `{title, url, snippet}` objects. Domain lists may be null. A provider can implement
-this JSON contract directly without importing any search implementation. `SearchServices`
-and `SearchProvider` are optional authoring helpers, not registry dispatch types.
+The host revalidates scope existence, ownership, plugin admission, and authorization on access.
+Stopping, disabling, or uninstalling a plugin retains its data by default but revokes active
+work and handles. Permanent owner/session deletion invalidates corresponding scopes. This API
+does not promise a disabled-plugin purge management surface.
 
-## Agent host contracts
+## Agent and frontend contracts
 
-Portable `AgentAction`, `AgentResult`, `AgentState`, `ToolCallEvent` and `ToolResultEvent`
-live in `api.agent`; `LlmBinding` lives in `api.llm`; `PluginBinding` in `api.plugin`.
-General cited-answer/plan submissions use `api.agent.response.ResponseRequest` and
-`ResponseCapability`. `PlanStepContext` and `PlanExecution` describe the plan runtime
-boundary. The builtin owns the plan loop and calls `Runtime.beforeStep()` before each
-step, so host cancellation, budgets and sourced observations remain enforced.
+`plugin.agent` exposes session-bound child execution. Profiles declare intent; the host owns
+identity, available tools, model selection, budgets, cancellation, recovery, and termination.
+Host-issued storage scope is required to open a session. Isolated-agent support may be absent
+and fails closed; the Java interface itself is not an OS sandbox.
 
-Spring/session/database integration lives in core's `integration.plugins` package.
-Generic lifecycle admission, service dispatch and managed plan execution belong in
-veto-plugin-runtime. These host adapters are not plugin feature implementations.
+`FrontendContribution` carries a browser ESM module and scoped JSON action handler. Browser
+code is trusted application code. It must dispose owned registrations on teardown and gains no
+backend authority by rendering a component.
 
-### Feature-owned execution and presentation
+## Build and verify
 
-`AgentWorkSource` supplies plugin-owned pending observations and receives admitted/completed/cancelled callbacks. `PluginHost` exposes authorized invocation scope, wake hints, invalidations and trusted JDBC access. Plugins own their schemas and lifecycle. These contracts do not enforce confinement of Java code. `PLUGIN_LOCAL` tool execution grants no host resource permission and requires no feature-specific enum entry.
-
-The `frontend` package publishes `@veto/plugin-api`. Plugins register inspector panels through `registerInspector`, receive scoped actions, connection status and resource subscriptions, and dispose work when their lifetime aborts. The host contains no monitor component.
-
-Tool-owned system instructions can be declared with @ToolPrompt(sourceId). The host compiles that registered MDC source with PromptCompiler only when the annotated tool is available, retaining source spans. Plugins own the source; a tool name alone does not install instructions.
-
-### Tool presentation registrations
-
-`registerToolRenderer(localToolId, {call, result, conversation, headerTarget})` registers optional React views for a tool contributed by that plugin. `FrontendModule.tools` maps local IDs to effective tool aliases; modules cannot register foreign IDs, and duplicate producer registrations across modules fail. Host `components.CodeBlock` and `components.Markdown` are generic rendering primitives. Renderers receive the scoped `context`, identity, args and optional result; the conversation view should remain a compact summary.
-
-New TOOL_CALL records persist `plugin_id` and `tool_local_id`. Hosts resolve those before aliases and inherit response identity by Agent/call ID. Old alias-only records require an unambiguous current owner, restricted to the recorded plugin when present. Missing, failed or unloaded renderers retain generic/raw content. A renderer never replaces the host's raw disclosure or approval controls.
-
-### Invocation-bound imports and local model resources
-
-`api.credentials.CredentialImportAccess` authorizes an import from the actual privileged tool call, not from a claimed caller. Its CredentialWriter is scoped to that invocation and approved reference/service/label; retained writers must not authorize later calls. Values cross only the authorized local storage boundary. Candidate detection, capture and expiration remain plugin-owned.
-
-`api.llm.LocalModelCompletion` accepts a compiled prompt, plugin-local purpose and literal GBNF grammar. Obtain PromptRenderer to compile an owned MDC source first. The host binds the actual plugin identity/lifecycle, enforces a two-second operation bound, input/output limits and cancellation. Absent resources yield deterministic plugin fallback; no cloud-provider or raw inline-prompt fallback is implicit. This resource boundary is not isolation of arbitrary in-process Java.
+From the repository root, run `gradlew.bat :veto-api:test :veto-api:javadoc`. The module
+Javadocs describe individual contracts. Use only `top.focess.veto.api` types from plugin code
+and keep host implementation types out of plugin artifacts.

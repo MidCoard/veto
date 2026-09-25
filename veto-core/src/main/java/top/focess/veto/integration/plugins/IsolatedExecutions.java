@@ -23,10 +23,12 @@ import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
+import top.focess.veto.agent.AgentEventSink;
 import top.focess.veto.agent.AgentExecutionPolicy;
 import top.focess.veto.agent.AgentRunner;
 import top.focess.veto.agent.RequestHandle;
 import top.focess.veto.agent.SessionAgentRegistry;
+import top.focess.veto.agent.ToolExecutionBoundary;
 import top.focess.veto.agent.VetoAgent;
 import top.focess.veto.agent.capability.CapabilityAccess;
 import top.focess.veto.agent.capability.HttpDestinationGrant;
@@ -271,9 +273,14 @@ public final class IsolatedExecutions {
                             scope.id(),
                             persona,
                             engine,
-                            gateway,
-                            new HitlRegistry(),
-                            ingress,
+                            new ToolExecutionBoundary(
+                                    scope.id(),
+                                    session,
+                                    owner,
+                                    engine,
+                                    gateway,
+                                    new HitlRegistry(),
+                                    ingress),
                             List.of(),
                             compiler,
                             measured,
@@ -284,9 +291,8 @@ public final class IsolatedExecutions {
                                     model.model(),
                                     model.credentialKey(),
                                     options,
-                                    null,
                                     model.baseUrl()),
-                            null,
+                            AgentEventSink.none(),
                             parent.userId(),
                             history,
                             owner,
@@ -419,7 +425,6 @@ public final class IsolatedExecutions {
         }
 
         public void authorize(String operation) {
-            check();
             if (!privateTools.contains(operation))
                 throw new SecurityException("Operation is not a private tool");
             var context = ToolCallContextHolder.get();
@@ -430,6 +435,7 @@ public final class IsolatedExecutions {
                     || !Objects.equals(parent.owner(), context.owner())
                     || !Objects.equals(parent.sessionId(), context.sessionId()))
                 throw new SecurityException("Private tool belongs to another execution");
+            check();
         }
 
         public boolean provenanceLive() {

@@ -15,9 +15,6 @@ import top.focess.veto.agent.ExecutionControl.Wait;
 import top.focess.veto.agent.continuation.RequestContinuationStore;
 import top.focess.veto.agent.drift.ReadHistory;
 import top.focess.veto.agent.identity.AgentPersona;
-import top.focess.veto.agent.intercept.Gateway;
-import top.focess.veto.agent.intercept.HitlRegistry;
-import top.focess.veto.agent.intercept.IngressDefense;
 import top.focess.veto.agent.intercept.LoopInterceptor;
 import top.focess.veto.agent.intercept.VetoPrompt;
 import top.focess.veto.agent.loop.PromptCompiler;
@@ -37,7 +34,6 @@ import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.api.llm.VetoResponse;
 import top.focess.veto.api.plugin.contract.AgentWorkSource;
-import top.focess.veto.bus.DeltaBroker;
 import top.focess.veto.i18n.Msg;
 import top.focess.veto.integration.plugins.PluginLifecycleEvents;
 import top.focess.veto.integration.plugins.SessionPlugins;
@@ -56,32 +52,28 @@ public final class AgentRunner implements Runnable {
             @NonNull String agentId,
             @NonNull AgentPersona persona,
             @NonNull ToolEngine toolEngine,
-            @NonNull Gateway gateway,
-            @NonNull HitlRegistry hitlRegistry,
-            @NonNull IngressDefense ingressDefense,
+            @NonNull ToolExecutionBoundary toolBoundary,
             List<LoopInterceptor> interceptors,
             @NonNull PromptCompiler promptCompiler,
             @NonNull UniformLLMCaller caller,
             @NonNull ObjectMapper objectMapper,
             long maxCallsPerEpisode,
             @NonNull LlmBinding binding,
-            DeltaBroker deltaBroker,
+            @NonNull AgentEventSink eventSink,
             @NonNull UUID userId,
             TurnLogService turnLogService) {
         this(
                 agentId,
                 persona,
                 toolEngine,
-                gateway,
-                hitlRegistry,
-                ingressDefense,
+                toolBoundary,
                 interceptors,
                 promptCompiler,
                 caller,
                 objectMapper,
                 maxCallsPerEpisode,
                 binding,
-                deltaBroker,
+                eventSink,
                 userId,
                 turnLogService,
                 null,
@@ -92,16 +84,14 @@ public final class AgentRunner implements Runnable {
             @NonNull String agentId,
             @NonNull AgentPersona persona,
             @NonNull ToolEngine toolEngine,
-            @NonNull Gateway gateway,
-            @NonNull HitlRegistry hitlRegistry,
-            @NonNull IngressDefense ingressDefense,
+            @NonNull ToolExecutionBoundary toolBoundary,
             List<LoopInterceptor> interceptors,
             @NonNull PromptCompiler promptCompiler,
             @NonNull UniformLLMCaller caller,
             @NonNull ObjectMapper objectMapper,
             long maxCallsPerEpisode,
             @NonNull LlmBinding binding,
-            DeltaBroker deltaBroker,
+            @NonNull AgentEventSink eventSink,
             @NonNull UUID userId,
             TurnLogService turnLogService,
             String owner,
@@ -111,16 +101,14 @@ public final class AgentRunner implements Runnable {
                         agentId,
                         persona,
                         toolEngine,
-                        gateway,
-                        hitlRegistry,
-                        ingressDefense,
+                        toolBoundary,
                         interceptors,
                         promptCompiler,
                         caller,
                         objectMapper,
                         maxCallsPerEpisode,
                         binding,
-                        deltaBroker,
+                        eventSink,
                         userId,
                         turnLogService,
                         owner,

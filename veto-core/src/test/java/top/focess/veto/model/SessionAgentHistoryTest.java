@@ -136,6 +136,7 @@ class SessionAgentHistoryTest {
         var registry = new SessionAgentRegistry(repository, turns);
         @NonNull VetoAgent parent = mock();
         when(parent.id()).thenReturn(primary.getId());
+        when(parent.persona()).thenReturn(new AgentPersona(primary.getId(), "Main", "", Set.of()));
         when(parent.state()).thenReturn(AgentState.IDLE);
         registry.register(session, parent);
         var persona = new AgentPersona("private-child", "Private", "", Set.of());

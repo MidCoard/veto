@@ -18,6 +18,7 @@ import top.focess.veto.vault.KeysteadVault;
 final class AgentContinuationExecution {
     private static final int MAX_TRANSIENT_EPISODES = 256;
     private final @NonNull AgentRuntimeState runtime;
+
     /** Live request ledgers retained for late plugin observations during this agent lifetime. */
     private final @NonNull Map<String, RequestEpisode> episodes = new LinkedHashMap<>();
 

@@ -7,6 +7,7 @@ import java.util.Map;
 import java.util.Set;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.agent.screening.Danger;
+import top.focess.veto.api.agent.tool.AgentTool;
 import top.focess.veto.api.agent.tool.ArraySize;
 import top.focess.veto.api.agent.tool.Doc;
 import top.focess.veto.api.agent.tool.NativeTool;
@@ -78,7 +79,8 @@ import top.focess.veto.builtin.questions.QuestionRuntime;
             "Invalid questions: question ids must be unique snake_case identifiers."
         })
 @ToolSecurity(capability = ToolCapability.USER_INTERACTION, defaultDanger = Danger.SAFE)
-public final class AskUserTool implements NativeTool<AskUserTool.Args> {
+public final class AskUserTool
+        implements AgentTool<AskUserTool.Args>, NativeTool<AskUserTool.Args> {
 
     static final int MAX_QUESTIONS = 10;
     static final int MIN_OPTIONS = 2;
@@ -105,6 +107,11 @@ public final class AskUserTool implements NativeTool<AskUserTool.Args> {
     @Override
     public @NonNull Class<Args> getArgsClass() {
         return ToolDocs.nonNullClass(Args.class);
+    }
+
+    @Override
+    public @NonNull ToolCapability getCapability() {
+        return ToolCapability.USER_INTERACTION;
     }
 
     @Override

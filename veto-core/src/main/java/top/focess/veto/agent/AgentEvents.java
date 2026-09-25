@@ -1,9 +1,6 @@
 package top.focess.veto.agent;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.TextNode;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -19,7 +16,6 @@ import top.focess.veto.agent.intercept.VetoPrompt;
 import top.focess.veto.api.agent.ToolCallEvent;
 import top.focess.veto.api.agent.ToolResultEvent;
 import top.focess.veto.api.llm.ToolCall;
-import top.focess.veto.bus.DeltaBroker;
 import top.focess.veto.bus.DeltaFrame;
 
 /** Best-effort transport notifications; never owns execution or persistence. */
@@ -27,7 +23,7 @@ final class AgentEvents {
     private static final Logger log = LoggerFactory.getLogger("top.focess.veto.agent.AgentEvents");
     private final @NonNull String agentId;
     private final @NonNull ObjectMapper objectMapper;
-    private final DeltaBroker deltaBroker;
+    private final @NonNull AgentEventSink eventSink;
     private final @NonNull Supplier<UUID> session;
     final @NonNull Listeners<String> messages = new Listeners<>("message");
     final @NonNull Listeners<String> thoughts = new Listeners<>("thought");
@@ -38,11 +34,11 @@ final class AgentEvents {
     AgentEvents(
             @NonNull String agentId,
             @NonNull ObjectMapper mapper,
-            DeltaBroker broker,
+            @NonNull AgentEventSink eventSink,
             @NonNull Supplier<UUID> session) {
         this.agentId = agentId;
         this.objectMapper = mapper;
-        this.deltaBroker = broker;
+        this.eventSink = eventSink;
         this.session = session;
     }
 
@@ -154,20 +150,8 @@ final class AgentEvents {
     }
 
     void publishFrame(@NonNull DeltaFrame frame) {
-        if (deltaBroker == null) {
-            return;
-        }
         try {
-            Map<String, JsonNode> attributes = new HashMap<>(frame.attrs());
-            attributes.put("agentId", TextNode.valueOf(agentId));
-            deltaBroker.publish(
-                    new DeltaFrame(
-                            frame.sessionId(),
-                            frame.sequence(),
-                            frame.emittedAt(),
-                            frame.kind(),
-                            frame.text(),
-                            attributes));
+            eventSink.publish(frame);
         } catch (RuntimeException e) {
             log.warn("Agent {} delta-broker publish failed (kind={})", agentId, frame.kind(), e);
         }

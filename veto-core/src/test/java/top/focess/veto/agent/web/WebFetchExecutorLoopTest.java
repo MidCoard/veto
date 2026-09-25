@@ -193,7 +193,7 @@ class WebFetchExecutorLoopTest {
         assertTrue(correction.contains("exactly one native tool call"));
         assertFalse(correction.contains("A tool call is not required"));
         VetoRequest last = requests.getLast();
-        assertFalse(last.responseContract().completionOnly());
+        assertTrue(last.responseContract().completionOnly());
         assertEquals(
                 List.of("finish_read"), last.tools().stream().map(ToolDefinition::name).toList());
         assertFalse(last.systemPrompt().contains("### `fetch_page`"));

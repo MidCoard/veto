@@ -79,8 +79,7 @@ class ScopedPromptTest {
             assertFalse(scoped.systemPrompt().contains("### `view_file`"));
             assertFalse(scoped.systemPrompt().contains("## Plan execution"));
             assertEquals(citations, scoped.systemPrompt().contains("### `answer_with_citations`"));
-            assertFalse(
-                    scoped.systemPrompt().contains("registered `answer_with_citations` tool"));
+            assertFalse(scoped.systemPrompt().contains("registered `answer_with_citations` tool"));
             assertEquals(conversation, scoped.messages().subList(1, scoped.messages().size()));
             assertEquals(scoped.systemPrompt(), scoped.messages().getFirst().content());
             assertFalse(scoped.messages().getFirst().promptSources().isEmpty());

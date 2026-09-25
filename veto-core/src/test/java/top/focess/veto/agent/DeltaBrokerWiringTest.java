@@ -61,13 +61,9 @@ class DeltaBrokerWiringTest {
                 null);
     }
 
-    private static @NonNull LlmBinding binding(@NonNull String systemPrompt) {
+    private static @NonNull LlmBinding binding(@NonNull String ignoredPrompt) {
         return new LlmBinding(
-                ProviderType.DEEPSEEK,
-                "stub-model",
-                "stub-key",
-                LlmOptions.defaults(),
-                systemPrompt);
+                ProviderType.DEEPSEEK, "stub-model", "stub-key", LlmOptions.defaults(), null);
     }
 
     private static @NonNull UniformLLMCaller scripted(

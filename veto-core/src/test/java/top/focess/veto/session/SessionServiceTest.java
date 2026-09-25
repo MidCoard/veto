@@ -470,8 +470,10 @@ class SessionServiceTest {
             TransactionSynchronizationManager.setActualTransactionActive(true);
             try {
                 removed = service.delete("alice", "coder");
-                for (var synchronization :
-                        TransactionSynchronizationManager.getSynchronizations()) {
+                var synchronizations = TransactionSynchronizationManager.getSynchronizations();
+                for (var synchronization : synchronizations) synchronization.beforeCommit(false);
+                for (var synchronization : synchronizations) synchronization.afterCommit();
+                for (var synchronization : synchronizations) {
                     synchronization.afterCompletion(TransactionSynchronization.STATUS_COMMITTED);
                 }
             } finally {

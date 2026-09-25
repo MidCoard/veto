@@ -35,7 +35,14 @@ public record ReaderConfig(Map<String, JsonValue> values) {
     }
 
     private int number(String key, int fallback) {
-        return Integer.parseInt(text(key, Integer.toString(fallback)));
+        var value = values.get(key);
+        try {
+            if (value instanceof JsonValue.NumberValue number)
+                return number.value().intValueExact();
+            return Integer.parseInt(text(key, Integer.toString(fallback)));
+        } catch (ArithmeticException | NumberFormatException error) {
+            throw new IllegalArgumentException("Invalid integer reader setting: " + key, error);
+        }
     }
 
     public IsolatedAgent.Spec spec() {

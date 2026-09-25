@@ -130,6 +130,7 @@ public final class ToolContractValidator {
         boolean hasCommand = definition.paramHints().containsValue(ParamCategory.SHELL_COMMAND);
         boolean hasProcessInput =
                 definition.paramHints().containsValue(ParamCategory.PROCESS_INPUT);
+        boolean hasUrl = definition.paramHints().containsValue(ParamCategory.URL);
         switch (definition.capability()) {
             case WORKSPACE_READ ->
                     require(
@@ -151,15 +152,15 @@ public final class ToolContractValidator {
                             definition,
                             !hasPath && !hasCommand,
                             "TASK_CONTROL must not accept host path/command arguments");
-            case NETWORK_EGRESS, PRIVILEGED, USER_INTERACTION -> {
+            case NETWORK_EGRESS, PRIVILEGED -> {
                 // URL arguments are optional because some network tools use deployer-fixed hosts.
             }
-            case LOOP_CONTROL,
-                    DELEGATION,
-                    GROUP_CONTROL,
-                    PLUGIN_LOCAL,
-                    AGENT_CONTROL,
-                    REMOTE_UNKNOWN ->
+            case PLUGIN_LOCAL, USER_INTERACTION ->
+                    require(
+                            definition,
+                            !hasPath && !hasCommand && !hasUrl,
+                            "caller-scoped control capabilities must not accept host path, command, or URL arguments");
+            case LOOP_CONTROL, DELEGATION, GROUP_CONTROL, AGENT_CONTROL, REMOTE_UNKNOWN ->
                     throw invalid(
                             definition,
                             "native tool uses an agent/plugin/remote-only capability: "

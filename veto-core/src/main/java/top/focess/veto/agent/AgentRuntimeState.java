@@ -19,20 +19,15 @@ import org.slf4j.LoggerFactory;
 import top.focess.veto.agent.continuation.RequestContinuationStore;
 import top.focess.veto.agent.drift.ReadHistory;
 import top.focess.veto.agent.identity.AgentPersona;
-import top.focess.veto.agent.intercept.Gateway;
-import top.focess.veto.agent.intercept.HitlRegistry;
-import top.focess.veto.agent.intercept.IngressDefense;
 import top.focess.veto.agent.intercept.LoopInterceptor;
-import top.focess.veto.agent.intercept.ToolExecutionPermit;
 import top.focess.veto.agent.loop.PromptCompiler;
 import top.focess.veto.agent.tool.ToolDefinition;
 import top.focess.veto.agent.tool.ToolEngine;
 import top.focess.veto.api.llm.LlmBinding;
-import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
+import top.focess.veto.api.plugin.agent.AgentProfile;
 import top.focess.veto.api.plugin.contract.AgentWorkSource;
 import top.focess.veto.api.plugin.contract.WorkflowHook;
-import top.focess.veto.bus.DeltaBroker;
 import top.focess.veto.integration.plugins.PluginLifecycleEvents;
 import top.focess.veto.integration.plugins.SessionPlugins;
 import top.focess.veto.llm.core.ToolResultPresenter;
@@ -56,11 +51,7 @@ final class AgentRuntimeState {
 
     final @NonNull ModelResponseValidation responses;
 
-    final @NonNull Gateway gateway;
-
-    final @NonNull HitlRegistry hitlRegistry;
-
-    final @NonNull IngressDefense ingressDefense;
+    final @NonNull ToolExecutionBoundary toolBoundary;
 
     final @NonNull List<LoopInterceptor> interceptors;
 
@@ -90,6 +81,8 @@ final class AgentRuntimeState {
 
     volatile @NonNull LlmBinding baseBinding;
 
+    volatile AgentProfile.Prompt prompt;
+
     long configurationRevision;
     String configurationTransition;
 
@@ -116,8 +109,6 @@ final class AgentRuntimeState {
     final @NonNull AtomicBoolean workQueued = new AtomicBoolean();
 
     volatile Thread runningThread;
-
-    record ResolvedCall(@NonNull ToolCall call, @NonNull ToolExecutionPermit executionPermit) {}
 
     @NonNull AgentExecutionPolicy executionPolicy = AgentExecutionPolicy.ordinary();
 
@@ -151,16 +142,14 @@ final class AgentRuntimeState {
             @NonNull String agentId,
             @NonNull AgentPersona persona,
             @NonNull ToolEngine toolEngine,
-            @NonNull Gateway gateway,
-            @NonNull HitlRegistry hitlRegistry,
-            @NonNull IngressDefense ingressDefense,
+            @NonNull ToolExecutionBoundary toolBoundary,
             List<LoopInterceptor> interceptors,
             @NonNull PromptCompiler promptCompiler,
             @NonNull UniformLLMCaller caller,
             @NonNull ObjectMapper objectMapper,
             long maxCallsPerEpisode,
             @NonNull LlmBinding binding,
-            DeltaBroker deltaBroker,
+            @NonNull AgentEventSink eventSink,
             @NonNull UUID userId,
             TurnLogService turnLogService,
             String owner,
@@ -175,26 +164,23 @@ final class AgentRuntimeState {
                         .collect(Collectors.toUnmodifiableSet());
         this.toolEngine = toolEngine;
         this.responses = new ModelResponseValidation(toolEngine, objectMapper);
-        this.gateway = gateway;
-        this.hitlRegistry = hitlRegistry;
-        this.ingressDefense = ingressDefense;
+        this.toolBoundary = toolBoundary;
         this.interceptors = interceptors == null ? List.of() : interceptors;
         this.promptCompiler = promptCompiler;
         this.caller = caller;
         this.objectMapper = objectMapper;
         this.maxCallsPerEpisode = maxCallsPerEpisode;
-        this.readHistory = gateway.readHistory();
+        this.readHistory = toolBoundary.readHistory();
         this.binding = binding;
         // agentId is the persona id (a UUID string — see AgentService.createAgent); derive the
         // per-session frame key once. Fail-fast if a non-UUID id ever reaches here.
         this.sessionId = sessionId;
         this.owner = owner;
-        hitlRegistry.setSession(agentId, this.sessionId);
         this.userId = userId;
         this.output =
                 new AgentOutput(
                         new AgentHistory(turnLogService, () -> sessionId, userId, agentId),
-                        new AgentEvents(agentId, objectMapper, deltaBroker, () -> sessionId),
+                        new AgentEvents(agentId, objectMapper, eventSink, () -> sessionId),
                         promptCompiler,
                         new ToolResultPresenter(objectMapper),
                         toolEngine,
@@ -273,11 +259,12 @@ final class AgentRuntimeState {
                                 new ModelSession.Configuration(
                                         persona,
                                         binding,
+                                        prompt,
                                         toolResultPresentation,
                                         owner,
                                         modelTierRegistry,
                                         executionPolicy.terminal(),
-                                        gateway.workspace()),
+                                        toolBoundary.workspace()),
                         () -> lifecycle().checkExecutionBoundary(),
                         () -> continuations().reserveRequestCall(),
                         () -> lifecycle().tripBreaker());

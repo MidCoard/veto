@@ -28,6 +28,7 @@ import top.focess.veto.api.llm.VetoRequest;
 import top.focess.veto.api.llm.VetoResponse;
 import top.focess.veto.api.llm.exceptions.LlmException;
 import top.focess.veto.api.llm.exceptions.ModelSchemaException;
+import top.focess.veto.api.plugin.agent.AgentProfile;
 import top.focess.veto.api.plugin.agent.IsolatedAgent;
 import top.focess.veto.model.tier.ModelTierRegistry;
 
@@ -41,6 +42,7 @@ final class ModelSession {
     record Configuration(
             @NonNull AgentPersona persona,
             @NonNull LlmBinding binding,
+            AgentProfile.Prompt prompt,
             @NonNull ToolResultPresentationMode presentation,
             String owner,
             ModelTierRegistry tiers,
@@ -163,7 +165,7 @@ final class ModelSession {
             @Override
             public @NonNull VetoRequest prepare(@NonNull VetoRequest request) {
                 var ledger = breaker.get();
-                return terminalOnly(ledger.count(), current.terminal())
+                return terminalOnly(ledger, current.terminal())
                         ? requests.completionRequest(
                                 request, current.terminal(), ledger.grantedCalls() - ledger.count())
                         : request;
@@ -247,9 +249,9 @@ final class ModelSession {
         return new ModelExchange.Attempt(request, response, modelCallId);
     }
 
-    boolean terminalOnly(long completedCalls, IsolatedAgent.Terminal terminal) {
-        long limit = breaker.get().grantedCalls();
-        return terminal != null && limit > 0 && completedCalls >= limit - terminal.reservedCalls();
+    boolean terminalOnly(@NonNull LoopBreaker ledger, IsolatedAgent.Terminal terminal) {
+        long limit = ledger.grantedCalls();
+        return terminal != null && limit > 0 && ledger.count() >= limit - terminal.reservedCalls();
     }
 
     @NonNull ModelRequests requests() {
@@ -262,6 +264,7 @@ final class ModelSession {
                 current.workspace(),
                 current.persona(),
                 current.binding(),
+                current.prompt(),
                 current.presentation(),
                 current.owner(),
                 current.tiers(),
@@ -280,10 +283,10 @@ final class ModelSession {
 
     private @NonNull String linkCurrentSystemMessage(@NonNull Configuration current) {
         PromptSource.Rendered source =
-                compiler.linkSystemSource(
+                compiler.linkSystemProfile(
                         current.persona(),
                         current.workspace(),
-                        current.binding().systemPromptBase(),
+                        current.prompt(),
                         current.presentation());
         output.systemSource(source);
         return source.text();

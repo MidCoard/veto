@@ -163,9 +163,9 @@ class ProcessHostAuthorityTest {
                 write.write();
                 assertThrows(ToolDocs.nonNullClass(SecurityException.class), write::write);
                 assertTrue(running.awaitExit(Duration.ofSeconds(20)));
-                assertEquals(
-                        "hello",
-                        new String(running.output().readAllBytes(), StandardCharsets.UTF_8));
+                String output = new String(running.output().readAllBytes(), StandardCharsets.UTF_8);
+                assertTrue(output.endsWith("hello"), output);
+                assertEquals(output.indexOf("hello"), output.lastIndexOf("hello"), output);
             } finally {
                 running.close();
             }

@@ -96,13 +96,9 @@ class AgentEndToEndTest {
                 null);
     }
 
-    private static @NonNull LlmBinding binding(@NonNull String systemPrompt) {
+    private static @NonNull LlmBinding binding(@NonNull String ignoredPrompt) {
         return new LlmBinding(
-                ProviderType.DEEPSEEK,
-                "stub-model",
-                "stub-key",
-                LlmOptions.defaults(),
-                systemPrompt);
+                ProviderType.DEEPSEEK, "stub-model", "stub-key", LlmOptions.defaults(), null);
     }
 
     /** A caller that replays a fixed script of responses, in order. */

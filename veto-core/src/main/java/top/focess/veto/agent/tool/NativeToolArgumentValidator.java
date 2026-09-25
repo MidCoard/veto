@@ -120,8 +120,7 @@ public final class NativeToolArgumentValidator {
             for (int index = 0; index < node.size(); index++)
                 resolved.set(
                         index,
-                        resolveReferences(
-                                node.path(index), root, resolving, issues, depth + 1));
+                        resolveReferences(node.path(index), root, resolving, issues, depth + 1));
             return resolved;
         }
         return node;

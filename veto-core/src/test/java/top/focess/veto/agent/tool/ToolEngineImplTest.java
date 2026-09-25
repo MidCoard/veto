@@ -498,14 +498,8 @@ class ToolEngineImplTest {
         if (fixture == null) throw new AssertionError("missing process fixture");
         var permit =
                 ToolExecutionPermit.capture(
-                                call,
-                                definition,
-                                Workspace.single(workspaceRoot, PathMode.REAL))
-                        .withCaller(
-                                fixture.agent,
-                                fixture.user,
-                                fixture.owner,
-                                fixture.session);
+                                call, definition, Workspace.single(workspaceRoot, PathMode.REAL))
+                        .withCaller(fixture.agent, fixture.user, fixture.owner, fixture.session);
         ToolCallContextHolder.set(
                 new ToolCallContext(
                         fixture.agent,

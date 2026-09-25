@@ -5,12 +5,10 @@ import java.util.stream.Collectors;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.identity.AgentPersona;
 import top.focess.veto.agent.identity.Role;
-import top.focess.veto.agent.loop.PromptCompiler;
 import top.focess.veto.agent.tool.ToolDefinition;
 import top.focess.veto.api.llm.LlmBinding;
 import top.focess.veto.api.plugin.agent.AgentProfile;
 import top.focess.veto.api.plugin.contract.AgentConfiguration;
-import top.focess.veto.api.plugin.contract.JsonValues;
 import top.focess.veto.model.tier.ModelTier;
 import top.focess.veto.model.tier.ModelTierRegistry;
 import top.focess.veto.util.Nullness;
@@ -28,7 +26,10 @@ public final class AgentProfiles {
                 source == null ? null : source.localId());
     }
 
-    public record Resolved(@NonNull AgentPersona persona, @NonNull LlmBinding binding) {}
+    public record Resolved(
+            @NonNull AgentPersona persona,
+            @NonNull LlmBinding binding,
+            AgentProfile.Prompt prompt) {}
 
     public static @NonNull Resolved resolve(
             @NonNull String id,
@@ -52,11 +53,7 @@ public final class AgentProfiles {
                         profile.description(),
                         tools,
                         Role.valueOf(profile.label()));
-        String guidance = base.systemPromptBase();
         var prompt = profile.prompt();
-        if (prompt != null)
-            guidance =
-                    PromptCompiler.compileText(prompt.resource(), JsonValues.toMap(prompt.data()));
         var tier = profile.tier();
         if (tier == null)
             return new Resolved(
@@ -66,8 +63,8 @@ public final class AgentProfiles {
                             base.model(),
                             base.credentialKey(),
                             base.options(),
-                            guidance,
-                            base.baseUrl()));
+                            base.baseUrl()),
+                    prompt);
         var model = tiers.resolve(owner, Nullness.requireNonNull(ModelTier.valueOf(tier)));
         return new Resolved(
                 persona,
@@ -76,7 +73,7 @@ public final class AgentProfiles {
                         model.model(),
                         model.credentialKey(),
                         model.llmOptions(),
-                        guidance,
-                        model.baseUrl()));
+                        model.baseUrl()),
+                prompt);
     }
 }

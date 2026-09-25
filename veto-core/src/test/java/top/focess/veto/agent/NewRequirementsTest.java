@@ -242,6 +242,9 @@ class NewRequirementsTest {
         assertTrue(hitlRegistry.resolveOption(agent.id(), "call-nc", "ACCEPT_COMMAND"));
         AgentResult result = resultFuture.get(5, TimeUnit.SECONDS);
         assertFalse(result.success());
+        long idleDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(3);
+        while (agent.state() != AgentState.IDLE && System.nanoTime() < idleDeadline)
+            Thread.sleep(10);
         assertEquals(AgentState.IDLE, agent.state());
         assertTrue(mcpEngine.executed.isEmpty(), "Refusal must prevent every call in the batch");
         assertTrue(hitlRegistry.pendingFor(agent.id()).isEmpty());

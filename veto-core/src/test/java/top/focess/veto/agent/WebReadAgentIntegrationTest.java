@@ -252,7 +252,18 @@ class WebReadAgentIntegrationTest {
         assertEquals("Timeout is 30 seconds.", result.message());
         assertEquals(maxRounds == 4 ? 4 : 3, childRequests.size());
         var finalRequest = childRequests.getLast();
-        assertEquals(maxRounds <= 4 ? 1 : 4, finalRequest.tools().size());
+        assertEquals(
+                maxRounds <= 4 ? 1 : 4,
+                finalRequest.tools().size(),
+                () ->
+                        "contract="
+                                + finalRequest.responseContract()
+                                + ", sources="
+                                + finalRequest.messages().getLast().promptSources()
+                                + ", toolCounts="
+                                + childRequests.stream()
+                                        .map(value -> value.tools().size())
+                                        .toList());
         if (maxRounds <= 4) {
             assertEquals("finish_read", finalRequest.tools().getFirst().name());
             assertTrue(

@@ -66,21 +66,36 @@ public record PluginContext(
         return stateReader.get();
     }
 
-    /** Looks up a host-granted service. Absent services stay absent; the plugin must degrade. */
+    /**
+     * Looks up an optional host-granted Java capability by exact class identity.
+     *
+     * <p>This is distinct from {@link #services()}, which discovers plugin-provided named JSON
+     * protocols. Registration never earns a host capability. Absence is normal, and a retained
+     * instance remains subject to lifecycle and call-specific authorization checks.
+     */
     public <T> @NonNull Optional<T> service(@NonNull Class<T> type) {
         return Optional.ofNullable(hostServices.get(type)).map(type::cast);
     }
 
-    /** Class-independent discovery of services registered by plugins. */
+    /**
+     * Returns the named JSON protocol directory for plugin-to-plugin communication. During
+     * initialization the directory is not yet populated; discover providers in {@code start()} or
+     * later. If the host does not grant a directory, this returns an empty one.
+     */
     public @NonNull PluginServices services() {
         return service(ToolDocs.nonNullClass(PluginServices.class)).orElse(PluginServices.EMPTY);
     }
 
+    /**
+     * Returns host-scoped persistence for this plugin, or fails when storage was not granted.
+     * Plugins that can operate without persistence should use {@link #service(Class)} directly.
+     */
     public @NonNull PluginStorage storage() {
         return service(ToolDocs.nonNullClass(PluginStorage.class))
                 .orElseThrow(() -> new IllegalStateException("Plugin storage unavailable"));
     }
 
+    /** Signals an asynchronous fatal plugin failure to the lifecycle owner. */
     public void reportFailure() {
         failureReporter.run();
     }

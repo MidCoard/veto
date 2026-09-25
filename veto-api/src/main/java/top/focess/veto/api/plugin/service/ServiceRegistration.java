@@ -2,7 +2,10 @@ package top.focess.veto.api.plugin.service;
 
 import org.jspecify.annotations.NonNull;
 
-/** A named contract major version and its local implementation. */
+/**
+ * Startup registration of a named JSON protocol major version and its local handler. Registration
+ * publishes an implementation after validation; it grants no host authority.
+ */
 public record ServiceRegistration(
         @NonNull String name, int version, @NonNull ServiceHandler handler) {
     public ServiceRegistration {

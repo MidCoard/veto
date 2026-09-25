@@ -12,14 +12,22 @@ import top.focess.veto.api.plugin.contract.PluginFailure;
  * unchecked failures too; only PluginFailure codes are public.
  */
 public interface VetoPlugin extends AutoCloseable {
+    /** Major host SPI version implemented by this API. */
     int API_VERSION = 1;
 
+    /** Stable installed identity used for provenance, namespaces, and lifecycle ownership. */
     @NonNull PluginIdentity identity();
 
+    /**
+     * Stages this plugin's complete contribution batch during single-threaded startup.
+     * Implementations may capture the context but must not start threads or perform external
+     * effects. Named services are not discoverable until all plugins finish this callback.
+     */
     @NonNull PluginContributions initialize(
             @NonNull PluginContext context, JsonValue.@NonNull ObjectValue configuration)
             throws PluginFailure;
 
+    /** Starts owned resources after all contributions and named services have been validated. */
     void start() throws PluginFailure;
 
     /**
@@ -29,6 +37,7 @@ public interface VetoPlugin extends AutoCloseable {
      */
     default void stopping() throws PluginFailure {}
 
+    /** Releases owned resources once admitted calls have drained; must tolerate partial startup. */
     @Override
     void close() throws PluginFailure;
 }

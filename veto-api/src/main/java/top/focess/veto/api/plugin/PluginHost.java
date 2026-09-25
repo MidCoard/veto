@@ -5,14 +5,23 @@ import org.jspecify.annotations.Nullable;
 import top.focess.veto.api.agent.workflow.PluginAwait;
 import top.focess.veto.api.plugin.contract.JsonValue;
 
-/** Generic host effects for operator-trusted plugins. This interface is not a sandbox. */
+/**
+ * Host-mediated effects for operator-trusted plugins.
+ *
+ * <p>A host may grant this Java service through {@link PluginContext#service(Class)}. Each method
+ * applies its own current scope, selection, lifecycle, and invocation checks. Retaining this object
+ * is not retained authorization, and this interface does not sandbox arbitrary Java code.
+ */
 public interface PluginHost {
-    /** Once the host has completed startup migrations. */
+    /**
+     * Schedules work after host startup migrations. Callback execution context is host-defined; the
+     * callback must still obtain current admission for every effect.
+     */
     default void whenReady(@NonNull Runnable callback) {
         callback.run();
     }
 
-    /** Register foreground work from an authorized tool invocation. */
+    /** Registers foreground work owned by the current authorized invocation of {@code tool}. */
     default void await(@NonNull String tool, @NonNull PluginAwait wait) {
         throw new IllegalStateException("Foreground waits are unavailable");
     }
@@ -24,13 +33,18 @@ public interface PluginHost {
             @Nullable String requestId,
             @NonNull String callId) {}
 
-    /** Requires a live, host-authorized tool invocation. */
+    /**
+     * Returns host-derived invocation facts for a live authorized call of {@code tool}; claimed
+     * identifiers and stale calls are rejected.
+     */
     @NonNull Invocation invocation(@NonNull String tool);
 
-    /** Hint only: host recovery, pause, approval and budget gates remain authoritative. */
+    /**
+     * Hint only; host recovery, selection, pause, approval, and budget gates remain authoritative.
+     */
     void wake(@NonNull String owner, @NonNull String sessionId, @NonNull String agentId);
 
-    /** Publish plugin facts to an authorized selected session through the generic transport. */
+    /** Publishes plugin facts only to an authorized, currently selected session. */
     default void publish(
             @NonNull String sessionId,
             @NonNull String topic,
@@ -38,5 +52,6 @@ public interface PluginHost {
         throw new IllegalStateException("Plugin event publication is unavailable");
     }
 
+    /** Invalidates a plugin-owned resource for an authorized session. */
     void invalidate(@NonNull String sessionId, @NonNull String resource);
 }

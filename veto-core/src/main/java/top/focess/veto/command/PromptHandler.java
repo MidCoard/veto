@@ -132,7 +132,6 @@ public class PromptHandler {
                         config.model(),
                         config.credKey(),
                         config.options(),
-                        null, // systemPromptBase - persona-derived in PromptCompiler
                         config.baseUrl());
 
         try {

@@ -102,7 +102,7 @@ class PersonaToolWhitelistTest {
 
     private static @NonNull LlmBinding binding() {
         return new LlmBinding(
-                ProviderType.DEEPSEEK, "stub-model", "stub-key", LlmOptions.defaults(), "sys");
+                ProviderType.DEEPSEEK, "stub-model", "stub-key", LlmOptions.defaults(), null);
     }
 
     @Test

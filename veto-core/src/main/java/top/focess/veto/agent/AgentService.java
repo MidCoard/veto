@@ -674,27 +674,34 @@ public class AgentService {
                         deployerPolicy,
                         userProtectedSet,
                         readHistory);
+        UUID sessionId =
+                primaryAgentId == null ? UUID.fromString(persona.id()) : UUID.fromString(agentKey);
+        ToolExecutionBoundary toolBoundary =
+                new ToolExecutionBoundary(
+                        persona.id(),
+                        sessionId,
+                        owner,
+                        toolEngine,
+                        gateway,
+                        hitlRegistry,
+                        ingressDefense);
         AgentRunner runner =
                 new AgentRunner(
                         persona.id(),
                         persona,
                         toolEngine,
-                        gateway,
-                        hitlRegistry,
-                        ingressDefense,
+                        toolBoundary,
                         interceptors,
                         promptCompiler,
                         caller,
                         objectMapper,
                         maxCallsPerEpisode,
                         binding,
-                        deltaBroker,
+                        new DeltaBrokerEventSink(persona.id(), sessionId, deltaBroker),
                         userId,
                         turnLogService,
                         owner,
-                        primaryAgentId == null
-                                ? UUID.fromString(persona.id())
-                                : UUID.fromString(agentKey));
+                        sessionId);
         runner.configureModelTiers(modelTierRegistry);
         runner.setToolResultPresentation(toolResultPresentation);
         configureContinuations(runner);
@@ -752,21 +759,28 @@ public class AgentService {
                         deployerPolicy,
                         scopedProtectedSet,
                         readHistory);
+        ToolExecutionBoundary toolBoundary =
+                new ToolExecutionBoundary(
+                        scoped.id(),
+                        sessionId,
+                        owner,
+                        toolEngine,
+                        gateway,
+                        hitlRegistry,
+                        ingressDefense);
         AgentRunner runner =
                 new AgentRunner(
                         scoped.id(),
                         scoped,
                         toolEngine,
-                        gateway,
-                        hitlRegistry,
-                        ingressDefense,
+                        toolBoundary,
                         interceptors,
                         promptCompiler,
                         caller,
                         objectMapper,
                         maxCallsPerEpisode,
                         binding,
-                        deltaBroker,
+                        new DeltaBrokerEventSink(scoped.id(), sessionId, deltaBroker),
                         userId,
                         turnLogService,
                         owner,

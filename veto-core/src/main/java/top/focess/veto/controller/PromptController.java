@@ -88,7 +88,6 @@ public class PromptController {
                         cfg.config().model(),
                         cfg.config().credKey(),
                         cfg.config().options(),
-                        null,
                         cfg.config().baseUrl());
 
         try {

@@ -46,6 +46,57 @@ class SlmSecretDetectorTest {
     }
 
     @Test
+    void wholeStructuredDocumentEchoIsNotTreatedAsOneSecret() {
+        String clean = "{\"action\":\"compile\",\"files\":[\"main.cpp\"]}";
+        var cleanDetector =
+                new SlmSecretDetector(model(true, Optional.of("[" + quote(clean) + "]")));
+        assertEquals(clean, cleanDetector.mask(clean));
+
+        String sensitive = "{\"apiKey\":\"abcdefghijklmnopqrstuvwxyz0123456789ABCDEF\"}";
+        var sensitiveDetector =
+                new SlmSecretDetector(model(true, Optional.of("[" + quote(sensitive) + "]")));
+        String masked = sensitiveDetector.mask(sensitive);
+        assertFalse(masked.contains("abcdefghijklmnopqrstuvwxyz0123456789ABCDEF"));
+        assertTrue(masked.contains("REDACTED"));
+    }
+
+    @Test
+    void blanketStructuredTokenClassificationFallsBackToDeterministicMatches() {
+        String clean = "{\"operation\":\"build\",\"targets\":[\"application.cc\"]}";
+        var cleanDetector =
+                new SlmSecretDetector(
+                        model(
+                                true,
+                                Optional.of(
+                                        "[\"operation\",\"build\",\"targets\",\"application.cc\"]")));
+        assertEquals(clean, cleanDetector.mask(clean));
+
+        String credential =
+                "{\"job\":{\"kind\":\"publish\",\"apiKey\":\"abcdefghijklmnopqrstuvwxyz0123456789ABCDEF\"}}";
+        var credentialDetector =
+                new SlmSecretDetector(
+                        model(
+                                true,
+                                Optional.of(
+                                        "[\"job\",\"kind\",\"publish\",\"apiKey\",\"abcdefghijklmnopqrstuvwxyz0123456789ABCDEF\"]")));
+        String masked = credentialDetector.mask(credential);
+        assertFalse(masked.contains("abcdefghijklmnopqrstuvwxyz0123456789ABCDEF"));
+        assertTrue(masked.contains("REDACTED"));
+    }
+
+    @Test
+    void singleUnknownSensitiveScalarInStructuredTextRemainsModelDetected() {
+        String scalar = "novel-sensitive-value";
+        String text = "{\"note\":\"" + scalar + "\"}";
+        var detector = new SlmSecretDetector(model(true, Optional.of("[\"" + scalar + "\"]")));
+        assertEquals("{\"note\":\"[REDACTED_SLM_DETECTED]\"}", detector.mask(text));
+    }
+
+    private static @NonNull String quote(@NonNull String value) {
+        return "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
+    }
+
+    @Test
     void substringsMissingFromTheTextAreIgnoredAndFallBack() {
         var detector = new SlmSecretDetector(model(true, Optional.of("[\"not-in-the-text\"]")));
         String text = "no secrets here";

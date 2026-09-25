@@ -94,6 +94,10 @@ public final class SlmSecretDetector implements SecretDetector {
         List<SecretMasker.SecretMatch> matches = new ArrayList<>();
         for (String value : parseArray(response)) {
             if (value.length() < MIN_SECRET_LENGTH) continue;
+            // A small classifier may echo an entire JSON payload as one "secret". Structured
+            // documents are containers, not credentials; keep deterministic matches inside them
+            // and accept model spans only when the model identifies a narrower value.
+            if (value.equals(text) && isStructuredDocument(value)) continue;
             for (int index = text.indexOf(value);
                     index >= 0;
                     index = text.indexOf(value, index + value.length()))
@@ -110,7 +114,40 @@ public final class SlmSecretDetector implements SecretDetector {
             if (result.isEmpty() || candidate.start() >= result.getLast().end())
                 result.add(candidate);
         }
+        if (isBlanketStructuredClassification(text, result)) return List.of();
         return List.copyOf(result);
+    }
+
+    private static boolean isStructuredDocument(@NonNull String value) {
+        String stripped = value.strip();
+        return (stripped.startsWith("{") && stripped.endsWith("}"))
+                || (stripped.startsWith("[") && stripped.endsWith("]"));
+    }
+
+    private static boolean isBlanketStructuredClassification(
+            @NonNull String text, @NonNull List<SecretMasker.SecretMatch> matches) {
+        if (!isStructuredDocument(text) || matches.size() < 3) return false;
+        int significant = 0;
+        int covered = 0;
+        for (int index = 0; index < text.length(); index++) {
+            char character = text.charAt(index);
+            if (!isScalarCharacter(character)) continue;
+            significant++;
+            for (var match : matches) {
+                if (index >= match.start() && index < match.end()) {
+                    covered++;
+                    break;
+                }
+            }
+        }
+        return significant > 0 && covered * 100L >= significant * 80L;
+    }
+
+    private static boolean isScalarCharacter(char character) {
+        return Character.isLetterOrDigit(character)
+                || character == '_'
+                || character == '-'
+                || character == '.';
     }
 
     /** Parses the first JSON string array in the response; any deviation yields an empty list. */

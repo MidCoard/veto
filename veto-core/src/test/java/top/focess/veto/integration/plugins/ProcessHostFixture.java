@@ -33,6 +33,7 @@ import top.focess.veto.integration.plugins.storage.ConfigurationStorageFixture;
 import top.focess.veto.integration.plugins.storage.PluginStorageFactory;
 import top.focess.veto.plugin.runtime.*;
 import top.focess.veto.sandbox.*;
+import top.focess.veto.util.Nullness;
 
 /** Real process host and builtin tools with explicit test-only session membership. */
 @DefaultQualifier(
@@ -193,6 +194,8 @@ public final class ProcessHostFixture implements AutoCloseable {
                             });
             @NonNull SessionPlugins selected = mock();
             when(selected.includes(anyString(), anyString())).thenAnswer(call -> admitted.get());
+            when(selected.protect(any(), any(), anyString()))
+                    .thenAnswer(call -> Nullness.requireNonNull(call.getArgument(2)));
             @NonNull ApplicationContext app = mock();
             when(app.getBeansOfType(PluginManager.class)).thenReturn(Map.of("plugins", manager));
             when(app.getBeansOfType(AgentTool.class)).thenReturn(Map.of());

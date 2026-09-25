@@ -18,6 +18,7 @@ import top.focess.veto.api.llm.ResponseContract;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.api.llm.VetoRequest;
 import top.focess.veto.api.llm.exceptions.ModelSchemaException;
+import top.focess.veto.api.plugin.agent.AgentProfile;
 import top.focess.veto.api.plugin.agent.IsolatedAgent;
 import top.focess.veto.api.plugin.contract.JsonValues;
 import top.focess.veto.model.tier.ModelTier;
@@ -30,6 +31,7 @@ final class ModelRequests {
     private final @NonNull Workspace workspace;
     private final @NonNull AgentPersona persona;
     private final @NonNull LlmBinding binding;
+    private final AgentProfile.Prompt prompt;
     private final @NonNull ToolResultPresentationMode toolResultPresentation;
     private final String owner;
     private final ModelTierRegistry modelTierRegistry;
@@ -40,6 +42,7 @@ final class ModelRequests {
             @NonNull Workspace workspace,
             @NonNull AgentPersona persona,
             @NonNull LlmBinding binding,
+            AgentProfile.Prompt prompt,
             @NonNull ToolResultPresentationMode presentation,
             String owner,
             ModelTierRegistry tiers,
@@ -48,6 +51,7 @@ final class ModelRequests {
         this.workspace = workspace;
         this.persona = persona;
         this.binding = binding;
+        this.prompt = prompt;
         this.toolResultPresentation = presentation;
         this.owner = owner;
         this.modelTierRegistry = tiers;
@@ -111,7 +115,6 @@ final class ModelRequests {
                                     model.maxOutputTokens(),
                                     binding.options().timeout(),
                                     model.contextWindowTokens()),
-                            binding.systemPromptBase(),
                             model.baseUrl());
         }
         LlmOptions options = selected.options();
@@ -155,8 +158,8 @@ final class ModelRequests {
     }
 
     @NonNull VetoRequest scopeResponseRequest(@NonNull VetoRequest request) {
-        return promptCompiler.scopeRequest(
-                request, persona, workspace, binding.systemPromptBase(), toolResultPresentation);
+        return promptCompiler.scopeProfileRequest(
+                request, persona, workspace, prompt, toolResultPresentation);
     }
 
     @NonNull CompiledPrompt compilePrompt(
@@ -170,10 +173,10 @@ final class ModelRequests {
         if (scopedInvocation) inputBudgetOverride = Long.MAX_VALUE;
         else if (binding.options().contextWindowTokens() != null)
             inputBudgetOverride = binding.options().inputBudget();
-        return promptCompiler.compile(
+        return promptCompiler.compileProfile(
                 persona,
                 workspace,
-                binding.systemPromptBase(),
+                prompt,
                 sourceHistory,
                 correctionFactor,
                 toolResultPresentation,

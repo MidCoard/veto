@@ -10,7 +10,14 @@ import org.jspecify.annotations.Nullable;
 import top.focess.veto.api.plugin.contract.JsonValue;
 
 /**
- * Durable plugin namespace. Scopes are issued and revalidated by the host, not identity strings.
+ * Durable namespace bound to the current plugin identity.
+ *
+ * <p>Application, user, and session stores cannot access another plugin's namespace. User and
+ * session scopes are host-issued grants rather than caller-chosen identity strings, and every
+ * operation revalidates plugin admission, scope existence, ownership, and authorization. Retained
+ * stores and scopes may therefore become unusable after stop, deselection, or permanent scope
+ * deletion. Plugin disable or uninstall retains data by default; a future management purge is not
+ * part of this API guarantee.
  */
 @NullMarked
 @DefaultQualifier(
@@ -59,13 +66,16 @@ public interface PluginStorage {
         }
     }
 
+    /** A single bound scope using compare-and-set revisions for writes and deletion. */
     interface Store {
         Optional<Entry> get(String key);
 
         Page<Entry> list(String prefix, @Nullable String cursor, int limit);
 
+        /** Inserts when revision is null, or replaces only the matching current revision. */
         Entry put(String key, @Nullable String expectedRevision, Document document);
 
+        /** Deletes only the matching current revision; conflicts do not silently succeed. */
         void delete(String key, String expectedRevision);
     }
 
@@ -83,5 +93,6 @@ public interface PluginStorage {
     /** Only available while the host has installed an authenticated invocation context. */
     SessionScope currentSession();
 
+    /** Only available while the host has installed an authenticated invocation context. */
     UserScope currentUser();
 }

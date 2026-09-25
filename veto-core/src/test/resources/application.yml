@@ -68,8 +68,6 @@ veto:
   context:
     max_input_tokens: 32000
     context_fill_ratio: 0.9
-  skills:
-    project-dir: ""
   webfetch:
     fetch:
       timeout-seconds: 30

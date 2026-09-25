@@ -3,7 +3,13 @@ package top.focess.veto.api.plugin.contribution;
 import java.util.Set;
 import org.jspecify.annotations.NonNull;
 
-/** Staged implementation; relative ordering is restricted to this exact contribution point. */
+/**
+ * Staged implementation with a source-local ID.
+ *
+ * <p>The host supplies source identity and qualifies the local ID. Relative ordering is restricted
+ * to this exact contribution point. Constructing this value registers no authority or lifecycle
+ * admission.
+ */
 public record Contribution<T extends @NonNull Object>(
         @NonNull ContributionPoint<T> point,
         @NonNull String localId,
@@ -20,6 +26,7 @@ public record Contribution<T extends @NonNull Object>(
             throw new IllegalArgumentException("Too many ordering constraints");
     }
 
+    /** Creates a contribution without ordering constraints. */
     public static <T extends @NonNull Object> @NonNull Contribution<T> of(
             @NonNull ContributionPoint<T> point,
             @NonNull String localId,

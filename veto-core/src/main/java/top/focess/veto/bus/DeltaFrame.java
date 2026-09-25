@@ -59,10 +59,6 @@ public record DeltaFrame(
         VETO_REQUIRED,
         /** A previously raised veto was resolved (approved/declined/edited). */
         VETO_RESOLVED,
-        /** A background task (run_task) was launched. */
-        TASK_STARTED,
-        /** A background task finished (natural exit, auto-kill, or explicit stop). */
-        TASK_EXITED,
         /** The episode finished; carries the final success flag so clients can stop waiting. */
         EPISODE_DONE
     }

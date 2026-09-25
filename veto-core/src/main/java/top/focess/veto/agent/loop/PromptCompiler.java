@@ -40,6 +40,8 @@ import top.focess.veto.api.llm.PromptSpan;
 import top.focess.veto.api.llm.ToolDefinition;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.api.llm.VetoRequest;
+import top.focess.veto.api.plugin.agent.AgentProfile;
+import top.focess.veto.api.plugin.contract.JsonValues;
 import top.focess.veto.llm.core.ToolResultPresenter;
 
 /**
@@ -242,6 +244,24 @@ public class PromptCompiler {
      *     identity or skills context. Role/tools/boundaries are persona-driven.
      * @param history the raw, append-only turn history (oldest->newest)
      */
+    public @NonNull CompiledPrompt compileProfile(
+            @NonNull AgentPersona persona,
+            @NonNull Workspace sessionWorkspace,
+            AgentProfile.Prompt prompt,
+            List<TurnRecord> history,
+            double correctionFactor,
+            @NonNull ToolResultPresentationMode toolResultPresentation,
+            Long inputBudgetOverride) {
+        return compile(
+                persona,
+                sessionWorkspace,
+                renderProfilePrompt(prompt),
+                history,
+                correctionFactor,
+                toolResultPresentation,
+                inputBudgetOverride);
+    }
+
     public @NonNull CompiledPrompt compile(
             @NonNull AgentPersona persona,
             @NonNull Workspace sessionWorkspace,
@@ -337,6 +357,15 @@ public class PromptCompiler {
                 .text();
     }
 
+    public PromptSource.@NonNull Rendered linkSystemProfile(
+            @NonNull AgentPersona persona,
+            @NonNull Workspace sessionWorkspace,
+            AgentProfile.Prompt prompt,
+            @NonNull ToolResultPresentationMode toolResultPresentation) {
+        return linkSystemSource(
+                persona, sessionWorkspace, renderProfilePrompt(prompt), toolResultPresentation);
+    }
+
     public PromptSource.@NonNull Rendered linkSystemSource(
             @NonNull AgentPersona persona,
             @NonNull Workspace sessionWorkspace,
@@ -354,6 +383,15 @@ public class PromptCompiler {
      * Conversation messages and their source identities remain unchanged. The caller has already
      * selected the turn's response contract and tools before applying this projection.
      */
+    public @NonNull VetoRequest scopeProfileRequest(
+            @NonNull VetoRequest request,
+            @NonNull AgentPersona persona,
+            @NonNull Workspace workspace,
+            AgentProfile.Prompt prompt,
+            @NonNull ToolResultPresentationMode presentation) {
+        return scopeRequest(request, persona, workspace, renderProfilePrompt(prompt), presentation);
+    }
+
     public @NonNull VetoRequest scopeRequest(
             @NonNull VetoRequest request,
             @NonNull AgentPersona persona,
@@ -379,6 +417,12 @@ public class PromptCompiler {
                 request.baseUrl(),
                 request.nativeToolsEnabled(),
                 request.responseContract());
+    }
+
+    private static String renderProfilePrompt(AgentProfile.Prompt prompt) {
+        return prompt == null
+                ? null
+                : compileDocument(prompt.resource(), JsonValues.toMap(prompt.data())).text();
     }
 
     /** Removes conditional capabilities that cannot succeed for this persona. */

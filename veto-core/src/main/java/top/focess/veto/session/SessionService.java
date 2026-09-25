@@ -657,7 +657,6 @@ public class SessionService {
                 resolved.model(),
                 resolved.credentialKey(),
                 resolved.llmOptions(),
-                null,
                 resolved.baseUrl());
     }
 

@@ -11,7 +11,10 @@ import top.focess.veto.api.plugin.contribution.ContributionId;
 import top.focess.veto.api.plugin.contribution.ContributionPoint;
 import top.focess.veto.api.plugin.service.ServiceRegistration;
 
-/** Initial application contracts. The catalog itself knows none of these types. */
+/**
+ * Host-defined public registration points. The catalog itself knows none of these types, and
+ * registering at a point neither selects the contribution nor grants host authority.
+ */
 public final class StandardContributionPoints {
     private StandardContributionPoints() {}
 

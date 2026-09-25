@@ -73,8 +73,9 @@ public final class HttpDestinationGrant implements ApprovedHttpDestination {
         var name = operation;
         if (parent.equals(context)) {
             parent();
-            if (target != null) target.check();
-            return target == null ? Long.MAX_VALUE : target.deadline();
+            if (target != null)
+                throw new SecurityException("Destination belongs to an isolated child");
+            return Long.MAX_VALUE;
         }
         if (target == null || name == null)
             throw new SecurityException("No child destination grant");

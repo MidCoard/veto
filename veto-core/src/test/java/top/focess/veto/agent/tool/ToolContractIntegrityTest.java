@@ -15,7 +15,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import top.focess.veto.api.agent.tool.AgentTool;
+import top.focess.veto.api.agent.tool.CapabilityTool;
 import top.focess.veto.api.agent.tool.NativeTool;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.agent.tool.ToolDocs;
@@ -35,25 +35,25 @@ import top.focess.veto.integration.plugins.PluginManager;
 class ToolContractIntegrityTest {
 
     @Autowired private @NonNull PluginManager plugins;
+    private @NonNull List<CapabilityTool<?>> tools = List.of();
     private @NonNull List<NativeTool<?>> nativeTools = List.of();
-    private @NonNull List<AgentTool<?>> agentTools = List.of();
 
     @BeforeEach
     void readProductionPluginCatalog() {
         var natives = new ArrayList<NativeTool<?>>();
-        var agents = new ArrayList<AgentTool<?>>();
+        var contributed = new ArrayList<CapabilityTool<?>>();
         for (var entry : plugins.catalog().entries(StandardContributionPoints.NATIVE_TOOLS)) {
             var tool = entry.implementation();
+            contributed.add(tool);
             if (tool instanceof NativeTool<?> nativeTool) natives.add(nativeTool);
-            if (tool instanceof AgentTool<?> agentTool) agents.add(agentTool);
         }
+        tools = List.copyOf(contributed);
         nativeTools = List.copyOf(natives);
-        agentTools = List.copyOf(agents);
         assertEquals(
                 plugins.catalog().entries(StandardContributionPoints.NATIVE_TOOLS).size(),
-                nativeTools.size() + agentTools.size(),
+                tools.size(),
                 "every contributed handler must be checked");
-        assertEquals(37, nativeTools.size() + agentTools.size());
+        assertEquals(38, tools.size());
     }
 
     private final @NonNull ObjectMapper mapper = new ObjectMapper();
@@ -61,30 +61,23 @@ class ToolContractIntegrityTest {
     @Test
     void productionCatalogDoesNotRegisterRedundantThinkingOrTestTools() {
         assertTrue(
-                agentTools.stream()
+                tools.stream()
                         .noneMatch(
                                 tool ->
                                         tool.getName().equals("think")
                                                 || tool.getName().equals("fixture_loop")));
-        assertTrue(nativeTools.stream().noneMatch(tool -> tool.getName().equals("think")));
     }
 
     @Test
     void everyCallExamplePassesItsRuntimeArgumentValidator() {
-        for (NativeTool<?> tool : nativeTools) {
-            validateExamples(tool.getName(), tool.getClass(), tool.getArgsClass());
-        }
-        for (AgentTool<?> tool : agentTools) {
+        for (CapabilityTool<?> tool : tools) {
             validateExamples(tool.getName(), tool.getClass(), tool.getArgsClass());
         }
     }
 
     @Test
     void everyDeclaredRequiredParameterIsRejectedCentrallyWhenMissingOrNull() {
-        for (NativeTool<?> tool : nativeTools) {
-            verifyRequiredParameters(tool.getName(), tool.getClass(), tool.getArgsClass());
-        }
-        for (AgentTool<?> tool : agentTools) {
+        for (CapabilityTool<?> tool : tools) {
             verifyRequiredParameters(tool.getName(), tool.getClass(), tool.getArgsClass());
         }
     }

@@ -129,22 +129,28 @@ class CompactionRuntimeTest {
         var gateway = mock(ToolDocs.nonNullClass(Gateway.class));
         when(gateway.readHistory()).thenReturn(new ReadHistory());
         var compiler = mock(ToolDocs.nonNullClass(PromptCompiler.class));
+        var tools = mock(ToolDocs.nonNullClass(ToolEngine.class));
         when(compiler.recordRuntimeSource(any()))
                 .thenAnswer(invocation -> invocation.getArgument(0));
         return new AgentRunner(
                 id,
                 new AgentPersona(id, "Fixture", "Fixture", Set.of()),
-                mock(ToolDocs.nonNullClass(ToolEngine.class)),
-                gateway,
-                new HitlRegistry(),
-                new IngressDefense(),
+                tools,
+                new ToolExecutionBoundary(
+                        id,
+                        UUID.fromString(id),
+                        null,
+                        tools,
+                        gateway,
+                        new HitlRegistry(),
+                        new IngressDefense()),
                 List.of(),
                 compiler,
                 caller,
                 new ObjectMapper(),
                 50,
-                new LlmBinding(ProviderType.ANTHROPIC, "test", "test", LlmOptions.defaults(), ""),
-                null,
+                new LlmBinding(ProviderType.ANTHROPIC, "test", "test", LlmOptions.defaults(), null),
+                AgentEventSink.none(),
                 UUID.randomUUID(),
                 null);
     }

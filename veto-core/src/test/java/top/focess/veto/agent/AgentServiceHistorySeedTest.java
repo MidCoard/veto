@@ -133,10 +133,16 @@ class AgentServiceHistorySeedTest {
                             resumedRequest.set(request);
                             return new VetoResponse("done", null, "done");
                         });
-        LlmBinding updatedPromptBinding = binding("updated after restart");
+        LlmBinding updatedModelBinding =
+                new LlmBinding(
+                        ProviderType.DEEPSEEK,
+                        "updated-after-restart",
+                        "stub-key",
+                        LlmOptions.defaults(),
+                        null);
         Agent resumed =
                 afterRestart.getOrCreateAgent(
-                        sessionId.toString(), updatedPromptBinding, replayed, userId);
+                        sessionId.toString(), updatedModelBinding, replayed, userId);
         resumed.submit("second request");
         assertTrue(resumed.await(TIMEOUT).success());
 
@@ -151,9 +157,8 @@ class AgentServiceHistorySeedTest {
                 assertInstanceOf(ToolDocs.nonNullClass(VetoRequest.class), resumedRequest.get());
         assertEquals("system", request.messages().get(0).role());
         assertNotEquals(transformedSystemPrompt, request.messages().get(0).content());
-        assertTrue(
-                request.messages().get(0).content().contains("updated after restart"),
-                "current runtime capabilities and template replace obsolete persisted instructions");
+        assertEquals("updated-after-restart", request.modelName());
+        assertFalse(request.messages().get(0).content().contains(transformedSystemPrompt));
         assertTrue(
                 request.messages().stream()
                         .anyMatch(message -> "first request".equals(message.content())));
@@ -193,13 +198,9 @@ class AgentServiceHistorySeedTest {
         return binding(null);
     }
 
-    private static @NonNull LlmBinding binding(String systemPromptBase) {
+    private static @NonNull LlmBinding binding(String ignoredPrompt) {
         return new LlmBinding(
-                ProviderType.DEEPSEEK,
-                "stub-model",
-                "stub-key",
-                LlmOptions.defaults(),
-                systemPromptBase);
+                ProviderType.DEEPSEEK, "stub-model", "stub-key", LlmOptions.defaults(), null);
     }
 
     private static @NonNull Object requireField(Object value) {

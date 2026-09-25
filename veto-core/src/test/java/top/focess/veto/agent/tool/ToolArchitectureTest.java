@@ -48,7 +48,7 @@ class ToolArchitectureTest {
     }
 
     @Test
-    void allBuiltinToolsArePluginContributionsWithDefaultNamespacedNames() {
+    void allBuiltinToolsArePluginContributionsWithConfiguredDistributionNames() {
         var entries =
                 plugins.catalog().entries(StandardContributionPoints.NATIVE_TOOLS).stream()
                         .filter(entry -> entry.source().namespace().equals("top.focess.builtin"))
@@ -58,7 +58,7 @@ class ToolArchitectureTest {
         assertTrue(context.getBeansOfType(AgentTool.class).isEmpty());
         for (var entry : entries) {
             String name = plugins.toolName(entry.source().namespace(), entry.id().value());
-            assertEquals("plugin_top_focess_builtin__" + entry.id().localId(), name);
+            assertEquals(entry.id().localId(), name);
             var definition = engine.resolveDefinition(name);
             if (definition == null) throw new AssertionError("Missing built-in: " + name);
             var provenance = definition.provenance();
