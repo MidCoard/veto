@@ -326,6 +326,9 @@ class NewRequirementsTest {
         assertFalse(result.success());
         VetoAgent agent = service.agent(agentKey);
         if (agent == null) throw new AssertionError("expected agent");
+        long idleDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(3);
+        while (agent.state() != AgentState.IDLE && System.nanoTime() < idleDeadline)
+            Thread.sleep(10);
         assertEquals(AgentState.IDLE, agent.state());
     }
 }

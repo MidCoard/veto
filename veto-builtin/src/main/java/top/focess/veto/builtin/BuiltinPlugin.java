@@ -180,12 +180,12 @@ public final class BuiltinPlugin extends AbstractVetoPlugin {
                         SearchServices.registration(configuredBrave)));
         contributions.add(
                 Contribution.of(
-                        StandardContributionPoints.AGENT_WORK,
+                        StandardContributionPoints.AGENT_INBOX,
                         "monitor-work",
                         monitorRuntime.work()));
         contributions.add(
                 Contribution.of(
-                        StandardContributionPoints.SESSION_LIFECYCLE,
+                        StandardContributionPoints.LISTENERS,
                         "monitor-lifecycle",
                         monitorRuntime.service()));
         contributions.add(
@@ -200,9 +200,7 @@ public final class BuiltinPlugin extends AbstractVetoPlugin {
                         groupRuntime));
         contributions.add(
                 Contribution.of(
-                        StandardContributionPoints.SESSION_LIFECYCLE,
-                        "group-lifecycle",
-                        groupRuntime));
+                        StandardContributionPoints.LISTENERS, "group-lifecycle", groupRuntime));
         contributions.add(
                 Contribution.of(
                         StandardContributionPoints.FRONTEND,
@@ -210,7 +208,7 @@ public final class BuiltinPlugin extends AbstractVetoPlugin {
                         new GroupFrontend(groupRuntime).contribution()));
         contributions.add(
                 Contribution.of(
-                        StandardContributionPoints.SESSION_LIFECYCLE,
+                        StandardContributionPoints.LISTENERS,
                         "questions-lifecycle",
                         questionRuntime));
         contributions.add(
@@ -225,9 +223,7 @@ public final class BuiltinPlugin extends AbstractVetoPlugin {
                         ToolsFrontend.contribution()));
         contributions.add(
                 Contribution.of(
-                        StandardContributionPoints.SESSION_LIFECYCLE,
-                        "tasks-lifecycle",
-                        processRuntime));
+                        StandardContributionPoints.LISTENERS, "tasks-lifecycle", processRuntime));
         contributions.add(
                 Contribution.of(
                         StandardContributionPoints.FRONTEND,

@@ -12,7 +12,7 @@ import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import top.focess.veto.agent.tool.ToolCallContextHolder;
 import top.focess.veto.api.plugin.storage.PluginStorage;
-import top.focess.veto.plugin.runtime.ManagedPlugin;
+import top.focess.veto.plugin.runtime.PluginLifecycle;
 
 /** In-memory configuration fixture; each bound plugin has independent stores and scope tokens. */
 @DefaultQualifier(
@@ -24,7 +24,7 @@ import top.focess.veto.plugin.runtime.ManagedPlugin;
             TypeUseLocation.UPPER_BOUND
         })
 public final class ConfigurationStorageFixture implements PluginStorageFactory {
-    public PluginStorage bind(ManagedPlugin plugin) {
+    public PluginStorage bind(PluginLifecycle plugin) {
         return new Storage();
     }
 

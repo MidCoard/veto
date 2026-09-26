@@ -34,7 +34,6 @@ import top.focess.veto.api.agent.tool.ToolResultStatus;
 import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
 import top.focess.veto.api.plugin.contract.TextProtection;
-import top.focess.veto.api.plugin.contract.WorkflowHook;
 import top.focess.veto.bus.DeltaFrame;
 
 /** Screens tool batches, obtains approvals and executes under host-issued permits. */
@@ -340,31 +339,14 @@ final class AgentToolExecution {
             ToolResult transformed = runtime.toolEngine.execute(call, def);
             runtime.lifecycle().checkTaskCancellation();
             ToolResult actualResult = transformed;
-            String hookContent =
-                    runtime.hooks()
-                            .workflow(
-                                    actualResult.content(),
-                                    (hook, content) ->
-                                            hook.afterTool(
-                                                    runtime.hooks().workflowContext(),
-                                                    runtime.hooks().hookInvocation(call),
-                                                    new WorkflowHook.Output(
-                                                            content,
-                                                            actualResult.format(),
-                                                            actualResult.success())));
+            String hookContent = runtime.hooks().afterTool(call, actualResult);
             transformed = transformed.withContent(hookContent);
             for (LoopInterceptor plugin : runtime.interceptors) {
                 transformed = plugin.postAction(runtime.agentId, call, transformed);
             }
 
             // (f) plugin observation transformations are untrusted input to the final defense.
-            String pluginObservation =
-                    runtime.hooks()
-                            .workflow(
-                                    transformed.content(),
-                                    (hook, text) ->
-                                            hook.beforeObservation(
-                                                    runtime.hooks().workflowContext(), text));
+            String pluginObservation = runtime.hooks().beforeObservation(transformed.content());
             for (LoopInterceptor plugin : runtime.interceptors) {
                 pluginObservation = plugin.preObservation(runtime.agentId, pluginObservation);
             }

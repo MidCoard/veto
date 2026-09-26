@@ -54,9 +54,9 @@ import top.focess.veto.integration.plugins.IsolatedExecutions;
 import top.focess.veto.integration.plugins.PluginManager;
 import top.focess.veto.integration.plugins.SessionPlugins;
 import top.focess.veto.llm.config.LlmJacksonConfig;
-import top.focess.veto.plugin.runtime.ManagedPlugin;
-import top.focess.veto.plugin.runtime.ManagedPluginWork;
 import top.focess.veto.plugin.runtime.PluginJson;
+import top.focess.veto.plugin.runtime.PluginLifecycle;
+import top.focess.veto.plugin.runtime.PluginLifecycleFlow;
 import top.focess.veto.plugin.runtime.PluginSchema;
 import top.focess.veto.sandbox.SandboxSubstrate;
 import top.focess.veto.util.Nullness;
@@ -234,7 +234,7 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
 
     @Override
     @SuppressWarnings(
-            "resource") // WHY: ManagedPlugin handle is owned by the plugin catalog, closed
+            "resource") // WHY: PluginLifecycle handle is owned by the plugin catalog, closed
     // elsewhere
     public PreparedInvocation prepare(
             @NonNull ToolCall call,
@@ -276,7 +276,7 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
     private <T> @NonNull PreparedInvocation prepareTyped(
             @NonNull PreparedTool<T> tool,
             @NonNull JsonNode json,
-            @NonNull ManagedPlugin runtime,
+            @NonNull PluginLifecycle runtime,
             PluginHost.@NonNull Invocation invocation,
             @NonNull ToolCall call,
             @NonNull ToolCapability capability) {
@@ -369,7 +369,7 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
     // ── Flavour dispatch ───────────────────────────────────────────────────────
 
     @SuppressWarnings(
-            "resource") // WHY: ManagedPlugin handle is owned by the plugin catalog, closed
+            "resource") // WHY: PluginLifecycle handle is owned by the plugin catalog, closed
     // elsewhere
     private @NonNull ToolResult executePlugin(
             @NonNull ToolCall call, RegisteredTool.@NonNull Plugin registration) {
@@ -419,7 +419,7 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
     }
 
     @SuppressWarnings(
-            "resource") // WHY: ManagedPlugin handle is owned by the plugin catalog, closed
+            "resource") // WHY: PluginLifecycle handle is owned by the plugin catalog, closed
     // elsewhere
     private @NonNull ToolResult executeLocalCall(
             @NonNull ToolCall call, RegisteredTool.@NonNull Local registration) throws Exception {
@@ -451,8 +451,8 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
                             try {
                                 String content =
                                         executeLocal(registration.handler(), jsonArgs, true);
-                                ToolCallContextHolder.guardWork(
-                                        execution -> new ManagedPluginWork(runtime, execution));
+                                ToolCallContextHolder.guardFlow(
+                                        execution -> new PluginLifecycleFlow(runtime, execution));
                                 ToolCallContextHolder.guardAwait(runtime::ownAwait);
                                 return new LocalOutcome(content, null);
                             } catch (Exception failure) {

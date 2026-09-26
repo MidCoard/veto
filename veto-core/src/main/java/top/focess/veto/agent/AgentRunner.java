@@ -27,13 +27,13 @@ import top.focess.veto.api.agent.ToolCallEvent;
 import top.focess.veto.api.agent.ToolResultEvent;
 import top.focess.veto.api.agent.tool.ToolResult;
 import top.focess.veto.api.agent.workflow.ActionContext;
-import top.focess.veto.api.agent.workflow.PluginWork;
+import top.focess.veto.api.agent.workflow.ModelFlow;
 import top.focess.veto.api.llm.LlmBinding;
 import top.focess.veto.api.llm.ResponseContract;
 import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.api.llm.VetoResponse;
-import top.focess.veto.api.plugin.contract.AgentWorkSource;
+import top.focess.veto.api.plugin.contract.AgentInbox;
 import top.focess.veto.i18n.Msg;
 import top.focess.veto.integration.plugins.PluginLifecycleEvents;
 import top.focess.veto.integration.plugins.SessionPlugins;
@@ -47,6 +47,11 @@ import top.focess.veto.vault.UserContext;
 /** Public agent facade and single-thread action-queue coordinator. */
 public final class AgentRunner implements Runnable {
     private final @NonNull AgentRuntimeState runtime;
+    private final @NonNull ModelFlowStack flowStack = new ModelFlowStack();
+
+    private static final class FlowStepControl {
+        private boolean finish;
+    }
 
     /** Creates a runner with no session owner, deriving the session id from the persona id. */
     public AgentRunner(
@@ -165,7 +170,7 @@ public final class AgentRunner implements Runnable {
     }
 
     /** Attaches the plugin work source polled for autonomous observations. */
-    public void attachWorkSource(@NonNull AgentWorkSource service) {
+    public void attachWorkSource(@NonNull AgentInbox service) {
         runtime.continuations().attachWorkSource(service);
     }
 
@@ -396,18 +401,28 @@ public final class AgentRunner implements Runnable {
                 throw new BreakerTripException();
             }
             var accepted = pending;
-            if (accepted instanceof ToolCallContextHolder.ResponseDirective.Execute execution) {
+            if (accepted instanceof ToolCallContextHolder.ResponseDirective.Push pushed) {
                 pending = null;
                 runtime.lifecycle().checkTaskCancellation();
+                flowStack.push(pushed.flow());
+            }
+            if (!flowStack.defaultSelected()) {
+                ModelFlow flow = flowStack.top();
                 long configuration = runtime.configurationRevision;
                 var sources = new RequestEvidence.WorkSources();
+                var control = new FlowStepControl();
                 try {
-                    execution.work().run(workRuntime(originatingCall, sources));
+                    flow.run(workRuntime(originatingCall, sources, flow, control));
+                } catch (RuntimeException | Error failure) {
+                    flowStack.discardFailed(flow);
+                    throw failure;
                 } finally {
                     sources.close();
                 }
                 if (runtime.configurationRevision != configuration) continue;
-                return;
+                if (control.finish) return;
+                if (!flowStack.defaultSelected() && flowStack.top() == flow) return;
+                continue;
             }
             ModelExchange.Result exchange;
             if (accepted instanceof ToolCallContextHolder.ResponseDirective.Finish answer) {
@@ -468,10 +483,39 @@ public final class AgentRunner implements Runnable {
         }
     }
 
-    PluginWork.@NonNull Runtime workRuntime(
-            String sourceCallId, RequestEvidence.@NonNull WorkSources sources) {
+    ModelFlow.@NonNull Runtime workRuntime(
+            String sourceCallId,
+            RequestEvidence.@NonNull WorkSources sources,
+            @NonNull ModelFlow flow,
+            @NonNull FlowStepControl control) {
         long configuration = runtime.configurationRevision;
-        return new PluginWork.Runtime() {
+        return new ModelFlow.Runtime() {
+            @Override
+            public @NonNull String input() {
+                sources.check();
+                return runtime.lifecycle().currentRequest().episode.task();
+            }
+
+            @Override
+            public void push(@NonNull ModelFlow child) {
+                sources.check();
+                runtime.lifecycle().checkTaskCancellation();
+                if (!running()) throw new IllegalStateException("Flow request is no longer active");
+                flowStack.pushNested(flow, child);
+            }
+
+            @Override
+            public void pop() {
+                sources.check();
+                flowStack.pop(flow);
+            }
+
+            @Override
+            public void finish() {
+                sources.check();
+                control.finish = true;
+            }
+
             @Override
             public void beforeStep() {
                 sources.check();
@@ -494,19 +538,19 @@ public final class AgentRunner implements Runnable {
             }
 
             @Override
-            public PluginWork.@NonNull Generated generate(
-                    PluginWork.@NonNull ModelInput action, @NonNull ResponseContract contract) {
+            public ModelFlow.@NonNull Generated generate(
+                    ModelFlow.@NonNull ModelInput action, @NonNull ResponseContract contract) {
                 sources.check();
                 ModelExchange.Result exchange = callGenerate(action, contract);
                 sources.register(exchange.citations());
-                return new PluginWork.Generated(
+                return new ModelFlow.Generated(
                         exchange.response(), exchange.citations(), exchange.modelCallId());
             }
 
             @Override
             public void message(
                     @NonNull String text,
-                    PluginWork.Source citations,
+                    ModelFlow.Source citations,
                     String callId,
                     boolean forwarded) {
                 runtime.output()
@@ -540,7 +584,7 @@ public final class AgentRunner implements Runnable {
     }
 
     ModelExchange.@NonNull Result callGenerate(
-            PluginWork.@NonNull ModelInput gen, @NonNull ResponseContract contract) {
+            ModelFlow.@NonNull ModelInput gen, @NonNull ResponseContract contract) {
         if (runtime.lifecycle().currentRequest().episode.breaker().shouldTrip()) {
             runtime.lifecycle().tripBreaker();
             throw new BreakerTripException();

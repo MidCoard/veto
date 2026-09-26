@@ -8,14 +8,20 @@ plugin origin does not require PRIVILEGED or prohibit path/command/URL arguments
 Registration checks contract coherence, not handler fields. Java plugins are trusted
 code; authority is enforced by call permits and scoped host services, not a Java sandbox.
 
-`StandardContributionPoints.WORKFLOW` accepts `WorkflowHook`: input transformation,
-before/after model callbacks, tool rejection/explicit approval, result transformation,
-and observation transformation. Hooks run in catalog order for the selected pinned
-session, with lifecycle admission and cooperative cancellation. A hook cannot override
-a host refusal; requested approval is per call. Model callbacks expose model metadata
-and response text, not provider secrets or mutable native-call state. Input hooks run
-before input protection; output hooks precede final observation protection. Failures
-stop the operation with a safe host error. Script workers do not support Java hooks.
+`StandardContributionPoints.LISTENERS` accepts an event `Listener`: a plugin object
+whose `@EventHandler` methods subscribe to host-dispatched workflow events (input
+transformation, before/after model callbacks, tool rejection/explicit approval, result
+transformation, and observation transformation). Each handler is reflected once at
+registration and compiled into a zero-reflection invoker; handlers run in
+`EventPriority` order for the selected pinned session, with lifecycle admission and
+cooperative cancellation. A tool veto is monotonic — `BeforeToolEvent.decide` only
+escalates and `REJECT` calls `prevent()`, which irreversibly marks the event and skips
+later handlers by default. An opted-in observer cannot clear the mark or un-reject a
+call; requested approval is per
+call. Model callbacks expose model metadata and response text, not provider secrets or
+mutable native-call state. Input handlers run before input protection; observation
+handlers precede final observation protection. Failures stop the operation with a safe
+host error. Script workers do not support Java listeners.
 
 Provider, storage and other feature contracts still in core are migration gaps; this
 release does not yet make every feature implementable through the API alone.
@@ -159,8 +165,8 @@ The built-in `top.focess.secret-protection` provider is an ordinary
 ServiceLoader-discovered plugin using this same selection mechanism. It
 registers the credential-import tool (effect `PRIVILEGED`), the typed
 input/file-capture/file-observation protections, the session-less
-`veto:observation-middleware` masking contribution and session-lifecycle
-notifications. It obtains its vault access and its detection model as
+`veto:observation-middleware` masking contribution and lifecycle-event
+listeners. It obtains its vault access and its detection model as
 host-granted services through `PluginContext`; without them, credential imports
 fail at call time and detection degrades to its deterministic fallback. Script
 packages currently support tools only.

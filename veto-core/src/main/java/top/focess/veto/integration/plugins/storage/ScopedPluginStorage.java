@@ -33,8 +33,8 @@ import top.focess.veto.api.plugin.contract.JsonValues;
 import top.focess.veto.api.plugin.storage.PluginStorage;
 import top.focess.veto.integration.plugins.PluginHostServices;
 import top.focess.veto.model.SessionEntity;
-import top.focess.veto.plugin.runtime.ManagedPlugin;
 import top.focess.veto.plugin.runtime.PluginJson;
+import top.focess.veto.plugin.runtime.PluginLifecycle;
 import top.focess.veto.util.Nullness;
 import top.focess.veto.vault.UserContext;
 import top.focess.veto.vault.UserEntity;
@@ -76,7 +76,7 @@ public class ScopedPluginStorage implements PluginStorageFactory {
     }
 
     @Override
-    public PluginStorage bind(ManagedPlugin plugin) {
+    public PluginStorage bind(PluginLifecycle plugin) {
         return new Bound(plugin);
     }
 
@@ -111,12 +111,12 @@ public class ScopedPluginStorage implements PluginStorageFactory {
     private record Grant(PluginStorage.Scope scope, String owner) {}
 
     private final class Bound implements PluginStorage {
-        private final ManagedPlugin plugin;
+        private final PluginLifecycle plugin;
         private final String namespace;
         private final Set<String> selectionIds;
         private final Map<String, Grant> grants = new HashMap<>();
 
-        Bound(ManagedPlugin plugin) {
+        Bound(PluginLifecycle plugin) {
             this.plugin = plugin;
             namespace = plugin.identity().id();
             var ids = new HashSet<>(plugin.implementation().historicalIds());

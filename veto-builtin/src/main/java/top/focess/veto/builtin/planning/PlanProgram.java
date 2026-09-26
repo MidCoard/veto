@@ -6,8 +6,8 @@ import java.util.Map;
 import java.util.Set;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.agent.tool.ToolResult;
-import top.focess.veto.api.agent.workflow.PluginWork;
-import top.focess.veto.api.agent.workflow.PluginWork.Source;
+import top.focess.veto.api.agent.workflow.ModelFlow;
+import top.focess.veto.api.agent.workflow.ModelFlow.Source;
 import top.focess.veto.api.llm.ResponseContract;
 import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.api.llm.VetoResponse;
@@ -48,64 +48,69 @@ public final class PlanProgram implements PlanExecution {
     }
 
     @Override
-    public @NonNull PluginWork accepted(@NonNull ActionsProgram program) {
+    public @NonNull ModelFlow accepted(@NonNull ActionsProgram program) {
         return ports -> {
-            install(program, ports.sourceCallId());
-            run(
-                    new Runtime() {
-                        public boolean running() {
-                            return ports.running();
-                        }
+            try {
+                install(program, ports.sourceCallId());
+                run(
+                        new Runtime() {
+                            public boolean running() {
+                                return ports.running();
+                            }
 
-                        public void beforeStep() {
-                            ports.beforeStep();
-                        }
+                            public void beforeStep() {
+                                ports.beforeStep();
+                            }
 
-                        public @NonNull ToolResult tool(
-                                @NonNull ToolCall call, @NonNull PlanStepContext context) {
-                            return ports.tool(call, context.context());
-                        }
+                            public @NonNull ToolResult tool(
+                                    @NonNull ToolCall call, @NonNull PlanStepContext context) {
+                                return ports.tool(call, context.context());
+                            }
 
-                        public @NonNull Generated generate(
-                                @NonNull GenerateAction action,
-                                @NonNull ResponseContract contract) {
-                            var value =
-                                    ports.generate(
-                                            new PluginWork.ModelInput(
-                                                    action.resolvePrompt(scope),
-                                                    action.resolveInputs(scope),
-                                                    action.modelTier(),
-                                                    action.temperature(),
-                                                    action.thought(),
-                                                    action.responseMode()
-                                                                            == GenerateAction
-                                                                                    .ResponseMode
-                                                                                    .CITATIONS
-                                                                    && answerTool != null
-                                                            ? Set.of(answerTool)
-                                                            : Set.of()),
-                                            contract);
-                            return new Generated(
-                                    value.response(), value.citations(), value.modelCallId());
-                        }
+                            public @NonNull Generated generate(
+                                    @NonNull GenerateAction action,
+                                    @NonNull ResponseContract contract) {
+                                var value =
+                                        ports.generate(
+                                                new ModelFlow.ModelInput(
+                                                        action.resolvePrompt(scope),
+                                                        action.resolveInputs(scope),
+                                                        action.modelTier(),
+                                                        action.temperature(),
+                                                        action.thought(),
+                                                        action.responseMode()
+                                                                                == GenerateAction
+                                                                                        .ResponseMode
+                                                                                        .CITATIONS
+                                                                        && answerTool != null
+                                                                ? Set.of(answerTool)
+                                                                : Set.of()),
+                                                contract);
+                                return new Generated(
+                                        value.response(), value.citations(), value.modelCallId());
+                            }
 
-                        public void message(
-                                @NonNull String text,
-                                Source citations,
-                                String callId,
-                                boolean forwarded) {
-                            ports.message(text, citations, callId, forwarded);
-                        }
+                            public void message(
+                                    @NonNull String text,
+                                    Source citations,
+                                    String callId,
+                                    boolean forwarded) {
+                                ports.message(text, citations, callId, forwarded);
+                            }
 
-                        public void escaped(@NonNull String reason) {
-                            ports.observation("plan_escape", reason);
-                        }
+                            public void escaped(@NonNull String reason) {
+                                ports.observation("plan_escape", reason);
+                            }
 
-                        public @NonNull String prompt(
-                                @NonNull String source, @NonNull Map<String, Object> data) {
-                            return ports.prompt(source, data);
-                        }
-                    });
+                            public @NonNull String prompt(
+                                    @NonNull String source, @NonNull Map<String, Object> data) {
+                                return ports.prompt(source, data);
+                            }
+                        });
+            } finally {
+                ports.pop();
+                ports.finish();
+            }
         };
     }
 

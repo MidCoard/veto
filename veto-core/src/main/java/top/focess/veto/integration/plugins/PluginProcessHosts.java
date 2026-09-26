@@ -28,7 +28,7 @@ import top.focess.veto.api.process.Command;
 import top.focess.veto.api.process.CommandResult;
 import top.focess.veto.api.process.ProcessHost;
 import top.focess.veto.integration.plugins.storage.PluginStorageFactory;
-import top.focess.veto.plugin.runtime.ManagedPlugin;
+import top.focess.veto.plugin.runtime.PluginLifecycle;
 import top.focess.veto.sandbox.SandboxManager;
 import top.focess.veto.sandbox.SandboxProfile;
 
@@ -57,13 +57,13 @@ public final class PluginProcessHosts implements PluginProcessHostFactory {
 
     /** Returns the process host for one plugin activation and its scoped storage. */
     public @NonNull ProcessHost bind(
-            @NonNull ManagedPlugin plugin, @NonNull PluginStorage storage) {
+            @NonNull PluginLifecycle plugin, @NonNull PluginStorage storage) {
         return new Bound(plugin, storage);
     }
 
     /** Verifies the running process belongs to the invocation's scope and may still take input. */
     public static void validateInput(
-            @NonNull ManagedPlugin plugin,
+            @NonNull PluginLifecycle plugin,
             PluginHost.@NonNull Invocation invocation,
             ProcessHost.@NonNull Running running) {
         if (!(running instanceof RunningProcess process)
@@ -76,10 +76,10 @@ public final class PluginProcessHosts implements PluginProcessHostFactory {
     }
 
     private final class Bound implements ProcessHost {
-        private final @NonNull ManagedPlugin plugin;
+        private final @NonNull PluginLifecycle plugin;
         private final @NonNull PluginStorage storage;
 
-        private Bound(@NonNull ManagedPlugin plugin, @NonNull PluginStorage storage) {
+        private Bound(@NonNull PluginLifecycle plugin, @NonNull PluginStorage storage) {
             this.plugin = plugin;
             this.storage = storage;
         }

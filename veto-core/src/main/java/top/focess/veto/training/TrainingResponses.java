@@ -73,6 +73,6 @@ public final class TrainingResponses {
             Instant completedAt,
             @NonNull String trainedModelPath,
             @NonNull String error,
-            TrainingProgress.@Nullable EvaluationReport evaluation)
+            TrainingProgress.EvaluationReport evaluation)
             implements RestResponse {}
 }

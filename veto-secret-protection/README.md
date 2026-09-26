@@ -18,7 +18,7 @@ All through the typed catalog points (see the
   while preserving live SECRET_REF markers.
 - `veto:observation-middleware` — the session-less masking contribution; the
   host chains it as the observation/ingress masking floor.
-- `veto:session-lifecycle` — owner/session/agent transitions map to store
+- `veto:listeners` — owner/session/agent lifecycle events map to store
   boundaries (`openOwner`/`closeOwner`/`retireSession`/`discardAgent`).
 - `veto:frontend` — the browser reveal component (`show` action reads a live
   reference for its owning scope only).

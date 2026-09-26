@@ -10,6 +10,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.NullMarked;
 import org.junit.jupiter.api.Test;
+import top.focess.veto.api.event.SessionClosedEvent;
 import top.focess.veto.api.plugin.PluginContext;
 import top.focess.veto.api.plugin.PluginHost;
 import top.focess.veto.api.plugin.PluginIdentity;
@@ -150,8 +151,8 @@ class MonitorLifecycleTest {
             service.createTimer(
                     "owner", "closed", "offline", "Review", Instant.now().plusSeconds(60));
             service.createTimer("owner", "kept", "other", "Review", Instant.now().plusSeconds(60));
-            service.onSessionClosed("foreign", "kept");
-            service.onSessionClosed("owner", "closed");
+            service.onSessionClosed(new SessionClosedEvent("foreign", "kept"));
+            service.onSessionClosed(new SessionClosedEvent("owner", "closed"));
             assertTrue(service.list("owner", "closed").isEmpty());
             assertEquals("ACTIVE", service.list("owner", "kept").getFirst().state());
         }

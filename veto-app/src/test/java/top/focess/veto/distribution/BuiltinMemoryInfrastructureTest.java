@@ -17,7 +17,7 @@ import top.focess.veto.builtin.memory.MemoryRepository;
 import top.focess.veto.integration.plugins.PluginServiceGrants;
 import top.focess.veto.llm.credential.CredentialResolver;
 import top.focess.veto.model.SessionRepository;
-import top.focess.veto.plugin.runtime.ManagedPlugin;
+import top.focess.veto.plugin.runtime.PluginLifecycle;
 import top.focess.veto.vault.UserRegistry;
 
 class BuiltinMemoryInfrastructureTest {
@@ -48,9 +48,9 @@ class BuiltinMemoryInfrastructureTest {
         if (rawGrants == null) throw new AssertionError("Expected builtin-specific grants");
         PluginServiceGrants grants =
                 assertInstanceOf(ToolDocs.nonNullClass(PluginServiceGrants.class), rawGrants);
-        var builtin = mock(ManagedPlugin.class);
+        var builtin = mock(PluginLifecycle.class);
         when(builtin.identity()).thenReturn(new PluginIdentity("top.focess.builtin", "1.0.0"));
-        var other = mock(ManagedPlugin.class);
+        var other = mock(PluginLifecycle.class);
         when(other.identity()).thenReturn(new PluginIdentity("other.plugin", "1.0.0"));
         assertTrue(
                 grants.forPlugin(builtin)

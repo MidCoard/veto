@@ -51,7 +51,9 @@ import top.focess.veto.builtin.questions.QuestionRuntime;
         resultContract =
                 """
                 Returns JSON `{"answers":{"question_id":"selected or entered value"}}`. Invalid \
-                questions fail with INVALID_QUESTIONS and `Invalid questions: <detail>`; \
+                questions that violate declared field bounds fail with INVALID_ARGUMENTS before \
+                execution. Cross-field question errors fail with INVALID_QUESTIONS and `Invalid \
+                questions: <detail>`; \
                 cancellation reports USER_CANCELLED \
                 (`Cancelled: the user cancelled the question batch.`), and an interrupted wait \
                 reports TOOL_INTERRUPTED \
@@ -83,8 +85,6 @@ public final class AskUserTool
         implements AgentTool<AskUserTool.Args>, NativeTool<AskUserTool.Args> {
 
     static final int MAX_QUESTIONS = 10;
-    static final int MIN_OPTIONS = 2;
-    static final int MAX_OPTIONS = 5;
 
     private final @NonNull QuestionRuntime runtime;
 
@@ -141,81 +141,41 @@ public final class AskUserTool
         return ToolJson.object(new Result(answer.answers()));
     }
 
+    // Declarative bounds (@ArraySize, @StringConstraint) are enforced against the compiled schema
+    // by the host before execute(); only cross-field semantics that annotations cannot express
+    // remain here.
     private static void validate(@NonNull List<@NonNull Question> questions) {
-        if (questions.isEmpty() || questions.size() > MAX_QUESTIONS) {
-            ToolErrors.failure(
-                    ToolErrorCode.VALIDATION.INVALID_QUESTIONS,
-                    "Invalid questions: ask_user requires between 1 and "
-                            + MAX_QUESTIONS
-                            + " questions.");
-        }
         Set<String> ids = new HashSet<>();
         for (Question question : questions) {
-            if (question.header().isBlank() || length(question.header()) > 12) {
+            if (question.header().isBlank()) {
                 ToolErrors.failure(
                         ToolErrorCode.VALIDATION.INVALID_QUESTIONS,
-                        "Invalid questions: each question header must contain 1 to 12 characters.");
+                        "Invalid questions: each question header must not be blank.");
             }
-            if (question.id().isBlank()
-                    || !question.id().matches("[a-z][a-z0-9_]*")
-                    || !ids.add(question.id())) {
+            if (!ids.add(question.id())) {
                 ToolErrors.failure(
                         ToolErrorCode.VALIDATION.INVALID_QUESTIONS,
                         "Invalid questions: question ids must be unique snake_case identifiers.");
             }
-            if (question.question().isBlank() || length(question.question()) > 300) {
+            if (question.question().isBlank()) {
                 ToolErrors.failure(
                         ToolErrorCode.VALIDATION.INVALID_QUESTIONS,
-                        "Invalid questions: each question prompt must contain 1 to 300"
-                                + " characters.");
-            }
-            if (question.options().size() < MIN_OPTIONS
-                    || question.options().size() > MAX_OPTIONS) {
-                ToolErrors.failure(
-                        ToolErrorCode.VALIDATION.INVALID_QUESTIONS,
-                        "Invalid questions: question '"
-                                + question.id()
-                                + "' has "
-                                + question.options().size()
-                                + " options; expected "
-                                + MIN_OPTIONS
-                                + " to "
-                                + MAX_OPTIONS
-                                + ". Revise the options and call ask_user again. No questions were sent and no answers were collected.");
+                        "Invalid questions: each question prompt must not be blank.");
             }
             Set<String> labels = new HashSet<>();
-            for (int index = 0; index < question.options().size(); index++) {
-                Option option = question.options().get(index);
+            for (Option option : question.options()) {
                 String normalizedLabel = option.label().strip().toLowerCase(Locale.ROOT);
-                if (length(option.label()) > 120) {
-                    ToolErrors.failure(
-                            ToolErrorCode.VALIDATION.INVALID_QUESTIONS,
-                            "Invalid questions: question '"
-                                    + question.id()
-                                    + "', option "
-                                    + (index + 1)
-                                    + ": label has "
-                                    + length(option.label())
-                                    + " characters; maximum is 120 in the supplied label."
-                                    + " Shorten the label and call ask_user again; no questions were sent.");
-                }
                 if (option.label().isBlank()
                         || "other".equals(normalizedLabel)
                         || option.description().isBlank()
-                        || length(option.description()) > 200
                         || !labels.add(normalizedLabel)) {
                     ToolErrors.failure(
                             ToolErrorCode.VALIDATION.INVALID_QUESTIONS,
-                            "Invalid questions: option labels must be distinct, at most 120"
-                                    + " characters, and not `Other`; descriptions must contain 1"
-                                    + " to 200 characters.");
+                            "Invalid questions: option labels must be distinct and not `Other`;"
+                                    + " descriptions must not be blank.");
                 }
             }
         }
-    }
-
-    private static int length(@NonNull String value) {
-        return value.codePointCount(0, value.length());
     }
 
     /** JSON result payload of {@code ask_user}: answers keyed by question id. */

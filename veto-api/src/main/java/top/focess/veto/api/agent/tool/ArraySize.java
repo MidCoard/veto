@@ -6,8 +6,10 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * Array cardinality advertised in every provider's tool schema; runtime validation remains
- * required.
+ * Array cardinality bounds for one tool argument.
+ *
+ * <p>The host compiles these into the tool's JSON Schema ({@code minItems}/{@code maxItems}) and
+ * enforces them against every call before the tool body runs, so a tool must not re-check the size.
  */
 @Target(ElementType.RECORD_COMPONENT)
 @Retention(RetentionPolicy.RUNTIME)

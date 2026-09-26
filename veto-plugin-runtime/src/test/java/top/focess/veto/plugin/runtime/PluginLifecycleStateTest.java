@@ -20,13 +20,13 @@ import top.focess.veto.api.plugin.PluginState;
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.contract.PluginFailure;
 
-class ManagedPluginStateTest {
+class PluginLifecycleStateTest {
     @Test
     void closeDrainsActiveCallsAndRejectsNewAdmission() throws Exception {
         try (var control = Executors.newSingleThreadExecutor();
                 var callers = Executors.newVirtualThreadPerTaskExecutor()) {
             var observer = new Observer(false);
-            var managed = new ManagedPlugin(observer, control);
+            var managed = new PluginLifecycle(observer, control);
             managed.initialize(
                     new PluginContext(
                             observer.identity(),
@@ -79,7 +79,7 @@ class ManagedPluginStateTest {
     void nestedCallsReuseAdmissionButCannotCloseTheirOwnPlugin() throws Exception {
         try (var control = Executors.newSingleThreadExecutor()) {
             var observer = new Observer(false);
-            try (var managed = new ManagedPlugin(observer, control)) {
+            try (var managed = new PluginLifecycle(observer, control)) {
                 managed.initialize(
                         new PluginContext(
                                 observer.identity(),
@@ -142,7 +142,7 @@ class ManagedPluginStateTest {
     void sameContextObservesCallbacksAndSubsequentTransitions() throws Exception {
         try (var executor = Executors.newSingleThreadExecutor()) {
             var observer = new Observer(false);
-            var managed = new ManagedPlugin(observer, executor);
+            var managed = new PluginLifecycle(observer, executor);
             try {
                 assertEquals(PluginState.NEW, managed.state());
                 managed.initialize(
@@ -178,7 +178,7 @@ class ManagedPluginStateTest {
     void failureCleanupSeesTheOwnersFailedState() throws Exception {
         try (var executor = Executors.newSingleThreadExecutor()) {
             var observer = new Observer(true);
-            var managed = new ManagedPlugin(observer, executor);
+            var managed = new PluginLifecycle(observer, executor);
             try {
                 managed.initialize(
                         new PluginContext(

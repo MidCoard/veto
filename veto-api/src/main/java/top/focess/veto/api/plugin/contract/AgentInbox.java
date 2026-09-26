@@ -7,7 +7,7 @@ import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 
 /** Plugin-owned inbox and completion policy; the host only executes admitted continuations. */
-public interface AgentWorkSource {
+public interface AgentInbox {
     /**
      * Host-selected inbox scope.
      *

@@ -82,9 +82,6 @@ public final class AnswerWithCitationsTool implements ControlTool<AnswerWithCita
             citations.add(new SourceEvidence.Declaration(citation.id(), selectors));
         }
         try {
-            if (citations.isEmpty())
-                throw new IllegalArgumentException(
-                        "answer_with_citations requires at least one linked source. Reply in ordinary text when the answer does not need verified citation links.");
             var formatting = new ArrayList<VetoResponse.Citation>();
             for (var citation : citations) {
                 var sources = new ArrayList<VetoResponse.Source>();

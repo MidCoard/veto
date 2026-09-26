@@ -8,7 +8,7 @@ import top.focess.veto.api.agent.control.ControlHost;
 import top.focess.veto.api.agent.tool.*;
 
 /** {@code submit_plan} - validate and install a complete actions program for execution. */
-@ControlSubmission(ControlSubmission.Kind.EXECUTE)
+@ControlSubmission(ControlSubmission.Kind.PUSH)
 @ToolPrompt("plan-system-prompt")
 @ToolDoc(
         description =
@@ -91,8 +91,7 @@ public final class SubmitPlanTool implements ControlTool<SubmitPlanTool.Args> {
             ProgramValidator.validate(program);
             ProgramValidator.validateInputs(program);
             var answerTool = PlanPreflight.validate(program, capability, MAPPER);
-            capability.execute(
-                    new PlanProgram(MAPPER, configuration, answerTool).accepted(program));
+            capability.push(new PlanProgram(MAPPER, configuration, answerTool).accepted(program));
         } catch (IllegalArgumentException | ProgramValidator.InvalidProgramException error) {
             throw new ToolExecutionException(
                     ToolResultStatus.FAILURE,

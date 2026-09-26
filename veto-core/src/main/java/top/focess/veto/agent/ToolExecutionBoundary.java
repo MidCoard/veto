@@ -24,9 +24,9 @@ import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.agent.tool.ToolResult;
 import top.focess.veto.api.agent.workflow.ActionContext;
+import top.focess.veto.api.event.BeforeToolEvent;
 import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.api.plugin.PluginHost;
-import top.focess.veto.api.plugin.contract.WorkflowHook;
 
 /** Owns the host authority sequence around every tool invocation. */
 public final class ToolExecutionBoundary {
@@ -104,7 +104,7 @@ public final class ToolExecutionBoundary {
             String thought,
             ActionContext step,
             @NonNull String requestId,
-            WorkflowHook.@NonNull Decision hookDecision) {
+            BeforeToolEvent.@NonNull Decision hookDecision) {
         var invocation =
                 new PluginHost.Invocation(
                         owner == null ? "" : owner,

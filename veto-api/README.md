@@ -147,16 +147,15 @@ The current `StandardContributionPoints` are:
 | Constant | Point ID | Contract |
 |---|---|---|
 | `AGENT_CONFIGURATION` | `veto:agent-configuration` | `AgentConfiguration` |
-| `AGENT_WORK` | `veto:agent-work` | `AgentWorkSource` |
+| `AGENT_INBOX` | `veto:agent-inbox` | `AgentInbox` |
 | `SERVICES` | `veto:services` | `ServiceRegistration` |
 | `LLM_PROVIDERS` | `veto:llm-providers` | `LlmProvider` |
-| `WORKFLOW` | `veto:workflow` | `WorkflowHook` |
+| `LISTENERS` | `veto:listeners` | `Listener` |
 | `MODEL_RESPONSE` | `veto:model-response` | `ModelResponsePolicy` |
 | `FRONTEND` | `veto:frontend` | `FrontendContribution` |
-| `FILE_OBSERVATION` | `veto:file-observation` | `FileObservation` |
-| `INPUT_PROTECTION` | `veto:input-protection` | `InputProtection` |
-| `FILE_PROTECTION` | `veto:file-protection` | `FileProtection` |
-| `SESSION_LIFECYCLE` | `veto:session-lifecycle` | `SessionLifecycle` |
+| `FILE_OBSERVATION` | `veto:file-observation` | `TextProtection` |
+| `INPUT_PROTECTION` | `veto:input-protection` | `TextProtection` |
+| `FILE_PROTECTION` | `veto:file-protection` | `TextProtection` |
 | `DATA_LIFECYCLE` | `veto:data-lifecycle` | `DataLifecycle` |
 | `TOOLS` | `veto:tools` | `Tool` |
 | `NATIVE_TOOLS` | `veto:native-tools` | `CapabilityTool<?>` |
@@ -167,6 +166,26 @@ The current `StandardContributionPoints` are:
 Use `NATIVE_TOOLS` for record-authored in-process Java tools. Use `TOOLS` and
 `ToolContribution` for schema-authored JSON tools. Registration validates coherence;
 execution still passes through selection, admission, cancellation, and resource checks.
+
+`FILE_OBSERVATION`, `INPUT_PROTECTION`, and `FILE_PROTECTION` all share the `TextProtection`
+contract; the application site is carried by the point identity, not by a marker subtype.
+
+## Model flow and inbox
+
+The core default model flow runs with no plugin. An admitted control tool may call
+`ControlHost.push(ModelFlow)` to select a plugin flow after its successful tool result.
+The selected flow receives a request-bound `ModelFlow.Runtime` for protected input,
+budgeted model generation, authorized tools, messages, and observations. It may push
+a nested flow, pop its own top frame, or finish the current request. Finishing a
+request and popping a flow are separate operations. The host bounds nesting and
+rechecks the current request and plugin admission; keeping a runtime reference does
+not preserve authorization. `submit_plan` pushes a plan flow and pops it at exit.
+
+`AgentInbox` is separate: it supplies pending observations and delivery callbacks,
+not model-flow control. Its durable continuation keys retain the existing
+`plugin-work:` prefix for stored checkpoint compatibility. The current stack is
+runner-local; durable session descriptors and restart reconstruction are still
+pending, so plugins must not rely on a pushed flow surviving backend restart.
 
 ## Host services and PluginHost
 

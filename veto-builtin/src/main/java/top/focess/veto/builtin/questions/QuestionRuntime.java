@@ -8,12 +8,16 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.function.Predicate;
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.api.event.AgentTerminatedEvent;
+import top.focess.veto.api.event.EventHandler;
+import top.focess.veto.api.event.Listener;
+import top.focess.veto.api.event.OwnerClosedEvent;
+import top.focess.veto.api.event.SessionClosedEvent;
 import top.focess.veto.api.plugin.PluginHost;
 import top.focess.veto.api.plugin.contract.FrontendContribution.Scope;
-import top.focess.veto.api.plugin.contract.SessionLifecycle;
 
 /** Plugin-owned, in-memory rendezvous. Only the host supplies invocation identities. */
-public final class QuestionRuntime implements SessionLifecycle, AutoCloseable {
+public final class QuestionRuntime implements Listener, AutoCloseable {
     private final PluginHost host;
     private final @NonNull ConcurrentHashMap<Key, Pending> pending = new ConcurrentHashMap<>();
     private boolean closed;
@@ -108,21 +112,22 @@ public final class QuestionRuntime implements SessionLifecycle, AutoCloseable {
         return value != null && value.future().complete(new AnswerBatch(Map.of(), true));
     }
 
-    @Override
-    public void onOwnerClosed(@NonNull String ownerId) {
-        cancelWhere(scope -> scope.ownerId().equals(ownerId));
+    @EventHandler
+    public void onOwnerClosed(@NonNull OwnerClosedEvent event) {
+        cancelWhere(scope -> scope.ownerId().equals(event.owner()));
     }
 
-    @Override
-    public void onSessionClosed(@NonNull String ownerId, @NonNull String sessionId) {
+    @EventHandler
+    public void onSessionClosed(@NonNull SessionClosedEvent event) {
         cancelWhere(
-                scope -> scope.ownerId().equals(ownerId) && scope.sessionId().equals(sessionId));
+                scope ->
+                        scope.ownerId().equals(event.owner())
+                                && scope.sessionId().equals(event.sessionId()));
     }
 
-    @Override
-    public void onAgentTerminated(
-            @NonNull String ownerId, @NonNull String sessionId, @NonNull String agentId) {
-        var target = new Scope(ownerId, sessionId, agentId);
+    @EventHandler
+    public void onAgentTerminated(@NonNull AgentTerminatedEvent event) {
+        var target = new Scope(event.owner(), event.sessionId(), event.agentId());
         cancelWhere(target::equals);
     }
 

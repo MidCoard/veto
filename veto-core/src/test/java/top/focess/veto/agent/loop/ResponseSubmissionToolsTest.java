@@ -29,7 +29,7 @@ class ControlSubmissionToolsTest {
                         tool.getCapability());
         assertEquals(
                 List.of(definition), PromptCompiler.availableTools(List.of(definition), List.of()));
-        assertEquals(ControlSubmission.Kind.EXECUTE, ControlSubmissions.kindOf(definition));
+        assertEquals(ControlSubmission.Kind.PUSH, ControlSubmissions.kindOf(definition));
     }
 
     @Test

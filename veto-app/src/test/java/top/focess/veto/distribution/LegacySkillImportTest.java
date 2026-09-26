@@ -15,7 +15,7 @@ import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.builtin.BuiltinPlugin;
 import top.focess.veto.builtin.skills.SkillRuntime;
 import top.focess.veto.integration.plugins.PluginManager;
-import top.focess.veto.plugin.runtime.ManagedPlugin;
+import top.focess.veto.plugin.runtime.PluginLifecycle;
 
 class LegacySkillImportTest {
     @Test
@@ -30,7 +30,7 @@ class LegacySkillImportTest {
         String hash = "a".repeat(64);
         sql.update("INSERT INTO skill_hashes VALUES (?,?)", path, hash);
         var manager = mock(PluginManager.class);
-        var managed = mock(ManagedPlugin.class);
+        var managed = mock(PluginLifecycle.class);
         var builtin = mock(ToolDocs.nonNullClass(BuiltinPlugin.class));
         var skills = mock(ToolDocs.nonNullClass(SkillRuntime.class));
         when(manager.plugins()).thenReturn(List.of(managed));

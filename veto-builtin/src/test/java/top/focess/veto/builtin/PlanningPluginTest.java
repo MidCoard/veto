@@ -24,7 +24,7 @@ import top.focess.veto.builtin.planning.SubmitPlanTool;
 class PlanningPluginTest {
     @Test
     void submittedPlanRunsUsingOnlyHostCallbacks() throws Exception {
-        var submitted = new AtomicReference<PluginWork>();
+        var submitted = new AtomicReference<ModelFlow>();
         @NonNull ControlHost capability = mock();
         when(capability.tools()).thenReturn(List.of());
         doAnswer(
@@ -33,7 +33,7 @@ class PlanningPluginTest {
                             return null;
                         })
                 .when(capability)
-                .execute(any());
+                .push(any());
         var mapper = new ObjectMapper();
         var tool = new SubmitPlanTool();
         var example = ToolDocs.examplesOf(ToolDocs.nonNullClass(SubmitPlanTool.class)).getFirst();
@@ -44,7 +44,23 @@ class PlanningPluginTest {
         var delivered = new AtomicReference<String>();
         var boundaries = new AtomicInteger();
         var runtime =
-                new PluginWork.Runtime() {
+                new ModelFlow.Runtime() {
+                    @Override
+                    public @NonNull String input() {
+                        return "Write a brief welcome message";
+                    }
+
+                    @Override
+                    public void push(@NonNull ModelFlow work) {
+                        throw new AssertionError("unexpected nested flow");
+                    }
+
+                    @Override
+                    public void pop() {}
+
+                    @Override
+                    public void finish() {}
+
                     @Override
                     public void beforeStep() {
                         boundaries.incrementAndGet();
@@ -67,11 +83,11 @@ class PlanningPluginTest {
                     }
 
                     @Override
-                    public PluginWork.@NonNull Generated generate(
-                            PluginWork.@NonNull ModelInput action,
+                    public ModelFlow.@NonNull Generated generate(
+                            ModelFlow.@NonNull ModelInput action,
                             @NonNull ResponseContract contract) {
                         assertEquals("Write a brief welcome message", action.prompt());
-                        return new PluginWork.Generated(
+                        return new ModelFlow.Generated(
                                 new VetoResponse(null, null, "Welcome", null),
                                 null,
                                 "generation-call");
@@ -80,7 +96,7 @@ class PlanningPluginTest {
                     @Override
                     public void message(
                             @NonNull String text,
-                            PluginWork.@Nullable Source source,
+                            ModelFlow.@Nullable Source source,
                             @Nullable String modelCallId,
                             boolean forwarded) {
                         delivered.set(text);

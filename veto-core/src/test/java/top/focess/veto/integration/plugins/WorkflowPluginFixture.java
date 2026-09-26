@@ -12,12 +12,14 @@ import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.plugin.*;
 import top.focess.veto.api.plugin.contract.*;
 import top.focess.veto.api.plugin.contribution.*;
+import top.focess.veto.event.EventListenerRegistry;
+import top.focess.veto.event.PluginExecutor;
 import top.focess.veto.plugin.runtime.*;
 
 /** Real lifecycle and catalog behind a test discovery adapter. */
 public final class WorkflowPluginFixture implements AutoCloseable {
     private final @NonNull ExecutorService lifecycle = Executors.newSingleThreadExecutor();
-    public final @NonNull ManagedPlugin runtime;
+    public final @NonNull PluginLifecycle runtime;
     public final @NonNull PluginManager manager;
     public final @NonNull SessionPlugins sessions;
 
@@ -43,7 +45,7 @@ public final class WorkflowPluginFixture implements AutoCloseable {
                     @Override
                     protected void onClose() {}
                 };
-        runtime = new ManagedPlugin(implementation, lifecycle);
+        runtime = new PluginLifecycle(implementation, lifecycle);
         runtime.initialize(
                 new PluginContext(
                         runtime.identity(),
@@ -76,6 +78,21 @@ public final class WorkflowPluginFixture implements AutoCloseable {
                             String id = Objects.requireNonNull(invocation.<String>getArgument(1));
                             return "plugin_fixture_workflow__" + id.substring(id.indexOf(':') + 1);
                         });
+        PluginExecutor executor =
+                (namespace, body) ->
+                        runtime.execute(
+                                () -> {
+                                    try {
+                                        body.run();
+                                    } catch (PluginFailure | RuntimeException failure) {
+                                        throw failure;
+                                    } catch (Exception failure) {
+                                        throw new PluginFailure(
+                                                PluginFailure.Code.INTERNAL_FAILURE);
+                                    }
+                                    return true;
+                                });
+        when(manager.events()).thenReturn(EventListenerRegistry.build(catalog, executor));
         sessions = PluginTestSupport.sessionPlugins(manager);
         var registry = new PluginServiceRegistry((caller, provider) -> true);
         try {

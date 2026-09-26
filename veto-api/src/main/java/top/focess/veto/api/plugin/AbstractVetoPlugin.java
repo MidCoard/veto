@@ -23,6 +23,16 @@ public abstract class AbstractVetoPlugin implements VetoPlugin {
     @Override
     public abstract @NonNull PluginIdentity identity();
 
+    /**
+     * Runs {@link #onInitialize} and sanitizes any undeclared exception into {@link
+     * PluginFailure.Code#INTERNAL_FAILURE} so implementation details never cross the lifecycle
+     * boundary.
+     *
+     * @param context host-bound services for this plugin instance
+     * @param configuration immutable JSON configuration supplied by the host
+     * @return the complete contribution batch staged by {@link #onInitialize}
+     * @throws PluginFailure when initialization cannot produce a valid contribution set
+     */
     @Override
     public final @NonNull PluginContributions initialize(
             @NonNull PluginContext context, JsonValue.@NonNull ObjectValue configuration)
@@ -34,6 +44,12 @@ public abstract class AbstractVetoPlugin implements VetoPlugin {
         }
     }
 
+    /**
+     * Runs {@link #onStart}, sanitizing any undeclared exception into {@link
+     * PluginFailure.Code#INTERNAL_FAILURE}.
+     *
+     * @throws PluginFailure when the plugin cannot start
+     */
     @Override
     public final void start() throws PluginFailure {
         try {
@@ -43,6 +59,12 @@ public abstract class AbstractVetoPlugin implements VetoPlugin {
         }
     }
 
+    /**
+     * Runs {@link #onStopping}, sanitizing any undeclared exception into {@link
+     * PluginFailure.Code#INTERNAL_FAILURE}.
+     *
+     * @throws PluginFailure when the plugin cannot prepare for shutdown
+     */
     @Override
     public final void stopping() throws PluginFailure {
         try {
@@ -52,6 +74,12 @@ public abstract class AbstractVetoPlugin implements VetoPlugin {
         }
     }
 
+    /**
+     * Runs {@link #onClose}, sanitizing any undeclared exception into {@link
+     * PluginFailure.Code#INTERNAL_FAILURE}; always called by the host, even after partial startup.
+     *
+     * @throws PluginFailure when an owned resource cannot be released
+     */
     @Override
     public final void close() throws PluginFailure {
         try {

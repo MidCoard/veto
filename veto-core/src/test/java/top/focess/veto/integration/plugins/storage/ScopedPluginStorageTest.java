@@ -48,7 +48,7 @@ import top.focess.veto.integration.plugins.PluginManager;
 import top.focess.veto.integration.plugins.SessionPlugins;
 import top.focess.veto.model.SessionEntity;
 import top.focess.veto.model.SessionRepository;
-import top.focess.veto.plugin.runtime.ManagedPlugin;
+import top.focess.veto.plugin.runtime.PluginLifecycle;
 import top.focess.veto.util.Nullness;
 import top.focess.veto.vault.UserContext;
 import top.focess.veto.vault.UserEntity;
@@ -68,7 +68,7 @@ class ScopedPluginStorageTest {
     private EntityManager database = mock();
     private TransactionTemplate transactions = new TransactionTemplate();
     private ScopedPluginStorage host = mock();
-    private ManagedPlugin plugin = mock();
+    private PluginLifecycle plugin = mock();
     private PluginStorage first = mock();
     private PluginStorage second = mock();
     private String session = UUID.randomUUID().toString();
@@ -108,8 +108,8 @@ class ScopedPluginStorageTest {
                 });
     }
 
-    private ManagedPlugin plugin(String id) {
-        @NonNull ManagedPlugin result = mock();
+    private PluginLifecycle plugin(String id) {
+        @NonNull PluginLifecycle result = mock();
         @NonNull VetoPlugin implementation = mock();
         when(result.identity()).thenReturn(new PluginIdentity(id, "1.0.0"));
         when(result.implementation()).thenReturn(implementation);
@@ -129,6 +129,97 @@ class ScopedPluginStorageTest {
             return storage.currentSession();
         } finally {
             invocation.close();
+        }
+    }
+
+    private static <T> @NonNull T required(@Nullable T value) {
+        if (value == null) throw new AssertionError("Transaction returned no result");
+        return value;
+    }
+
+    @Test
+    void retainedRecordsRemainVisibleAndExportableWithoutTheirPlugin() {
+        UserContext.set("owner");
+        try {
+            var user = first.currentUser();
+            first.user(user).put("retained-user", null, VALUE);
+            first.session(scope(first)).put("retained-session", null, VALUE);
+            first.application().put("retained-application", null, VALUE);
+
+            var manager = mock(ToolDocs.nonNullClass(PluginManager.class));
+            var data =
+                    new RetainedPluginData(
+                            database, manager, new RequestAuthorization("admin"::equals));
+            var userPage =
+                    required(
+                            transactions.execute(
+                                    status -> data.list(PluginStorage.Kind.USER, null, null, 1)));
+            assertEquals(1, userPage.entries().size());
+            var userRecord = userPage.entries().getFirst();
+            assertEquals("one", userRecord.pluginId());
+            assertEquals(RetainedPluginData.Presence.ABSENT, userRecord.presence());
+            assertEquals(RetainedPluginData.Interpretation.OPAQUE, userRecord.interpretation());
+            assertFalse(
+                    new ObjectMapper().valueToTree(userPage).path("entries").get(0).has("payload"));
+            assertEquals(
+                    "\"payload\"",
+                    required(transactions.execute(status -> data.export(userRecord.id())))
+                            .payload());
+            assertEquals(
+                    1,
+                    required(
+                                    transactions.execute(
+                                            status ->
+                                                    data.list(
+                                                            PluginStorage.Kind.SESSION,
+                                                            null,
+                                                            null,
+                                                            10)))
+                            .entries()
+                            .size());
+            assertThrows(
+                    ToolDocs.nonNullClass(ResponseStatusException.class),
+                    () -> data.list(PluginStorage.Kind.APPLICATION, null, null, 10));
+
+            UserContext.set("intruder");
+            assertTrue(
+                    required(
+                                    transactions.execute(
+                                            status ->
+                                                    data.list(
+                                                            PluginStorage.Kind.USER,
+                                                            null,
+                                                            null,
+                                                            10)))
+                            .entries()
+                            .isEmpty());
+            var denied =
+                    assertThrows(
+                            ToolDocs.nonNullClass(ResponseStatusException.class),
+                            () -> transactions.execute(status -> data.export(userRecord.id())));
+            assertEquals(404, denied.getStatusCode().value());
+
+            UserContext.set("admin");
+            var application =
+                    required(
+                            transactions.execute(
+                                    status ->
+                                            data.list(
+                                                    PluginStorage.Kind.APPLICATION,
+                                                    null,
+                                                    null,
+                                                    10)));
+            assertEquals(1, application.entries().size());
+            assertEquals(
+                    "\"payload\"",
+                    required(
+                                    transactions.execute(
+                                            status ->
+                                                    data.export(
+                                                            application.entries().getFirst().id())))
+                            .payload());
+        } finally {
+            UserContext.clear();
         }
     }
 
@@ -207,7 +298,7 @@ class ScopedPluginStorageTest {
         when(plugin.execute(any()))
                 .thenAnswer(
                         invocation -> {
-                            ManagedPlugin.Operation<?> operation = invocation.getArgument(0);
+                            PluginLifecycle.Operation<?> operation = invocation.getArgument(0);
                             if (operation == null) throw new AssertionError("Missing operation");
                             return operation.run();
                         });

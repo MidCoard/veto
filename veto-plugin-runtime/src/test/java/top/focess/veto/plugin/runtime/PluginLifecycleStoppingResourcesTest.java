@@ -23,7 +23,7 @@ import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.contract.PluginFailure;
 
 @Timeout(10)
-class ManagedPluginStoppingResourcesTest {
+class PluginLifecycleStoppingResourcesTest {
     @Test
     void releasesBeforeDrainOnceAndRejectsNewResourcesWhileStopping() throws Exception {
         var plugin = new TestPlugin();
@@ -155,9 +155,9 @@ class ManagedPluginStoppingResourcesTest {
         }
     }
 
-    private static @NonNull ManagedPlugin start(
+    private static @NonNull PluginLifecycle start(
             @NonNull TestPlugin plugin, @NonNull ExecutorService lifecycle) throws PluginFailure {
-        var managed = new ManagedPlugin(plugin, lifecycle);
+        var managed = new PluginLifecycle(plugin, lifecycle);
         managed.initialize(
                 new PluginContext(
                         plugin.identity(),

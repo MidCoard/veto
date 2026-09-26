@@ -26,8 +26,7 @@ import top.focess.veto.agent.tool.ToolEngine;
 import top.focess.veto.api.llm.LlmBinding;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.api.plugin.agent.AgentProfile;
-import top.focess.veto.api.plugin.contract.AgentWorkSource;
-import top.focess.veto.api.plugin.contract.WorkflowHook;
+import top.focess.veto.api.plugin.contract.AgentInbox;
 import top.focess.veto.integration.plugins.PluginLifecycleEvents;
 import top.focess.veto.integration.plugins.SessionPlugins;
 import top.focess.veto.llm.core.ToolResultPresenter;
@@ -98,11 +97,11 @@ final class AgentRuntimeState {
 
     ModelTierRegistry modelTierRegistry;
 
-    AgentWorkSource workSource;
+    AgentInbox workSource;
 
     final @NonNull Map<String, ActivatedObservation> activatedObservations = new LinkedHashMap<>();
 
-    record ActivatedObservation(AgentWorkSource.@NonNull Observation event, String requestId) {}
+    record ActivatedObservation(AgentInbox.@NonNull Observation event, String requestId) {}
 
     RequestContinuationStore continuationStore;
 
@@ -234,11 +233,10 @@ final class AgentRuntimeState {
         lifecycle = new AgentLifecycle(this);
         hooks =
                 new AgentPluginHooks(
-                        new WorkflowHook.Context(
-                                owner,
-                                sessionId.toString(),
-                                agentId,
-                                () -> Thread.currentThread().isInterrupted()),
+                        owner,
+                        sessionId.toString(),
+                        agentId,
+                        () -> Thread.currentThread().isInterrupted(),
                         objectMapper,
                         caller,
                         () -> sessionPlugins,

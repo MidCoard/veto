@@ -15,8 +15,8 @@ public @interface ControlSubmission {
 
     /** Exclusive ways in which a tool can transfer control of the current call. */
     enum Kind {
-        /** Execute a plugin-authored workflow under the current host call. */
-        EXECUTE,
+        /** Push a plugin-authored model flow after the current host call. */
+        PUSH,
         /** Finish the current call with a final response. */
         FINISH
     }

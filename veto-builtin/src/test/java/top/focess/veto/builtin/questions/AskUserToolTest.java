@@ -65,31 +65,6 @@ class AskUserToolTest {
         }
     }
 
-    @Test
-    void identifiesSixOptionQuestionAndNeverPublishesAPartialBatch() {
-        var valid = question("language");
-        var invalid =
-                new Question(
-                        "Scope",
-                        "scope",
-                        "Choose the scope",
-                        List.of(
-                                valid.options().getFirst(),
-                                valid.options().getLast(),
-                                new Option("Third", "Third choice"),
-                                new Option("Fourth", "Fourth choice"),
-                                new Option("Fifth", "Fifth choice"),
-                                new Option("Sixth", "Sixth choice")));
-        var error =
-                assertThrows(
-                        ToolDocs.nonNullClass(ToolExecutionException.class),
-                        () -> tool.execute(new AskUserTool.Args(List.of(valid, invalid))));
-        assertEquals(ToolErrorCode.VALIDATION.INVALID_QUESTIONS, error.errorCode());
-        assertTrue(String.valueOf(error.getMessage()).contains("'scope' has 6 options"));
-        assertTrue(String.valueOf(error.getMessage()).contains("No questions were sent"));
-        assertTrue(registry.pendingFor(scope("test-agent")).isEmpty());
-    }
-
     private final @NonNull QuestionRuntime registry = new QuestionRuntime(host());
     private final @NonNull AskUserTool tool = new AskUserTool(registry);
 
@@ -115,35 +90,12 @@ class AskUserToolTest {
         }
     }
 
-    @ParameterizedTest
-    @ValueSource(ints = {0, 11})
-    void rejectsOutOfRangeBatchesBeforeWaiting(int count) {
-        assertInvalid(questions(count));
-    }
-
     @Test
     void rejectsInvalidQuestionsBeforeRegistering() {
         var valid = question("question_0");
         assertInvalid(List.of(valid, valid));
         assertInvalid(List.of(new Question(" ", valid.id(), valid.question(), valid.options())));
-        assertInvalid(
-                List.of(
-                        new Question(
-                                "x".repeat(13), valid.id(), valid.question(), valid.options())));
-        assertInvalid(
-                List.of(new Question(valid.header(), "Bad-ID", valid.question(), valid.options())));
         assertInvalid(List.of(new Question(valid.header(), valid.id(), " ", valid.options())));
-        assertInvalid(
-                List.of(
-                        new Question(
-                                valid.header(), valid.id(), "x".repeat(301), valid.options())));
-        assertInvalid(
-                List.of(
-                        new Question(
-                                valid.header(),
-                                valid.id(),
-                                valid.question(),
-                                List.of(valid.options().getFirst()))));
         assertInvalid(
                 List.of(
                         new Question(
@@ -231,28 +183,6 @@ class AskUserToolTest {
             worker.interrupt();
             other.cancel(false);
         }
-    }
-
-    @Test
-    void overlongRecommendationIdentifiesTheQuestionAndIncludesSuffixInLimit() {
-        var question =
-                new Question(
-                        "Project",
-                        "project",
-                        "Create the project?",
-                        List.of(
-                                new Option("😀".repeat(107) + " (Recommended)", "Create files."),
-                                new Option("Show code", "Show the code first.")));
-        var error =
-                assertThrows(
-                        ToolDocs.nonNullClass(ToolExecutionException.class),
-                        () -> tool.execute(new AskUserTool.Args(List.of(question))));
-        assertEquals(ToolErrorCode.VALIDATION.INVALID_QUESTIONS, error.errorCode());
-        assertTrue(
-                String.valueOf(error.getMessage())
-                        .contains("question 'project', option 1: label has 121"));
-        assertTrue(String.valueOf(error.getMessage()).contains("no questions were sent"));
-        assertTrue(registry.pendingFor(scope("test-agent")).isEmpty());
     }
 
     @ParameterizedTest

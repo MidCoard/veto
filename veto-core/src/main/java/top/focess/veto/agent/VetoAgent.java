@@ -19,7 +19,7 @@ import top.focess.veto.api.agent.AgentState;
 import top.focess.veto.api.agent.ToolCallEvent;
 import top.focess.veto.api.agent.ToolResultEvent;
 import top.focess.veto.api.llm.LlmBinding;
-import top.focess.veto.api.plugin.contract.AgentWorkSource;
+import top.focess.veto.api.plugin.contract.AgentInbox;
 
 /**
  * The {@link Agent} implementation. Owns its {@link AgentRunner} internally on a virtual thread;
@@ -76,7 +76,7 @@ public class VetoAgent implements Agent {
     }
 
     /** Attaches the plugin work source the agent polls for autonomous observations. */
-    public void attachWorkSource(@NonNull AgentWorkSource service) {
+    public void attachWorkSource(@NonNull AgentInbox service) {
         runner.attachWorkSource(service);
     }
 

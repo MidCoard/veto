@@ -78,11 +78,11 @@ class ApplyObservationMiddlewareTest {
             throws Exception {
         var lifecycle = Executors.newSingleThreadExecutor();
         executor = lifecycle;
-        List<ManagedPlugin> managed = new ArrayList<>();
+        List<PluginLifecycle> managed = new ArrayList<>();
         var builder = new ContributionCatalog.Builder();
         builder.define(StandardContributionPoints.OBSERVATION, ignored -> {});
         for (var stub : stubs) {
-            var plugin = new ManagedPlugin(stub, lifecycle);
+            var plugin = new PluginLifecycle(stub, lifecycle);
             var contributions =
                     plugin.initialize(
                             new PluginContext(

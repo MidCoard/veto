@@ -5,13 +5,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
 import java.util.Set;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import top.focess.veto.agent.capability.CapabilityAccess;
 import top.focess.veto.agent.tool.*;
 import top.focess.veto.api.agent.control.ControlHost;
 import top.focess.veto.api.agent.control.SourceEvidence;
 import top.focess.veto.api.agent.tool.ToolCapability;
-import top.focess.veto.api.agent.workflow.PluginWork;
+import top.focess.veto.api.agent.workflow.ModelFlow;
 import top.focess.veto.api.llm.VetoRequest;
 import top.focess.veto.api.llm.VetoResponse;
 
@@ -103,15 +102,15 @@ final class ModelControl implements ControlHost {
         return evidence;
     }
 
-    public void execute(@NonNull PluginWork work) {
+    public void push(@NonNull ModelFlow flow) {
         check();
         if (!executionAllowed)
             throw new IllegalArgumentException(
                     "Nested execution is unavailable in this invocation");
-        ToolCallContextHolder.transfer(new ToolCallContextHolder.ResponseDirective.Execute(work));
+        ToolCallContextHolder.transfer(new ToolCallContextHolder.ResponseDirective.Push(flow));
     }
 
-    public void finish(@NonNull String message, SourceEvidence.@Nullable Receipt receipt) {
+    public void finish(@NonNull String message, SourceEvidence.Receipt receipt) {
         check();
         if (message.isBlank())
             throw new IllegalArgumentException("Completion message must not be blank");

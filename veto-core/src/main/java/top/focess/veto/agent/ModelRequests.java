@@ -10,7 +10,7 @@ import top.focess.veto.agent.identity.AgentPersona;
 import top.focess.veto.agent.loop.CompiledPrompt;
 import top.focess.veto.agent.loop.PromptCompiler;
 import top.focess.veto.agent.workspace.Workspace;
-import top.focess.veto.api.agent.workflow.PluginWork;
+import top.focess.veto.api.agent.workflow.ModelFlow;
 import top.focess.veto.api.llm.ChatMessage;
 import top.focess.veto.api.llm.LlmBinding;
 import top.focess.veto.api.llm.LlmOptions;
@@ -90,7 +90,7 @@ final class ModelRequests {
     }
 
     @NonNull VetoRequest generationRequest(
-            @NonNull VetoRequest original, PluginWork.@NonNull ModelInput generation) {
+            @NonNull VetoRequest original, ModelFlow.@NonNull ModelInput generation) {
         LlmBinding selected = binding;
         String tier = generation.modelTier();
         if (tier != null) {

@@ -80,9 +80,9 @@ class BuiltinPluginTest {
             assertEquals(52, contributions.entries().size());
             var featurePoints =
                     Map.of(
-                            StandardContributionPoints.AGENT_WORK,
+                            StandardContributionPoints.AGENT_INBOX,
                             List.of("monitor-work"),
-                            StandardContributionPoints.SESSION_LIFECYCLE,
+                            StandardContributionPoints.LISTENERS,
                             List.of(
                                     "group-lifecycle",
                                     "monitor-lifecycle",

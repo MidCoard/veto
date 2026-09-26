@@ -43,7 +43,7 @@ import top.focess.veto.api.llm.exceptions.LlmTimeoutException;
 import top.focess.veto.api.llm.exceptions.ModelCapabilityException;
 import top.focess.veto.api.llm.exceptions.ModelSchemaException;
 import top.focess.veto.api.plugin.agent.AgentProfile;
-import top.focess.veto.api.plugin.contract.AgentWorkSource;
+import top.focess.veto.api.plugin.contract.AgentInbox;
 import top.focess.veto.api.plugin.contract.JsonValues;
 import top.focess.veto.bus.DeltaFrame;
 import top.focess.veto.i18n.Msg;
@@ -183,16 +183,7 @@ final class AgentLifecycle {
 
     ModelSession.@NonNull Prepared processUserPrompt(@NonNull String prompt) {
         runtime.continuations().remember(currentRequest().episode);
-        prompt =
-                runtime.hooks()
-                        .captureUserPrompt(
-                                runtime.hooks()
-                                        .workflow(
-                                                prompt,
-                                                (hook, text) ->
-                                                        hook.beforeInput(
-                                                                runtime.hooks().workflowContext(),
-                                                                text)));
+        prompt = runtime.hooks().captureUserPrompt(runtime.hooks().beforeInput(prompt));
         if (runtime.control.waiting(Wait.INTERRUPTED)) {
             runtime.output()
                     .appendTurn(
@@ -485,7 +476,7 @@ final class AgentLifecycle {
             if (task != null && task.cancelled)
                 result = AgentResult.failure("Task cancelled", Map.of());
             runtime.lifecycle().clearWait(Wait.PLUGIN);
-            AgentWorkSource source = runtime.continuations().source();
+            AgentInbox source = runtime.continuations().source();
             if (source != null) {
                 for (var entry : List.copyOf(runtime.activatedObservations.entrySet())) {
                     ActivatedObservation observation = entry.getValue();

@@ -8,17 +8,17 @@ import org.slf4j.LoggerFactory;
 import top.focess.veto.api.llm.LocalModelCompletion;
 import top.focess.veto.api.plugin.PluginState;
 import top.focess.veto.api.plugin.contract.PluginFailure;
-import top.focess.veto.plugin.runtime.ManagedPlugin;
+import top.focess.veto.plugin.runtime.PluginLifecycle;
 import top.focess.veto.veto.LlamaCppBridge;
 
 /** Lifecycle-bound local inference. Prompts and grammar contents never enter logs. */
 final class BoundLocalModelCompletion implements LocalModelCompletion {
     private static final @NonNull Logger log =
             LoggerFactory.getLogger(BoundLocalModelCompletion.class);
-    private final @NonNull ManagedPlugin plugin;
+    private final @NonNull PluginLifecycle plugin;
     private final @NonNull LlamaCppBridge bridge;
 
-    BoundLocalModelCompletion(@NonNull ManagedPlugin plugin, @NonNull LlamaCppBridge bridge) {
+    BoundLocalModelCompletion(@NonNull PluginLifecycle plugin, @NonNull LlamaCppBridge bridge) {
         this.plugin = plugin;
         this.bridge = bridge;
     }

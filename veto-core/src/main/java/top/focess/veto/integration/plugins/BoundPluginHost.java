@@ -11,13 +11,13 @@ import top.focess.veto.api.plugin.PluginState;
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.storage.PluginStorage;
 import top.focess.veto.integration.plugins.storage.PluginStorageFactory;
-import top.focess.veto.plugin.runtime.ManagedPlugin;
+import top.focess.veto.plugin.runtime.PluginLifecycle;
 
 /** Every background effect is restricted to sessions that selected this plugin instance. */
 final class BoundPluginHost implements PluginHost {
     private final @NonNull PluginHost delegate;
     private final @NonNull Function<@NonNull String, @NonNull String> toolNames;
-    private final @NonNull ManagedPlugin plugin;
+    private final @NonNull PluginLifecycle plugin;
     private final @NonNull PluginStorage storage;
     private final @NonNull PluginStorageFactory factory;
     private final @NonNull Map<String, PluginStorage.SessionScope> scopes =
@@ -25,7 +25,7 @@ final class BoundPluginHost implements PluginHost {
 
     BoundPluginHost(
             @NonNull PluginHost delegate,
-            @NonNull ManagedPlugin plugin,
+            @NonNull PluginLifecycle plugin,
             @NonNull PluginStorage storage,
             @NonNull PluginStorageFactory factory) {
         this(delegate, plugin, storage, factory, name -> name);
@@ -33,7 +33,7 @@ final class BoundPluginHost implements PluginHost {
 
     BoundPluginHost(
             @NonNull PluginHost delegate,
-            @NonNull ManagedPlugin plugin,
+            @NonNull PluginLifecycle plugin,
             @NonNull PluginStorage storage,
             @NonNull PluginStorageFactory factory,
             @NonNull Function<@NonNull String, @NonNull String> toolNames) {

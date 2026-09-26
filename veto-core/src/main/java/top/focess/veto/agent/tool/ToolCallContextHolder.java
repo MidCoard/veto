@@ -8,8 +8,8 @@ import top.focess.veto.agent.AgentRunner;
 import top.focess.veto.agent.capability.ImportedCredentialLeases;
 import top.focess.veto.api.agent.control.ControlHost;
 import top.focess.veto.api.agent.control.SourceEvidence;
+import top.focess.veto.api.agent.workflow.ModelFlow;
 import top.focess.veto.api.agent.workflow.PluginAwait;
-import top.focess.veto.api.agent.workflow.PluginWork;
 import top.focess.veto.api.llm.VetoResponse;
 import top.focess.veto.integration.plugins.IsolatedExecutions;
 
@@ -30,7 +30,7 @@ public final class ToolCallContextHolder {
                 implements ResponseDirective {}
 
         /** Run the given plugin work as this call's effect. */
-        record Execute(@NonNull PluginWork work) implements ResponseDirective {}
+        record Push(@NonNull ModelFlow flow) implements ResponseDirective {}
 
         /**
          * Terminate the loop with a finished response. {@code publish} controls whether the result
@@ -83,13 +83,11 @@ public final class ToolCallContextHolder {
                 new ResponseDirective.Finish(new VetoResponse(null, null, result), null, false);
     }
 
-    /**
-     * Rewraps a pending {@link ResponseDirective.Execute} result, binding its work to a runtime.
-     */
-    public static void guardWork(@NonNull UnaryOperator<PluginWork> guard) {
+    /** Rewraps a pending {@link ResponseDirective.Push} result, binding its flow to a runtime. */
+    public static void guardFlow(@NonNull UnaryOperator<ModelFlow> guard) {
         var current = state();
-        if (current.response instanceof ResponseDirective.Execute execution)
-            current.response = new ResponseDirective.Execute(guard.apply(execution.work()));
+        if (current.response instanceof ResponseDirective.Push push)
+            current.response = new ResponseDirective.Push(guard.apply(push.flow()));
     }
 
     /** Records an await control result bound to the live request id; requires a live request. */

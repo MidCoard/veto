@@ -12,11 +12,11 @@ import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.api.plugin.PluginHost;
 import top.focess.veto.api.plugin.contract.JsonValues;
 import top.focess.veto.integration.plugins.PluginProcessHosts;
-import top.focess.veto.plugin.runtime.ManagedPlugin;
+import top.focess.veto.plugin.runtime.PluginLifecycle;
 
 /** Host-created binding between a selected contribution, its pure preparation and one call. */
 public final class PreparedInvocation {
-    private final @NonNull ManagedPlugin plugin;
+    private final @NonNull PluginLifecycle plugin;
     private final PluginHost.@NonNull Invocation invocation;
     private final @NonNull ToolCall call;
     private final ToolPreparation.@NonNull Intent intent;
@@ -26,7 +26,7 @@ public final class PreparedInvocation {
     @SuppressWarnings(
             "resource") // WHY: the Running handle is owned by PluginProcessHosts, closed elsewhere
     PreparedInvocation(
-            @NonNull ManagedPlugin plugin,
+            @NonNull PluginLifecycle plugin,
             PluginHost.@NonNull Invocation invocation,
             @NonNull ToolCall call,
             @NonNull ToolPreparation prepared,
@@ -130,7 +130,7 @@ public final class PreparedInvocation {
      * Confirms this prepared effect belongs to the given owner and the current call context,
      * rejecting any mismatch, then {@linkplain #revalidate() revalidates} it.
      */
-    public void authorize(@NonNull ManagedPlugin owner, @NonNull ToolCallContext context) {
+    public void authorize(@NonNull PluginLifecycle owner, @NonNull ToolCallContext context) {
         if (plugin != owner
                 || !call.equals(context.executionPermit().call())
                 || !invocation.agentId().equals(context.agentId())

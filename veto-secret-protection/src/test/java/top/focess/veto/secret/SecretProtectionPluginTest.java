@@ -11,13 +11,15 @@ import org.junit.jupiter.api.Test;
 import top.focess.veto.api.agent.tool.CapabilityTool;
 import top.focess.veto.api.credentials.CredentialImportAccess;
 import top.focess.veto.api.credentials.CredentialWriter;
+import top.focess.veto.api.event.Listener;
+import top.focess.veto.api.event.OwnerClosedEvent;
+import top.focess.veto.api.event.OwnerOpenEvent;
+import top.focess.veto.api.event.SessionClosedEvent;
 import top.focess.veto.api.plugin.PluginContext;
 import top.focess.veto.api.plugin.VetoPlugin;
-import top.focess.veto.api.plugin.contract.InputProtection;
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.contract.ObservationMiddleware;
 import top.focess.veto.api.plugin.contract.PluginFailure;
-import top.focess.veto.api.plugin.contract.SessionLifecycle;
 import top.focess.veto.api.plugin.contract.TextProtection;
 import top.focess.veto.api.plugin.contribution.Contribution;
 
@@ -69,29 +71,29 @@ class SecretProtectionPluginTest {
                         "veto:file-observation",
                         "veto:file-protection",
                         "veto:observation-middleware",
-                        "veto:session-lifecycle",
+                        "veto:listeners",
                         "veto:native-tools"),
                 byPoint.keySet());
-        assertInstanceOf(InputProtection.class, byPoint.get("veto:input-protection"));
+        assertInstanceOf(TextProtection.class, byPoint.get("veto:input-protection"));
         assertInstanceOf(ObservationMiddleware.class, byPoint.get("veto:observation-middleware"));
-        assertInstanceOf(SessionLifecycle.class, byPoint.get("veto:session-lifecycle"));
+        assertInstanceOf(Listener.class, byPoint.get("veto:listeners"));
         assertInstanceOf(CapabilityTool.class, byPoint.get("veto:native-tools"));
     }
 
     @Test
-    void sessionLifecycleDrivesCaptureAvailability() throws Exception {
+    void lifecycleEventsDriveCaptureAvailability() throws Exception {
         var entries = initialize(new SecretProtectionPlugin(), Map.of());
-        var input = contribution(entries, InputProtection.class);
-        var lifecycle = contribution(entries, SessionLifecycle.class);
+        var input = textProtection(entries, "veto:input-protection");
+        var lifecycle = contribution(entries, SecretProtectionPlugin.SecretLifecycle.class);
         String captured = input.transform(SCOPE, "user", "password=alpha");
         assertTrue(captured.contains("[SECRET_REF:s_"), captured);
-        lifecycle.onOwnerClosed("owner");
+        lifecycle.onOwnerClosed(new OwnerClosedEvent("owner"));
         assertThrows(
                 IllegalStateException.class,
                 () -> input.transform(SCOPE, "user", "password=alpha"));
-        lifecycle.onOwnerOpen("owner");
+        lifecycle.onOwnerOpen(new OwnerOpenEvent("owner"));
         assertTrue(input.transform(SCOPE, "user", "password=beta").contains("[SECRET_REF:s_"));
-        lifecycle.onSessionClosed("owner", "session");
+        lifecycle.onSessionClosed(new SessionClosedEvent("owner", "session"));
         assertThrows(
                 IllegalStateException.class, () -> input.transform(SCOPE, "user", "password=beta"));
     }
@@ -119,7 +121,7 @@ class SecretProtectionPluginTest {
     @Test
     void importToolRequiresTheHostGrantedService() throws Exception {
         var entries = initialize(new SecretProtectionPlugin(), Map.of());
-        var input = contribution(entries, InputProtection.class);
+        var input = textProtection(entries, "veto:input-protection");
         String reference = reference(input.transform(SCOPE, "user", "password=synthetic-token"));
         var tool = contribution(entries, CapabilityTool.class);
         var failure =
@@ -154,7 +156,7 @@ class SecretProtectionPluginTest {
         var entries =
                 initialize(
                         new SecretProtectionPlugin(), Map.of(CredentialImportAccess.class, access));
-        var input = contribution(entries, InputProtection.class);
+        var input = textProtection(entries, "veto:input-protection");
         String reference = reference(input.transform(SCOPE, "user", "password=synthetic-token"));
         String receipt =
                 invoke(contribution(entries, CapabilityTool.class), reference, "Repository");
@@ -167,6 +169,14 @@ class SecretProtectionPluginTest {
         for (var entry : entries)
             if (type.isInstance(entry.implementation())) return type.cast(entry.implementation());
         throw new AssertionError("Contribution missing: " + type.getSimpleName());
+    }
+
+    private static @NonNull TextProtection textProtection(
+            @NonNull List<Contribution<?>> entries, @NonNull String pointId) {
+        for (var entry : entries)
+            if (entry.point().id().value().equals(pointId))
+                return (TextProtection) entry.implementation();
+        throw new AssertionError("Contribution missing: " + pointId);
     }
 
     @SuppressWarnings({"unchecked", "rawtypes"}) // The contributed handler is a CapabilityTool<?>.

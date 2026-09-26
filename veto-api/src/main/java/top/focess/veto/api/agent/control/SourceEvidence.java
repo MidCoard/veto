@@ -3,7 +3,7 @@ package top.focess.veto.api.agent.control;
 import java.util.List;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
-import top.focess.veto.api.agent.workflow.PluginWork;
+import top.focess.veto.api.agent.workflow.ModelFlow;
 import top.focess.veto.api.llm.VetoResponse;
 
 /** Read-only evidence from the exact model input; the host issues and validates receipts. */
@@ -11,7 +11,7 @@ public interface SourceEvidence {
     /**
      * Only values issued by the host are accepted; implementing this interface grants no authority.
      */
-    interface Receipt extends PluginWork.Source {}
+    interface Receipt extends ModelFlow.Source {}
 
     /**
      * A quote selector within one model-input message.

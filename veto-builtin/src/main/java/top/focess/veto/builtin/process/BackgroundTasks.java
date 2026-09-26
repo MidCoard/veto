@@ -17,11 +17,10 @@ import java.util.function.Predicate;
 import java.util.function.Supplier;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.plugin.PluginHost;
-import top.focess.veto.api.plugin.contract.SessionLifecycle;
 import top.focess.veto.api.process.ProcessHost;
 
 /** Volatile builtin task state. The host alone starts and authorizes process effects. */
-public final class BackgroundTasks implements SessionLifecycle, AutoCloseable {
+public final class BackgroundTasks implements AutoCloseable {
     private static final int MAX_LINES = 5000;
     private static final int MAX_LINE_BYTES = 65536;
     private static final int MAX_INPUT_BYTES = 65536;
@@ -392,20 +391,20 @@ public final class BackgroundTasks implements SessionLifecycle, AutoCloseable {
         if (failure != null) throw failure;
     }
 
-    @Override
+    /** Stops every task owned by the terminated agent. */
     public void onAgentTerminated(
             @NonNull String owner, @NonNull String session, @NonNull String agent) {
         var scope = new Scope(owner, session, agent);
         stopMatching(task -> task.scope.equals(scope));
     }
 
-    @Override
+    /** Stops every task running in the closed session. */
     public void onSessionClosed(@NonNull String owner, @NonNull String session) {
         stopMatching(
                 task -> task.scope.owner().equals(owner) && task.scope.session().equals(session));
     }
 
-    @Override
+    /** Stops every task owned by the closed owner. */
     public void onOwnerClosed(@NonNull String owner) {
         stopMatching(task -> task.scope.owner().equals(owner));
     }

@@ -5,6 +5,7 @@ import java.util.List;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.agent.tool.CapabilityTool;
 import top.focess.veto.api.agent.tool.ToolDocs;
+import top.focess.veto.api.event.Listener;
 import top.focess.veto.api.llm.LlmProvider;
 import top.focess.veto.api.plugin.contribution.ContributionCatalog;
 import top.focess.veto.api.plugin.contribution.ContributionId;
@@ -27,11 +28,11 @@ public final class StandardContributionPoints {
                     ContributionPoint.Cardinality.MULTIPLE);
 
     /** Plugin-owned agent work inboxes. */
-    public static final @NonNull ContributionPoint<AgentWorkSource> AGENT_WORK =
+    public static final @NonNull ContributionPoint<AgentInbox> AGENT_INBOX =
             new ContributionPoint<>(
-                    new ContributionId("veto:agent-work"),
+                    new ContributionId("veto:agent-inbox"),
                     1,
-                    AgentWorkSource.class,
+                    AgentInbox.class,
                     ContributionPoint.Cardinality.MULTIPLE);
 
     /** Model transport providers. */
@@ -58,12 +59,19 @@ public final class StandardContributionPoints {
                     ModelResponsePolicy.class,
                     ContributionPoint.Cardinality.MULTIPLE);
 
-    /** Ordered session workflow hooks. */
-    public static final @NonNull ContributionPoint<WorkflowHook> WORKFLOW =
+    /**
+     * Event listeners subscribed to host-dispatched workflow and lifecycle events. This is the
+     * unified replacement for the former workflow-hook point and for the former best-effort
+     * session-lifecycle point: a listener's {@code @EventHandler} methods are compiled once at
+     * registration and dispatched in {@link top.focess.veto.api.event.EventPriority} order under
+     * the contributing plugin's admission. Required permanent-data deletion stays on {@link
+     * #DATA_LIFECYCLE}, which is a transactional participant rather than a notification.
+     */
+    public static final @NonNull ContributionPoint<Listener> LISTENERS =
             new ContributionPoint<>(
-                    new ContributionId("veto:workflow"),
+                    new ContributionId("veto:listeners"),
                     1,
-                    WorkflowHook.class,
+                    ToolDocs.nonNullClass(Listener.class),
                     ContributionPoint.Cardinality.MULTIPLE);
 
     /** Trusted frontend modules and backend action handlers. */
@@ -74,28 +82,39 @@ public final class StandardContributionPoints {
                     FrontendContribution.class,
                     ContributionPoint.Cardinality.MULTIPLE);
 
-    /** Protection applied to view-file observations. */
-    public static final @NonNull ContributionPoint<FileObservation> FILE_OBSERVATION =
+    /**
+     * Protection applied to the {@code view_file} observation before it is committed to history,
+     * masking plain segments while preserving SECRET_REF markers produced by {@link
+     * #FILE_PROTECTION}. The application site is carried by this point's identity; the contract is
+     * the shared {@link TextProtection} boundary.
+     */
+    public static final @NonNull ContributionPoint<TextProtection> FILE_OBSERVATION =
             new ContributionPoint<>(
                     new ContributionId("veto:file-observation"),
                     1,
-                    FileObservation.class,
+                    TextProtection.class,
                     ContributionPoint.Cardinality.MULTIPLE);
 
-    /** Protection applied to user input. */
-    public static final @NonNull ContributionPoint<InputProtection> INPUT_PROTECTION =
+    /**
+     * Protection applied to user input before it is recorded or sent to a model. Distinguished from
+     * the other {@link TextProtection} sites by this point's identity, not by a marker subtype.
+     */
+    public static final @NonNull ContributionPoint<TextProtection> INPUT_PROTECTION =
             new ContributionPoint<>(
                     new ContributionId("veto:input-protection"),
                     1,
-                    InputProtection.class,
+                    TextProtection.class,
                     ContributionPoint.Cardinality.MULTIPLE);
 
-    /** Protection applied while reading file content. */
-    public static final @NonNull ContributionPoint<FileProtection> FILE_PROTECTION =
+    /**
+     * Protection applied while reading file content, capturing secrets as opaque references. Like
+     * the other {@link TextProtection} sites it is identified by this point, not by a marker type.
+     */
+    public static final @NonNull ContributionPoint<TextProtection> FILE_PROTECTION =
             new ContributionPoint<>(
                     new ContributionId("veto:file-protection"),
                     1,
-                    FileProtection.class,
+                    TextProtection.class,
                     ContributionPoint.Cardinality.MULTIPLE);
 
     /** Permanent-data deletion participants. */
@@ -104,14 +123,6 @@ public final class StandardContributionPoints {
                     new ContributionId("veto:data-lifecycle"),
                     1,
                     ToolDocs.nonNullClass(DataLifecycle.class),
-                    ContributionPoint.Cardinality.MULTIPLE);
-
-    /** Best-effort owner, session, and agent lifecycle notifications. */
-    public static final @NonNull ContributionPoint<SessionLifecycle> SESSION_LIFECYCLE =
-            new ContributionPoint<>(
-                    new ContributionId("veto:session-lifecycle"),
-                    1,
-                    SessionLifecycle.class,
                     ContributionPoint.Cardinality.MULTIPLE);
 
     /**
@@ -185,16 +196,15 @@ public final class StandardContributionPoints {
     public static final @NonNull List<@NonNull ContributionPoint<?>> ALL =
             List.of(
                     AGENT_CONFIGURATION,
-                    AGENT_WORK,
+                    AGENT_INBOX,
                     SERVICES,
                     LLM_PROVIDERS,
-                    WORKFLOW,
+                    LISTENERS,
                     MODEL_RESPONSE,
                     FRONTEND,
                     FILE_OBSERVATION,
                     INPUT_PROTECTION,
                     FILE_PROTECTION,
-                    SESSION_LIFECYCLE,
                     DATA_LIFECYCLE,
                     TOOLS,
                     NATIVE_TOOLS,

@@ -16,13 +16,13 @@ import top.focess.veto.agent.tool.ToolCallContextHolder;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.api.plugin.PluginState;
 import top.focess.veto.api.plugin.storage.PluginStorage;
-import top.focess.veto.plugin.runtime.ManagedPlugin;
+import top.focess.veto.plugin.runtime.PluginLifecycle;
 
 @DefaultQualifier(NonNull.class)
 class PluginCatalogueAccessTest {
     @Test
     void sharedAliasesAreExplicitAndInactivePluginCannotRead(@TempDir @NonNull Path root) {
-        var plugin = mock(ManagedPlugin.class);
+        var plugin = mock(PluginLifecycle.class);
         var storage = mock(PluginStorage.class);
         when(plugin.state()).thenReturn(PluginState.ACTIVE);
         var access =
@@ -35,7 +35,7 @@ class PluginCatalogueAccessTest {
 
     @Test
     void unselectedSessionCannotObtainWorkspaceTree() {
-        var plugin = mock(ManagedPlugin.class);
+        var plugin = mock(PluginLifecycle.class);
         var storage = mock(PluginStorage.class);
         when(plugin.state()).thenReturn(PluginState.ACTIVE);
         when(plugin.bindingId()).thenReturn("binding");

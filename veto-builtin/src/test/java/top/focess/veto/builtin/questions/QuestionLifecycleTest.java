@@ -11,6 +11,9 @@ import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import top.focess.veto.api.event.AgentTerminatedEvent;
+import top.focess.veto.api.event.OwnerClosedEvent;
+import top.focess.veto.api.event.SessionClosedEvent;
 import top.focess.veto.api.plugin.PluginHost;
 import top.focess.veto.api.plugin.contract.FrontendContribution.Scope;
 
@@ -43,9 +46,11 @@ class QuestionLifecycleTest {
                         new PluginHost.Invocation("other", "other-session", "agent", null, "call"),
                         List.of());
         switch (transition) {
-            case "owner" -> runtime.onOwnerClosed("owner");
-            case "session" -> runtime.onSessionClosed("owner", "session");
-            case "agent" -> runtime.onAgentTerminated("owner", "session", "agent");
+            case "owner" -> runtime.onOwnerClosed(new OwnerClosedEvent("owner"));
+            case "session" -> runtime.onSessionClosed(new SessionClosedEvent("owner", "session"));
+            case "agent" ->
+                    runtime.onAgentTerminated(
+                            new AgentTerminatedEvent("owner", "session", "agent"));
             case "plugin" -> runtime.close();
             default -> throw new AssertionError();
         }

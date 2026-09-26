@@ -5,19 +5,19 @@ import java.util.function.BiConsumer;
 import java.util.function.Supplier;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.NullMarked;
-import top.focess.veto.api.plugin.contract.AgentWorkSource;
+import top.focess.veto.api.plugin.contract.AgentInbox;
 import top.focess.veto.api.plugin.contract.PluginFailure;
 
 /** Namespaces inbox identities and admits every callback through its owning plugin lifecycle. */
 @NullMarked
-public final class CompositeAgentWorkSource implements AgentWorkSource {
+public final class CompositeAgentInbox implements AgentInbox {
     /** An inbox source paired with its owning plugin and identity namespace. */
-    public record Entry(String id, ManagedPlugin plugin, AgentWorkSource source) {}
+    public record Entry(String id, PluginLifecycle plugin, AgentInbox source) {}
 
     private final Supplier<List<Entry>> entries;
 
     /** Creates a composite that reads its namespaced entries from the given supplier. */
-    public CompositeAgentWorkSource(Supplier<List<Entry>> entries) {
+    public CompositeAgentInbox(Supplier<List<Entry>> entries) {
         this.entries = entries;
     }
 
@@ -54,7 +54,7 @@ public final class CompositeAgentWorkSource implements AgentWorkSource {
     // The @NonNull bound is required so T satisfies Operation<T>.
     @SuppressWarnings({"resource", "NullableProblems"})
     private static <T extends @NonNull Object> T invoke(
-            Entry entry, ManagedPlugin.Operation<T> action) {
+            Entry entry, PluginLifecycle.Operation<T> action) {
         try {
             return entry.plugin().execute(action);
         } catch (PluginFailure failure) {
@@ -77,7 +77,7 @@ public final class CompositeAgentWorkSource implements AgentWorkSource {
                 .toList();
     }
 
-    private void notify(Observation observation, BiConsumer<AgentWorkSource, Observation> action) {
+    private void notify(Observation observation, BiConsumer<AgentInbox, Observation> action) {
         for (var entry : entries.get()) {
             String prefix = entry.id() + "/";
             if (observation.id().startsWith(prefix)) {

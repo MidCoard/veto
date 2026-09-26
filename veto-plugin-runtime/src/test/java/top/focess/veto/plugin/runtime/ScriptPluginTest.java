@@ -63,10 +63,10 @@ class ScriptPluginTest {
     private static @NonNull LoadedScript load(
             @NonNull Path root, @NonNull Path node, @NonNull Duration timeout) throws IOException {
         var executor = java.util.concurrent.Executors.newSingleThreadExecutor();
-        ManagedPlugin managed = null;
+        PluginLifecycle managed = null;
         try {
             var script = new ScriptPluginLoader(node, timeout).load(root);
-            managed = new ManagedPlugin(script, executor);
+            managed = new PluginLifecycle(script, executor);
             managed.initialize(
                     context(script.identity()),
                     new top.focess.veto.api.plugin.contract.JsonValue.ObjectValue(Map.of()));
@@ -82,7 +82,7 @@ class ScriptPluginTest {
 
     private record LoadedScript(
             @NonNull ScriptPlugin script,
-            @NonNull ManagedPlugin managed,
+            @NonNull PluginLifecycle managed,
             java.util.concurrent.@NonNull ExecutorService executor)
             implements AutoCloseable {
         public void close() {
@@ -107,7 +107,7 @@ class ScriptPluginTest {
         }
 
         <T extends @NonNull Object> @NonNull T execute(
-                ManagedPlugin.@NonNull Operation<T> operation)
+                PluginLifecycle.@NonNull Operation<T> operation)
                 throws top.focess.veto.api.plugin.contract.PluginFailure {
             return managed.execute(operation);
         }
@@ -161,9 +161,9 @@ class ScriptPluginTest {
         copy(secondDir);
         var executor = java.util.concurrent.Executors.newSingleThreadExecutor();
         var loader = new ScriptPluginLoader(node(), Duration.ofSeconds(3));
-        var first = new ManagedPlugin(loader.load(firstDir), executor);
+        var first = new PluginLifecycle(loader.load(firstDir), executor);
         var secondScript = loader.load(secondDir);
-        var second = new ManagedPlugin(secondScript, executor);
+        var second = new PluginLifecycle(secondScript, executor);
         try {
             for (var managed : java.util.List.of(first, second)) {
                 managed.initialize(

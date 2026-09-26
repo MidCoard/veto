@@ -46,6 +46,8 @@ import top.focess.veto.api.plugin.storage.PluginStorage;
 import top.focess.veto.api.process.ProcessHost;
 import top.focess.veto.api.resources.CatalogueAccess;
 import top.focess.veto.bus.SessionInvalidations;
+import top.focess.veto.event.EventListenerRegistry;
+import top.focess.veto.event.PluginExecutor;
 import top.focess.veto.integration.plugins.storage.PluginStorageFactory;
 import top.focess.veto.model.SessionRepository;
 import top.focess.veto.plugin.runtime.*;
@@ -137,15 +139,16 @@ public final class PluginManager implements AutoCloseable {
     private final @NonNull ExecutorService lifecycle =
             Executors.newSingleThreadExecutor(
                     Thread.ofPlatform().daemon(true).name("veto-plugin-manager").factory());
-    private final @NonNull List<ManagedPlugin> plugins;
+    private final @NonNull List<PluginLifecycle> plugins;
     private final @NonNull Map<String, String> aliases;
     private final @NonNull List<Registration> registrations;
     private final @NonNull ContributionCatalog catalog;
+    private final @NonNull EventListenerRegistry events;
     private final @NonNull Map<@NonNull String, @NonNull String> toolNames;
 
     /** A started plugin paired with the contributions it declared at initialization. */
     public record Registration(
-            @NonNull ManagedPlugin plugin, @NonNull PluginContributions contributions) {}
+            @NonNull PluginLifecycle plugin, @NonNull PluginContributions contributions) {}
 
     /** Convenience constructor using default operator configuration. */
     public PluginManager(
@@ -170,7 +173,7 @@ public final class PluginManager implements AutoCloseable {
      *
      * @throws IOException when discovery, validation, or activation fails
      */
-    // WHY: staged ManagedPlugin handles are owned by this manager and closed in close(), and the
+    // WHY: staged PluginLifecycle handles are owned by this manager and closed in close(), and the
     // historical-ID null guards stay because third-party plugins can break the @NonNull contract.
     @SuppressWarnings({"resource", "ConstantValue"})
     @Autowired
@@ -188,12 +191,12 @@ public final class PluginManager implements AutoCloseable {
         PromptRenderer renderer =
                 (source, data) -> PromptCompiler.compileDocument(source, data).text();
         services.put(ToolDocs.nonNullClass(PromptRenderer.class), renderer);
-        List<ManagedPlugin> staged = new ArrayList<>();
+        List<PluginLifecycle> staged = new ArrayList<>();
         try {
             if (!paths.isBlank()) configurations.getScriptMode().requireAvailable(trustedCode);
             // Provider failures are fatal: a broken built-in must not silently drop its points.
             for (var discovered : ServiceLoader.load(VetoPlugin.class))
-                staged.add(new ManagedPlugin(discovered, lifecycle));
+                staged.add(new PluginLifecycle(discovered, lifecycle));
             if (!paths.isBlank()) {
                 var ids = new HashSet<String>();
                 var entries = paths.split(",", -1);
@@ -207,7 +210,7 @@ public final class PluginManager implements AutoCloseable {
                             new ScriptPluginLoader(
                                             Path.of(nodeCommand), Duration.ofMillis(timeoutMillis))
                                     .load(directory);
-                    staged.add(new ManagedPlugin(plugin, lifecycle));
+                    staged.add(new PluginLifecycle(plugin, lifecycle));
                     if (!ids.add(plugin.id()))
                         throw new IllegalArgumentException("Duplicate plugin identity");
                 }
@@ -354,6 +357,11 @@ public final class PluginManager implements AutoCloseable {
             catalog = validatedCatalog;
             plugins = List.copyOf(staged);
             registrations = List.copyOf(registered);
+            List<PluginLifecycle> admitted = plugins;
+            events =
+                    EventListenerRegistry.build(
+                            validatedCatalog,
+                            (namespace, body) -> admit(admitted, namespace, body));
         } catch (Exception | ServiceConfigurationError e) {
             for (var plugin : staged.reversed()) plugin.close();
             lifecycle.shutdown();
@@ -361,12 +369,46 @@ public final class PluginManager implements AutoCloseable {
         }
     }
 
-    public @NonNull List<ManagedPlugin> plugins() {
+    public @NonNull List<PluginLifecycle> plugins() {
         return plugins;
     }
 
     public @NonNull ContributionCatalog catalog() {
         return catalog;
+    }
+
+    /** Returns the compiled event dispatch table built from the contributed listeners. */
+    public @NonNull EventListenerRegistry events() {
+        return events;
+    }
+
+    /**
+     * Runs an event handler body under the named plugin's admission, translating a checked handler
+     * failure into a sanitized {@link PluginFailure}.
+     */
+    private static void admit(
+            @NonNull List<PluginLifecycle> admitted,
+            @NonNull String namespace,
+            PluginExecutor.@NonNull Body body)
+            throws PluginFailure {
+        PluginLifecycle target = null;
+        for (PluginLifecycle candidate : admitted)
+            if (candidate.identity().id().equals(namespace)) {
+                target = candidate;
+                break;
+            }
+        if (target == null) throw new PluginFailure(PluginFailure.Code.NOT_READY);
+        target.execute(
+                () -> {
+                    try {
+                        body.run();
+                    } catch (PluginFailure | RuntimeException failure) {
+                        throw failure;
+                    } catch (Exception failure) {
+                        throw new PluginFailure(PluginFailure.Code.INTERNAL_FAILURE);
+                    }
+                    return true;
+                });
     }
 
     public @NonNull List<Registration> registrations() {
@@ -382,7 +424,7 @@ public final class PluginManager implements AutoCloseable {
     }
 
     /** Returns the managed plugin for the given (alias-resolved) id; throws when unknown. */
-    public @NonNull ManagedPlugin plugin(@NonNull String id) {
+    public @NonNull PluginLifecycle plugin(@NonNull String id) {
         return plugins.stream()
                 .filter(plugin -> plugin.identity().id().equals(canonicalId(id)))
                 .findFirst()
@@ -423,7 +465,7 @@ public final class PluginManager implements AutoCloseable {
      * With no contributor the text is returned unchanged.
      */
     @SuppressWarnings(
-            "resource") // WHY: ManagedPlugin handle is owned by this manager, closed in close()
+            "resource") // WHY: PluginLifecycle handle is owned by this manager, closed in close()
     public @NonNull String applyObservationMiddleware(@NonNull String text) {
         String result = text;
         for (var entry : catalog.entries(StandardContributionPoints.OBSERVATION)) {
@@ -451,7 +493,7 @@ public final class PluginManager implements AutoCloseable {
     @Override
     public void close() {
         try {
-            plugins.reversed().forEach(ManagedPlugin::close);
+            plugins.reversed().forEach(PluginLifecycle::close);
         } finally {
             lifecycle.shutdown();
         }

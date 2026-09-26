@@ -7,21 +7,21 @@ import top.focess.veto.api.agent.tool.CapabilityTool;
 import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.ToolPresentation;
 import top.focess.veto.api.agent.tool.ToolSecurity;
-import top.focess.veto.plugin.runtime.ManagedPlugin;
+import top.focess.veto.plugin.runtime.PluginLifecycle;
 
 /** Compiles all Java contributions through one registration path. */
 final class ToolRegistration {
     private ToolRegistration() {}
 
     static RegisteredTool.@NonNull Local local(
-            @NonNull CapabilityTool<?> tool, @NonNull String name, ManagedPlugin runtime) {
+            @NonNull CapabilityTool<?> tool, @NonNull String name, PluginLifecycle runtime) {
         return local(tool, name, runtime, tool.getName());
     }
 
     static RegisteredTool.@NonNull Local local(
             @NonNull CapabilityTool<?> tool,
             @NonNull String name,
-            ManagedPlugin runtime,
+            PluginLifecycle runtime,
             @NonNull String localId) {
         Provenance provenance =
                 runtime == null

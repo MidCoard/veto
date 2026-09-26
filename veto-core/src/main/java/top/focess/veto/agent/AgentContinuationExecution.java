@@ -11,7 +11,7 @@ import top.focess.veto.agent.ExecutionControl.Wait;
 import top.focess.veto.agent.continuation.RequestContinuationStore;
 import top.focess.veto.api.agent.AgentAction;
 import top.focess.veto.api.agent.AgentState;
-import top.focess.veto.api.plugin.contract.AgentWorkSource;
+import top.focess.veto.api.plugin.contract.AgentInbox;
 import top.focess.veto.util.Nullness;
 import top.focess.veto.vault.KeysteadVault;
 
@@ -99,7 +99,7 @@ final class AgentContinuationExecution {
                 handle.episode.breaker().grantedCalls());
     }
 
-    boolean belongsToActiveRequest(AgentWorkSource.@NonNull Observation event) {
+    boolean belongsToActiveRequest(AgentInbox.@NonNull Observation event) {
         RequestHandle handle = runtime.control.request();
         if (handle == null) return false;
         String observationId = handle.episode.observationId();
@@ -108,7 +108,7 @@ final class AgentContinuationExecution {
                 : handle.episode.id().equals(event.requestId());
     }
 
-    void attachWorkSource(@NonNull AgentWorkSource service) {
+    void attachWorkSource(@NonNull AgentInbox service) {
         runtime.workSource = service;
     }
 
@@ -119,10 +119,9 @@ final class AgentContinuationExecution {
                             new AgentAction.WorkAvailableAction(), new RequestHandle(runtime)));
     }
 
-    @NonNull List<AgentWorkSource.Observation> pendingObservations(
-            @NonNull AgentWorkSource service) {
-        List<AgentWorkSource.Observation> eligible = new ArrayList<>();
-        for (AgentWorkSource.Observation event : service.pending(scope())) {
+    @NonNull List<AgentInbox.Observation> pendingObservations(@NonNull AgentInbox service) {
+        List<AgentInbox.Observation> eligible = new ArrayList<>();
+        for (AgentInbox.Observation event : service.pending(scope())) {
             String request = event.requestId();
             boolean cancelled =
                     request != null
@@ -152,11 +151,11 @@ final class AgentContinuationExecution {
     }
 
     boolean injectObservations() {
-        AgentWorkSource service = source();
+        AgentInbox service = source();
         if (service == null) return false;
         runtime.lifecycle().checkExecutionBoundary();
         boolean inserted = false;
-        for (AgentWorkSource.Observation event : pendingObservations(service)) {
+        for (AgentInbox.Observation event : pendingObservations(service)) {
             if (!belongsToActiveRequest(event)) continue;
             boolean recorded =
                     runtime.output().history().stream()
@@ -200,7 +199,7 @@ final class AgentContinuationExecution {
         String executionOwner = runtime.owner;
         if (vault != null && (executionOwner == null || !vault.isUnlocked(executionOwner)))
             return null;
-        AgentWorkSource service = source();
+        AgentInbox service = source();
         if (runtime.control.waiting(Wait.INTERRUPTED)
                 || runtime.control instanceof ExecutionControl.Suspended suspended
                         && !suspended.waits().equals(Set.of(Wait.PLUGIN))
@@ -226,8 +225,8 @@ final class AgentContinuationExecution {
             if (runtime.control.waiting(Wait.PLUGIN)) {
                 if (events.stream().noneMatch(this::belongsToActiveRequest)) return null;
             } else {
-                AgentWorkSource.Observation first = null;
-                for (AgentWorkSource.Observation candidate : events) {
+                AgentInbox.Observation first = null;
+                for (AgentInbox.Observation candidate : events) {
                     String candidateOrigin = candidate.requestId();
                     if (candidateOrigin == null || findContinuation(candidateOrigin) != null) {
                         first = candidate;
@@ -268,21 +267,21 @@ final class AgentContinuationExecution {
         }
     }
 
-    AgentWorkSource source() {
+    AgentInbox source() {
         if (runtime.workSource != null) return runtime.workSource;
         var selected = runtime.sessionPlugins;
         return selected == null ? null : selected.workSource(runtime.sessionId.toString());
     }
 
-    AgentWorkSource.@NonNull Scope scope() {
+    AgentInbox.@NonNull Scope scope() {
         RequestHandle handle = runtime.control.request();
-        return new AgentWorkSource.Scope(
+        return new AgentInbox.Scope(
                 runtime.sessionId.toString(),
                 runtime.agentId,
                 handle == null ? null : handle.episode.id());
     }
 
-    private @NonNull Map<String, Object> attributes(AgentWorkSource.@NonNull Observation event) {
+    private @NonNull Map<String, Object> attributes(AgentInbox.@NonNull Observation event) {
         var attributes = new LinkedHashMap<String, Object>(event.attributes());
         attributes.put("eventId", event.id());
         attributes.put("topic", event.topic());

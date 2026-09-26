@@ -9,11 +9,13 @@ import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.api.llm.VetoResponse;
 
 /**
- * Plugin-owned execution submitted to the agent workflow. The callback runs under host lifecycle
- * admission; every operation requested through {@link Runtime} remains budgeted and authorized.
+ * Plugin-owned model flow selected on the agent's flow stack. The callback runs under host
+ * lifecycle admission; every operation requested through {@link Runtime} remains budgeted and
+ * authorized. A plugin may push a nested flow, pop its own top frame, or finish the current
+ * request.
  */
 @FunctionalInterface
-public interface PluginWork {
+public interface ModelFlow {
     /** Opaque plugin-owned citation source carried back through generated messages. */
     interface Source {}
 
@@ -49,8 +51,28 @@ public interface PluginWork {
      */
     record Generated(@NonNull VetoResponse response, Source citations, String modelCallId) {}
 
-    /** Call-scoped operations exposed while a plugin work item is running. */
+    /** Request-scoped operations exposed while this model flow is selected. */
     interface Runtime {
+        /**
+         * Returns the host-protected input of the current request.
+         *
+         * @return current request input after host input protection
+         */
+        @NonNull String input();
+
+        /**
+         * Requests a nested flow owned by the currently executing plugin.
+         *
+         * @param flow nested flow to select at the next safe boundary
+         */
+        void push(@NonNull ModelFlow flow);
+
+        /** Removes the currently executing top flow, revealing the flow beneath it. */
+        void pop();
+
+        /** Ends the current request after the flow has recorded its result. */
+        void finish();
+
         /**
          * Checks whether workflow operations may continue.
          *
@@ -115,7 +137,7 @@ public interface PluginWork {
     }
 
     /**
-     * Runs this work item synchronously using the current call-scoped runtime.
+     * Runs the selected flow synchronously using the current request-scoped runtime.
      *
      * @param runtime authorized runtime for the current agent request
      */

@@ -20,7 +20,7 @@ import top.focess.veto.api.plugin.service.ServiceRegistration;
 public final class PluginServiceRegistry {
     private record Key(@NonNull String name, int version) {}
 
-    private record Entry(@NonNull ServiceRegistration service, @NonNull ManagedPlugin owner) {}
+    private record Entry(@NonNull ServiceRegistration service, @NonNull PluginLifecycle owner) {}
 
     private record Outcome(@Nullable JsonValue value, @Nullable ServiceException failure) {}
 
@@ -35,9 +35,9 @@ public final class PluginServiceRegistry {
 
     /** Binds every catalogued service to its owning plugin; may only be called once. */
     public synchronized void bind(
-            @NonNull ContributionCatalog catalog, @NonNull List<ManagedPlugin> plugins) {
+            @NonNull ContributionCatalog catalog, @NonNull List<PluginLifecycle> plugins) {
         if (bound) throw new IllegalStateException("Services already bound");
-        Map<String, ManagedPlugin> owners = new HashMap<>();
+        Map<String, PluginLifecycle> owners = new HashMap<>();
         for (var plugin : plugins) owners.put(plugin.identity().id(), plugin);
         Map<Key, Entry> staged = new HashMap<>();
         for (var contribution : catalog.entries(StandardContributionPoints.SERVICES)) {
@@ -54,7 +54,7 @@ public final class PluginServiceRegistry {
     }
 
     /** Returns the service view authorized for the given calling plugin. */
-    public @NonNull PluginServices forPlugin(@NonNull ManagedPlugin caller) {
+    public @NonNull PluginServices forPlugin(@NonNull PluginLifecycle caller) {
         return view(caller);
     }
 
@@ -63,7 +63,7 @@ public final class PluginServiceRegistry {
         return view(null);
     }
 
-    private @NonNull PluginServices view(@Nullable ManagedPlugin caller) {
+    private @NonNull PluginServices view(@Nullable PluginLifecycle caller) {
         return new PluginServices() {
             // Owner handles are registered by bind() and closed by the host plugin lifecycle.
             @SuppressWarnings("resource")
@@ -115,11 +115,11 @@ public final class PluginServiceRegistry {
     // Owner handles are registered by bind() and closed by the host plugin lifecycle.
     @SuppressWarnings("resource")
     private static @NonNull JsonValue invokeService(
-            @Nullable ManagedPlugin caller, @NonNull Entry entry, @NonNull JsonValue request)
+            @Nullable PluginLifecycle caller, @NonNull Entry entry, @NonNull JsonValue request)
             throws ServiceException {
         Outcome outcome;
         try {
-            ManagedPlugin.Operation<Outcome> operation =
+            PluginLifecycle.Operation<Outcome> operation =
                     () -> entry.owner().execute(() -> invokeHandler(entry.service(), request));
             outcome = caller == null ? operation.run() : caller.execute(operation);
         } catch (PluginFailure failure) {

@@ -13,7 +13,7 @@ import top.focess.veto.agent.TurnRecord;
 import top.focess.veto.agent.TurnType;
 import top.focess.veto.api.agent.control.SourceEvidence;
 import top.focess.veto.api.agent.tool.ToolResultStatus;
-import top.focess.veto.api.agent.workflow.PluginWork;
+import top.focess.veto.api.agent.workflow.ModelFlow;
 import top.focess.veto.api.llm.ChatMessage;
 import top.focess.veto.api.llm.ProviderMessages;
 import top.focess.veto.api.llm.VetoRequest;
@@ -38,7 +38,7 @@ public final class MessageCitations {
             @NonNull String model,
             int messageCount,
             @NonNull List<@NonNull Check> checks)
-            implements PluginWork.Source {}
+            implements ModelFlow.Source {}
 
     /**
      * Locate exact evidence in the same request that produced the call, without model-side

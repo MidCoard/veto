@@ -5,15 +5,15 @@ import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.tool.ToolCallContextHolder;
 import top.focess.veto.api.llm.TextEmbedding;
 import top.focess.veto.api.plugin.PluginState;
-import top.focess.veto.plugin.runtime.ManagedPlugin;
+import top.focess.veto.plugin.runtime.PluginLifecycle;
 
 /** Generic model port; admission requires the same live Gateway-approved plugin invocation. */
 public final class PluginTextEmbeddings implements TextEmbedding {
-    private final @NonNull ManagedPlugin plugin;
+    private final @NonNull PluginLifecycle plugin;
     private final @NonNull TextEmbedding model;
 
     /** Wraps the host embedding model with invocation-bound admission for the plugin. */
-    public PluginTextEmbeddings(@NonNull ManagedPlugin plugin, @NonNull TextEmbedding model) {
+    public PluginTextEmbeddings(@NonNull PluginLifecycle plugin, @NonNull TextEmbedding model) {
         this.plugin = plugin;
         this.model = model;
     }

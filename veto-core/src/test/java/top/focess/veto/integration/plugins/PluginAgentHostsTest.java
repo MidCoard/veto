@@ -63,7 +63,7 @@ import top.focess.veto.model.SessionRepository;
 import top.focess.veto.model.tier.ModelBinding;
 import top.focess.veto.model.tier.ModelTier;
 import top.focess.veto.model.tier.ModelTierRegistry;
-import top.focess.veto.plugin.runtime.ManagedPlugin;
+import top.focess.veto.plugin.runtime.PluginLifecycle;
 import top.focess.veto.session.SessionHistoryLoader;
 import top.focess.veto.vault.KeysteadVault;
 
@@ -238,7 +238,7 @@ class PluginAgentHostsTest {
 
     static final class Fixture implements AutoCloseable {
         final ExecutorService executor = Executors.newSingleThreadExecutor();
-        final ManagedPlugin plugin;
+        final PluginLifecycle plugin;
         final SessionEntity session = new SessionEntity("owner", "test");
         final String parent = UUID.randomUUID().toString();
         final String childId = UUID.randomUUID().toString();
@@ -263,7 +263,7 @@ class PluginAgentHostsTest {
             when(implementation.identity()).thenReturn(identity);
             when(implementation.initialize(any(), any()))
                     .thenReturn(new PluginContributions(List.of()));
-            plugin = new ManagedPlugin(implementation, executor);
+            plugin = new PluginLifecycle(implementation, executor);
             plugin.initialize(
                     new PluginContext(
                             identity,

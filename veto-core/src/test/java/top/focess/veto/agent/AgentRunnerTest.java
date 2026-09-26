@@ -49,6 +49,11 @@ import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.ToolResult;
 import top.focess.veto.api.agent.workflow.PluginAwait;
+import top.focess.veto.api.event.AfterModelEvent;
+import top.focess.veto.api.event.BeforeInputEvent;
+import top.focess.veto.api.event.BeforeModelEvent;
+import top.focess.veto.api.event.EventHandler;
+import top.focess.veto.api.event.Listener;
 import top.focess.veto.api.llm.ChatMessage;
 import top.focess.veto.api.llm.LlmBinding;
 import top.focess.veto.api.llm.LlmOptions;
@@ -66,7 +71,6 @@ import top.focess.veto.api.plugin.contract.AgentConfiguration;
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
 import top.focess.veto.api.plugin.contract.TextProtection;
-import top.focess.veto.api.plugin.contract.WorkflowHook;
 import top.focess.veto.api.plugin.contribution.Contribution;
 import top.focess.veto.builtin.group.GroupRegistry;
 import top.focess.veto.builtin.monitor.MonitorEntity;
@@ -113,27 +117,26 @@ class AgentRunnerTest {
     void installedHooksTransformInputAndModelOutputInTheRealLoop() throws Exception {
         List<String> events = new CopyOnWriteArrayList<>();
         List<VetoRequest> requests = new CopyOnWriteArrayList<>();
-        WorkflowHook hook =
-                new WorkflowHook() {
-                    @Override
-                    public @NonNull String beforeInput(
-                            @NonNull Context context, @NonNull String text) {
+        Listener hook =
+                new Listener() {
+                    /** Replaces the user input. */
+                    @EventHandler
+                    public void onInput(@NonNull BeforeInputEvent event) {
                         events.add("input");
-                        return "hook supplied task";
+                        event.setText("hook supplied task");
                     }
 
-                    @Override
-                    public void beforeModel(@NonNull Context context, @NonNull ModelCall call) {
+                    /** Observes the selected model. */
+                    @EventHandler
+                    public void onBeforeModel(@NonNull BeforeModelEvent event) {
                         events.add("before-model");
                     }
 
-                    @Override
-                    public @NonNull ModelOutput afterModel(
-                            @NonNull Context context,
-                            @NonNull ModelCall call,
-                            @NonNull ModelOutput output) {
+                    /** Replaces the model output text. */
+                    @EventHandler
+                    public void onAfterModel(@NonNull AfterModelEvent event) {
                         events.add("after-model");
-                        return new ModelOutput("hook supplied answer");
+                        event.setMessage("hook supplied answer");
                     }
                 };
         var service =
@@ -147,7 +150,9 @@ class AgentRunnerTest {
                 new WorkflowPluginFixture(
                         List.of(
                                 Contribution.of(
-                                        StandardContributionPoints.WORKFLOW, "callbacks", hook)))) {
+                                        StandardContributionPoints.LISTENERS,
+                                        "callbacks",
+                                        hook)))) {
             service.attachSessionPlugins(fixture.sessions);
             var agent =
                     service.getOrCreateAgent(
@@ -171,6 +176,52 @@ class AgentRunnerTest {
                                                 message.content().contains("hook supplied task")));
                 assertFalse(agent.history().toString().contains("original task"));
                 assertTrue(agent.history().toString().contains("hook supplied answer"));
+            } finally {
+                service.remove(session);
+            }
+        }
+    }
+
+    @Test
+    void beforeModelVetoStopsTheModelCall() throws Exception {
+        var calls = new AtomicInteger();
+        Listener veto =
+                new Listener() {
+                    @EventHandler
+                    public void onBeforeModel(@NonNull BeforeModelEvent event) {
+                        event.prevent();
+                    }
+                };
+        var service =
+                serviceWith(
+                        request -> {
+                            calls.incrementAndGet();
+                            return new VetoResponse(null, null, "unreachable");
+                        });
+        String session = UUID.randomUUID().toString();
+        try (var fixture =
+                new WorkflowPluginFixture(
+                        List.of(
+                                Contribution.of(
+                                        StandardContributionPoints.LISTENERS,
+                                        "model-veto",
+                                        veto)))) {
+            service.attachSessionPlugins(fixture.sessions);
+            var agent =
+                    service.getOrCreateAgent(
+                            session,
+                            UUID.randomUUID().toString(),
+                            binding("System"),
+                            List.of(),
+                            UUID.randomUUID(),
+                            "owner",
+                            null,
+                            0,
+                            ToolResultPresentationMode.BASIC);
+            try {
+                agent.submit("Do not call the model");
+                assertFalse(agent.await(EPISODE_TIMEOUT).success());
+                assertEquals(0, calls.get());
             } finally {
                 service.remove(session);
             }

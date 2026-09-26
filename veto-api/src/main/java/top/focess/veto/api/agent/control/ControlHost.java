@@ -6,7 +6,7 @@ import java.util.Set;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import top.focess.veto.api.agent.tool.ControlSubmission;
-import top.focess.veto.api.agent.workflow.PluginWork;
+import top.focess.veto.api.agent.workflow.ModelFlow;
 import top.focess.veto.api.llm.ToolDefinition;
 
 /**
@@ -52,11 +52,11 @@ public interface ControlHost {
     @NonNull SourceEvidence evidence();
 
     /**
-     * Transfers control to plugin-owned work.
+     * Pushes a plugin-owned model flow after the current admitted tool call succeeds.
      *
-     * @param work plugin-owned work that receives the current authorized runtime
+     * @param flow selected flow that receives a request-bound runtime
      */
-    void execute(@NonNull PluginWork work);
+    void push(@NonNull ModelFlow flow);
 
     /**
      * Completes the current call with user-facing text and optional validated evidence.

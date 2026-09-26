@@ -4,7 +4,7 @@ import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.capability.RemoteCallCapability;
 import top.focess.veto.api.agent.tool.CapabilityTool;
 import top.focess.veto.api.plugin.contract.Tool;
-import top.focess.veto.plugin.runtime.ManagedPlugin;
+import top.focess.veto.plugin.runtime.PluginLifecycle;
 
 /** Host-only adapters: bind each definition to its exact execution implementation. */
 sealed interface RegisteredTool {
@@ -15,14 +15,14 @@ sealed interface RegisteredTool {
     record Plugin(
             @NonNull RemoteToolDefinition definition,
             @NonNull Tool descriptor,
-            @NonNull ManagedPlugin runtime)
+            @NonNull PluginLifecycle runtime)
             implements RegisteredTool {}
 
     /** One execution binding for every record-authored tool, irrespective of origin. */
     record Local(
             @NonNull LocalToolDefinition definition,
             @NonNull CapabilityTool<?> handler,
-            ManagedPlugin runtime)
+            PluginLifecycle runtime)
             implements RegisteredTool {}
 
     /** An external MCP tool, executed through its bound remote-call capability. */

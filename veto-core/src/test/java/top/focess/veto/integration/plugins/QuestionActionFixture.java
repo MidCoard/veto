@@ -26,7 +26,7 @@ import top.focess.veto.integration.plugins.storage.PluginInvocationScope;
 import top.focess.veto.integration.plugins.storage.PluginStorageFactory;
 import top.focess.veto.model.SessionEntity;
 import top.focess.veto.model.SessionRepository;
-import top.focess.veto.plugin.runtime.ManagedPlugin;
+import top.focess.veto.plugin.runtime.PluginLifecycle;
 import top.focess.veto.vault.UserContext;
 
 /** Actual builtin contributions behind the generic authenticated frontend router. */
@@ -51,7 +51,7 @@ public final class QuestionActionFixture implements AutoCloseable {
         var backing = new ConfigurationStorageFixture();
         PluginStorageFactory storageFactory =
                 new PluginStorageFactory() {
-                    public @NonNull PluginStorage bind(@NonNull ManagedPlugin plugin) {
+                    public @NonNull PluginStorage bind(@NonNull PluginLifecycle plugin) {
                         var storage = backing.bind(plugin);
                         var invocation = new PluginInvocationScope("alice", session.getId());
                         try {
@@ -82,7 +82,7 @@ public final class QuestionActionFixture implements AutoCloseable {
                                         new PluginHostServices(granted))),
                         configuration);
         runtime =
-                manager.catalog().entries(StandardContributionPoints.SESSION_LIFECYCLE).stream()
+                manager.catalog().entries(StandardContributionPoints.LISTENERS).stream()
                         .map(entry -> entry.implementation())
                         .filter(value -> value instanceof QuestionRuntime)
                         .map(value -> (QuestionRuntime) value)

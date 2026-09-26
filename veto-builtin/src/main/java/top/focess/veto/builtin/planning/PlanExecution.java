@@ -3,8 +3,8 @@ package top.focess.veto.builtin.planning;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.agent.tool.ToolResult;
-import top.focess.veto.api.agent.workflow.PluginWork;
-import top.focess.veto.api.agent.workflow.PluginWork.Source;
+import top.focess.veto.api.agent.workflow.ModelFlow;
+import top.focess.veto.api.agent.workflow.ModelFlow.Source;
 import top.focess.veto.api.llm.ResponseContract;
 import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.api.llm.VetoResponse;
@@ -30,7 +30,7 @@ public interface PlanExecution {
         @NonNull String prompt(@NonNull String source, @NonNull Map<String, Object> data);
     }
 
-    @NonNull PluginWork accepted(@NonNull ActionsProgram program);
+    @NonNull ModelFlow accepted(@NonNull ActionsProgram program);
 
     @NonNull Scope scope();
 

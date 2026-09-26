@@ -19,7 +19,7 @@ import top.focess.veto.util.Nullness;
 
 /**
  * Host-side plugin integration: ServiceLoader discovery, host-service delivery through {@code
- * PluginContext}, session-lifecycle dispatch, and the session-less {@code
+ * PluginContext}, lifecycle-event dispatch, and the session-less {@code
  * veto:observation-middleware} floor. The real secret-protection plugin is discovered from the test
  * runtime classpath.
  */
@@ -36,10 +36,7 @@ class PluginManagerDiscoveryTest {
                             .isEmpty());
             assertFalse(
                     plugins.catalog().entries(StandardContributionPoints.OBSERVATION).isEmpty());
-            assertFalse(
-                    plugins.catalog()
-                            .entries(StandardContributionPoints.SESSION_LIFECYCLE)
-                            .isEmpty());
+            assertFalse(plugins.catalog().entries(StandardContributionPoints.LISTENERS).isEmpty());
             assertFalse(
                     plugins.catalog().entries(StandardContributionPoints.NATIVE_TOOLS).isEmpty());
         }

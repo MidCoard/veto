@@ -108,9 +108,5 @@ class ResponseEnforcerTest {
         assertTrue(error.content().contains("ordinary text"));
         assertFalse(error.content().contains("matches several"));
         verifyNoInteractions(host);
-        assertThrows(
-                ToolDocs.nonNullClass(ToolExecutionException.class),
-                () -> tool.execute(new AnswerWithCitationsTool.Args("Launch Friday.", List.of())));
-        verifyNoInteractions(host);
     }
 }

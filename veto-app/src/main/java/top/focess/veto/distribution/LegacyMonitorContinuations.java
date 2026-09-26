@@ -59,7 +59,7 @@ public final class LegacyMonitorContinuations implements ApplicationRunner {
             if (!(managed.implementation() instanceof BuiltinPlugin builtin)) continue;
             String namespace = builtin.identity().id();
             var contributions =
-                    plugins.catalog().entries(StandardContributionPoints.AGENT_WORK).stream()
+                    plugins.catalog().entries(StandardContributionPoints.AGENT_INBOX).stream()
                             .filter(
                                     entry ->
                                             entry.source().namespace().equals(namespace)

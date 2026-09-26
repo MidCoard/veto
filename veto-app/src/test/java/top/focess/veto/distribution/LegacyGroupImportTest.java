@@ -28,7 +28,7 @@ import top.focess.veto.integration.plugins.PluginManager;
 import top.focess.veto.integration.plugins.SessionPlugins;
 import top.focess.veto.model.SessionEntity;
 import top.focess.veto.model.SessionRepository;
-import top.focess.veto.plugin.runtime.ManagedPlugin;
+import top.focess.veto.plugin.runtime.PluginLifecycle;
 import top.focess.veto.session.SessionRecordService;
 
 @DefaultQualifier(
@@ -94,7 +94,7 @@ class LegacyGroupImportTest {
                 Timestamp.from(Instant.ofEpochSecond(3)),
                 "{");
         @NonNull PluginManager plugins = mock();
-        @NonNull ManagedPlugin managed = mock();
+        @NonNull PluginLifecycle managed = mock();
         @NonNull BuiltinPlugin builtin = mock();
         @NonNull GroupRuntime runtime = mock();
         @NonNull SessionRepository sessions = mock();

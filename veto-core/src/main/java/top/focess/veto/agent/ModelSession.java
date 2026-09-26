@@ -19,7 +19,7 @@ import top.focess.veto.agent.loop.PromptSource;
 import top.focess.veto.agent.tool.ToolDefinition;
 import top.focess.veto.agent.tool.ToolEngine;
 import top.focess.veto.agent.workspace.Workspace;
-import top.focess.veto.api.agent.workflow.PluginWork;
+import top.focess.veto.api.agent.workflow.ModelFlow;
 import top.focess.veto.api.llm.LlmBinding;
 import top.focess.veto.api.llm.LlmSystemUsage;
 import top.focess.veto.api.llm.ResponseContract;
@@ -117,14 +117,14 @@ final class ModelSession {
 
     ModelExchange.@NonNull Result callModel(
             CompiledPrompt firstPrompt,
-            PluginWork.ModelInput generation,
+            ModelFlow.ModelInput generation,
             @NonNull ResponseContract contract) {
         return callModel(firstPrompt, generation, contract, configuration.get());
     }
 
     private ModelExchange.@NonNull Result callModel(
             CompiledPrompt firstPrompt,
-            PluginWork.ModelInput generation,
+            ModelFlow.ModelInput generation,
             @NonNull ResponseContract contract,
             @NonNull Configuration current) {
         ModelRequests requests = requests(current);

@@ -16,6 +16,11 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Predicate;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.agent.tool.ToolDocs;
+import top.focess.veto.api.event.AgentTerminatedEvent;
+import top.focess.veto.api.event.EventHandler;
+import top.focess.veto.api.event.Listener;
+import top.focess.veto.api.event.OwnerClosedEvent;
+import top.focess.veto.api.event.SessionClosedEvent;
 import top.focess.veto.api.llm.PromptRenderer;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.api.plugin.PluginContext;
@@ -24,12 +29,11 @@ import top.focess.veto.api.plugin.agent.AgentHost;
 import top.focess.veto.api.plugin.agent.AgentProfile;
 import top.focess.veto.api.plugin.contract.AgentConfiguration;
 import top.focess.veto.api.plugin.contract.JsonValue;
-import top.focess.veto.api.plugin.contract.SessionLifecycle;
 import top.focess.veto.api.plugin.storage.PluginStorage;
 
 /** Owns the complete group feature, including activation, policy, persistence and shutdown. */
 public final class GroupRuntime
-        implements AgentConfiguration, SessionLifecycle, GroupObservations, AutoCloseable {
+        implements AgentConfiguration, Listener, GroupObservations, AutoCloseable {
     private final @NonNull GroupConfig configuration;
     private final PluginHost host;
     private final PromptRenderer prompts;
@@ -405,43 +409,45 @@ public final class GroupRuntime
         if (failure != null) throw failure;
     }
 
-    public void onSessionClosed(@NonNull String owner, @NonNull String session) {
+    @EventHandler
+    public void onSessionClosed(@NonNull SessionClosedEvent event) {
         try {
             stopGroups(
                     group ->
-                            owner.equals(group.owner())
-                                    && session.equals(String.valueOf(group.sessionId())));
+                            event.owner().equals(group.owner())
+                                    && event.sessionId().equals(String.valueOf(group.sessionId())));
         } finally {
-            restored.removeIf(key -> key.startsWith(session + "/"));
-            contexts.keySet().removeIf(key -> key.startsWith(session + "/"));
-            transitions.keySet().removeIf(key -> key.startsWith(session + "/"));
+            restored.removeIf(key -> key.startsWith(event.sessionId() + "/"));
+            contexts.keySet().removeIf(key -> key.startsWith(event.sessionId() + "/"));
+            transitions.keySet().removeIf(key -> key.startsWith(event.sessionId() + "/"));
         }
     }
 
-    public void onAgentTerminated(
-            @NonNull String owner, @NonNull String session, @NonNull String agent) {
+    @EventHandler
+    public void onAgentTerminated(@NonNull AgentTerminatedEvent event) {
         try {
             stopGroups(
                     group ->
-                            owner.equals(group.owner())
-                                    && agent.equals(group.leaderId())
-                                    && session.equals(String.valueOf(group.sessionId())));
+                            event.owner().equals(group.owner())
+                                    && event.agentId().equals(group.leaderId())
+                                    && event.sessionId().equals(String.valueOf(group.sessionId())));
         } finally {
-            String key = key(session, agent);
+            String key = key(event.sessionId(), event.agentId());
             contexts.remove(key);
             transitions.remove(key);
             restored.remove(key);
         }
     }
 
-    public void onOwnerClosed(@NonNull String owner) {
+    @EventHandler
+    public void onOwnerClosed(@NonNull OwnerClosedEvent event) {
         var owned =
                 contexts.entrySet().stream()
-                        .filter(entry -> owner.equals(entry.getValue().owner()))
+                        .filter(entry -> event.owner().equals(entry.getValue().owner()))
                         .map(Map.Entry::getKey)
                         .toList();
         try {
-            stopGroups(group -> owner.equals(group.owner()));
+            stopGroups(group -> event.owner().equals(group.owner()));
         } finally {
             for (var key : owned) {
                 contexts.remove(key);

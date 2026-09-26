@@ -15,15 +15,15 @@ import top.focess.veto.api.plugin.AbstractVetoPlugin;
 import top.focess.veto.api.plugin.PluginContext;
 import top.focess.veto.api.plugin.PluginContributions;
 import top.focess.veto.api.plugin.PluginIdentity;
-import top.focess.veto.api.plugin.contract.AgentWorkSource;
+import top.focess.veto.api.plugin.contract.AgentInbox;
 import top.focess.veto.api.plugin.contract.JsonValue;
 
-class CompositeAgentWorkSourceTest {
+class CompositeAgentInboxTest {
     @Test
     void arbitraryPluginOwnsPendingWorkAndCallbacksWithoutBuiltinTypes() throws Exception {
         var calls = new ArrayList<String>();
         var observation =
-                new AgentWorkSource.Observation(
+                new AgentInbox.Observation(
                         "local-id",
                         null,
                         "Review incoming result",
@@ -31,8 +31,8 @@ class CompositeAgentWorkSourceTest {
                         "vendor.reminder",
                         Map.of(),
                         "local-episode");
-        AgentWorkSource source =
-                new AgentWorkSource() {
+        AgentInbox source =
+                new AgentInbox() {
                     public @NonNull List<Observation> pending(@NonNull Scope scope) {
                         return List.of(observation);
                     }
@@ -66,7 +66,7 @@ class CompositeAgentWorkSourceTest {
                     }
                 };
         try (var executor = Executors.newSingleThreadExecutor()) {
-            var managed = new ManagedPlugin(plugin, executor);
+            var managed = new PluginLifecycle(plugin, executor);
             try {
                 managed.initialize(
                         new PluginContext(
@@ -84,14 +84,14 @@ class CompositeAgentWorkSourceTest {
                 assertSame(awaiting, managed.ownAwait(signal));
                 assertEquals(managed.bindingId() + "/delivery", awaiting.token());
                 var composite =
-                        new CompositeAgentWorkSource(
+                        new CompositeAgentInbox(
                                 () ->
                                         List.of(
-                                                new CompositeAgentWorkSource.Entry(
+                                                new CompositeAgentInbox.Entry(
                                                         "example.reminders:work",
                                                         managed,
                                                         source)));
-                var scope = new AgentWorkSource.Scope("session", "agent", null);
+                var scope = new AgentInbox.Scope("session", "agent", null);
                 var value = composite.pending(scope).getFirst();
                 assertEquals("example.reminders:work/local-id", value.id());
                 assertEquals("vendor.reminder", value.topic());
@@ -99,10 +99,10 @@ class CompositeAgentWorkSourceTest {
                         "plugin-work:22:example.reminders:work:local-episode",
                         value.continuationId());
                 var other =
-                        new CompositeAgentWorkSource(
+                        new CompositeAgentInbox(
                                 () ->
                                         List.of(
-                                                new CompositeAgentWorkSource.Entry(
+                                                new CompositeAgentInbox.Entry(
                                                         "other.plugin:work", managed, source)));
                 assertNotEquals(
                         value.continuationId(), other.pending(scope).getFirst().continuationId());

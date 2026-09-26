@@ -852,7 +852,7 @@ class AgentEndToEndTest {
                             call.callId(),
                             () -> {
                                 ToolCallContextHolder.control()
-                                        .execute(new PlanProgram(mapper).accepted(parsed));
+                                        .push(new PlanProgram(mapper).accepted(parsed));
                                 return true;
                             });
                     return ToolResult.success(call.toolName(), call.callId(), "accepted");

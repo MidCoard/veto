@@ -13,7 +13,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import top.focess.veto.api.agent.control.ControlHost;
 import top.focess.veto.api.agent.tool.ToolDocs;
-import top.focess.veto.api.agent.workflow.PluginWork;
+import top.focess.veto.api.agent.workflow.ModelFlow;
 import top.focess.veto.api.plugin.contract.JsonValue;
 
 class PlanConfigTest {
@@ -55,13 +55,15 @@ class PlanConfigTest {
                 """,
                         ToolDocs.nonNullClass(SubmitPlanTool.Args.class));
         tool.execute(args, capability);
-        var submitted = ArgumentCaptor.forClass(ToolDocs.nonNullClass(PluginWork.class));
-        verify(capability).execute(submitted.capture());
+        var submitted = ArgumentCaptor.forClass(ToolDocs.nonNullClass(ModelFlow.class));
+        verify(capability).push(submitted.capture());
         var plan = submitted.getValue();
         if (plan == null) throw new AssertionError("Missing accepted plan");
-        PluginWork.@NonNull Runtime runtime = mock();
+        ModelFlow.@NonNull Runtime runtime = mock();
         when(runtime.running()).thenReturn(true);
         assertThrows(IllegalStateException.class, () -> plan.run(runtime));
+        verify(runtime).pop();
+        verify(runtime).finish();
         verify(runtime, times(limit + 1)).beforeStep();
         verify(runtime).observation(eq("plan_escape"), contains("step limit exceeded"));
         var execution = new PlanProgram(mapper, configured(Integer.toString(limit)));

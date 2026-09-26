@@ -30,6 +30,14 @@ public record ToolContribution(
         }
     }
 
+    /**
+     * Delegates the call to this contribution's {@link ToolHandler}.
+     *
+     * @param arguments validated immutable arguments for the call
+     * @param cancellation cooperative cancellation signal for the call
+     * @return the handler's JSON result
+     * @throws PluginFailure when the handler rejects or cannot complete the call
+     */
     @Override
     public @NonNull JsonValue invoke(
             JsonValue.@NonNull ObjectValue arguments, @NonNull Cancellation cancellation)

@@ -16,7 +16,7 @@ import org.slf4j.LoggerFactory;
 import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.plugin.PluginContext;
 import top.focess.veto.api.plugin.PluginHost;
-import top.focess.veto.api.plugin.contract.AgentWorkSource;
+import top.focess.veto.api.plugin.contract.AgentInbox;
 import top.focess.veto.api.plugin.storage.PluginStorage;
 import top.focess.veto.builtin.group.GroupObservations;
 
@@ -86,8 +86,8 @@ public final class MonitorRuntime implements AutoCloseable {
     private volatile boolean ready;
 
     /** Returns the monitor view of the host agent-work-source contract. */
-    public AgentWorkSource work() {
-        return new AgentWorkSource() {
+    public AgentInbox work() {
+        return new AgentInbox() {
             public List<Observation> pending(Scope scope) {
                 return ready ? service.pending(scope) : List.of();
             }

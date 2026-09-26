@@ -148,9 +148,9 @@ class PluginServiceRegistryTest {
         final @NonNull ExecutorService executor = Executors.newSingleThreadExecutor();
         final @NonNull AtomicBoolean allowed = new AtomicBoolean(true);
         final @NonNull TestPlugin consumer = new TestPlugin("demo.consumer");
-        final @NonNull ManagedPlugin consumerRuntime = new ManagedPlugin(consumer, executor);
-        final @NonNull ManagedPlugin providerRuntime =
-                new ManagedPlugin(new TestPlugin("demo.provider"), executor);
+        final @NonNull PluginLifecycle consumerRuntime = new PluginLifecycle(consumer, executor);
+        final @NonNull PluginLifecycle providerRuntime =
+                new PluginLifecycle(new TestPlugin("demo.provider"), executor);
 
         Pair() throws Exception {
             var registry = new PluginServiceRegistry((caller, provider) -> allowed.get());

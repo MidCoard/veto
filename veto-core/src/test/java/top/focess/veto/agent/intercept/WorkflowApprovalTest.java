@@ -9,8 +9,8 @@ import top.focess.veto.agent.screening.Relevance;
 import top.focess.veto.agent.screening.Screening;
 import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.tool.ToolDocs;
+import top.focess.veto.api.event.BeforeToolEvent;
 import top.focess.veto.api.llm.ToolCall;
-import top.focess.veto.api.plugin.contract.WorkflowHook;
 
 class WorkflowApprovalTest {
     @Test
@@ -25,7 +25,7 @@ class WorkflowApprovalTest {
                                 call,
                                 null,
                                 new GatewayResult.NotScreened(),
-                                WorkflowHook.Decision.REQUIRE_APPROVAL));
+                                BeforeToolEvent.Decision.REQUIRE_APPROVAL));
         assertEquals(
                 List.of(VetoOption.ACCEPT_GENERIC, VetoOption.GENERIC_DECLINE), prompt.options());
         assertInstanceOf(
@@ -35,7 +35,7 @@ class WorkflowApprovalTest {
                         call,
                         null,
                         new GatewayResult.NotScreened(),
-                        WorkflowHook.Decision.REJECT));
+                        BeforeToolEvent.Decision.REJECT));
         assertEquals(
                 ApprovalDecision.AUTO_APPROVE,
                 hitl.decide(
@@ -43,7 +43,7 @@ class WorkflowApprovalTest {
                         call,
                         null,
                         new GatewayResult.NotScreened(),
-                        WorkflowHook.Decision.CONTINUE));
+                        BeforeToolEvent.Decision.CONTINUE));
     }
 
     @Test
@@ -64,6 +64,6 @@ class WorkflowApprovalTest {
                         new ToolCall("dangerous", Map.of()),
                         null,
                         critical,
-                        WorkflowHook.Decision.REQUIRE_APPROVAL));
+                        BeforeToolEvent.Decision.REQUIRE_APPROVAL));
     }
 }

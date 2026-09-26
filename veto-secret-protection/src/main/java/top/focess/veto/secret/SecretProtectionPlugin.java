@@ -19,6 +19,7 @@ import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.ToolResultFormat;
 import top.focess.veto.api.agent.tool.ToolSecurity;
 import top.focess.veto.api.credentials.CredentialImportAccess;
+import top.focess.veto.api.event.*;
 import top.focess.veto.api.llm.LocalModelCompletion;
 import top.focess.veto.api.llm.PromptRenderer;
 import top.focess.veto.api.plugin.*;
@@ -133,35 +134,9 @@ public final class SecretProtectionPlugin extends AbstractVetoPlugin {
                                 "observation-mask",
                                 (observation, cancellation) -> detector.mask(observation)),
                         Contribution.of(
-                                StandardContributionPoints.SESSION_LIFECYCLE,
+                                StandardContributionPoints.LISTENERS,
                                 "lifecycle",
-                                new SessionLifecycle() {
-                                    @Override
-                                    public void onOwnerOpen(@NonNull String ownerId) {
-                                        candidates.openOwner(ownerId);
-                                    }
-
-                                    @Override
-                                    public void onOwnerClosed(@NonNull String ownerId) {
-                                        candidates.closeOwner(ownerId);
-                                    }
-
-                                    @Override
-                                    public void onSessionClosed(
-                                            @NonNull String ownerId, @NonNull String sessionId) {
-                                        candidates.retireSession(ownerId, sessionId);
-                                    }
-
-                                    @Override
-                                    public void onAgentTerminated(
-                                            @NonNull String ownerId,
-                                            @NonNull String sessionId,
-                                            @NonNull String agentId) {
-                                        candidates.discardAgent(
-                                                new SecretCandidateStore.Scope(
-                                                        ownerId, sessionId, agentId));
-                                    }
-                                }),
+                                new SecretLifecycle(candidates)),
                         Contribution.of(
                                 StandardContributionPoints.NATIVE_TOOLS,
                                 "import_detected_credential",
@@ -333,5 +308,41 @@ public final class SecretProtectionPlugin extends AbstractVetoPlugin {
         var executor = expiry;
         if (executor != null) executor.shutdownNow();
         candidates.clear();
+    }
+
+    /**
+     * Scopes secret-candidate availability to the owner, session, and agent transitions the host
+     * broadcasts. A closed scope makes its captured references unrecoverable, so capture fails
+     * closed until the owner is opened again.
+     */
+    public static final class SecretLifecycle implements Listener {
+        private final @NonNull SecretCandidateStore candidates;
+
+        /** Creates the listener over the candidate store it scopes. */
+        public SecretLifecycle(@NonNull SecretCandidateStore candidates) {
+            this.candidates = candidates;
+        }
+
+        @EventHandler
+        public void onOwnerOpen(@NonNull OwnerOpenEvent event) {
+            candidates.openOwner(event.owner());
+        }
+
+        @EventHandler
+        public void onOwnerClosed(@NonNull OwnerClosedEvent event) {
+            candidates.closeOwner(event.owner());
+        }
+
+        @EventHandler
+        public void onSessionClosed(@NonNull SessionClosedEvent event) {
+            candidates.retireSession(event.owner(), event.sessionId());
+        }
+
+        @EventHandler
+        public void onAgentTerminated(@NonNull AgentTerminatedEvent event) {
+            candidates.discardAgent(
+                    new SecretCandidateStore.Scope(
+                            event.owner(), event.sessionId(), event.agentId()));
+        }
     }
 }

@@ -52,7 +52,7 @@ public final class ProcessHostFixture implements AutoCloseable {
     public final AtomicBoolean admitted = new AtomicBoolean(true);
     public final SessionAgentRegistry agents =
             mock(ToolDocs.nonNullClass(SessionAgentRegistry.class));
-    public final ManagedPlugin plugin;
+    public final PluginLifecycle plugin;
     public final ToolEngineImpl engine;
     public final ProcessHost host;
     public final ProcessRuntime feature;
@@ -79,7 +79,7 @@ public final class ProcessHostFixture implements AutoCloseable {
 
                         protected void onClose() {}
                     };
-            plugin = new ManagedPlugin(implementation, lifecycle);
+            plugin = new PluginLifecycle(implementation, lifecycle);
             @NonNull PluginStorage storage = mock();
             @NonNull PluginStorageFactory scopes = mock();
             var scope = new PluginStorage.SessionScope("issued", owner, session.toString());

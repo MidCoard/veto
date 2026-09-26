@@ -44,4 +44,4 @@ Delegation uses the same `HostCapabilityTool` dispatch as other host-backed agen
 supply authorized model/tool operations. The current configuration is `veto.plan.max-steps`.
 Plan terminology replaces the former guided names in active code and observations.
 
-Monitor operations are internal to builtin. No `MonitorCapability` or monitor tool interface is required by veto-api; any third-party plugin can register its own tools and generic `AgentWorkSource`. The current Java host and frontend ESM execution are trusted, not resource-isolated.
+Monitor operations are internal to builtin. No `MonitorCapability` or monitor tool interface is required by veto-api; any third-party plugin can register its own tools and generic `AgentInbox`. The current Java host and frontend ESM execution are trusted, not resource-isolated.

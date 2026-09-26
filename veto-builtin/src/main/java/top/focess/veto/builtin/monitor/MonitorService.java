@@ -18,9 +18,12 @@ import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import top.focess.veto.api.agent.workflow.PluginAwait;
+import top.focess.veto.api.event.AgentTerminatedEvent;
+import top.focess.veto.api.event.EventHandler;
+import top.focess.veto.api.event.Listener;
+import top.focess.veto.api.event.SessionClosedEvent;
 import top.focess.veto.api.plugin.PluginHost;
-import top.focess.veto.api.plugin.contract.AgentWorkSource;
-import top.focess.veto.api.plugin.contract.SessionLifecycle;
+import top.focess.veto.api.plugin.contract.AgentInbox;
 import top.focess.veto.builtin.group.DagNode;
 import top.focess.veto.builtin.group.GroupObservations;
 import top.focess.veto.builtin.group.GroupState;
@@ -30,7 +33,7 @@ import top.focess.veto.builtin.process.ProcessObserver;
 import top.focess.veto.builtin.process.TaskInfo;
 
 /** Domain observations and time triggers share persistence and a single runner delivery path. */
-public class MonitorService implements AgentWorkSource, SessionLifecycle, ProcessObserver {
+public class MonitorService implements AgentInbox, Listener, ProcessObserver {
     private static final @NonNull Logger log =
             LoggerFactory.getLogger("top.focess.veto.builtin.monitor.MonitorService");
 
@@ -635,29 +638,30 @@ public class MonitorService implements AgentWorkSource, SessionLifecycle, Proces
         activationCancelled(scope.agentId(), scope.sessionId(), event(observation));
     }
 
-    @Override
-    public synchronized void onSessionClosed(@NonNull String owner, @NonNull String session) {
+    @EventHandler
+    public synchronized void onSessionClosed(@NonNull SessionClosedEvent event) {
         foreground
                 .entrySet()
                 .removeIf(
                         entry -> {
-                            if (!entry.getKey().sessionId().equals(session)
-                                    || !entry.getKey().owner().equals(owner)) return false;
+                            if (!entry.getKey().sessionId().equals(event.sessionId())
+                                    || !entry.getKey().owner().equals(event.owner())) return false;
                             entry.getValue().ready().cancel(false);
                             return true;
                         });
         var removed =
-                list(owner, session).stream().map(MonitorRecord::id).collect(Collectors.toSet());
+                list(event.owner(), event.sessionId()).stream()
+                        .map(MonitorRecord::id)
+                        .collect(Collectors.toSet());
         records.keySet().removeAll(removed);
         completionWrites
                 .entrySet()
                 .removeIf(entry -> removed.contains(entry.getValue().event().monitorId()));
     }
 
-    @Override
-    public void onAgentTerminated(
-            @NonNull String owner, @NonNull String session, @NonNull String agent) {
-        cancelForAgent(agent);
+    @EventHandler
+    public void onAgentTerminated(@NonNull AgentTerminatedEvent event) {
+        cancelForAgent(event.agentId());
     }
 
     @Override

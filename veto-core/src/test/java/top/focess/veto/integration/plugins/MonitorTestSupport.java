@@ -11,7 +11,7 @@ import org.springframework.beans.factory.support.StaticListableBeanFactory;
 import top.focess.veto.agent.SessionAgentRegistry;
 import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.plugin.PluginHost;
-import top.focess.veto.api.plugin.contract.AgentWorkSource;
+import top.focess.veto.api.plugin.contract.AgentInbox;
 import top.focess.veto.builtin.group.GroupObservations;
 import top.focess.veto.builtin.group.GroupRegistry;
 import top.focess.veto.builtin.monitor.MonitorService;
@@ -42,9 +42,9 @@ public final class MonitorTestSupport {
                         .toList();
     }
 
-    public static @NonNull AgentWorkSource work(@NonNull MonitorService service) {
+    public static @NonNull AgentInbox work(@NonNull MonitorService service) {
         if (mockingDetails(service).isMock()) {
-            doCallRealMethod().when(service).pending(any(AgentWorkSource.Scope.class));
+            doCallRealMethod().when(service).pending(any(AgentInbox.Scope.class));
             doCallRealMethod().when(service).started(any(), any());
             doCallRealMethod().when(service).completed(any(), any(), anyBoolean());
             doCallRealMethod().when(service).cancelled(any(), any());

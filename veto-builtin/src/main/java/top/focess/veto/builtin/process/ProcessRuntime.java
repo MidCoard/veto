@@ -7,10 +7,14 @@ import java.util.Optional;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.ToolPreparation;
+import top.focess.veto.api.event.AgentTerminatedEvent;
+import top.focess.veto.api.event.EventHandler;
+import top.focess.veto.api.event.Listener;
+import top.focess.veto.api.event.OwnerClosedEvent;
+import top.focess.veto.api.event.SessionClosedEvent;
 import top.focess.veto.api.plugin.PluginContext;
 import top.focess.veto.api.plugin.PluginHost;
 import top.focess.veto.api.plugin.contract.JsonValue;
-import top.focess.veto.api.plugin.contract.SessionLifecycle;
 import top.focess.veto.api.process.ChainMode;
 import top.focess.veto.api.process.Command;
 import top.focess.veto.api.process.CommandResult;
@@ -18,7 +22,7 @@ import top.focess.veto.api.process.ProcessHost;
 import top.focess.veto.builtin.process.BackgroundTasks.Scope;
 
 /** Builtin policy and views around host-authorized process effects. */
-public final class ProcessRuntime implements SessionLifecycle {
+public final class ProcessRuntime implements Listener {
     private final @NonNull PluginContext context;
     private final @NonNull BackgroundTasks tasks;
     private TaskEvents events;
@@ -42,26 +46,26 @@ public final class ProcessRuntime implements SessionLifecycle {
         tasks.listener(events);
     }
 
-    @Override
-    public void onAgentTerminated(
-            @NonNull String owner, @NonNull String session, @NonNull String agent) {
+    @EventHandler
+    public void onAgentTerminated(@NonNull AgentTerminatedEvent event) {
         var notifications = events;
-        if (notifications != null) notifications.agentClosed(new Scope(owner, session, agent));
-        tasks.onAgentTerminated(owner, session, agent);
+        if (notifications != null)
+            notifications.agentClosed(new Scope(event.owner(), event.sessionId(), event.agentId()));
+        tasks.onAgentTerminated(event.owner(), event.sessionId(), event.agentId());
     }
 
-    @Override
-    public void onSessionClosed(@NonNull String owner, @NonNull String session) {
+    @EventHandler
+    public void onSessionClosed(@NonNull SessionClosedEvent event) {
         var notifications = events;
-        if (notifications != null) notifications.sessionClosed(owner, session);
-        tasks.onSessionClosed(owner, session);
+        if (notifications != null) notifications.sessionClosed(event.owner(), event.sessionId());
+        tasks.onSessionClosed(event.owner(), event.sessionId());
     }
 
-    @Override
-    public void onOwnerClosed(@NonNull String owner) {
+    @EventHandler
+    public void onOwnerClosed(@NonNull OwnerClosedEvent event) {
         var notifications = events;
-        if (notifications != null) notifications.ownerClosed(owner);
-        tasks.onOwnerClosed(owner);
+        if (notifications != null) notifications.ownerClosed(event.owner());
+        tasks.onOwnerClosed(event.owner());
     }
 
     /** Returns the volatile background-task registry. */

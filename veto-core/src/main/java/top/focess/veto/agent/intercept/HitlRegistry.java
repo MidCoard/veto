@@ -27,8 +27,8 @@ import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.tool.ParamCategory;
 import top.focess.veto.api.agent.tool.ToolCapability;
+import top.focess.veto.api.event.BeforeToolEvent;
 import top.focess.veto.api.llm.ToolCall;
-import top.focess.veto.api.plugin.contract.WorkflowHook;
 import top.focess.veto.bus.SessionInvalidations;
 import top.focess.veto.i18n.Msg;
 import top.focess.veto.util.Nullness;
@@ -203,7 +203,7 @@ public class HitlRegistry {
             @NonNull ToolCall call,
             ToolDefinition def,
             @NonNull GatewayResult result) {
-        return decide(agentId, call, def, result, WorkflowHook.Decision.CONTINUE);
+        return decide(agentId, call, def, result, BeforeToolEvent.Decision.CONTINUE);
     }
 
     /**
@@ -215,10 +215,10 @@ public class HitlRegistry {
             @NonNull ToolCall call,
             ToolDefinition def,
             @NonNull GatewayResult result,
-            WorkflowHook.@NonNull Decision requirement) {
-        if (requirement == WorkflowHook.Decision.REJECT)
+            BeforeToolEvent.@NonNull Decision requirement) {
+        if (requirement == BeforeToolEvent.Decision.REJECT)
             return new ApprovalDecision.Refused("Blocked by workflow hook");
-        boolean approval = requirement == WorkflowHook.Decision.REQUIRE_APPROVAL;
+        boolean approval = requirement == BeforeToolEvent.Decision.REQUIRE_APPROVAL;
         if (result instanceof GatewayResult.NotScreened) {
             if (approval) return hookApproval(null, null);
             record(agentId, call.callId(), "AUTO", "APPROVE", "NOT_SCREENED", null);

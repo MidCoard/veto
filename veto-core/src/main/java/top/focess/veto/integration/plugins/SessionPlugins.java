@@ -13,18 +13,18 @@ import top.focess.veto.agent.TurnType;
 import top.focess.veto.agent.tool.ToolDefinition;
 import top.focess.veto.api.agent.control.SourceEvidence;
 import top.focess.veto.api.agent.tool.ToolDocs;
+import top.focess.veto.api.event.WorkflowEvent;
 import top.focess.veto.api.llm.VetoResponse;
 import top.focess.veto.api.plugin.PluginBinding;
 import top.focess.veto.api.plugin.PluginState;
 import top.focess.veto.api.plugin.agent.AgentHost;
 import top.focess.veto.api.plugin.agent.AgentProfile;
 import top.focess.veto.api.plugin.contract.AgentConfiguration;
-import top.focess.veto.api.plugin.contract.AgentWorkSource;
+import top.focess.veto.api.plugin.contract.AgentInbox;
 import top.focess.veto.api.plugin.contract.ModelResponsePolicy;
 import top.focess.veto.api.plugin.contract.PluginFailure;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
 import top.focess.veto.api.plugin.contract.TextProtection;
-import top.focess.veto.api.plugin.contract.WorkflowHook;
 import top.focess.veto.api.plugin.contribution.ContributionPoint;
 import top.focess.veto.api.plugin.storage.PluginStorage;
 import top.focess.veto.integration.plugins.storage.PluginInvocationScope;
@@ -78,7 +78,7 @@ public class SessionPlugins {
                 .toList();
     }
 
-    private static @NonNull PluginBinding binding(@NonNull ManagedPlugin plugin) {
+    private static @NonNull PluginBinding binding(@NonNull PluginLifecycle plugin) {
         String revision =
                 plugin.implementation() instanceof ScriptPlugin script
                         ? script.digest()
@@ -146,7 +146,7 @@ public class SessionPlugins {
             sessions.saveAndFlush(session);
         }
         for (var binding : bindings) {
-            ManagedPlugin installed;
+            PluginLifecycle installed;
             try {
                 installed = manager.plugin(binding.id());
             } catch (IllegalArgumentException missing) {
@@ -219,43 +219,14 @@ public class SessionPlugins {
         return result;
     }
 
-    /** One fold step applied to a single workflow hook contribution. */
-    @FunctionalInterface
-    public interface WorkflowOperation<T extends @NonNull Object> {
-        /** Applies the hook to the current value and returns the transformed value. */
-        T apply(@NonNull WorkflowHook hook, T current) throws PluginFailure;
-    }
-
-    /** Selected, pinned hooks execute in contribution order with lifecycle admission. */
-    public <T extends @NonNull Object> T workflow(
-            WorkflowHook.@NonNull Context scope,
-            T initial,
-            @NonNull WorkflowOperation<T> operation) {
-        var entries = manager.catalog().entries(StandardContributionPoints.WORKFLOW);
-        if (entries.isEmpty()) return initial;
-        var ids = selectedIds(scope.sessionId());
-        T result = initial;
-        for (var entry : entries) {
-            if (!ids.contains(entry.source().namespace())) continue;
-            T current = result;
-            try {
-                scope.cancellation().checkCancelled();
-                result =
-                        manager.plugin(entry.source().namespace())
-                                .execute(
-                                        () -> {
-                                            T transformed =
-                                                    operation.apply(
-                                                            entry.implementation(), current);
-                                            scope.cancellation().checkCancelled();
-                                            return transformed;
-                                        });
-            } catch (PluginFailure | RuntimeException failure) {
-                // Plugin messages may contain raw inputs. Do not propagate them into history.
-                throw new IllegalStateException("Workflow hook unavailable");
-            }
-        }
-        return result;
+    /**
+     * Dispatches a workflow event to the session's selected listeners in priority order, each under
+     * its contributing plugin's admission. With no contributed listener the event is returned
+     * unchanged.
+     */
+    public void dispatch(@NonNull WorkflowEvent event) {
+        if (manager.catalog().entries(StandardContributionPoints.LISTENERS).isEmpty()) return;
+        manager.events().submit(event, selectedIds(event.sessionId()));
     }
 
     /** Opens the model-response policies of the session's selected plugins in catalog order. */
@@ -328,17 +299,20 @@ public class SessionPlugins {
     }
 
     /** Returns a lazily resolved composite work source of the session's selected plugins. */
-    public @NonNull AgentWorkSource workSource(@NonNull String sessionId) {
-        return new CompositeAgentWorkSource(
+    public @NonNull AgentInbox workSource(@NonNull String sessionId) {
+        return new CompositeAgentInbox(
                 () -> {
-                    if (manager.catalog().entries(StandardContributionPoints.AGENT_WORK).isEmpty())
+                    if (manager.catalog().entries(StandardContributionPoints.AGENT_INBOX).isEmpty())
                         return List.of();
                     var ids = selectedIds(sessionId);
-                    return manager.catalog().entries(StandardContributionPoints.AGENT_WORK).stream()
+                    return manager
+                            .catalog()
+                            .entries(StandardContributionPoints.AGENT_INBOX)
+                            .stream()
                             .filter(entry -> ids.contains(entry.source().namespace()))
                             .map(
                                     entry ->
-                                            new CompositeAgentWorkSource.Entry(
+                                            new CompositeAgentInbox.Entry(
                                                     entry.id().value(),
                                                     manager.plugin(entry.source().namespace()),
                                                     entry.implementation()))

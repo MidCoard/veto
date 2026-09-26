@@ -31,7 +31,7 @@ public class PluginController {
     /** Admin-only catalog of installed plugins with their state and contributed point/tool ids. */
     @GetMapping
     @SuppressWarnings(
-            "resource") // WHY: ManagedPlugin handles are owned by PluginManager, closed elsewhere
+            "resource") // WHY: PluginLifecycle handles are owned by PluginManager, closed elsewhere
     public @NonNull List<PluginResponse> list() {
         authorization.requireAdmin();
         return plugins.plugins().stream()

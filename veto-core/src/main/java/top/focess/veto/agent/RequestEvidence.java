@@ -8,10 +8,9 @@ import java.util.Set;
 import java.util.function.BooleanSupplier;
 import java.util.stream.IntStream;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import top.focess.veto.agent.loop.MessageCitations;
 import top.focess.veto.api.agent.control.SourceEvidence;
-import top.focess.veto.api.agent.workflow.PluginWork;
+import top.focess.veto.api.agent.workflow.ModelFlow;
 import top.focess.veto.api.llm.ProviderMessages;
 import top.focess.veto.api.llm.VetoRequest;
 import top.focess.veto.api.llm.VetoResponse;
@@ -20,7 +19,7 @@ import top.focess.veto.api.llm.VetoResponse;
 final class RequestEvidence implements SourceEvidence {
     /** Receipts may be forwarded once by the work which generated them. */
     static final class WorkSources {
-        private final @NonNull Set<PluginWork.Source> issued =
+        private final @NonNull Set<ModelFlow.Source> issued =
                 Collections.newSetFromMap(new IdentityHashMap<>());
         private boolean closed;
 
@@ -37,13 +36,13 @@ final class RequestEvidence implements SourceEvidence {
             issued.clear();
         }
 
-        synchronized void register(SourceEvidence.@Nullable Receipt receipt) {
+        synchronized void register(SourceEvidence.Receipt receipt) {
             check();
             if (receipt != null) issued.add(receipt);
         }
 
-        synchronized MessageCitations.@Nullable Bound consume(
-                PluginWork.@Nullable Source receipt,
+        synchronized MessageCitations.Bound consume(
+                ModelFlow.Source receipt,
                 @NonNull Object requestIdentity,
                 String callId,
                 @NonNull String message) {
@@ -142,8 +141,7 @@ final class RequestEvidence implements SourceEvidence {
                 .toList();
     }
 
-    static MessageCitations.@Nullable Bound bound(
-            SourceEvidence.@Nullable Receipt receipt, @NonNull Object boundary) {
+    static MessageCitations.Bound bound(SourceEvidence.Receipt receipt, @NonNull Object boundary) {
         if (receipt == null) return null;
         if (!(receipt instanceof Issued issued) || issued.boundary() != boundary)
             throw new SecurityException("Source receipt belongs to another exchange");
@@ -170,8 +168,8 @@ final class RequestEvidence implements SourceEvidence {
                 issued.bound());
     }
 
-    static MessageCitations.@Nullable Bound forRequest(
-            PluginWork.@Nullable Source receipt,
+    static MessageCitations.Bound forRequest(
+            ModelFlow.Source receipt,
             @NonNull Object requestIdentity,
             String modelCallId,
             @NonNull String message) {
@@ -185,7 +183,7 @@ final class RequestEvidence implements SourceEvidence {
         return issued.bound();
     }
 
-    static String modelCallId(SourceEvidence.@Nullable Receipt receipt, @NonNull Object boundary) {
+    static String modelCallId(SourceEvidence.Receipt receipt, @NonNull Object boundary) {
         if (receipt == null) return null;
         bound(receipt, boundary);
         return ((Issued) receipt).modelCallId();
