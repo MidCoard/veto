@@ -1,1 +1,0 @@
-org.springframework.boot.env.EnvironmentPostProcessor=top.focess.veto.distribution.LegacyHttpEnvironment

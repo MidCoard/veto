@@ -78,6 +78,11 @@ public final class BuiltinPlugin extends AbstractVetoPlugin {
     }
 
     @Override
+    public @NonNull String displayName() {
+        return "Veto Built-in";
+    }
+
+    @Override
     protected @NonNull PluginContributions onInitialize(
             @NonNull PluginContext context, JsonValue.@NonNull ObjectValue configuration) {
         host = context.service(ToolDocs.nonNullClass(PluginHost.class)).orElse(null);

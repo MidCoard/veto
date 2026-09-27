@@ -1,6 +1,8 @@
 package top.focess.veto.controller;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Stream;
 import org.jspecify.annotations.NonNull;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -34,40 +36,102 @@ public class PluginController {
             "resource") // WHY: PluginLifecycle handles are owned by PluginManager, closed elsewhere
     public @NonNull List<PluginResponse> list() {
         authorization.requireAdmin();
-        return plugins.plugins().stream()
-                .map(
-                        plugin -> {
-                            var script =
-                                    plugin.implementation() instanceof ScriptPlugin value
-                                            ? value
-                                            : null;
-                            return new PluginResponse(
-                                    plugin.identity().id(),
-                                    plugin.identity().version(),
-                                    script == null ? null : script.digest(),
-                                    plugin.state() == PluginState.ACTIVE
-                                            && (script == null || script.active()),
-                                    plugins.registrations().stream()
-                                            .filter(r -> r.plugin() == plugin)
-                                            .flatMap(r -> r.contributions().entries().stream())
-                                            .map(e -> e.point().id().value())
-                                            .filter(id -> !id.equals("veto:tools"))
-                                            .distinct()
-                                            .sorted()
-                                            .toList(),
-                                    plugins
-                                            .catalog()
-                                            .entries(StandardContributionPoints.TOOLS)
-                                            .stream()
-                                            .filter(
-                                                    entry ->
-                                                            entry.source()
-                                                                    .namespace()
-                                                                    .equals(plugin.identity().id()))
-                                            .map(plugins::toolName)
-                                            .toList(),
-                                    plugin.state());
-                        })
-                .toList();
+        List<PluginResponse> active =
+                plugins.plugins().stream()
+                        .map(
+                                plugin -> {
+                                    var script =
+                                            plugin.implementation() instanceof ScriptPlugin value
+                                                    ? value
+                                                    : null;
+                                    return new PluginResponse(
+                                            plugin.identity().id(),
+                                            plugin.implementation().displayName(),
+                                            plugin.identity().version(),
+                                            script == null ? null : script.digest(),
+                                            plugin.state() == PluginState.ACTIVE
+                                                    && (script == null || script.active()),
+                                            plugins.registrations().stream()
+                                                    .filter(r -> r.plugin() == plugin)
+                                                    .flatMap(
+                                                            r ->
+                                                                    r
+                                                                            .contributions()
+                                                                            .entries()
+                                                                            .stream())
+                                                    .map(e -> e.point().id().value())
+                                                    .filter(id -> !id.equals("veto:tools"))
+                                                    .distinct()
+                                                    .sorted()
+                                                    .toList(),
+                                            Stream.concat(
+                                                            plugins
+                                                                    .catalog()
+                                                                    .entries(
+                                                                            StandardContributionPoints
+                                                                                    .TOOLS)
+                                                                    .stream()
+                                                                    .filter(
+                                                                            entry ->
+                                                                                    entry.source()
+                                                                                            .namespace()
+                                                                                            .equals(
+                                                                                                    plugin.identity()
+                                                                                                            .id()))
+                                                                    .map(plugins::toolName),
+                                                            plugins
+                                                                    .catalog()
+                                                                    .entries(
+                                                                            StandardContributionPoints
+                                                                                    .NATIVE_TOOLS)
+                                                                    .stream()
+                                                                    .filter(
+                                                                            entry ->
+                                                                                    entry.source()
+                                                                                            .namespace()
+                                                                                            .equals(
+                                                                                                    plugin.identity()
+                                                                                                            .id()))
+                                                                    .map(
+                                                                            entry ->
+                                                                                    plugins
+                                                                                            .toolName(
+                                                                                                    entry.source()
+                                                                                                            .namespace(),
+                                                                                                    entry.id()
+                                                                                                            .value())))
+                                                    .distinct()
+                                                    .sorted()
+                                                    .toList(),
+                                            plugin.state(),
+                                            null);
+                                })
+                        .toList();
+        var result = new ArrayList<>(active);
+        for (var plugin : plugins.declined())
+            result.add(
+                    new PluginResponse(
+                            plugin.id(),
+                            plugin.name(),
+                            plugin.version(),
+                            null,
+                            false,
+                            List.of(),
+                            List.of(),
+                            PluginState.DECLINED,
+                            plugin.reason().name()));
+        for (var plugin : plugins.disabled())
+            result.add(
+                    new PluginResponse(
+                            plugin.id(),
+                            plugin.name(),
+                            plugin.version(),
+                            null,
+                            false,
+                            List.of(),
+                            List.of(),
+                            PluginState.DISABLED,
+                            null));
+        return List.copyOf(result);
     }
 }

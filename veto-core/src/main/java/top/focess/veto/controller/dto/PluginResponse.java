@@ -9,10 +9,12 @@ import top.focess.veto.api.plugin.PluginState;
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record PluginResponse(
         @NonNull String id,
+        @NonNull String name,
         @NonNull String version,
         String sha256,
         boolean active,
         @NonNull List<String> hooks,
         @NonNull List<String> tools,
-        @NonNull PluginState state)
+        @NonNull PluginState state,
+        String declineReason)
         implements RestResponse {}

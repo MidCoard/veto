@@ -14,9 +14,9 @@ import top.focess.veto.builtin.memory.embedder.Embedder;
  * as comma-separated values for portability; the production path would use pgvector's {@code
  * vector} type).
  *
- * <p>Activated by setting {@code veto.memory.store=jpa} (the default is {@code memory}, the
- * in-process {@link InMemoryMemoryStore}). Falls back to in-memory if the repository is
- * unavailable.
+ * <p>Activated by setting {@code veto.plugins.configuration[top.focess.builtin][memory-store]=jpa}
+ * (the default is {@code memory}, the in-process {@link InMemoryMemoryStore}). Falls back to
+ * in-memory if the repository is unavailable.
  */
 public class JpaMemoryStore implements MemoryStore {
 

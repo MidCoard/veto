@@ -20,13 +20,14 @@ import top.focess.veto.builtin.memory.embedder.Embedder;
  * cosine-distance operator {@code <=>} backed by an HNSW index, rather than the in-Java cosine loop
  * used by in-memory/JPA backends.
  *
- * <p>Activated by setting {@code veto.memory.store=pgvector}. <b>Requires PostgreSQL with the
- * pgvector extension installed</b> (the {@code vector} type and {@code <=>} operator are not part
- * of core Postgres and are absent from the H2 test database). On startup it self-provisions the
- * extension + the {@code pgvector_memories} table (guarded — if pgvector is unavailable it logs and
- * the store surfaces errors on use rather than failing the context load). It is therefore <b>not
- * exercised by the H2 test suite</b>, consistent with {@link JpaMemoryStore} (also untested); it is
- * verified against a real Postgres+pgvector in deployment.
+ * <p>Activated by setting {@code
+ * veto.plugins.configuration[top.focess.builtin][memory-store]=pgvector}. <b>Requires PostgreSQL
+ * with the pgvector extension installed</b> (the {@code vector} type and {@code <=>} operator are
+ * not part of core Postgres and are absent from the H2 test database). On startup it
+ * self-provisions the extension + the {@code pgvector_memories} table (guarded — if pgvector is
+ * unavailable it logs and the store surfaces errors on use rather than failing the context load).
+ * It is therefore <b>not exercised by the H2 test suite</b>, consistent with {@link JpaMemoryStore}
+ * (also untested); it is verified against a real Postgres+pgvector in deployment.
  *
  * <p>Embedding is delegated to the injected {@link Embedder} (the local hash implementation by
  * default, a provider embedder when configured); the {@code vector(N)} column dimension tracks
@@ -79,7 +80,8 @@ public class PgvectorMemoryStore implements MemoryStore {
             log.info("PgvectorMemoryStore: provisioned table {}", TABLE);
         } catch (PersistenceException e) {
             // pgvector not installed / not Postgres — the store is opted-in via config, so the
-            // operator who set veto.memory.store=pgvector is expected to have pgvector. Surface a
+            // operator who selected the pgvector memory store is expected to have pgvector. Surface
+            // a
             // clear log; queries will throw (fail-closed) rather than silently returning nothing.
             log.error(
                     "PgvectorMemoryStore: provisioning failed (pgvector extension/Postgres required) — "

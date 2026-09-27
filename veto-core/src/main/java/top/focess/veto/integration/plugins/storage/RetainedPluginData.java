@@ -145,7 +145,9 @@ public class RetainedPluginData {
         }
         Presence presence =
                 installed == null
-                        ? Presence.ABSENT
+                        ? plugins.isDeclined(row.plugin) || plugins.isDisabled(row.plugin)
+                                ? Presence.INACTIVE
+                                : Presence.ABSENT
                         : installed.state() == PluginState.ACTIVE
                                         && (!(installed.implementation()
                                                         instanceof ScriptPlugin script)

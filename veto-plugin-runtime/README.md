@@ -56,8 +56,35 @@ classloader or MCP subprocess configuration is involved.
 
 ## Configuration and trust
 
+The default installation root is `plugins/` relative to the backend working
+directory. Each immediate child is one package with `plugin.json`. The host
+does not recurse, and loading occurs once at startup. A Java package uses:
+
+```json
+{
+  "schemaVersion": 1,
+  "id": "example.plugin",
+  "name": "Example Plugin",
+  "version": "1.0.0",
+  "type": "java",
+  "entryPoint": "example.plugin.ExamplePlugin",
+  "artifact": "plugin.jar"
+}
+```
+
+Put `plugin.jar` beside the manifest and private dependency JARs in `lib/`.
+The entry class must implement `VetoPlugin`, have a public no-argument
+constructor, and return the manifest identity. Veto API and Jackson types are
+shared with the host; plugin implementation and private library classes are
+loaded through that package's classloader. Do not import another plugin's
+classes. A script package uses the existing `tools` manifest fields plus
+`"type": "script"` and a `"name"`; its entry point is the `.mjs` filename.
+The previous explicitly listed script-package format remains accepted.
+
 | Property | Default | Meaning |
 |---|---|---|
+| `veto.plugins.directory` | `plugins` | Installation root; immediate child directories are plugin packages |
+| `veto.plugins.disabled` | empty | Installed package IDs inventoried but not instantiated until removed from this list and the backend restarted |
 | `veto.plugins.paths` | empty | Comma-separated absolute package directories; at most 16 |
 | `veto.plugins.node-command` | empty | Absolute path to a Node executable; required when packages are configured |
 | `veto.plugins.trusted-code` | `false` | Explicit operator acknowledgement that installed scripts run as the server user |

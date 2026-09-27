@@ -17,7 +17,8 @@ import top.focess.veto.builtin.memory.embedder.Embedder;
  * two-axis abstraction (Axis A storage/query is this vector index; Axis B triggering is whatever
  * calls search).
  *
- * <p>Activated by setting {@code veto.memory.store=vector}. Falls back to {@link
+ * <p>Activated by setting {@code
+ * veto.plugins.configuration[top.focess.builtin][memory-store]=vector}. Falls back to {@link
  * InMemoryMemoryStore} (default) or {@link JpaMemoryStore} otherwise.
  */
 public class VectorIndexMemoryStore implements MemoryStore {

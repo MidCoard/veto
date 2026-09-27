@@ -23,6 +23,7 @@ import top.focess.veto.integration.plugins.PluginTextEmbeddings;
 import top.focess.veto.llm.credential.CredentialResolver;
 import top.focess.veto.llm.embedding.EmbeddingProfile;
 import top.focess.veto.llm.embedding.ProviderEmbeddingClient;
+import top.focess.veto.model.SessionEntity;
 import top.focess.veto.model.SessionRepository;
 import top.focess.veto.vault.UserRegistry;
 
@@ -65,10 +66,7 @@ public class BuiltinMemoryInfrastructure {
                                                                                                 .isBefore(
                                                                                                         user
                                                                                                                 .getCreatedAt()))
-                                                                        .map(
-                                                                                session ->
-                                                                                        session
-                                                                                                .getId())
+                                                                        .map(SessionEntity::getId)
                                                                         .toList()))
                                         .toList(),
                         transactions);

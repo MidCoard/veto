@@ -11,10 +11,20 @@ import java.util.UUID;
 import org.checkerframework.framework.qual.DefaultQualifier;
 import org.checkerframework.framework.qual.TypeUseLocation;
 import org.jspecify.annotations.NonNull;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.springframework.boot.DefaultApplicationArguments;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
+import top.focess.veto.api.agent.tool.ToolDocs;
+import top.focess.veto.api.plugin.PluginIdentity;
+import top.focess.veto.api.plugin.contract.AgentInbox;
+import top.focess.veto.api.plugin.contract.StandardContributionPoints;
+import top.focess.veto.api.plugin.contribution.Contribution;
+import top.focess.veto.api.plugin.contribution.ContributionCatalog;
+import top.focess.veto.api.plugin.contribution.ContributionSource;
+import top.focess.veto.builtin.BuiltinPlugin;
 import top.focess.veto.builtin.monitor.MonitorRecord;
 import top.focess.veto.integration.plugins.PluginManager;
 import top.focess.veto.integration.plugins.SessionPlugins;
@@ -22,6 +32,7 @@ import top.focess.veto.model.AgentEntity;
 import top.focess.veto.model.AgentInstanceRepository;
 import top.focess.veto.model.SessionEntity;
 import top.focess.veto.model.SessionRepository;
+import top.focess.veto.plugin.runtime.PluginLifecycle;
 
 @DefaultQualifier(
         value = NonNull.class,
@@ -32,6 +43,42 @@ import top.focess.veto.model.SessionRepository;
             TypeUseLocation.UPPER_BOUND
         })
 class LegacyMonitorContinuationsTest {
+    @Test
+    void startupFindsBuiltinMonitorInboxByStableContributionId() {
+        var source = new DriverManagerDataSource("jdbc:h2:mem:" + UUID.randomUUID(), "sa", "");
+        @NonNull PluginManager plugins = mock();
+        @NonNull PluginLifecycle managed = mock();
+        @NonNull BuiltinPlugin builtin = mock();
+        when(plugins.plugins()).thenReturn(List.of(managed));
+        when(managed.implementation()).thenReturn(builtin);
+        when(builtin.identity()).thenReturn(new PluginIdentity("top.focess.builtin", "1.0.0"));
+        var catalog =
+                new ContributionCatalog.Builder()
+                        .define(StandardContributionPoints.AGENT_INBOX, ignored -> {})
+                        .stage(
+                                new ContributionSource(
+                                        "top.focess.builtin",
+                                        "1.0.0",
+                                        ContributionSource.Origin.PLUGIN),
+                                List.of(
+                                        Contribution.of(
+                                                StandardContributionPoints.AGENT_INBOX,
+                                                "monitor-work",
+                                                mock(AgentInbox.class))))
+                        .freeze();
+        when(plugins.catalog()).thenReturn(catalog);
+        @NonNull SessionRepository sessions = mock();
+        when(sessions.findAll()).thenReturn(List.of());
+        var importer =
+                new LegacyMonitorContinuations(
+                        source,
+                        plugins,
+                        sessions,
+                        mock(ToolDocs.nonNullClass(AgentInstanceRepository.class)),
+                        mock(ToolDocs.nonNullClass(SessionPlugins.class)));
+        assertDoesNotThrow(() -> importer.run(new DefaultApplicationArguments()));
+    }
+
     @ParameterizedTest
     @ValueSource(booleans = {false, true})
     void copiesOnlyMatchingCheckpointAndPreservesNewerBudgetOnRerun(boolean hasAllowance) {

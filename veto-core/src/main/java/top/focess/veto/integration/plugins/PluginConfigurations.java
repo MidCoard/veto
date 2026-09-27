@@ -2,6 +2,7 @@ package top.focess.veto.integration.plugins;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Set;
 import org.jspecify.annotations.NonNull;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
@@ -12,6 +13,18 @@ import top.focess.veto.plugin.runtime.*;
 @Component
 @ConfigurationProperties(prefix = "veto.plugins")
 public final class PluginConfigurations {
+    private @NonNull Set<String> disabled = Set.of();
+
+    /** Operator-owned IDs omitted from activation during startup package scanning. */
+    public @NonNull Set<String> getDisabled() {
+        return disabled;
+    }
+
+    /** Configures the installed package IDs to leave inactive at startup. */
+    public void setDisabled(@NonNull Set<String> disabled) {
+        this.disabled = Set.copyOf(disabled);
+    }
+
     private @NonNull Map<String, Map<String, String>> catalogueRoots = Map.of();
 
     public @NonNull Map<String, Map<String, String>> getCatalogueRoots() {

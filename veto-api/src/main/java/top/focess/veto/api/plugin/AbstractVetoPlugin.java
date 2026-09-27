@@ -39,6 +39,8 @@ public abstract class AbstractVetoPlugin implements VetoPlugin {
             throws PluginFailure {
         try {
             return onInitialize(context, configuration);
+        } catch (PluginDeclinedException declined) {
+            throw declined;
         } catch (Exception failure) {
             throw safe(failure);
         }

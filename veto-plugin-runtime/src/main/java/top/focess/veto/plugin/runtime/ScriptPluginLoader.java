@@ -46,12 +46,18 @@ public final class ScriptPluginLoader implements PluginLoader<ScriptPlugin> {
         byte[] manifestBytes = ScriptPlugin.readFile(root.resolve("plugin.json"));
         JsonNode manifest = ScriptPlugin.parse(manifestBytes);
         PluginSchema.fields(
-                manifest, Set.of("schemaVersion", "id", "version", "entryPoint", "tools"));
+                manifest,
+                Set.of("schemaVersion", "id", "name", "version", "type", "entryPoint", "tools"));
+        if (manifest.has("type") && !"script".equals(ScriptPlugin.text(manifest, "type")))
+            throw new IOException("Invalid script plugin type");
         PluginSchema.require(
                 manifest.path("schemaVersion").isIntegralNumber()
                         && manifest.path("schemaVersion").canConvertToInt()
                         && manifest.path("schemaVersion").asInt() == 1);
         String id = ScriptPlugin.text(manifest, "id");
+        String name = manifest.has("name") ? ScriptPlugin.text(manifest, "name") : id;
+        if (name.isBlank() || name.length() > 128)
+            throw new IOException("Invalid script plugin name");
         PluginSchema.require(id.matches("[a-z][a-z0-9_]{0,19}"));
         String version = ScriptPlugin.text(manifest, "version");
         PluginSchema.require(version.matches("[0-9]+\\.[0-9]+\\.[0-9]+"));
@@ -90,17 +96,20 @@ public final class ScriptPluginLoader implements PluginLoader<ScriptPlugin> {
         try {
             Path executable = snapshot.resolve(entry);
             Files.write(executable, script);
-            return new ScriptPlugin(
-                    id,
-                    version,
-                    digest,
-                    descriptors,
-                    snapshot,
-                    node,
-                    executable,
-                    millis,
-                    host == null ? new ScriptHost(node, millis) : host,
-                    host == null);
+            ScriptPlugin plugin =
+                    new ScriptPlugin(
+                            id,
+                            version,
+                            digest,
+                            descriptors,
+                            snapshot,
+                            node,
+                            executable,
+                            millis,
+                            host == null ? new ScriptHost(node, millis) : host,
+                            host == null);
+            plugin.setDisplayName(name);
+            return plugin;
         } catch (Exception e) {
             ScriptPlugin.removeSnapshot(snapshot);
             throw new IOException(

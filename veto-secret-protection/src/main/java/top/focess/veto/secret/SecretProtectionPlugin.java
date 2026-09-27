@@ -80,6 +80,11 @@ public final class SecretProtectionPlugin extends AbstractVetoPlugin {
     }
 
     @Override
+    public @NonNull String displayName() {
+        return "Secret Protection";
+    }
+
+    @Override
     public @NonNull Set<@NonNull String> historicalIds() {
         return Set.of("org.veto.secret-protection");
     }

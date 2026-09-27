@@ -182,6 +182,9 @@ To launch a built JAR in the background on Windows, use
 `./start-backend.ps1 -Jar ./veto-app/build/libs/veto-app-1.0.100.jar`.
 On macOS/Linux, use
 `sh ./start-backend.sh ./veto-app/build/libs/veto-app-1.0.100.jar`.
+To run the core without bundled plugins, build `:veto-core:bootJar` and pass
+`./veto-core/build/libs/veto-core-1.0.100.jar` to the same launcher. Core starts
+with zero plugin tools; a model request still needs a configured model transport.
 Both launchers use Java from `JAVA_HOME`, or from `PATH` when unset.
 The launchers use the repository root even when called from another directory,
 and copy the JAR to an isolated runtime file so later builds cannot replace it.
@@ -261,7 +264,7 @@ configuration classes.
 | `veto.security.deployer-policy` | `FULL_ACCESS` | `FULL_ACCESS`, `PROTECTED`, `SANDBOXED`, or `TENANT` |
 | `veto.security.screening-mode` | `STRICT` | `STRICT`, `BALANCED`, or `PERMISSIVE` |
 | `veto.security.signup.mode` | `invite` | `solo`, `public`, or `invite` |
-| `veto.memory.store` | `jpa` | `memory`, `jpa`, `vector`, or `pgvector` |
+| `veto.plugins.configuration[top.focess.builtin][memory-store]` | `jpa` in `veto-app` | Builtin memory store: `memory`, `jpa`, `vector`, or `pgvector` |
 | `veto.vault.vault-home` | `~/.veto` | vault and per-user state root |
 | `veto.slm.model-path` | `./models/veto-slm.gguf` | local gateway model |
 | `veto.workspace.roots` | empty | deployer-authorized roots and the fallback Workspace |
@@ -352,11 +355,29 @@ through the in-process tool engine and their declared capability boundary.
 
 ## Plugins — experimental
 
-Veto discovers built-in Java plugins through `ServiceLoader` at startup — the
-secret-protection plugin is an ordinary self-contained plugin on this path,
-contributing its tools, text protections, observation masking and lifecycle
-hooks through the shared typed catalog. Veto can additionally activate
-explicitly configured local JavaScript plugin packages at startup.
+Veto scans immediate subdirectories of `plugins/` at startup. Each installed
+package has a `plugin.json` with `type: "java"` or `type: "script"`, a stable ID,
+display name, version and entry point. Java packages carry their own JAR and
+optional `lib/*.jar` files; each gets a separate classloader whose shared parent
+exposes veto-api but no other plugin implementation. Script packages use the
+existing Node worker. `veto.plugins.directory` selects another installation
+root; an absent root is valid and loads no installed packages. There is no
+automatic reload or plugin-to-plugin JAR dependency graph. Named, versioned
+services through veto-api provide cross-plugin cooperation.
+
+Set `veto.plugins.disabled` to a comma-separated list of installed plugin IDs
+to leave those packages inactive at startup; the host reads their manifest
+metadata but does not construct their entry classes. Remove an ID and restart
+to re-enable it. A Java plugin may intentionally decline from `initialize()`
+with `PluginDeclinedException`; the administrator catalog reports `DECLINED`
+and its public reason. Unexpected initialization or startup failures still
+fail backend startup. Live enable/disable is not supported yet.
+
+During migration the normal `veto-app` distribution also discovers its bundled
+Java plugins through `ServiceLoader`. The secret-protection plugin is on this
+path and contributes its tools, protections and lifecycle hooks. Existing
+`veto.plugins.paths` remains available for explicitly configured script package
+directories.
 The experimental script runtime validates descriptors, starts persistent Node workers,
 and registers namespaced tools through the shared catalog. Plugin calls retain ordinary
 Gateway approval and role restrictions. `GET /api/plugins` provides administrator-only
@@ -364,8 +385,7 @@ status information.
 
 Scripts are trusted local code running as the server user, not sandboxed plugins.
 Activation requires explicit operator configuration; Node and plugin packages are not
-bundled. Model hooks, cross-client adapters and external Java
-JAR activation remain unavailable.
+bundled. Live package reload and cross-client adapters remain unavailable.
 
 - [Script plugin README](veto-plugin-runtime/README.md): configuration, executable example,
   protocol, trust boundaries and tests.

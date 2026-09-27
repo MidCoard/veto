@@ -6,6 +6,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.ServiceConfigurationError;
@@ -29,6 +30,7 @@ import top.focess.veto.api.llm.PromptRenderer;
 import top.focess.veto.api.llm.TextEmbedding;
 import top.focess.veto.api.plugin.PluginContext;
 import top.focess.veto.api.plugin.PluginContributions;
+import top.focess.veto.api.plugin.PluginDeclinedException;
 import top.focess.veto.api.plugin.PluginHost;
 import top.focess.veto.api.plugin.PluginIdentity;
 import top.focess.veto.api.plugin.PluginState;
@@ -54,8 +56,8 @@ import top.focess.veto.plugin.runtime.*;
 
 /**
  * Startup-only operator configuration. All packages must start or the application fails startup.
- * Built-in plugins are discovered through {@link ServiceLoader}; installed script packages come
- * from operator configuration.
+ * Installed Java and script packages are scanned from the plugin directory. Existing classpath
+ * plugins are also discovered through {@link ServiceLoader} during distribution migration.
  */
 @Component
 public final class PluginManager implements AutoCloseable {
@@ -140,6 +142,8 @@ public final class PluginManager implements AutoCloseable {
             Executors.newSingleThreadExecutor(
                     Thread.ofPlatform().daemon(true).name("veto-plugin-manager").factory());
     private final @NonNull List<PluginLifecycle> plugins;
+    private final @NonNull List<DeclinedPlugin> declined;
+    private final @NonNull List<InstalledPluginLoader.DisabledPackage> disabled;
     private final @NonNull Map<String, String> aliases;
     private final @NonNull List<Registration> registrations;
     private final @NonNull ContributionCatalog catalog;
@@ -149,6 +153,13 @@ public final class PluginManager implements AutoCloseable {
     /** A started plugin paired with the contributions it declared at initialization. */
     public record Registration(
             @NonNull PluginLifecycle plugin, @NonNull PluginContributions contributions) {}
+
+    /** Host-owned metadata for an installed plugin that deliberately declined initialization. */
+    public record DeclinedPlugin(
+            @NonNull String id,
+            @NonNull String name,
+            @NonNull String version,
+            PluginDeclinedException.@NonNull Reason reason) {}
 
     /** Convenience constructor using default operator configuration. */
     public PluginManager(
@@ -160,11 +171,24 @@ public final class PluginManager implements AutoCloseable {
             throws IOException {
         this(
                 paths,
+                "",
                 nodeCommand,
                 trustedCode,
                 timeoutMillis,
                 hostServices,
                 new PluginConfigurations());
+    }
+
+    /** Test and embedding constructor with explicit configuration and no installation scan. */
+    public PluginManager(
+            @NonNull String paths,
+            @NonNull String nodeCommand,
+            boolean trustedCode,
+            long timeoutMillis,
+            @NonNull ObjectProvider<PluginHostServices> hostServices,
+            @NonNull PluginConfigurations configurations)
+            throws IOException {
+        this(paths, "", nodeCommand, trustedCode, timeoutMillis, hostServices, configurations);
     }
 
     /**
@@ -179,6 +203,7 @@ public final class PluginManager implements AutoCloseable {
     @Autowired
     public PluginManager(
             @Value("${veto.plugins.paths:}") @NonNull String paths,
+            @Value("${veto.plugins.directory:plugins}") @NonNull String pluginDirectory,
             @Value("${veto.plugins.node-command:}") @NonNull String nodeCommand,
             @Value("${veto.plugins.trusted-code:false}") boolean trustedCode,
             @Value("${veto.plugins.timeout-ms:5000}") long timeoutMillis,
@@ -192,11 +217,24 @@ public final class PluginManager implements AutoCloseable {
                 (source, data) -> PromptCompiler.compileDocument(source, data).text();
         services.put(ToolDocs.nonNullClass(PromptRenderer.class), renderer);
         List<PluginLifecycle> staged = new ArrayList<>();
+        List<InstalledPluginLoader.DisabledPackage> disabledPackages = new ArrayList<>();
         try {
             if (!paths.isBlank()) configurations.getScriptMode().requireAvailable(trustedCode);
             // Provider failures are fatal: a broken built-in must not silently drop its points.
             for (var discovered : ServiceLoader.load(VetoPlugin.class))
                 staged.add(new PluginLifecycle(discovered, lifecycle));
+            if (!pluginDirectory.isBlank()) {
+                var installed =
+                        new InstalledPluginLoader(
+                                        Path.of(nodeCommand),
+                                        Duration.ofMillis(timeoutMillis),
+                                        trustedCode,
+                                        configurations.getScriptMode())
+                                .discover(Path.of(pluginDirectory), configurations.getDisabled());
+                disabledPackages.addAll(installed.disabled());
+                for (var plugin : installed.plugins())
+                    staged.add(new PluginLifecycle(plugin, lifecycle));
+            }
             if (!paths.isBlank()) {
                 var ids = new HashSet<String>();
                 var entries = paths.split(",", -1);
@@ -220,6 +258,9 @@ public final class PluginManager implements AutoCloseable {
                 if (!allIds.add(plugin.identity().id()))
                     throw new IllegalArgumentException("Duplicate plugin identity");
             }
+            for (var plugin : disabledPackages)
+                if (!allIds.add(plugin.id()))
+                    throw new IllegalArgumentException("Duplicate plugin identity");
             var aliasLookup = new HashMap<String, String>();
             for (var plugin : staged) {
                 var historicalIds = plugin.implementation().historicalIds();
@@ -236,7 +277,10 @@ public final class PluginManager implements AutoCloseable {
             }
             aliases = Map.copyOf(aliasLookup);
             List<Registration> registered = new ArrayList<>();
-            for (var plugin : staged) {
+            List<DeclinedPlugin> declinedPlugins = new ArrayList<>();
+            Iterator<PluginLifecycle> pending = staged.iterator();
+            while (pending.hasNext()) {
+                var plugin = pending.next();
                 var pluginServices = new HashMap<Class<?>, Object>(services);
                 Object optionalGrants = pluginServices.remove(PluginServiceGrants.class);
                 if (optionalGrants instanceof PluginServiceGrants grants)
@@ -299,20 +343,31 @@ public final class PluginManager implements AutoCloseable {
                 pluginServices.put(
                         ToolDocs.nonNullClass(PluginServices.class),
                         serviceRegistry.forPlugin(plugin));
-                registered.add(
-                        new Registration(
-                                plugin,
-                                plugin.initialize(
-                                        new PluginContext(
-                                                plugin.identity(),
-                                                () -> {},
-                                                () -> {
-                                                    throw new IllegalStateException(
-                                                            "Plugin context is not bound to a"
-                                                                    + " lifecycle owner");
-                                                },
-                                                pluginServices),
-                                        configurations.forPlugin(plugin.identity().id()))));
+                try {
+                    registered.add(
+                            new Registration(
+                                    plugin,
+                                    plugin.initialize(
+                                            new PluginContext(
+                                                    plugin.identity(),
+                                                    () -> {},
+                                                    () -> {
+                                                        throw new IllegalStateException(
+                                                                "Plugin context is not bound to a"
+                                                                        + " lifecycle owner");
+                                                    },
+                                                    pluginServices),
+                                            configurations.forPlugin(plugin.identity().id()))));
+                } catch (PluginDeclinedException declinedReason) {
+                    grantedServices.remove(plugin.identity().id());
+                    declinedPlugins.add(
+                            new DeclinedPlugin(
+                                    plugin.identity().id(),
+                                    plugin.implementation().displayName(),
+                                    plugin.identity().version(),
+                                    declinedReason.reason()));
+                    pending.remove();
+                }
             }
             var builder = new ContributionCatalog.Builder();
             // Define every standard point up front so an unpopulated point yields an empty entry
@@ -356,6 +411,8 @@ public final class PluginManager implements AutoCloseable {
             for (var plugin : staged) plugin.start();
             catalog = validatedCatalog;
             plugins = List.copyOf(staged);
+            declined = List.copyOf(declinedPlugins);
+            disabled = List.copyOf(disabledPackages);
             registrations = List.copyOf(registered);
             List<PluginLifecycle> admitted = plugins;
             events =
@@ -363,7 +420,10 @@ public final class PluginManager implements AutoCloseable {
                             validatedCatalog,
                             (namespace, body) -> admit(admitted, namespace, body));
         } catch (Exception | ServiceConfigurationError e) {
-            for (var plugin : staged.reversed()) plugin.close();
+            for (var plugin : staged.reversed()) {
+                serviceRegistry.revoke(plugin.identity().id());
+                plugin.close();
+            }
             lifecycle.shutdown();
             throw new IOException("Plugin activation failed", e);
         }
@@ -371,6 +431,26 @@ public final class PluginManager implements AutoCloseable {
 
     public @NonNull List<PluginLifecycle> plugins() {
         return plugins;
+    }
+
+    /** Installed packages that deliberately declined initialization. */
+    public @NonNull List<DeclinedPlugin> declined() {
+        return declined;
+    }
+
+    /** Installed packages whose entry classes were not loaded by operator choice. */
+    public @NonNull List<InstalledPluginLoader.DisabledPackage> disabled() {
+        return disabled;
+    }
+
+    /** Whether an inactive installed package claims this stable identity. */
+    public boolean isDeclined(@NonNull String id) {
+        return declined.stream().anyMatch(plugin -> plugin.id().equals(canonicalId(id)));
+    }
+
+    /** Whether a package is installed but disabled before class loading. */
+    public boolean isDisabled(@NonNull String id) {
+        return disabled.stream().anyMatch(plugin -> plugin.id().equals(canonicalId(id)));
     }
 
     public @NonNull ContributionCatalog catalog() {
@@ -493,7 +573,10 @@ public final class PluginManager implements AutoCloseable {
     @Override
     public void close() {
         try {
-            plugins.reversed().forEach(PluginLifecycle::close);
+            for (var plugin : plugins.reversed()) {
+                serviceRegistry.revoke(plugin.identity().id());
+                plugin.close();
+            }
         } finally {
             lifecycle.shutdown();
         }

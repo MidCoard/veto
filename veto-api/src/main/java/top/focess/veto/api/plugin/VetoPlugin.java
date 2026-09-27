@@ -22,6 +22,16 @@ public interface VetoPlugin extends AutoCloseable {
     @NonNull PluginIdentity identity();
 
     /**
+     * Returns the human-readable name shown when selecting this plugin. This is presentation only;
+     * {@link #identity()} remains the stable selection and storage key.
+     *
+     * @return a nonblank display name, or the stable ID by default
+     */
+    default @NonNull String displayName() {
+        return identity().id();
+    }
+
+    /**
      * Former stable IDs that the host may resolve to {@link #identity()} when reading durable
      * selections created by an older plugin release. Aliases must be globally unique across all
      * installed plugins and must not equal any plugin's current ID; the host rejects collisions at
@@ -43,6 +53,8 @@ public interface VetoPlugin extends AutoCloseable {
      * @param configuration immutable plugin configuration
      * @return the complete set of contributions to validate and publish
      * @throws PluginFailure when initialization cannot produce a valid contribution set
+     * @throws PluginDeclinedException to intentionally remain inactive before contributions are
+     *     published; this is not permitted from {@link #start()}
      */
     @NonNull PluginContributions initialize(
             @NonNull PluginContext context, JsonValue.@NonNull ObjectValue configuration)

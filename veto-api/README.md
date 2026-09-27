@@ -4,8 +4,9 @@
 plugins. Plugin code depends on this module, not `veto-core`. For portable script plugins,
 see the separate [script runtime](../veto-plugin-runtime/README.md).
 
-The API is experimental. Rebuild plugins when its Java contracts change. A Java plugin has
-a public no-argument constructor and a service-loader entry at
+The API is experimental. Rebuild plugins when its Java contracts change. An
+installed Java plugin has a public no-argument constructor and a `plugin.json`
+entry class. Transitional plugins bundled on the application classpath use
 `META-INF/services/top.focess.veto.api.plugin.VetoPlugin`.
 
 ## Choose the right boundary
@@ -31,6 +32,12 @@ initialization before the host binds the named service directory. A provider the
 registers `SERVICES` during `initialize`, while a consumer calls `services().find(...)` only
 in `start` or later. After catalog validation, `start()` makes the plugin ready and the host
 publishes its contributions.
+
+A plugin that cannot apply to this host may throw `PluginDeclinedException`
+from `initialize()` with a bounded public reason. The host closes it and
+reports `DECLINED`; no contributions are published. It must not use this to
+mask invalid configuration or callback bugs. A decline from `start()` is not
+supported because the contribution catalog has already been validated.
 
 Contribution handlers run on their caller's thread unless their contract says otherwise.
 Plugins own synchronization inside their implementations. Before shutdown, the host closes
@@ -208,7 +215,11 @@ version, and host-attributed provider ID. Duplicate name/version pairs fail acti
 distinct major versions may coexist.
 
 Lookup and invocation apply caller/provider lifecycle and current selection checks. A retained
-handle pins a descriptor but bypasses no check. Expected public failures use
+handle pins a descriptor but bypasses no check; it does not retain provider implementation
+objects after registration revocation. Consumers must treat absence or revocation as an
+ordinary unavailable result and may rediscover later. A protocol's request and response
+schema is shared by its authors under the stable name and major version; plugins do not
+import one another's implementation classes or JARs. Expected public failures use
 `ServiceException`; unexpected provider diagnostics are hidden by the host. Provider classes,
 Java serialization, and arbitrary objects do not cross this boundary.
 

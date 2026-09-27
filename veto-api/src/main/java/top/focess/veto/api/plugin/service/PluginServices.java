@@ -11,7 +11,9 @@ import top.focess.veto.api.plugin.contract.JsonValue;
  * <p>The host binds the directory after all plugins initialize. Consumers discover services at
  * start or later. This is separate from class-keyed host capabilities in {@code
  * PluginContext.service}; provider implementation classes never cross this boundary. Retained
- * handles recheck caller and provider admission on every invocation.
+ * handles recheck caller and provider admission on every invocation. A retained handle keeps a
+ * descriptor, not the provider implementation or classloader; revocation makes invocation
+ * unavailable even if the consumer keeps its handle.
  */
 public interface PluginServices {
     /**

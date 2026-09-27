@@ -83,6 +83,23 @@ class PluginServiceRegistryTest {
         }
     }
 
+    @Test
+    void revokingProviderInvalidatesRetainedHandleAndDiscovery() throws Exception {
+        try (var pair = new Pair()) {
+            var services = pair.consumer.context.services();
+            var handle = services.find("demo:echo", 1).orElseThrow();
+            pair.registry.revoke("demo.provider");
+            assertTrue(services.find("demo:echo", 1).isEmpty());
+            assertEquals(1, services.available().size());
+            assertEquals(
+                    ServiceException.Code.UNAVAILABLE,
+                    assertThrows(
+                                    ServiceException.class,
+                                    () -> handle.invoke(JsonValue.NullValue.INSTANCE))
+                            .code());
+        }
+    }
+
     private static final class TestPlugin extends AbstractVetoPlugin {
         final @NonNull String id;
         @NonNull PluginContext context =
@@ -147,13 +164,14 @@ class PluginServiceRegistryTest {
     private static final class Pair implements AutoCloseable {
         final @NonNull ExecutorService executor = Executors.newSingleThreadExecutor();
         final @NonNull AtomicBoolean allowed = new AtomicBoolean(true);
+        final @NonNull PluginServiceRegistry registry =
+                new PluginServiceRegistry((caller, provider) -> allowed.get());
         final @NonNull TestPlugin consumer = new TestPlugin("demo.consumer");
         final @NonNull PluginLifecycle consumerRuntime = new PluginLifecycle(consumer, executor);
         final @NonNull PluginLifecycle providerRuntime =
                 new PluginLifecycle(new TestPlugin("demo.provider"), executor);
 
         Pair() throws Exception {
-            var registry = new PluginServiceRegistry((caller, provider) -> allowed.get());
             var builder =
                     new ContributionCatalog.Builder()
                             .define(StandardContributionPoints.SERVICES, ignored -> {});

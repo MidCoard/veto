@@ -194,6 +194,17 @@ public final class PluginLifecycle implements AutoCloseable {
                                                 configuration);
                                 state = PluginState.INITIALIZED;
                                 return contributions;
+                            } catch (PluginDeclinedException declined) {
+                                state = PluginState.STOPPING;
+                                signalStopping();
+                                cleanup();
+                                if (state == PluginState.FAILED) {
+                                    closed.complete(null);
+                                    throw new PluginFailure(PluginFailure.Code.INTERNAL_FAILURE);
+                                }
+                                state = PluginState.DECLINED;
+                                closed.complete(null);
+                                throw declined;
                             } catch (Throwable failure) {
                                 failOnControlThread();
                                 throw safe(failure);
@@ -365,6 +376,7 @@ public final class PluginLifecycle implements AutoCloseable {
         try {
             return result.join();
         } catch (CompletionException failure) {
+            if (failure.getCause() instanceof PluginDeclinedException declined) throw declined;
             if (failure.getCause() instanceof PluginFailure declared) throw declared;
             throw new PluginFailure(PluginFailure.Code.INTERNAL_FAILURE);
         }

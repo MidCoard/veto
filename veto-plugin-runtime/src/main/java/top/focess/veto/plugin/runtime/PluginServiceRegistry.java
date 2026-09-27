@@ -5,9 +5,11 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiPredicate;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
+import top.focess.veto.api.plugin.PluginState;
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.contract.PluginFailure;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
@@ -20,11 +22,15 @@ import top.focess.veto.api.plugin.service.ServiceRegistration;
 public final class PluginServiceRegistry {
     private record Key(@NonNull String name, int version) {}
 
-    private record Entry(@NonNull ServiceRegistration service, @NonNull PluginLifecycle owner) {}
+    private record Entry(
+            @NonNull ServiceRegistration service,
+            @NonNull PluginLifecycle owner,
+            long generation) {}
 
     private record Outcome(@Nullable JsonValue value, @Nullable ServiceException failure) {}
 
     private volatile @NonNull Map<Key, Entry> entries = Map.of();
+    private final @NonNull AtomicLong generations = new AtomicLong();
     private boolean bound;
     private final @NonNull BiPredicate<@NonNull String, @NonNull String> allowed;
 
@@ -45,12 +51,24 @@ public final class PluginServiceRegistry {
             var owner = owners.get(contribution.source().namespace());
             if (owner == null) throw new IllegalArgumentException("Service owner is unavailable");
             if (staged.putIfAbsent(
-                            new Key(service.name(), service.version()), new Entry(service, owner))
+                            new Key(service.name(), service.version()),
+                            new Entry(service, owner, generations.incrementAndGet()))
                     != null)
                 throw new IllegalArgumentException("Duplicate service name and version");
         }
         entries = Map.copyOf(staged);
         bound = true;
+    }
+
+    /** Revokes one provider's registrations before its lifecycle and classloader are closed. */
+    public synchronized void revoke(@NonNull String providerId) {
+        var remaining = new HashMap<Key, Entry>();
+        entries.forEach(
+                (key, entry) -> {
+                    if (!entry.owner().identity().id().equals(providerId))
+                        remaining.put(key, entry);
+                });
+        entries = Map.copyOf(remaining);
     }
 
     /** Returns the service view authorized for the given calling plugin. */
@@ -68,9 +86,10 @@ public final class PluginServiceRegistry {
             // Owner handles are registered by bind() and closed by the host plugin lifecycle.
             @SuppressWarnings("resource")
             private boolean visible(Entry entry) {
-                return allowed.test(
-                        caller == null ? "" : caller.identity().id(),
-                        entry.owner().identity().id());
+                return entry.owner().state() == PluginState.ACTIVE
+                        && allowed.test(
+                                caller == null ? "" : caller.identity().id(),
+                                entry.owner().identity().id());
             }
 
             // Owner handles are registered by bind() and closed by the host plugin lifecycle.
@@ -91,21 +110,27 @@ public final class PluginServiceRegistry {
             }
 
             public @NonNull Optional<Handle> find(@NonNull String name, int version) {
-                var entry = entries.get(new Key(name, version));
+                Key key = new Key(name, version);
+                var entry = entries.get(key);
                 if (entry == null || !visible(entry)) return Optional.empty();
+                // Retained handles carry only a key and generation, never a provider object.
+                long generation = entry.generation();
+                Descriptor descriptor =
+                        new Descriptor(name, version, entry.owner().identity().id());
                 return Optional.of(
                         new Handle() {
-                            // Owner handle is closed by the host plugin lifecycle.
-                            @SuppressWarnings("resource")
                             public @NonNull Descriptor descriptor() {
-                                return new Descriptor(name, version, entry.owner().identity().id());
+                                return descriptor;
                             }
 
                             public @NonNull JsonValue invoke(@NonNull JsonValue request)
                                     throws ServiceException {
-                                if (!visible(entry))
+                                Entry current = entries.get(key);
+                                if (current == null
+                                        || current.generation() != generation
+                                        || !visible(current))
                                     throw new ServiceException(ServiceException.Code.UNAVAILABLE);
-                                return invokeService(caller, entry, request);
+                                return invokeService(caller, current, request);
                             }
                         });
             }

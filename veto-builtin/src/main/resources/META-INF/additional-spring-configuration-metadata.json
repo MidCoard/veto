@@ -1,7 +1,7 @@
 {
   "properties": [
     {
-      "name": "veto.memory.store",
+      "name": "veto.plugins.configuration[top.focess.builtin][memory-store]",
       "type": "java.lang.String",
       "description": "Memory backend: memory, jpa, vector, or pgvector.",
       "defaultValue": "jpa"
@@ -9,7 +9,7 @@
   ],
   "hints": [
     {
-      "name": "veto.memory.store",
+      "name": "veto.plugins.configuration[top.focess.builtin][memory-store]",
       "values": [
         {
           "value": "memory",

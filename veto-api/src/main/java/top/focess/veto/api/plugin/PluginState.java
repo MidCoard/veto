@@ -16,6 +16,12 @@ public enum PluginState {
     STOPPING,
     /** Cleanup has completed and the instance cannot be reused. */
     CLOSED,
+    /**
+     * Initialization intentionally declined; cleanup completed without publishing contributions.
+     */
+    DECLINED,
+    /** Operator disabled the installed package before its entry class was loaded. */
+    DISABLED,
     /** A lifecycle callback failed; the host still attempts cleanup. */
     FAILED
 }

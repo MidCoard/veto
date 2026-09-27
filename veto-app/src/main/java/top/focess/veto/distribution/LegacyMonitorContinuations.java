@@ -63,8 +63,10 @@ public final class LegacyMonitorContinuations implements ApplicationRunner {
                             .filter(
                                     entry ->
                                             entry.source().namespace().equals(namespace)
-                                                    && entry.implementation()
-                                                            == builtin.monitorRuntime().service())
+                                                    && entry.id()
+                                                            .value()
+                                                            .equals(
+                                                                    "top.focess.builtin:monitor-work"))
                             .toList();
             if (contributions.size() != 1)
                 throw new IllegalStateException("Builtin Monitor work identity unavailable");

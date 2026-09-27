@@ -2,6 +2,7 @@ package top.focess.veto.distribution;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import java.nio.file.Path;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -36,6 +37,17 @@ class DistributionConfigurationTest {
                     assertEquals("create_group", aliases.get("top.focess.builtin:create_group"));
                     assertEquals("view_file", aliases.get("top.focess.builtin:view_file"));
                     assertEquals(37, aliases.size());
+                    var configuration = context.getBean(PluginConfigurations.class);
+                    var values = configuration.getConfiguration().get("top.focess.builtin");
+                    var roots = configuration.getCatalogueRoots().get("top.focess.builtin");
+                    if (values == null || roots == null)
+                        throw new AssertionError("Missing builtin defaults");
+                    assertEquals("jpa", values.get("memory-store"));
+                    String personal = roots.get("personal");
+                    if (personal == null) throw new AssertionError("Missing personal skills root");
+                    assertEquals(
+                            Path.of(System.getProperty("user.home"), ".veto", "skills"),
+                            Path.of(personal).normalize());
                 });
         distribution
                 .withInitializer(
@@ -49,7 +61,9 @@ class DistributionConfigurationTest {
                                                                 "veto.plugins.tool-names[top.focess.builtin:ask_user]",
                                                                         "interview",
                                                                 "veto.plugins.tool-names[other.plugin:ask]",
-                                                                        "other_ask"))))
+                                                                        "other_ask",
+                                                                "veto.plugins.configuration[top.focess.builtin][memory-store]",
+                                                                        "memory"))))
                 .run(
                         context -> {
                             var aliases =
@@ -57,6 +71,13 @@ class DistributionConfigurationTest {
                             assertEquals("interview", aliases.get("top.focess.builtin:ask_user"));
                             assertEquals("other_ask", aliases.get("other.plugin:ask"));
                             assertEquals("view_file", aliases.get("top.focess.builtin:view_file"));
+                            var values =
+                                    context.getBean(PluginConfigurations.class)
+                                            .getConfiguration()
+                                            .get("top.focess.builtin");
+                            if (values == null)
+                                throw new AssertionError("Missing builtin configuration");
+                            assertEquals("memory", values.get("memory-store"));
                         });
     }
 }

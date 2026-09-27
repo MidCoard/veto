@@ -40,6 +40,7 @@ public final class ScriptPlugin extends AbstractVetoPlugin {
                                     .build())
                     .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS);
     private final @NonNull String id;
+    private @NonNull String displayName;
     private final @NonNull String version;
     private final @NonNull String digest;
     private final @NonNull List<ScriptTool> descriptors;
@@ -64,6 +65,7 @@ public final class ScriptPlugin extends AbstractVetoPlugin {
         this.host = host;
         this.ownsHost = ownsHost;
         this.id = id;
+        this.displayName = id;
         this.version = version;
         this.digest = digest;
         this.descriptors = List.copyOf(descriptors);
@@ -125,6 +127,15 @@ public final class ScriptPlugin extends AbstractVetoPlugin {
     @Override
     public @NonNull PluginIdentity identity() {
         return new PluginIdentity(id, version);
+    }
+
+    @Override
+    public @NonNull String displayName() {
+        return displayName;
+    }
+
+    void setDisplayName(@NonNull String displayName) {
+        this.displayName = displayName;
     }
 
     public @NonNull String id() {

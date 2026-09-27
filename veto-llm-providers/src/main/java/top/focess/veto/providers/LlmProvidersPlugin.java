@@ -20,6 +20,11 @@ public final class LlmProvidersPlugin extends AbstractVetoPlugin {
     }
 
     @Override
+    public @NonNull String displayName() {
+        return "LLM Providers";
+    }
+
+    @Override
     protected @NonNull PluginContributions onInitialize(
             @NonNull PluginContext context, JsonValue.@NonNull ObjectValue configuration) {
         var factory = createFactory(context);
