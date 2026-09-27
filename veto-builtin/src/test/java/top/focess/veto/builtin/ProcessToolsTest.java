@@ -1,6 +1,7 @@
 package top.focess.veto.builtin;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.mock;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.BufferedReader;
@@ -28,6 +29,7 @@ import top.focess.veto.api.process.CommandResult;
 import top.focess.veto.api.process.ProcessHost;
 import top.focess.veto.builtin.process.BackgroundTasks;
 import top.focess.veto.builtin.process.ProcessRuntime;
+import top.focess.veto.builtin.process.TaskEvents;
 import top.focess.veto.builtin.tools.InputTaskTool;
 import top.focess.veto.builtin.tools.RunCommandTool;
 import top.focess.veto.builtin.tools.RunTaskTool;
@@ -53,7 +55,8 @@ class ProcessToolsTest {
                                         ToolDocs.nonNullClass(PluginHost.class),
                                         host,
                                         ToolDocs.nonNullClass(ProcessHost.class),
-                                        host)));
+                                        host)),
+                        mock(ToolDocs.nonNullClass(TaskEvents.class)));
         var run = new RunTaskTool(runtime.execution("run_task"));
         var view = new ViewTaskTool(runtime.control("view_task"));
         var input = new InputTaskTool(runtime.control("input_task"));

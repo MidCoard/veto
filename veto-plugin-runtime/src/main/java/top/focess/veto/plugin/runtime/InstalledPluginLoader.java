@@ -12,6 +12,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Set;
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import top.focess.veto.api.plugin.PluginContext;
 import top.focess.veto.api.plugin.PluginContributions;
 import top.focess.veto.api.plugin.PluginIdentity;
@@ -49,6 +50,24 @@ public final class InstalledPluginLoader {
     /** Returns packages in directory-name order; an absent installation root is empty. */
     public @NonNull List<VetoPlugin> load(@NonNull Path installationRoot) throws IOException {
         return discover(installationRoot, Set.of()).plugins();
+    }
+
+    /** Loads only the installed package with the requested manifest identity. */
+    public @NonNull VetoPlugin loadById(@NonNull Path installationRoot, @NonNull String id)
+            throws IOException {
+        if (Files.isSymbolicLink(installationRoot) || !Files.isDirectory(installationRoot))
+            throw new IOException("Plugin installation root is unavailable");
+        try (var children = Files.list(installationRoot)) {
+            for (Path directory : children.sorted().toList()) {
+                if (Files.isSymbolicLink(directory) || !Files.isDirectory(directory))
+                    throw new IOException(
+                            "Plugin installation root contains a non-directory entry");
+                JsonNode manifest = readManifest(directory);
+                if (id.equals(ScriptPlugin.text(manifest, "id")))
+                    return loadPackage(directory, manifest);
+            }
+        }
+        throw new IOException("Installed plugin identity was not found");
     }
 
     /** Scans installed packages, never constructing the entry class for a disabled ID. */
@@ -177,6 +196,10 @@ public final class InstalledPluginLoader {
             @NonNull String displayName,
             @NonNull PluginClassLoader loader)
             implements VetoPlugin {
+        public @Nullable String preferredToolName(@NonNull String localId) {
+            return delegate.preferredToolName(localId);
+        }
+
         public @NonNull Set<@NonNull String> historicalIds() {
             return delegate.historicalIds();
         }

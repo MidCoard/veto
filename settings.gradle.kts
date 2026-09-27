@@ -11,5 +11,3 @@ include(
 )
 
 include("veto-llm-providers")
-
-include("veto-app")

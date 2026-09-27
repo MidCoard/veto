@@ -58,7 +58,8 @@ classloader or MCP subprocess configuration is involved.
 
 The default installation root is `plugins/` relative to the backend working
 directory. Each immediate child is one package with `plugin.json`. The host
-does not recurse, and loading occurs once at startup. A Java package uses:
+does not recurse. Java packages can be reloaded by the administrator at runtime.
+A Java package uses:
 
 ```json
 {
@@ -84,7 +85,7 @@ The previous explicitly listed script-package format remains accepted.
 | Property | Default | Meaning |
 |---|---|---|
 | `veto.plugins.directory` | `plugins` | Installation root; immediate child directories are plugin packages |
-| `veto.plugins.disabled` | empty | Installed package IDs inventoried but not instantiated until removed from this list and the backend restarted |
+| `veto.plugins.disabled` | empty | Installed package IDs inventoried but not instantiated at startup; an admin can enable them for the current backend process |
 | `veto.plugins.paths` | empty | Comma-separated absolute package directories; at most 16 |
 | `veto.plugins.node-command` | empty | Absolute path to a Node executable; required when packages are configured |
 | `veto.plugins.trusted-code` | `false` | Explicit operator acknowledgement that installed scripts run as the server user |
@@ -105,7 +106,7 @@ accidental lifecycle interference but do not restrict trusted code's OS access.
 Selecting `isolated` never falls back to trusted execution, including when
 `trusted-code=true`. The enforced read-only snapshot workflow is not implemented;
 the mode currently fails closed on every platform. There is no automatic folder
-discovery, installation endpoint, hot reload or worker restart. Plugin authors must
+discovery, installation endpoint, package replacement or worker restart. Plugin authors must
 not assume that consecutive calls belong to the same user or session.
 
 ## Package format

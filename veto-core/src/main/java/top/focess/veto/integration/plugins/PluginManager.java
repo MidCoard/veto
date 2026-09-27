@@ -11,10 +11,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.ServiceConfigurationError;
 import java.util.ServiceLoader;
+import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.function.BiPredicate;
+import org.checkerframework.checker.initialization.qual.UnknownInitialization;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.ObjectProvider;
@@ -23,6 +26,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.loop.PromptCompiler;
 import top.focess.veto.agent.tool.ToolCallContextHolder;
+import top.focess.veto.agent.tool.ToolEngineImpl;
 import top.focess.veto.agent.tool.ToolSchemaCompiler;
 import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.llm.LocalModelCompletion;
@@ -55,13 +59,15 @@ import top.focess.veto.model.SessionRepository;
 import top.focess.veto.plugin.runtime.*;
 
 /**
- * Startup-only operator configuration. All packages must start or the application fails startup.
- * Installed Java and script packages are scanned from the plugin directory. Existing classpath
- * plugins are also discovered through {@link ServiceLoader} during distribution migration.
+ * Installed-package lifecycle and live catalog. Broken packages fail activation without replacing
+ * the last published catalog. Installed Java and script packages are scanned from the plugin
+ * directory. Existing classpath plugins are also discovered through {@link ServiceLoader} during
+ * distribution migration.
  */
 @Component
 public final class PluginManager implements AutoCloseable {
-    private final @NonNull Map<String, Map<Class<?>, Object>> grantedServices = new HashMap<>();
+    private final @NonNull Map<String, Map<Class<?>, Object>> grantedServices =
+            new ConcurrentHashMap<>();
 
     /** Returns the host service of the given type granted to the plugin, or null when absent. */
     public <T> @Nullable T hostService(@NonNull String plugin, @NonNull Class<T> type) {
@@ -87,6 +93,8 @@ public final class PluginManager implements AutoCloseable {
     public void bindLifecycleInvalidations(
             @NonNull ObjectProvider<SessionRepository> sessions,
             @NonNull ObjectProvider<SessionInvalidations> invalidations) {
+        sessionRepository = sessions;
+        sessionInvalidations = invalidations;
         for (var plugin : plugins)
             plugin.ownResource(
                     () -> {
@@ -141,14 +149,36 @@ public final class PluginManager implements AutoCloseable {
     private final @NonNull ExecutorService lifecycle =
             Executors.newSingleThreadExecutor(
                     Thread.ofPlatform().daemon(true).name("veto-plugin-manager").factory());
-    private final @NonNull List<PluginLifecycle> plugins;
-    private final @NonNull List<DeclinedPlugin> declined;
-    private final @NonNull List<InstalledPluginLoader.DisabledPackage> disabled;
-    private final @NonNull Map<String, String> aliases;
-    private final @NonNull List<Registration> registrations;
-    private final @NonNull ContributionCatalog catalog;
-    private final @NonNull EventListenerRegistry events;
+    private volatile @NonNull List<PluginLifecycle> plugins;
+    private volatile @NonNull List<DeclinedPlugin> declined;
+    private volatile @NonNull List<InstalledPluginLoader.DisabledPackage> disabled;
+    private volatile @NonNull Map<String, String> aliases;
+    private volatile @NonNull List<Registration> registrations;
+    private volatile @NonNull ContributionCatalog catalog;
+    private volatile @NonNull EventListenerRegistry events;
     private final @NonNull Map<@NonNull String, @NonNull String> toolNames;
+    private final @NonNull Map<Class<?>, Object> baseServices;
+    private final @NonNull PluginConfigurations configurations;
+    private final @NonNull String pluginDirectory;
+    private final @NonNull String nodeCommand;
+    private final boolean trustedCode;
+    private final long timeoutMillis;
+    private @Nullable ObjectProvider<ToolEngineImpl> toolEngine;
+    private @Nullable ObjectProvider<PluginLlmProviders> llmProviders;
+    private final @NonNull Set<String> installedIds = new HashSet<>();
+    private final @NonNull Set<String> dataLifecycleOwners = ConcurrentHashMap.newKeySet();
+    private final @NonNull Map<String, Integer> pendingDataCleanups = new HashMap<>();
+    private @Nullable ObjectProvider<SessionRepository> sessionRepository;
+    private @Nullable ObjectProvider<SessionInvalidations> sessionInvalidations;
+
+    /** Attaches catalog consumers after their Spring initialization completes. */
+    @Autowired
+    public void bindCatalogConsumers(
+            @NonNull ObjectProvider<ToolEngineImpl> tools,
+            @NonNull ObjectProvider<PluginLlmProviders> providers) {
+        toolEngine = tools;
+        llmProviders = providers;
+    }
 
     /** A started plugin paired with the contributions it declared at initialization. */
     public record Registration(
@@ -210,12 +240,18 @@ public final class PluginManager implements AutoCloseable {
             @NonNull ObjectProvider<PluginHostServices> hostServices,
             @NonNull PluginConfigurations configurations)
             throws IOException {
+        this.configurations = configurations;
+        this.pluginDirectory = pluginDirectory;
+        this.nodeCommand = nodeCommand;
+        this.trustedCode = trustedCode;
+        this.timeoutMillis = timeoutMillis;
         toolNames = Map.copyOf(configurations.getToolNames());
         var services = new HashMap<Class<?>, Object>();
         hostServices.orderedStream().forEach(granted -> services.putAll(granted.services()));
         PromptRenderer renderer =
                 (source, data) -> PromptCompiler.compileDocument(source, data).text();
         services.put(ToolDocs.nonNullClass(PromptRenderer.class), renderer);
+        baseServices = Map.copyOf(services);
         List<PluginLifecycle> staged = new ArrayList<>();
         List<InstalledPluginLoader.DisabledPackage> disabledPackages = new ArrayList<>();
         try {
@@ -232,8 +268,11 @@ public final class PluginManager implements AutoCloseable {
                                         configurations.getScriptMode())
                                 .discover(Path.of(pluginDirectory), configurations.getDisabled());
                 disabledPackages.addAll(installed.disabled());
-                for (var plugin : installed.plugins())
+                for (var plugin : installed.plugins()) {
+                    installedIds.add(plugin.identity().id());
                     staged.add(new PluginLifecycle(plugin, lifecycle));
+                }
+                for (var plugin : installed.disabled()) installedIds.add(plugin.id());
             }
             if (!paths.isBlank()) {
                 var ids = new HashSet<String>();
@@ -281,83 +320,8 @@ public final class PluginManager implements AutoCloseable {
             Iterator<PluginLifecycle> pending = staged.iterator();
             while (pending.hasNext()) {
                 var plugin = pending.next();
-                var pluginServices = new HashMap<Class<?>, Object>(services);
-                Object optionalGrants = pluginServices.remove(PluginServiceGrants.class);
-                if (optionalGrants instanceof PluginServiceGrants grants)
-                    pluginServices.putAll(grants.forPlugin(plugin));
-                Object storageFactory = pluginServices.remove(PluginStorageFactory.class);
-                if (storageFactory instanceof PluginStorageFactory factory)
-                    pluginServices.put(
-                            ToolDocs.nonNullClass(PluginStorage.class), factory.bind(plugin));
-                Object agentFactory = pluginServices.remove(PluginAgentHostFactory.class);
-                Object boundStorage = pluginServices.get(PluginStorage.class);
-                if (boundStorage instanceof PluginStorage storage)
-                    pluginServices.put(
-                            ToolDocs.nonNullClass(CatalogueAccess.class),
-                            new PluginCatalogueAccess(
-                                    plugin,
-                                    storage,
-                                    configurations
-                                            .getCatalogueRoots()
-                                            .getOrDefault(plugin.identity().id(), Map.of())));
-                if (agentFactory instanceof PluginAgentHostFactory factory
-                        && boundStorage instanceof PluginStorage storage)
-                    pluginServices.put(
-                            ToolDocs.nonNullClass(AgentHost.class), factory.bind(plugin, storage));
-                Object processFactory = pluginServices.remove(PluginProcessHostFactory.class);
-                if (processFactory instanceof PluginProcessHostFactory factory
-                        && boundStorage instanceof PluginStorage storage)
-                    pluginServices.put(
-                            ToolDocs.nonNullClass(ProcessHost.class),
-                            factory.bind(plugin, storage));
-                Object runtimeHost = pluginServices.get(PluginHost.class);
-                if (runtimeHost instanceof PluginHost host
-                        && boundStorage instanceof PluginStorage storage
-                        && storageFactory instanceof PluginStorageFactory factory)
-                    pluginServices.put(
-                            ToolDocs.nonNullClass(PluginHost.class),
-                            new BoundPluginHost(
-                                    host,
-                                    plugin,
-                                    storage,
-                                    factory,
-                                    local ->
-                                            resolveToolName(
-                                                    plugin.identity().id(),
-                                                    plugin.identity().id() + ":" + local,
-                                                    toolNames)));
-                Object localModelFactory = pluginServices.remove(PluginLocalModelFactory.class);
-                if (localModelFactory instanceof PluginLocalModelFactory factory)
-                    pluginServices.put(
-                            ToolDocs.nonNullClass(LocalModelCompletion.class),
-                            factory.bind(plugin));
-                Object embeddingFactory = pluginServices.remove(PluginEmbeddingFactory.class);
-                if (embeddingFactory instanceof PluginEmbeddingFactory factory)
-                    factory.bind(plugin)
-                            .ifPresent(
-                                    model ->
-                                            pluginServices.put(
-                                                    ToolDocs.nonNullClass(TextEmbedding.class),
-                                                    model));
-                grantedServices.put(plugin.identity().id(), Map.copyOf(pluginServices));
-                pluginServices.put(
-                        ToolDocs.nonNullClass(PluginServices.class),
-                        serviceRegistry.forPlugin(plugin));
                 try {
-                    registered.add(
-                            new Registration(
-                                    plugin,
-                                    plugin.initialize(
-                                            new PluginContext(
-                                                    plugin.identity(),
-                                                    () -> {},
-                                                    () -> {
-                                                        throw new IllegalStateException(
-                                                                "Plugin context is not bound to a"
-                                                                        + " lifecycle owner");
-                                                    },
-                                                    pluginServices),
-                                            configurations.forPlugin(plugin.identity().id()))));
+                    registered.add(initializePlugin(plugin, services, configurations, toolNames));
                 } catch (PluginDeclinedException declinedReason) {
                     grantedServices.remove(plugin.identity().id());
                     declinedPlugins.add(
@@ -369,44 +333,7 @@ public final class PluginManager implements AutoCloseable {
                     pending.remove();
                 }
             }
-            var builder = new ContributionCatalog.Builder();
-            // Define every standard point up front so an unpopulated point yields an empty entry
-            // list rather than a registration error. The "no contributor -> unchanged" contract
-            // (see applyObservationMiddleware) and lifecycle dispatch depend on this: the floor
-            // optional plugins may populate them, but the host must not break when a deployment
-            // runs without contributors.
-            for (var point : StandardContributionPoints.ALL) {
-                if (point == StandardContributionPoints.TOOLS)
-                    builder.define(
-                            StandardContributionPoints.TOOLS,
-                            tool -> {
-                                PluginSchema.check(PluginJson.toNode(tool.inputSchema()));
-                                PluginSchema.check(PluginJson.toNode(tool.outputSchema()));
-                            });
-                else if (point == StandardContributionPoints.NATIVE_TOOLS)
-                    builder.define(
-                            StandardContributionPoints.NATIVE_TOOLS,
-                            tool -> ToolSchemaCompiler.compileFromRecord(tool.getArgsClass()));
-                else builder.define(point, ignored -> {});
-            }
-            var points = new HashSet<ContributionPoint<?>>(StandardContributionPoints.ALL);
-            for (var registration : registered) {
-                for (var contribution : registration.contributions().entries()) {
-                    if (points.add(contribution.point()))
-                        builder.define(contribution.point(), ignored -> {});
-                }
-            }
-            for (var registration : registered) {
-                var identity = registration.plugin().identity();
-                builder.stage(
-                        new ContributionSource(
-                                identity.id(),
-                                identity.version(),
-                                ContributionSource.Origin.PLUGIN),
-                        registration.contributions().entries());
-            }
-            var validatedCatalog = builder.freeze();
-            StandardContributionPoints.validateToolCategories(validatedCatalog);
+            var validatedCatalog = buildCatalog(registered);
             serviceRegistry.bind(validatedCatalog, staged);
             for (var plugin : staged) plugin.start();
             catalog = validatedCatalog;
@@ -414,6 +341,8 @@ public final class PluginManager implements AutoCloseable {
             declined = List.copyOf(declinedPlugins);
             disabled = List.copyOf(disabledPackages);
             registrations = List.copyOf(registered);
+            for (var entry : validatedCatalog.entries(StandardContributionPoints.DATA_LIFECYCLE))
+                dataLifecycleOwners.add(entry.source().namespace());
             List<PluginLifecycle> admitted = plugins;
             events =
                     EventListenerRegistry.build(
@@ -426,6 +355,310 @@ public final class PluginManager implements AutoCloseable {
             }
             lifecycle.shutdown();
             throw new IOException("Plugin activation failed", e);
+        }
+    }
+
+    private @NonNull Registration initializePlugin(
+            @UnknownInitialization PluginManager this,
+            @NonNull PluginLifecycle plugin,
+            @NonNull Map<Class<?>, Object> availableServices,
+            @NonNull PluginConfigurations settings,
+            @NonNull Map<@NonNull String, @NonNull String> names)
+            throws PluginFailure {
+        var pluginServices = new HashMap<Class<?>, Object>(availableServices);
+        Object optionalGrants = pluginServices.remove(PluginServiceGrants.class);
+        if (optionalGrants instanceof PluginServiceGrants grants)
+            pluginServices.putAll(grants.forPlugin(plugin));
+        Object storageFactory = pluginServices.remove(PluginStorageFactory.class);
+        if (storageFactory instanceof PluginStorageFactory factory)
+            pluginServices.put(ToolDocs.nonNullClass(PluginStorage.class), factory.bind(plugin));
+        Object agentFactory = pluginServices.remove(PluginAgentHostFactory.class);
+        Object boundStorage = pluginServices.get(PluginStorage.class);
+        if (boundStorage instanceof PluginStorage storage)
+            pluginServices.put(
+                    ToolDocs.nonNullClass(CatalogueAccess.class),
+                    new PluginCatalogueAccess(
+                            plugin,
+                            storage,
+                            settings.getCatalogueRoots()
+                                    .getOrDefault(plugin.identity().id(), Map.of())));
+        if (agentFactory instanceof PluginAgentHostFactory factory
+                && boundStorage instanceof PluginStorage storage)
+            pluginServices.put(
+                    ToolDocs.nonNullClass(AgentHost.class), factory.bind(plugin, storage));
+        Object processFactory = pluginServices.remove(PluginProcessHostFactory.class);
+        if (processFactory instanceof PluginProcessHostFactory factory
+                && boundStorage instanceof PluginStorage storage)
+            pluginServices.put(
+                    ToolDocs.nonNullClass(ProcessHost.class), factory.bind(plugin, storage));
+        Object runtimeHost = pluginServices.get(PluginHost.class);
+        if (runtimeHost instanceof PluginHost host
+                && boundStorage instanceof PluginStorage storage
+                && storageFactory instanceof PluginStorageFactory factory)
+            pluginServices.put(
+                    ToolDocs.nonNullClass(PluginHost.class),
+                    new BoundPluginHost(
+                            host,
+                            plugin,
+                            storage,
+                            factory,
+                            local ->
+                                    resolveToolName(
+                                            plugin.identity().id(),
+                                            plugin.identity().id() + ":" + local,
+                                            names,
+                                            plugin.implementation(),
+                                            installedIds.contains(plugin.identity().id()))));
+        Object localModelFactory = pluginServices.remove(PluginLocalModelFactory.class);
+        if (localModelFactory instanceof PluginLocalModelFactory factory)
+            pluginServices.put(
+                    ToolDocs.nonNullClass(LocalModelCompletion.class), factory.bind(plugin));
+        Object embeddingFactory = pluginServices.remove(PluginEmbeddingFactory.class);
+        if (embeddingFactory instanceof PluginEmbeddingFactory factory)
+            factory.bind(plugin)
+                    .ifPresent(
+                            model ->
+                                    pluginServices.put(
+                                            ToolDocs.nonNullClass(TextEmbedding.class), model));
+        grantedServices.put(plugin.identity().id(), Map.copyOf(pluginServices));
+        pluginServices.put(
+                ToolDocs.nonNullClass(PluginServices.class), serviceRegistry.forPlugin(plugin));
+        return new Registration(
+                plugin,
+                plugin.initialize(
+                        new PluginContext(
+                                plugin.identity(),
+                                () -> {},
+                                () -> {
+                                    throw new IllegalStateException(
+                                            "Plugin context is not bound to a lifecycle owner");
+                                },
+                                pluginServices),
+                        settings.forPlugin(plugin.identity().id())));
+    }
+
+    private static @NonNull ContributionCatalog buildCatalog(
+            @NonNull List<Registration> registered) {
+        var builder = new ContributionCatalog.Builder();
+        for (var point : StandardContributionPoints.ALL) {
+            if (point == StandardContributionPoints.TOOLS)
+                builder.define(
+                        StandardContributionPoints.TOOLS,
+                        tool -> {
+                            PluginSchema.check(PluginJson.toNode(tool.inputSchema()));
+                            PluginSchema.check(PluginJson.toNode(tool.outputSchema()));
+                        });
+            else if (point == StandardContributionPoints.NATIVE_TOOLS)
+                builder.define(
+                        StandardContributionPoints.NATIVE_TOOLS,
+                        tool -> ToolSchemaCompiler.compileFromRecord(tool.getArgsClass()));
+            else builder.define(point, ignored -> {});
+        }
+        var points = new HashSet<ContributionPoint<?>>(StandardContributionPoints.ALL);
+        for (var registration : registered)
+            for (var contribution : registration.contributions().entries())
+                if (points.add(contribution.point()))
+                    builder.define(contribution.point(), ignored -> {});
+        for (var registration : registered) {
+            var identity = registration.plugin().identity();
+            builder.stage(
+                    new ContributionSource(
+                            identity.id(), identity.version(), ContributionSource.Origin.PLUGIN),
+                    registration.contributions().entries());
+        }
+        var catalog = builder.freeze();
+        StandardContributionPoints.validateToolCategories(catalog);
+        return catalog;
+    }
+
+    /** Whether a known data-cleanup contributor is currently unavailable. */
+    public boolean hasInactiveDataLifecycle() {
+        return dataLifecycleOwners.stream()
+                .anyMatch(
+                        id ->
+                                plugins.stream()
+                                        .noneMatch(plugin -> plugin.identity().id().equals(id)));
+    }
+
+    /** Retains a cleanup contributor until its transaction completion callback has run. */
+    public synchronized @NonNull PluginLifecycle beginDataCleanup(@NonNull String id) {
+        var runtime = plugin(id);
+        if (runtime.state() != PluginState.ACTIVE)
+            throw new IllegalStateException("Plugin data cleanup is unavailable");
+        pendingDataCleanups.merge(id, 1, Integer::sum);
+        return runtime;
+    }
+
+    /** Releases one transaction's claim on a data-cleanup contributor. */
+    public synchronized void endDataCleanup(@NonNull String id) {
+        int remaining = pendingDataCleanups.getOrDefault(id, 0);
+        if (remaining <= 0) throw new IllegalStateException("No plugin cleanup is pending");
+        if (remaining == 1) pendingDataCleanups.remove(id);
+        else pendingDataCleanups.put(id, remaining - 1);
+        notifyAll();
+    }
+
+    /** Withdraws one installed package without changing persisted records or session bindings. */
+    public synchronized void disable(@NonNull String id) {
+        String canonical = canonicalId(id);
+        if (!installedIds.contains(canonical))
+            throw new IllegalArgumentException("Plugin is not an installed package");
+        var target = plugin(canonical);
+        List<PluginLifecycle> nextPlugins =
+                plugins.stream().filter(plugin -> plugin != target).toList();
+        List<Registration> nextRegistrations =
+                registrations.stream()
+                        .filter(registration -> registration.plugin() != target)
+                        .toList();
+        var metadata =
+                new InstalledPluginLoader.DisabledPackage(
+                        canonical,
+                        target.implementation().displayName(),
+                        target.identity().version());
+        List<InstalledPluginLoader.DisabledPackage> nextDisabled = new ArrayList<>(disabled);
+        nextDisabled.add(metadata);
+        publish(nextPlugins, nextRegistrations, List.copyOf(nextDisabled), declined);
+        serviceRegistry.revoke(canonical);
+        invalidateSessions(canonical);
+        boolean interrupted = false;
+        while (pendingDataCleanups.getOrDefault(canonical, 0) > 0) {
+            try {
+                wait();
+            } catch (InterruptedException signal) {
+                interrupted = true;
+            }
+        }
+        try {
+            target.close();
+        } finally {
+            grantedServices.remove(canonical);
+            if (interrupted) Thread.currentThread().interrupt();
+        }
+    }
+
+    /** Loads and activates a previously disabled installed package in this backend process. */
+    public synchronized void enable(@NonNull String id) throws IOException {
+        if (pluginDirectory.isBlank()
+                || !installedIds.contains(id)
+                || (!isDisabled(id) && !isDeclined(id)))
+            throw new IllegalArgumentException("Plugin is not an inactive installed package");
+        VetoPlugin implementation =
+                new InstalledPluginLoader(
+                                Path.of(nodeCommand),
+                                Duration.ofMillis(timeoutMillis),
+                                trustedCode,
+                                configurations.getScriptMode())
+                        .loadById(Path.of(pluginDirectory), id);
+        PluginLifecycle runtime = new PluginLifecycle(implementation, lifecycle);
+        try {
+            Map<String, String> nextAliases = new HashMap<>(aliases);
+            for (String alias : implementation.historicalIds()) {
+                String validated = new PluginIdentity(alias, "0.0.0").id();
+                if (installedIds.contains(validated)
+                        || (nextAliases.containsKey(validated)
+                                && !id.equals(nextAliases.get(validated))))
+                    throw new IllegalArgumentException("Duplicate plugin identity or alias");
+                nextAliases.put(validated, id);
+            }
+            Registration registration =
+                    initializePlugin(runtime, baseServices, configurations, toolNames);
+            List<PluginLifecycle> nextPlugins = new ArrayList<>(plugins);
+            nextPlugins.add(runtime);
+            List<Registration> nextRegistrations = new ArrayList<>(registrations);
+            nextRegistrations.add(registration);
+            List<InstalledPluginLoader.DisabledPackage> nextDisabled =
+                    disabled.stream().filter(packageInfo -> !packageInfo.id().equals(id)).toList();
+            List<DeclinedPlugin> nextDeclined =
+                    declined.stream().filter(plugin -> !plugin.id().equals(id)).toList();
+            // Validate the whole catalog before activating or publishing the new runtime.
+            buildCatalog(nextRegistrations);
+            runtime.start();
+            publish(
+                    List.copyOf(nextPlugins),
+                    List.copyOf(nextRegistrations),
+                    nextDisabled,
+                    nextDeclined);
+            aliases = Map.copyOf(nextAliases);
+            for (var entry : registration.contributions().entries())
+                if (entry.point() == StandardContributionPoints.DATA_LIFECYCLE)
+                    dataLifecycleOwners.add(id);
+            invalidateSessions(id);
+        } catch (PluginDeclinedException declinedReason) {
+            grantedServices.remove(id);
+            List<InstalledPluginLoader.DisabledPackage> nextDisabled =
+                    disabled.stream().filter(packageInfo -> !packageInfo.id().equals(id)).toList();
+            List<DeclinedPlugin> nextDeclined =
+                    new ArrayList<>(
+                            declined.stream().filter(plugin -> !plugin.id().equals(id)).toList());
+            nextDeclined.add(
+                    new DeclinedPlugin(
+                            id,
+                            implementation.displayName(),
+                            implementation.identity().version(),
+                            declinedReason.reason()));
+            disabled = nextDisabled;
+            declined = List.copyOf(nextDeclined);
+        } catch (Exception failure) {
+            grantedServices.remove(id);
+            runtime.close();
+            throw new IOException("Plugin enable failed", failure);
+        }
+    }
+
+    private void publish(
+            @NonNull List<PluginLifecycle> nextPlugins,
+            @NonNull List<Registration> nextRegistrations,
+            @NonNull List<InstalledPluginLoader.DisabledPackage> nextDisabled,
+            @NonNull List<DeclinedPlugin> nextDeclined) {
+        ContributionCatalog nextCatalog = buildCatalog(nextRegistrations);
+        EventListenerRegistry nextEvents =
+                EventListenerRegistry.build(
+                        nextCatalog, (namespace, body) -> admit(nextPlugins, namespace, body));
+        var previousPlugins = plugins;
+        var previousRegistrations = registrations;
+        var previousDisabled = disabled;
+        var previousDeclined = declined;
+        var previousCatalog = catalog;
+        var previousEvents = events;
+        plugins = nextPlugins;
+        registrations = nextRegistrations;
+        disabled = nextDisabled;
+        declined = nextDeclined;
+        catalog = nextCatalog;
+        events = nextEvents;
+        try {
+            var tools = toolEngine;
+            if (tools != null) tools.getObject().reloadPlugins(this);
+            var providers = llmProviders;
+            if (providers != null) providers.getObject().reload(this);
+            serviceRegistry.bind(nextCatalog, nextPlugins);
+        } catch (RuntimeException failure) {
+            plugins = previousPlugins;
+            registrations = previousRegistrations;
+            disabled = previousDisabled;
+            declined = previousDeclined;
+            catalog = previousCatalog;
+            events = previousEvents;
+            var tools = toolEngine;
+            if (tools != null) tools.getObject().reloadPlugins(this);
+            var providers = llmProviders;
+            if (providers != null) providers.getObject().reload(this);
+            serviceRegistry.bind(previousCatalog, previousPlugins);
+            throw failure;
+        }
+    }
+
+    private void invalidateSessions(@NonNull String id) {
+        var repository = sessionRepository;
+        var invalidations = sessionInvalidations;
+        if (repository == null || invalidations == null) return;
+        for (var session : repository.getObject().findAll()) {
+            var bindings = session.getPluginBindings();
+            if (bindings != null
+                    && bindings.stream().anyMatch(binding -> canonicalId(binding.id()).equals(id)))
+                invalidations
+                        .getObject()
+                        .changed(UUID.fromString(session.getId()), "plugin-frontend");
         }
     }
 
@@ -522,20 +755,32 @@ public final class PluginManager implements AutoCloseable {
     }
 
     /**
-     * Operator-configured alias, or {@code plugin_<namespace>__<local>} by default. Shared by
+     * Operator alias, plugin preference, or {@code plugin_<namespace>__<local>} fallback. Shared by
      * schema and Java tools; names do not change provenance or authority.
      */
     public @NonNull String toolName(@NonNull String namespace, @NonNull String qualifiedId) {
-        return resolveToolName(namespace, qualifiedId, toolNames);
+        return resolveToolName(
+                namespace,
+                qualifiedId,
+                toolNames,
+                plugin(namespace).implementation(),
+                installedIds.contains(namespace));
     }
 
     private static @NonNull String resolveToolName(
             @NonNull String namespace,
             @NonNull String qualifiedId,
-            @NonNull Map<String, String> names) {
+            @NonNull Map<String, String> names,
+            @NonNull VetoPlugin implementation,
+            boolean installed) {
         String alias = names.get(qualifiedId);
         if (alias != null) return alias;
         String local = qualifiedId.substring(qualifiedId.indexOf(':') + 1);
+        String preferred = installed ? implementation.preferredToolName(local) : null;
+        if (preferred != null) {
+            if (preferred.isBlank()) throw new IllegalArgumentException("Blank plugin tool name");
+            return preferred;
+        }
         return "plugin_" + namespace.replace('.', '_').replace('-', '_') + "__" + local;
     }
 

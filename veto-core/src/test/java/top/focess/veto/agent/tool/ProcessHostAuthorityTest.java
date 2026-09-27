@@ -211,6 +211,8 @@ class ProcessHostAuthorityTest {
                 fixture.admitted.set(true);
             } finally {
                 second.close();
+                // Windows retains the process working directory until the child has exited.
+                assertTrue(second.awaitExit(Duration.ofSeconds(20)));
             }
         } finally {
             ToolCallContextHolder.clear();

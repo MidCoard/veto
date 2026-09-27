@@ -126,7 +126,12 @@ class PluginSearchServiceIntegrationTest {
         assertTrue(config.forPlugin("absent").values().isEmpty());
         try (var manager =
                 new PluginManager(
-                        "", "", false, 5000, PluginTestSupport.providerOf(null), config)) {
+                        "",
+                        "",
+                        false,
+                        5000,
+                        PluginTestSupport.providerOf(PluginTestSupport.configurationServices(null)),
+                        config)) {
             assertEquals(PluginState.ACTIVE, manager.plugin("top.focess.builtin").state());
             assertEquals(
                     List.of("veto.search:brave", "veto.search:duckduckgo"),

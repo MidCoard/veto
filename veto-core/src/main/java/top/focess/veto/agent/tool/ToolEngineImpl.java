@@ -157,37 +157,48 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
         }
         if (context != null) {
             for (var manager : context.getBeansOfType(PluginManager.class).values()) {
-                for (var entry : manager.catalog().entries(StandardContributionPoints.TOOLS)) {
-                    var plugin = manager.plugin(entry.source().namespace());
-                    Tool descriptor = entry.implementation();
-                    RemoteToolDefinition definition =
-                            ToolSchemaCompiler.compilePluginScript(
-                                    descriptor,
-                                    manager.toolName(entry),
-                                    PluginJson.toNode(descriptor.inputSchema()),
-                                    plugin.bindingId(),
-                                    plugin.identity().id(),
-                                    plugin.identity().version());
-                    staged.add(new RegisteredTool.Plugin(definition, descriptor, plugin));
-                }
-                for (var entry :
-                        manager.catalog().entries(StandardContributionPoints.NATIVE_TOOLS)) {
-                    var plugin = manager.plugin(entry.source().namespace());
-                    CapabilityTool<?> tool = entry.implementation();
-                    staged.add(
-                            ToolRegistration.local(
-                                    tool,
-                                    manager.toolName(
-                                            entry.source().namespace(), entry.id().value()),
-                                    plugin,
-                                    entry.id().localId()));
-                }
+                staged.addAll(pluginRegistrations(manager));
             }
         }
         // Validation and construction complete before readers can observe any new registration.
         catalog = catalog.append(staged);
         initialized = true;
         log.info("ToolEngine: published {} tools.", staged.size());
+    }
+
+    /** Atomically publishes the live plugin tool set after a lifecycle transition. */
+    public synchronized void reloadPlugins(@NonNull PluginManager manager) {
+        if (!initialized) return;
+        catalog = catalog.replacePlugins(pluginRegistrations(manager));
+    }
+
+    private static @NonNull List<RegisteredTool> pluginRegistrations(
+            @NonNull PluginManager manager) {
+        List<RegisteredTool> staged = new ArrayList<>();
+        for (var entry : manager.catalog().entries(StandardContributionPoints.TOOLS)) {
+            var plugin = manager.plugin(entry.source().namespace());
+            Tool descriptor = entry.implementation();
+            RemoteToolDefinition definition =
+                    ToolSchemaCompiler.compilePluginScript(
+                            descriptor,
+                            manager.toolName(entry),
+                            PluginJson.toNode(descriptor.inputSchema()),
+                            plugin.bindingId(),
+                            plugin.identity().id(),
+                            plugin.identity().version());
+            staged.add(new RegisteredTool.Plugin(definition, descriptor, plugin));
+        }
+        for (var entry : manager.catalog().entries(StandardContributionPoints.NATIVE_TOOLS)) {
+            var plugin = manager.plugin(entry.source().namespace());
+            CapabilityTool<?> tool = entry.implementation();
+            staged.add(
+                    ToolRegistration.local(
+                            tool,
+                            manager.toolName(entry.source().namespace(), entry.id().value()),
+                            plugin,
+                            entry.id().localId()));
+        }
+        return List.copyOf(staged);
     }
 
     /** Discover tools from a remote MCP server via JSON-RPC tools/list and register them. */

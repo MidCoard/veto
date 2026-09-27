@@ -50,70 +50,6 @@ class MonitorLifecycleTest {
     }
 
     @Test
-    void importingOldActivationDoesNotInterruptAnOnlineActivation() throws Exception {
-        try (var runtime = runtime()) {
-            runtime.start();
-            var service = runtime.service();
-            var online =
-                    service.createTimer(
-                            "owner", "session", "agent", "Online", Instant.now().plusSeconds(30));
-            service.tickAt(Instant.now().plusSeconds(31));
-            var event = service.pending("agent", "session").getFirst();
-            service.acknowledge("agent", event);
-            service.activationStarted("agent", event);
-            var legacy =
-                    new MonitorRecord(
-                                    "legacy",
-                                    "owner",
-                                    "session",
-                                    "agent",
-                                    "TIME_ONCE",
-                                    "Legacy",
-                                    null,
-                                    Instant.now().minusSeconds(30),
-                                    "COMPLETED",
-                                    Map.of(),
-                                    List.of(),
-                                    Instant.now(),
-                                    List.of())
-                            .withActivation("legacy:due", MonitorRecord.ActivationState.RUNNING);
-            var mapper = new ObjectMapper().findAndRegisterModules();
-            assertTrue(
-                    runtime.importLegacy(
-                            new MonitorEntity("legacy", mapper.writeValueAsString(legacy))));
-            runtime.reloadImported();
-            var records = service.list("owner", "session");
-            var preserved =
-                    records.stream()
-                            .filter(record -> record.id().equals(online.id()))
-                            .findFirst()
-                            .orElseThrow();
-            var imported =
-                    records.stream()
-                            .filter(record -> record.id().equals("legacy"))
-                            .findFirst()
-                            .orElseThrow();
-            assertEquals(
-                    MonitorRecord.ActivationState.RUNNING,
-                    preserved
-                            .activationStates()
-                            .getOrDefault(
-                                    event.id(),
-                                    new MonitorRecord.Activation(
-                                            MonitorRecord.ActivationState.FAILED, Instant.now()))
-                            .state());
-            assertEquals(
-                    MonitorRecord.ActivationState.INTERRUPTED,
-                    imported.activationStates()
-                            .getOrDefault(
-                                    "legacy:due",
-                                    new MonitorRecord.Activation(
-                                            MonitorRecord.ActivationState.FAILED, Instant.now()))
-                            .state());
-        }
-    }
-
-    @Test
     void ownsPayloadRestorationAndShutdownWithoutCore() throws Exception {
         String id;
         try (var runtime = runtime()) {
@@ -230,38 +166,5 @@ class MonitorLifecycleTest {
                                     new JsonValue.ObjectValue(
                                             Map.of("id", new JsonValue.StringValue("group")))));
         }
-    }
-
-    @Test
-    void largeLegacyPayloadIsImportedWithoutChangingIdentityOrOverwritingNewState()
-            throws Exception {
-        var repository = new StoredMonitorRepository(storage);
-        String payload =
-                new ObjectMapper()
-                        .writeValueAsString(
-                                Map.of(
-                                        "id",
-                                        "legacy",
-                                        "owner",
-                                        "owner",
-                                        "sessionId",
-                                        "session",
-                                        "requestId",
-                                        "original-request",
-                                        "continuationId",
-                                        "monitor:event-123",
-                                        "content",
-                                        "x".repeat(150000)));
-        assertTrue(repository.importLegacy(new MonitorEntity("legacy", payload)));
-        assertFalse(repository.importLegacy(new MonitorEntity("legacy", payload)));
-        var restarted = new StoredMonitorRepository(storage);
-        assertEquals(payload, restarted.findAll().getFirst().getPayload());
-        String newer = payload.replace("original-request", "newer-request");
-        restarted.save(new MonitorEntity("legacy", newer));
-        assertFalse(repository.importLegacy(new MonitorEntity("legacy", payload)));
-        assertEquals(newer, new StoredMonitorRepository(storage).findAll().getFirst().getPayload());
-        assertThrows(
-                IllegalStateException.class,
-                () -> repository.importLegacy(new MonitorEntity("broken", "{")));
     }
 }

@@ -103,24 +103,6 @@ public final class StoredMonitorRepository implements MonitorRepository {
         return value;
     }
 
-    /** Reentrant distribution import never overwrites a stored aggregate. */
-    public synchronized boolean importLegacy(MonitorEntity value) {
-        try {
-            var tree = mapper.readTree(value.getPayload());
-            if (tree == null || !tree.path("id").asText().equals(value.getId()))
-                throw new IllegalArgumentException("Invalid legacy monitor identity");
-            Store store = store(tree.path("sessionId").asText());
-            if (store.get("monitor/" + value.getId()).isPresent()) return false;
-            Entry entry = write(store, value, null);
-            known.put(value.getId(), new Stored(store, entry));
-            return true;
-        } catch (PluginStorage.Conflict conflict) {
-            return false;
-        } catch (Exception failure) {
-            throw new IllegalStateException("Cannot import monitor " + value.getId(), failure);
-        }
-    }
-
     private Entry write(Store store, MonitorEntity value, @Nullable String expected) {
         List<Entry> chunks = new ArrayList<>();
         try {

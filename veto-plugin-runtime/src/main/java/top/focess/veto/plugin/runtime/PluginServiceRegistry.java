@@ -31,7 +31,6 @@ public final class PluginServiceRegistry {
 
     private volatile @NonNull Map<Key, Entry> entries = Map.of();
     private final @NonNull AtomicLong generations = new AtomicLong();
-    private boolean bound;
     private final @NonNull BiPredicate<@NonNull String, @NonNull String> allowed;
 
     /** Creates a registry whose visibility is governed by the given caller-to-owner predicate. */
@@ -39,10 +38,9 @@ public final class PluginServiceRegistry {
         this.allowed = allowed;
     }
 
-    /** Binds every catalogued service to its owning plugin; may only be called once. */
+    /** Atomically replaces the service directory after a plugin catalog transition. */
     public synchronized void bind(
             @NonNull ContributionCatalog catalog, @NonNull List<PluginLifecycle> plugins) {
-        if (bound) throw new IllegalStateException("Services already bound");
         Map<String, PluginLifecycle> owners = new HashMap<>();
         for (var plugin : plugins) owners.put(plugin.identity().id(), plugin);
         Map<Key, Entry> staged = new HashMap<>();
@@ -50,14 +48,16 @@ public final class PluginServiceRegistry {
             var service = contribution.implementation();
             var owner = owners.get(contribution.source().namespace());
             if (owner == null) throw new IllegalArgumentException("Service owner is unavailable");
-            if (staged.putIfAbsent(
-                            new Key(service.name(), service.version()),
-                            new Entry(service, owner, generations.incrementAndGet()))
-                    != null)
+            Key key = new Key(service.name(), service.version());
+            Entry previous = entries.get(key);
+            long generation =
+                    previous != null && previous.owner() == owner && previous.service() == service
+                            ? previous.generation()
+                            : generations.incrementAndGet();
+            if (staged.putIfAbsent(key, new Entry(service, owner, generation)) != null)
                 throw new IllegalArgumentException("Duplicate service name and version");
         }
         entries = Map.copyOf(staged);
-        bound = true;
     }
 
     /** Revokes one provider's registrations before its lifecycle and classloader are closed. */

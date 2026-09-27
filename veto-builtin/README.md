@@ -17,8 +17,9 @@ Monitor tools interpret dates and render results. Repository tools select respon
 fields; the host performs the fixed authorized HTTP operation and masks credentials.
 All feature prompts are MDC resources compiled through the host PromptCompiler.
 
-`veto-app` bundles the plugin at runtime; `veto-core` does not and discovers it through ServiceLoader. Existing
-public tool names are preserved by configured contribution aliases. Provenance,
+`veto-core` never bundles this plugin. Build its optional package with
+`localPluginPackages` and install its directory under `plugins/`. The plugin
+requests its established public tool names; operator aliases can override them. Provenance,
 lifecycle admission and session plugin selection remain active.
 
 ## Search providers

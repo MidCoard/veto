@@ -2,11 +2,12 @@ package top.focess.veto.api.plugin;
 
 import java.util.Set;
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.contract.PluginFailure;
 
 /**
- * Trusted, startup-only plugin. A public no-argument constructor is required. Initialize stages
+ * Trusted installable plugin. A public no-argument constructor is required. Initialize stages
  * contributions without external effects; start makes the instance ready. The host publishes only
  * after successful start. Close must tolerate partial initialization, revoke handlers and release
  * owned resources; the host calls it even after startup failure. Host adapters must sanitize
@@ -32,6 +33,18 @@ public interface VetoPlugin extends AutoCloseable {
     }
 
     /**
+     * Optional default public name for a contributed tool. An operator alias has priority; null
+     * requests the host's namespaced fallback. Plugins should return a stable name because
+     * persisted tool calls refer to it. Name collisions reject activation.
+     *
+     * @param localId local contribution ID without the plugin namespace
+     * @return preferred public tool name, or null for the host fallback
+     */
+    default @Nullable String preferredToolName(@NonNull String localId) {
+        return null;
+    }
+
+    /**
      * Former stable IDs that the host may resolve to {@link #identity()} when reading durable
      * selections created by an older plugin release. Aliases must be globally unique across all
      * installed plugins and must not equal any plugin's current ID; the host rejects collisions at
@@ -45,7 +58,7 @@ public interface VetoPlugin extends AutoCloseable {
     }
 
     /**
-     * Stages this plugin's complete contribution batch during single-threaded startup.
+     * Stages this plugin's complete contribution batch during single-threaded activation.
      * Implementations may capture the context but must not start threads or perform external
      * effects. Named services are not discoverable until all plugins finish this callback.
      *

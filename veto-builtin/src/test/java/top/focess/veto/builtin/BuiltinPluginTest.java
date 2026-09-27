@@ -1,6 +1,7 @@
 package top.focess.veto.builtin;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.mock;
 
 import java.util.List;
 import java.util.Map;
@@ -8,6 +9,7 @@ import java.util.ServiceLoader;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.plugin.PluginContext;
+import top.focess.veto.api.plugin.PluginHost;
 import top.focess.veto.api.plugin.VetoPlugin;
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
@@ -30,7 +32,9 @@ class BuiltinPluginTest {
                                         throw new IllegalStateException(
                                                 "Plugin context is not bound to a lifecycle owner");
                                     },
-                                    Map.of()),
+                                    Map.of(
+                                            PluginHost.class,
+                                            mock(ToolDocs.nonNullClass(PluginHost.class)))),
                             new JsonValue.ObjectValue(Map.of()));
             plugin.start();
             assertEquals(

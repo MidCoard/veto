@@ -25,11 +25,12 @@ import top.focess.veto.builtin.process.BackgroundTasks.Scope;
 public final class ProcessRuntime implements Listener {
     private final @NonNull PluginContext context;
     private final @NonNull BackgroundTasks tasks;
-    private TaskEvents events;
+    private final @NonNull TaskEvents events;
 
     /** Creates the runtime bound to the context-supplied process host. */
-    public ProcessRuntime(@NonNull PluginContext context) {
+    public ProcessRuntime(@NonNull PluginContext context, @NonNull TaskEvents events) {
         this.context = context;
+        this.events = events;
         tasks =
                 new BackgroundTasks(
                         () ->
@@ -38,33 +39,24 @@ public final class ProcessRuntime implements Listener {
                                                 () ->
                                                         new IllegalStateException(
                                                                 "Process host unavailable")));
-    }
-
-    /** Registers the event notifier and wires it as the task listener. */
-    public void events(@NonNull TaskEvents events) {
-        this.events = events;
         tasks.listener(events);
     }
 
     @EventHandler
     public void onAgentTerminated(@NonNull AgentTerminatedEvent event) {
-        var notifications = events;
-        if (notifications != null)
-            notifications.agentClosed(new Scope(event.owner(), event.sessionId(), event.agentId()));
+        events.agentClosed(new Scope(event.owner(), event.sessionId(), event.agentId()));
         tasks.onAgentTerminated(event.owner(), event.sessionId(), event.agentId());
     }
 
     @EventHandler
     public void onSessionClosed(@NonNull SessionClosedEvent event) {
-        var notifications = events;
-        if (notifications != null) notifications.sessionClosed(event.owner(), event.sessionId());
+        events.sessionClosed(event.owner(), event.sessionId());
         tasks.onSessionClosed(event.owner(), event.sessionId());
     }
 
     @EventHandler
     public void onOwnerClosed(@NonNull OwnerClosedEvent event) {
-        var notifications = events;
-        if (notifications != null) notifications.ownerClosed(event.owner());
+        events.ownerClosed(event.owner());
         tasks.onOwnerClosed(event.owner());
     }
 

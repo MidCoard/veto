@@ -9,11 +9,30 @@ import java.util.concurrent.Executors;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.api.agent.workflow.ModelFlow;
 import top.focess.veto.api.plugin.PluginContext;
+import top.focess.veto.api.plugin.PluginHost;
 import top.focess.veto.api.plugin.contract.JsonValue;
+import top.focess.veto.api.plugin.contract.PluginFailure;
 import top.focess.veto.builtin.BuiltinPlugin;
 import top.focess.veto.plugin.runtime.*;
 
 class PluginLifecycleFlowTest {
+    @Test
+    void builtinRejectsInitializationWithoutHost() throws Exception {
+        var plugin = new BuiltinPlugin();
+        var context =
+                new PluginContext(
+                        plugin.identity(),
+                        () -> {},
+                        () -> {
+                            throw new IllegalStateException("No lifecycle owner");
+                        },
+                        Map.of());
+        assertThrows(
+                PluginFailure.class,
+                () -> plugin.initialize(context, new JsonValue.ObjectValue(Map.of())));
+        plugin.close();
+    }
+
     @Test
     void unloadingTheSubmittingPluginRejectsDeferredSteps() throws Exception {
         try (var executor = Executors.newSingleThreadExecutor()) {
@@ -27,7 +46,7 @@ class PluginLifecycleFlowTest {
                                 throw new IllegalStateException(
                                         "Plugin context is not bound to a lifecycle owner");
                             },
-                            Map.of()),
+                            Map.of(PluginHost.class, mock(requireNonNull(PluginHost.class)))),
                     new JsonValue.ObjectValue(Map.of()));
             managed.start();
             var delegate = mock(requireNonNull(ModelFlow.class));

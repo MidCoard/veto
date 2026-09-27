@@ -18,6 +18,7 @@ import org.springframework.beans.factory.NoSuchBeanDefinitionException;
 import org.springframework.beans.factory.ObjectProvider;
 import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.plugin.PluginBinding;
+import top.focess.veto.api.plugin.PluginHost;
 import top.focess.veto.api.plugin.agent.AgentHost;
 import top.focess.veto.api.plugin.agent.AgentProfile;
 import top.focess.veto.api.plugin.contract.FrontendContribution;
@@ -86,6 +87,23 @@ public final class PluginTestSupport {
         merged.put(
                 ToolDocs.nonNullClass(PluginStorageFactory.class),
                 new ConfigurationStorageFixture());
+        merged.put(
+                ToolDocs.nonNullClass(PluginHost.class),
+                new PluginHost() {
+                    @Override
+                    public @NonNull Invocation invocation(@NonNull String tool) {
+                        throw new IllegalStateException("No test tool invocation");
+                    }
+
+                    @Override
+                    public void wake(
+                            @NonNull String owner,
+                            @NonNull String sessionId,
+                            @NonNull String agentId) {}
+
+                    @Override
+                    public void invalidate(@NonNull String sessionId, @NonNull String resource) {}
+                });
         PluginAgentHostFactory hosts =
                 (plugin, storage) ->
                         scope -> {

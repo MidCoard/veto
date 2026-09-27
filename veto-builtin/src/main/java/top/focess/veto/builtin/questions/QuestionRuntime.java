@@ -18,12 +18,12 @@ import top.focess.veto.api.plugin.contract.FrontendContribution.Scope;
 
 /** Plugin-owned, in-memory rendezvous. Only the host supplies invocation identities. */
 public final class QuestionRuntime implements Listener, AutoCloseable {
-    private final PluginHost host;
+    private final @NonNull PluginHost host;
     private final @NonNull ConcurrentHashMap<Key, Pending> pending = new ConcurrentHashMap<>();
     private boolean closed;
 
-    /** Creates the rendezvous; {@code host} may be null in declaration-only setups. */
-    public QuestionRuntime(PluginHost host) {
+    /** Creates the rendezvous with its required invocation and invalidation host. */
+    public QuestionRuntime(@NonNull PluginHost host) {
         this.host = host;
     }
 
@@ -31,9 +31,7 @@ public final class QuestionRuntime implements Listener, AutoCloseable {
      * Registers the questions for the current invocation and blocks until answered or cancelled.
      */
     public @NonNull AnswerBatch ask(@NonNull List<Question> questions) throws InterruptedException {
-        var currentHost = host;
-        if (currentHost == null) throw new IllegalStateException("Question host unavailable");
-        var invocation = currentHost.invocation("ask_user");
+        var invocation = host.invocation("ask_user");
         var future = register(invocation, questions);
         try {
             return future.get();
@@ -145,10 +143,8 @@ public final class QuestionRuntime implements Listener, AutoCloseable {
     }
 
     private void invalidate(@NonNull Scope scope) {
-        var currentHost = host;
-        if (currentHost == null) return;
         try {
-            currentHost.invalidate(scope.sessionId(), "interactions");
+            host.invalidate(scope.sessionId(), "interactions");
         } catch (IllegalStateException | SecurityException ignored) {
             // Revocation must still settle all waiters when the host rejects late notifications.
         }

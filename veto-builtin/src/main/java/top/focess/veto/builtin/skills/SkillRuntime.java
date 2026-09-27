@@ -116,23 +116,6 @@ public final class SkillRuntime implements AutoCloseable {
         return Optional.of(selected.body());
     }
 
-    /**
-     * Distribution migration only; conflicting old anchors fail closed, never replace new trust.
-     */
-    public void importLegacy(@NonNull String fileIdentity, @NonNull String bodyHash) {
-        if (storage == null) throw new IllegalStateException("Skill storage unavailable");
-        var store = storage.application();
-        String key = "skills/hash/" + fileIdentity;
-        var old = store.get(key);
-        if (old.isPresent()) {
-            if (!(old.get().document().value() instanceof JsonValue.StringValue value)
-                    || !value.value().equals(bodyHash))
-                throw new IllegalStateException("Conflicting legacy skill anchor");
-            return;
-        }
-        store.put(key, null, new PluginStorage.Document(1, new JsonValue.StringValue(bodyHash)));
-    }
-
     static @NonNull Optional<Skill> parse(
             @NonNull String identity, @NonNull String text, @NonNull String source) {
         try {

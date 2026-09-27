@@ -13,7 +13,7 @@ entry class. Transitional plugins bundled on the application classpath use
 
 | API | Purpose | Authority and availability |
 |---|---|---|
-| `PluginContributions` | Publish tools, hooks, named services, and other implementations | Registration only; acceptance requires startup validation and grants no permission. |
+| `PluginContributions` | Publish tools, hooks, named services, and other implementations | Registration only; acceptance requires activation validation and grants no permission. |
 | `context.service(SomeType.class)` | Obtain an optional Java capability supplied by the host | Host-granted authority keyed by exact Java class identity; calls remain subject to current admission and authorization. |
 | `context.services()` | Find a named, versioned JSON protocol implemented by another plugin | Plugin-to-plugin communication using only `JsonValue`; the directory is populated after initialization. |
 | `PluginHost` | Request host-mediated invocation facts, waits, wake hints, events, and invalidation | Each operation applies its own lifecycle, selection, invocation, and authorization checks. |
@@ -32,6 +32,11 @@ initialization before the host binds the named service directory. A provider the
 registers `SERVICES` during `initialize`, while a consumer calls `services().find(...)` only
 in `start` or later. After catalog validation, `start()` makes the plugin ready and the host
 publishes its contributions.
+
+An administrator may later disable an installed package, withdrawing its contributions
+and draining calls before `close()`, or enable it by loading a fresh instance from its
+package. `preferredToolName` lets a plugin request a stable public tool name; an
+operator alias takes precedence and a collision rejects activation.
 
 A plugin that cannot apply to this host may throw `PluginDeclinedException`
 from `initialize()` with a bounded public reason. The host closes it and

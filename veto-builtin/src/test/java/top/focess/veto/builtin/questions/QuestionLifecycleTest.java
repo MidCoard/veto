@@ -11,6 +11,7 @@ import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.event.AgentTerminatedEvent;
 import top.focess.veto.api.event.OwnerClosedEvent;
 import top.focess.veto.api.event.SessionClosedEvent;
@@ -20,7 +21,7 @@ import top.focess.veto.api.plugin.contract.FrontendContribution.Scope;
 class QuestionLifecycleTest {
     @Test
     void identitiesIncludeOwnerSessionAgentAndCall() {
-        var runtime = new QuestionRuntime(null);
+        var runtime = new QuestionRuntime(mock(ToolDocs.nonNullClass(PluginHost.class)));
         var original = new PluginHost.Invocation("owner", "session", "agent", "request", "call");
         var pending = runtime.register(original, List.of());
         for (var scope :
@@ -39,7 +40,7 @@ class QuestionLifecycleTest {
     @ParameterizedTest
     @ValueSource(strings = {"owner", "session", "agent", "plugin"})
     void lifecycleCancelsOnlyMatchingBatches(@NonNull String transition) {
-        var runtime = new QuestionRuntime(null);
+        var runtime = new QuestionRuntime(mock(ToolDocs.nonNullClass(PluginHost.class)));
         var target = runtime.register(QuestionTestSupport.invocation("agent", "call"), List.of());
         var other =
                 runtime.register(
@@ -67,7 +68,7 @@ class QuestionLifecycleTest {
     void registrationRacingStopCannotLeavePendingWaiters() throws Exception {
         try (var threads = Executors.newVirtualThreadPerTaskExecutor()) {
             for (int i = 0; i < 50; i++) {
-                var runtime = new QuestionRuntime(null);
+                var runtime = new QuestionRuntime(mock(ToolDocs.nonNullClass(PluginHost.class)));
                 var registered =
                         threads.submit(
                                 () -> {

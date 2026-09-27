@@ -12,6 +12,11 @@ of hostile-code isolation on your operating system.
 - `start-core.bat` and `start-core.sh`: backend launchers using Java from `PATH`.
 - `VERSION` and `LICENSE`: version and licensing information.
 
+The core bundle has no plugins. Optional installable directories can be built
+separately with `localPluginPackages`; copy only chosen packages into a
+`plugins/` directory beside the launcher before starting the backend. Each
+package contains `plugin.json`, `plugin.jar`, and private libraries under `lib/`.
+
 ## Start the backend
 
 Open a terminal in the extracted bundle directory. Verify `java -version` reports
@@ -76,9 +81,12 @@ on `PATH` and configure a compatible GGUF model; confirm model loading in the lo
 Without it, deterministic screening remains active. Do not assume semantic
 screening is active merely because a model path is configured.
 
-Operator-configured JavaScript plugins are experimental and run as trusted server-user
-code. Node and plugin packages are not bundled. Portable model hooks and external
-Java-JAR activation are not available. A Java development fixture is not a plugin installer.
+Installed Java and JavaScript plugins run as trusted server-user code. Plugin
+packages are separate from the core bundle. Administrators can use
+`POST /api/plugins/{id}/disable` and `POST /api/plugins/{id}/enable` to toggle an
+installed package without restarting; the startup-disabled configuration takes
+effect again after restart. The obsolete pre-plugin group, monitor, and skill
+tables are removed; the running backend has no importer for those formats.
 
 Keep audit/vault data and database credentials private. See `LICENSE` for the
 GNU Affero General Public License v3.0-only terms.

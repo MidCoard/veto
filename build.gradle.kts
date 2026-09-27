@@ -1,4 +1,5 @@
 import java.io.File
+import java.nio.file.Files
 import org.checkerframework.plugin.gradle.CheckerFrameworkExtension
 
 plugins {
@@ -86,20 +87,25 @@ val generateReleaseReadme by tasks.registering {
 val localRelease by tasks.registering {
     group = "release"
     description = "Assembles the versioned local release bundle under release/."
-    dependsOn(":veto-app:bootJar", ":veto-terminal:distZip", ":veto-protocol:jar")
+    dependsOn(":veto-core:bootJar", ":veto-terminal:distZip", ":veto-protocol:jar")
     dependsOn(generateReleaseReadme)
     val versionStr = project.version.toString()
     val outDir = layout.projectDirectory.dir("release/veto-$versionStr")
     doLast {
-        val out = outDir.asFile
+        val workspace = rootProject.projectDir.canonicalFile
+        val releaseRoot = layout.projectDirectory.dir("release").asFile.canonicalFile
+        val out = outDir.asFile.canonicalFile
+        require(releaseRoot.path.startsWith(workspace.path + File.separator))
+        require(out.parentFile == releaseRoot)
+        require(!Files.isSymbolicLink(outDir.asFile.toPath()))
         out.deleteRecursively()
         val coreDir = File(out, "core").apply { mkdirs() }
         val terminalDir = File(out, "terminal").apply { mkdirs() }
         val bootJar =
-                project(":veto-app")
+                project(":veto-core")
                         .layout
                         .buildDirectory
-                        .file("libs/veto-app-$versionStr.jar")
+                        .file("libs/veto-core-$versionStr.jar")
                         .get()
                         .asFile
         bootJar.copyTo(File(coreDir, "veto-core.jar"))
@@ -132,5 +138,59 @@ val localRelease by tasks.registering {
         File(out, "VERSION").writeText("component=veto\nversion=$versionStr\n")
         releaseReadme.get().asFile.copyTo(File(out, "README.md"))
         println("Local release assembled: ${out.absolutePath}")
+    }
+}
+
+// Optional plugin artifacts are built separately from the core release. Operators install only
+// the packages they choose under the backend's plugins/ directory.
+val localPluginPackages by tasks.registering {
+    group = "release"
+    description = "Builds optional installable plugin directories under release/plugin-packages/."
+    dependsOn(":veto-builtin:jar", ":veto-llm-providers:jar", ":veto-secret-protection:jar")
+    val packages =
+            listOf(
+                    Triple("veto-builtin", "top.focess.builtin", "top.focess.veto.builtin.BuiltinPlugin"),
+                    Triple(
+                            "veto-llm-providers",
+                            "top.focess.llm-providers",
+                            "top.focess.veto.providers.LlmProvidersPlugin"),
+                    Triple(
+                            "veto-secret-protection",
+                            "top.focess.secret-protection",
+                            "top.focess.veto.secret.SecretProtectionPlugin"),
+            )
+    doLast {
+        val versionStr = project.version.toString()
+        val workspace = rootProject.projectDir.canonicalFile
+        val root = layout.projectDirectory.dir("release/plugin-packages/$versionStr").asFile.canonicalFile
+        require(root.path.startsWith(workspace.path + File.separator))
+        root.mkdirs()
+        for ((module, id, entryPoint) in packages) {
+            val subproject = project(":$module")
+            val folder = File(root, id).canonicalFile
+            require(folder.parentFile == root)
+            folder.mkdirs()
+            val artifact = "$module-$versionStr.jar"
+            subproject.layout.buildDirectory.file("libs/$artifact").get().asFile.copyTo(
+                    File(folder, "plugin.jar"), overwrite = true)
+            val libraries = File(folder, "lib").apply { mkdirs() }
+            val dependencies = subproject.configurations.getByName("runtimeClasspath").files
+            for (dependency in dependencies) {
+                if (!dependency.isFile || !dependency.name.endsWith(".jar")) continue
+                if (dependency.name.startsWith("veto-api-")) continue
+                if (dependency.name.startsWith("$module-")) continue
+                dependency.copyTo(File(libraries, dependency.name), overwrite = true)
+            }
+            val displayName =
+                    when (module) {
+                        "veto-builtin" -> "Builtin Tools"
+                        "veto-llm-providers" -> "LLM Providers"
+                        else -> "Secret Protection"
+                    }
+            File(folder, "plugin.json")
+                    .writeText(
+                            """{"schemaVersion":1,"id":"$id","name":"$displayName","version":"$versionStr","type":"java","entryPoint":"$entryPoint","artifact":"plugin.jar"}""" + "\n")
+        }
+        println("Optional plugin packages assembled: ${root.absolutePath}")
     }
 }

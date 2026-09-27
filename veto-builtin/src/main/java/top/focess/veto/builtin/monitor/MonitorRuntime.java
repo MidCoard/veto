@@ -3,7 +3,6 @@ package top.focess.veto.builtin.monitor;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -34,7 +33,6 @@ public final class MonitorRuntime implements AutoCloseable {
     private final @Nullable StoredMonitorRepository repository;
     private final MonitorService service;
     private @Nullable ScheduledExecutorService scheduler;
-    private final List<MonitorEntity> imported = new ArrayList<>();
 
     /** Creates the runtime, discovering the group observation source from the context. */
     public MonitorRuntime(PluginContext context) {
@@ -67,20 +65,6 @@ public final class MonitorRuntime implements AutoCloseable {
                         new ObjectMapper().findAndRegisterModules(),
                         groups,
                         host);
-    }
-
-    /** Persists a legacy monitor row; returns whether it was newly inserted. */
-    public synchronized boolean importLegacy(MonitorEntity row) {
-        if (repository == null) throw new IllegalStateException("Plugin storage unavailable");
-        boolean inserted = repository.importLegacy(row);
-        if (inserted) imported.add(row);
-        return inserted;
-    }
-
-    /** Restores previously imported rows into the service and clears the pending list. */
-    public synchronized void reloadImported() {
-        service.restoreImported(List.copyOf(imported));
-        imported.clear();
     }
 
     private volatile boolean ready;

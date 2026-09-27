@@ -28,6 +28,7 @@ import top.focess.veto.api.plugin.contribution.*;
 import top.focess.veto.api.plugin.storage.PluginStorage;
 import top.focess.veto.api.process.ProcessHost;
 import top.focess.veto.builtin.process.ProcessRuntime;
+import top.focess.veto.builtin.process.TaskEvents;
 import top.focess.veto.builtin.tools.*;
 import top.focess.veto.integration.plugins.storage.ConfigurationStorageFixture;
 import top.focess.veto.integration.plugins.storage.PluginStorageFactory;
@@ -140,7 +141,7 @@ public final class ProcessHostFixture implements AutoCloseable {
                                     host,
                                     ToolDocs.nonNullClass(PluginHost.class),
                                     effects));
-            feature = new ProcessRuntime(context);
+            feature = new ProcessRuntime(context, mock(ToolDocs.nonNullClass(TaskEvents.class)));
             plugin.initialize(context, new JsonValue.ObjectValue(Map.of()));
             plugin.start();
             List<Contribution<?>> entries = new ArrayList<>();

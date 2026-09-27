@@ -42,6 +42,8 @@ public class PluginLifecycleEvents {
 
     /** Required owner-deletion preparation; fails closed when a contributor is unavailable. */
     public void beforeOwnerDeleted(@NonNull String owner) {
+        if (manager.hasInactiveDataLifecycle())
+            throw new IllegalStateException("Plugin data cleanup is unavailable");
         if (manager.catalog().entries(StandardContributionPoints.DATA_LIFECYCLE).isEmpty()) return;
         String identity = userIdentity(owner);
         requiredDeletion(lifecycle -> lifecycle.prepareOwnerDeletion(owner, identity));
@@ -49,6 +51,8 @@ public class PluginLifecycleEvents {
 
     /** Required session-deletion preparation; fails closed when a contributor is unavailable. */
     public void beforeSessionDeleted(@NonNull String owner, @NonNull String session) {
+        if (manager.hasInactiveDataLifecycle())
+            throw new IllegalStateException("Plugin data cleanup is unavailable");
         if (manager.catalog().entries(StandardContributionPoints.DATA_LIFECYCLE).isEmpty()) return;
         String identity = userIdentity(owner);
         requiredDeletion(lifecycle -> lifecycle.prepareSessionDeletion(owner, identity, session));
@@ -69,18 +73,24 @@ public class PluginLifecycleEvents {
                 || !TransactionSynchronizationManager.isSynchronizationActive())
             throw new IllegalStateException("Permanent data deletion requires a transaction");
         for (var entry : manager.catalog().entries(StandardContributionPoints.DATA_LIFECYCLE)) {
-            var plugin = manager.plugin(entry.source().namespace());
+            String owner = entry.source().namespace();
+            var plugin = manager.beginDataCleanup(owner);
             try {
                 var completion = plugin.execute(() -> prepare.apply(entry.implementation()));
                 TransactionSynchronizationManager.registerSynchronization(
                         new TransactionSynchronization() {
                             @Override
                             public void afterCompletion(int status) {
-                                completion.complete(
-                                        status == TransactionSynchronization.STATUS_COMMITTED);
+                                try {
+                                    completion.complete(
+                                            status == TransactionSynchronization.STATUS_COMMITTED);
+                                } finally {
+                                    manager.endDataCleanup(owner);
+                                }
                             }
                         });
-            } catch (PluginFailure failure) {
+            } catch (PluginFailure | RuntimeException failure) {
+                manager.endDataCleanup(owner);
                 throw new IllegalStateException("Plugin data cleanup is unavailable", failure);
             }
         }

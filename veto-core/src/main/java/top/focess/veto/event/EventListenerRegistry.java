@@ -1,10 +1,7 @@
 package top.focess.veto.event;
 
-import java.lang.invoke.CallSite;
-import java.lang.invoke.LambdaMetafactory;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
-import java.lang.invoke.MethodType;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -31,14 +28,13 @@ import top.focess.veto.util.Nullness;
  * Immutable dispatch table of compiled event handlers.
  *
  * <p>Every {@code @EventHandler} method on a contributed {@link Listener} is reflected exactly
- * once, at registration, and compiled through {@link LambdaMetafactory} into an {@link
- * EventInvoker}. Dispatch is then a plain interface call with no per-invocation reflection, run
- * synchronously on the calling (workflow) thread. Handlers fire in {@link
- * top.focess.veto.api.event.EventPriority} order, registration order as the stable tiebreak,
- * walking the event's supertype chain from most specific to least. A handler is skipped once the
- * chain is {@link Event#isPrevent() prevented} or, for a {@link Cancellable} event, cancelled,
- * according to its annotation flags; only plugins selected for the session are invoked, each under
- * its own admission.
+ * once, at registration, into an {@link EventInvoker}. Dispatch is then a plain interface call
+ * backed by a method handle, with no per-invocation reflection, run synchronously on the calling
+ * (workflow) thread. Handlers fire in {@link top.focess.veto.api.event.EventPriority} order,
+ * registration order as the stable tiebreak, walking the event's supertype chain from most specific
+ * to least. A handler is skipped once the chain is {@link Event#isPrevent() prevented} or, for a
+ * {@link Cancellable} event, cancelled, according to its annotation flags; only plugins selected
+ * for the session are invoked, each under its own admission.
  */
 public final class EventListenerRegistry {
     private static final @NonNull Logger log =
@@ -196,7 +192,7 @@ public final class EventListenerRegistry {
             result.add(
                     new Compiled(
                             eventType,
-                            compileInvoker(method, eventType),
+                            compileInvoker(method),
                             Nullness.requireNonNull(annotation.priority()).weight(),
                             annotation.notCallIfPrevented(),
                             annotation.notCallIfCancelled()));
@@ -204,8 +200,7 @@ public final class EventListenerRegistry {
         return result;
     }
 
-    private static @NonNull EventInvoker compileInvoker(
-            @NonNull Method method, @NonNull Class<?> eventType) {
+    private static @NonNull EventInvoker compileInvoker(@NonNull Method method) {
         Class<?> declaring = method.getDeclaringClass();
         try {
             MethodHandles.Lookup lookup;
@@ -216,18 +211,17 @@ public final class EventListenerRegistry {
                 lookup = MethodHandles.lookup();
             }
             MethodHandle handle = lookup.unreflect(method);
-            CallSite site =
-                    LambdaMetafactory.metafactory(
-                            lookup,
-                            "invoke",
-                            MethodType.methodType(ToolDocs.nonNullClass(EventInvoker.class)),
-                            MethodType.methodType(
-                                    void.class,
-                                    ToolDocs.nonNullClass(Listener.class),
-                                    ToolDocs.nonNullClass(Event.class)),
-                            handle,
-                            MethodType.methodType(void.class, declaring, eventType));
-            return (EventInvoker) site.getTarget().invoke();
+            return (listener, event) -> {
+                try {
+                    handle.invoke(listener, event);
+                } catch (Exception exception) {
+                    throw exception;
+                } catch (Error error) {
+                    throw error;
+                } catch (Throwable failure) {
+                    throw new IllegalStateException("Event handler failed", failure);
+                }
+            };
         } catch (Throwable failure) {
             throw new IllegalArgumentException("Cannot compile event handler " + method, failure);
         }

@@ -57,11 +57,9 @@ class SkillRuntimeTest {
     }
 
     @Test
-    void legacyMismatchAndClosedRuntimeRefuse() {
+    void closedRuntimeRefusesAccess() {
         var fixture = new Fixture();
         fixture.project.body = skill("Project");
-        fixture.runtime.importLegacy("project-file", SkillRuntime.hash("Old instructions"));
-        assertTrue(fixture.runtime.load("review").isEmpty());
         fixture.runtime.close();
         assertTrue(fixture.runtime.catalogue(fixture.project).isEmpty());
         assertThrows(SecurityException.class, () -> fixture.runtime.load("review"));

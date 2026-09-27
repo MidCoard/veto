@@ -1,12 +1,17 @@
 package top.focess.veto.controller;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Stream;
 import org.jspecify.annotations.NonNull;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 import top.focess.veto.api.plugin.PluginState;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
 import top.focess.veto.controller.dto.*;
@@ -28,6 +33,31 @@ public class PluginController {
             @NonNull PluginManager plugins, @NonNull RequestAuthorization authorization) {
         this.plugins = plugins;
         this.authorization = authorization;
+    }
+
+    /** Withdraws one installed package immediately, preserving its stored data and session pins. */
+    @PostMapping("/{id}/disable")
+    public void disable(@PathVariable @NonNull String id) {
+        authorization.requireAdmin();
+        try {
+            plugins.disable(id);
+        } catch (IllegalArgumentException unavailable) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Plugin is not active");
+        }
+    }
+
+    /** Reloads and activates one installed package without restarting the backend. */
+    @PostMapping("/{id}/enable")
+    public void enable(@PathVariable @NonNull String id) {
+        authorization.requireAdmin();
+        try {
+            plugins.enable(id);
+        } catch (IllegalArgumentException unavailable) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Plugin is not disabled");
+        } catch (IOException failure) {
+            throw new ResponseStatusException(
+                    HttpStatus.SERVICE_UNAVAILABLE, "Plugin could not start");
+        }
     }
 
     /** Admin-only catalog of installed plugins with their state and contributed point/tool ids. */

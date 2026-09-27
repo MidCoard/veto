@@ -159,13 +159,7 @@ final class AgentContinuationExecution {
             if (!belongsToActiveRequest(event)) continue;
             boolean recorded =
                     runtime.output().history().stream()
-                            .anyMatch(
-                                    t ->
-                                            event.id().equals(t.payload().get("eventId"))
-                                                    || (event.attributes().get("legacyEventId")
-                                                                    instanceof String legacyId
-                                                            && legacyId.equals(
-                                                                    t.payload().get("eventId"))));
+                            .anyMatch(t -> event.id().equals(t.payload().get("eventId")));
             if (!recorded) {
                 runtime.output()
                         .appendTurn(

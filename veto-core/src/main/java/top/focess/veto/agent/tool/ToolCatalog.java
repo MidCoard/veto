@@ -75,6 +75,19 @@ final class ToolCatalog {
         return new ToolCatalog(combined, Math.incrementExact(generation));
     }
 
+    /** Replaces every plugin-owned registration while retaining local and MCP tools. */
+    @NonNull ToolCatalog replacePlugins(@NonNull List<RegisteredTool> replacements) {
+        List<RegisteredTool> combined = new ArrayList<>();
+        for (var registration : registrations) {
+            if (registration instanceof RegisteredTool.Plugin) continue;
+            if (registration instanceof RegisteredTool.Local local && local.runtime() != null)
+                continue;
+            combined.add(registration);
+        }
+        combined.addAll(replacements);
+        return new ToolCatalog(combined, Math.incrementExact(generation));
+    }
+
     RegisteredTool resolve(@NonNull String name) {
         return byName.get(name);
     }

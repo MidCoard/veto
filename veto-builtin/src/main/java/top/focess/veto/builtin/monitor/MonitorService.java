@@ -101,11 +101,11 @@ public class MonitorService implements AgentInbox, Listener, ProcessObserver {
 
     /** Reloads persisted monitors from the repository. */
     public synchronized void restore() {
-        restoreImported(repository.findAll());
+        restoreRows(repository.findAll());
     }
 
     /** Only previously unseen rows cross the restart barrier; live activations are untouched. */
-    public synchronized void restoreImported(@NonNull List<MonitorEntity> rows) {
+    private synchronized void restoreRows(@NonNull List<MonitorEntity> rows) {
         for (MonitorEntity row : rows) {
             if (records.containsKey(row.getId())) continue;
             try {
@@ -589,8 +589,6 @@ public class MonitorService implements AgentInbox, Listener, ProcessObserver {
                                         event.occurredAt(),
                                         "monitor",
                                         Map.of(
-                                                "legacyEventId",
-                                                event.id(),
                                                 "monitorId",
                                                 event.monitorId(),
                                                 "kind",

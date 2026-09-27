@@ -74,7 +74,7 @@ veto/
 |-- veto-builtin/    Workspace tools and create_group, registered through veto-api
 |-- veto-llm-providers/  Cloud LLM SDK adapters, registered through veto-api
 |-- veto-plugin-runtime/ Operator-configured script workers and example package
-|-- veto-secret-protection/ Self-contained secret-protection plugin (ServiceLoader-discovered built-in)
+|-- veto-secret-protection/ Optional secret-protection plugin package
 |-- RELEASE.md      Release-user guide template
 |-- gradle/          Gradle wrapper support
 |-- qodana.yaml      Qodana inspection configuration
@@ -179,11 +179,10 @@ and writes audit data and audit logs to its `audit` directory. Tests use separat
 audit output under `work/tmp/audit-path/tests`.
 
 To launch a built JAR in the background on Windows, use
-`./start-backend.ps1 -Jar ./veto-app/build/libs/veto-app-1.0.100.jar`.
+`./start-backend.ps1 -Jar ./veto-core/build/libs/veto-core-1.0.100.jar`.
 On macOS/Linux, use
-`sh ./start-backend.sh ./veto-app/build/libs/veto-app-1.0.100.jar`.
-To run the core without bundled plugins, build `:veto-core:bootJar` and pass
-`./veto-core/build/libs/veto-core-1.0.100.jar` to the same launcher. Core starts
+`sh ./start-backend.sh ./veto-core/build/libs/veto-core-1.0.100.jar`.
+Build `:veto-core:bootJar` first. Core starts
 with zero plugin tools; a model request still needs a configured model transport.
 Both launchers use Java from `JAVA_HOME`, or from `PATH` when unset.
 The launchers use the repository root even when called from another directory,
@@ -192,10 +191,10 @@ Check its startup log for readiness. Direct JAR launches must explicitly set an
 absolute `VETO_AUDIT_DIR` or `veto.observability.audit-log-path` property.
 
 ```powershell
-.\gradlew.bat :veto-app:bootRun
+.\gradlew.bat :veto-core:bootRun
 ```
 
-On macOS/Linux, the equivalent development command is `sh ./gradlew :veto-app:bootRun`.
+On macOS/Linux, the equivalent development command is `sh ./gradlew :veto-core:bootRun`.
 
 Default listeners:
 
@@ -240,7 +239,7 @@ directory. Set `veto.slm.model-path` in an external Spring configuration file or
 command-line property when the model is stored elsewhere:
 
 ```powershell
-.\gradlew.bat :veto-app:bootRun --args="--veto.slm.model-path=<model-file>"
+.\gradlew.bat :veto-core:bootRun --args="--veto.slm.model-path=<model-file>"
 ```
 
 `llama-server` must be resolvable from `PATH`. At startup, verify the log contains both the selected
@@ -264,7 +263,7 @@ configuration classes.
 | `veto.security.deployer-policy` | `FULL_ACCESS` | `FULL_ACCESS`, `PROTECTED`, `SANDBOXED`, or `TENANT` |
 | `veto.security.screening-mode` | `STRICT` | `STRICT`, `BALANCED`, or `PERMISSIVE` |
 | `veto.security.signup.mode` | `invite` | `solo`, `public`, or `invite` |
-| `veto.plugins.configuration[top.focess.builtin][memory-store]` | `jpa` in `veto-app` | Builtin memory store: `memory`, `jpa`, `vector`, or `pgvector` |
+| `veto.plugins.configuration[top.focess.builtin][memory-store]` | `memory` when builtin is installed | Builtin memory store; durable profiles require a separately supplied backend service |
 | `veto.vault.vault-home` | `~/.veto` | vault and per-user state root |
 | `veto.slm.model-path` | `./models/veto-slm.gguf` | local gateway model |
 | `veto.workspace.roots` | empty | deployer-authorized roots and the fallback Workspace |
@@ -367,15 +366,19 @@ services through veto-api provide cross-plugin cooperation.
 
 Set `veto.plugins.disabled` to a comma-separated list of installed plugin IDs
 to leave those packages inactive at startup; the host reads their manifest
-metadata but does not construct their entry classes. Remove an ID and restart
-to re-enable it. A Java plugin may intentionally decline from `initialize()`
+metadata but does not construct their entry classes. An administrator can call
+`POST /api/plugins/{id}/disable` or `POST /api/plugins/{id}/enable` to change an
+installed package while the backend runs. These live changes last until restart;
+the configured startup list still applies on the next boot. A Java plugin may
+intentionally decline from `initialize()`
 with `PluginDeclinedException`; the administrator catalog reports `DECLINED`
 and its public reason. Unexpected initialization or startup failures still
-fail backend startup. Live enable/disable is not supported yet.
+fail backend startup.
 
-During migration the normal `veto-app` distribution also discovers its bundled
-Java plugins through `ServiceLoader`. The secret-protection plugin is on this
-path and contributes its tools, protections and lifecycle hooks. Existing
+The core release contains no plugin implementation JARs. Build optional
+installable packages with `localPluginPackages`, then copy chosen directories
+from `release/plugin-packages/<version>/` into the backend's `plugins/` directory.
+Development classpaths still support transitional `ServiceLoader` discovery. Existing
 `veto.plugins.paths` remains available for explicitly configured script package
 directories.
 The experimental script runtime validates descriptors, starts persistent Node workers,
@@ -448,4 +451,11 @@ remain in core.
 
 ### Core-only deployment
 
-The normal `veto-app` distribution includes builtin tools, model-provider adapters and secret protection. `:veto-core:bootJar` assembles the core without these plugin artifacts; `:veto-core:bootRun` starts that profile. External model adapters must be supplied to call their providers. `:veto-core:zeroPluginTest` exercises the core loop in a JVM without bundled plugin classes, using a deterministic model transport. Feature lifecycle extraction remains in progress.
+`:veto-core:bootJar` is the sole backend executable and contains no builtin,
+model-provider or secret-protection implementation. Install each optional
+package separately under `plugins/`. External model adapters must be installed
+to call their providers. `:veto-core:zeroPluginTest` exercises the core loop
+without plugin classes, using a deterministic model transport. Historical
+The retired pre-plugin group, monitor, and skill tables have been removed in
+the development database. A future offline importer can use an external backup;
+the running backend does not parse those retired formats.

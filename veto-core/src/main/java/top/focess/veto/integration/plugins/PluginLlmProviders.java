@@ -18,12 +18,28 @@ import top.focess.veto.observability.AuditLogger;
 /** Adapts installed provider contributions to core audit/retry orchestration. */
 @Component
 public final class PluginLlmProviders {
-    private final @NonNull Map<ProviderType, LLMProviderStrategy> providers;
+    private volatile @NonNull Map<ProviderType, LLMProviderStrategy> providers = Map.of();
+    private final @NonNull ObjectMapper mapper;
+    private final @NonNull AuditLogger audit;
 
     /** Adapts every installed provider contribution; duplicate provider types fail startup. */
     public PluginLlmProviders(
             @NonNull PluginManager manager,
             @Qualifier(LlmJacksonConfig.LLM_OBJECT_MAPPER) @NonNull ObjectMapper mapper,
+            @NonNull AuditLogger audit) {
+        this.mapper = mapper;
+        this.audit = audit;
+        providers = build(manager, mapper, audit);
+    }
+
+    /** Rebuilds provider adapters from the currently published plugin catalog. */
+    public synchronized void reload(@NonNull PluginManager manager) {
+        providers = build(manager, mapper, audit);
+    }
+
+    private static @NonNull Map<ProviderType, LLMProviderStrategy> build(
+            @NonNull PluginManager manager,
+            @NonNull ObjectMapper mapper,
             @NonNull AuditLogger audit) {
         Map<ProviderType, LLMProviderStrategy> values = new HashMap<>();
         for (var entry : manager.catalog().entries(StandardContributionPoints.LLM_PROVIDERS)) {
@@ -69,7 +85,7 @@ public final class PluginLlmProviders {
             if (values.putIfAbsent(type, strategy) != null)
                 throw new IllegalArgumentException("Duplicate LLM provider: " + type);
         }
-        providers = Map.copyOf(values);
+        return Map.copyOf(values);
     }
 
     /** Returns the strategy for the given provider type; throws when none is registered. */

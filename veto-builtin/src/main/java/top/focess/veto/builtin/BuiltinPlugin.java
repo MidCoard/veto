@@ -9,7 +9,6 @@ import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.plugin.AbstractVetoPlugin;
 import top.focess.veto.api.plugin.PluginContext;
 import top.focess.veto.api.plugin.PluginContributions;
-import top.focess.veto.api.plugin.PluginHost;
 import top.focess.veto.api.plugin.PluginIdentity;
 import top.focess.veto.api.plugin.agent.AgentHost;
 import top.focess.veto.api.plugin.contract.JsonValue;
@@ -17,21 +16,16 @@ import top.focess.veto.api.plugin.contract.StandardContributionPoints;
 import top.focess.veto.api.plugin.contribution.Contribution;
 import top.focess.veto.api.search.SearchServices;
 import top.focess.veto.builtin.group.*;
-import top.focess.veto.builtin.memory.MemoryRuntime;
 import top.focess.veto.builtin.memory.MemoryTools;
 import top.focess.veto.builtin.monitor.MonitorFrontend;
 import top.focess.veto.builtin.monitor.MonitorRuntime;
 import top.focess.veto.builtin.monitor.MonitorTools;
 import top.focess.veto.builtin.planning.PlanConfig;
 import top.focess.veto.builtin.planning.SubmitPlanTool;
-import top.focess.veto.builtin.process.ProcessRuntime;
-import top.focess.veto.builtin.process.TaskEvents;
 import top.focess.veto.builtin.process.TasksFrontend;
-import top.focess.veto.builtin.questions.QuestionRuntime;
 import top.focess.veto.builtin.questions.QuestionsFrontend;
 import top.focess.veto.builtin.response.AnswerWithCitationsTool;
 import top.focess.veto.builtin.response.CitationResponsePolicy;
-import top.focess.veto.builtin.search.BraveSearchProvider;
 import top.focess.veto.builtin.search.DuckDuckGoSearchProvider;
 import top.focess.veto.builtin.search.SearchServiceClient;
 import top.focess.veto.builtin.skills.SkillRuntime;
@@ -43,33 +37,27 @@ import top.focess.veto.builtin.workspace.*;
 public final class BuiltinPlugin extends AbstractVetoPlugin {
     private final @NonNull ReadGitHubRepositoryTool github = new ReadGitHubRepositoryTool();
     private final @NonNull DuckDuckGoSearchProvider duckduckgo = new DuckDuckGoSearchProvider();
-    private @Nullable BraveSearchProvider brave;
-    private @Nullable MonitorRuntime monitors;
-    private @Nullable GroupRuntime groups;
-    private @Nullable PluginHost host;
-    private @Nullable QuestionRuntime questions;
-    private @Nullable ProcessRuntime processes;
-    private @Nullable TaskEvents taskEvents;
-    private @Nullable SkillRuntime skills;
+    private @Nullable BuiltinComponents components;
 
     /** Returns the skill runtime; fails until the plugin is initialized. */
     public @NonNull SkillRuntime skillRuntime() {
-        if (skills == null) throw new IllegalStateException("Builtin not initialized");
-        return skills;
+        return initialized().skills;
     }
 
     /** Returns the group runtime; fails until the plugin is initialized. */
     public @NonNull GroupRuntime groupRuntime() {
-        var runtime = groups;
-        if (runtime == null) throw new IllegalStateException("Builtin is not initialized");
-        return runtime;
+        return initialized().groups;
     }
 
     /** Returns the monitor runtime; fails until the plugin is initialized. */
     public @NonNull MonitorRuntime monitorRuntime() {
-        var runtime = monitors;
-        if (runtime == null) throw new IllegalStateException("Builtin is not initialized");
-        return runtime;
+        return initialized().monitors;
+    }
+
+    private @NonNull BuiltinComponents initialized() {
+        BuiltinComponents current = components;
+        if (current == null) throw new IllegalStateException("Builtin is not initialized");
+        return current;
     }
 
     @Override
@@ -83,38 +71,27 @@ public final class BuiltinPlugin extends AbstractVetoPlugin {
     }
 
     @Override
+    public @NonNull String preferredToolName(@NonNull String localId) {
+        return localId;
+    }
+
+    @Override
     protected @NonNull PluginContributions onInitialize(
             @NonNull PluginContext context, JsonValue.@NonNull ObjectValue configuration) {
-        host = context.service(ToolDocs.nonNullClass(PluginHost.class)).orElse(null);
-        var questionRuntime = new QuestionRuntime(host);
-        questions = questionRuntime;
-        var groupRuntime = new GroupRuntime(context, configuration);
-        groups = groupRuntime;
-        groupRuntime.awaitHostReady();
-        var groupOperations = groupRuntime.operations();
-        var monitorRuntime = new MonitorRuntime(context, groupRuntime);
-        monitors = monitorRuntime;
-        var operations = monitorRuntime.operations();
-        var processRuntime = new ProcessRuntime(context);
-        processes = processRuntime;
-        if (host != null) {
-            var events = new TaskEvents(host, monitorRuntime.service());
-            taskEvents = events;
-            processRuntime.events(events);
-        }
-        var memoryRuntime = new MemoryRuntime(context, configuration);
-        var skillRuntime = new SkillRuntime(context, configuration);
-        skills = skillRuntime;
+        components = new BuiltinComponents(context, configuration);
+        var runtime = initialized();
+        var groupOperations = runtime.groups.operations();
+        var operations = runtime.monitors.operations();
         List<CapabilityTool<?>> tools =
                 List.of(
-                        new GroupTools.CreateGroup(groupRuntime.delegation()),
-                        new RunCommandTool(processRuntime.execution("run_command")),
-                        new RunTaskTool(processRuntime.execution("run_task")),
-                        new ViewTaskTool(processRuntime.control("view_task")),
-                        new InputTaskTool(processRuntime.control("input_task")),
-                        new StopTaskTool(processRuntime.control("stop_task")),
-                        new LoadSkillTool(skillRuntime),
-                        new AskUserTool(questionRuntime),
+                        new GroupTools.CreateGroup(runtime.groups.delegation()),
+                        new RunCommandTool(runtime.processes.execution("run_command")),
+                        new RunTaskTool(runtime.processes.execution("run_task")),
+                        new ViewTaskTool(runtime.processes.control("view_task")),
+                        new InputTaskTool(runtime.processes.control("input_task")),
+                        new StopTaskTool(runtime.processes.control("stop_task")),
+                        new LoadSkillTool(runtime.skills),
+                        new AskUserTool(runtime.questions),
                         github,
                         new WebSearchTool(new SearchServiceClient(context, configuration)),
                         new WebFetchTool(
@@ -134,12 +111,12 @@ public final class BuiltinPlugin extends AbstractVetoPlugin {
                         new DagTools.RemoveNode(groupOperations),
                         new CollaborationTools.CreateMate(groupOperations),
                         new CollaborationTools.CreateTask(
-                                groupOperations, monitorRuntime::awaitGroup),
+                                groupOperations, runtime.monitors::awaitGroup),
                         new CollaborationTools.CancelTask(groupOperations),
                         new CollaborationTools.RemoveMate(groupOperations),
-                        new MemoryTools.RecallMemory(memoryRuntime.reader()),
-                        new MemoryTools.WriteMemory(memoryRuntime.writer("write_memory")),
-                        new MemoryTools.ForgetMemory(memoryRuntime.writer("forget_memory")),
+                        new MemoryTools.RecallMemory(runtime.memory.reader()),
+                        new MemoryTools.WriteMemory(runtime.memory.writer("write_memory")),
+                        new MemoryTools.ForgetMemory(runtime.memory.writer("forget_memory")),
                         new MonitorTools.CreateMonitor(operations),
                         new MonitorTools.InspectMonitor(operations),
                         new MonitorTools.PauseMonitor(operations),
@@ -155,15 +132,10 @@ public final class BuiltinPlugin extends AbstractVetoPlugin {
                         new ReplaceFileContentTool(),
                         new MovePathTool(),
                         new DeletePathTool());
-        var key = configuration.values().get("brave-api-key");
-        var configuredBrave =
-                new BraveSearchProvider(
-                        key instanceof JsonValue.StringValue value ? value.value() : "");
-        brave = configuredBrave;
         List<Contribution<?>> contributions = new ArrayList<>();
         contributions.add(
                 Contribution.of(
-                        StandardContributionPoints.DATA_LIFECYCLE, "memory-data", memoryRuntime));
+                        StandardContributionPoints.DATA_LIFECYCLE, "memory-data", runtime.memory));
         for (var tool : tools) {
             contributions.add(
                     Contribution.of(StandardContributionPoints.NATIVE_TOOLS, tool.getName(), tool));
@@ -182,45 +154,45 @@ public final class BuiltinPlugin extends AbstractVetoPlugin {
                 Contribution.of(
                         StandardContributionPoints.SERVICES,
                         "brave",
-                        SearchServices.registration(configuredBrave)));
+                        SearchServices.registration(runtime.brave)));
         contributions.add(
                 Contribution.of(
                         StandardContributionPoints.AGENT_INBOX,
                         "monitor-work",
-                        monitorRuntime.work()));
+                        runtime.monitors.work()));
         contributions.add(
                 Contribution.of(
                         StandardContributionPoints.LISTENERS,
                         "monitor-lifecycle",
-                        monitorRuntime.service()));
+                        runtime.monitors.service()));
         contributions.add(
                 Contribution.of(
                         StandardContributionPoints.FRONTEND,
                         "monitors",
-                        new MonitorFrontend(monitorRuntime.service()).contribution()));
+                        new MonitorFrontend(runtime.monitors.service()).contribution()));
         contributions.add(
                 Contribution.of(
                         StandardContributionPoints.AGENT_CONFIGURATION,
                         "group-configuration",
-                        groupRuntime));
+                        runtime.groups));
         contributions.add(
                 Contribution.of(
-                        StandardContributionPoints.LISTENERS, "group-lifecycle", groupRuntime));
+                        StandardContributionPoints.LISTENERS, "group-lifecycle", runtime.groups));
         contributions.add(
                 Contribution.of(
                         StandardContributionPoints.FRONTEND,
                         "groups",
-                        new GroupFrontend(groupRuntime).contribution()));
+                        new GroupFrontend(runtime.groups).contribution()));
         contributions.add(
                 Contribution.of(
                         StandardContributionPoints.LISTENERS,
                         "questions-lifecycle",
-                        questionRuntime));
+                        runtime.questions));
         contributions.add(
                 Contribution.of(
                         StandardContributionPoints.FRONTEND,
                         "questions",
-                        new QuestionsFrontend(questionRuntime).contribution()));
+                        new QuestionsFrontend(runtime.questions).contribution()));
         contributions.add(
                 Contribution.of(
                         StandardContributionPoints.FRONTEND,
@@ -228,53 +200,43 @@ public final class BuiltinPlugin extends AbstractVetoPlugin {
                         ToolsFrontend.contribution()));
         contributions.add(
                 Contribution.of(
-                        StandardContributionPoints.LISTENERS, "tasks-lifecycle", processRuntime));
+                        StandardContributionPoints.LISTENERS,
+                        "tasks-lifecycle",
+                        runtime.processes));
         contributions.add(
                 Contribution.of(
                         StandardContributionPoints.FRONTEND,
                         "tasks",
-                        new TasksFrontend(processRuntime.tasks()).contribution()));
+                        new TasksFrontend(runtime.processes.tasks()).contribution()));
         return new PluginContributions(contributions);
     }
 
     @Override
     protected void onStart() {
-        Runnable ready =
+        var runtime = initialized();
+        runtime.host.whenReady(
                 () -> {
-                    if (groups != null) groups.start();
-                    if (monitors != null) monitors.start();
-                    if (taskEvents != null) taskEvents.start();
-                };
-        if (host == null) ready.run();
-        else host.whenReady(ready);
+                    runtime.groups.start();
+                    runtime.monitors.start();
+                    runtime.taskEvents.start();
+                });
     }
 
     @Override
     protected void onStopping() {
-        try {
-            if (questions != null) questions.close();
-        } finally {
-            if (processes != null) processes.tasks().close();
-        }
+        BuiltinComponents current = components;
+        if (current != null) current.stopping();
     }
 
     @Override
     protected void onClose() {
         try {
-            if (processes != null) processes.tasks().close();
+            BuiltinComponents current = components;
+            components = null;
+            if (current != null) current.close();
         } finally {
-            closeServices();
+            github.close();
+            duckduckgo.close();
         }
-    }
-
-    private void closeServices() {
-        if (skills != null) skills.close();
-        if (taskEvents != null) taskEvents.close();
-        if (questions != null) questions.close();
-        if (monitors != null) monitors.close();
-        if (groups != null) groups.close();
-        github.close();
-        duckduckgo.close();
-        if (brave != null) brave.close();
     }
 }
