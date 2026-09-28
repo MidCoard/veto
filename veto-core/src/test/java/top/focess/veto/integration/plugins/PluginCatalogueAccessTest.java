@@ -6,7 +6,6 @@ import static org.mockito.Mockito.*;
 import java.nio.file.Path;
 import java.util.Map;
 import java.util.UUID;
-import org.checkerframework.framework.qual.DefaultQualifier;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -18,7 +17,6 @@ import top.focess.veto.api.plugin.PluginState;
 import top.focess.veto.api.plugin.storage.PluginStorage;
 import top.focess.veto.plugin.runtime.PluginLifecycle;
 
-@DefaultQualifier(NonNull.class)
 class PluginCatalogueAccessTest {
     @Test
     void sharedAliasesAreExplicitAndInactivePluginCannotRead(@TempDir @NonNull Path root) {

@@ -3,12 +3,6 @@ package top.focess.veto.builtin.planning;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.NullNode;
-
-import org.jspecify.annotations.NonNull;
-
-import top.focess.veto.api.agent.tool.ToolResult;
-import top.focess.veto.api.llm.VetoResponse;
-
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -17,6 +11,9 @@ import java.util.Optional;
 import java.util.TreeMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import org.jspecify.annotations.NonNull;
+import top.focess.veto.api.agent.tool.ToolResult;
+import top.focess.veto.api.llm.VetoResponse;
 
 /**
  * The engine-internal Scope — a derived projection of action outputs, auto-populated by the harness

@@ -1,7 +1,9 @@
 package top.focess.veto.builtin.tools;
 
+import java.time.Duration;
+import java.util.List;
+import java.util.Map;
 import org.jspecify.annotations.NonNull;
-
 import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.tool.Doc;
 import top.focess.veto.api.agent.tool.ParamCategory;
@@ -20,10 +22,6 @@ import top.focess.veto.api.process.ChainMode;
 import top.focess.veto.api.process.Command;
 import top.focess.veto.api.process.CommandResult;
 import top.focess.veto.builtin.process.ProcessExecutionCapability;
-
-import java.time.Duration;
-import java.util.List;
-import java.util.Map;
 
 /** Executes screened commands through the sandbox using the standard native-tool path. */
 @ToolSecurity(capability = ToolCapability.PROCESS_EXECUTION, defaultDanger = Danger.ELEVATED)
@@ -107,7 +105,7 @@ import java.util.Map;
             "BUILD SUCCESSFUL in 45s",
             "\n[stderr]\nCreateProcessW(AppContainer) failed (Win32 error=2)\r\n\n(exit code: 125)"
         })
-public final class RunCommandTool implements PreparedTool<RunCommandTool.Args> {
+public final class RunCommandTool extends PreparedTool<RunCommandTool.Args> {
     private final ProcessExecutionCapability capability;
 
     /** Declaration-only instance; the host supplies the capability at execution time. */
@@ -124,7 +122,7 @@ public final class RunCommandTool implements PreparedTool<RunCommandTool.Args> {
     public record CommandInput(
             @Doc(
                             "Binary name resolved by the sandbox using the operating system's"
-                                + " executable lookup rules, e.g. 'gradle'. Not a shell string.")
+                                    + " executable lookup rules, e.g. 'gradle'. Not a shell string.")
                     @NonNull String executable,
             @Doc(
                             "Literal argv array. Veto and the process launcher do not expand globs"

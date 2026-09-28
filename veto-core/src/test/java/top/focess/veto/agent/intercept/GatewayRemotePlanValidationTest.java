@@ -4,10 +4,9 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-
+import java.util.List;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
-
 import top.focess.veto.agent.screening.*;
 import top.focess.veto.agent.tool.*;
 import top.focess.veto.api.agent.control.ControlHost;
@@ -15,8 +14,6 @@ import top.focess.veto.api.agent.tool.ToolExecutionException;
 import top.focess.veto.api.llm.ToolDefinition;
 import top.focess.veto.builtin.planning.ActionsProgramParser;
 import top.focess.veto.builtin.planning.PlanPreflight;
-
-import java.util.List;
 
 class GatewayRemotePlanValidationTest {
     private static final @NonNull ObjectMapper MAPPER = new ObjectMapper();
@@ -61,8 +58,7 @@ class GatewayRemotePlanValidationTest {
                 """;
         assertDoesNotThrow(() -> validate(schema, "{\"source\":\"$source\",\"limit\":1}"));
         assertThrows(
-                ToolExecutionException.class,
-                () -> validate(schema, "{\"source\":\"$source\"}"));
+                ToolExecutionException.class, () -> validate(schema, "{\"source\":\"$source\"}"));
         assertThrows(
                 ToolExecutionException.class,
                 () -> validate(schema, "{\"source\":\"$source\",\"limit\":false}"));
@@ -82,14 +78,12 @@ class GatewayRemotePlanValidationTest {
         assertDoesNotThrow(() -> validate(schema, "{\"home\":\"$$HOME\"}"));
         assertDoesNotThrow(() -> validate(schema, "{\"home\":\"$$HOME\",\"source\":\"$source\"}"));
         assertThrows(
-                ToolExecutionException.class,
-                () -> validate(schema, "{\"home\":\"$$OTHER\"}"));
+                ToolExecutionException.class, () -> validate(schema, "{\"home\":\"$$OTHER\"}"));
         assertThrows(
                 ToolExecutionException.class,
                 () -> validate(schema, "{\"home\":\"$$OTHER\",\"source\":\"$source\"}"));
         assertThrows(
-                ToolExecutionException.class,
-                () -> validate(schema, "{\"home\":\"$$$HOME\"}"));
+                ToolExecutionException.class, () -> validate(schema, "{\"home\":\"$$$HOME\"}"));
     }
 
     @Test

@@ -2,10 +2,7 @@ package top.focess.veto.agent.capability;
 
 import java.util.Set;
 import java.util.function.LongFunction;
-import org.checkerframework.checker.nullness.qual.NonNull;
-import org.checkerframework.framework.qual.DefaultQualifier;
-import org.checkerframework.framework.qual.TypeUseLocation;
-import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import top.focess.veto.agent.tool.ExecutionReceipts;
 import top.focess.veto.agent.tool.ToolCallContext;
@@ -17,25 +14,17 @@ import top.focess.veto.api.plugin.agent.IsolatedAgent;
 import top.focess.veto.integration.plugins.IsolatedExecutions;
 
 /** One exact screened destination; cached content has the same authority as its first fetch. */
-@NullMarked
-@DefaultQualifier(
-        value = NonNull.class,
-        locations = {
-            TypeUseLocation.FIELD,
-            TypeUseLocation.PARAMETER,
-            TypeUseLocation.RETURN,
-            TypeUseLocation.UPPER_BOUND
-        })
 public final class HttpDestinationGrant implements ApprovedHttpDestination {
-    private final LongFunction<HttpDocument> fetch;
-    private final ToolCallContext parent;
-    private final Thread parentThread = Thread.currentThread();
+    private final @NonNull LongFunction<@NonNull HttpDocument> fetch;
+    private final @NonNull ToolCallContext parent;
+    private final @NonNull Thread parentThread = Thread.currentThread();
     private volatile boolean closed;
     private volatile IsolatedExecutions.@Nullable Scope child;
     private volatile @Nullable String operation;
     private volatile @Nullable HttpDocument cached;
 
-    HttpDestinationGrant(LongFunction<HttpDocument> fetch, ToolCallContext parent) {
+    HttpDestinationGrant(
+            @NonNull LongFunction<@NonNull HttpDocument> fetch, @NonNull ToolCallContext parent) {
         this.fetch = fetch;
         this.parent = parent;
     }
@@ -48,7 +37,8 @@ public final class HttpDestinationGrant implements ApprovedHttpDestination {
     }
 
     /** Binds this grant to an isolated child runtime and its approved operation. */
-    public synchronized void bind(IsolatedAgent.Runtime runtime, String operation) {
+    public synchronized void bind(
+            IsolatedAgent.@NonNull Runtime runtime, @NonNull String operation) {
         parent();
         if (child != null
                 || !(runtime instanceof IsolatedExecutions.Scope scope)
@@ -61,7 +51,7 @@ public final class HttpDestinationGrant implements ApprovedHttpDestination {
     }
 
     /** Requires the bound operation to be one of the given private tool names. */
-    public void requireOperation(Set<String> tools) {
+    public void requireOperation(@NonNull Set<@NonNull String> tools) {
         var bound = operation;
         if (bound == null || !tools.contains(bound))
             throw new SecurityException("Destination operation is not a private tool");
@@ -86,7 +76,7 @@ public final class HttpDestinationGrant implements ApprovedHttpDestination {
     }
 
     /** Fetches the screened destination once; later calls return the cached document. */
-    public HttpDocument fetch() {
+    public @NonNull HttpDocument fetch() {
         long deadline = authorizeFetch();
         var value = cached;
         if (value != null) return value;
@@ -102,7 +92,7 @@ public final class HttpDestinationGrant implements ApprovedHttpDestination {
     }
 
     /** Publishes execution receipts for a successfully settled child of this grant. */
-    public void publish(IsolatedAgent handle) {
+    public void publish(@NonNull IsolatedAgent handle) {
         parent();
         if (!(handle instanceof IsolatedExecutions.Child execution)
                 || execution.scope() != child

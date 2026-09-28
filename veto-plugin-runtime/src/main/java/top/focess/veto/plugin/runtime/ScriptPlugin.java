@@ -12,20 +12,21 @@ import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Set;
+import org.checkerframework.checker.initialization.qual.UnderInitialization;
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.api.plugin.AbstractVetoPlugin;
+import top.focess.veto.api.agent.tool.RemoteTool;
 import top.focess.veto.api.plugin.PluginContext;
 import top.focess.veto.api.plugin.PluginContributions;
 import top.focess.veto.api.plugin.PluginIdentity;
+import top.focess.veto.api.plugin.VetoPlugin;
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.contract.PluginFailure;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
-import top.focess.veto.api.agent.tool.RemoteTool;
 import top.focess.veto.api.plugin.contract.ToolContribution;
 import top.focess.veto.api.plugin.contribution.Contribution;
 
 /** Operator-trusted local code, not a sandbox. Only tools are supported in protocol v1. */
-public final class ScriptPlugin extends AbstractVetoPlugin {
+public final class ScriptPlugin extends VetoPlugin {
     public static final int MAX_FRAME = 65_536;
     static final @NonNull ObjectMapper JSON =
             new ObjectMapper(
@@ -48,6 +49,7 @@ public final class ScriptPlugin extends AbstractVetoPlugin {
     private final @NonNull ScriptHost host;
     private final boolean ownsHost;
     private final @NonNull Path executable;
+    private final @NonNull PluginContributions contributions;
 
     private @NonNull Runnable failureReporter = () -> {};
 
@@ -71,13 +73,27 @@ public final class ScriptPlugin extends AbstractVetoPlugin {
         this.descriptors = List.copyOf(descriptors);
         this.snapshot = snapshot;
         this.executable = executable;
+        this.contributions = buildContributions();
     }
 
     @Override
-    protected @NonNull PluginContributions onInitialize(
+    public @NonNull PluginContributions initialize(
             @NonNull PluginContext context, JsonValue.@NonNull ObjectValue configuration) {
         failureReporter = context::reportFailure;
         PluginSchema.require(configuration.values().isEmpty());
+        return contributions;
+    }
+
+    @Override
+    public @NonNull PluginContributions contributions() {
+        return contributions;
+    }
+
+    @SuppressWarnings(
+            "method.invocation") // Stored callbacks run only after construction; their owner fields
+    // are assigned above.
+    private @NonNull PluginContributions buildContributions(
+            @UnderInitialization ScriptPlugin this) {
         return new PluginContributions(
                 tools().stream()
                         .<Contribution<?>>map(
@@ -120,7 +136,7 @@ public final class ScriptPlugin extends AbstractVetoPlugin {
     }
 
     @Override
-    protected void onStart() throws IOException {
+    public void start() {
         host.register(digest, failureReporter);
     }
 
@@ -197,7 +213,7 @@ public final class ScriptPlugin extends AbstractVetoPlugin {
     }
 
     @Override
-    protected void onClose() {
+    public void close() {
         host.unregister(digest);
         if (ownsHost) host.close();
         removeSnapshot(snapshot);

@@ -1,16 +1,14 @@
 package top.focess.veto.secret.detection;
 
-import org.jspecify.annotations.NonNull;
-
-import top.focess.veto.api.llm.LocalModelCompletion;
-import top.focess.veto.api.llm.PromptRenderer;
-import top.focess.veto.secret.api.SecretDetectionModel;
-
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
+import org.jspecify.annotations.NonNull;
+import top.focess.veto.api.llm.LocalModelCompletion;
+import top.focess.veto.api.llm.PromptRenderer;
+import top.focess.veto.secret.api.SecretDetectionModel;
 
 /** This plugin owns detection prompt/grammar; the host only supplies local inference resources. */
 public final class MdcSecretDetectionModel implements SecretDetectionModel {
@@ -31,8 +29,8 @@ public final class MdcSecretDetectionModel implements SecretDetectionModel {
         this.model = model;
         this.prompts = prompts;
         try (var stream =
-                MdcSecretDetectionModel.class
-                        .getResourceAsStream("/grammars/secret-detection.gbnf")) {
+                MdcSecretDetectionModel.class.getResourceAsStream(
+                        "/grammars/secret-detection.gbnf")) {
             if (stream == null) throw new IllegalStateException("Missing detection grammar");
             grammar = new String(stream.readAllBytes(), StandardCharsets.UTF_8);
         } catch (IOException failure) {

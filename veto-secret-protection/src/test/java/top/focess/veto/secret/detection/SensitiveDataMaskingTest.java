@@ -2,14 +2,12 @@ package top.focess.veto.secret.detection;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-import org.jspecify.annotations.NonNull;
-import org.junit.jupiter.api.Test;
-
-import top.focess.veto.secret.api.SecretDetectionModel;
-import top.focess.veto.secret.references.SecretCandidateStore;
-
 import java.util.Map;
 import java.util.Optional;
+import org.jspecify.annotations.NonNull;
+import org.junit.jupiter.api.Test;
+import top.focess.veto.secret.api.SecretDetectionModel;
+import top.focess.veto.secret.references.SecretCandidateStore;
 
 /**
  * Sensitive-data masking (moved from veto-core's removed SemanticRedactor) and the
@@ -23,8 +21,8 @@ class SensitiveDataMaskingTest {
         String masked =
                 detector.mask(
                         "Server 192.168.1.100, ipv6 2001:0db8:85a3:0000:0000:8a2e:0370:7334,"
-                            + " contact dev@example.external.com, host"
-                            + " server.internal.example.com");
+                                + " contact dev@example.external.com, host"
+                                + " server.internal.example.com");
         assertTrue(masked.contains("[REDACTED_IP]"), masked);
         assertTrue(masked.contains("[REDACTED_IPV6]"), masked);
         assertTrue(masked.contains("[REDACTED_EMAIL]"), masked);
@@ -38,8 +36,8 @@ class SensitiveDataMaskingTest {
         String masked =
                 detector.mask(
                         "-----BEGIN RSA PRIVATE KEY-----\n"
-                            + "MIIEpAIBAAKCAQEA\n"
-                            + "-----END RSA PRIVATE KEY-----");
+                                + "MIIEpAIBAAKCAQEA\n"
+                                + "-----END RSA PRIVATE KEY-----");
         assertEquals("[REDACTED_PRIVATE_KEY]", masked);
 
         String dbMasked = detector.mask("connect jdbc:postgresql://user:pass@db.internal/db");

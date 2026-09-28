@@ -6,11 +6,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import org.checkerframework.framework.qual.DefaultQualifier;
-import org.checkerframework.framework.qual.TypeUseLocation;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.NullMarked;
-import org.jspecify.annotations.Nullable;
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.storage.PluginStorage;
 import top.focess.veto.api.plugin.storage.PluginStorage.Document;
@@ -19,25 +15,16 @@ import top.focess.veto.api.plugin.storage.PluginStorage.SessionScope;
 import top.focess.veto.api.plugin.storage.PluginStorage.Store;
 
 /** Monitor aggregates use session stores; optional payload chunks remain feature-owned. */
-@NullMarked
-@DefaultQualifier(
-        value = NonNull.class,
-        locations = {
-            TypeUseLocation.FIELD,
-            TypeUseLocation.PARAMETER,
-            TypeUseLocation.RETURN,
-            TypeUseLocation.UPPER_BOUND
-        })
 public final class StoredMonitorRepository implements MonitorRepository {
-    private record Stored(Store store, Entry entry) {}
+    private record Stored(@NonNull Store store, @NonNull Entry entry) {}
 
-    private final PluginStorage storage;
-    private final ObjectMapper mapper = new ObjectMapper();
-    private final Map<String, Store> sessions = new HashMap<>();
-    private final Map<String, Stored> known = new HashMap<>();
+    private final @NonNull PluginStorage storage;
+    private final @NonNull ObjectMapper mapper = new ObjectMapper();
+    private final @NonNull Map<@NonNull String, @NonNull Store> sessions = new HashMap<>();
+    private final @NonNull Map<@NonNull String, @NonNull Stored> known = new HashMap<>();
 
     /** Creates the repository over the plugin storage backend. */
-    public StoredMonitorRepository(PluginStorage storage) {
+    public StoredMonitorRepository(@NonNull PluginStorage storage) {
         this.storage = storage;
     }
 
@@ -54,7 +41,7 @@ public final class StoredMonitorRepository implements MonitorRepository {
     }
 
     @Override
-    public synchronized List<MonitorEntity> findAll() {
+    public synchronized @NonNull List<@NonNull MonitorEntity> findAll() {
         discover();
         List<MonitorEntity> result = new ArrayList<>();
         for (Store store : sessions.values()) {
@@ -73,7 +60,7 @@ public final class StoredMonitorRepository implements MonitorRepository {
         return result;
     }
 
-    private Store store(String session) {
+    private @NonNull Store store(@NonNull String session) {
         Store store = sessions.get(session);
         if (store == null) {
             discover();
@@ -85,7 +72,7 @@ public final class StoredMonitorRepository implements MonitorRepository {
     }
 
     @Override
-    public synchronized MonitorEntity save(MonitorEntity value) {
+    public synchronized @NonNull MonitorEntity save(@NonNull MonitorEntity value) {
         String session;
         try {
             var tree = mapper.readTree(value.getPayload());
@@ -103,7 +90,8 @@ public final class StoredMonitorRepository implements MonitorRepository {
         return value;
     }
 
-    private Entry write(Store store, MonitorEntity value, @Nullable String expected) {
+    private @NonNull Entry write(
+            @NonNull Store store, @NonNull MonitorEntity value, String expected) {
         List<Entry> chunks = new ArrayList<>();
         try {
             JsonValue document;
@@ -145,9 +133,9 @@ public final class StoredMonitorRepository implements MonitorRepository {
         }
     }
 
-    private record Payload(Entry entry, String payload) {}
+    private record Payload(@NonNull Entry entry, @NonNull String payload) {}
 
-    private Payload read(Store store, Entry initial) {
+    private @NonNull Payload read(@NonNull Store store, @NonNull Entry initial) {
         Entry entry = initial;
         for (int attempt = 0; attempt < 4; attempt++) {
             try {
@@ -161,7 +149,7 @@ public final class StoredMonitorRepository implements MonitorRepository {
         throw new PluginStorage.Conflict();
     }
 
-    private void discardChunks(Store store, Entry entry) {
+    private void discardChunks(@NonNull Store store, @NonNull Entry entry) {
         if (!(entry.document().value() instanceof JsonValue.ArrayValue parts)) return;
         for (JsonValue part : parts.values()) {
             if (part instanceof JsonValue.StringValue key) {
@@ -177,7 +165,7 @@ public final class StoredMonitorRepository implements MonitorRepository {
         }
     }
 
-    private String payload(Store store, Entry entry) {
+    private @NonNull String payload(@NonNull Store store, @NonNull Entry entry) {
         if (entry.document().schemaVersion() != 1)
             throw new IllegalStateException("Unsupported monitor storage version");
         if (entry.document().value() instanceof JsonValue.StringValue value) return value.value();

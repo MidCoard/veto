@@ -5,16 +5,17 @@ import top.focess.veto.api.agent.tool.AgentTool;
 import top.focess.veto.api.agent.tool.ToolCapability;
 
 /** Plugin-local feature execution; agent host effects are separately authorized. */
-public interface DelegationTool<T> extends AgentTool<T> {
-    @NonNull DelegationCapability delegationCapability();
+public abstract class DelegationTool<T> extends AgentTool<T> {
+    public abstract @NonNull DelegationCapability delegationCapability();
 
-    @NonNull String execute(@NonNull T args, @NonNull DelegationCapability operations);
+    public abstract @NonNull String execute(
+            @NonNull T args, @NonNull DelegationCapability operations);
 
-    default @NonNull ToolCapability getCapability() {
+    public @NonNull ToolCapability getCapability() {
         return ToolCapability.PLUGIN_LOCAL;
     }
 
-    default @NonNull String execute(@NonNull T args) {
+    public @NonNull String execute(@NonNull T args) {
         return execute(args, delegationCapability());
     }
 }

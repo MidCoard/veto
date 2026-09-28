@@ -4,18 +4,15 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-
+import java.util.Map;
+import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
-
 import top.focess.veto.agent.TurnRecord;
 import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.bus.DeltaBroker;
-
-import java.util.Map;
-import java.util.UUID;
 
 /**
  * Verifies {@link TurnLogService} persists turns to the raw-turn log ({@link TurnRecordRepository})

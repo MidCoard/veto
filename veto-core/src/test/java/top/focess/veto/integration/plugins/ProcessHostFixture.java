@@ -3,13 +3,16 @@ package top.focess.veto.integration.plugins;
 import static org.mockito.Mockito.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-
-import org.checkerframework.framework.qual.DefaultQualifier;
-import org.checkerframework.framework.qual.TypeUseLocation;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.jspecify.annotations.NonNull;
 import org.springframework.context.ApplicationContext;
 import org.springframework.test.util.ReflectionTestUtils;
-
 import top.focess.veto.agent.SessionAgentRegistry;
 import top.focess.veto.agent.VetoAgent;
 import top.focess.veto.agent.capability.CapabilityAccess;
@@ -30,58 +33,40 @@ import top.focess.veto.integration.plugins.storage.ConfigurationStorageFixture;
 import top.focess.veto.integration.plugins.storage.PluginStorageFactory;
 import top.focess.veto.plugin.runtime.*;
 import top.focess.veto.sandbox.*;
-import top.focess.veto.util.Nullness;
-
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
-import java.util.concurrent.Executors;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 /** Real process host and builtin tools with explicit test-only session membership. */
-@DefaultQualifier(
-        value = NonNull.class,
-        locations = {
-            TypeUseLocation.FIELD,
-            TypeUseLocation.PARAMETER,
-            TypeUseLocation.RETURN,
-            TypeUseLocation.UPPER_BOUND
-        })
 public final class ProcessHostFixture implements AutoCloseable {
-    public final UUID session = UUID.randomUUID();
-    public final String owner = "test-owner";
-    public final String agent = "test-agent";
-    public final UUID user = UUID.randomUUID();
-    public final AtomicBoolean admitted = new AtomicBoolean(true);
-    public final SessionAgentRegistry agents =
-            mock(SessionAgentRegistry.class);
-    public final PluginLifecycle plugin;
-    public final ToolEngineImpl engine;
-    public final ProcessHost host;
-    public final ProcessRuntime feature;
-    private final java.util.concurrent.ExecutorService lifecycle =
-            Executors.newSingleThreadExecutor();
+    public final @NonNull UUID session = UUID.randomUUID();
+    public final @NonNull String owner = "test-owner";
+    public final @NonNull String agent = "test-agent";
+    public final @NonNull UUID user = UUID.randomUUID();
+    public final @NonNull AtomicBoolean admitted = new AtomicBoolean(true);
+    public final @NonNull SessionAgentRegistry agents = mock(SessionAgentRegistry.class);
+    public final @NonNull PluginLifecycle plugin;
+    public final @NonNull ToolEngineImpl engine;
+    public final @NonNull ProcessHost host;
+    public final @NonNull ProcessRuntime feature;
+    private final @NonNull ExecutorService lifecycle = Executors.newSingleThreadExecutor();
 
     public ProcessHostFixture(
-            ConstrainedSubprocessSubstrate substrate,
-            List<NativeTool<?>> extra,
+            @NonNull ConstrainedSubprocessSubstrate substrate,
+            @NonNull List<@NonNull NativeTool<?>> extra,
             boolean background) {
         try {
             var implementation =
-                    new AbstractVetoPlugin() {
-                        public PluginIdentity identity() {
-                            return new PluginIdentity("fixture.process", "1.0.0");
-                        }
-
-                        protected PluginContributions onInitialize(
-                                PluginContext context, JsonValue.ObjectValue config) {
+                    new VetoPlugin() {
+                        @Override
+                        public @NonNull PluginContributions contributions() {
                             return new PluginContributions(List.of());
                         }
 
-                        protected void onStart() {}
+                        public @NonNull PluginIdentity identity() {
+                            return new PluginIdentity("fixture.process", "1.0.0");
+                        }
 
-                        protected void onClose() {}
+                        public void start() {}
+
+                        public void close() {}
                     };
             plugin = new PluginLifecycle(implementation, lifecycle);
             @NonNull PluginStorage storage = mock();
@@ -112,7 +97,7 @@ public final class ProcessHostFixture implements AutoCloseable {
                             .bind(plugin, storage);
             PluginHost effects =
                     new PluginHost() {
-                        public Invocation invocation(String tool) {
+                        public @NonNull Invocation invocation(@NonNull String tool) {
                             var active = ToolCallContextHolder.get();
                             if (active == null) throw new SecurityException("No invocation");
                             var current =
@@ -139,11 +124,7 @@ public final class ProcessHostFixture implements AutoCloseable {
                             plugin.identity(),
                             () -> {},
                             plugin::state,
-                            Map.of(
-                                    ProcessHost.class,
-                                    host,
-                                    PluginHost.class,
-                                    effects));
+                            Map.of(ProcessHost.class, host, PluginHost.class, effects));
             feature = new ProcessRuntime(context, mock(TaskEvents.class));
             plugin.initialize(context, new JsonValue.ObjectValue(Map.of()));
             plugin.start();
@@ -210,11 +191,11 @@ public final class ProcessHostFixture implements AutoCloseable {
         }
     }
 
-    public static PluginHostServices services(SandboxManager sandbox) {
+    public static @NonNull PluginHostServices services(@NonNull SandboxManager sandbox) {
         var scopes = new ConfigurationStorageFixture();
         PluginHost effects =
                 new PluginHost() {
-                    public Invocation invocation(String tool) {
+                    public @NonNull Invocation invocation(@NonNull String tool) {
                         var current = ToolCallContextHolder.get();
                         if (current == null) throw new SecurityException("No invocation");
                         CapabilityAccess.require(current.executionPermit().capability(), tool);
@@ -230,9 +211,12 @@ public final class ProcessHostFixture implements AutoCloseable {
                                 current.executionPermit().callId());
                     }
 
-                    public void wake(String owner, String session, String agent) {}
+                    public void wake(
+                            @NonNull String owner,
+                            @NonNull String session,
+                            @NonNull String agent) {}
 
-                    public void invalidate(String session, String resource) {}
+                    public void invalidate(@NonNull String session, @NonNull String resource) {}
                 };
         return new PluginHostServices(
                 Map.of(
@@ -244,8 +228,10 @@ public final class ProcessHostFixture implements AutoCloseable {
                         effects));
     }
 
-    public ToolExecutionPermit permit(
-            ToolCall call, ToolDefinition definition, Workspace workspace) {
+    public @NonNull ToolExecutionPermit permit(
+            @NonNull ToolCall call,
+            @NonNull ToolDefinition definition,
+            @NonNull Workspace workspace) {
         var prepared =
                 engine.prepare(
                         call,

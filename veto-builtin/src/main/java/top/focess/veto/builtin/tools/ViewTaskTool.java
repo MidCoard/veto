@@ -1,9 +1,10 @@
 package top.focess.veto.builtin.tools;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
-
+import java.util.List;
+import java.util.Optional;
+import java.util.concurrent.CancellationException;
 import org.jspecify.annotations.NonNull;
-
 import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.tool.Doc;
 import top.focess.veto.api.agent.tool.NativeTool;
@@ -16,10 +17,6 @@ import top.focess.veto.api.agent.tool.ToolResultFormat;
 import top.focess.veto.api.agent.tool.ToolSecurity;
 import top.focess.veto.builtin.process.TaskControlCapability;
 import top.focess.veto.builtin.process.TaskInfo;
-
-import java.util.List;
-import java.util.Optional;
-import java.util.concurrent.CancellationException;
 
 /**
  * {@code view_task} - inspect background tasks launched by {@code run_task}. With a {@code taskId}
@@ -82,20 +79,20 @@ import java.util.concurrent.CancellationException;
             "{\"count\": 1, \"tasks\": [{\"taskId\": \"bg-3\", \"command\": \"npm run dev\","
                     + " \"alive\": true}]}",
             "{\"taskId\": \"bg-3\", \"command\": \"npm run dev\", \"alive\": true, \"pid\": 12345,"
-                + " \"startedAt\": \"2026-01-01T00:00:00Z\", \"uptimeSeconds\": 42, \"cwd\":"
-                + " \"/abs/project\", \"recentOutput\": \"VITE ready in 300 ms\","
-                + " \"outputCapture\": \"recentOutput merges stdout and stderr without stream"
-                + " labels. Report it as combined output; it cannot establish that either stream"
-                + " was empty.\", \"inputFailures\": []}",
+                    + " \"startedAt\": \"2026-01-01T00:00:00Z\", \"uptimeSeconds\": 42, \"cwd\":"
+                    + " \"/abs/project\", \"recentOutput\": \"VITE ready in 300 ms\","
+                    + " \"outputCapture\": \"recentOutput merges stdout and stderr without stream"
+                    + " labels. Report it as combined output; it cannot establish that either stream"
+                    + " was empty.\", \"inputFailures\": []}",
             "{\"taskId\": \"bg-3\", \"command\": \"npm run dev\", \"alive\": false, \"exitCode\":"
-                + " 0, \"pid\": 12345, \"startedAt\": \"2026-01-01T00:00:00Z\", \"uptimeSeconds\":"
-                + " 184, \"cwd\": \"/abs/project\", \"recentOutput\": \"Server stopped.\","
-                + " \"outputCapture\": \"recentOutput merges stdout and stderr without stream"
-                + " labels. Report it as combined output; it cannot establish that either stream"
-                + " was empty.\", \"inputFailures\": []}",
+                    + " 0, \"pid\": 12345, \"startedAt\": \"2026-01-01T00:00:00Z\", \"uptimeSeconds\":"
+                    + " 184, \"cwd\": \"/abs/project\", \"recentOutput\": \"Server stopped.\","
+                    + " \"outputCapture\": \"recentOutput merges stdout and stderr without stream"
+                    + " labels. Report it as combined output; it cannot establish that either stream"
+                    + " was empty.\", \"inputFailures\": []}",
             "Task not found: bg-99"
         })
-public final class ViewTaskTool implements NativeTool<ViewTaskTool.Args> {
+public final class ViewTaskTool extends NativeTool<ViewTaskTool.Args> {
     private final TaskControlCapability capability;
 
     /** Declaration-only instance; the host supplies the capability at execution time. */
@@ -175,8 +172,8 @@ public final class ViewTaskTool implements NativeTool<ViewTaskTool.Args> {
                             task.cwd(),
                             capability.output(taskId, 50).orElse(""),
                             "recentOutput merges stdout and stderr without stream labels. Report it"
-                                + " as combined output; it cannot establish that either stream was"
-                                + " empty.",
+                                    + " as combined output; it cannot establish that either stream was"
+                                    + " empty.",
                             capability.inputFailures(taskId)));
         }
     }

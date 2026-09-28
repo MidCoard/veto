@@ -4,13 +4,15 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-
 import jakarta.persistence.EntityManager;
-
-import org.checkerframework.framework.qual.DefaultQualifier;
-import org.checkerframework.framework.qual.TypeUseLocation;
+import java.time.Instant;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.NullMarked;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -22,7 +24,6 @@ import org.springframework.orm.jpa.SharedEntityManagerCreator;
 import org.springframework.orm.jpa.vendor.HibernateJpaVendorAdapter;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.server.ResponseStatusException;
-
 import top.focess.veto.agent.SessionAgentRegistry;
 import top.focess.veto.agent.tool.ToolCallContextHolder;
 import top.focess.veto.api.plugin.PluginBinding;
@@ -48,34 +49,17 @@ import top.focess.veto.util.Nullness;
 import top.focess.veto.vault.UserContext;
 import top.focess.veto.vault.UserEntity;
 
-import java.time.Instant;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.Set;
-import java.util.UUID;
-import java.util.concurrent.CompletableFuture;
-
-@NullMarked
-@DefaultQualifier(
-        value = NonNull.class,
-        locations = {
-            TypeUseLocation.FIELD,
-            TypeUseLocation.PARAMETER,
-            TypeUseLocation.RETURN,
-            TypeUseLocation.UPPER_BOUND
-        })
 class ScopedPluginStorageTest {
-    private LocalContainerEntityManagerFactoryBean factory =
+    private @NonNull LocalContainerEntityManagerFactoryBean factory =
             new LocalContainerEntityManagerFactoryBean();
-    private EntityManager database = mock();
-    private TransactionTemplate transactions = new TransactionTemplate();
-    private ScopedPluginStorage host = mock();
-    private PluginLifecycle plugin = mock();
-    private PluginStorage first = mock();
-    private PluginStorage second = mock();
-    private String session = UUID.randomUUID().toString();
-    private static final PluginStorage.Document VALUE =
+    private @NonNull EntityManager database = mock();
+    private @NonNull TransactionTemplate transactions = new TransactionTemplate();
+    private @NonNull ScopedPluginStorage host = mock();
+    private @NonNull PluginLifecycle plugin = mock();
+    private @NonNull PluginStorage first = mock();
+    private @NonNull PluginStorage second = mock();
+    private @NonNull String session = UUID.randomUUID().toString();
+    private static final PluginStorage.@NonNull Document VALUE =
             new PluginStorage.Document(1, new JsonValue.StringValue("payload"));
 
     @BeforeEach
@@ -111,7 +95,7 @@ class ScopedPluginStorageTest {
                 });
     }
 
-    private PluginLifecycle plugin(String id) {
+    private @NonNull PluginLifecycle plugin(@NonNull String id) {
         @NonNull PluginLifecycle result = mock();
         @NonNull VetoPlugin implementation = mock();
         when(result.identity()).thenReturn(new PluginIdentity(id, "1.0.0"));
@@ -126,7 +110,7 @@ class ScopedPluginStorageTest {
         factory.destroy();
     }
 
-    private PluginStorage.SessionScope scope(PluginStorage storage) {
+    private PluginStorage.@NonNull SessionScope scope(@NonNull PluginStorage storage) {
         var invocation = new PluginInvocationScope("owner", session);
         try {
             return storage.currentSession();
@@ -240,9 +224,7 @@ class ScopedPluginStorageTest {
             var original = store.put("existing", null, VALUE);
             ToolCallContextHolder.withoutEffects(
                     () -> {
-                        assertThrows(
-                                SecurityException.class,
-                                () -> store.put("new", null, VALUE));
+                        assertThrows(SecurityException.class, () -> store.put("new", null, VALUE));
                         assertThrows(
                                 SecurityException.class,
                                 () -> store.delete("existing", original.revision()));
@@ -267,15 +249,23 @@ class ScopedPluginStorageTest {
     @Test
     void authenticatedFrontendActionReceivesItsSessionStoreAndRestoresContext() throws Exception {
         var frontend =
-                new FrontendContribution(
-                        "export default {}",
-                        (scope, action, arguments) -> {
-                            PluginStorage.Store store = first.session(first.currentSession());
-                            if (action.equals("fail"))
-                                throw new PluginFailure(PluginFailure.Code.INVALID_ARGUMENTS);
-                            store.put("frontend", null, VALUE);
-                            return new JsonValue.StringValue("saved");
-                        });
+                new FrontendContribution() {
+                    public @NonNull String module() {
+                        return "export default {}";
+                    }
+
+                    public @NonNull JsonValue handle(
+                            @NonNull Scope scope,
+                            @NonNull String action,
+                            JsonValue.@NonNull ObjectValue arguments)
+                            throws PluginFailure {
+                        PluginStorage.Store store = first.session(first.currentSession());
+                        if (action.equals("fail"))
+                            throw new PluginFailure(PluginFailure.Code.INVALID_ARGUMENTS);
+                        store.put("frontend", null, VALUE);
+                        return new JsonValue.StringValue("saved");
+                    }
+                };
         var catalog =
                 new ContributionCatalog.Builder()
                         .define(StandardContributionPoints.FRONTEND, ignored -> {})
@@ -420,8 +410,11 @@ class ScopedPluginStorageTest {
                                 second));
 
         PluginStorage.UserScope callerUser;
-        try (var invocation = new PluginInvocationScope("owner", session)) {
+        UserContext.set("owner");
+        try {
             callerUser = first.currentUser();
+        } finally {
+            UserContext.clear();
         }
         var providerUser = host.transferUser(first, callerUser, second);
         assertNotEquals(callerUser.token(), providerUser.token());
@@ -444,7 +437,7 @@ class ScopedPluginStorageTest {
         assertThrows(PluginStorage.Conflict.class, () -> store.delete("key", current.revision()));
     }
 
-    private boolean attempt(PluginStorage.Store store, @Nullable String revision) {
+    private boolean attempt(PluginStorage.@NonNull Store store, @Nullable String revision) {
         try {
             store.put("key", revision, VALUE);
             return true;
@@ -469,8 +462,7 @@ class ScopedPluginStorageTest {
         transactions.executeWithoutResult(
                 status -> {
                     host.deleteSession(session);
-                    database.remove(
-                            database.find(SessionEntity.class, session));
+                    database.remove(database.find(SessionEntity.class, session));
                     status.setRollbackOnly();
                 });
         assertTrue(store.get("key").isPresent());
@@ -478,8 +470,7 @@ class ScopedPluginStorageTest {
         transactions.executeWithoutResult(
                 status -> {
                     host.deleteSession(session);
-                    database.remove(
-                            database.find(SessionEntity.class, session));
+                    database.remove(database.find(SessionEntity.class, session));
                 });
         when(plugin.state()).thenReturn(PluginState.ACTIVE);
         assertThrows(SecurityException.class, () -> store.put("late", null, VALUE));
@@ -527,8 +518,7 @@ class ScopedPluginStorageTest {
         transactions.executeWithoutResult(
                 status -> {
                     host.deleteUser("owner");
-                    database.remove(
-                            database.find(SessionEntity.class, session));
+                    database.remove(database.find(SessionEntity.class, session));
                     database.remove(database.find(UserEntity.class, "owner"));
                     database.flush();
                     database.persist(

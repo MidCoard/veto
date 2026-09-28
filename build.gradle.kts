@@ -31,6 +31,7 @@ subprojects {
         }
 
         dependencies {
+            add("checkerFramework", "org.checkerframework:checker:4.1.0")
             add("checkerFramework", project(":veto-nullness-checker"))
         }
 
@@ -52,8 +53,15 @@ subprojects {
                 ),
             )
             val checkerStubs = project.layout.projectDirectory.dir("config/checker").asFile
-            if (checkerStubs.isDirectory) {
-                options.compilerArgs.add("-Astubs=${checkerStubs.absolutePath}")
+            val testStubs = rootProject.file("config/checker-test")
+            val stubs = buildList {
+                if (checkerStubs.isDirectory && checkerStubs.listFiles()?.isNotEmpty() == true)
+                    add(checkerStubs.absolutePath)
+                if (name == "compileTestJava" && project.name != "veto-terminal" && testStubs.isDirectory)
+                    add(testStubs.absolutePath)
+            }
+            if (stubs.isNotEmpty()) {
+                options.compilerArgs.add("-Astubs=${stubs.joinToString(File.pathSeparator)}")
             }
         }
 
@@ -176,15 +184,20 @@ val localPluginPackages by tasks.registering {
             require(folder.parentFile == root)
             folder.mkdirs()
             val artifact = "$module-$versionStr.jar"
-            subproject.layout.buildDirectory.file("libs/$artifact").get().asFile.copyTo(
-                    File(folder, "plugin.jar"), overwrite = true)
+            val sourceJar = subproject.layout.buildDirectory.file("libs/$artifact").get().asFile
+            val packageJar = File(folder, "plugin.jar")
+            if (!packageJar.isFile || Files.mismatch(sourceJar.toPath(), packageJar.toPath()) != -1L)
+                sourceJar.copyTo(packageJar, overwrite = true)
             val libraries = File(folder, "lib").apply { mkdirs() }
             val dependencies = subproject.configurations.getByName("runtimeClasspath").files
             for (dependency in dependencies) {
                 if (!dependency.isFile || !dependency.name.endsWith(".jar")) continue
                 if (dependency.name.startsWith("veto-api-")) continue
                 if (dependency.name.startsWith("$module-")) continue
-                dependency.copyTo(File(libraries, dependency.name), overwrite = true)
+                val packagedLibrary = File(libraries, dependency.name)
+                if (!packagedLibrary.isFile ||
+                    Files.mismatch(dependency.toPath(), packagedLibrary.toPath()) != -1L
+                ) dependency.copyTo(packagedLibrary, overwrite = true)
             }
             val displayName =
                     when (module) {

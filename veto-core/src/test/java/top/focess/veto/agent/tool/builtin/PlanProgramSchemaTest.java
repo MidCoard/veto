@@ -5,19 +5,16 @@ import static org.junit.jupiter.api.Assertions.*;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
-
 import top.focess.veto.agent.tool.NativeToolArgumentValidator;
 import top.focess.veto.api.agent.tool.ToolDocumentation;
 import top.focess.veto.api.agent.tool.ToolExecutionException;
 import top.focess.veto.api.llm.ToolDefinition;
 import top.focess.veto.builtin.planning.PlanProgramSchema;
-
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
 
 class PlanProgramSchemaTest {
     private static final @NonNull ObjectMapper MAPPER = new ObjectMapper();
@@ -117,12 +114,8 @@ class PlanProgramSchemaTest {
         assertEquals(1, inputs.path("minProperties").asInt());
         assertTrue(inputs.path("additionalProperties").isObject());
         assertDoesNotThrow(() -> validate(plan, "{\"first\":1,\"second\":\"$count\"}"));
-        assertThrows(
-                ToolExecutionException.class,
-                () -> validate(plan, "{\"first\":-1}"));
-        assertThrows(
-                ToolExecutionException.class,
-                () -> validate(plan, "{\"first\":true}"));
+        assertThrows(ToolExecutionException.class, () -> validate(plan, "{\"first\":-1}"));
+        assertThrows(ToolExecutionException.class, () -> validate(plan, "{\"first\":true}"));
     }
 
     @Test
@@ -139,15 +132,11 @@ class PlanProgramSchemaTest {
         assertEquals(2, inputsSchema(plan).path("anyOf").size());
         assertDoesNotThrow(() -> validate(plan, "{\"kind\":\"lookup\",\"key\":\"known\"}"));
         assertDoesNotThrow(() -> validate(plan, "{\"kind\":\"list\",\"limit\":\"$count\"}"));
-        assertThrows(
-                ToolExecutionException.class,
-                () -> validate(plan, "{\"kind\":\"lookup\"}"));
+        assertThrows(ToolExecutionException.class, () -> validate(plan, "{\"kind\":\"lookup\"}"));
         assertThrows(
                 ToolExecutionException.class,
                 () -> validate(plan, "{\"kind\":\"list\",\"limit\":null}"));
-        assertThrows(
-                ToolExecutionException.class,
-                () -> validate(plan, "\"$all_inputs\""));
+        assertThrows(ToolExecutionException.class, () -> validate(plan, "\"$all_inputs\""));
     }
 
     @Test
@@ -163,9 +152,7 @@ class PlanProgramSchemaTest {
         assertFalse(inputsSchema(plan).has("$defs"));
         assertDoesNotThrow(() -> validate(plan, "{\"count\":2}"));
         assertDoesNotThrow(() -> validate(plan, "{\"count\":\"$count\"}"));
-        assertThrows(
-                ToolExecutionException.class,
-                () -> validate(plan, "{\"count\":0}"));
+        assertThrows(ToolExecutionException.class, () -> validate(plan, "{\"count\":0}"));
         assertThrows(ToolExecutionException.class, () -> validate(plan, "{}"));
     }
 
@@ -178,12 +165,8 @@ class PlanProgramSchemaTest {
                  "additionalProperties":false}
                 """);
         assertDoesNotThrow(() -> validate(plan, "{\"entry_first\":1,\"entry_next\":\"$count\"}"));
-        assertThrows(
-                ToolExecutionException.class,
-                () -> validate(plan, "{\"unknown\":1}"));
-        assertThrows(
-                ToolExecutionException.class,
-                () -> validate(plan, "{\"entry_first\":false}"));
+        assertThrows(ToolExecutionException.class, () -> validate(plan, "{\"unknown\":1}"));
+        assertThrows(ToolExecutionException.class, () -> validate(plan, "{\"entry_first\":false}"));
     }
 
     @Test
@@ -196,9 +179,7 @@ class PlanProgramSchemaTest {
                 """);
         assertDoesNotThrow(() -> validate(plan, "{}"));
         assertDoesNotThrow(() -> validate(plan, "{\"nullable\":null}"));
-        assertThrows(
-                ToolExecutionException.class,
-                () -> validate(plan, "{\"optional\":null}"));
+        assertThrows(ToolExecutionException.class, () -> validate(plan, "{\"optional\":null}"));
     }
 
     @Test

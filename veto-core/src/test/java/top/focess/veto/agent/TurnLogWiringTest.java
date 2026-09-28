@@ -4,12 +4,12 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-
+import java.time.Duration;
+import java.util.List;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.test.util.ReflectionTestUtils;
-
 import top.focess.veto.agent.identity.SystemPromptResolver;
 import top.focess.veto.agent.intercept.HitlRegistry;
 import top.focess.veto.agent.intercept.IngressDefense;
@@ -24,9 +24,6 @@ import top.focess.veto.llm.core.UniformLLMCaller;
 import top.focess.veto.memory.TurnLogService;
 import top.focess.veto.memory.TurnRecordEntity;
 import top.focess.veto.memory.TurnRecordRepository;
-
-import java.time.Duration;
-import java.util.List;
 
 /**
  * Verifies the turn-log wiring end-to-end: an agent's {@code appendTurn} (driven by a submitted
@@ -80,8 +77,7 @@ class TurnLogWiringTest {
                         EPISODE_TIMEOUT);
 
         assertTrue(result.success(), "the episode finishes");
-        ArgumentCaptor<TurnRecordEntity> records =
-                ArgumentCaptor.forClass(TurnRecordEntity.class);
+        ArgumentCaptor<TurnRecordEntity> records = ArgumentCaptor.forClass(TurnRecordEntity.class);
         verify(repo, atLeastOnce()).save(records.capture());
         List<TurnRecordEntity> persisted = records.getAllValues();
         assertEquals("AGENT_INIT", persisted.get(0).getType());

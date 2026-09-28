@@ -2,13 +2,11 @@ package top.focess.veto.secret.detection;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-import org.jspecify.annotations.NonNull;
-import org.junit.jupiter.api.Test;
-
-import top.focess.veto.secret.api.SecretDetectionModel;
-
 import java.util.Map;
 import java.util.Optional;
+import org.jspecify.annotations.NonNull;
+import org.junit.jupiter.api.Test;
+import top.focess.veto.secret.api.SecretDetectionModel;
 
 /** SLM-primary detection with deterministic degraded fallback behind a stub model port. */
 class SlmSecretDetectorTest {

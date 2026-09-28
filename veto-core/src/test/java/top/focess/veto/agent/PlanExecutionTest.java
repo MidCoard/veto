@@ -4,7 +4,13 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-
+import java.io.IOException;
+import java.nio.file.*;
+import java.time.Duration;
+import java.util.*;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Test;
@@ -14,7 +20,6 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.springframework.context.ApplicationContext;
 import org.springframework.test.util.ReflectionTestUtils;
-
 import top.focess.veto.agent.capability.ProtectedWorkspaceReadCapabilityImpl;
 import top.focess.veto.agent.identity.*;
 import top.focess.veto.agent.intercept.*;
@@ -50,14 +55,6 @@ import top.focess.veto.model.tier.ModelBinding;
 import top.focess.veto.model.tier.ModelTier;
 import top.focess.veto.model.tier.ModelTierRegistry;
 import top.focess.veto.sandbox.*;
-
-import java.io.IOException;
-import java.nio.file.*;
-import java.time.Duration;
-import java.util.*;
-import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicReference;
 
 class PlanExecutionTest {
     private static final @NonNull List<PluginManager> MANAGERS = new CopyOnWriteArrayList<>();
@@ -205,7 +202,7 @@ class PlanExecutionTest {
                                                             value.content()
                                                                     .startsWith(
                                                                             "[Runtime recovery"
-                                                                                + " observation]"))
+                                                                                    + " observation]"))
                                             .toList();
                             assertEquals(
                                     1,
@@ -362,7 +359,7 @@ class PlanExecutionTest {
                                                                 m.content()
                                                                         .contains(
                                                                                 "Citation"
-                                                                                    + " rejected:")));
+                                                                                        + " rejected:")));
                             return new VetoResponse(
                                     null,
                                     List.of(
@@ -441,8 +438,8 @@ class PlanExecutionTest {
                                                             m.content()
                                                                     .contains(
                                                                             "No calls in this batch"
-                                                                                + " were"
-                                                                                + " executed")));
+                                                                                    + " were"
+                                                                                    + " executed")));
                             return message("Corrected");
                         },
                         new HitlRegistry(),
@@ -532,7 +529,7 @@ class PlanExecutionTest {
                                                 .anyMatch(m -> m.role().equals("tool")));
                                 return actions(
                                         "[{\"id\":\"g\",\"label\":\"Answer\",\"type\":\"generate\",\"prompt\":\"Say"
-                                            + " hello\",\"outputs\":{\"answer\":\"message\"}},{\"id\":\"end\",\"label\":\"Finish\",\"type\":\"STOP\",\"result_binding\":\"answer\"}]");
+                                                + " hello\",\"outputs\":{\"answer\":\"message\"}},{\"id\":\"end\",\"label\":\"Finish\",\"type\":\"STOP\",\"result_binding\":\"answer\"}]");
                             }
                             return message("Hello");
                         },
@@ -569,10 +566,16 @@ class PlanExecutionTest {
         ObjectMapper mapper = new ObjectMapper();
         SandboxManager sandbox = new SandboxManager(TestSandboxFactory.uncontainedSubprocesses());
         var config = new PluginConfigurations();
-        config.setToolNames(Map.of("top.focess.builtin:run_command", "run_command"));
+        config.setToolNames(
+                Map.of(
+                        "top.focess.builtin:run_command", "run_command",
+                        "top.focess.builtin:view_file", "builtin_view_file",
+                        "top.focess.builtin:submit_plan", "builtin_submit_plan",
+                        "top.focess.builtin:answer_with_citations",
+                                "builtin_answer_with_citations"));
         var plugins =
                 new PluginManager(
-                        "",
+                        PluginTestSupport.pluginPackages(),
                         "",
                         false,
                         5000,

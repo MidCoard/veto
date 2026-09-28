@@ -5,7 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
-import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -30,17 +30,16 @@ import top.focess.veto.vault.UserContext;
 
 /** Generic effects; feature interpretation and scheduling belong to their plugins. */
 @Configuration(proxyBeanMethods = false)
-@NullMarked
 public class PluginHostConfiguration {
     private @Nullable DeltaBroker broker;
 
     /** Attaches the delta broker used to publish plugin events to sessions. */
     @Autowired
-    public void attachBroker(DeltaBroker broker) {
+    public void attachBroker(@NonNull DeltaBroker broker) {
         this.broker = broker;
     }
 
-    private final CompletableFuture<Void> ready = new CompletableFuture<>();
+    private final @NonNull CompletableFuture<@Nullable Void> ready = new CompletableFuture<>();
 
     /** Releases callbacks registered through {@code PluginHost.whenReady} once startup finished. */
     @EventListener(ApplicationReadyEvent.class)
@@ -52,23 +51,23 @@ public class PluginHostConfiguration {
 
     /** Provides the generic runtime {@code PluginHost} (invocation, publish, invalidate, wake). */
     @Bean
-    public PluginHostServices runtimeHostServices(
-            ObjectProvider<SessionAgentRegistry> agents,
-            ObjectProvider<SessionService> sessions,
-            ObjectProvider<KeysteadVault> vault,
-            ObjectProvider<SessionInvalidations> invalidations) {
+    public @NonNull PluginHostServices runtimeHostServices(
+            @NonNull ObjectProvider<@NonNull SessionAgentRegistry> agents,
+            @NonNull ObjectProvider<@NonNull SessionService> sessions,
+            @NonNull ObjectProvider<@NonNull KeysteadVault> vault,
+            @NonNull ObjectProvider<@NonNull SessionInvalidations> invalidations) {
         PluginHost host =
                 new PluginHost() {
-                    public void whenReady(Runnable callback) {
+                    public void whenReady(@NonNull Runnable callback) {
                         ready.thenRun(callback);
                     }
 
-                    public void await(String tool, PluginAwait wait) {
+                    public void await(@NonNull String tool, @NonNull PluginAwait wait) {
                         invocation(tool);
                         ToolCallContextHolder.await(wait);
                     }
 
-                    public Invocation invocation(String tool) {
+                    public @NonNull Invocation invocation(@NonNull String tool) {
                         var context = ToolCallContextHolder.get();
                         if (context == null)
                             throw new SecurityException("No authorized invocation");
@@ -83,7 +82,10 @@ public class PluginHostConfiguration {
                                 context.executionPermit().callId());
                     }
 
-                    public void publish(String session, String topic, JsonValue.ObjectValue facts) {
+                    public void publish(
+                            @NonNull String session,
+                            @NonNull String topic,
+                            JsonValue.@NonNull ObjectValue facts) {
                         var publisher = broker;
                         if (publisher == null)
                             throw new IllegalStateException("Plugin transport unavailable");
@@ -104,11 +106,12 @@ public class PluginHostConfiguration {
                                         attrs));
                     }
 
-                    public void invalidate(String session, String resource) {
+                    public void invalidate(@NonNull String session, @NonNull String resource) {
                         invalidations.getObject().changed(UUID.fromString(session), resource);
                     }
 
-                    public void wake(String owner, String session, String agent) {
+                    public void wake(
+                            @NonNull String owner, @NonNull String session, @NonNull String agent) {
                         if (!vault.getObject().isUnlocked(owner)) return;
                         String previous = UserContext.get();
                         UserContext.set(owner);

@@ -3,32 +3,43 @@ package top.focess.veto.integration.plugins;
 import static org.junit.jupiter.api.Assertions.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-
+import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
-
 import top.focess.veto.api.agent.tool.CapabilityTool;
 import top.focess.veto.api.credentials.CredentialImportAccess;
 import top.focess.veto.api.credentials.CredentialWriter;
+import top.focess.veto.api.event.BeforeTextCommitEvent;
 import top.focess.veto.api.plugin.PluginState;
+import top.focess.veto.api.plugin.contract.FrontendContribution;
 import top.focess.veto.api.plugin.contract.PluginFailure;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
-import top.focess.veto.api.plugin.contract.FrontendContribution;
-import top.focess.veto.api.event.BeforeTextCommitEvent;
 import top.focess.veto.plugin.runtime.*;
 import top.focess.veto.util.Nullness;
 
-import java.util.Map;
-
 /**
- * Host-side plugin integration: ServiceLoader discovery, host-service delivery through {@code
+ * Host-side plugin integration: manifest discovery, host-service delivery through {@code
  * PluginContext}, lifecycle-event dispatch, and the session-less {@code
- * veto:observation-middleware} floor. The real secret-protection plugin is discovered from the test
- * runtime classpath.
+ * veto:observation-middleware} floor. The real secret-protection plugin is installed from its
+ * packaged directory.
  */
 class PluginManagerDiscoveryTest {
     @Test
-    void serviceLoaderDiscoversTheSecretProtectionPlugin() throws Exception {
+    void classpathDoesNotInstallPluginsWithoutManifests() throws Exception {
+        try (var plugins =
+                new PluginManager(
+                        "",
+                        "",
+                        false,
+                        5000,
+                        PluginTestSupport.providerOf(PluginTestSupport.configurationServices(null)),
+                        new PluginConfigurations())) {
+            assertTrue(plugins.plugins().isEmpty());
+        }
+    }
+
+    @Test
+    void manifestDiscoversTheSecretProtectionPlugin() throws Exception {
         try (var plugins = PluginTestSupport.manager()) {
             var plugin = plugins.plugin("top.focess.secret-protection");
             assertSame(plugin, plugins.plugin("org.veto.secret-protection"));
@@ -79,10 +90,7 @@ class PluginManagerDiscoveryTest {
                                 "owner", "session", "agent", writer);
         try (var plugins =
                 PluginTestSupport.manager(
-                        new PluginHostServices(
-                                Map.of(
-                                        CredentialImportAccess.class,
-                                        access)))) {
+                        new PluginHostServices(Map.of(CredentialImportAccess.class, access)))) {
             var scope = new FrontendContribution.Scope("owner", "session", "agent");
             String reference = capture(plugins, scope);
             String receipt = invokeImport(plugins, reference, "github", "Repository");

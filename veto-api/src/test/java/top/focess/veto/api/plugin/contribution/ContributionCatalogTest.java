@@ -2,29 +2,27 @@ package top.focess.veto.api.plugin.contribution;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
-
+import top.focess.veto.api.agent.tool.RemoteTool;
 import top.focess.veto.api.plugin.contract.*;
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.contract.ObservationMiddleware;
 import top.focess.veto.api.plugin.contract.PluginFailure;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
-import top.focess.veto.api.agent.tool.RemoteTool;
 import top.focess.veto.api.plugin.contract.ToolCategory;
 import top.focess.veto.api.plugin.contract.ToolContribution;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-
 class ContributionCatalogTest {
-    private static final ContributionSource BUILTIN =
+    private static final @NonNull ContributionSource BUILTIN =
             new ContributionSource("veto.core", "1", ContributionSource.Origin.BUILTIN);
-    private static final ContributionSource PLUGIN =
+    private static final @NonNull ContributionSource PLUGIN =
             new ContributionSource("example.plugin", "1", ContributionSource.Origin.PLUGIN);
-    private static final ContributionPoint<String> LABELS =
+    private static final @NonNull ContributionPoint<String> LABELS =
             new ContributionPoint<>(
                     new ContributionId("example:labels"),
                     1,
@@ -43,7 +41,7 @@ class ContributionCatalogTest {
                         new ContributionId("example.plugin:processors"),
                         1,
                         schema,
-                        ContributionPoint.Cardinality.MULTIPLE);
+                        ContributionPoint.Cardinality.MULTIPLE) {};
         var payload =
                 new JsonValue.ObjectValue(
                         Map.of("service", new JsonValue.StringValue("example:process")));
@@ -247,11 +245,21 @@ class ContributionCatalogTest {
     void middlewareUsesTheSameCatalogAndCannotOrderAcrossHostStages() throws Exception {
         var point = StandardContributionPoints.OBSERVATION;
         ObservationMiddleware prefix =
-                (text, cancel) -> {
-                    cancel.checkCancelled();
-                    return "prefix:" + text;
+                new ObservationMiddleware() {
+                    public @NonNull String transform(
+                            @NonNull String text, @NonNull Cancellation cancel)
+                            throws PluginFailure {
+                        cancel.checkCancelled();
+                        return "prefix:" + text;
+                    }
                 };
-        ObservationMiddleware suffix = (text, cancel) -> text + ":suffix";
+        ObservationMiddleware suffix =
+                new ObservationMiddleware() {
+                    public @NonNull String transform(
+                            @NonNull String text, @NonNull Cancellation cancel) {
+                        return text + ":suffix";
+                    }
+                };
         var builder = new ContributionCatalog.Builder().define(point, middleware -> {});
         builder.stage(BUILTIN, List.of(Contribution.of(point, "prefix", prefix)));
         builder.stage(
@@ -321,7 +329,7 @@ class ContributionCatalogTest {
                         Contribution.of(
                                 StandardContributionPoints.CATEGORIES,
                                 "missing",
-                                new ToolCategory("Example", "Example tools"))));
+                                new ToolCategory("Example", "Example tools") {})));
         assertEquals(1, builder.freeze().entries(StandardContributionPoints.TOOLS).size());
     }
 }

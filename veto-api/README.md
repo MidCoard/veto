@@ -4,10 +4,11 @@
 plugins. Plugin code depends on this module, not `veto-core`. For portable script plugins,
 see the separate [script runtime](../veto-plugin-runtime/README.md).
 
-The API is experimental. Rebuild plugins when its Java contracts change. An
-installed Java plugin has a public no-argument constructor and a `plugin.json`
-entry class. Transitional plugins bundled on the application classpath use
-`META-INF/services/top.focess.veto.api.plugin.VetoPlugin`.
+The API is experimental. Rebuild plugins when its Java contracts change. An installed
+Java package names its `VetoPlugin` subclass in `plugin.json`; that class must have a
+public `(PluginContext, JsonValue.ObjectValue)` constructor. The host discovers Java
+plugins only from installed package directories and constructs them after binding
+their context and configuration.
 
 ## Choose the right boundary
 
@@ -25,13 +26,13 @@ isolation. A contribution declaration is never proof that an implementation is c
 
 ## Lifecycle and admission
 
-The host constructs the plugin, reads `identity()`, and calls `initialize(context,
-configuration)` on its lifecycle executor. Initialization stages contributions and captures
-dependencies; it must not start threads or perform external effects. All plugins finish
-initialization before the host binds the named service directory. A provider therefore
-registers `SERVICES` during `initialize`, while a consumer calls `services().find(...)` only
-in `start` or later. After catalog validation, `start()` makes the plugin ready and the host
-publishes its contributions.
+The host discovers the entry metadata, binds the plugin-specific context and configuration,
+and constructs the plugin on its lifecycle executor. It then reads the required
+`contributions()` batch. Construction must not start threads or perform external effects.
+All plugins finish contribution staging before the host binds the named service directory.
+A provider therefore registers `SERVICES` in `contributions()`, while a consumer calls
+`services().find(...)` only in `start` or later. After catalog validation, `start()` makes
+the plugin ready and the host publishes its contributions.
 
 An administrator may later disable an installed package, withdrawing its contributions
 and draining calls before `close()`, or enable it by loading a fresh instance from its
@@ -39,7 +40,7 @@ package. `preferredToolName` lets a plugin request a stable public tool name; an
 operator alias takes precedence and a collision rejects activation.
 
 A plugin that cannot apply to this host may throw `PluginDeclinedException`
-from `initialize()` with a bounded public reason. The host closes it and
+from its constructor or `contributions()` with a bounded public reason. The host closes it and
 reports `DECLINED`; no contributions are published. It must not use this to
 mask invalid configuration or callback bugs. A decline from `start()` is not
 supported because the contribution catalog has already been validated.
@@ -72,20 +73,26 @@ import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.contract.PluginFailure;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
 import top.focess.veto.api.plugin.contribution.Contribution;
-import top.focess.veto.api.plugin.service.ServiceRegistration;
+import top.focess.veto.api.plugin.service.PluginService;
+import top.focess.veto.api.plugin.service.ServiceCallContext;
+import top.focess.veto.api.plugin.service.ServiceScope;
 
-public final class TextProviderPlugin implements VetoPlugin {
+public final class TextProviderPlugin extends VetoPlugin {
+    public TextProviderPlugin(
+            PluginContext context, JsonValue.ObjectValue configuration) {}
+
     public PluginIdentity identity() {
         return new PluginIdentity("example.text", "1.0.0");
     }
 
-    public PluginContributions initialize(
-            PluginContext context, JsonValue.ObjectValue configuration) {
-        var service = new ServiceRegistration(
-                "example:text", 1,
-                request -> request instanceof JsonValue.StringValue text
+    public PluginContributions contributions() {
+        var service = new PluginService("example:text", 1, ServiceScope.GLOBAL) {
+            public JsonValue invoke(ServiceCallContext caller, JsonValue request) {
+                return request instanceof JsonValue.StringValue text
                         ? new JsonValue.StringValue(text.value().trim())
-                        : JsonValue.NullValue.INSTANCE);
+                        : JsonValue.NullValue.INSTANCE;
+            }
+        };
         return new PluginContributions(List.of(
                 Contribution.of(StandardContributionPoints.SERVICES, "text", service)));
     }
@@ -112,22 +119,25 @@ import top.focess.veto.api.plugin.contract.PluginFailure;
 import top.focess.veto.api.plugin.service.PluginServices;
 import top.focess.veto.api.plugin.service.ServiceException;
 
-public final class TextConsumerPlugin implements VetoPlugin {
-    private Optional<PluginContext> context = Optional.empty();
+public final class TextConsumerPlugin extends VetoPlugin {
+    private final PluginContext context;
     private Optional<PluginServices.Handle> textService = Optional.empty();
+
+    public TextConsumerPlugin(
+            PluginContext context, JsonValue.ObjectValue configuration) {
+        this.context = context;
+    }
 
     public PluginIdentity identity() {
         return new PluginIdentity("example.consumer", "1.0.0");
     }
 
-    public PluginContributions initialize(
-            PluginContext context, JsonValue.ObjectValue configuration) {
-        this.context = Optional.of(context);
+    public PluginContributions contributions() {
         return new PluginContributions(List.of());
     }
 
     public void start() throws PluginFailure {
-        textService = context.orElseThrow().services().find("example:text", 1);
+        textService = context.services().find("example:text", 1);
     }
 
     public JsonValue normalize(String input) throws ServiceException {
@@ -137,7 +147,6 @@ public final class TextConsumerPlugin implements VetoPlugin {
 
     public void close() throws PluginFailure {
         textService = Optional.empty();
-        context = Optional.empty();
     }
 }
 ```
@@ -160,7 +169,7 @@ The current `StandardContributionPoints` are:
 |---|---|---|
 | `AGENT_CONFIGURATION` | `veto:agent-configuration` | `AgentConfiguration` |
 | `AGENT_INBOX` | `veto:agent-inbox` | `AgentInbox` |
-| `SERVICES` | `veto:services` | `ServiceRegistration` |
+| `SERVICES` | `veto:services` | `PluginService` |
 | `CONTRIBUTIONS` | `veto:contributions` | `ProtocolPointDefinition` |
 | `LLM_PROVIDERS` | `veto:llm-providers` | `LlmProvider` |
 | `LISTENERS` | `veto:listeners` | `Listener` |
@@ -247,10 +256,10 @@ currently visible entries with host-attributed provider IDs. A missing or disabl
 an empty group; entries submitted while its defining plugin is absent remain dormant until a
 compatible point is active. Discovery does not invoke an entry or grant service authority.
 
-All tools use the standard `TOOLS` point. Record-authored `AgentTool` and `NativeTool`
-implement `CapabilityTool`; schema-authored JSON tools implement `RemoteTool` directly. The
-point accepts heterogeneous values, and the host rejects anything outside these three contracts
-before publication. All execution passes through the gateway.
+All tools use the standard `TOOLS` point and inherit the abstract `Tool` base. A concrete
+tool extends exactly one abstract branch: record-authored `AgentTool` or `NativeTool`, or
+schema-authored `RemoteTool`. The host rejects any other `Tool` subclass before publication.
+All execution passes through the gateway.
 
 ## Scoped storage
 
@@ -306,3 +315,5 @@ and requires warning-free generated Javadocs. Use only `top.focess.veto.api` typ
 code and keep host implementation types out of plugin artifacts.
 
 Class literals can be passed directly as `Foo.class`. The build-time Veto nullness checker treats the class-literal expression as non-null while keeping the usual nullable defaults for other expressions. `ToolDocs` contains only tool documentation helpers.
+
+Standard contribution points accept the complete instance of their abstract aspect class. Tools extend `Tool` through `AgentTool`, `NativeTool`, or `RemoteTool`; services extend `PluginService`. Frontend modules, providers, prompts, listeners, policies, and other standard aspects likewise extend their respective API class and are registered as those objects. A component providing multiple aspects registers a separate object for each role.

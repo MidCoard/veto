@@ -3,11 +3,13 @@ package top.focess.veto.agent.intercept;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
+import java.io.IOException;
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
-
 import top.focess.veto.agent.tool.NativeToolDefinition;
 import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.tool.ParamCategory;
@@ -16,10 +18,6 @@ import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.integration.plugins.PluginManager;
 import top.focess.veto.integration.plugins.PluginTestSupport;
 import top.focess.veto.veto.LlamaCppBridge;
-
-import java.io.IOException;
-import java.util.Map;
-import java.util.concurrent.CompletableFuture;
 
 /**
  * Regression test for the SLM-timeout fix in SemanticMasker. The previous code called {@code

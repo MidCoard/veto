@@ -1,34 +1,8 @@
 package top.focess.veto.integration.plugins.storage;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceException;
-
-import org.checkerframework.framework.qual.DefaultQualifier;
-import org.checkerframework.framework.qual.TypeUseLocation;
-import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.NullMarked;
-import org.jspecify.annotations.Nullable;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.context.annotation.Bean;
-import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.stereotype.Component;
-import org.springframework.transaction.PlatformTransactionManager;
-import org.springframework.transaction.support.TransactionTemplate;
-
-import top.focess.veto.agent.tool.ToolCallContextHolder;
-import top.focess.veto.api.plugin.PluginState;
-import top.focess.veto.api.plugin.contract.JsonValues;
-import top.focess.veto.api.plugin.storage.PluginStorage;
-import top.focess.veto.integration.plugins.PluginHostServices;
-import top.focess.veto.model.SessionEntity;
-import top.focess.veto.plugin.runtime.PluginJson;
-import top.focess.veto.plugin.runtime.PluginLifecycle;
-import top.focess.veto.util.Nullness;
-import top.focess.veto.vault.UserContext;
-import top.focess.veto.vault.UserEntity;
-
 import java.nio.charset.StandardCharsets;
 import java.sql.SQLException;
 import java.util.ArrayList;
@@ -41,29 +15,39 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Supplier;
+import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Bean;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.stereotype.Component;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
+import top.focess.veto.agent.tool.ToolCallContextHolder;
+import top.focess.veto.api.plugin.PluginState;
+import top.focess.veto.api.plugin.contract.JsonValues;
+import top.focess.veto.api.plugin.storage.PluginStorage;
+import top.focess.veto.integration.plugins.PluginHostServices;
+import top.focess.veto.model.SessionEntity;
+import top.focess.veto.plugin.runtime.PluginJson;
+import top.focess.veto.plugin.runtime.PluginLifecycle;
+import top.focess.veto.util.Nullness;
+import top.focess.veto.vault.UserContext;
+import top.focess.veto.vault.UserEntity;
 
 /** Scoped CAS records share the host transaction and referential deletion boundary. */
 @Component
-@NullMarked
-@DefaultQualifier(
-        value = NonNull.class,
-        locations = {
-            TypeUseLocation.FIELD,
-            TypeUseLocation.PARAMETER,
-            TypeUseLocation.RETURN,
-            TypeUseLocation.UPPER_BOUND
-        })
 public class ScopedPluginStorage implements PluginStorageFactory {
-    private final EntityManager database;
-    private final TransactionTemplate transactions;
-    private final ObjectMapper mapper;
+    private final @NonNull EntityManager database;
+    private final @NonNull TransactionTemplate transactions;
+    private final @NonNull ObjectMapper mapper;
     private final int maxBytes;
 
     /** Creates the storage engine; {@code maxBytes} caps one plugin document, must be positive. */
     public ScopedPluginStorage(
-            EntityManager database,
-            PlatformTransactionManager transactions,
-            ObjectMapper mapper,
+            @NonNull EntityManager database,
+            @NonNull PlatformTransactionManager transactions,
+            @NonNull ObjectMapper mapper,
             @Value("${veto.plugins.storage.max-document-bytes:1048576}") int maxBytes) {
         if (maxBytes < 1) throw new IllegalArgumentException("Storage byte limit must be positive");
         this.database = database;
@@ -74,32 +58,36 @@ public class ScopedPluginStorage implements PluginStorageFactory {
 
     /** Exposes this factory as a host service so the manager can bind per-plugin storage. */
     @Bean
-    public PluginHostServices storageHostServices() {
+    public @NonNull PluginHostServices storageHostServices() {
         return new PluginHostServices(Map.of(PluginStorageFactory.class, this));
     }
 
     @Override
-    public PluginStorage bind(PluginLifecycle plugin) {
+    public @NonNull PluginStorage bind(@NonNull PluginLifecycle plugin) {
         return new Bound(plugin);
     }
 
     @Override
-    public String authorizeSession(PluginStorage storage, PluginStorage.SessionScope scope) {
+    public @NonNull String authorizeSession(
+            @NonNull PluginStorage storage, PluginStorage.@NonNull SessionScope scope) {
         if (!(storage instanceof Bound bound))
             throw new SecurityException("Unrecognized storage binding");
         return transaction(() -> bound.validate(scope).owner());
     }
 
     @Override
-    public String authorizeUser(PluginStorage storage, PluginStorage.UserScope scope) {
+    public @NonNull String authorizeUser(
+            @NonNull PluginStorage storage, PluginStorage.@NonNull UserScope scope) {
         if (!(storage instanceof Bound bound))
             throw new SecurityException("Unrecognized storage binding");
         return transaction(() -> bound.validate(scope).owner());
     }
 
     @Override
-    public PluginStorage.UserScope transferUser(
-            PluginStorage caller, PluginStorage.UserScope scope, PluginStorage provider) {
+    public PluginStorage.@NonNull UserScope transferUser(
+            @NonNull PluginStorage caller,
+            PluginStorage.@NonNull UserScope scope,
+            @NonNull PluginStorage provider) {
         if (!(caller instanceof Bound callerBound) || !(provider instanceof Bound providerBound))
             throw new SecurityException("Unrecognized storage binding");
         return transaction(
@@ -109,8 +97,10 @@ public class ScopedPluginStorage implements PluginStorageFactory {
     }
 
     @Override
-    public PluginStorage.SessionScope transferSession(
-            PluginStorage caller, PluginStorage.SessionScope scope, PluginStorage provider) {
+    public PluginStorage.@NonNull SessionScope transferSession(
+            @NonNull PluginStorage caller,
+            PluginStorage.@NonNull SessionScope scope,
+            @NonNull PluginStorage provider) {
         if (!(caller instanceof Bound callerBound) || !(provider instanceof Bound providerBound))
             throw new SecurityException("Unrecognized storage binding");
         return transaction(
@@ -121,38 +111,38 @@ public class ScopedPluginStorage implements PluginStorageFactory {
     }
 
     /** Called inside the permanent deletion transaction even when no plugin is loaded. */
-    public void deleteSession(String session) {
+    public void deleteSession(@NonNull String session) {
         database.createQuery("delete from PluginRecord r where r.session.id = :session")
                 .setParameter("session", session)
                 .executeUpdate();
     }
 
     /** Called inside the permanent deletion transaction even when no plugin is loaded. */
-    public void deleteUser(String username) {
+    public void deleteUser(@NonNull String username) {
         database.createQuery("delete from PluginRecord r where r.user.username = :owner")
                 .setParameter("owner", username)
                 .executeUpdate();
     }
 
-    private <T> T transaction(Supplier<T> operation) {
+    private <T> @NonNull T transaction(@NonNull Supplier<@NonNull T> operation) {
         T result = transactions.execute(status -> operation.get());
         if (result == null)
             throw new IllegalStateException("Storage transaction returned no result");
         return result;
     }
 
-    private record Grant(PluginStorage.Scope scope, String owner) {}
+    private record Grant(PluginStorage.@NonNull Scope scope, @NonNull String owner) {}
 
     private final class Bound implements PluginStorage {
-        private final PluginLifecycle plugin;
-        private final String namespace;
-        private final Set<String> selectionIds;
-        private final Map<String, Grant> grants = new HashMap<>();
+        private final @NonNull PluginLifecycle plugin;
+        private final @NonNull String namespace;
+        private final @NonNull Set<@NonNull String> selectionIds;
+        private final @NonNull Map<@NonNull String, @NonNull Grant> grants = new HashMap<>();
 
-        Bound(PluginLifecycle plugin) {
+        Bound(@NonNull PluginLifecycle plugin) {
             this.plugin = plugin;
             namespace = plugin.identity().id();
-            var ids = new HashSet<>(plugin.implementation().historicalIds());
+            var ids = new HashSet<>(plugin.historicalIds());
             ids.add(namespace);
             selectionIds = Set.copyOf(ids);
         }
@@ -164,7 +154,7 @@ public class ScopedPluginStorage implements PluginStorageFactory {
         }
 
         @SuppressWarnings("ConstantValue") // WHY: EntityManager.find returns null for a missing row
-        private synchronized Scope issue(String owner, @Nullable String session) {
+        private synchronized @NonNull Scope issue(@NonNull String owner, @Nullable String session) {
             admitted();
             UserEntity user = database.find(UserEntity.class, owner);
             if (user == null) throw new SecurityException("User scope no longer exists");
@@ -188,7 +178,7 @@ public class ScopedPluginStorage implements PluginStorageFactory {
         }
 
         @SuppressWarnings("ConstantValue") // WHY: EntityManager.find returns null for a missing row
-        private SessionEntity validateSession(String owner, String id) {
+        private @NonNull SessionEntity validateSession(@NonNull String owner, @NonNull String id) {
             SessionEntity session = database.find(SessionEntity.class, id);
             if (session == null || !session.getOwner().equals(owner))
                 throw new SecurityException("Session scope no longer exists");
@@ -200,7 +190,7 @@ public class ScopedPluginStorage implements PluginStorageFactory {
         }
 
         @SuppressWarnings("ConstantValue") // WHY: EntityManager.find returns null for a missing row
-        private synchronized Grant validate(Scope scope) {
+        private synchronized @NonNull Grant validate(@NonNull Scope scope) {
             admitted();
             Grant grant = grants.get(scope.token());
             if (grant == null || !grant.scope().equals(scope))
@@ -216,7 +206,7 @@ public class ScopedPluginStorage implements PluginStorageFactory {
         @Override
         @SuppressWarnings(
                 "resource") // WHY: the invocation scope is owned by its opener, closed elsewhere
-        public SessionScope currentSession() {
+        public @NonNull SessionScope currentSession() {
             var callback = PluginInvocationScope.current();
             if (callback != null)
                 return transaction(() -> (SessionScope) issue(callback.owner, callback.session));
@@ -229,32 +219,33 @@ public class ScopedPluginStorage implements PluginStorageFactory {
         }
 
         @Override
-        public UserScope currentUser() {
+        public @NonNull UserScope currentUser() {
             String owner = UserContext.get();
             if (owner == null) throw new SecurityException("No authenticated user invocation");
             return transaction(() -> (UserScope) issue(owner, null));
         }
 
         @Override
-        public Store application() {
+        public @NonNull Store application() {
             admitted();
             return new BoundStore(null);
         }
 
         @Override
-        public Store user(UserScope scope) {
+        public @NonNull Store user(@NonNull UserScope scope) {
             transaction(() -> validate(scope));
             return new BoundStore(scope);
         }
 
         @Override
-        public Store session(SessionScope scope) {
+        public @NonNull Store session(@NonNull SessionScope scope) {
             transaction(() -> validate(scope));
             return new BoundStore(scope);
         }
 
         @Override
-        public Page<Scope> scopes(Kind kind, @Nullable String cursor, int limit) {
+        public @NonNull Page<@NonNull Scope> scopes(
+                @NonNull Kind kind, @Nullable String cursor, int limit) {
             if (kind == Kind.APPLICATION)
                 throw new IllegalArgumentException("Application scope is directly bound");
             return transaction(
@@ -291,8 +282,8 @@ public class ScopedPluginStorage implements PluginStorageFactory {
                         var rows =
                                 database.createQuery(
                                                 "select distinct r.scope from PluginRecord r where"
-                                                    + " r.plugin = :plugin and r.kind = :kind and"
-                                                    + " r.scope > :after order by r.scope",
+                                                        + " r.plugin = :plugin and r.kind = :kind and"
+                                                        + " r.scope > :after order by r.scope",
                                                 String.class)
                                         .setParameter("plugin", namespace)
                                         .setParameter("kind", kind.name())
@@ -305,8 +296,8 @@ public class ScopedPluginStorage implements PluginStorageFactory {
                             var records =
                                     database.createQuery(
                                                     "select r from PluginRecord r where r.plugin ="
-                                                        + " :plugin and r.kind = :kind and r.scope"
-                                                        + " = :scope",
+                                                            + " :plugin and r.kind = :kind and r.scope"
+                                                            + " = :scope",
                                                     PluginRecord.class)
                                             .setParameter("plugin", namespace)
                                             .setParameter("kind", kind.name())
@@ -332,9 +323,9 @@ public class ScopedPluginStorage implements PluginStorageFactory {
 
         private final class BoundStore implements Store {
             private final @Nullable Scope scope;
-            private final String kind;
-            private final String identity;
-            private final String cursorBinding;
+            private final @NonNull String kind;
+            private final @NonNull String identity;
+            private final @NonNull String cursorBinding;
 
             BoundStore(@Nullable Scope scope) {
                 this.scope = scope;
@@ -356,7 +347,7 @@ public class ScopedPluginStorage implements PluginStorageFactory {
                 if (scope != null) validate(scope);
             }
 
-            private List<PluginRecord> find(String key) {
+            private @NonNull List<@NonNull PluginRecord> find(@NonNull String key) {
                 return database.createQuery(
                                 "select r from PluginRecord r where r.plugin = :plugin and r.kind ="
                                         + " :kind and r.scope = :scope and r.key = :key",
@@ -369,7 +360,7 @@ public class ScopedPluginStorage implements PluginStorageFactory {
             }
 
             @Override
-            public Optional<Entry> get(String key) {
+            public @NonNull Optional<@NonNull Entry> get(@NonNull String key) {
                 key(key);
                 return transaction(
                         () -> {
@@ -381,7 +372,8 @@ public class ScopedPluginStorage implements PluginStorageFactory {
             }
 
             @Override
-            public Page<Entry> list(String prefix, @Nullable String cursor, int limit) {
+            public @NonNull Page<@NonNull Entry> list(
+                    @NonNull String prefix, @Nullable String cursor, int limit) {
                 if (prefix.length() > 256)
                     throw new IllegalArgumentException("Prefix exceeds key limit");
                 return transaction(
@@ -392,10 +384,10 @@ public class ScopedPluginStorage implements PluginStorageFactory {
                             var rows =
                                     database.createQuery(
                                                     "select r from PluginRecord r where r.plugin ="
-                                                        + " :plugin and r.kind = :kind and r.scope"
-                                                        + " = :scope and r.key > :after and"
-                                                        + " substring(r.key, 1, :length) = :prefix"
-                                                        + " order by r.key",
+                                                            + " :plugin and r.kind = :kind and r.scope"
+                                                            + " = :scope and r.key > :after and"
+                                                            + " substring(r.key, 1, :length) = :prefix"
+                                                            + " order by r.key",
                                                     PluginRecord.class)
                                             .setParameter("plugin", namespace)
                                             .setParameter("kind", kind)
@@ -418,7 +410,8 @@ public class ScopedPluginStorage implements PluginStorageFactory {
             }
 
             @Override
-            public Entry put(String key, @Nullable String expected, Document document) {
+            public @NonNull Entry put(
+                    @NonNull String key, @Nullable String expected, @NonNull Document document) {
                 ToolCallContextHolder.requireEffects();
                 key(key);
                 String payload = PluginJson.toNode(document.value()).toString();
@@ -434,12 +427,12 @@ public class ScopedPluginStorage implements PluginStorageFactory {
                                     int updated =
                                             database.createQuery(
                                                             "update PluginRecord r set r.payload ="
-                                                                + " :payload, r.schemaVersion ="
-                                                                + " :schema, r.revision = :revision"
-                                                                + " where r.plugin = :plugin and"
-                                                                + " r.kind = :kind and r.scope ="
-                                                                + " :scope and r.key = :key and"
-                                                                + " r.revision = :expected")
+                                                                    + " :payload, r.schemaVersion ="
+                                                                    + " :schema, r.revision = :revision"
+                                                                    + " where r.plugin = :plugin and"
+                                                                    + " r.kind = :kind and r.scope ="
+                                                                    + " :scope and r.key = :key and"
+                                                                    + " r.revision = :expected")
                                                     .setParameter("payload", payload)
                                                     .setParameter(
                                                             "schema", document.schemaVersion())
@@ -465,10 +458,7 @@ public class ScopedPluginStorage implements PluginStorageFactory {
                                     row.payload = payload;
                                     if (scope != null) {
                                         Grant grant = validate(scope);
-                                        row.user =
-                                                database.find(
-                                                        UserEntity.class,
-                                                        grant.owner());
+                                        row.user = database.find(UserEntity.class, grant.owner());
                                         if (scope instanceof SessionScope session)
                                             row.session =
                                                     validateSession(
@@ -486,7 +476,7 @@ public class ScopedPluginStorage implements PluginStorageFactory {
             }
 
             @Override
-            public void delete(String key, String expected) {
+            public void delete(@NonNull String key, @NonNull String expected) {
                 ToolCallContextHolder.requireEffects();
                 key(key);
                 transaction(
@@ -496,9 +486,9 @@ public class ScopedPluginStorage implements PluginStorageFactory {
                             int deleted =
                                     database.createQuery(
                                                     "delete from PluginRecord r where r.plugin ="
-                                                        + " :plugin and r.kind = :kind and r.scope"
-                                                        + " = :scope and r.key = :key and"
-                                                        + " r.revision = :revision")
+                                                            + " :plugin and r.kind = :kind and r.scope"
+                                                            + " = :scope and r.key = :key and"
+                                                            + " r.revision = :revision")
                                             .setParameter("plugin", namespace)
                                             .setParameter("kind", kind)
                                             .setParameter("scope", identity)
@@ -513,7 +503,7 @@ public class ScopedPluginStorage implements PluginStorageFactory {
         }
     }
 
-    private PluginStorage.Entry entry(PluginRecord row) {
+    private PluginStorage.@NonNull Entry entry(@NonNull PluginRecord row) {
         try {
             return new PluginStorage.Entry(
                     row.key,
@@ -527,12 +517,12 @@ public class ScopedPluginStorage implements PluginStorageFactory {
         }
     }
 
-    private static void key(String value) {
+    private static void key(@NonNull String value) {
         if (value.isEmpty() || value.length() > 256)
             throw new IllegalArgumentException("Key must contain 1 to 256 characters");
     }
 
-    private static boolean uniqueViolation(Throwable error) {
+    private static boolean uniqueViolation(@NonNull Throwable error) {
         for (Throwable cause = error; cause != null; cause = cause.getCause()) {
             if (cause instanceof SQLException sql
                     && ("23505".equals(sql.getSQLState()) || sql.getErrorCode() == 1062))
@@ -547,13 +537,13 @@ public class ScopedPluginStorage implements PluginStorageFactory {
         return value == 0 ? 50 : value;
     }
 
-    private static String encode(String binding, String key) {
+    private static @NonNull String encode(@NonNull String binding, @NonNull String key) {
         return Base64.getUrlEncoder()
                 .withoutPadding()
                 .encodeToString((binding + "\u0000" + key).getBytes(StandardCharsets.UTF_8));
     }
 
-    private static String cursor(String binding, @Nullable String cursor) {
+    private static @NonNull String cursor(@NonNull String binding, @Nullable String cursor) {
         if (cursor == null) return "";
         String decoded = new String(Base64.getUrlDecoder().decode(cursor), StandardCharsets.UTF_8);
         String prefix = binding + "\u0000";

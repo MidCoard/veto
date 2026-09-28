@@ -4,24 +4,24 @@ import java.util.List;
 import java.util.function.BiConsumer;
 import java.util.function.Supplier;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.NullMarked;
 import top.focess.veto.api.plugin.contract.AgentInbox;
 import top.focess.veto.api.plugin.contract.PluginFailure;
 
 /** Namespaces inbox identities and admits every callback through its owning plugin lifecycle. */
-@NullMarked
-public final class CompositeAgentInbox implements AgentInbox {
+public final class CompositeAgentInbox extends AgentInbox {
     /** An inbox source paired with its owning plugin and identity namespace. */
-    public record Entry(String id, PluginLifecycle plugin, AgentInbox source) {}
+    public record Entry(
+            @NonNull String id, @NonNull PluginLifecycle plugin, @NonNull AgentInbox source) {}
 
-    private final Supplier<List<Entry>> entries;
+    private final @NonNull Supplier<@NonNull List<@NonNull Entry>> entries;
 
     /** Creates a composite that reads its namespaced entries from the given supplier. */
-    public CompositeAgentInbox(Supplier<List<Entry>> entries) {
+    public CompositeAgentInbox(@NonNull Supplier<@NonNull List<@NonNull Entry>> entries) {
         this.entries = entries;
     }
 
-    private static Observation identity(Observation value, String id, String continuation) {
+    private static @NonNull Observation identity(
+            @NonNull Observation value, @NonNull String id, @NonNull String continuation) {
         return new Observation(
                 id,
                 value.requestId(),
@@ -32,7 +32,8 @@ public final class CompositeAgentInbox implements AgentInbox {
                 continuation);
     }
 
-    private static String continuation(String namespace, Observation value) {
+    private static @NonNull String continuation(
+            @NonNull String namespace, @NonNull Observation value) {
         String key = value.continuationId();
         return "plugin-work:"
                 + namespace.length()
@@ -42,7 +43,8 @@ public final class CompositeAgentInbox implements AgentInbox {
                 + (key == null ? value.id() : key);
     }
 
-    private static String rawContinuation(String namespace, Observation value) {
+    private static @NonNull String rawContinuation(
+            @NonNull String namespace, @NonNull Observation value) {
         String key = value.continuationId();
         String prefix = "plugin-work:" + namespace.length() + ":" + namespace + ":";
         if (key == null || !key.startsWith(prefix))
@@ -54,7 +56,7 @@ public final class CompositeAgentInbox implements AgentInbox {
     // The @NonNull bound is required so T satisfies Operation<T>.
     @SuppressWarnings({"resource", "NullableProblems"})
     private static <T extends @NonNull Object> T invoke(
-            Entry entry, PluginLifecycle.Operation<T> action) {
+            @NonNull Entry entry, PluginLifecycle.@NonNull Operation<T> action) {
         try {
             return entry.plugin().execute(action);
         } catch (PluginFailure failure) {
@@ -63,7 +65,7 @@ public final class CompositeAgentInbox implements AgentInbox {
     }
 
     @Override
-    public List<Observation> pending(Scope scope) {
+    public @NonNull List<@NonNull Observation> pending(@NonNull Scope scope) {
         return entries.get().stream()
                 .flatMap(
                         entry ->
@@ -77,7 +79,9 @@ public final class CompositeAgentInbox implements AgentInbox {
                 .toList();
     }
 
-    private void notify(Observation observation, BiConsumer<AgentInbox, Observation> action) {
+    private void notify(
+            @NonNull Observation observation,
+            @NonNull BiConsumer<@NonNull AgentInbox, @NonNull Observation> action) {
         for (var entry : entries.get()) {
             String prefix = entry.id() + "/";
             if (observation.id().startsWith(prefix)) {
@@ -99,17 +103,17 @@ public final class CompositeAgentInbox implements AgentInbox {
     }
 
     @Override
-    public void started(Scope scope, Observation value) {
+    public void started(@NonNull Scope scope, @NonNull Observation value) {
         notify(value, (source, raw) -> source.started(scope, raw));
     }
 
     @Override
-    public void completed(Scope scope, Observation value, boolean success) {
+    public void completed(@NonNull Scope scope, @NonNull Observation value, boolean success) {
         notify(value, (source, raw) -> source.completed(scope, raw, success));
     }
 
     @Override
-    public void cancelled(Scope scope, Observation value) {
+    public void cancelled(@NonNull Scope scope, @NonNull Observation value) {
         notify(value, (source, raw) -> source.cancelled(scope, raw));
     }
 }

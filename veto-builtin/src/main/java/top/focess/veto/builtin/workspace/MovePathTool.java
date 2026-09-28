@@ -1,7 +1,9 @@
 package top.focess.veto.builtin.workspace;
 
+import java.io.IOException;
+import java.nio.file.FileAlreadyExistsException;
+import java.nio.file.NoSuchFileException;
 import org.jspecify.annotations.NonNull;
-
 import top.focess.veto.api.agent.capability.WorkspaceWriteCapability;
 import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.tool.Doc;
@@ -15,10 +17,6 @@ import top.focess.veto.api.agent.tool.ToolJson;
 import top.focess.veto.api.agent.tool.ToolResultFormat;
 import top.focess.veto.api.agent.tool.ToolSecurity;
 import top.focess.veto.api.agent.tool.WorkspaceWriteTool;
-
-import java.io.IOException;
-import java.nio.file.FileAlreadyExistsException;
-import java.nio.file.NoSuchFileException;
 
 /** Moves one file, link, or bounded directory tree without overwrite or copy-delete fallback. */
 @ToolSecurity(capability = ToolCapability.WORKSPACE_WRITE, defaultDanger = Danger.ELEVATED)
@@ -59,8 +57,8 @@ import java.nio.file.NoSuchFileException;
                 with TREE_CHANGED before mutation.""",
         security =
                 "An existing destination is never overwritten, and a cross-filesystem move fails"
-                    + " rather than falling back to copy-and-delete, so the source is never lost"
-                    + " mid-move.",
+                        + " rather than falling back to copy-and-delete, so the source is never lost"
+                        + " mid-move.",
         examples = {
             "{\"sourceAbsolutePath\":\"/abs/project/old.txt\",\"destinationAbsolutePath\":\"/abs/project/new.txt\"}",
             "{\"sourceAbsolutePath\":\"/abs/project/downloads/report.pdf\",\"destinationAbsolutePath\":\"/abs/project/reports/report.pdf\"}",
@@ -73,7 +71,7 @@ import java.nio.file.NoSuchFileException;
             "{\"status\":\"moved\",\"source\":\"/abs/project/src/legacy\",\"destination\":\"/abs/project/archive/legacy\",\"kind\":\"directory\"}",
             "Destination already exists: /abs/project/new.txt"
         })
-public final class MovePathTool implements WorkspaceWriteTool<MovePathTool.Args> {
+public final class MovePathTool extends WorkspaceWriteTool<MovePathTool.Args> {
 
     /** Model-facing arguments of {@code move_path}. */
     public record Args(

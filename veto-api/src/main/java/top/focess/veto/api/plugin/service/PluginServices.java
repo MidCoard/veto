@@ -1,12 +1,10 @@
 package top.focess.veto.api.plugin.service;
 
-import org.jspecify.annotations.NonNull;
-
-import top.focess.veto.api.plugin.contract.JsonValue;
-import top.focess.veto.api.plugin.storage.PluginStorage;
-
 import java.util.List;
 import java.util.Optional;
+import org.jspecify.annotations.NonNull;
+import top.focess.veto.api.plugin.contract.JsonValue;
+import top.focess.veto.api.plugin.storage.PluginStorage;
 
 /**
  * Named JSON service discovery for plugin-to-plugin protocols.
@@ -66,7 +64,11 @@ public interface PluginServices {
 
     /** Host-issued registration for one provider-owned JSON callback. */
     interface CallbackRegistration extends AutoCloseable {
-        /** Opaque callback reference safe to pass in a JSON service request. */
+        /**
+         * Returns opaque callback reference safe to pass in a JSON service request.
+         *
+         * @return opaque callback reference safe to pass in a JSON service request
+         */
         @NonNull String id();
 
         /** Withdraws this callback; plugin unload also withdraws it automatically. */
@@ -76,10 +78,20 @@ public interface PluginServices {
 
     /** Revocable callback handle that retains only an opaque identity. */
     interface CallbackHandle {
-        /** Host-attributed plugin that registered the callback. */
+        /**
+         * Returns host-attributed plugin that registered the callback.
+         *
+         * @return host-attributed plugin that registered the callback
+         */
         @NonNull String providerId();
 
-        /** Invokes the callback under current caller/provider admission. */
+        /**
+         * Invokes the callback under current caller/provider admission.
+         *
+         * @param request bounded JSON callback request
+         * @return bounded JSON callback response
+         * @throws ServiceException when admission or callback execution fails
+         */
         @NonNull JsonValue invoke(@NonNull JsonValue request) throws ServiceException;
     }
 
@@ -99,14 +111,24 @@ public interface PluginServices {
      */
     @NonNull Optional<Handle> find(@NonNull String name, int version);
 
-    /** Registers a JSON callback owned by this plugin, revoked automatically on unload. */
+    /**
+     * Registers a JSON callback owned by this plugin, revoked automatically on unload.
+     *
+     * @param handler plugin-owned callback
+     * @return registration carrying an opaque reference and explicit revocation
+     */
     @NonNull CallbackRegistration registerCallback(@NonNull ServiceHandler handler);
 
-    /** Resolves an opaque callback reference without importing its implementation class. */
+    /**
+     * Resolves an opaque callback reference without importing its implementation class.
+     *
+     * @param id opaque callback reference
+     * @return revocable callback handle, or empty when unavailable
+     */
     @NonNull Optional<CallbackHandle> findCallback(@NonNull String id);
 
     /** Directory used when no named services are available; it is always empty. */
-    PluginServices EMPTY =
+    @NonNull PluginServices EMPTY =
             new PluginServices() {
                 public @NonNull List<Descriptor> available() {
                     return List.of();

@@ -1,41 +1,79 @@
 package top.focess.veto.api.plugin.contribution;
 
+import java.util.Objects;
 import org.jspecify.annotations.NonNull;
-
 import top.focess.veto.api.plugin.contract.JsonValue;
 
-import java.util.Objects;
+/** Plugin-defined JSON contribution point registered through the standard meta-point. */
+public abstract class ProtocolPointDefinition {
+    private final @NonNull ContributionId id;
+    private final int major;
+    private final JsonValue.@NonNull ObjectValue entrySchema;
+    private final ContributionPoint.@NonNull Cardinality cardinality;
 
-/**
- * A plugin-defined, JSON-only contribution point. Register this definition at the standard {@code
- * veto:contributions} point before other plugins publish entries at {@link #point()}. The host
- * attributes ownership from the defining plugin, not from a claimed JSON field.
- *
- * @param id stable owner-qualified point name
- * @param major major contract version
- * @param entrySchema bounded JSON schema for each entry
- * @param cardinality maximum number of visible entries
- */
-public record ProtocolPointDefinition(
-        @NonNull ContributionId id,
-        int major,
-        JsonValue.@NonNull ObjectValue entrySchema,
-        ContributionPoint.@NonNull Cardinality cardinality) {
-    /** Checks the major version; the host validates schema and point ownership at activation. */
-    public ProtocolPointDefinition {
+    /**
+     * Constructs an owner-qualified, versioned JSON point.
+     *
+     * @param id owner-qualified point identity
+     * @param major positive major contract version
+     * @param entrySchema schema applied to each JSON entry
+     * @param cardinality allowed number of visible entries
+     * @throws IllegalArgumentException when major is not positive
+     */
+    protected ProtocolPointDefinition(
+            @NonNull ContributionId id,
+            int major,
+            JsonValue.@NonNull ObjectValue entrySchema,
+            ContributionPoint.@NonNull Cardinality cardinality) {
         if (major < 1) throw new IllegalArgumentException("Invalid contribution point version");
-        Objects.requireNonNull(id, "id");
-        Objects.requireNonNull(entrySchema, "entrySchema");
-        Objects.requireNonNull(cardinality, "cardinality");
+        this.id = Objects.requireNonNull(id, "id");
+        this.major = major;
+        this.entrySchema = Objects.requireNonNull(entrySchema, "entrySchema");
+        this.cardinality = Objects.requireNonNull(cardinality, "cardinality");
     }
 
     /**
-     * Returns the common API contract for registering bounded JSON entries at this point.
+     * Returns stable owner-qualified point identity.
      *
-     * @return the point used by contributors
+     * @return stable owner-qualified point identity
      */
-    public @NonNull ContributionPoint<JsonValue.@NonNull ObjectValue> point() {
-        return new ContributionPoint<>(
-                id, major, JsonValue.ObjectValue.class, cardinality);
+    public final @NonNull ContributionId id() {
+        return id;
+    }
+
+    /**
+     * Returns positive major contract version.
+     *
+     * @return positive major contract version
+     */
+    public final int major() {
+        return major;
+    }
+
+    /**
+     * Returns bounded schema for each contributed JSON entry.
+     *
+     * @return bounded schema for each contributed JSON entry
+     */
+    public final JsonValue.@NonNull ObjectValue entrySchema() {
+        return entrySchema;
+    }
+
+    /**
+     * Returns maximum visible entries allowed by this point.
+     *
+     * @return maximum visible entries allowed by this point
+     */
+    public final ContributionPoint.@NonNull Cardinality cardinality() {
+        return cardinality;
+    }
+
+    /**
+     * Returns common API contract used by contributors for bounded JSON entries.
+     *
+     * @return common API contract used by contributors for bounded JSON entries
+     */
+    public final @NonNull ContributionPoint<JsonValue.@NonNull ObjectValue> point() {
+        return new ContributionPoint<>(id, major, JsonValue.ObjectValue.class, cardinality);
     }
 }

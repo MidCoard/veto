@@ -3,6 +3,7 @@ package top.focess.veto.agent;
 import java.time.Instant;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.agent.tool.ToolErrorCode;
@@ -26,7 +27,7 @@ public record TurnRecord(
         @NonNull TurnType type,
         @NonNull Map<String, Object> payload,
         Instant timestamp,
-        java.util.@NonNull List<UsageMeasurement> llmUsage) {
+        @NonNull List<UsageMeasurement> llmUsage) {
 
     /**
      * Convenience constructor that defaults a null timestamp to now and decodes any usage carried
@@ -50,7 +51,7 @@ public record TurnRecord(
      * null-tolerant payload copy, and normalizes a missing timestamp before publication.
      */
     public TurnRecord {
-        llmUsage = java.util.List.copyOf(llmUsage);
+        llmUsage = List.copyOf(llmUsage);
         var content = new LinkedHashMap<>(payload);
         content.remove("llmUsage");
         content.remove("usageCheckpoint");

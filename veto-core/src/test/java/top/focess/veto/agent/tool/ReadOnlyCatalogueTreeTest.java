@@ -6,12 +6,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
-import org.checkerframework.framework.qual.DefaultQualifier;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-@DefaultQualifier(NonNull.class)
 class ReadOnlyCatalogueTreeTest {
     @Test
     void selectedFileChangeAndExpiredGrantAreRejected(@TempDir @NonNull Path root)

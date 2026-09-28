@@ -5,14 +5,12 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import org.jspecify.annotations.NonNull;
-import org.junit.jupiter.api.Test;
-
-import top.focess.veto.api.agent.tool.ToolExecutionException;
-import top.focess.veto.builtin.web.model.FetchedPage;
-
 import java.net.URI;
 import java.util.List;
+import org.jspecify.annotations.NonNull;
+import org.junit.jupiter.api.Test;
+import top.focess.veto.api.agent.tool.ToolExecutionException;
+import top.focess.veto.builtin.web.model.FetchedPage;
 
 class WebReadDocumentTest {
     @Test
@@ -33,17 +31,13 @@ class WebReadDocumentTest {
         assertEquals("s2", matches.get(2).id());
         assertTrue(document.inspected().isEmpty());
         String body = matches.get(1).id();
-        assertThrows(
-                ToolExecutionException.class, () -> document.evidence(body));
+        assertThrows(ToolExecutionException.class, () -> document.evidence(body));
         var read = document.read(List.of(body)).getFirst();
         document.recordInspection(List.of(body));
         assertEquals("Retry\t rules:\n  preserve this spacing.", read.text());
         assertEquals(read.text(), document.evidence(body).quote());
-        assertThrows(
-                ToolExecutionException.class, () -> document.find("\u00a0\t"));
-        assertThrows(
-                ToolExecutionException.class,
-                () -> document.find("x".repeat(201)));
+        assertThrows(ToolExecutionException.class, () -> document.find("\u00a0\t"));
+        assertThrows(ToolExecutionException.class, () -> document.find("x".repeat(201)));
     }
 
     @Test
@@ -171,23 +165,17 @@ class WebReadDocumentTest {
     @Test
     void rejectsUnreadOrUnknownEvidenceAndDoesNotPartiallyAuthorizeAnInvalidRead() {
         WebReadDocument document = document("text/plain", "Evidence text", false);
-        assertThrows(
-                ToolExecutionException.class, () -> document.evidence("s1"));
-        assertThrows(
-                ToolExecutionException.class,
-                () -> document.read(List.of("s1", "unknown")));
+        assertThrows(ToolExecutionException.class, () -> document.evidence("s1"));
+        assertThrows(ToolExecutionException.class, () -> document.read(List.of("s1", "unknown")));
         assertTrue(document.inspected().isEmpty());
 
         document.read(List.of("s1"));
         assertTrue(document.inspected().isEmpty());
-        assertThrows(
-                ToolExecutionException.class, () -> document.evidence("s1"));
+        assertThrows(ToolExecutionException.class, () -> document.evidence("s1"));
         document.recordInspection(List.of("s1"));
         assertEquals("Evidence text", document.evidence("s1").quote());
         assertEquals("https://example.com/docs", document.evidence("s1").url());
-        assertThrows(
-                ToolExecutionException.class,
-                () -> document.evidence("unknown"));
+        assertThrows(ToolExecutionException.class, () -> document.evidence("unknown"));
     }
 
     @Test
@@ -197,8 +185,7 @@ class WebReadDocumentTest {
         first.read(List.of("s1"));
         first.recordInspection(List.of("s1"));
 
-        assertThrows(
-                ToolExecutionException.class, () -> second.evidence("s1"));
+        assertThrows(ToolExecutionException.class, () -> second.evidence("s1"));
         second.read(List.of("s1"));
         second.recordInspection(List.of("s1"));
         assertEquals("Second source", second.evidence("s1").quote());
@@ -226,8 +213,7 @@ class WebReadDocumentTest {
     @Test
     void unsupportedAndEmptyPagesAreFailuresRatherThanNegativeFindings() {
         assertThrows(
-                ToolExecutionException.class,
-                () -> document("application/pdf", "%PDF", false));
+                ToolExecutionException.class, () -> document("application/pdf", "%PDF", false));
         assertThrows(
                 ToolExecutionException.class,
                 () -> document("text/html", "<script>onlyScript()</script>", false));

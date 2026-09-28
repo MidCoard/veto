@@ -5,11 +5,17 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-
 import top.focess.veto.agent.capability.CapabilityResolver;
 import top.focess.veto.agent.capability.ProtectedWorkspaceReadCapabilityImpl;
 import top.focess.veto.agent.intercept.ToolExecutionPermit;
@@ -30,14 +36,6 @@ import top.focess.veto.builtin.workspace.ViewFileTool;
 import top.focess.veto.builtin.workspace.WriteToFileTool;
 import top.focess.veto.integration.plugins.PluginTestSupport;
 
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.Map;
-import java.util.Set;
-import java.util.UUID;
-
 class WorkspaceFilePolicyTest {
     private static final @NonNull UUID USER = UUID.randomUUID();
     private static final @NonNull UUID SESSION = UUID.randomUUID();
@@ -56,8 +54,7 @@ class WorkspaceFilePolicyTest {
                                     PluginTestSupport.providerOf(
                                             PluginTestSupport.sessionPlugins(plugins))));
             bind(tool, Map.of("absolutePath", file.toString()), root, Set.of());
-            var capability =
-                    CapabilityResolver.require(WorkspaceReadCapability.class);
+            var capability = CapabilityResolver.require(WorkspaceReadCapability.class);
             String result =
                     tool.execute(new ViewFileTool.Args(file.toString(), null, null), capability);
             assertTrue(result.startsWith("1: first\n2: [SECRET_REF:s_"), result);
@@ -68,7 +65,8 @@ class WorkspaceFilePolicyTest {
                     key,
                     PluginTestSupport.reveal(
                                     plugins,
-                                    new FrontendContribution.Scope("owner", SESSION.toString(), "agent"),
+                                    new FrontendContribution.Scope(
+                                            "owner", SESSION.toString(), "agent"),
                                     reference)
                             .orElseThrow());
             assertEquals("first\r\n" + key + "\r\nlast\r\n", Files.readString(file));
@@ -86,8 +84,7 @@ class WorkspaceFilePolicyTest {
         Path workspace = root.toRealPath();
         Path file = Files.writeString(workspace.resolve("secret.txt"), "secret");
         bind(new ViewFileTool(), Map.of("absolutePath", file.toString()), workspace, Set.of(file));
-        var workspaceCapability =
-                CapabilityResolver.require(WorkspaceReadCapability.class);
+        var workspaceCapability = CapabilityResolver.require(WorkspaceReadCapability.class);
         var refusal =
                 assertThrows(
                         ToolExecutionException.class,
@@ -111,12 +108,10 @@ class WorkspaceFilePolicyTest {
                 Map.of("absolutePath", directory.toString(), "recursive", true),
                 root,
                 Set.of(secret));
-        var workspace =
-                CapabilityResolver.require(WorkspaceWriteCapability.class);
+        var workspace = CapabilityResolver.require(WorkspaceWriteCapability.class);
         var refusal =
                 assertThrows(
-                        ToolExecutionException.class,
-                        () -> workspace.file(directory.toString()));
+                        ToolExecutionException.class, () -> workspace.file(directory.toString()));
         assertEquals(ToolErrorCode.POLICY.DESCENDANT_REFUSED, refusal.errorCode());
         assertEquals("keep", Files.readString(ordinary));
         assertEquals("secret", Files.readString(secret));
@@ -127,12 +122,10 @@ class WorkspaceFilePolicyTest {
         Path file = Files.writeString(root.resolve("target.txt"), "approved");
         bind(new ViewFileTool(), Map.of("absolutePath", file.toString()), root, Set.of());
         var handle =
-                CapabilityResolver.require(WorkspaceReadCapability.class)
-                        .file(file.toString());
+                CapabilityResolver.require(WorkspaceReadCapability.class).file(file.toString());
         Files.move(file, root.resolve("original.txt"));
         Files.writeString(file, "replacement");
-        var failure =
-                assertThrows(ToolExecutionException.class, handle::openRead);
+        var failure = assertThrows(ToolExecutionException.class, handle::openRead);
         assertEquals(ToolErrorCode.WORKSPACE.TREE_CHANGED, failure.errorCode());
         assertEquals("replacement", Files.readString(file));
     }
@@ -143,15 +136,13 @@ class WorkspaceFilePolicyTest {
         Path file = Files.writeString(root.resolve("target.txt"), "approved");
         bindWrite(file, root);
         var handle =
-                CapabilityResolver.require(WorkspaceWriteCapability.class)
-                        .file(file.toString());
+                CapabilityResolver.require(WorkspaceWriteCapability.class).file(file.toString());
         var output = handle.openForReplace();
         output.write("new content".getBytes(StandardCharsets.UTF_8));
         Path original = root.resolve("original.txt");
         Files.move(file, original);
         Files.writeString(file, "replacement");
-        var failure =
-                assertThrows(ToolExecutionException.class, output::close);
+        var failure = assertThrows(ToolExecutionException.class, output::close);
         assertEquals(ToolErrorCode.WORKSPACE.TREE_CHANGED, failure.errorCode());
         assertEquals("replacement", Files.readString(file));
         assertEquals("approved", Files.readString(original));
@@ -162,8 +153,7 @@ class WorkspaceFilePolicyTest {
         Path file = root.resolve("oversized.txt");
         bindWrite(file, root);
         var handle =
-                CapabilityResolver.require(WorkspaceWriteCapability.class)
-                        .file(file.toString());
+                CapabilityResolver.require(WorkspaceWriteCapability.class).file(file.toString());
         try (var output = handle.openForCreate()) {
             byte[] block = new byte[1024 * 1024];
             for (int index = 0; index < 16; index++) {
@@ -179,13 +169,10 @@ class WorkspaceFilePolicyTest {
         Path file = root.resolve("failed.txt");
         bindWrite(file, root);
         var handle =
-                CapabilityResolver.require(WorkspaceWriteCapability.class)
-                        .file(file.toString());
+                CapabilityResolver.require(WorkspaceWriteCapability.class).file(file.toString());
         try (var output = handle.openForCreate()) {
             output.write("prefix".getBytes(StandardCharsets.UTF_8));
-            assertThrows(
-                    IndexOutOfBoundsException.class,
-                    () -> output.write(new byte[1], 0, 2));
+            assertThrows(IndexOutOfBoundsException.class, () -> output.write(new byte[1], 0, 2));
         }
         assertFalse(Files.exists(file));
     }

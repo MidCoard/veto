@@ -5,20 +5,20 @@ import top.focess.veto.api.agent.tool.AgentTool;
 import top.focess.veto.api.agent.tool.ToolCapability;
 
 /** Marker interface for tools backed by {@link MonitorOperations}. */
-public interface MonitorTool<T> extends AgentTool<T> {
+public abstract class MonitorTool<T> extends AgentTool<T> {
     /** Returns the host-supplied monitor operations. */
-    @NonNull MonitorOperations operations();
+    public abstract @NonNull MonitorOperations operations();
 
     /** Runs the tool against the supplied capability. */
-    @NonNull String execute(@NonNull T args, @NonNull MonitorOperations capability);
+    public abstract @NonNull String execute(@NonNull T args, @NonNull MonitorOperations capability);
 
     @Override
-    default @NonNull ToolCapability getCapability() {
+    public @NonNull ToolCapability getCapability() {
         return ToolCapability.PLUGIN_LOCAL;
     }
 
     @Override
-    default @NonNull String execute(@NonNull T args) {
+    public @NonNull String execute(@NonNull T args) {
         return execute(args, operations());
     }
 }

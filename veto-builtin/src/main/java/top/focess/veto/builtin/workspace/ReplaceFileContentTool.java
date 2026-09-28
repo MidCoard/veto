@@ -1,7 +1,9 @@
 package top.focess.veto.builtin.workspace;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.NoSuchFileException;
 import org.jspecify.annotations.NonNull;
-
 import top.focess.veto.api.agent.capability.WorkspaceWriteCapability;
 import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.tool.Doc;
@@ -16,10 +18,6 @@ import top.focess.veto.api.agent.tool.ToolJson;
 import top.focess.veto.api.agent.tool.ToolResultFormat;
 import top.focess.veto.api.agent.tool.ToolSecurity;
 import top.focess.veto.api.agent.tool.WorkspaceWriteTool;
-
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.NoSuchFileException;
 
 /** {@code replace_file_content} — replace a single contiguous block of text in an existing file. */
 @ToolSecurity(capability = ToolCapability.WORKSPACE_WRITE, defaultDanger = Danger.ELEVATED)
@@ -125,8 +123,7 @@ import java.nio.file.NoSuchFileException;
             "{\"status\":\"ok\",\"file\":\"/abs/project/src/Service.java\"}",
             "Target not found: the selected range does not contain targetContent."
         })
-public final class ReplaceFileContentTool
-        implements WorkspaceWriteTool<ReplaceFileContentTool.Args> {
+public final class ReplaceFileContentTool extends WorkspaceWriteTool<ReplaceFileContentTool.Args> {
     private static final int MAX_TEXT_BYTES = 16 * 1024 * 1024;
 
     /** Model-facing arguments of {@code replace_file_content}. */

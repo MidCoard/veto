@@ -14,12 +14,9 @@ import com.sun.jna.platform.win32.WinNT;
 import com.sun.jna.ptr.IntByReference;
 import com.sun.jna.ptr.PointerByReference;
 import com.sun.jna.win32.StdCallLibrary;
-
-import org.jspecify.annotations.NonNull;
-
-
 import java.util.ArrayList;
 import java.util.List;
+import org.jspecify.annotations.NonNull;
 
 /** Starts one target in an AppContainer on a private desktop with permit-scoped capabilities. */
 final class WindowsAppContainerLauncher {
@@ -58,8 +55,7 @@ final class WindowsAppContainerLauncher {
             System.err.println("AppContainer target command is empty");
             return 125;
         }
-        AppContainerApi containers =
-                Native.load("userenv", AppContainerApi.class);
+        AppContainerApi containers = Native.load("userenv", AppContainerApi.class);
         ProcessApi processes = Native.load("kernel32", ProcessApi.class);
         SecurityApi security = Native.load("advapi32", SecurityApi.class);
         PointerByReference appContainerSid = new PointerByReference();

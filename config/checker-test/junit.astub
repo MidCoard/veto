@@ -1,0 +1,16 @@
+import org.checkerframework.checker.nullness.qual.Nullable;
+import org.checkerframework.checker.nullness.qual.NonNull;
+
+package org.junit.jupiter.api;
+
+class Assertions {
+    static void assertEquals(@Nullable Object expected, @Nullable Object actual);
+    static void assertEquals(@Nullable Object expected, @Nullable Object actual, String message);
+    static void assertEquals(@Nullable Long expected, @Nullable Long actual);
+    static void assertEquals(@Nullable Integer expected, @Nullable Integer actual);
+    static void assertEquals(@Nullable Double expected, @Nullable Double actual);
+    static void assertNotEquals(@Nullable Object unexpected, @Nullable Object actual);
+    static void assertNull(@Nullable Object actual);
+    static void assertNull(@Nullable Object actual, String message);
+    static <T> @NonNull T assertInstanceOf(Class<T> expectedType, @Nullable Object actualValue);
+}

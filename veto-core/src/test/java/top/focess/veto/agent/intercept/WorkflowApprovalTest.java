@@ -2,16 +2,14 @@ package top.focess.veto.agent.intercept;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
-
 import top.focess.veto.agent.screening.Relevance;
 import top.focess.veto.agent.screening.Screening;
 import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.event.BeforeToolEvent;
 import top.focess.veto.api.llm.ToolCall;
-
-import java.util.List;
-import java.util.Map;
 
 class WorkflowApprovalTest {
     @Test

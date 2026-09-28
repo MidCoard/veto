@@ -1,13 +1,18 @@
 package top.focess.veto.secret;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.util.List;
+import java.util.Set;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
-
 import top.focess.veto.api.agent.screening.Danger;
-import top.focess.veto.api.agent.tool.NativeTool;
 import top.focess.veto.api.agent.tool.Doc;
+import top.focess.veto.api.agent.tool.NativeTool;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.agent.tool.ToolDoc;
 import top.focess.veto.api.agent.tool.ToolResultFormat;
@@ -23,53 +28,58 @@ import top.focess.veto.secret.detection.MdcSecretDetectionModel;
 import top.focess.veto.secret.detection.SlmSecretDetector;
 import top.focess.veto.secret.references.SecretCandidateStore;
 
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.util.List;
-import java.util.Set;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
-
 /**
  * Self-contained provider using the same lifecycle and registration contract as installed plugins.
  */
-public final class SecretProtectionPlugin extends AbstractVetoPlugin {
+public final class SecretProtectionPlugin extends VetoPlugin {
     private static final @NonNull ObjectMapper RESULTS = new ObjectMapper();
 
     private final @NonNull SecretCandidateStore candidates;
 
-    private @NonNull CredentialImportAccess importer;
+    private final @NonNull CredentialImportAccess importer;
+    private final @NonNull PluginContributions contributions;
 
     private @Nullable ScheduledExecutorService expiry;
 
-    /** Creates the plugin with a default candidate store and no credential-import host. */
-    public SecretProtectionPlugin() {
-        this(new SecretCandidateStore());
-    }
-
-    /**
-     * Creates the plugin with the given candidate store and credential-import host.
-     *
-     * @param candidates the transient store backing capture, reveal, and import
-     * @param importer the host bridge that authorizes and writes imported credentials
-     */
+    /** Constructs the plugin with host-granted import access and its complete contributions. */
     public SecretProtectionPlugin(
-            @NonNull SecretCandidateStore candidates, @NonNull CredentialImportAccess importer) {
-        this.candidates = candidates;
-        this.importer = importer;
-    }
-
-    /**
-     * Creates the plugin with the given candidate store; credential import stays unavailable until
-     * the host grants it during initialization.
-     */
-    public SecretProtectionPlugin(@NonNull SecretCandidateStore candidates) {
-        this(
-                candidates,
-                (reference, service, label) -> {
-                    throw new IllegalStateException("Import host is unavailable");
-                });
+            @NonNull PluginContext context, JsonValue.@NonNull ObjectValue configuration) {
+        if (!configuration.values().isEmpty())
+            throw new IllegalArgumentException("Unsupported configuration");
+        candidates = new SecretCandidateStore();
+        importer =
+                context.service(CredentialImportAccess.class)
+                        .orElse(
+                                (reference, service, label) -> {
+                                    throw new IllegalStateException("Import host is unavailable");
+                                });
+        var localModel = context.service(LocalModelCompletion.class).orElse(null);
+        var prompts = context.service(PromptRenderer.class).orElse(null);
+        var detector =
+                new SlmSecretDetector(
+                        localModel == null || prompts == null
+                                ? null
+                                : new MdcSecretDetectionModel(localModel, prompts));
+        candidates.detector(detector);
+        contributions =
+                new PluginContributions(
+                        List.of(
+                                Contribution.of(
+                                        StandardContributionPoints.FRONTEND,
+                                        "frontend",
+                                        new SecretFrontend()),
+                                Contribution.of(
+                                        StandardContributionPoints.OBSERVATION,
+                                        "observation-mask",
+                                        new SecretObservation(detector)),
+                                Contribution.of(
+                                        StandardContributionPoints.LISTENERS,
+                                        "lifecycle",
+                                        new SecretLifecycle(candidates, detector)),
+                                Contribution.of(
+                                        StandardContributionPoints.TOOLS,
+                                        "import_detected_credential",
+                                        new ImportCredentialTool())));
     }
 
     @Override
@@ -88,39 +98,8 @@ public final class SecretProtectionPlugin extends AbstractVetoPlugin {
     }
 
     @Override
-    protected @NonNull PluginContributions onInitialize(
-            @NonNull PluginContext context, JsonValue.@NonNull ObjectValue configuration) {
-        if (!configuration.values().isEmpty())
-            throw new IllegalArgumentException("Unsupported configuration");
-        importer =
-                context.service(CredentialImportAccess.class).orElse(importer);
-        var localModel =
-                context.service(LocalModelCompletion.class).orElse(null);
-        var prompts = context.service(PromptRenderer.class).orElse(null);
-        var detector =
-                new SlmSecretDetector(
-                        localModel == null || prompts == null
-                                ? null
-                                : new MdcSecretDetectionModel(localModel, prompts));
-        candidates.detector(detector);
-        return new PluginContributions(
-                List.of(
-                        Contribution.of(
-                                StandardContributionPoints.FRONTEND,
-                                "frontend",
-                                new FrontendContribution(frontendModule(), this::frontendAction)),
-                        Contribution.of(
-                                StandardContributionPoints.OBSERVATION,
-                                "observation-mask",
-                                (observation, cancellation) -> detector.mask(observation)),
-                        Contribution.of(
-                                StandardContributionPoints.LISTENERS,
-                                "lifecycle",
-                                new SecretLifecycle(candidates, detector)),
-                        Contribution.of(
-                                StandardContributionPoints.TOOLS,
-                                "import_detected_credential",
-                                new ImportCredentialTool())));
+    public @NonNull PluginContributions contributions() {
+        return contributions;
     }
 
     /**
@@ -173,8 +152,8 @@ public final class SecretProtectionPlugin extends AbstractVetoPlugin {
                     """,
             security =
                     "Crosses the host trust boundary and writes to the encrypted vault; every call"
-                        + " requires explicit approval. Never accepts plaintext secret material,"
-                        + " only an opaque session-scoped reference.",
+                            + " requires explicit approval. Never accepts plaintext secret material,"
+                            + " only an opaque session-scoped reference.",
             examples = {
                 "{\"secret_ref\":\"SECRET_REF_1\",\"service\":\"github\",\"label\":\"ci-token\"}",
                 "{\"secret_ref\":\"SECRET_REF_2\",\"service\":\"aws\",\"label\":\"deploy-key\"}",
@@ -185,7 +164,7 @@ public final class SecretProtectionPlugin extends AbstractVetoPlugin {
                 "{\"credential_ref\":\"cred_01HXY\",\"service\":\"aws\",\"label\":\"deploy-key\",\"status\":\"created\"}",
                 "{\"credential_ref\":\"cred_01HXZ\",\"service\":\"github\",\"label\":\"webhook-secret\",\"status\":\"created\"}"
             })
-    final class ImportCredentialTool implements NativeTool<ImportCredentialArgs> {
+    final class ImportCredentialTool extends NativeTool<ImportCredentialArgs> {
         @Override
         public @NonNull ToolCapability getCapability() {
             return ToolCapability.PRIVILEGED;
@@ -221,6 +200,36 @@ public final class SecretProtectionPlugin extends AbstractVetoPlugin {
             @NonNull String service,
             @NonNull String label,
             @NonNull String status) {}
+
+    private final class SecretFrontend extends FrontendContribution {
+        @Override
+        public @NonNull String module() {
+            return frontendModule();
+        }
+
+        @Override
+        public @NonNull JsonValue handle(
+                @NonNull Scope scope,
+                @NonNull String action,
+                JsonValue.@NonNull ObjectValue arguments)
+                throws PluginFailure {
+            return frontendAction(scope, action, arguments);
+        }
+    }
+
+    private static final class SecretObservation extends ObservationMiddleware {
+        private final @NonNull SlmSecretDetector detector;
+
+        private SecretObservation(@NonNull SlmSecretDetector detector) {
+            this.detector = detector;
+        }
+
+        @Override
+        public @NonNull String transform(
+                @NonNull String observation, @NonNull Cancellation cancellation) {
+            return detector.mask(observation);
+        }
+    }
 
     private static @NonNull String frontendModule() {
         try (var stream =
@@ -269,7 +278,7 @@ public final class SecretProtectionPlugin extends AbstractVetoPlugin {
     }
 
     @Override
-    protected void onStart() {
+    public void start() {
         var executor =
                 Executors.newSingleThreadScheduledExecutor(
                         Thread.ofPlatform()
@@ -291,7 +300,7 @@ public final class SecretProtectionPlugin extends AbstractVetoPlugin {
     }
 
     @Override
-    protected void onClose() {
+    public void close() {
         var executor = expiry;
         if (executor != null) executor.shutdownNow();
         candidates.clear();
@@ -302,7 +311,7 @@ public final class SecretProtectionPlugin extends AbstractVetoPlugin {
      * broadcasts. A closed scope makes its captured references unrecoverable, so capture fails
      * closed until the owner is opened again.
      */
-    public static final class SecretLifecycle implements Listener {
+    public static final class SecretLifecycle extends Listener {
         private final @NonNull SecretCandidateStore candidates;
         private final @NonNull SlmSecretDetector detector;
 
@@ -318,15 +327,16 @@ public final class SecretProtectionPlugin extends AbstractVetoPlugin {
         public void onTextCommit(@NonNull BeforeTextCommitEvent event) {
             String owner = event.owner();
             if (owner == null) throw new IllegalStateException("Text owner is required");
-            var scope =
-                    new SecretCandidateStore.Scope(owner, event.sessionId(), event.agentId());
+            var scope = new SecretCandidateStore.Scope(owner, event.sessionId(), event.agentId());
             switch (event.phase()) {
                 case INPUT ->
                         event.setText(
                                 candidates.capture(scope, event.sourceId(), event.text()).text());
                 case FILE_CAPTURE ->
                         event.setText(
-                                candidates.captureFile(scope, event.sourceId(), event.text()).text());
+                                candidates
+                                        .captureFile(scope, event.sourceId(), event.text())
+                                        .text());
                 case FILE_OBSERVATION -> {
                     var output = new StringBuilder();
                     for (var segment : candidates.referenceSegments(scope, event.text()))

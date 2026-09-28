@@ -1,13 +1,6 @@
 package top.focess.veto.builtin.tools;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-
-import org.jspecify.annotations.NonNull;
-
-import top.focess.veto.api.agent.capability.NetworkEgressCapability;
-import top.focess.veto.api.agent.screening.Danger;
-import top.focess.veto.api.agent.tool.*;
-
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -17,6 +10,10 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import org.jspecify.annotations.NonNull;
+import top.focess.veto.api.agent.capability.NetworkEgressCapability;
+import top.focess.veto.api.agent.screening.Danger;
+import top.focess.veto.api.agent.tool.*;
 
 /**
  * {@code read_github_repository} - read GitHub repository information using an imported credential.
@@ -30,13 +27,13 @@ import java.util.concurrent.atomic.AtomicReference;
                 "No plaintext or arbitrary URLs. Import approval does not authorize this request.",
         resultContract =
                 "JSON with id, private, full_name and optional description/default_branch."
-                    + " Responses are filtered before returning. Errors do not include raw service"
-                    + " bodies. Failures are plaintext: `Invalid repository: the repository owner"
-                    + " or name is invalid.` (INVALID_REPOSITORY), `Credential unavailable: ...`"
-                    + " (CREDENTIAL_UNAVAILABLE), `GitHub HTTP error: the repository request"
-                    + " returned HTTP <status>.` (GITHUB_HTTP_ERROR), or `Authenticated read"
-                    + " failed: the repository information could not be read.`"
-                    + " (AUTHENTICATED_READ_FAILED).",
+                        + " Responses are filtered before returning. Errors do not include raw service"
+                        + " bodies. Failures are plaintext: `Invalid repository: the repository owner"
+                        + " or name is invalid.` (INVALID_REPOSITORY), `Credential unavailable: ...`"
+                        + " (CREDENTIAL_UNAVAILABLE), `GitHub HTTP error: the repository request"
+                        + " returned HTTP <status>.` (GITHUB_HTTP_ERROR), or `Authenticated read"
+                        + " failed: the repository information could not be read.`"
+                        + " (AUTHENTICATED_READ_FAILED).",
         errorsAndEdgeCases =
                 "Invalid repository names, unavailable or wrong-owner credentials, HTTP errors,"
                         + " timeouts and oversized responses fail safely.",
@@ -47,7 +44,7 @@ import java.util.concurrent.atomic.AtomicReference;
         returnExamples = {
             "{\"id\":12,\"private\":true,\"full_name\":\"example/project\"}",
             "{\"id\":1296269,\"private\":false,\"full_name\":\"octo-cat/hello-world\",\"description\":\"My"
-                + " first repository\",\"default_branch\":\"main\"}",
+                    + " first repository\",\"default_branch\":\"main\"}",
             "{\"id\":48151623,\"private\":false,\"full_name\":\"upstream-org/shared-library\",\"default_branch\":\"main\"}",
             "Invalid repository: the repository owner or name is invalid."
         },
@@ -56,10 +53,10 @@ import java.util.concurrent.atomic.AtomicReference;
             "{\"credentialRef\":\"cred_01234567-89ab-cdef-0123-456789abcdef\",\"repositoryOwner\":\"octo-cat\",\"repositoryName\":\"hello-world\"}",
             "{\"credentialRef\":\"cred_01234567-89ab-cdef-0123-456789abcdef\",\"repositoryOwner\":\"upstream-org\",\"repositoryName\":\"shared-library\"}",
             "{\"credentialRef\":\"cred_01234567-89ab-cdef-0123-456789abcdef\",\"repositoryOwner\":\"bad"
-                + " owner\",\"repositoryName\":\"project\"}"
+                    + " owner\",\"repositoryName\":\"project\"}"
         })
-public final class ReadGitHubRepositoryTool
-        implements NetworkEgressTool<ReadGitHubRepositoryTool.Args>, AutoCloseable {
+public final class ReadGitHubRepositoryTool extends NetworkEgressTool<ReadGitHubRepositoryTool.Args>
+        implements AutoCloseable {
     private final NetworkEgressCapability capability;
     private final @NonNull HttpClient client;
 

@@ -23,8 +23,7 @@ public final class VetoNullnessAnnotatedTypeFactory extends NullnessAnnotatedTyp
                 super.createTreeAnnotator(),
                 new TreeAnnotator(this) {
                     @Override
-                    public Void visitMemberSelect(
-                            MemberSelectTree tree, AnnotatedTypeMirror type) {
+                    public Void visitMemberSelect(MemberSelectTree tree, AnnotatedTypeMirror type) {
                         if (TreeUtils.isClassLiteral(tree)
                                 && type instanceof AnnotatedDeclaredType declared) {
                             type.replaceAnnotation(NONNULL);

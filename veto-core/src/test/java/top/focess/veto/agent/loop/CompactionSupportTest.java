@@ -4,14 +4,11 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-
-import org.jspecify.annotations.NonNull;
-import org.junit.jupiter.api.Test;
-
-
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import org.jspecify.annotations.NonNull;
+import org.junit.jupiter.api.Test;
 
 class CompactionSupportTest {
     private static final @NonNull ObjectMapper MAPPER = new ObjectMapper();
@@ -64,8 +61,7 @@ class CompactionSupportTest {
     @Test
     void rejectsMissingShapeAndInventedSources() {
         assertThrows(
-                IllegalArgumentException.class,
-                () -> CompactionSupport.validate("{}", Set.of(1)));
+                IllegalArgumentException.class, () -> CompactionSupport.validate("{}", Set.of(1)));
         assertThrows(
                 IllegalArgumentException.class,
                 () ->

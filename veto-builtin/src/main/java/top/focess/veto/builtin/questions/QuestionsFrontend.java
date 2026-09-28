@@ -1,21 +1,18 @@
 package top.focess.veto.builtin.questions;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import org.jspecify.annotations.NonNull;
-
 import top.focess.veto.api.plugin.contract.FrontendContribution;
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.contract.JsonValues;
 import top.focess.veto.api.plugin.contract.PluginFailure;
 
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.util.LinkedHashMap;
-import java.util.Map;
-
 /** Authenticated frontend actions share the exact tool invocation scope. */
-public final class QuestionsFrontend {
+public final class QuestionsFrontend extends FrontendContribution {
     private final @NonNull QuestionRuntime runtime;
     private final @NonNull ObjectMapper mapper = new ObjectMapper();
 
@@ -25,13 +22,10 @@ public final class QuestionsFrontend {
     }
 
     /** Serves the bundled interactions script and routes its actions to {@link #handle}. */
-    public @NonNull FrontendContribution contribution() {
-        try (var stream =
-                QuestionsFrontend.class
-                        .getResourceAsStream("/frontend/questions.js")) {
+    public @NonNull String module() {
+        try (var stream = QuestionsFrontend.class.getResourceAsStream("/frontend/questions.js")) {
             if (stream == null) throw new IllegalStateException("Missing questions frontend");
-            return new FrontendContribution(
-                    new String(stream.readAllBytes(), StandardCharsets.UTF_8), this::handle);
+            return new String(stream.readAllBytes(), StandardCharsets.UTF_8);
         } catch (IOException failure) {
             throw new IllegalStateException("Cannot load questions frontend", failure);
         }

@@ -1,29 +1,18 @@
 package top.focess.veto.integration.plugins.storage;
 
-import org.checkerframework.framework.qual.DefaultQualifier;
-import org.checkerframework.framework.qual.TypeUseLocation;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.NullMarked;
 import org.jspecify.annotations.Nullable;
 
 /** Host-issued context for authenticated callbacks which do not run as model tools. */
-@NullMarked
-@DefaultQualifier(
-        value = NonNull.class,
-        locations = {
-            TypeUseLocation.FIELD,
-            TypeUseLocation.PARAMETER,
-            TypeUseLocation.RETURN,
-            TypeUseLocation.UPPER_BOUND
-        })
 public final class PluginInvocationScope implements AutoCloseable {
-    private static final ThreadLocal<@Nullable PluginInvocationScope> CURRENT = new ThreadLocal<>();
+    private static final @NonNull ThreadLocal<@Nullable PluginInvocationScope> CURRENT =
+            new ThreadLocal<>();
     private final @Nullable PluginInvocationScope previous;
-    final String owner;
-    final String session;
+    final @NonNull String owner;
+    final @NonNull String session;
 
     /** Installs this owner/session context as current on this thread until {@link #close()}. */
-    public PluginInvocationScope(String owner, String session) {
+    public PluginInvocationScope(@NonNull String owner, @NonNull String session) {
         this.owner = owner;
         this.session = session;
         previous = CURRENT.get();

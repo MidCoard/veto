@@ -5,12 +5,12 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-
+import java.util.List;
+import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
-
 import top.focess.veto.builtin.planning.ActionsProgram;
 import top.focess.veto.builtin.planning.ActionsProgramParser;
 import top.focess.veto.builtin.planning.Check;
@@ -20,9 +20,6 @@ import top.focess.veto.builtin.planning.ProgramValidator;
 import top.focess.veto.builtin.planning.Scope;
 import top.focess.veto.builtin.planning.StopAction;
 import top.focess.veto.util.Nullness;
-
-import java.util.List;
-import java.util.Map;
 
 class ProgramValidatorTest {
 

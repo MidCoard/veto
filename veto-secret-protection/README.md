@@ -1,11 +1,11 @@
 # Secret protection plugin
 
-The built-in secret-protection plugin: a self-contained `VetoPlugin`
-(`top.focess.veto.secret.SecretProtectionPlugin`) discovered by the host through
-`ServiceLoader` via `META-INF/services/top.focess.veto.api.plugin.VetoPlugin`.
-It has a public no-arg constructor, owns its `SecretCandidateStore` internally,
-and runs its own expiry scheduler on a daemon thread (`onStart`; shut down and
-cleared in `onClose`). No Spring wiring, no host-shared store.
+The optional secret-protection plugin is a self-contained `VetoPlugin`
+(`top.focess.veto.secret.SecretProtectionPlugin`). Build its `plugin.json` package
+with `localPluginPackages` and install the directory under the backend's
+`plugins/` folder. Its public constructor receives `PluginContext` and JSON
+configuration. It owns its `SecretCandidateStore` internally and manages its
+expiry scheduler. No Spring wiring or host-shared store is required.
 
 ## Contributions
 

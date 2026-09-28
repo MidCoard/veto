@@ -4,11 +4,10 @@ import com.fasterxml.jackson.databind.JsonNode;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 
 /** Converts ordinary JSON trees into the bounded plugin wire contract. */
-@NullMarked
 public final class JsonValues {
     private JsonValues() {}
 
@@ -18,13 +17,14 @@ public final class JsonValues {
      * @param value bounded plugin object
      * @return immutable-compatible Java values keyed by member name
      */
-    public static Map<String, @Nullable Object> toMap(JsonValue.ObjectValue value) {
-        Map<String, @Nullable Object> result = new LinkedHashMap<>();
+    public static @NonNull Map<@NonNull String, @Nullable Object> toMap(
+            JsonValue.@NonNull ObjectValue value) {
+        Map<@NonNull String, @Nullable Object> result = new LinkedHashMap<>();
         value.values().forEach((key, item) -> result.put(key, toJava(item)));
         return result;
     }
 
-    private static @Nullable Object toJava(JsonValue value) {
+    private static Object toJava(@NonNull JsonValue value) {
         return switch (value) {
             case JsonValue.NullValue ignored -> null;
             case JsonValue.StringValue item -> item.value();
@@ -42,7 +42,7 @@ public final class JsonValues {
      * @param node Jackson tree to convert
      * @return the bounded plugin JSON value
      */
-    public static JsonValue from(JsonNode node) {
+    public static @NonNull JsonValue from(@NonNull JsonNode node) {
         if (node.isNull()) return JsonValue.NullValue.INSTANCE;
         if (node.isTextual()) return new JsonValue.StringValue(node.textValue());
         if (node.isBoolean()) return new JsonValue.BooleanValue(node.booleanValue());

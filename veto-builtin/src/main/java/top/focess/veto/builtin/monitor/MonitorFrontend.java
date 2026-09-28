@@ -1,48 +1,32 @@
 package top.focess.veto.builtin.monitor;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-
-import org.checkerframework.checker.nullness.qual.NonNull;
-import org.checkerframework.framework.qual.DefaultQualifier;
-import org.checkerframework.framework.qual.TypeUseLocation;
-
-import top.focess.veto.api.plugin.contract.FrontendContribution;
-import top.focess.veto.api.plugin.contract.JsonValue;
-import top.focess.veto.api.plugin.contract.JsonValues;
-import top.focess.veto.api.plugin.contract.PluginFailure;
-
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import org.jspecify.annotations.NonNull;
+import top.focess.veto.api.plugin.contract.FrontendContribution;
+import top.focess.veto.api.plugin.contract.JsonValue;
+import top.focess.veto.api.plugin.contract.JsonValues;
+import top.focess.veto.api.plugin.contract.PluginFailure;
 
 /** Monitor presentation and actions ship with the same plugin as their domain lifecycle. */
-@DefaultQualifier(
-        value = NonNull.class,
-        locations = {
-            TypeUseLocation.FIELD,
-            TypeUseLocation.PARAMETER,
-            TypeUseLocation.RETURN,
-            TypeUseLocation.UPPER_BOUND
-        })
-public final class MonitorFrontend {
-    private final MonitorService service;
-    private final ObjectMapper mapper = new ObjectMapper().findAndRegisterModules();
+public final class MonitorFrontend extends FrontendContribution {
+    private final @NonNull MonitorService service;
+    private final @NonNull ObjectMapper mapper = new ObjectMapper().findAndRegisterModules();
 
     /** Creates a frontend backed by the given monitor service. */
-    public MonitorFrontend(MonitorService service) {
+    public MonitorFrontend(@NonNull MonitorService service) {
         this.service = service;
     }
 
     /** Serves the bundled monitors script and routes its actions to {@link #handle}. */
-    public FrontendContribution contribution() {
-        try (var stream =
-                MonitorFrontend.class
-                        .getResourceAsStream("/frontend/monitors.js")) {
+    public @NonNull String module() {
+        try (var stream = MonitorFrontend.class.getResourceAsStream("/frontend/monitors.js")) {
             if (stream == null) throw new IllegalStateException("Missing monitor frontend");
-            return new FrontendContribution(
-                    new String(stream.readAllBytes(), StandardCharsets.UTF_8), this::handle);
+            return new String(stream.readAllBytes(), StandardCharsets.UTF_8);
         } catch (IOException failure) {
             throw new IllegalStateException("Cannot load monitor frontend", failure);
         }
@@ -52,8 +36,10 @@ public final class MonitorFrontend {
      * Answers paged frontend actions ({@code list}, {@code purpose}, {@code content}, {@code
      * details}).
      */
-    public JsonValue handle(
-            FrontendContribution.Scope scope, String action, JsonValue.ObjectValue args)
+    public @NonNull JsonValue handle(
+            FrontendContribution.@NonNull Scope scope,
+            @NonNull String action,
+            JsonValue.@NonNull ObjectValue args)
             throws PluginFailure {
         try {
             var records = service.list(scope.ownerId(), scope.sessionId());
@@ -184,17 +170,18 @@ public final class MonitorFrontend {
         }
     }
 
-    private String dueAt(MonitorRecord record) {
+    private @NonNull String dueAt(@NonNull MonitorRecord record) {
         var due = record.dueAt();
         return due == null ? "" : due.toString();
     }
 
-    private String activation(MonitorRecord record, MonitorRecord.Event event) {
+    private @NonNull String activation(
+            @NonNull MonitorRecord record, MonitorRecord.@NonNull Event event) {
         var activation = record.activationStates().get(event.id());
         return activation == null ? "PENDING" : activation.state().name();
     }
 
-    private int offset(JsonValue.ObjectValue args) {
+    private int offset(JsonValue.@NonNull ObjectValue args) {
         var value = args.values().get("offset");
         if (value == null) return 0;
         if (!(value instanceof JsonValue.NumberValue number)) throw new IllegalArgumentException();
@@ -203,7 +190,7 @@ public final class MonitorFrontend {
         return result;
     }
 
-    private JsonValue json(Object value) {
+    private @NonNull JsonValue json(@NonNull Object value) {
         return JsonValues.from(mapper.valueToTree(value));
     }
 }

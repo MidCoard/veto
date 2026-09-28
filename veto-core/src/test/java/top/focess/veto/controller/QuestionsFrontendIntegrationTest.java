@@ -38,7 +38,7 @@ class QuestionsFrontendIntegrationTest {
     void tenQuestionBatchRoundTripsThroughHttpAndCannotBeAnsweredTwice() throws Exception {
         try (var fixture = new QuestionActionFixture()) {
             UserContext.set("alice");
-            var future = fixture.runtime.register(fixture.invocation("call"), questions(10));
+            var future = fixture.registerQuestions("call", questions(10));
             perform(fixture, "list", Map.of())
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.items[0].questions.length()").value(10));
@@ -56,7 +56,7 @@ class QuestionsFrontendIntegrationTest {
     void malformedAnswersDoNotConsumePendingBatch() throws Exception {
         try (var fixture = new QuestionActionFixture()) {
             UserContext.set("alice");
-            var future = fixture.runtime.register(fixture.invocation("call"), questions(1));
+            var future = fixture.registerQuestions("call", questions(1));
             for (String body :
                     List.of(
                             "{}",
@@ -72,7 +72,7 @@ class QuestionsFrontendIntegrationTest {
                 if (node.has("answers")) arguments.put("answers", node.path("answers"));
                 perform(fixture, "answer", arguments).andExpect(status().isBadRequest());
                 assertFalse(future.isDone());
-                assertEquals(1, fixture.runtime.pendingFor(fixture.scope).size());
+                assertEquals(1, fixture.pendingCount());
             }
             perform(fixture, "cancel", Map.of("callId", "call")).andExpect(status().isOk());
             assertTrue(future.join().cancelled());
@@ -84,7 +84,7 @@ class QuestionsFrontendIntegrationTest {
     void actionsRequireAuthenticationSessionOwnershipMembershipAndSelectedPlugin()
             throws Exception {
         try (var fixture = new QuestionActionFixture()) {
-            var future = fixture.runtime.register(fixture.invocation("call"), questions(1));
+            var future = fixture.registerQuestions("call", questions(1));
             UserContext.clear();
             perform(fixture, "list", Map.of()).andExpect(status().isUnauthorized());
             perform(fixture, "cancel", Map.of("callId", "call"))

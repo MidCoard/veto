@@ -3,7 +3,10 @@ package top.focess.veto.api.plugin.contract;
 import org.jspecify.annotations.NonNull;
 
 /** Required permanent-data deletion, separate from best-effort runtime/logout notifications. */
-public interface DataLifecycle {
+public abstract class DataLifecycle {
+    /** Constructs a permanent-data lifecycle participant. */
+    protected DataLifecycle() {}
+
     /**
      * Prepares permanent owner deletion on the deleting transaction's thread.
      *
@@ -11,7 +14,8 @@ public interface DataLifecycle {
      * @param userId immutable user identity
      * @return completion callback to receive the transaction outcome
      */
-    @NonNull Completion prepareOwnerDeletion(@NonNull String owner, @NonNull String userId);
+    public abstract @NonNull Completion prepareOwnerDeletion(
+            @NonNull String owner, @NonNull String userId);
 
     /**
      * Prepares permanent session deletion on the deleting transaction's thread.
@@ -21,12 +25,12 @@ public interface DataLifecycle {
      * @param sessionId session being deleted
      * @return completion callback to receive the transaction outcome
      */
-    @NonNull Completion prepareSessionDeletion(
+    public abstract @NonNull Completion prepareSessionDeletion(
             @NonNull String owner, @NonNull String userId, @NonNull String sessionId);
 
     /** Always delivered after the transaction ends; release reservations on rollback. */
     @FunctionalInterface
-    interface Completion {
+    public interface Completion {
         /**
          * Releases prepared state after commit or rollback.
          *

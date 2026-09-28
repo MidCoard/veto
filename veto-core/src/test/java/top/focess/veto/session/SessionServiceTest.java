@@ -3,6 +3,14 @@ package top.focess.veto.session;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
+import java.lang.reflect.Field;
+import java.nio.file.Path;
+import java.time.Instant;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -10,16 +18,14 @@ import org.mockito.ArgumentCaptor;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
-
 import top.focess.veto.agent.Agent;
 import top.focess.veto.agent.AgentService;
 import top.focess.veto.agent.TurnRecord;
 import top.focess.veto.agent.TurnType;
+import top.focess.veto.api.event.BeforeTextCommitEvent;
 import top.focess.veto.api.llm.ProviderType;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
-import top.focess.veto.api.plugin.contract.StandardContributionPoints;
 import top.focess.veto.api.plugin.contract.FrontendContribution;
-import top.focess.veto.api.event.BeforeTextCommitEvent;
 import top.focess.veto.integration.plugins.PluginLifecycleEvents;
 import top.focess.veto.integration.plugins.PluginTestSupport;
 import top.focess.veto.model.AgentEntity;
@@ -32,15 +38,6 @@ import top.focess.veto.model.tier.ModelBinding;
 import top.focess.veto.model.tier.ModelTierRegistry;
 import top.focess.veto.vault.UserEntity;
 import top.focess.veto.vault.UserRegistry;
-
-import java.lang.reflect.Field;
-import java.nio.file.Path;
-import java.time.Instant;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
-import java.util.UUID;
 
 class SessionServiceTest {
     @Test
@@ -103,8 +100,7 @@ class SessionServiceTest {
         verify(sessions, never()).save(any());
     }
 
-    private final @NonNull ModelTierRegistry tierRegistry =
-            mock(ModelTierRegistry.class);
+    private final @NonNull ModelTierRegistry tierRegistry = mock(ModelTierRegistry.class);
 
     /**
      * A stable cwd used by the terminal-side tests. Matches sessions whose workspaceRoots is null
@@ -143,10 +139,8 @@ class SessionServiceTest {
         when(patterns.findByNameAndOwner("coder", "alice")).thenReturn(Optional.of(pattern));
         when(sessions.findByOwnerAndNameAndWorkspaceRoots(anyString(), anyString(), anyString()))
                 .thenReturn(Optional.empty());
-        when(sessions.save(any(SessionEntity.class)))
-                .thenAnswer(i -> i.getArgument(0));
-        when(agents.save(any(AgentEntity.class)))
-                .thenAnswer(i -> i.getArgument(0));
+        when(sessions.save(any(SessionEntity.class))).thenAnswer(i -> i.getArgument(0));
+        when(agents.save(any(AgentEntity.class))).thenAnswer(i -> i.getArgument(0));
 
         SessionService service =
                 new SessionService(sessions, agents, patterns, agentService, loader, tierRegistry);
@@ -171,10 +165,8 @@ class SessionServiceTest {
         when(patterns.findByNameAndOwner("coder", "alice")).thenReturn(Optional.of(pattern));
         when(sessions.findByOwnerAndNameAndWorkspaceRoots(anyString(), anyString(), anyString()))
                 .thenReturn(Optional.empty());
-        when(sessions.save(any(SessionEntity.class)))
-                .thenAnswer(i -> i.getArgument(0));
-        when(agents.save(any(AgentEntity.class)))
-                .thenAnswer(i -> i.getArgument(0));
+        when(sessions.save(any(SessionEntity.class))).thenAnswer(i -> i.getArgument(0));
+        when(agents.save(any(AgentEntity.class))).thenAnswer(i -> i.getArgument(0));
 
         SessionService service =
                 new SessionService(sessions, agents, patterns, agentService, loader, tierRegistry);
@@ -185,8 +177,7 @@ class SessionServiceTest {
         assertEquals("mysession", session.getName());
         assertEquals(ToolResultPresentationMode.DETAILED, session.getToolResultPresentation());
 
-        ArgumentCaptor<SessionEntity> captor =
-                ArgumentCaptor.forClass(SessionEntity.class);
+        ArgumentCaptor<SessionEntity> captor = ArgumentCaptor.forClass(SessionEntity.class);
         verify(sessions, atLeastOnce()).save(captor.capture());
         assertEquals("mysession", captor.getAllValues().get(0).getName());
     }
@@ -205,10 +196,8 @@ class SessionServiceTest {
         when(patterns.findByNameAndOwner("coder", "alice")).thenReturn(Optional.of(pattern));
         when(sessions.findByOwnerAndNameAndWorkspaceRoots(anyString(), anyString(), anyString()))
                 .thenReturn(Optional.empty());
-        when(sessions.save(any(SessionEntity.class)))
-                .thenAnswer(i -> i.getArgument(0));
-        when(agents.save(any(AgentEntity.class)))
-                .thenAnswer(i -> i.getArgument(0));
+        when(sessions.save(any(SessionEntity.class))).thenAnswer(i -> i.getArgument(0));
+        when(agents.save(any(AgentEntity.class))).thenAnswer(i -> i.getArgument(0));
 
         SessionService service =
                 new SessionService(sessions, agents, patterns, agentService, loader, tierRegistry);
@@ -408,9 +397,7 @@ class SessionServiceTest {
 
         SessionService service =
                 new SessionService(sessions, agents, patterns, agentService, loader, tierRegistry);
-        assertThrows(
-                IllegalArgumentException.class,
-                () -> service.createSession("alice", "nope"));
+        assertThrows(IllegalArgumentException.class, () -> service.createSession("alice", "nope"));
     }
 
     @Test
@@ -905,10 +892,8 @@ class SessionServiceTest {
         // in a different workspace, so it doesn't match this exact (name, workspaceRoots) lookup.
         when(sessions.findByOwnerAndNameAndWorkspaceRoots(anyString(), anyString(), anyString()))
                 .thenReturn(Optional.empty());
-        when(sessions.save(any(SessionEntity.class)))
-                .thenAnswer(i -> i.getArgument(0));
-        when(agents.save(any(AgentEntity.class)))
-                .thenAnswer(i -> i.getArgument(0));
+        when(sessions.save(any(SessionEntity.class))).thenAnswer(i -> i.getArgument(0));
+        when(agents.save(any(AgentEntity.class))).thenAnswer(i -> i.getArgument(0));
 
         SessionService service =
                 new SessionService(sessions, agents, patterns, agentService, loader, tierRegistry);
@@ -925,8 +910,7 @@ class SessionServiceTest {
         // The new row's workspace is projectB, NOT projectA — same name is fine in a different
         // workspace. createSession saves twice: first to get the generated id, then again to
         // persist the primaryAgentId once the agent row is built. Both saves carry projectB.
-        ArgumentCaptor<SessionEntity> captor =
-                ArgumentCaptor.forClass(SessionEntity.class);
+        ArgumentCaptor<SessionEntity> captor = ArgumentCaptor.forClass(SessionEntity.class);
         verify(sessions, times(2)).save(captor.capture());
         assertTrue(
                 captor.getAllValues().stream()
@@ -992,10 +976,8 @@ class SessionServiceTest {
                         argThat(name -> name != null && name.startsWith("coder-")),
                         eq(projectA)))
                 .thenReturn(Optional.empty());
-        when(sessions.save(any(SessionEntity.class)))
-                .thenAnswer(i -> i.getArgument(0));
-        when(agents.save(any(AgentEntity.class)))
-                .thenAnswer(i -> i.getArgument(0));
+        when(sessions.save(any(SessionEntity.class))).thenAnswer(i -> i.getArgument(0));
+        when(agents.save(any(AgentEntity.class))).thenAnswer(i -> i.getArgument(0));
 
         SessionService service =
                 new SessionService(sessions, agents, patterns, agentService, loader, tierRegistry);

@@ -215,7 +215,20 @@ tasks.withType<Test> {
     jvmArgs("--enable-native-access=ALL-UNNAMED", "-Xshare:off")
 }
 
-tasks.named<Test>("test") { exclude("**/ZeroPluginBootTest.class") }
+tasks.named<Test>("test") {
+    dependsOn(rootProject.tasks.named("localPluginPackages"))
+    val pluginPackages =
+        rootProject.layout.projectDirectory
+            .dir("release/plugin-packages/${project.version}")
+            .asFile
+            .absolutePath
+    systemProperty(
+        "veto.test.plugin-packages",
+        pluginPackages,
+    )
+    systemProperty("veto.plugins.directory", pluginPackages)
+    exclude("**/ZeroPluginBootTest.class")
+}
 val zeroPluginTest by tasks.registering(Test::class) {
     description = "Boots and exercises the core workflow with no bundled plugin artifacts."
     testClassesDirs = sourceSets.test.get().output.classesDirs

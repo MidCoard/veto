@@ -3,17 +3,15 @@ package top.focess.veto.agent;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.Timeout;
-
-import top.focess.veto.agent.identity.AgentPersona;
-import top.focess.veto.agent.identity.Role;
-import top.focess.veto.api.agent.AgentState;
-
 import java.time.Duration;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
+import top.focess.veto.agent.identity.AgentPersona;
+import top.focess.veto.agent.identity.Role;
+import top.focess.veto.api.agent.AgentState;
 
 @Timeout(10)
 class VetoAgentTerminationTest {

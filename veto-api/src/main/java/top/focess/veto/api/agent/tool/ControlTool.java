@@ -8,18 +8,21 @@ import top.focess.veto.api.agent.control.ControlHost;
  *
  * @param <T> immutable argument value decoded by the host
  */
-public interface ControlTool<T> extends AgentTool<T> {
+public abstract class ControlTool<T> extends AgentTool<T> {
+    /** Constructs a caller-scoped control tool. */
+    protected ControlTool() {}
+
     /**
      * Retrieves the control port installed for this invocation.
      *
      * @return the control port bound to the current admitted call
      */
-    @NonNull ControlHost controlHost();
+    public abstract @NonNull ControlHost controlHost();
 
     /**
      * @return {@link ToolCapability#LOOP_CONTROL}
      */
-    default @NonNull ToolCapability getCapability() {
+    public @NonNull ToolCapability getCapability() {
         return ToolCapability.LOOP_CONTROL;
     }
 
@@ -31,7 +34,8 @@ public interface ControlTool<T> extends AgentTool<T> {
      * @return model-visible result content
      * @throws Exception when execution cannot produce a successful result
      */
-    @NonNull String execute(@NonNull T arguments, @NonNull ControlHost control) throws Exception;
+    public abstract @NonNull String execute(@NonNull T arguments, @NonNull ControlHost control)
+            throws Exception;
 
     /**
      * Executes using {@link #controlHost()}.
@@ -40,7 +44,7 @@ public interface ControlTool<T> extends AgentTool<T> {
      * @return model-visible result content
      * @throws Exception when execution cannot produce a successful result
      */
-    default @NonNull String execute(@NonNull T arguments) throws Exception {
+    public @NonNull String execute(@NonNull T arguments) throws Exception {
         return execute(arguments, controlHost());
     }
 }

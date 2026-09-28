@@ -3,22 +3,6 @@ package top.focess.veto.integration.plugins;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
-import org.jspecify.annotations.NonNull;
-import org.junit.jupiter.api.Test;
-import org.springframework.boot.test.context.runner.ApplicationContextRunner;
-
-import top.focess.veto.api.credentials.CredentialImportAccess;
-import top.focess.veto.api.llm.LocalModelCompletion;
-import top.focess.veto.api.plugin.AbstractVetoPlugin;
-import top.focess.veto.api.plugin.PluginContext;
-import top.focess.veto.api.plugin.PluginContributions;
-import top.focess.veto.api.plugin.PluginIdentity;
-import top.focess.veto.api.plugin.contract.JsonValue;
-import top.focess.veto.plugin.runtime.PluginLifecycle;
-import top.focess.veto.vault.KeysteadVault;
-import top.focess.veto.veto.LlamaCppBridge;
-
-import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
@@ -26,6 +10,19 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import org.jspecify.annotations.NonNull;
+import org.junit.jupiter.api.Test;
+import org.springframework.boot.test.context.runner.ApplicationContextRunner;
+import top.focess.veto.api.credentials.CredentialImportAccess;
+import top.focess.veto.api.llm.LocalModelCompletion;
+import top.focess.veto.api.plugin.PluginContext;
+import top.focess.veto.api.plugin.PluginContributions;
+import top.focess.veto.api.plugin.PluginIdentity;
+import top.focess.veto.api.plugin.VetoPlugin;
+import top.focess.veto.api.plugin.contract.JsonValue;
+import top.focess.veto.plugin.runtime.PluginLifecycle;
+import top.focess.veto.vault.KeysteadVault;
+import top.focess.veto.veto.LlamaCppBridge;
 
 class HostResourceConfigurationTest {
     @Test
@@ -35,29 +32,18 @@ class HostResourceConfigurationTest {
                 .run(
                         context ->
                                 assertTrue(
-                                        context.getBean(
-                                                        PluginHostServices.class)
+                                        context.getBean(PluginHostServices.class)
                                                 .services()
                                                 .isEmpty()));
         new ApplicationContextRunner()
                 .withUserConfiguration(HostResourceConfiguration.class)
-                .withBean(
-                        KeysteadVault.class,
-                        () -> mock(KeysteadVault.class))
-                .withBean(
-                        LlamaCppBridge.class,
-                        () -> mock(LlamaCppBridge.class))
+                .withBean(KeysteadVault.class, () -> mock(KeysteadVault.class))
+                .withBean(LlamaCppBridge.class, () -> mock(LlamaCppBridge.class))
                 .run(
                         context -> {
-                            var services =
-                                    context.getBean(PluginHostServices.class)
-                                            .services();
-                            assertTrue(
-                                    services.containsKey(
-                                            CredentialImportAccess.class));
-                            assertTrue(
-                                    services.containsKey(
-                                            PluginLocalModelFactory.class));
+                            var services = context.getBean(PluginHostServices.class).services();
+                            assertTrue(services.containsKey(CredentialImportAccess.class));
+                            assertTrue(services.containsKey(PluginLocalModelFactory.class));
                         });
     }
 
@@ -164,20 +150,19 @@ class HostResourceConfigurationTest {
             throws Exception {
         var plugin =
                 new PluginLifecycle(
-                        new AbstractVetoPlugin() {
+                        new VetoPlugin() {
+                            @Override
+                            public @NonNull PluginContributions contributions() {
+                                return new PluginContributions(java.util.List.of());
+                            }
+
                             public @NonNull PluginIdentity identity() {
                                 return new PluginIdentity("example.local-model", "1.0.0");
                             }
 
-                            protected @NonNull PluginContributions onInitialize(
-                                    @NonNull PluginContext context,
-                                    JsonValue.@NonNull ObjectValue config) {
-                                return new PluginContributions(List.of());
-                            }
+                            public void start() {}
 
-                            protected void onStart() {}
-
-                            protected void onClose() {}
+                            public void close() {}
                         },
                         lifecycle);
         plugin.initialize(

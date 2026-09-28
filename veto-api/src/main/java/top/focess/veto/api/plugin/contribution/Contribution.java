@@ -43,8 +43,15 @@ public record Contribution<T>(
      * @param implementation contributed implementation
      * @return a contribution with empty ordering sets
      */
+    // WHY: Checker infers a non-null type argument for this record constructor despite nullable T.
+    @SuppressWarnings("argument")
     public static <T> @NonNull Contribution<T> of(
             @NonNull ContributionPoint<T> point, @NonNull String localId, T implementation) {
-        return new Contribution<>(point, localId, implementation, Set.of(), Set.of());
+        return new Contribution<T>(
+                point,
+                localId,
+                implementation,
+                Set.<@NonNull ContributionId>of(),
+                Set.<@NonNull ContributionId>of());
     }
 }

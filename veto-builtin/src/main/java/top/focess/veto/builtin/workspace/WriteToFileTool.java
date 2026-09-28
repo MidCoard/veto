@@ -1,7 +1,9 @@
 package top.focess.veto.builtin.workspace;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.FileAlreadyExistsException;
 import org.jspecify.annotations.NonNull;
-
 import top.focess.veto.api.agent.capability.WorkspaceWriteCapability;
 import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.tool.Doc;
@@ -16,10 +18,6 @@ import top.focess.veto.api.agent.tool.ToolJson;
 import top.focess.veto.api.agent.tool.ToolResultFormat;
 import top.focess.veto.api.agent.tool.ToolSecurity;
 import top.focess.veto.api.agent.tool.WorkspaceWriteTool;
-
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.FileAlreadyExistsException;
 
 /** {@code write_to_file} — create a new file or completely overwrite an existing file. */
 @ToolSecurity(capability = ToolCapability.WORKSPACE_WRITE, defaultDanger = Danger.ELEVATED)
@@ -104,7 +102,7 @@ import java.nio.file.FileAlreadyExistsException;
             "{\"status\":\"ok\",\"file\":\"/abs/project/build/marker.txt\",\"bytes\":0}",
             "Already exists: /abs/project/src/Main.java exists and overwrite is false."
         })
-public final class WriteToFileTool implements WorkspaceWriteTool<WriteToFileTool.Args> {
+public final class WriteToFileTool extends WorkspaceWriteTool<WriteToFileTool.Args> {
     private static final int MAX_TEXT_BYTES = 16 * 1024 * 1024;
 
     /** Model-facing arguments of {@code write_to_file}. */

@@ -4,15 +4,26 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-
-import org.checkerframework.framework.qual.DefaultQualifier;
-import org.checkerframework.framework.qual.TypeUseLocation;
+import java.time.Duration;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.test.util.ReflectionTestUtils;
-
 import top.focess.veto.agent.AgentService;
 import top.focess.veto.agent.RequestHandle;
 import top.focess.veto.agent.SessionAgentRegistry;
@@ -53,30 +64,6 @@ import top.focess.veto.plugin.runtime.PluginLifecycle;
 import top.focess.veto.session.SessionHistoryLoader;
 import top.focess.veto.vault.KeysteadVault;
 
-import java.time.Duration;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.Set;
-import java.util.UUID;
-import java.util.concurrent.CancellationException;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicReference;
-
-@DefaultQualifier(
-        value = NonNull.class,
-        locations = {
-            TypeUseLocation.FIELD,
-            TypeUseLocation.PARAMETER,
-            TypeUseLocation.RETURN,
-            TypeUseLocation.UPPER_BOUND
-        })
 class PluginAgentHostsTest {
     @ParameterizedTest
     @ValueSource(booleans = {true, false})
@@ -177,7 +164,8 @@ class PluginAgentHostsTest {
                                                                                         mock());
                                                                         return new IsolatedAgent
                                                                                 .Tools() {
-                                                                            public List<
+                                                                            public @NonNull
+                                                                                    List<
                                                                                             NativeTool<
                                                                                                     ?>>
                                                                                     tools() {
@@ -211,8 +199,7 @@ class PluginAgentHostsTest {
                 if (cooperative) parentResult.get(5, TimeUnit.SECONDS);
                 else
                     assertThrows(
-                            ExecutionException.class,
-                            () -> parentResult.get(5, TimeUnit.SECONDS));
+                            ExecutionException.class, () -> parentResult.get(5, TimeUnit.SECONDS));
                 stopped.get(5, TimeUnit.SECONDS);
                 var handle = requestHandle.get();
                 if (handle == null) throw new AssertionError();
@@ -239,24 +226,24 @@ class PluginAgentHostsTest {
     }
 
     static final class Fixture implements AutoCloseable {
-        final ExecutorService executor = Executors.newSingleThreadExecutor();
-        final PluginLifecycle plugin;
-        final SessionEntity session = new SessionEntity("owner", "test");
-        final String parent = UUID.randomUUID().toString();
-        final String childId = UUID.randomUUID().toString();
-        final PluginStorage storage = mock();
-        final PluginStorageFactory scopes = mock();
-        final SessionRepository sessions = mock();
-        final AgentInstanceRepository identities = mock();
-        final SessionAgentRegistry registry = new SessionAgentRegistry();
-        final KeysteadVault vault = mock();
-        final AgentService service = mock();
-        final VetoAgent agent = mock();
-        final AgentEntity row;
-        final PluginStorage.SessionScope scope;
-        final AgentHost host;
-        final PluginAgentHosts hosts;
-        final AgentProfile profile =
+        final @NonNull ExecutorService executor = Executors.newSingleThreadExecutor();
+        final @NonNull PluginLifecycle plugin;
+        final @NonNull SessionEntity session = new SessionEntity("owner", "test");
+        final @NonNull String parent = UUID.randomUUID().toString();
+        final @NonNull String childId = UUID.randomUUID().toString();
+        final @NonNull PluginStorage storage = mock();
+        final @NonNull PluginStorageFactory scopes = mock();
+        final @NonNull SessionRepository sessions = mock();
+        final @NonNull AgentInstanceRepository identities = mock();
+        final @NonNull SessionAgentRegistry registry = new SessionAgentRegistry();
+        final @NonNull KeysteadVault vault = mock();
+        final @NonNull AgentService service = mock();
+        final @NonNull VetoAgent agent = mock();
+        final @NonNull AgentEntity row;
+        final PluginStorage.@NonNull SessionScope scope;
+        final @NonNull AgentHost host;
+        final @NonNull PluginAgentHosts hosts;
+        final @NonNull AgentProfile profile =
                 new AgentProfile("member", "work", "worker", Set.of(), null, null, Map.of());
 
         Fixture() throws Exception {
@@ -302,7 +289,7 @@ class PluginAgentHostsTest {
             host = hosts.bind(plugin, storage);
         }
 
-        AgentHost.Child open() {
+        AgentHost.@NonNull Child open() {
             return host.session(scope).open(childId, parent, profile);
         }
 

@@ -3,40 +3,28 @@ package top.focess.veto.builtin.web;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
-import org.checkerframework.checker.nullness.qual.NonNull;
-import org.checkerframework.framework.qual.DefaultQualifier;
-import org.checkerframework.framework.qual.TypeUseLocation;
-import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.plugin.agent.AgentProfile;
 import top.focess.veto.api.plugin.agent.IsolatedAgent;
 import top.focess.veto.api.plugin.contract.JsonValue;
 
 /** Raw web-reader settings, validated when the isolated reader spec is built. */
-@NullMarked
-@DefaultQualifier(
-        value = NonNull.class,
-        locations = {
-            TypeUseLocation.FIELD,
-            TypeUseLocation.PARAMETER,
-            TypeUseLocation.RETURN,
-            TypeUseLocation.UPPER_BOUND
-        })
-public record ReaderConfig(Map<String, JsonValue> values) {
+public record ReaderConfig(@NonNull Map<@NonNull String, @NonNull JsonValue> values) {
     public ReaderConfig {
         values = Map.copyOf(values);
     }
 
     /** Returns an empty configuration that uses the builtin defaults. */
-    public static ReaderConfig defaults() {
+    public static @NonNull ReaderConfig defaults() {
         return new ReaderConfig(Map.of());
     }
 
-    private String text(String key, String fallback) {
+    private @NonNull String text(@NonNull String key, @NonNull String fallback) {
         var v = values.get(key);
         return v instanceof JsonValue.StringValue s ? s.value() : fallback;
     }
 
-    private int number(String key, int fallback) {
+    private int number(@NonNull String key, int fallback) {
         var value = values.get(key);
         try {
             if (value instanceof JsonValue.NumberValue number)
@@ -48,7 +36,7 @@ public record ReaderConfig(Map<String, JsonValue> values) {
     }
 
     /** Builds the isolated reader agent spec, validating tier and limit settings. */
-    public IsolatedAgent.Spec spec() {
+    public IsolatedAgent.@NonNull Spec spec() {
         String tier = text("reader-model-tier", "LOW");
         List<String> tiers =
                 switch (tier) {
@@ -77,7 +65,7 @@ public record ReaderConfig(Map<String, JsonValue> values) {
                         "finish_read", calls >= 4 ? 2 : 1, prompt("reader-completion")));
     }
 
-    private static AgentProfile.Prompt prompt(String name) {
+    private static AgentProfile.@NonNull Prompt prompt(@NonNull String name) {
         return new AgentProfile.Prompt(name, new JsonValue.ObjectValue(Map.of()));
     }
 }

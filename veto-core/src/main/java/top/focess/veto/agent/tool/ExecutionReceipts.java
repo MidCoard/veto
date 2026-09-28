@@ -2,35 +2,24 @@ package top.focess.veto.agent.tool;
 
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BooleanSupplier;
-import org.checkerframework.checker.nullness.qual.NonNull;
-import org.checkerframework.framework.qual.DefaultQualifier;
-import org.checkerframework.framework.qual.TypeUseLocation;
-import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 
 /** Host-only, single-call receipts. They never enter history or cross an async context boundary. */
-@NullMarked
-@DefaultQualifier(
-        value = NonNull.class,
-        locations = {
-            TypeUseLocation.FIELD,
-            TypeUseLocation.PARAMETER,
-            TypeUseLocation.RETURN,
-            TypeUseLocation.UPPER_BOUND
-        })
 public final class ExecutionReceipts {
     private ExecutionReceipts() {}
 
-    private record Receipt(String id, BooleanSupplier valid) {}
+    private record Receipt(@NonNull String id, @NonNull BooleanSupplier valid) {}
 
-    private static final ConcurrentHashMap<ToolCallContext, Receipt> PENDING =
-            new ConcurrentHashMap<>();
+    private static final @NonNull ConcurrentHashMap<@NonNull ToolCallContext, @NonNull Receipt>
+            PENDING = new ConcurrentHashMap<>();
 
     /**
      * Records a single-use receipt for the current call. Rejects any context, call-id, or validity
      * mismatch and a second publication for the same context.
      */
-    public static void publish(ToolCallContext context, String id, BooleanSupplier valid) {
+    public static void publish(
+            @NonNull ToolCallContext context, @NonNull String id, @NonNull BooleanSupplier valid) {
         if (!context.equals(ToolCallContextHolder.get())
                 || !context.executionPermit().callId().equals(ToolCallContextHolder.currentCallId())
                 || !valid.getAsBoolean())
@@ -43,7 +32,7 @@ public final class ExecutionReceipts {
      * Consumes the receipt published for the current context, returning its id only when the call
      * id matches and the receipt is still valid; otherwise {@code null}.
      */
-    public static @Nullable String consume(String callId) {
+    public static @Nullable String consume(@NonNull String callId) {
         var context = ToolCallContextHolder.get();
         if (context == null) return null;
         var receipt = PENDING.remove(context);

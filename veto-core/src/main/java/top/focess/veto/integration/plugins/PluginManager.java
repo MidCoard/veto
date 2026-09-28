@@ -1,5 +1,22 @@
 package top.focess.veto.integration.plugins;
 
+import java.io.IOException;
+import java.nio.file.Path;
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.ServiceConfigurationError;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.function.BiPredicate;
+import java.util.stream.Collectors;
 import org.checkerframework.checker.initialization.qual.UnknownInitialization;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
@@ -7,7 +24,6 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
-
 import top.focess.veto.agent.loop.PromptCompiler;
 import top.focess.veto.agent.tool.ToolCallContextHolder;
 import top.focess.veto.agent.tool.ToolEngineImpl;
@@ -15,6 +31,9 @@ import top.focess.veto.agent.tool.ToolSchemaCompiler;
 import top.focess.veto.api.agent.tool.AgentTool;
 import top.focess.veto.api.agent.tool.CapabilityTool;
 import top.focess.veto.api.agent.tool.NativeTool;
+import top.focess.veto.api.agent.tool.RemoteTool;
+import top.focess.veto.api.agent.tool.Tool;
+import top.focess.veto.api.event.ServiceDirectoryChangedEvent;
 import top.focess.veto.api.llm.LocalModelCompletion;
 import top.focess.veto.api.llm.PromptRenderer;
 import top.focess.veto.api.llm.TextEmbedding;
@@ -29,8 +48,6 @@ import top.focess.veto.api.plugin.agent.AgentHost;
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.contract.PluginFailure;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
-import top.focess.veto.api.agent.tool.RemoteTool;
-import top.focess.veto.api.event.ServiceDirectoryChangedEvent;
 import top.focess.veto.api.plugin.contribution.ContributionCatalog;
 import top.focess.veto.api.plugin.contribution.ContributionEntry;
 import top.focess.veto.api.plugin.contribution.ContributionPoint;
@@ -51,29 +68,10 @@ import top.focess.veto.integration.plugins.storage.PluginStorageFactory;
 import top.focess.veto.model.SessionRepository;
 import top.focess.veto.plugin.runtime.*;
 
-import java.io.IOException;
-import java.nio.file.Path;
-import java.time.Duration;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
-import java.util.ServiceConfigurationError;
-import java.util.ServiceLoader;
-import java.util.Set;
-import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.function.BiPredicate;
-
 /**
  * Installed-package lifecycle and live catalog. Broken packages fail activation without replacing
  * the last published catalog. Installed Java and script packages are scanned from the plugin
- * directory. Existing classpath plugins are also discovered through {@link ServiceLoader} during
- * distribution migration.
+ * directory.
  */
 @Component
 public final class PluginManager implements AutoCloseable {
@@ -87,6 +85,9 @@ public final class PluginManager implements AutoCloseable {
     }
 
     private final @NonNull ServiceAccess serviceAccess = new ServiceAccess();
+
+    @SuppressWarnings(
+            "methodref.receiver.bound") // Registry callbacks run after manager construction.
     private final @NonNull PluginServiceRegistry serviceRegistry =
             new PluginServiceRegistry(serviceAccess, this::resolveServiceScope);
 
@@ -192,8 +193,11 @@ public final class PluginManager implements AutoCloseable {
         return serviceRegistry.forPlugin(plugin(caller));
     }
 
+    @SuppressWarnings(
+            "dereference.of.nullable") // The returned callback runs only after catalog and plugin
+    // fields are initialized.
     private @NonNull PluginContributionsDirectory contributionsFor(
-            @NonNull PluginLifecycle caller) {
+            @UnknownInitialization PluginManager this, @NonNull PluginLifecycle caller) {
         return (pointId, major) -> {
             ContributionCatalog snapshot = catalog;
             var definition =
@@ -282,38 +286,8 @@ public final class PluginManager implements AutoCloseable {
             @NonNull String version,
             PluginDeclinedException.@NonNull Reason reason) {}
 
-    /** Convenience constructor using default operator configuration. */
-    public PluginManager(
-            @NonNull String paths,
-            @NonNull String nodeCommand,
-            boolean trustedCode,
-            long timeoutMillis,
-            @NonNull ObjectProvider<PluginHostServices> hostServices)
-            throws IOException {
-        this(
-                paths,
-                "",
-                nodeCommand,
-                trustedCode,
-                timeoutMillis,
-                hostServices,
-                new PluginConfigurations());
-    }
-
-    /** Test and embedding constructor with explicit configuration and no installation scan. */
-    public PluginManager(
-            @NonNull String paths,
-            @NonNull String nodeCommand,
-            boolean trustedCode,
-            long timeoutMillis,
-            @NonNull ObjectProvider<PluginHostServices> hostServices,
-            @NonNull PluginConfigurations configurations)
-            throws IOException {
-        this(paths, "", nodeCommand, trustedCode, timeoutMillis, hostServices, configurations);
-    }
-
     /**
-     * Discovers built-in and script plugins, binds per-plugin host services, validates all
+     * Discovers installed Java and script plugins, binds per-plugin host services, validates all
      * contributions, and starts every plugin; any failure closes the staged plugins.
      *
      * @throws IOException when discovery, validation, or activation fails
@@ -323,7 +297,6 @@ public final class PluginManager implements AutoCloseable {
     @SuppressWarnings({"resource", "ConstantValue"})
     @Autowired
     public PluginManager(
-            @Value("${veto.plugins.paths:}") @NonNull String paths,
             @Value("${veto.plugins.directory:plugins}") @NonNull String pluginDirectory,
             @Value("${veto.plugins.node-command:}") @NonNull String nodeCommand,
             @Value("${veto.plugins.trusted-code:false}") boolean trustedCode,
@@ -346,10 +319,6 @@ public final class PluginManager implements AutoCloseable {
         List<PluginLifecycle> staged = new ArrayList<>();
         List<InstalledPluginLoader.DisabledPackage> disabledPackages = new ArrayList<>();
         try {
-            if (!paths.isBlank()) configurations.getScriptMode().requireAvailable(trustedCode);
-            // Provider failures are fatal: a broken built-in must not silently drop its points.
-            for (var discovered : ServiceLoader.load(VetoPlugin.class))
-                staged.add(new PluginLifecycle(discovered, lifecycle));
             if (!pluginDirectory.isBlank()) {
                 var installed =
                         new InstalledPluginLoader(
@@ -365,24 +334,6 @@ public final class PluginManager implements AutoCloseable {
                 }
                 for (var plugin : installed.disabled()) installedIds.add(plugin.id());
             }
-            if (!paths.isBlank()) {
-                var ids = new HashSet<String>();
-                var entries = paths.split(",", -1);
-                if (entries.length > 16)
-                    throw new IllegalArgumentException("Too many plugin packages");
-                for (String entry : entries) {
-                    Path directory = Path.of(entry.strip());
-                    if (!directory.isAbsolute())
-                        throw new IllegalArgumentException("Plugin paths must be absolute");
-                    ScriptPlugin plugin =
-                            new ScriptPluginLoader(
-                                            Path.of(nodeCommand), Duration.ofMillis(timeoutMillis))
-                                    .load(directory);
-                    staged.add(new PluginLifecycle(plugin, lifecycle));
-                    if (!ids.add(plugin.id()))
-                        throw new IllegalArgumentException("Duplicate plugin identity");
-                }
-            }
             var allIds = new HashSet<String>();
             for (var plugin : staged) {
                 if (!allIds.add(plugin.identity().id()))
@@ -391,21 +342,6 @@ public final class PluginManager implements AutoCloseable {
             for (var plugin : disabledPackages)
                 if (!allIds.add(plugin.id()))
                     throw new IllegalArgumentException("Duplicate plugin identity");
-            var aliasLookup = new HashMap<String, String>();
-            for (var plugin : staged) {
-                var historicalIds = plugin.implementation().historicalIds();
-                if (historicalIds == null)
-                    throw new IllegalArgumentException("Plugin historical IDs must not be null");
-                for (String alias : historicalIds) {
-                    if (alias == null)
-                        throw new IllegalArgumentException("Plugin historical ID must not be null");
-                    String validated = new PluginIdentity(alias, "0.0.0").id();
-                    if (allIds.contains(validated)
-                            || aliasLookup.putIfAbsent(validated, plugin.identity().id()) != null)
-                        throw new IllegalArgumentException("Duplicate plugin identity or alias");
-                }
-            }
-            aliases = Map.copyOf(aliasLookup);
             List<Registration> registered = new ArrayList<>();
             List<DeclinedPlugin> declinedPlugins = new ArrayList<>();
             Iterator<PluginLifecycle> pending = staged.iterator();
@@ -418,12 +354,27 @@ public final class PluginManager implements AutoCloseable {
                     declinedPlugins.add(
                             new DeclinedPlugin(
                                     plugin.identity().id(),
-                                    plugin.implementation().displayName(),
+                                    plugin.displayName(),
                                     plugin.identity().version(),
                                     declinedReason.reason()));
                     pending.remove();
                 }
             }
+            var aliasLookup = new HashMap<String, String>();
+            for (var plugin : staged) {
+                var historicalIds = plugin.historicalIds();
+                if (historicalIds == null)
+                    throw new IllegalArgumentException("Plugin historical IDs must not be null");
+                for (String alias : historicalIds) {
+                    if (alias == null)
+                        throw new IllegalArgumentException("Plugin historical ID must not be null");
+                    String validated = new PluginIdentity(alias, "0.0.0").id();
+                    if (allIds.contains(validated)
+                            || aliasLookup.putIfAbsent(validated, plugin.identity().id()) != null)
+                        throw new IllegalArgumentException("Duplicate plugin identity or alias");
+                }
+            }
+            aliases = Map.copyOf(aliasLookup);
             var validatedCatalog = buildCatalog(registered);
             serviceRegistry.bind(validatedCatalog, staged);
             catalog = validatedCatalog;
@@ -443,7 +394,7 @@ public final class PluginManager implements AutoCloseable {
                     new ServiceDirectoryChangedEvent(),
                     admitted.stream()
                             .map(plugin -> plugin.identity().id())
-                            .collect(java.util.stream.Collectors.toSet()));
+                            .collect(Collectors.toSet()));
         } catch (Exception | ServiceConfigurationError e) {
             for (var plugin : staged.reversed()) {
                 serviceRegistry.revoke(plugin.identity().id());
@@ -484,8 +435,7 @@ public final class PluginManager implements AutoCloseable {
         Object processFactory = pluginServices.remove(PluginProcessHostFactory.class);
         if (processFactory instanceof PluginProcessHostFactory factory
                 && boundStorage instanceof PluginStorage storage)
-            pluginServices.put(
-                    ProcessHost.class, factory.bind(plugin, storage));
+            pluginServices.put(ProcessHost.class, factory.bind(plugin, storage));
         Object runtimeHost = pluginServices.get(PluginHost.class);
         if (runtimeHost instanceof PluginHost host
                 && boundStorage instanceof PluginStorage storage
@@ -502,24 +452,17 @@ public final class PluginManager implements AutoCloseable {
                                             plugin.identity().id(),
                                             plugin.identity().id() + ":" + local,
                                             names,
-                                            plugin.implementation(),
+                                            plugin,
                                             installedIds.contains(plugin.identity().id()))));
         Object localModelFactory = pluginServices.remove(PluginLocalModelFactory.class);
         if (localModelFactory instanceof PluginLocalModelFactory factory)
-            pluginServices.put(
-                    LocalModelCompletion.class, factory.bind(plugin));
+            pluginServices.put(LocalModelCompletion.class, factory.bind(plugin));
         Object embeddingFactory = pluginServices.remove(PluginEmbeddingFactory.class);
         if (embeddingFactory instanceof PluginEmbeddingFactory factory)
-            factory.bind(plugin)
-                    .ifPresent(
-                            model ->
-                                    pluginServices.put(
-                                            TextEmbedding.class, model));
+            factory.bind(plugin).ifPresent(model -> pluginServices.put(TextEmbedding.class, model));
         grantedServices.put(plugin.identity().id(), Map.copyOf(pluginServices));
-        pluginServices.put(
-                PluginServices.class, serviceRegistry.forPlugin(plugin));
-        pluginServices.put(
-                PluginContributionsDirectory.class, contributionsFor(plugin));
+        pluginServices.put(PluginServices.class, serviceRegistry.forPlugin(plugin));
+        pluginServices.put(PluginContributionsDirectory.class, contributionsFor(plugin));
         return new Registration(
                 plugin,
                 plugin.initialize(
@@ -551,6 +494,14 @@ public final class PluginManager implements AutoCloseable {
                                 ToolSchemaCompiler.compileFromRecord(local.getArgsClass());
                             } else throw new IllegalArgumentException("Unsupported plugin tool");
                         });
+            else if (point == StandardContributionPoints.FRONTEND)
+                builder.define(
+                        StandardContributionPoints.FRONTEND,
+                        frontend -> {
+                            String module = frontend.module();
+                            if (module.isBlank() || module.length() > 1048576)
+                                throw new IllegalArgumentException("Invalid frontend module size");
+                        });
             else builder.define(point, ignored -> {});
         }
         var points = new HashSet<ContributionPoint<?>>(StandardContributionPoints.ALL);
@@ -558,7 +509,10 @@ public final class PluginManager implements AutoCloseable {
             var owner = registration.plugin().identity().id();
             for (var contribution : registration.contributions().entries()) {
                 if (contribution.point().equals(StandardContributionPoints.CONTRIBUTIONS)) {
-                    var definition = (ProtocolPointDefinition) contribution.implementation();
+                    ProtocolPointDefinition definition =
+                            (ProtocolPointDefinition) contribution.implementation();
+                    if (definition == null)
+                        throw new IllegalArgumentException("Contribution point is missing");
                     if (!definition.id().value().startsWith(owner + ":"))
                         throw new IllegalArgumentException("Contribution point owner mismatch");
                     var schema = PluginJson.toNode(definition.entrySchema());
@@ -632,9 +586,7 @@ public final class PluginManager implements AutoCloseable {
                         .toList();
         var metadata =
                 new InstalledPluginLoader.DisabledPackage(
-                        canonical,
-                        target.implementation().displayName(),
-                        target.identity().version());
+                        canonical, target.displayName(), target.identity().version());
         List<InstalledPluginLoader.DisabledPackage> nextDisabled = new ArrayList<>(disabled);
         nextDisabled.add(metadata);
         publish(nextPlugins, nextRegistrations, List.copyOf(nextDisabled), declined);
@@ -671,8 +623,10 @@ public final class PluginManager implements AutoCloseable {
                         .loadById(Path.of(pluginDirectory), id);
         PluginLifecycle runtime = new PluginLifecycle(implementation, lifecycle);
         try {
+            Registration registration =
+                    initializePlugin(runtime, baseServices, configurations, toolNames);
             Map<String, String> nextAliases = new HashMap<>(aliases);
-            for (String alias : implementation.historicalIds()) {
+            for (String alias : runtime.historicalIds()) {
                 String validated = new PluginIdentity(alias, "0.0.0").id();
                 if (installedIds.contains(validated)
                         || (nextAliases.containsKey(validated)
@@ -680,8 +634,6 @@ public final class PluginManager implements AutoCloseable {
                     throw new IllegalArgumentException("Duplicate plugin identity or alias");
                 nextAliases.put(validated, id);
             }
-            Registration registration =
-                    initializePlugin(runtime, baseServices, configurations, toolNames);
             List<PluginLifecycle> nextPlugins = new ArrayList<>(plugins);
             nextPlugins.add(runtime);
             List<Registration> nextRegistrations = new ArrayList<>(registrations);
@@ -756,7 +708,7 @@ public final class PluginManager implements AutoCloseable {
                     new ServiceDirectoryChangedEvent(),
                     nextPlugins.stream()
                             .map(plugin -> plugin.identity().id())
-                            .collect(java.util.stream.Collectors.toSet()));
+                            .collect(Collectors.toSet()));
         } catch (RuntimeException failure) {
             plugins = previousPlugins;
             registrations = previousRegistrations;
@@ -875,7 +827,7 @@ public final class PluginManager implements AutoCloseable {
     }
 
     /** Resolves the runtime tool name of the given contributed tool entry. */
-    public @NonNull String toolName(@NonNull ContributionEntry<Object> entry) {
+    public @NonNull String toolName(@NonNull ContributionEntry<Tool> entry) {
         return toolName(entry.source().namespace(), entry.id().value());
     }
 
@@ -888,7 +840,7 @@ public final class PluginManager implements AutoCloseable {
                 namespace,
                 qualifiedId,
                 toolNames,
-                plugin(namespace).implementation(),
+                plugin(namespace),
                 installedIds.contains(namespace));
     }
 
@@ -896,7 +848,7 @@ public final class PluginManager implements AutoCloseable {
             @NonNull String namespace,
             @NonNull String qualifiedId,
             @NonNull Map<String, String> names,
-            @NonNull VetoPlugin implementation,
+            @NonNull PluginLifecycle implementation,
             boolean installed) {
         String alias = names.get(qualifiedId);
         if (alias != null) return alias;

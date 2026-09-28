@@ -17,7 +17,7 @@ import top.focess.veto.api.plugin.PluginHost;
 import top.focess.veto.api.plugin.contract.FrontendContribution.Scope;
 
 /** Plugin-owned, in-memory rendezvous. Only the host supplies invocation identities. */
-public final class QuestionRuntime implements Listener, AutoCloseable {
+public final class QuestionRuntime extends Listener implements AutoCloseable {
     private final @NonNull PluginHost host;
     private final @NonNull ConcurrentHashMap<Key, Pending> pending = new ConcurrentHashMap<>();
     private boolean closed;

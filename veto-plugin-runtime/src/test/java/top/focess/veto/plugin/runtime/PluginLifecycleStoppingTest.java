@@ -15,11 +15,11 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
-import top.focess.veto.api.plugin.AbstractVetoPlugin;
 import top.focess.veto.api.plugin.PluginContext;
 import top.focess.veto.api.plugin.PluginContributions;
 import top.focess.veto.api.plugin.PluginIdentity;
 import top.focess.veto.api.plugin.PluginState;
+import top.focess.veto.api.plugin.VetoPlugin;
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.contract.PluginFailure;
 
@@ -33,25 +33,25 @@ class PluginLifecycleStoppingTest {
         var cleaned = new AtomicInteger();
         var blocked = new CompletableFuture<Boolean>();
         var plugin =
-                new AbstractVetoPlugin() {
+                new VetoPlugin() {
+                    @Override
+                    public @NonNull PluginContributions contributions() {
+                        return new PluginContributions(List.of());
+                    }
+
                     public @NonNull PluginIdentity identity() {
                         return new PluginIdentity("test.stop", "1.0.0");
                     }
 
-                    protected @NonNull PluginContributions onInitialize(
-                            @NonNull PluginContext context, JsonValue.@NonNull ObjectValue config) {
-                        return new PluginContributions(List.of());
-                    }
+                    public void start() {}
 
-                    protected void onStart() {}
-
-                    protected void onStopping() {
+                    public void stopping() {
                         stopping.incrementAndGet();
                         if (throwsOnStop) throw new IllegalStateException("Stop failed");
                         blocked.complete(true);
                     }
 
-                    protected void onClose() {
+                    public void close() {
                         cleaned.incrementAndGet();
                     }
                 };
@@ -103,23 +103,23 @@ class PluginLifecycleStoppingTest {
         var cleaned = new AtomicInteger();
         var release = new CompletableFuture<Boolean>();
         var plugin =
-                new AbstractVetoPlugin() {
+                new VetoPlugin() {
+                    @Override
+                    public @NonNull PluginContributions contributions() {
+                        return new PluginContributions(List.of());
+                    }
+
                     public @NonNull PluginIdentity identity() {
                         return new PluginIdentity("test.drain", "1.0.0");
                     }
 
-                    protected @NonNull PluginContributions onInitialize(
-                            @NonNull PluginContext context, JsonValue.@NonNull ObjectValue config) {
-                        return new PluginContributions(List.of());
-                    }
+                    public void start() {}
 
-                    protected void onStart() {}
-
-                    protected void onStopping() {
+                    public void stopping() {
                         stopSeen.countDown();
                     }
 
-                    protected void onClose() {
+                    public void close() {
                         cleaned.incrementAndGet();
                     }
                 };

@@ -1,7 +1,6 @@
 package top.focess.veto.command;
 
 import org.jspecify.annotations.NonNull;
-
 import top.focess.command.CommandArgument;
 import top.focess.command.DataCollection;
 import top.focess.command.DataConverter;

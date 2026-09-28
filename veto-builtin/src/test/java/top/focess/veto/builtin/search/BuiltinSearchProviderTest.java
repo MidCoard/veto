@@ -4,56 +4,46 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.mock;
 
 import com.sun.net.httpserver.HttpServer;
-
-import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
-import org.junit.jupiter.api.Test;
-
-import top.focess.veto.api.plugin.PluginContext;
-import top.focess.veto.api.plugin.PluginHost;
-import top.focess.veto.api.plugin.VetoPlugin;
-import top.focess.veto.api.plugin.contract.JsonValue;
-import top.focess.veto.api.plugin.contract.StandardContributionPoints;
-import top.focess.veto.builtin.search.SearchOptions;
-
 import java.net.InetSocketAddress;
 import java.net.http.HttpClient;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
-import java.util.ServiceLoader;
 import java.util.concurrent.atomic.AtomicReference;
+import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
+import org.junit.jupiter.api.Test;
+import top.focess.veto.api.plugin.PluginContext;
+import top.focess.veto.api.plugin.PluginHost;
+import top.focess.veto.api.plugin.PluginIdentity;
+import top.focess.veto.api.plugin.contract.JsonValue;
+import top.focess.veto.api.plugin.contract.StandardContributionPoints;
+import top.focess.veto.builtin.BuiltinPlugin;
 
 class BuiltinSearchProviderTest {
     @Test
     void pluginLoadsAndContributesWithOnlyApiAndLibraryDependencies() throws Exception {
-        var plugin =
-                ServiceLoader.load(VetoPlugin.class).findFirst().orElseThrow();
+        var configuration =
+                new JsonValue.ObjectValue(
+                        Map.of("brave-api-key", new JsonValue.StringValue("synthetic")));
+        var context =
+                new PluginContext(
+                        new PluginIdentity("top.focess.builtin", "1.0.100"),
+                        () -> {},
+                        () -> {
+                            throw new IllegalStateException("Plugin context is not bound");
+                        },
+                        Map.of(PluginHost.class, mock(PluginHost.class)));
+        var plugin = new BuiltinPlugin(context, configuration);
         try {
-            var contributions =
-                    plugin.initialize(
-                            new PluginContext(
-                                    plugin.identity(),
-                                    () -> {},
-                                    () -> {
-                                        throw new IllegalStateException(
-                                                "Plugin context is not bound to a lifecycle owner");
-                                    },
-                                    Map.of(
-                                            PluginHost.class,
-                                            mock(PluginHost.class))),
-                            new JsonValue.ObjectValue(
-                                    Map.of(
-                                            "brave-api-key",
-                                            new JsonValue.StringValue("synthetic"))));
+            var contributions = plugin.initialize(context, configuration);
             assertEquals("top.focess.builtin", plugin.identity().id());
             var providers =
                     contributions.entries().stream()
                             .filter(e -> e.point().equals(StandardContributionPoints.SERVICES))
                             .toList();
             assertEquals(
-                    List.of("brave", "duckduckgo"),
-                    providers.stream().map(e -> e.localId()).sorted().toList());
+                    List.of("search"), providers.stream().map(e -> e.localId()).sorted().toList());
             assertTrue(
                     providers.stream()
                             .allMatch(e -> e.point().equals(StandardContributionPoints.SERVICES)));

@@ -2,16 +2,13 @@ package top.focess.veto.builtin.monitor;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-
+import java.time.*;
 import org.jspecify.annotations.NonNull;
-
 import top.focess.veto.api.agent.tool.Doc;
 import top.focess.veto.api.agent.tool.ToolDoc;
 import top.focess.veto.api.agent.tool.ToolErrorCode;
 import top.focess.veto.api.agent.tool.ToolErrors;
 import top.focess.veto.api.agent.tool.ToolResultFormat;
-
-import java.time.*;
 
 /** Agent-facing monitor tools for scheduling and managing wake-ups. */
 public final class MonitorTools {
@@ -23,45 +20,45 @@ public final class MonitorTools {
             description = "Schedule one wake-up within the next 30 days.",
             behavior =
                     "Time-based rules wake this Agent through its normal execution loop. Paused or"
-                        + " stopped Agents are not automatically resumed. Group outcomes are"
-                        + " observed automatically.",
+                            + " stopped Agents are not automatically resumed. Group outcomes are"
+                            + " observed automatically.",
             whenToUse =
                     "Use for explicitly requested follow-up or to manage an existing scheduled"
-                        + " wake-up.",
+                            + " wake-up.",
             whenNotToUse =
                     "Do not schedule repeated checks for Group results; those arrive automatically."
-                        + " Do not use to bypass a pause or task limit.",
+                            + " Do not use to bypass a pause or task limit.",
             resultContract =
                     "JSON containing registered rule state. Registration is not completion of"
-                        + " future work. Failures return `Monitor not created: <reason>`.",
+                            + " future work. Failures return `Monitor not created: <reason>`.",
             errorsAndEdgeCases =
                     "Invalid times, missing purpose, and exhausted active-rule limits are rejected:"
-                        + " argument problems (failure, INVALID_ARGUMENTS), the 32-monitor limit"
-                        + " (failure, LIMIT_EXCEEDED), and a missing session context (failure,"
-                        + " NO_SESSION_CONTEXT). Offline wake-ups can be delayed.",
+                            + " argument problems (failure, INVALID_ARGUMENTS), the 32-monitor limit"
+                            + " (failure, LIMIT_EXCEEDED), and a missing session context (failure,"
+                            + " NO_SESSION_CONTEXT). Offline wake-ups can be delayed.",
             security =
                     "Owner, Session and Agent are taken from the execution permit. No arbitrary"
-                        + " resource access is granted.",
+                            + " resource access is granted.",
             examples = {
                 "{\"purpose\":\"Remind me to review the report\",\"afterSeconds\":600}",
                 "{\"purpose\":\"Summarize the CI results for the nightly"
-                    + " build\",\"at\":\"2026-09-20T07:30:00+08:00\"}",
+                        + " build\",\"at\":\"2026-09-20T07:30:00+08:00\"}",
                 "{\"purpose\":\"Re-check whether the example.com certificate renewal completed and"
-                    + " report the new expiry date\",\"afterSeconds\":86400}",
+                        + " report the new expiry date\",\"afterSeconds\":86400}",
                 "{\"purpose\":\"Weekly"
-                    + " digest\",\"afterSeconds\":604800,\"at\":\"2026-09-26T09:00:00+08:00\"}"
+                        + " digest\",\"afterSeconds\":604800,\"at\":\"2026-09-26T09:00:00+08:00\"}"
             },
             returnExamples = {
                 "{\"id\":\"3f6c9f4e-7b1a-4c2d-9e5f-2a8b6d1c4e70\",\"kind\":\"TIME_ONCE\",\"purpose\":\"Remind"
-                    + " me to review the report\",\"state\":\"ACTIVE\"}",
+                        + " me to review the report\",\"state\":\"ACTIVE\"}",
                 "{\"id\":\"7a1e2c5b-3d6f-4e8a-9b0c-1d2e3f4a5b6c\",\"kind\":\"TIME_ONCE\",\"purpose\":\"Summarize"
-                    + " the CI results for the nightly build\",\"state\":\"ACTIVE\"}",
+                        + " the CI results for the nightly build\",\"state\":\"ACTIVE\"}",
                 "{\"id\":\"b8d2e4f6-1a3c-4b5d-9e7f-0a1b2c3d4e5f\",\"kind\":\"TIME_ONCE\",\"purpose\":\"Re-check"
-                    + " whether the example.com certificate renewal completed and report the new"
-                    + " expiry date\",\"state\":\"ACTIVE\"}",
+                        + " whether the example.com certificate renewal completed and report the new"
+                        + " expiry date\",\"state\":\"ACTIVE\"}",
                 "Monitor not created: supply exactly one of afterSeconds or at."
             })
-    public static final class CreateMonitor implements MonitorTool<CreateMonitor.Args> {
+    public static final class CreateMonitor extends MonitorTool<CreateMonitor.Args> {
         private final MonitorOperations capability;
 
         /** Declaration-only instance; the host supplies the capability at execution time. */
@@ -110,28 +107,28 @@ public final class MonitorTools {
             description = "Inspect your registered Monitors and pending notifications.",
             behavior =
                     "Time-based rules wake this Agent through its normal execution loop. Paused or"
-                        + " stopped Agents are not automatically resumed. Group outcomes are"
-                        + " observed automatically.",
+                            + " stopped Agents are not automatically resumed. Group outcomes are"
+                            + " observed automatically.",
             whenToUse =
                     "Use for explicitly requested follow-up or to manage an existing scheduled"
-                        + " wake-up.",
+                            + " wake-up.",
             whenNotToUse =
                     "Do not schedule repeated checks for Group results; those arrive automatically."
-                        + " Do not use to bypass a pause or task limit.",
+                            + " Do not use to bypass a pause or task limit.",
             resultContract =
                     "JSON containing a list of registered rules. Missing session context (failure,"
-                        + " NO_SESSION_CONTEXT).",
+                            + " NO_SESSION_CONTEXT).",
             errorsAndEdgeCases =
                     "Missing session context (failure, NO_SESSION_CONTEXT): `Monitors not listed:"
-                        + " no active session context.`. Offline wake-ups can be delayed.",
+                            + " no active session context.`. Offline wake-ups can be delayed.",
             security =
                     "Owner, Session and Agent are taken from the execution permit. No arbitrary"
-                        + " resource access is granted.",
+                            + " resource access is granted.",
             examples = "{}",
             returnExamples =
                     "[{\"id\":\"3f6c9f4e-7b1a-4c2d-9e5f-2a8b6d1c4e70\",\"kind\":\"TIME_ONCE\",\"purpose\":\"Remind"
-                        + " me to review the report\",\"state\":\"ACTIVE\"}]")
-    public static final class InspectMonitor implements MonitorTool<InspectMonitor.Args> {
+                            + " me to review the report\",\"state\":\"ACTIVE\"}]")
+    public static final class InspectMonitor extends MonitorTool<InspectMonitor.Args> {
         private final MonitorOperations capability;
 
         /** Declaration-only instance; the host supplies the capability at execution time. */
@@ -176,27 +173,27 @@ public final class MonitorTools {
             description = "Pause a scheduled Monitor without stopping its observed work.",
             behavior =
                     "Time-based rules wake this Agent through its normal execution loop. Paused or"
-                        + " stopped Agents are not automatically resumed. Group outcomes are"
-                        + " observed automatically.",
+                            + " stopped Agents are not automatically resumed. Group outcomes are"
+                            + " observed automatically.",
             whenToUse =
                     "Use for explicitly requested follow-up or to manage an existing scheduled"
-                        + " wake-up.",
+                            + " wake-up.",
             whenNotToUse =
                     "Do not schedule repeated checks for Group results; those arrive automatically."
-                        + " Do not use to bypass a pause or task limit.",
+                            + " Do not use to bypass a pause or task limit.",
             resultContract =
                     "JSON containing the updated rule state. Failures: unknown id (failure,"
-                        + " UNKNOWN): `Monitor not found: <id detail>`; group-managed or missing"
-                        + " session (failure, GROUP_MANAGED or NO_SESSION_CONTEXT): `Monitor not"
-                        + " updated: <reason>`.",
+                            + " UNKNOWN): `Monitor not found: <id detail>`; group-managed or missing"
+                            + " session (failure, GROUP_MANAGED or NO_SESSION_CONTEXT): `Monitor not"
+                            + " updated: <reason>`.",
             errorsAndEdgeCases =
                     "Unknown or inaccessible monitor ids (failure, UNKNOWN): `Monitor not found: no"
-                        + " accessible monitor has id <id>.`; group observation monitors cannot be"
-                        + " controlled directly (failure, GROUP_MANAGED); a missing session context"
-                        + " (failure, NO_SESSION_CONTEXT). Offline wake-ups can be delayed.",
+                            + " accessible monitor has id <id>.`; group observation monitors cannot be"
+                            + " controlled directly (failure, GROUP_MANAGED); a missing session context"
+                            + " (failure, NO_SESSION_CONTEXT). Offline wake-ups can be delayed.",
             security =
                     "Owner, Session and Agent are taken from the execution permit. No arbitrary"
-                        + " resource access is granted.",
+                            + " resource access is granted.",
             examples = {
                 "{\"monitorId\":\"3f6c9f4e-7b1a-4c2d-9e5f-2a8b6d1c4e70\"}",
                 "{\"monitorId\":\"7a1e2c5b-3d6f-4e8a-9b0c-1d2e3f4a5b6c\"}",
@@ -207,7 +204,7 @@ public final class MonitorTools {
                 "{\"id\":\"7a1e2c5b-3d6f-4e8a-9b0c-1d2e3f4a5b6c\",\"kind\":\"TIME_ONCE\",\"state\":\"PAUSED\"}",
                 "{\"id\":\"b8d2e4f6-1a3c-4b5d-9e7f-0a1b2c3d4e5f\",\"kind\":\"TIME_ONCE\",\"state\":\"PAUSED\"}"
             })
-    public static final class PauseMonitor implements MonitorTool<PauseMonitor.Args> {
+    public static final class PauseMonitor extends MonitorTool<PauseMonitor.Args> {
         private final MonitorOperations capability;
 
         /** Declaration-only instance; the host supplies the capability at execution time. */
@@ -253,27 +250,27 @@ public final class MonitorTools {
             description = "Resume a scheduled Monitor without stopping its observed work.",
             behavior =
                     "Time-based rules wake this Agent through its normal execution loop. Paused or"
-                        + " stopped Agents are not automatically resumed. Group outcomes are"
-                        + " observed automatically.",
+                            + " stopped Agents are not automatically resumed. Group outcomes are"
+                            + " observed automatically.",
             whenToUse =
                     "Use for explicitly requested follow-up or to manage an existing scheduled"
-                        + " wake-up.",
+                            + " wake-up.",
             whenNotToUse =
                     "Do not schedule repeated checks for Group results; those arrive automatically."
-                        + " Do not use to bypass a pause or task limit.",
+                            + " Do not use to bypass a pause or task limit.",
             resultContract =
                     "JSON containing the updated rule state. Failures: unknown id (failure,"
-                        + " UNKNOWN): `Monitor not found: <id detail>`; group-managed or missing"
-                        + " session (failure, GROUP_MANAGED or NO_SESSION_CONTEXT): `Monitor not"
-                        + " updated: <reason>`.",
+                            + " UNKNOWN): `Monitor not found: <id detail>`; group-managed or missing"
+                            + " session (failure, GROUP_MANAGED or NO_SESSION_CONTEXT): `Monitor not"
+                            + " updated: <reason>`.",
             errorsAndEdgeCases =
                     "Unknown or inaccessible monitor ids (failure, UNKNOWN): `Monitor not found: no"
-                        + " accessible monitor has id <id>.`; group observation monitors cannot be"
-                        + " controlled directly (failure, GROUP_MANAGED); a missing session context"
-                        + " (failure, NO_SESSION_CONTEXT). Offline wake-ups can be delayed.",
+                            + " accessible monitor has id <id>.`; group observation monitors cannot be"
+                            + " controlled directly (failure, GROUP_MANAGED); a missing session context"
+                            + " (failure, NO_SESSION_CONTEXT). Offline wake-ups can be delayed.",
             security =
                     "Owner, Session and Agent are taken from the execution permit. No arbitrary"
-                        + " resource access is granted.",
+                            + " resource access is granted.",
             examples = {
                 "{\"monitorId\":\"3f6c9f4e-7b1a-4c2d-9e5f-2a8b6d1c4e70\"}",
                 "{\"monitorId\":\"7a1e2c5b-3d6f-4e8a-9b0c-1d2e3f4a5b6c\"}",
@@ -284,7 +281,7 @@ public final class MonitorTools {
                 "{\"id\":\"7a1e2c5b-3d6f-4e8a-9b0c-1d2e3f4a5b6c\",\"kind\":\"TIME_ONCE\",\"state\":\"ACTIVE\"}",
                 "{\"id\":\"b8d2e4f6-1a3c-4b5d-9e7f-0a1b2c3d4e5f\",\"kind\":\"TIME_ONCE\",\"state\":\"ACTIVE\"}"
             })
-    public static final class ResumeMonitor implements MonitorTool<ResumeMonitor.Args> {
+    public static final class ResumeMonitor extends MonitorTool<ResumeMonitor.Args> {
         private final MonitorOperations capability;
 
         /** Declaration-only instance; the host supplies the capability at execution time. */
@@ -330,27 +327,27 @@ public final class MonitorTools {
             description = "Cancel a scheduled Monitor without stopping its observed work.",
             behavior =
                     "Time-based rules wake this Agent through its normal execution loop. Paused or"
-                        + " stopped Agents are not automatically resumed. Group outcomes are"
-                        + " observed automatically.",
+                            + " stopped Agents are not automatically resumed. Group outcomes are"
+                            + " observed automatically.",
             whenToUse =
                     "Use for explicitly requested follow-up or to manage an existing scheduled"
-                        + " wake-up.",
+                            + " wake-up.",
             whenNotToUse =
                     "Do not schedule repeated checks for Group results; those arrive automatically."
-                        + " Do not use to bypass a pause or task limit.",
+                            + " Do not use to bypass a pause or task limit.",
             resultContract =
                     "JSON containing the updated rule state. Failures: unknown id (failure,"
-                        + " UNKNOWN): `Monitor not found: <id detail>`; group-managed or missing"
-                        + " session (failure, GROUP_MANAGED or NO_SESSION_CONTEXT): `Monitor not"
-                        + " updated: <reason>`.",
+                            + " UNKNOWN): `Monitor not found: <id detail>`; group-managed or missing"
+                            + " session (failure, GROUP_MANAGED or NO_SESSION_CONTEXT): `Monitor not"
+                            + " updated: <reason>`.",
             errorsAndEdgeCases =
                     "Unknown or inaccessible monitor ids (failure, UNKNOWN): `Monitor not found: no"
-                        + " accessible monitor has id <id>.`; group observation monitors cannot be"
-                        + " controlled directly (failure, GROUP_MANAGED); a missing session context"
-                        + " (failure, NO_SESSION_CONTEXT). Offline wake-ups can be delayed.",
+                            + " accessible monitor has id <id>.`; group observation monitors cannot be"
+                            + " controlled directly (failure, GROUP_MANAGED); a missing session context"
+                            + " (failure, NO_SESSION_CONTEXT). Offline wake-ups can be delayed.",
             security =
                     "Owner, Session and Agent are taken from the execution permit. No arbitrary"
-                        + " resource access is granted.",
+                            + " resource access is granted.",
             examples = {
                 "{\"monitorId\":\"3f6c9f4e-7b1a-4c2d-9e5f-2a8b6d1c4e70\"}",
                 "{\"monitorId\":\"7a1e2c5b-3d6f-4e8a-9b0c-1d2e3f4a5b6c\"}",
@@ -361,7 +358,7 @@ public final class MonitorTools {
                 "{\"id\":\"7a1e2c5b-3d6f-4e8a-9b0c-1d2e3f4a5b6c\",\"kind\":\"TIME_ONCE\",\"state\":\"CANCELLED\"}",
                 "{\"id\":\"b8d2e4f6-1a3c-4b5d-9e7f-0a1b2c3d4e5f\",\"kind\":\"TIME_ONCE\",\"state\":\"CANCELLED\"}"
             })
-    public static final class CancelMonitor implements MonitorTool<CancelMonitor.Args> {
+    public static final class CancelMonitor extends MonitorTool<CancelMonitor.Args> {
         private final MonitorOperations capability;
 
         /** Declaration-only instance; the host supplies the capability at execution time. */
@@ -420,7 +417,7 @@ public final class MonitorTools {
             return ToolErrors.failure(
                     ToolErrorCode.VALIDATION.INVALID_ARGUMENTS,
                     "Monitor not created: at must be an ISO-8601 timestamp with an offset, such as"
-                        + " 2026-09-20T07:30:00+08:00.");
+                            + " 2026-09-20T07:30:00+08:00.");
         }
         if (purpose.isBlank())
             return ToolErrors.failure(
@@ -452,7 +449,7 @@ public final class MonitorTools {
             return ToolErrors.failure(
                     MonitorError.GROUP_MANAGED,
                     "Monitor not updated: group observation monitors follow the group lifecycle and"
-                        + " cannot be paused, resumed, or cancelled directly.");
+                            + " cannot be paused, resumed, or cancelled directly.");
         }
     }
 

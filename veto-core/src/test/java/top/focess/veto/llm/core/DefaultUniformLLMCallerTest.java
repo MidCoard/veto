@@ -4,9 +4,9 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
+import java.util.List;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
-
 import top.focess.veto.api.llm.LlmOptions;
 import top.focess.veto.api.llm.ProviderType;
 import top.focess.veto.api.llm.ResolvedRequest;
@@ -19,8 +19,6 @@ import top.focess.veto.api.llm.exceptions.ModelCapabilityException;
 import top.focess.veto.llm.egress.EgressEndpoint;
 import top.focess.veto.llm.egress.LlmEgress;
 import top.focess.veto.llm.provider.LLMProviderStrategy;
-
-import java.util.List;
 
 class DefaultUniformLLMCallerTest {
     @Test
@@ -76,8 +74,7 @@ class DefaultUniformLLMCallerTest {
         DefaultUniformLLMCaller caller =
                 new DefaultUniformLLMCaller(List.of(s1), egressReturning("secret"));
         assertThrows(
-                ModelCapabilityException.class,
-                () -> caller.call(request(ProviderType.ANTHROPIC)));
+                ModelCapabilityException.class, () -> caller.call(request(ProviderType.ANTHROPIC)));
     }
 
     @Test
@@ -102,9 +99,7 @@ class DefaultUniformLLMCallerTest {
                 .thenThrow(new ModelCapabilityException("permanent"));
         DefaultUniformLLMCaller caller =
                 new DefaultUniformLLMCaller(List.of(s), egressReturning("secret"));
-        assertThrows(
-                LlmException.class,
-                () -> caller.call(request(ProviderType.OPENAI)));
+        assertThrows(LlmException.class, () -> caller.call(request(ProviderType.OPENAI)));
         verify(s, times(1)).execute(any(ResolvedRequest.class));
     }
 }

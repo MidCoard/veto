@@ -6,13 +6,17 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.Map;
 import java.util.Set;
 import java.util.jar.JarEntry;
 import java.util.jar.JarOutputStream;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import top.focess.veto.api.plugin.PluginContext;
+import top.focess.veto.api.plugin.PluginState;
 import top.focess.veto.api.plugin.VetoPlugin;
+import top.focess.veto.api.plugin.contract.JsonValue;
 
 class InstalledPluginLoaderTest {
     @Test
@@ -29,9 +33,12 @@ class InstalledPluginLoaderTest {
         try {
             assertEquals("sample.install", plugin.identity().id());
             assertEquals("Installed Sample", plugin.displayName());
-            var delegate = plugin.getClass().getDeclaredMethod("delegate");
+            plugin.initialize(
+                    new PluginContext(plugin.identity(), () -> {}, () -> PluginState.NEW, Map.of()),
+                    new JsonValue.ObjectValue(Map.of()));
+            var delegate = plugin.getClass().getDeclaredField("delegate");
             delegate.setAccessible(true);
-            var implementation = delegate.invoke(plugin);
+            var implementation = delegate.get(plugin);
             if (implementation == null) throw new AssertionError("Missing plugin implementation");
             assertNotSame(InstalledSamplePlugin.class, implementation.getClass());
             ClassLoader candidate = implementation.getClass().getClassLoader();

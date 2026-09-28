@@ -1,6 +1,8 @@
 {
   "schemaVersion": 1,
   "id": "text",
+  "name": "Text tools",
+  "type": "script",
   "version": "0.1.0",
   "entryPoint": "worker.mjs",
   "tools": [{

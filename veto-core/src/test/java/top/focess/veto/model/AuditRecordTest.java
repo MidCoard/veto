@@ -2,10 +2,8 @@ package top.focess.veto.model;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-import org.junit.jupiter.api.Test;
-
-
 import java.util.EnumSet;
+import org.junit.jupiter.api.Test;
 
 class AuditRecordTest {
 
@@ -91,8 +89,7 @@ class AuditRecordTest {
 
     @Test
     void testDifferentActions() {
-        for (AuditRecord.AuditAction action :
-                EnumSet.allOf(AuditRecord.AuditAction.class)) {
+        for (AuditRecord.AuditAction action : EnumSet.allOf(AuditRecord.AuditAction.class)) {
             AuditRecord record =
                     new AuditRecord(
                             "d1", "r1", "observability", "a", "b", "diff", "", action, false);

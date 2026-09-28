@@ -1,7 +1,7 @@
 package top.focess.veto.api.http;
 
 import java.net.URI;
-import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.NonNull;
 
 /**
  * Bounded HTTP response returned from a screened destination.
@@ -13,6 +13,10 @@ import org.jspecify.annotations.NullMarked;
  * @param truncated whether content exceeded the host limit
  * @param maxChars host text-character limit
  */
-@NullMarked
 public record HttpDocument(
-        URI uri, int status, String contentType, String content, boolean truncated, int maxChars) {}
+        @NonNull URI uri,
+        int status,
+        @NonNull String contentType,
+        @NonNull String content,
+        boolean truncated,
+        int maxChars) {}

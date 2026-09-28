@@ -7,7 +7,18 @@ import static org.mockito.Mockito.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
-
+import java.net.URI;
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
@@ -15,7 +26,6 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.springframework.context.ApplicationContext;
 import org.springframework.test.util.ReflectionTestUtils;
-
 import top.focess.veto.agent.capability.DestinationTestGrants;
 import top.focess.veto.agent.capability.NetworkEgressCapabilityImpl;
 import top.focess.veto.agent.identity.SystemPromptResolver;
@@ -45,19 +55,6 @@ import top.focess.veto.memory.TurnRecordRepository;
 import top.focess.veto.model.tier.ModelBinding;
 import top.focess.veto.model.tier.ModelTier;
 import top.focess.veto.model.tier.ModelTierRegistry;
-
-import java.net.URI;
-import java.time.Duration;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.UUID;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicReference;
 
 class WebReadAgentIntegrationTest {
     @ParameterizedTest
@@ -127,11 +124,11 @@ class WebReadAgentIntegrationTest {
                                                                 : maxRounds == 3
                                                                         ? List.of(
                                                                                 "Other timeout"
-                                                                                    + " behavior is"
-                                                                                    + " not established"
-                                                                                    + " by the"
-                                                                                    + " inspected"
-                                                                                    + " evidence.")
+                                                                                        + " behavior is"
+                                                                                        + " not established"
+                                                                                        + " by the"
+                                                                                        + " inspected"
+                                                                                        + " evidence.")
                                                                         : List.of()));
                         default -> throw new AssertionError("Reader unexpectedly restarted");
                     };

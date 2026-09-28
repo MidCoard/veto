@@ -4,10 +4,10 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-
+import java.util.List;
+import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
-
 import top.focess.veto.agent.screening.*;
 import top.focess.veto.agent.tool.*;
 import top.focess.veto.api.agent.control.ControlHost;
@@ -20,9 +20,6 @@ import top.focess.veto.api.agent.tool.ToolExecutionException;
 import top.focess.veto.api.llm.ToolDefinition;
 import top.focess.veto.builtin.planning.ActionsProgramParser;
 import top.focess.veto.builtin.planning.PlanPreflight;
-
-import java.util.List;
-import java.util.Map;
 
 class GatewayPlanValidationTest {
     private static final @NonNull ObjectMapper MAPPER = new ObjectMapper();
@@ -76,17 +73,17 @@ class GatewayPlanValidationTest {
     }
 
     private void rejects(@NonNull String inputs, @NonNull String diagnostic) {
-        var error =
-                assertThrows(
-                        ToolExecutionException.class, () -> validate(inputs));
+        var error = assertThrows(ToolExecutionException.class, () -> validate(inputs));
         assertTrue(error.content().contains(diagnostic), error.content());
     }
 
     @Test
     void referenceDoesNotHideMissingRequiredSibling() {
-        rejects("""
+        rejects(
+                """
                 {"source":"$document"}
-                """, "enabled");
+                """,
+                "enabled");
     }
 
     @Test

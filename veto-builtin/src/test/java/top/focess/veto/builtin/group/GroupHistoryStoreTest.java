@@ -5,19 +5,16 @@ import static org.mockito.Mockito.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-
-import org.junit.jupiter.api.Test;
-
-import top.focess.veto.api.llm.ToolResultPresentationMode;
-import top.focess.veto.api.plugin.agent.AgentProfile;
-import top.focess.veto.api.plugin.contract.JsonValue;
-
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import org.junit.jupiter.api.Test;
+import top.focess.veto.api.llm.ToolResultPresentationMode;
+import top.focess.veto.api.plugin.agent.AgentProfile;
+import top.focess.veto.api.plugin.contract.JsonValue;
 
 class GroupHistoryStoreTest {
     @Test

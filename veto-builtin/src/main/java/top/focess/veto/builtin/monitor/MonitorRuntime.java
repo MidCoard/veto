@@ -1,64 +1,52 @@
 package top.focess.veto.builtin.monitor;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-
-import org.checkerframework.checker.nullness.qual.NonNull;
-import org.checkerframework.framework.qual.DefaultQualifier;
-import org.checkerframework.framework.qual.TypeUseLocation;
-import org.jspecify.annotations.Nullable;
-import org.slf4j.LoggerFactory;
-
-import top.focess.veto.api.plugin.PluginContext;
-import top.focess.veto.api.plugin.PluginHost;
-import top.focess.veto.api.plugin.contract.AgentInbox;
-import top.focess.veto.api.plugin.storage.PluginStorage;
-import top.focess.veto.builtin.group.GroupObservations;
-
 import java.io.IOException;
 import java.time.Instant;
 import java.util.List;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import org.jspecify.annotations.NonNull;
+import org.slf4j.LoggerFactory;
+import top.focess.veto.api.event.AgentTerminatedEvent;
+import top.focess.veto.api.event.EventHandler;
+import top.focess.veto.api.event.Listener;
+import top.focess.veto.api.event.SessionClosedEvent;
+import top.focess.veto.api.plugin.PluginContext;
+import top.focess.veto.api.plugin.PluginHost;
+import top.focess.veto.api.plugin.contract.AgentInbox;
+import top.focess.veto.api.plugin.storage.PluginStorage;
+import top.focess.veto.builtin.group.GroupObservations;
 
 /** All monitor resources are created, restored and released by the builtin plugin. */
-@DefaultQualifier(
-        value = NonNull.class,
-        locations = {
-            TypeUseLocation.FIELD,
-            TypeUseLocation.PARAMETER,
-            TypeUseLocation.RETURN,
-            TypeUseLocation.UPPER_BOUND
-        })
 public final class MonitorRuntime implements AutoCloseable {
-    private final @Nullable PluginHost host;
-    private final @Nullable StoredMonitorRepository repository;
-    private final MonitorService service;
-    private @Nullable ScheduledExecutorService scheduler;
+    private final PluginHost host;
+    private final StoredMonitorRepository repository;
+    private final @NonNull MonitorService service;
+    private final @NonNull Listener listener;
+    private ScheduledExecutorService scheduler;
 
     /** Creates the runtime, discovering the group observation source from the context. */
-    public MonitorRuntime(PluginContext context) {
-        this(
-                context,
-                context.service(GroupObservations.class).orElse(List::of));
+    public MonitorRuntime(@NonNull PluginContext context) {
+        this(context, context.service(GroupObservations.class).orElse(List::of));
     }
 
     /** Creates the runtime with an explicit group observation source. */
-    public MonitorRuntime(PluginContext context, GroupObservations groups) {
+    public MonitorRuntime(@NonNull PluginContext context, @NonNull GroupObservations groups) {
         host = context.service(PluginHost.class).orElse(null);
         repository =
-                context.service(PluginStorage.class)
-                        .map(StoredMonitorRepository::new)
-                        .orElse(null);
+                context.service(PluginStorage.class).map(StoredMonitorRepository::new).orElse(null);
         service =
                 new MonitorService(
                         repository == null
                                 ? new MonitorRepository() {
-                                    public List<MonitorEntity> findAll() {
+                                    public @NonNull List<@NonNull MonitorEntity> findAll() {
                                         return List.of();
                                     }
 
-                                    public MonitorEntity save(MonitorEntity value) {
+                                    public @NonNull MonitorEntity save(
+                                            @NonNull MonitorEntity value) {
                                         throw new IllegalStateException(
                                                 "Plugin storage unavailable");
                                     }
@@ -67,45 +55,63 @@ public final class MonitorRuntime implements AutoCloseable {
                         new ObjectMapper().findAndRegisterModules(),
                         groups,
                         host);
+        listener =
+                new Listener() {
+                    @EventHandler
+                    public void onSessionClosed(@NonNull SessionClosedEvent event) {
+                        service.onSessionClosed(event);
+                    }
+
+                    @EventHandler
+                    public void onAgentTerminated(@NonNull AgentTerminatedEvent event) {
+                        service.onAgentTerminated(event);
+                    }
+                };
     }
 
     private volatile boolean ready;
 
     /** Returns the monitor view of the host agent-work-source contract. */
-    public AgentInbox work() {
+    public @NonNull AgentInbox work() {
         return new AgentInbox() {
-            public List<Observation> pending(Scope scope) {
+            public @NonNull List<@NonNull Observation> pending(@NonNull Scope scope) {
                 return ready ? service.pending(scope) : List.of();
             }
 
-            public void started(Scope scope, Observation value) {
+            public void started(@NonNull Scope scope, @NonNull Observation value) {
                 service.started(scope, value);
             }
 
-            public void completed(Scope scope, Observation value, boolean success) {
+            public void completed(
+                    @NonNull Scope scope, @NonNull Observation value, boolean success) {
                 service.completed(scope, value, success);
             }
 
-            public void cancelled(Scope scope, Observation value) {
+            public void cancelled(@NonNull Scope scope, @NonNull Observation value) {
                 service.cancelled(scope, value);
             }
         };
     }
 
     /** Returns the underlying monitor service. */
-    public MonitorService service() {
+    public @NonNull MonitorService service() {
         return service;
     }
 
+    /** Event aspect for monitor lifecycle notifications. */
+    public @NonNull Listener listener() {
+        return listener;
+    }
+
     /** Returns scope-checked monitor operations for the monitor tools. */
-    public MonitorOperations operations() {
+    public @NonNull MonitorOperations operations() {
         return new MonitorOperations() {
-            private PluginHost.Invocation scope(String tool) {
+            private PluginHost.@NonNull Invocation scope(@NonNull String tool) {
                 if (host == null) throw new IllegalStateException("Plugin host unavailable");
                 return host.invocation(tool);
             }
 
-            public Object create(String purpose, Instant due) {
+            public @NonNull Object create(@NonNull String purpose, @NonNull Instant due) {
                 var scope = scope("create_monitor");
                 return service.createTimer(
                         scope.owner(),
@@ -116,14 +122,14 @@ public final class MonitorRuntime implements AutoCloseable {
                         scope.requestId());
             }
 
-            public Object inspect() {
+            public @NonNull Object inspect() {
                 var scope = scope("inspect_monitor");
                 return service.list(scope.owner(), scope.sessionId()).stream()
                         .filter(row -> row.agentId().equals(scope.agentId()))
                         .toList();
             }
 
-            public Object control(String id, String operation) {
+            public @NonNull Object control(@NonNull String id, @NonNull String operation) {
                 var scope = scope(operation + "_monitor");
                 return service.control(
                         scope.owner(), scope.sessionId(), scope.agentId(), id, operation);
@@ -138,7 +144,7 @@ public final class MonitorRuntime implements AutoCloseable {
     }
 
     /** Deserializes every persisted monitor record; empty when storage is unavailable. */
-    public List<MonitorRecord> storedRecords() {
+    public @NonNull List<@NonNull MonitorRecord> storedRecords() {
         var source = repository;
         if (source == null) return List.of();
         var mapper = new ObjectMapper().findAndRegisterModules();
@@ -146,8 +152,7 @@ public final class MonitorRuntime implements AutoCloseable {
                 .map(
                         row -> {
                             try {
-                                return mapper.readValue(
-                                        row.getPayload(), MonitorRecord.class);
+                                return mapper.readValue(row.getPayload(), MonitorRecord.class);
                             } catch (IOException error) {
                                 throw new IllegalStateException("Invalid stored monitor", error);
                             }
@@ -168,7 +173,7 @@ public final class MonitorRuntime implements AutoCloseable {
                     try {
                         service.tick();
                     } catch (RuntimeException failure) {
-                        LoggerFactory.getLogger(MonitorRuntime.class)
+                        LoggerFactory.getLogger("top.focess.veto.builtin.monitor.MonitorRuntime")
                                 .warn("Monitor tick failed; retrying", failure);
                     }
                 },

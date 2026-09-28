@@ -1,7 +1,8 @@
 package top.focess.veto.builtin.tools;
 
+import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import org.jspecify.annotations.NonNull;
-
 import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.tool.Doc;
 import top.focess.veto.api.agent.tool.ParamCategory;
@@ -18,9 +19,6 @@ import top.focess.veto.api.agent.tool.ToolResultFormat;
 import top.focess.veto.api.agent.tool.ToolSecurity;
 import top.focess.veto.api.plugin.PluginHost;
 import top.focess.veto.builtin.process.TaskControlCapability;
-
-import java.nio.charset.StandardCharsets;
-import java.util.Arrays;
 
 /** Queues standard-input bytes to a background task owned by the calling agent. */
 @ToolSecurity(
@@ -79,7 +77,7 @@ import java.util.Arrays;
             "{\"status\":\"queued\",\"taskId\":\"bg-3\",\"bytes\":0,\"newline\":false,\"closeQueued\":true}",
             "Task not running: bg-7"
         })
-public final class InputTaskTool implements PreparedTool<InputTaskTool.Args> {
+public final class InputTaskTool extends PreparedTool<InputTaskTool.Args> {
     private final TaskControlCapability capability;
 
     /** Declaration-only instance; the host supplies the capability at execution time. */

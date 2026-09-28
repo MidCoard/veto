@@ -2,6 +2,7 @@ package top.focess.veto.agent;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
+import java.util.UUID;
 import org.jspecify.annotations.*;
 import top.focess.veto.api.llm.LlmSystemUsage;
 import top.focess.veto.api.llm.VetoRequest;
@@ -51,7 +52,7 @@ public record UsageMeasurement(
     /** A copy tagged as compaction usage with a fresh call id. */
     public @NonNull UsageMeasurement forCompaction() {
         return new UsageMeasurement(
-                java.util.UUID.randomUUID().toString(),
+                UUID.randomUUID().toString(),
                 inputTokens,
                 outputTokens,
                 cacheReadInputTokens,

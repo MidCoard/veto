@@ -1,7 +1,9 @@
 package top.focess.veto.builtin.group;
 
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Set;
 import org.jspecify.annotations.NonNull;
-
 import top.focess.veto.api.agent.tool.Doc;
 import top.focess.veto.api.agent.tool.ParamCategory;
 import top.focess.veto.api.agent.tool.SecurityHint;
@@ -9,10 +11,6 @@ import top.focess.veto.api.agent.tool.ToolDoc;
 import top.focess.veto.api.agent.tool.ToolErrorCode;
 import top.focess.veto.api.agent.tool.ToolErrors;
 import top.focess.veto.api.agent.tool.ToolResultFormat;
-
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Set;
 
 /**
  * The Leader's node-authoring tools ({@code create_node} / {@code remove_node}). The Leader builds
@@ -104,7 +102,7 @@ public final class DagTools {
                 "Node created: node-4 (skillset: security-review). It is eligible for dispatch.",
                 "Node not created: node-1 already exists. Choose a unique id."
             })
-    public static final class CreateNode implements GroupControlTool<CreateNode.Args> {
+    public static final class CreateNode extends GroupControlTool<CreateNode.Args> {
 
         private final GroupControlCapability capability;
 
@@ -263,7 +261,7 @@ public final class DagTools {
                 "Node removed: node-4 (marked stale).",
                 "Node not removed: node not found: node-99"
             })
-    public static final class RemoveNode implements GroupControlTool<RemoveNode.Args> {
+    public static final class RemoveNode extends GroupControlTool<RemoveNode.Args> {
 
         private final GroupControlCapability capability;
 

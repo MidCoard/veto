@@ -1,7 +1,6 @@
 package top.focess.veto.api.agent.tool;
 
 import org.jspecify.annotations.NonNull;
-
 import top.focess.veto.api.agent.capability.NetworkEgressCapability;
 
 /**
@@ -9,12 +8,15 @@ import top.focess.veto.api.agent.capability.NetworkEgressCapability;
  *
  * @param <T> immutable argument value decoded by the host
  */
-public interface NetworkEgressTool<T>
-        extends NativeTool<T>, HostCapabilityTool<T, NetworkEgressCapability> {
+public abstract class NetworkEgressTool<T> extends NativeTool<T>
+        implements HostCapabilityTool<T, NetworkEgressCapability> {
+    /** Constructs a tool using call-scoped network access. */
+    protected NetworkEgressTool() {}
+
     /**
      * @return the network capability interface required by this tool
      */
-    default @NonNull Class<NetworkEgressCapability> capabilityType() {
+    public @NonNull Class<NetworkEgressCapability> capabilityType() {
         return NetworkEgressCapability.class;
     }
 
@@ -23,7 +25,7 @@ public interface NetworkEgressTool<T>
      *
      * @return the network capability bound to the current admitted call
      */
-    @NonNull NetworkEgressCapability networkEgressCapability();
+    public abstract @NonNull NetworkEgressCapability networkEgressCapability();
 
     /**
      * Executes with the supplied authorized network capability.
@@ -32,7 +34,8 @@ public interface NetworkEgressTool<T>
      * @param capability capability authorized for this invocation
      * @return model-visible result content
      */
-    @NonNull String execute(@NonNull T args, @NonNull NetworkEgressCapability capability);
+    public abstract @NonNull String execute(
+            @NonNull T args, @NonNull NetworkEgressCapability capability);
 
     /**
      * Executes using {@link #networkEgressCapability()}.
@@ -41,7 +44,7 @@ public interface NetworkEgressTool<T>
      * @return model-visible result content
      */
     @Override
-    default @NonNull String execute(@NonNull T args) {
+    public @NonNull String execute(@NonNull T args) {
         return execute(args, networkEgressCapability());
     }
 }

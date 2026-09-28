@@ -4,12 +4,21 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.mock;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.nio.file.Path;
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
-
 import top.focess.veto.api.agent.tool.ToolPreparation;
 import top.focess.veto.api.plugin.PluginContext;
 import top.focess.veto.api.plugin.PluginHost;
@@ -26,18 +35,6 @@ import top.focess.veto.builtin.tools.RunTaskTool;
 import top.focess.veto.builtin.tools.StopTaskTool;
 import top.focess.veto.builtin.tools.ViewTaskTool;
 
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.nio.file.Path;
-import java.time.Duration;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
-import java.util.concurrent.TimeUnit;
-
 /** API-only feature journey; host admission/containment is tested separately in core. */
 @Timeout(10)
 class ProcessToolsTest {
@@ -53,11 +50,7 @@ class ProcessToolsTest {
                                     throw new IllegalStateException(
                                             "Plugin context is not bound to a lifecycle owner");
                                 },
-                                Map.of(
-                                        PluginHost.class,
-                                        host,
-                                        ProcessHost.class,
-                                        host)),
+                                Map.of(PluginHost.class, host, ProcessHost.class, host)),
                         mock(TaskEvents.class));
         var run = new RunTaskTool(runtime.execution("run_task"));
         var view = new ViewTaskTool(runtime.control("view_task"));

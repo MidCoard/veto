@@ -32,7 +32,6 @@ class InstalledPluginIntegrationTest {
         configuration.setDisabled(Set.of("sample.disabled"));
         try (var manager =
                 new PluginManager(
-                        "",
                         root.toString(),
                         "",
                         false,
@@ -62,7 +61,6 @@ class InstalledPluginIntegrationTest {
         writePackage(Files.createDirectory(root.resolve("service-provider")));
         try (var manager =
                 new PluginManager(
-                        "",
                         root.toString(),
                         "",
                         false,
@@ -75,7 +73,6 @@ class InstalledPluginIntegrationTest {
                             .entries(StandardContributionPoints.SERVICES)
                             .getFirst()
                             .implementation()
-                            .handler()
                             .getClass()
                             .getClassLoader();
             if (!(firstLoader instanceof PluginClassLoader oldLoader))
@@ -93,7 +90,6 @@ class InstalledPluginIntegrationTest {
                             .entries(StandardContributionPoints.SERVICES)
                             .getFirst()
                             .implementation()
-                            .handler()
                             .getClass()
                             .getClassLoader();
             if (newLoader == null) throw new AssertionError("Replacement loader is unavailable");
@@ -113,7 +109,6 @@ class InstalledPluginIntegrationTest {
         writePackage(Files.createDirectory(root.resolve("service-provider")));
         try (var manager =
                         new PluginManager(
-                                "",
                                 root.toString(),
                                 "",
                                 false,
@@ -127,7 +122,6 @@ class InstalledPluginIntegrationTest {
                             .entries(StandardContributionPoints.SERVICES)
                             .getFirst()
                             .implementation()
-                            .handler()
                             .getClass()
                             .getClassLoader();
             if (!(loader instanceof PluginClassLoader pluginLoader))
@@ -200,15 +194,21 @@ class InstalledPluginIntegrationTest {
     }
 
     private void writeJar(@NonNull Path directory, @NonNull String resource) throws IOException {
-        String className = "top/focess/veto/integration/plugins/" + resource;
-        try (var stream = getClass().getResourceAsStream(resource);
-                var jar =
-                        new JarOutputStream(
-                                Files.newOutputStream(directory.resolve("plugin.jar")))) {
-            if (stream == null) throw new IOException("Sample provider class is unavailable");
-            jar.putNextEntry(new JarEntry(className));
-            stream.transferTo(jar);
-            jar.closeEntry();
+        try (var jar =
+                new JarOutputStream(Files.newOutputStream(directory.resolve("plugin.jar")))) {
+            for (String entry :
+                    java.util.List.of(resource, resource.replace(".class", "$1.class"))) {
+                try (var stream = getClass().getResourceAsStream(entry)) {
+                    if (stream == null) {
+                        if (entry.equals(resource))
+                            throw new IOException("Sample provider class is unavailable");
+                        continue;
+                    }
+                    jar.putNextEntry(new JarEntry("top/focess/veto/integration/plugins/" + entry));
+                    stream.transferTo(jar);
+                    jar.closeEntry();
+                }
+            }
         }
     }
 }

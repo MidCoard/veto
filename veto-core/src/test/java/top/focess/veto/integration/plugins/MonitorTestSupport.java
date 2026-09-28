@@ -6,9 +6,9 @@ import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockingDetails;
 
+import java.util.List;
 import org.jspecify.annotations.NonNull;
 import org.springframework.beans.factory.support.StaticListableBeanFactory;
-
 import top.focess.veto.agent.SessionAgentRegistry;
 import top.focess.veto.api.plugin.PluginHost;
 import top.focess.veto.api.plugin.contract.AgentInbox;
@@ -49,7 +49,24 @@ public final class MonitorTestSupport {
             doCallRealMethod().when(service).completed(any(), any(), anyBoolean());
             doCallRealMethod().when(service).cancelled(any(), any());
         }
-        return service;
+        return new AgentInbox() {
+            public @NonNull List<Observation> pending(@NonNull Scope scope) {
+                return service.pending(scope);
+            }
+
+            public void started(@NonNull Scope scope, @NonNull Observation observation) {
+                service.started(scope, observation);
+            }
+
+            public void completed(
+                    @NonNull Scope scope, @NonNull Observation observation, boolean success) {
+                service.completed(scope, observation, success);
+            }
+
+            public void cancelled(@NonNull Scope scope, @NonNull Observation observation) {
+                service.cancelled(scope, observation);
+            }
+        };
     }
 
     public static @NonNull PluginHost host(
@@ -66,14 +83,10 @@ public final class MonitorTestSupport {
                 Nullness.requireNonNull(
                         new PluginHostConfiguration()
                                 .runtimeHostServices(
-                                        factory.getBeanProvider(
-                                                SessionAgentRegistry.class),
-                                        factory.getBeanProvider(
-                                                SessionService.class),
-                                        factory.getBeanProvider(
-                                                KeysteadVault.class),
-                                        factory.getBeanProvider(
-                                                SessionInvalidations.class))
+                                        factory.getBeanProvider(SessionAgentRegistry.class),
+                                        factory.getBeanProvider(SessionService.class),
+                                        factory.getBeanProvider(KeysteadVault.class),
+                                        factory.getBeanProvider(SessionInvalidations.class))
                                 .services()
                                 .get(PluginHost.class));
     }

@@ -3,20 +3,17 @@ package top.focess.veto.agent.tool;
 import static org.junit.jupiter.api.Assertions.*;
 
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
-
-import org.jspecify.annotations.NonNull;
-import org.junit.jupiter.api.Test;
-
-import top.focess.veto.agent.tool.builtin.FixtureLoopTool;
-import top.focess.veto.api.agent.screening.Danger;
-import top.focess.veto.api.agent.tool.ToolCapability;
-import top.focess.veto.api.plugin.contract.JsonValue;
-import top.focess.veto.api.agent.tool.RemoteTool;
-import top.focess.veto.api.plugin.contract.ToolContribution;
-import top.focess.veto.util.Nullness;
-
 import java.util.Map;
 import java.util.Set;
+import org.jspecify.annotations.NonNull;
+import org.junit.jupiter.api.Test;
+import top.focess.veto.agent.tool.builtin.FixtureLoopTool;
+import top.focess.veto.api.agent.screening.Danger;
+import top.focess.veto.api.agent.tool.RemoteTool;
+import top.focess.veto.api.agent.tool.ToolCapability;
+import top.focess.veto.api.plugin.contract.JsonValue;
+import top.focess.veto.api.plugin.contract.ToolContribution;
+import top.focess.veto.util.Nullness;
 
 /** Effect-to-capability/danger mapping for plugin-contributed tool definitions. */
 class PluginScriptToolDefinitionTest {

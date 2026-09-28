@@ -2,6 +2,15 @@ package top.focess.veto.integration;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import java.io.IOException;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.List;
+import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
@@ -14,7 +23,6 @@ import org.springframework.http.*;
 import org.springframework.http.client.ClientHttpResponse;
 import org.springframework.web.client.DefaultResponseErrorHandler;
 import org.springframework.web.client.RestTemplate;
-
 import top.focess.veto.VetoApplication;
 import top.focess.veto.agent.tool.ToolEngine;
 import top.focess.veto.agent.tool.ToolEngineImpl;
@@ -28,16 +36,6 @@ import top.focess.veto.veto.LlamaCppBridge;
 import top.focess.veto.veto.SlmConfiguration;
 import top.focess.veto.veto.VetoGateway;
 import top.focess.veto.veto.VetoGatewayConfiguration;
-
-import java.io.IOException;
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.List;
-import java.util.Map;
 
 /**
  * Full Spring Boot integration tests for Project Veto. Verifies context loading, DI wiring, and the

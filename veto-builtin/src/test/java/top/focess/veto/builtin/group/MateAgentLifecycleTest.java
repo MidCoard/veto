@@ -3,13 +3,6 @@ package top.focess.veto.builtin.group;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
-import org.jspecify.annotations.NonNull;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.Timeout;
-
-import top.focess.veto.api.agent.AgentResult;
-import top.focess.veto.api.plugin.agent.AgentHost;
-
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
@@ -17,6 +10,11 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import org.jspecify.annotations.NonNull;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
+import top.focess.veto.api.agent.AgentResult;
+import top.focess.veto.api.plugin.agent.AgentHost;
 
 @Timeout(10)
 class MateAgentLifecycleTest {

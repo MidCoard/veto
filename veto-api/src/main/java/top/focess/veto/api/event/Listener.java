@@ -7,4 +7,7 @@ package top.focess.veto.api.event;
  * handlers and invokes each one under that plugin's lifecycle admission and only for sessions that
  * select the plugin. A listener never acquires authority by observing an event.
  */
-public interface Listener {}
+public abstract class Listener {
+    /** Constructs an event-listener aspect. */
+    protected Listener() {}
+}

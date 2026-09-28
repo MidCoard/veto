@@ -8,7 +8,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.NullMarked;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.api.event.SessionClosedEvent;
 import top.focess.veto.api.plugin.PluginContext;
@@ -20,21 +19,21 @@ import top.focess.veto.api.plugin.contract.PluginFailure;
 import top.focess.veto.api.plugin.storage.PluginStorage;
 
 /** Exercises the real feature with only the veto-api scoped storage contract, without veto-core. */
-@NullMarked
 class MonitorLifecycleTest {
-    private final PluginStorage storage = new MemoryPluginStorage();
-    private final AtomicInteger wakeups = new AtomicInteger();
-    private final PluginHost host =
+    private final @NonNull PluginStorage storage = new MemoryPluginStorage();
+    private final @NonNull AtomicInteger wakeups = new AtomicInteger();
+    private final @NonNull PluginHost host =
             new PluginHost() {
-                public @NonNull Invocation invocation(String tool) {
+                public @NonNull Invocation invocation(@NonNull String tool) {
                     return new Invocation("owner", "session", "agent", "request", "test-call");
                 }
 
-                public void wake(String owner, String session, String agent) {
+                public void wake(
+                        @NonNull String owner, @NonNull String session, @NonNull String agent) {
                     wakeups.incrementAndGet();
                 }
 
-                public void invalidate(String session, String resource) {}
+                public void invalidate(@NonNull String session, @NonNull String resource) {}
             };
 
     private @NonNull MonitorRuntime runtime() {
@@ -131,7 +130,7 @@ class MonitorLifecycleTest {
                                     new FrontendContribution.Scope("owner", "foreign", "agent"),
                                     "pause",
                                     args));
-            assertTrue(frontend.contribution().module().contains("registerInspector"));
+            assertTrue(frontend.module().contains("registerInspector"));
         }
     }
 

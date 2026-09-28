@@ -18,9 +18,6 @@ import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import top.focess.veto.api.search.SearchOptions;
-import top.focess.veto.api.search.SearchProvider;
-import top.focess.veto.api.search.SearchResult;
 
 /**
  * Keyless web search via DuckDuckGo's HTML endpoint — the default {@link SearchProvider} so {@code
@@ -64,8 +61,8 @@ public class DuckDuckGoSearchProvider implements SearchProvider, AutoCloseable {
     }
 
     @Override
-    public @NonNull List<SearchResult> search(@NonNull String query, @NonNull SearchOptions options)
-            throws Exception {
+    public @NonNull List<@NonNull SearchResult> search(
+            @NonNull String query, @NonNull SearchOptions options) throws Exception {
         if (query.isBlank() || query.strip().length() < 2) {
             throw new IllegalArgumentException("query must be at least 2 characters");
         }
@@ -78,14 +75,14 @@ public class DuckDuckGoSearchProvider implements SearchProvider, AutoCloseable {
                         .header("Accept", "text/html")
                         .GET()
                         .build();
-        HttpResponse<String> response =
-                httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+        HttpResponse<@NonNull String> response =
+                httpClient.<@NonNull String>send(request, HttpResponse.BodyHandlers.ofString());
         if (response.statusCode() != 200) {
             log.warn("DuckDuckGo search returned HTTP {}", response.statusCode());
             throw new IllegalStateException(
                     "DuckDuckGo search failed: HTTP " + response.statusCode());
         }
-        List<SearchResult> results = parse(response.body());
+        List<@NonNull SearchResult> results = parse(response.body());
         results = applyDomainFilters(results, options);
         int cap = options.maxResults() > 0 ? options.maxResults() : 10;
         return results.size() > cap ? results.subList(0, cap) : results;
@@ -97,8 +94,8 @@ public class DuckDuckGoSearchProvider implements SearchProvider, AutoCloseable {
     }
 
     /** Parses DuckDuckGo's HTML results page into {@link SearchResult}s. */
-    private @NonNull List<SearchResult> parse(@NonNull String html) {
-        List<SearchResult> out = new ArrayList<>();
+    private @NonNull List<@NonNull SearchResult> parse(@NonNull String html) {
+        List<@NonNull SearchResult> out = new ArrayList<>();
         Document doc = Jsoup.parse(html);
         for (Element result : doc.select("div.result, div.web-result")) {
             Element link = result.selectFirst("a.result__a");
@@ -139,15 +136,15 @@ public class DuckDuckGoSearchProvider implements SearchProvider, AutoCloseable {
     }
 
     /** Applies the allowed/blocked domain filters (host suffix match, www-insensitive). */
-    private @NonNull List<SearchResult> applyDomainFilters(
-            @NonNull List<SearchResult> results, @NonNull SearchOptions options) {
-        List<String> allowedDomains = options.allowedDomains();
-        List<String> blockedDomains = options.blockedDomains();
+    private @NonNull List<@NonNull SearchResult> applyDomainFilters(
+            @NonNull List<@NonNull SearchResult> results, @NonNull SearchOptions options) {
+        List<@NonNull String> allowedDomains = options.allowedDomains();
+        List<@NonNull String> blockedDomains = options.blockedDomains();
         if ((allowedDomains == null || allowedDomains.isEmpty())
                 && (blockedDomains == null || blockedDomains.isEmpty())) {
             return results;
         }
-        List<SearchResult> out = new ArrayList<>();
+        List<@NonNull SearchResult> out = new ArrayList<>();
         for (SearchResult r : results) {
             String host = hostOf(r.url());
             if (host == null) {
@@ -166,7 +163,8 @@ public class DuckDuckGoSearchProvider implements SearchProvider, AutoCloseable {
         return out;
     }
 
-    private static boolean matchesAny(@NonNull String host, @NonNull List<String> domains) {
+    private static boolean matchesAny(
+            @NonNull String host, @NonNull List<@NonNull String> domains) {
         for (String d : domains) {
             String domain = normalizeDomain(d);
             if (!domain.isEmpty() && (host.equals(domain) || host.endsWith("." + domain))) {

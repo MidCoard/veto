@@ -1,7 +1,13 @@
 package top.focess.veto.builtin.workspace;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.NoSuchFileException;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
+import java.util.regex.Pattern;
 import org.jspecify.annotations.NonNull;
-
 import top.focess.veto.api.agent.capability.WorkspaceFile;
 import top.focess.veto.api.agent.capability.WorkspaceReadCapability;
 import top.focess.veto.api.agent.screening.Danger;
@@ -16,14 +22,6 @@ import top.focess.veto.api.agent.tool.ToolJson;
 import top.focess.veto.api.agent.tool.ToolResultFormat;
 import top.focess.veto.api.agent.tool.ToolSecurity;
 import top.focess.veto.api.agent.tool.WorkspaceReadTool;
-
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.NoSuchFileException;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.List;
-import java.util.regex.Pattern;
 
 /** Finds regular files through a call-scoped workspace-read capability. */
 @ToolSecurity(capability = ToolCapability.WORKSPACE_READ, defaultDanger = Danger.SAFE)
@@ -74,7 +72,7 @@ import java.util.regex.Pattern;
             "{\"base\":\"/abs/project/src\",\"pattern\":\"**/test_?.py\",\"matches\":[],\"truncated\":false,\"truncationReason\":null,\"skippedEntries\":0}",
             "Not a directory: /abs/project/notes.txt"
         })
-public final class FindFilesTool implements WorkspaceReadTool<FindFilesTool.Args> {
+public final class FindFilesTool extends WorkspaceReadTool<FindFilesTool.Args> {
 
     /** Model-facing arguments of {@code find_files}. */
     public record Args(

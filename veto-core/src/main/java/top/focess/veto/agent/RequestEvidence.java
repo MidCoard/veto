@@ -1,5 +1,6 @@
 package top.focess.veto.agent;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.IdentityHashMap;
 import java.util.List;
@@ -105,23 +106,14 @@ final class RequestEvidence implements SourceEvidence {
         var bound =
                 MessageCitations.bind(
                         request, new VetoResponse(null, null, "", citations), history);
-        var issues =
-                bound.checks().stream()
-                        .flatMap(
-                                item ->
-                                        item.references().stream()
-                                                .filter(
-                                                        reference ->
-                                                                !reference
-                                                                        .status()
-                                                                        .equals("matched"))
-                                                .map(
-                                                        reference ->
-                                                                new Issue(
-                                                                        item.id(),
-                                                                        reference.messageIndex(),
-                                                                        reference.status())))
-                        .toList();
+        List<Issue> issues = new ArrayList<>();
+        for (var item : bound.checks()) {
+            for (var reference : item.references()) {
+                if (!reference.status().equals("matched")) {
+                    issues.add(new Issue(item.id(), reference.messageIndex(), reference.status()));
+                }
+            }
+        }
         return new Inspection(
                 citations,
                 new Issued(requestIdentity, modelCallId, null, boundary, request, citations, bound),

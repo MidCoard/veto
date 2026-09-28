@@ -1,14 +1,12 @@
 package top.focess.veto.api.plugin;
 
-import org.jspecify.annotations.NonNull;
-
-import top.focess.veto.api.plugin.contribution.PluginContributionsDirectory;
-import top.focess.veto.api.plugin.service.PluginServices;
-import top.focess.veto.api.plugin.storage.PluginStorage;
-
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.Supplier;
+import org.jspecify.annotations.NonNull;
+import top.focess.veto.api.plugin.contribution.PluginContributionsDirectory;
+import top.focess.veto.api.plugin.service.PluginServices;
+import top.focess.veto.api.plugin.storage.PluginStorage;
 
 /**
  * Host metadata, a live read-only lifecycle view, a failure signal, and host-granted services. Host

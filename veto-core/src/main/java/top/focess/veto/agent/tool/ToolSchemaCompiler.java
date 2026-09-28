@@ -4,15 +4,22 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-
+import java.lang.reflect.ParameterizedType;
+import java.lang.reflect.RecordComponent;
+import java.lang.reflect.Type;
+import java.util.Collection;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.regex.Pattern;
 import org.jspecify.annotations.NonNull;
-
 import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.tool.ArraySize;
 import top.focess.veto.api.agent.tool.CapabilityTool;
 import top.focess.veto.api.agent.tool.Doc;
 import top.focess.veto.api.agent.tool.NativeTool;
 import top.focess.veto.api.agent.tool.ParamCategory;
+import top.focess.veto.api.agent.tool.RemoteTool;
 import top.focess.veto.api.agent.tool.Required;
 import top.focess.veto.api.agent.tool.RequiredWhen;
 import top.focess.veto.api.agent.tool.SecurityHint;
@@ -22,16 +29,6 @@ import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.ToolInputSchema;
 import top.focess.veto.api.agent.tool.ToolResultFormat;
 import top.focess.veto.api.agent.tool.ToolSecurity;
-import top.focess.veto.api.agent.tool.RemoteTool;
-
-import java.lang.reflect.ParameterizedType;
-import java.lang.reflect.RecordComponent;
-import java.lang.reflect.Type;
-import java.util.Collection;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.regex.Pattern;
 
 /**
  * Compiles annotated Java parameter records into tool definitions and JSON Schema.
@@ -213,8 +210,7 @@ public final class ToolSchemaCompiler {
                 paramNode.put("maxItems", size.max());
             }
 
-            StringConstraint text =
-                    component.getAnnotation(StringConstraint.class);
+            StringConstraint text = component.getAnnotation(StringConstraint.class);
             if (text != null) {
                 if (type != String.class
                         || text.minLength() < 0
@@ -238,8 +234,7 @@ public final class ToolSchemaCompiler {
             boolean explicitlyNonNull =
                     component.isAnnotationPresent(NonNull.class)
                             || component.getAnnotatedType().isAnnotationPresent(NonNull.class);
-            boolean explicitlyRequired =
-                    component.isAnnotationPresent(Required.class);
+            boolean explicitlyRequired = component.isAnnotationPresent(Required.class);
             if (type.isPrimitive() && !explicitlyRequired) {
                 throw new IllegalArgumentException(
                         "Primitive tool parameter '"
@@ -267,8 +262,7 @@ public final class ToolSchemaCompiler {
 
     private static void validateConditionalRequirement(
             @NonNull Class<?> recordClass, @NonNull RecordComponent component) {
-        RequiredWhen requiredWhen =
-                component.getAnnotation(RequiredWhen.class);
+        RequiredWhen requiredWhen = component.getAnnotation(RequiredWhen.class);
         if (requiredWhen == null) {
             return;
         }

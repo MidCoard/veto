@@ -1,14 +1,5 @@
 package top.focess.veto.builtin.process;
 
-import org.jspecify.annotations.NonNull;
-import org.slf4j.LoggerFactory;
-
-import top.focess.veto.api.plugin.PluginHost;
-import top.focess.veto.api.plugin.contract.JsonValue;
-import top.focess.veto.builtin.process.BackgroundTasks.Change;
-import top.focess.veto.builtin.process.BackgroundTasks.ExitCause;
-import top.focess.veto.builtin.process.BackgroundTasks.Scope;
-
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -20,6 +11,13 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import org.jspecify.annotations.NonNull;
+import org.slf4j.LoggerFactory;
+import top.focess.veto.api.plugin.PluginHost;
+import top.focess.veto.api.plugin.contract.JsonValue;
+import top.focess.veto.builtin.process.BackgroundTasks.Change;
+import top.focess.veto.builtin.process.BackgroundTasks.ExitCause;
+import top.focess.veto.builtin.process.BackgroundTasks.Scope;
 
 /** Builtin owns process-to-monitor interpretation, retries and frontend invalidation. */
 public final class TaskEvents implements BackgroundTasks.Listener, AutoCloseable {

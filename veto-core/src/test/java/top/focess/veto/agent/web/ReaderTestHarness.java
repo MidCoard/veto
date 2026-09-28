@@ -3,9 +3,7 @@ package top.focess.veto.agent.web;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
 import java.util.Map;
-import org.checkerframework.checker.nullness.qual.NonNull;
-import org.checkerframework.framework.qual.DefaultQualifier;
-import org.checkerframework.framework.qual.TypeUseLocation;
+import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.SessionAgentRegistry;
 import top.focess.veto.agent.intercept.IngressDefense;
 import top.focess.veto.agent.translation.CapabilityTranslator;
@@ -21,29 +19,21 @@ import top.focess.veto.memory.TurnLogService;
 import top.focess.veto.model.tier.ModelTierRegistry;
 
 /** Composes the actual builtin coordinator and generic host without Spring bootstrap. */
-@DefaultQualifier(
-        value = NonNull.class,
-        locations = {
-            TypeUseLocation.FIELD,
-            TypeUseLocation.PARAMETER,
-            TypeUseLocation.RETURN,
-            TypeUseLocation.UPPER_BOUND
-        })
 public final class ReaderTestHarness {
     private ReaderTestHarness() {}
 
-    public static WebReader create(
-            ObjectMapper mapper,
-            UniformLLMCaller caller,
-            ModelTierRegistry models,
-            CapabilityTranslator translator,
-            SessionAgentRegistry registry,
-            TurnLogService history,
+    public static @NonNull WebReader create(
+            @NonNull ObjectMapper mapper,
+            @NonNull UniformLLMCaller caller,
+            @NonNull ModelTierRegistry models,
+            @NonNull CapabilityTranslator translator,
+            @NonNull SessionAgentRegistry registry,
+            @NonNull TurnLogService history,
             int calls,
             int seconds,
             int input,
             int output,
-            Runnable beforeOpen) {
+            @NonNull Runnable beforeOpen) {
         var executions =
                 new IsolatedExecutions(
                         mapper,
@@ -59,12 +49,13 @@ public final class ReaderTestHarness {
                         65536);
         AgentHost host =
                 new AgentHost() {
-                    public Session session(PluginStorage.SessionScope scope) {
+                    public @NonNull Session session(PluginStorage.@NonNull SessionScope scope) {
                         throw new UnsupportedOperationException();
                     }
 
-                    public IsolatedAgent isolate(
-                            IsolatedAgent.Spec spec, IsolatedAgent.Factory factory) {
+                    public @NonNull IsolatedAgent isolate(
+                            IsolatedAgent.@NonNull Spec spec,
+                            IsolatedAgent.@NonNull Factory factory) {
                         beforeOpen.run();
                         return executions.open(spec, factory, () -> true);
                     }

@@ -9,7 +9,11 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-
+import java.net.URI;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentMatchers;
@@ -20,17 +24,10 @@ import org.springframework.http.server.ServerHttpResponse;
 import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketHandler;
 import org.springframework.web.socket.WebSocketSession;
-
 import top.focess.veto.model.SessionEntity;
 import top.focess.veto.model.SessionRepository;
 import top.focess.veto.vault.SessionManager;
 import top.focess.veto.veto.VetoGateway;
-
-import java.net.URI;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Optional;
-import java.util.UUID;
 
 class VetoWebSocketSecurityTest {
 
@@ -45,10 +42,7 @@ class VetoWebSocketSecurityTest {
 
         assertTrue(
                 interceptor.beforeHandshake(
-                        validRequest,
-                        validResponse,
-                        mock(WebSocketHandler.class),
-                        attributes));
+                        validRequest, validResponse, mock(WebSocketHandler.class), attributes));
         assertTrue(
                 "alice"
                         .equals(
@@ -70,8 +64,7 @@ class VetoWebSocketSecurityTest {
     void deltaFramesReachOnlyConnectionsOwnedByTheSessionUser() throws Exception {
         SessionRepository sessions = mock(SessionRepository.class);
         VetoWebSocketHandler handler =
-                new VetoWebSocketHandler(
-                        new ObjectMapper(), mock(VetoGateway.class), sessions);
+                new VetoWebSocketHandler(new ObjectMapper(), mock(VetoGateway.class), sessions);
         @NonNull WebSocketSession alice = socket("alice-socket", "alice");
         @NonNull WebSocketSession bob = socket("bob-socket", "bob");
         handler.afterConnectionEstablished(alice);

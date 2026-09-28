@@ -6,7 +6,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
-
 import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.tool.Doc;
 import top.focess.veto.api.agent.tool.NativeTool;
@@ -23,14 +22,14 @@ import top.focess.veto.builtin.tools.StopTaskTool;
 
 class ToolContractValidatorTest {
     @Test
-    void acceptsTypedUserInteractionNativeTool() {
-        @NonNull QuestionRuntime runtime =
-                org.mockito.Mockito.mock(QuestionRuntime.class);
+    void acceptsTypedUserInteractionAgentTool() {
+        @NonNull QuestionRuntime runtime = org.mockito.Mockito.mock(QuestionRuntime.class);
         var tool = new AskUserTool(runtime);
         assertDoesNotThrow(
                 () ->
                         ToolContractValidator.validateHandler(
-                                tool, ToolSchemaCompiler.compileNative(tool)));
+                                tool,
+                                ToolRegistration.local(tool, tool.getName(), null).definition()));
     }
 
     @Test
@@ -80,7 +79,7 @@ class ToolContractValidatorTest {
             },
             returnExamples = {"ok", "ok", "ok"})
     private static final class InvalidProcessInputTool
-            implements NativeTool<InvalidProcessInputTool.Args> {
+            extends NativeTool<InvalidProcessInputTool.Args> {
         private record Args(
                 @NonNull @SecurityHint(ParamCategory.PROCESS_INPUT) @Doc("Process input.")
                         String input,

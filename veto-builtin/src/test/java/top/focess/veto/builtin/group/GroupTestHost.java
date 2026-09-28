@@ -2,8 +2,10 @@ package top.focess.veto.builtin.group;
 
 import static org.mockito.Mockito.*;
 
+import java.time.Duration;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import org.jspecify.annotations.NonNull;
-
 import top.focess.veto.api.agent.AgentState;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.llm.PromptRenderer;
@@ -13,10 +15,6 @@ import top.focess.veto.api.plugin.agent.AgentHost;
 import top.focess.veto.api.plugin.agent.AgentProfile;
 import top.focess.veto.api.plugin.contract.AgentConfiguration;
 import top.focess.veto.api.plugin.storage.PluginStorage;
-
-import java.time.Duration;
-import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
 
 /** The plugin uses only API host handles, with no core agent or persistence classes. */
 final class GroupTestHost implements AutoCloseable {
@@ -99,11 +97,9 @@ final class GroupTestHost implements AutoCloseable {
                 .thenAnswer(call -> child(required(call.getArgument(0))));
         var context = mock(PluginContext.class);
         when(context.service(PluginHost.class)).thenReturn(Optional.of(host));
-        when(context.service(PluginStorage.class))
-                .thenReturn(Optional.of(storage));
+        when(context.service(PluginStorage.class)).thenReturn(Optional.of(storage));
         PromptRenderer prompts = (name, data) -> name + " " + data;
-        when(context.service(PromptRenderer.class))
-                .thenReturn(Optional.of(prompts));
+        when(context.service(PromptRenderer.class)).thenReturn(Optional.of(prompts));
         runtime = new GroupRuntime(context);
         var tools =
                 Set.of(

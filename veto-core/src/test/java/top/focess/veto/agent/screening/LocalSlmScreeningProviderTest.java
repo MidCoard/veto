@@ -3,9 +3,11 @@ package top.focess.veto.agent.screening;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.mock;
 
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
-
 import top.focess.veto.agent.tool.NativeToolDefinition;
 import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.tool.ParamCategory;
@@ -14,10 +16,6 @@ import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.veto.GBNFGrammarEngine;
 import top.focess.veto.veto.LlamaCppBridge;
 import top.focess.veto.veto.SlmConfiguration;
-
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.CompletableFuture;
 
 /** Tests for the local-SLM-backed relevance-and-danger provider. */
 class LocalSlmScreeningProviderTest {
@@ -29,9 +27,7 @@ class LocalSlmScreeningProviderTest {
         private @NonNull String lastPrompt = "";
 
         FakeBridge(boolean available, @NonNull String cannedResponse) {
-            super(
-                    mock(SlmConfiguration.class),
-                    mock(GBNFGrammarEngine.class));
+            super(mock(SlmConfiguration.class), mock(GBNFGrammarEngine.class));
             this.available = available;
             this.cannedResponse = cannedResponse;
         }
@@ -171,7 +167,7 @@ class LocalSlmScreeningProviderTest {
                         new FakeBridge(
                                 true,
                                 "{\"relevance\":\"MEDIUM\",\"danger\":\"ELEVATED\",\"reason\":\"weak"
-                                    + " justification\"}"));
+                                        + " justification\"}"));
         NativeToolDefinition def =
                 new NativeToolDefinition(
                         "write_to_file",
@@ -195,7 +191,7 @@ class LocalSlmScreeningProviderTest {
                         new FakeBridge(
                                 true,
                                 "{\"relevance\":\"LOW\",\"danger\":\"DANGEROUS\",\"reason\":\"unrelated"
-                                    + " scan\"}"));
+                                        + " scan\"}"));
         NativeToolDefinition def =
                 new NativeToolDefinition(
                         "run_command",

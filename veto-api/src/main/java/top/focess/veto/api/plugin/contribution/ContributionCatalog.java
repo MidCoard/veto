@@ -35,18 +35,15 @@ public final class ContributionCatalog {
      * @return immutable ordered entries, possibly empty
      * @throws IllegalArgumentException if the point was not defined with the same contract
      */
-    public <T> @NonNull List<ContributionEntry<T>> entries(
-            @NonNull ContributionPoint<T> point) {
+    public <T> @NonNull List<ContributionEntry<T>> entries(@NonNull ContributionPoint<T> point) {
         Definition<?> definition = definitions.get(point.id());
         if (definition == null || !definition.point().equals(point)) throw invalid();
         List<ContributionEntry<T>> result = new ArrayList<>();
         for (Staged entry : entries) {
             if (entry.contribution().point().equals(point)) {
-                result.add(
-                        new ContributionEntry<>(
-                                entry.id(),
-                                entry.source(),
-                                point.contract().cast(entry.contribution().implementation())));
+                T implementation = point.contract().cast(entry.contribution().implementation());
+                if (implementation == null) throw invalid();
+                result.add(new ContributionEntry<T>(entry.id(), entry.source(), implementation));
             }
         }
         return List.copyOf(result);
@@ -56,7 +53,9 @@ public final class ContributionCatalog {
             @NonNull ContributionPoint<T> point, @NonNull Consumer<T> validator) {
         void validate(@NonNull Contribution<?> contribution) {
             if (!point.equals(contribution.point())) throw invalid();
-            validator.accept(point.contract().cast(contribution.implementation()));
+            T implementation = point.contract().cast(contribution.implementation());
+            if (implementation == null) throw invalid();
+            validator.accept(implementation);
         }
     }
 
@@ -135,7 +134,7 @@ public final class ContributionCatalog {
          */
         public @NonNull Builder stage(
                 @NonNull ContributionSource source,
-                @NonNull List<? extends Contribution<?>> contributions) {
+                @NonNull List<? extends @NonNull Contribution<?>> contributions) {
             mutable();
             if (sources.contains(source.namespace()) || staged.size() + contributions.size() > 4096)
                 throw invalid();

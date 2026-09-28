@@ -4,13 +4,21 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.*;
+import java.time.Duration;
+import java.util.*;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.regex.Pattern;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.test.util.ReflectionTestUtils;
-
 import top.focess.veto.agent.capability.*;
 import top.focess.veto.agent.identity.*;
 import top.focess.veto.agent.intercept.*;
@@ -40,17 +48,6 @@ import top.focess.veto.model.SessionRepository;
 import top.focess.veto.sandbox.*;
 import top.focess.veto.vault.*;
 
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.*;
-import java.time.Duration;
-import java.util.*;
-import java.util.Map;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.regex.Pattern;
-
 class CredentialJourneyTest {
     private static final @NonNull String IMPORT_TOOL =
             "plugin_top_focess_secret_protection__import_detected_credential";
@@ -72,10 +69,15 @@ class CredentialJourneyTest {
         var vault = new KeysteadVault(configuration);
         vault.signup("owner", "test-password");
         var pluginConfiguration = new PluginConfigurations();
-        pluginConfiguration.setToolNames(Map.of("top.focess.builtin:view_file", "view_file"));
+        pluginConfiguration.setToolNames(
+                Map.of(
+                        "top.focess.builtin:view_file", "view_file",
+                        "top.focess.builtin:read_github_repository",
+                                "builtin_read_github_repository",
+                        "top.focess.builtin:submit_plan", "builtin_submit_plan"));
         var plugins =
                 new PluginManager(
-                        "",
+                        PluginTestSupport.pluginPackages(),
                         "",
                         false,
                         5000,
@@ -117,8 +119,7 @@ class CredentialJourneyTest {
                         credentialSessions,
                         PluginTestSupport.providerOf(plugins),
                         PluginTestSupport.providerOf(sessionPlugins)));
-        var toolContext =
-                mock(org.springframework.context.ApplicationContext.class);
+        var toolContext = mock(org.springframework.context.ApplicationContext.class);
         when(toolContext.getBeansOfType(top.focess.veto.api.agent.tool.AgentTool.class))
                 .thenReturn(
                         Map.of(

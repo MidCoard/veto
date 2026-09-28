@@ -1,7 +1,12 @@
 package top.focess.veto.builtin.group;
 
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Base64;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import org.jspecify.annotations.NonNull;
-
 import top.focess.veto.api.agent.tool.Doc;
 import top.focess.veto.api.agent.tool.ParamCategory;
 import top.focess.veto.api.agent.tool.SecurityHint;
@@ -10,13 +15,6 @@ import top.focess.veto.api.agent.tool.ToolErrorCode;
 import top.focess.veto.api.agent.tool.ToolErrors;
 import top.focess.veto.api.agent.tool.ToolPrompt;
 import top.focess.veto.api.agent.tool.ToolResultFormat;
-
-import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.Base64;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
 
 /**
  * Agent-facing group management tools. The caller of {@code create_group} <em>transforms</em> into
@@ -76,7 +74,7 @@ public final class GroupTools {
                 "Group not created: blank brief. Pass a real description of the work."
             })
     @ToolPrompt("delegation-system-prompt")
-    public static final class CreateGroup implements DelegationTool<CreateGroup.Args> {
+    public static final class CreateGroup extends DelegationTool<CreateGroup.Args> {
 
         private final DelegationCapability capability;
 
@@ -169,7 +167,7 @@ public final class GroupTools {
                     """,
             examples = {"{}"},
             returnExamples = {""})
-    public static final class DisbandGroup implements GroupControlTool<DisbandGroup.Args> {
+    public static final class DisbandGroup extends GroupControlTool<DisbandGroup.Args> {
 
         private final GroupControlCapability capability;
 
@@ -272,66 +270,66 @@ public final class GroupTools {
             },
             returnExamples = {
                 "Group state: ACTIVE\n"
-                    + "A completed task means the assigned mate returned a report; it does not"
-                    + " imply independent verification.\n"
-                    + "Mates:\n"
-                    + "- 3f8a2c10-9b2e-4c1d-8e5f-2a6b7c8d9e0f: review backend session isolation\n"
-                    + "Tasks:\n"
-                    + "- node-1 [RUNNING] mate=3f8a2c10-9b2e-4c1d-8e5f-2a6b7c8d9e0f skillset=coding"
-                    + " dependsOn=[]\n"
-                    + "Implement JWT login in UserService\n"
-                    + "Messages are historical observations; task state above is authoritative.\n"
-                    + "New mate messages:\n"
-                    + "- seq=2 sender=3f8a2c10-9b2e-4c1d-8e5f-2a6b7c8d9e0f type=FEEDBACK\n"
-                    + "dispatch=(uncorrelated) currentDispatch=false\n"
-                    + "payload=node-1:feedback:started review\n"
-                    + "nextSinceSeq: 3",
+                        + "A completed task means the assigned mate returned a report; it does not"
+                        + " imply independent verification.\n"
+                        + "Mates:\n"
+                        + "- 3f8a2c10-9b2e-4c1d-8e5f-2a6b7c8d9e0f: review backend session isolation\n"
+                        + "Tasks:\n"
+                        + "- node-1 [RUNNING] mate=3f8a2c10-9b2e-4c1d-8e5f-2a6b7c8d9e0f skillset=coding"
+                        + " dependsOn=[]\n"
+                        + "Implement JWT login in UserService\n"
+                        + "Messages are historical observations; task state above is authoritative.\n"
+                        + "New mate messages:\n"
+                        + "- seq=2 sender=3f8a2c10-9b2e-4c1d-8e5f-2a6b7c8d9e0f type=FEEDBACK\n"
+                        + "dispatch=(uncorrelated) currentDispatch=false\n"
+                        + "payload=node-1:feedback:started review\n"
+                        + "nextSinceSeq: 3",
                 "Group state: ACTIVE\n"
-                    + "A completed task means the assigned mate returned a report; it does not"
-                    + " imply independent verification.\n"
-                    + "Mates:\n"
-                    + "- 3f8a2c10-9b2e-4c1d-8e5f-2a6b7c8d9e0f: review backend session isolation\n"
-                    + "Tasks:\n"
-                    + "- node-1 [RUNNING] mate=3f8a2c10-9b2e-4c1d-8e5f-2a6b7c8d9e0f skillset=coding"
-                    + " dependsOn=[]\n"
-                    + "Implement JWT login in UserService\n"
-                    + "Messages are historical observations; task state above is authoritative.\n"
-                    + "New mate messages:\n"
-                    + "- (none)\n"
-                    + "nextSinceSeq: 4",
+                        + "A completed task means the assigned mate returned a report; it does not"
+                        + " imply independent verification.\n"
+                        + "Mates:\n"
+                        + "- 3f8a2c10-9b2e-4c1d-8e5f-2a6b7c8d9e0f: review backend session isolation\n"
+                        + "Tasks:\n"
+                        + "- node-1 [RUNNING] mate=3f8a2c10-9b2e-4c1d-8e5f-2a6b7c8d9e0f skillset=coding"
+                        + " dependsOn=[]\n"
+                        + "Implement JWT login in UserService\n"
+                        + "Messages are historical observations; task state above is authoritative.\n"
+                        + "New mate messages:\n"
+                        + "- (none)\n"
+                        + "nextSinceSeq: 4",
                 "Group state: ACTIVE\n"
-                    + "A completed task means the assigned mate returned a report; it does not"
-                    + " imply independent verification.\n"
-                    + "Mates:\n"
-                    + "- 3f8a2c10-9b2e-4c1d-8e5f-2a6b7c8d9e0f: review backend session isolation\n"
-                    + "Tasks:\n"
-                    + "- node-1 [COMPLETED] mate=3f8a2c10-9b2e-4c1d-8e5f-2a6b7c8d9e0f"
-                    + " skillset=coding dependsOn=[]\n"
-                    + "Implement JWT login in UserService\n"
-                    + "Messages are historical observations; task state above is authoritative.\n"
-                    + "New mate messages:\n"
-                    + "- seq=6 sender=3f8a2c10-9b2e-4c1d-8e5f-2a6b7c8d9e0f type=ACCEPT\n"
-                    + "dispatch=node-1-dispatch-3 currentDispatch=true\n"
-                    + "payload=node-1: login implemented; session isolation verified\n"
-                    + "nextSinceSeq: 6",
+                        + "A completed task means the assigned mate returned a report; it does not"
+                        + " imply independent verification.\n"
+                        + "Mates:\n"
+                        + "- 3f8a2c10-9b2e-4c1d-8e5f-2a6b7c8d9e0f: review backend session isolation\n"
+                        + "Tasks:\n"
+                        + "- node-1 [COMPLETED] mate=3f8a2c10-9b2e-4c1d-8e5f-2a6b7c8d9e0f"
+                        + " skillset=coding dependsOn=[]\n"
+                        + "Implement JWT login in UserService\n"
+                        + "Messages are historical observations; task state above is authoritative.\n"
+                        + "New mate messages:\n"
+                        + "- seq=6 sender=3f8a2c10-9b2e-4c1d-8e5f-2a6b7c8d9e0f type=ACCEPT\n"
+                        + "dispatch=node-1-dispatch-3 currentDispatch=true\n"
+                        + "payload=node-1: login implemented; session isolation verified\n"
+                        + "nextSinceSeq: 6",
                 "Group state: ACTIVE\n"
-                    + "A completed task means the assigned mate returned a report; it does not"
-                    + " imply independent verification.\n"
-                    + "Mates:\n"
-                    + "- 3f8a2c10-9b2e-4c1d-8e5f-2a6b7c8d9e0f: review backend session isolation\n"
-                    + "Tasks:\n"
-                    + "- node-1 [RUNNING] mate=3f8a2c10-9b2e-4c1d-8e5f-2a6b7c8d9e0f skillset=coding"
-                    + " dependsOn=[]\n"
-                    + "Implement JWT login in UserService\n"
-                    + "Messages are historical observations; task state above is authoritative.\n"
-                    + "New mate messages:\n"
-                    + "- seq=5 sender=3f8a2c10-9b2e-4c1d-8e5f-2a6b7c8d9e0f type=FEEDBACK\n"
-                    + "dispatch=(uncorrelated) currentDispatch=false\n"
-                    + "payload=node-1:feedback:test failed\n"
-                    + "nextSinceSeq: 5",
+                        + "A completed task means the assigned mate returned a report; it does not"
+                        + " imply independent verification.\n"
+                        + "Mates:\n"
+                        + "- 3f8a2c10-9b2e-4c1d-8e5f-2a6b7c8d9e0f: review backend session isolation\n"
+                        + "Tasks:\n"
+                        + "- node-1 [RUNNING] mate=3f8a2c10-9b2e-4c1d-8e5f-2a6b7c8d9e0f skillset=coding"
+                        + " dependsOn=[]\n"
+                        + "Implement JWT login in UserService\n"
+                        + "Messages are historical observations; task state above is authoritative.\n"
+                        + "New mate messages:\n"
+                        + "- seq=5 sender=3f8a2c10-9b2e-4c1d-8e5f-2a6b7c8d9e0f type=FEEDBACK\n"
+                        + "dispatch=(uncorrelated) currentDispatch=false\n"
+                        + "payload=node-1:feedback:test failed\n"
+                        + "nextSinceSeq: 5",
                 "Group not inspected: sinceSeq must be non-negative."
             })
-    public static final class InspectGroup implements GroupControlTool<InspectGroup.Args> {
+    public static final class InspectGroup extends GroupControlTool<InspectGroup.Args> {
 
         private final GroupControlCapability capability;
 
@@ -441,7 +439,7 @@ public final class GroupTools {
                 "{\"type\":\"FEEDBACK\",\"receiver\":\"LEADER\",\"payload\":\"The retry fix"
                         + " addressed the race; re-run the soak test before closing.\"}",
                 "{\"type\":\"STATUS\",\"receiver\":\"3f8a2c10-9b2e-4c1d-8e5f-2a6b7c8d9e0f\",\"payload\":\"Direct"
-                    + " the billing review at the retry logic.\"}"
+                        + " the billing review at the retry logic.\"}"
             },
             returnExamples = {
                 "posted",
@@ -451,7 +449,7 @@ public final class GroupTools {
                 "Not posted: use create_task with mateId for tracked Mate work. post_message only"
                         + " records Leader notes."
             })
-    public static final class PostMessage implements GroupControlTool<PostMessage.Args> {
+    public static final class PostMessage extends GroupControlTool<PostMessage.Args> {
 
         private final GroupControlCapability capability;
 

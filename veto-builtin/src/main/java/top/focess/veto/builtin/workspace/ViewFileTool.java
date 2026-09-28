@@ -1,7 +1,13 @@
 package top.focess.veto.builtin.workspace;
 
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.StringReader;
+import java.nio.ByteBuffer;
+import java.nio.charset.MalformedInputException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.NoSuchFileException;
 import org.jspecify.annotations.NonNull;
-
 import top.focess.veto.api.agent.capability.WorkspaceFile;
 import top.focess.veto.api.agent.capability.WorkspaceReadCapability;
 import top.focess.veto.api.agent.screening.Danger;
@@ -15,14 +21,6 @@ import top.focess.veto.api.agent.tool.ToolErrors;
 import top.focess.veto.api.agent.tool.ToolResultFormat;
 import top.focess.veto.api.agent.tool.ToolSecurity;
 import top.focess.veto.api.agent.tool.WorkspaceReadTool;
-
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.StringReader;
-import java.nio.ByteBuffer;
-import java.nio.charset.MalformedInputException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.NoSuchFileException;
 
 /** {@code view_file} — read lines of a text file from the local filesystem. */
 @ToolSecurity(capability = ToolCapability.WORKSPACE_READ, defaultDanger = Danger.SAFE)
@@ -89,7 +87,7 @@ import java.nio.file.NoSuchFileException;
             "1: server:\n2:   port: 8443\n3:   host: 0.0.0.0",
             "Not a regular file: /abs/project/missing-file.txt"
         })
-public final class ViewFileTool implements WorkspaceReadTool<ViewFileTool.Args> {
+public final class ViewFileTool extends WorkspaceReadTool<ViewFileTool.Args> {
     private final WorkspaceReadCapability protectedFiles;
 
     /** Creates an instance bound to the given protected-files capability. */

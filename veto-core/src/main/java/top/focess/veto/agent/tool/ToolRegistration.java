@@ -1,5 +1,6 @@
 package top.focess.veto.agent.tool;
 
+import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.tool.AgentTool;
@@ -46,7 +47,7 @@ final class ToolRegistration {
                                                                         callback.describe(
                                                                                 workspace)));
                             } catch (Exception failure) {
-                                return new ToolPresentation.State(false, java.util.Map.of());
+                                return new ToolPresentation.State(false, Map.of());
                             }
                         }
                         : null;

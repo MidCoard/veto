@@ -2,10 +2,16 @@ package top.focess.veto.agent.tool;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.Duration;
+import java.util.List;
+import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-
 import top.focess.veto.agent.intercept.ToolExecutionPermit;
 import top.focess.veto.agent.workspace.PathMode;
 import top.focess.veto.agent.workspace.Workspace;
@@ -17,14 +23,6 @@ import top.focess.veto.api.plugin.PluginHost;
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.integration.plugins.ProcessHostFixture;
 import top.focess.veto.sandbox.TestSandboxFactory;
-
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.time.Duration;
-import java.util.List;
-import java.util.Map;
 
 class ProcessHostAuthorityTest {
     private static @NonNull ToolDefinition definition(
@@ -87,8 +85,7 @@ class ProcessHostAuthorityTest {
                     SecurityException.class,
                     () -> ToolCallContextHolder.withoutEffects(() -> fixture.host.runApproved()));
             fixture.host.runApproved();
-            assertThrows(
-                    SecurityException.class, () -> fixture.host.runApproved());
+            assertThrows(SecurityException.class, () -> fixture.host.runApproved());
         } finally {
             ToolCallContextHolder.clear();
         }

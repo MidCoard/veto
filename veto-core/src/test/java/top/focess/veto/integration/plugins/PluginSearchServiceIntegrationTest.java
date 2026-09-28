@@ -3,12 +3,15 @@ package top.focess.veto.integration.plugins;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
+import java.net.http.HttpTimeoutException;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.context.properties.bind.Bindable;
 import org.springframework.boot.context.properties.bind.Binder;
 import org.springframework.boot.context.properties.source.MapConfigurationPropertySource;
-
 import top.focess.veto.agent.capability.CapabilityAccess;
 import top.focess.veto.agent.tool.CapabilityTestCalls;
 import top.focess.veto.agent.tool.ToolCallContextHolder;
@@ -21,18 +24,14 @@ import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
 import top.focess.veto.api.plugin.contribution.Contribution;
 import top.focess.veto.api.plugin.service.PluginServices;
+import top.focess.veto.builtin.search.SearchHub;
 import top.focess.veto.builtin.search.SearchOptions;
+import top.focess.veto.builtin.search.SearchProtocol;
 import top.focess.veto.builtin.search.SearchProvider;
 import top.focess.veto.builtin.search.SearchResult;
-import top.focess.veto.builtin.search.SearchServices;
 import top.focess.veto.builtin.search.SearchServiceClient;
 import top.focess.veto.builtin.web.WebSearchTool;
 import top.focess.veto.plugin.runtime.*;
-
-import java.net.http.HttpTimeoutException;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.atomic.AtomicInteger;
 
 class PluginSearchServiceIntegrationTest {
     @Test
@@ -88,21 +87,7 @@ class PluginSearchServiceIntegrationTest {
         assertThrows(
                 IllegalArgumentException.class,
                 () -> {
-                    try (var fixture =
-                            new WorkflowPluginFixture(
-                                    List.of(
-                                            Contribution.of(
-                                                    StandardContributionPoints.SERVICES,
-                                                    "one",
-                                                    SearchServices.registration(provider)),
-                                            Contribution.of(
-                                                    StandardContributionPoints.SERVICES,
-                                                    "two",
-                                                    SearchServices.registration(provider))))) {
-                        fail(
-                                "Duplicate services were published: "
-                                        + fixture.manager.services().available());
-                    }
+                    new SearchHub(mock(PluginServices.class), List.of(provider, provider));
                 });
     }
 
@@ -116,9 +101,7 @@ class PluginSearchServiceIntegrationTest {
                                 "veto.plugins.configuration[another.plugin].other", "isolated"));
         var config =
                 new Binder(source)
-                        .bind(
-                                "veto.plugins",
-                                Bindable.of(PluginConfigurations.class))
+                        .bind("veto.plugins", Bindable.of(PluginConfigurations.class))
                         .get();
         assertEquals(
                 Map.of("brave-api-key", new JsonValue.StringValue("synthetic-key")),
@@ -126,7 +109,7 @@ class PluginSearchServiceIntegrationTest {
         assertTrue(config.forPlugin("absent").values().isEmpty());
         try (var manager =
                 new PluginManager(
-                        "",
+                        PluginTestSupport.pluginPackages(),
                         "",
                         false,
                         5000,
@@ -134,7 +117,7 @@ class PluginSearchServiceIntegrationTest {
                         config)) {
             assertEquals(PluginState.ACTIVE, manager.plugin("top.focess.builtin").state());
             assertEquals(
-                    List.of("veto.search:brave", "veto.search:duckduckgo"),
+                    List.of(SearchProtocol.NAME),
                     manager.catalog().entries(StandardContributionPoints.SERVICES).stream()
                             .map(e -> e.implementation().name())
                             .sorted()
@@ -149,9 +132,10 @@ class PluginSearchServiceIntegrationTest {
                         Contribution.of(
                                 StandardContributionPoints.SERVICES,
                                 "search",
-                                SearchServices.registration(provider))));
+                                new SearchHub(mock(PluginServices.class), List.of(provider)))));
     }
 
+    @SuppressWarnings("override.receiver") // Anonymous test provider has javac's non-null receiver.
     private static @NonNull SearchProvider provider(@NonNull AtomicInteger calls, boolean timeout) {
         return new SearchProvider() {
             @Override

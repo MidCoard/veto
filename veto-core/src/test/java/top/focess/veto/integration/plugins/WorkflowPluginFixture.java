@@ -2,20 +2,18 @@ package top.focess.veto.integration.plugins;
 
 import static org.mockito.Mockito.*;
 
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import org.jspecify.annotations.NonNull;
-
 import top.focess.veto.api.plugin.*;
 import top.focess.veto.api.plugin.contract.*;
 import top.focess.veto.api.plugin.contribution.*;
 import top.focess.veto.event.EventListenerRegistry;
 import top.focess.veto.event.PluginExecutor;
 import top.focess.veto.plugin.runtime.*;
-
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
 /** Real lifecycle and catalog behind a test discovery adapter. */
 public final class WorkflowPluginFixture implements AutoCloseable {
@@ -27,24 +25,22 @@ public final class WorkflowPluginFixture implements AutoCloseable {
     public WorkflowPluginFixture(@NonNull List<@NonNull Contribution<?>> contributions)
             throws PluginFailure {
         var implementation =
-                new AbstractVetoPlugin() {
+                new VetoPlugin() {
+                    @Override
+                    public @NonNull PluginContributions contributions() {
+                        return new PluginContributions(contributions);
+                    }
+
                     @Override
                     public @NonNull PluginIdentity identity() {
                         return new PluginIdentity("fixture.workflow", "1.0.0");
                     }
 
                     @Override
-                    protected @NonNull PluginContributions onInitialize(
-                            @NonNull PluginContext context,
-                            JsonValue.@NonNull ObjectValue configuration) {
-                        return new PluginContributions(contributions);
-                    }
+                    public void start() {}
 
                     @Override
-                    protected void onStart() {}
-
-                    @Override
-                    protected void onClose() {}
+                    public void close() {}
                 };
         runtime = new PluginLifecycle(implementation, lifecycle);
         runtime.initialize(

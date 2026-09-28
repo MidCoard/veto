@@ -6,10 +6,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-
+import java.nio.file.Path;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
-
 import top.focess.veto.agent.identity.AgentPersona;
 import top.focess.veto.agent.identity.Role;
 import top.focess.veto.agent.identity.SystemPromptResolver;
@@ -28,12 +31,6 @@ import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.builtin.memory.MemoryTools;
 import top.focess.veto.builtin.tools.RunCommandTool;
 import top.focess.veto.builtin.workspace.GrepSearchTool;
-
-import java.nio.file.Path;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
 
 /**
  * Renders the compiled system prompt for sample personas (STANDALONE/LEADER/MATE across deployer
@@ -502,8 +499,7 @@ class PromptCompileRenderTest {
         ObjectMapper mapper = new ObjectMapper();
         Map<String, Object> schema =
                 mapper.convertValue(
-                        ToolSchemaCompiler.compileFromRecord(
-                                GrepSearchTool.Args.class),
+                        ToolSchemaCompiler.compileFromRecord(GrepSearchTool.Args.class),
                         new TypeReference<Map<String, Object>>() {});
         ToolDefinition tool =
                 new ToolDefinition(
@@ -532,9 +528,7 @@ class PromptCompileRenderTest {
         assertTrue(nativeSchema.path("required").toString().contains("absolutePath"));
         assertFalse(nativeSchema.path("required").toString().contains("caseInsensitive"));
         assertFalse(
-                ToolDocs.documentationOf(GrepSearchTool.class)
-                        .behavior()
-                        .isBlank(),
+                ToolDocs.documentationOf(GrepSearchTool.class).behavior().isBlank(),
                 "grep_search has a typed @ToolDoc behavior section");
         assertTrue(
                 ToolDocs.examplesOf(GrepSearchTool.class).size() >= 3,

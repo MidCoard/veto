@@ -11,10 +11,10 @@ import java.util.concurrent.Executors;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.api.agent.workflow.PluginAwait;
-import top.focess.veto.api.plugin.AbstractVetoPlugin;
 import top.focess.veto.api.plugin.PluginContext;
 import top.focess.veto.api.plugin.PluginContributions;
 import top.focess.veto.api.plugin.PluginIdentity;
+import top.focess.veto.api.plugin.VetoPlugin;
 import top.focess.veto.api.plugin.contract.AgentInbox;
 import top.focess.veto.api.plugin.contract.JsonValue;
 
@@ -51,18 +51,18 @@ class CompositeAgentInboxTest {
                     }
                 };
         var plugin =
-                new AbstractVetoPlugin() {
-                    protected void onStart() {}
+                new VetoPlugin() {
+                    @Override
+                    public @NonNull PluginContributions contributions() {
+                        return new PluginContributions(List.of());
+                    }
 
-                    protected void onClose() {}
+                    public void start() {}
+
+                    public void close() {}
 
                     public @NonNull PluginIdentity identity() {
                         return new PluginIdentity("example.reminders", "1.0.0");
-                    }
-
-                    protected @NonNull PluginContributions onInitialize(
-                            @NonNull PluginContext context, JsonValue.@NonNull ObjectValue config) {
-                        return new PluginContributions(List.of());
                     }
                 };
         try (var executor = Executors.newSingleThreadExecutor()) {

@@ -1,7 +1,20 @@
 package top.focess.veto.builtin.group;
 
+import java.time.Instant;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Predicate;
 import org.jspecify.annotations.NonNull;
-
 import top.focess.veto.api.event.AgentTerminatedEvent;
 import top.focess.veto.api.event.EventHandler;
 import top.focess.veto.api.event.Listener;
@@ -17,24 +30,33 @@ import top.focess.veto.api.plugin.contract.AgentConfiguration;
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.storage.PluginStorage;
 
-import java.time.Instant;
-import java.util.Comparator;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
-import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.Predicate;
-
 /** Owns the complete group feature, including activation, policy, persistence and shutdown. */
-public final class GroupRuntime
-        implements AgentConfiguration, Listener, GroupObservations, AutoCloseable {
+public final class GroupRuntime extends AgentConfiguration
+        implements GroupObservations, AutoCloseable {
+    private final @NonNull Listener listener = new GroupListener();
+
+    /** Event aspect for this group runtime. */
+    public @NonNull Listener listener() {
+        return listener;
+    }
+
+    private final class GroupListener extends Listener {
+        @EventHandler
+        public void onSessionClosed(@NonNull SessionClosedEvent event) {
+            GroupRuntime.this.onSessionClosed(event);
+        }
+
+        @EventHandler
+        public void onAgentTerminated(@NonNull AgentTerminatedEvent event) {
+            GroupRuntime.this.onAgentTerminated(event);
+        }
+
+        @EventHandler
+        public void onOwnerClosed(@NonNull OwnerClosedEvent event) {
+            GroupRuntime.this.onOwnerClosed(event);
+        }
+    }
+
     private final @NonNull GroupConfig configuration;
     private final PluginHost host;
     private final PromptRenderer prompts;
@@ -411,7 +433,6 @@ public final class GroupRuntime
         if (failure != null) throw failure;
     }
 
-    @EventHandler
     public void onSessionClosed(@NonNull SessionClosedEvent event) {
         try {
             stopGroups(
@@ -425,7 +446,6 @@ public final class GroupRuntime
         }
     }
 
-    @EventHandler
     public void onAgentTerminated(@NonNull AgentTerminatedEvent event) {
         try {
             stopGroups(
@@ -441,7 +461,6 @@ public final class GroupRuntime
         }
     }
 
-    @EventHandler
     public void onOwnerClosed(@NonNull OwnerClosedEvent event) {
         var owned =
                 contexts.entrySet().stream()

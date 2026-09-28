@@ -14,11 +14,11 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
-import top.focess.veto.api.plugin.AbstractVetoPlugin;
 import top.focess.veto.api.plugin.PluginContext;
 import top.focess.veto.api.plugin.PluginContributions;
 import top.focess.veto.api.plugin.PluginIdentity;
 import top.focess.veto.api.plugin.PluginState;
+import top.focess.veto.api.plugin.VetoPlugin;
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.contract.PluginFailure;
 
@@ -172,21 +172,21 @@ class PluginLifecycleStoppingResourcesTest {
         return managed;
     }
 
-    private static final class TestPlugin extends AbstractVetoPlugin {
-        private final AtomicInteger cleaned = new AtomicInteger();
+    private static final class TestPlugin extends VetoPlugin {
+        @Override
+        public @NonNull PluginContributions contributions() {
+            return new PluginContributions(List.of());
+        }
+
+        private final @NonNull AtomicInteger cleaned = new AtomicInteger();
 
         public @NonNull PluginIdentity identity() {
             return new PluginIdentity("test.resources", "1.0.0");
         }
 
-        protected @NonNull PluginContributions onInitialize(
-                @NonNull PluginContext context, JsonValue.@NonNull ObjectValue configuration) {
-            return new PluginContributions(List.of());
-        }
+        public void start() {}
 
-        protected void onStart() {}
-
-        protected void onClose() {
+        public void close() {
             cleaned.incrementAndGet();
         }
     }

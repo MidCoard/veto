@@ -2,11 +2,7 @@ package top.focess.veto.api.plugin.storage;
 
 import java.util.List;
 import java.util.Optional;
-import org.checkerframework.framework.qual.DefaultQualifier;
-import org.checkerframework.framework.qual.TypeUseLocation;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.NullMarked;
-import org.jspecify.annotations.Nullable;
 import top.focess.veto.api.plugin.contract.JsonValue;
 
 /**
@@ -19,15 +15,6 @@ import top.focess.veto.api.plugin.contract.JsonValue;
  * deletion. Plugin disable or uninstall retains data by default; a future management purge is not
  * part of this API guarantee.
  */
-@NullMarked
-@DefaultQualifier(
-        value = NonNull.class,
-        locations = {
-            TypeUseLocation.FIELD,
-            TypeUseLocation.PARAMETER,
-            TypeUseLocation.RETURN,
-            TypeUseLocation.UPPER_BOUND
-        })
 public interface PluginStorage {
     /** Durable scope kinds supported by plugin storage. */
     enum Kind {
@@ -46,14 +33,14 @@ public interface PluginStorage {
          *
          * @return the opaque token used for host revalidation
          */
-        String token();
+        @NonNull String token();
 
         /**
          * Returns the authenticated user bound to this scope.
          *
          * @return the authenticated user represented by this scope
          */
-        String userId();
+        @NonNull String userId();
     }
 
     /**
@@ -62,7 +49,7 @@ public interface PluginStorage {
      * @param token opaque host authorization token
      * @param userId authenticated user ID
      */
-    record UserScope(String token, String userId) implements Scope {}
+    record UserScope(@NonNull String token, @NonNull String userId) implements Scope {}
 
     /**
      * Host-issued session scope.
@@ -71,7 +58,8 @@ public interface PluginStorage {
      * @param userId authenticated user ID
      * @param sessionId authorized session ID
      */
-    record SessionScope(String token, String userId, String sessionId) implements Scope {}
+    record SessionScope(@NonNull String token, @NonNull String userId, @NonNull String sessionId)
+            implements Scope {}
 
     /**
      * Versioned JSON document stored by a plugin.
@@ -79,7 +67,7 @@ public interface PluginStorage {
      * @param schemaVersion positive plugin-defined schema version
      * @param value document value
      */
-    record Document(int schemaVersion, JsonValue value) {
+    record Document(int schemaVersion, @NonNull JsonValue value) {
         /** Validates the positive plugin schema version. */
         public Document {
             if (schemaVersion < 1)
@@ -94,7 +82,7 @@ public interface PluginStorage {
      * @param revision opaque current revision required for replacement or deletion
      * @param document stored document
      */
-    record Entry(String key, String revision, Document document) {}
+    record Entry(@NonNull String key, @NonNull String revision, @NonNull Document document) {}
 
     /**
      * Immutable page of storage results.
@@ -103,7 +91,7 @@ public interface PluginStorage {
      * @param entries page entries, copied on construction
      * @param cursor opaque cursor for the next page, or {@code null} at the end
      */
-    record Page<T>(List<T> entries, @Nullable String cursor) {
+    record Page<T extends @NonNull Object>(@NonNull List<@NonNull T> entries, String cursor) {
         /** Defensively copies the page entries. */
         public Page {
             entries = List.copyOf(entries);
@@ -126,7 +114,7 @@ public interface PluginStorage {
          * @param key key within this bound store
          * @return the current entry, or an empty value when absent
          */
-        Optional<Entry> get(String key);
+        @NonNull Optional<@NonNull Entry> get(@NonNull String key);
 
         /**
          * Lists matching keys in host-defined stable page order.
@@ -136,7 +124,7 @@ public interface PluginStorage {
          * @param limit maximum requested entries
          * @return a page of matching entries
          */
-        Page<Entry> list(String prefix, @Nullable String cursor, int limit);
+        @NonNull Page<@NonNull Entry> list(@NonNull String prefix, String cursor, int limit);
 
         /**
          * Inserts when revision is null, or replaces only the matching current revision.
@@ -146,7 +134,8 @@ public interface PluginStorage {
          * @param document document to store
          * @return the stored entry with its new opaque revision
          */
-        Entry put(String key, @Nullable String expectedRevision, Document document);
+        @NonNull Entry put(
+                @NonNull String key, String expectedRevision, @NonNull Document document);
 
         /**
          * Deletes only the matching current revision; conflicts do not silently succeed.
@@ -154,7 +143,7 @@ public interface PluginStorage {
          * @param key key within this bound store
          * @param expectedRevision revision that must still be current
          */
-        void delete(String key, String expectedRevision);
+        void delete(@NonNull String key, @NonNull String expectedRevision);
     }
 
     /**
@@ -162,7 +151,7 @@ public interface PluginStorage {
      *
      * @return this plugin's application-scoped store
      */
-    Store application();
+    @NonNull Store application();
 
     /**
      * Returns this plugin's store for a revalidated host-issued user scope.
@@ -170,7 +159,7 @@ public interface PluginStorage {
      * @param scope host-issued user scope
      * @return the bound user store
      */
-    Store user(UserScope scope);
+    @NonNull Store user(@NonNull UserScope scope);
 
     /**
      * Returns this plugin's store for a revalidated host-issued session scope.
@@ -178,7 +167,7 @@ public interface PluginStorage {
      * @param scope host-issued session scope
      * @return the bound session store
      */
-    Store session(SessionScope scope);
+    @NonNull Store session(@NonNull SessionScope scope);
 
     /**
      * Host-authorized scopes for recovery and background work; never another plugin's namespace.
@@ -188,19 +177,19 @@ public interface PluginStorage {
      * @param limit maximum requested scopes
      * @return a page of host-authorized scopes
      */
-    Page<Scope> scopes(Kind kind, @Nullable String cursor, int limit);
+    @NonNull Page<@NonNull Scope> scopes(@NonNull Kind kind, String cursor, int limit);
 
     /**
      * Returns the session scope for the active authenticated invocation.
      *
      * @return the session scope installed for the current authenticated invocation
      */
-    SessionScope currentSession();
+    @NonNull SessionScope currentSession();
 
     /**
      * Returns the user scope for the active authenticated invocation.
      *
      * @return the user scope installed for the current authenticated invocation
      */
-    UserScope currentUser();
+    @NonNull UserScope currentUser();
 }

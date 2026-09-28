@@ -2,14 +2,6 @@ package top.focess.veto.builtin.group;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-
-import org.jspecify.annotations.NonNull;
-
-import top.focess.veto.api.plugin.agent.AgentProfile;
-import top.focess.veto.api.plugin.contract.JsonValue;
-import top.focess.veto.api.plugin.contract.JsonValues;
-import top.focess.veto.api.plugin.storage.PluginStorage;
-
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -21,6 +13,11 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import org.jspecify.annotations.NonNull;
+import top.focess.veto.api.plugin.agent.AgentProfile;
+import top.focess.veto.api.plugin.contract.JsonValue;
+import top.focess.veto.api.plugin.contract.JsonValues;
+import top.focess.veto.api.plugin.storage.PluginStorage;
 
 /** Append-only snapshot chain with bounded chunks and a CAS head; feature-owned schema. */
 public final class GroupHistoryStore {
@@ -293,10 +290,7 @@ public final class GroupHistoryStore {
                                                 .document()
                                                 .value()));
                     try {
-                        var view =
-                                mapper.readValue(
-                                        payload.toString(),
-                                        GroupHistoryView.class);
+                        var view = mapper.readValue(payload.toString(), GroupHistoryView.class);
                         if (latest == null) latest = view;
                         changes.add(
                                 new GroupHistoryView.Change(

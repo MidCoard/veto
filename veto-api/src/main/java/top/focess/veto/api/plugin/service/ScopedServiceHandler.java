@@ -1,7 +1,6 @@
 package top.focess.veto.api.plugin.service;
 
 import org.jspecify.annotations.NonNull;
-
 import top.focess.veto.api.plugin.contract.JsonValue;
 
 /** Handles an admitted named-service call using host-validated caller and scope facts. */

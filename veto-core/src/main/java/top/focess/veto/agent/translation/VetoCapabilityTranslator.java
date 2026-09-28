@@ -3,23 +3,20 @@ package top.focess.veto.agent.translation;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-
-import org.jspecify.annotations.NonNull;
-import org.springframework.stereotype.Service;
-
-import top.focess.veto.agent.tool.ControlSubmissions;
-import top.focess.veto.agent.tool.LocalToolDefinition;
-import top.focess.veto.agent.tool.ToolDefinition;
-import top.focess.veto.api.agent.tool.ContextualInputSchemaSource;
-import top.focess.veto.api.agent.tool.ControlSubmission;
-import top.focess.veto.api.agent.tool.ToolInputSchema;
-
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import org.jspecify.annotations.NonNull;
+import org.springframework.stereotype.Service;
+import top.focess.veto.agent.tool.ControlSubmissions;
+import top.focess.veto.agent.tool.LocalToolDefinition;
+import top.focess.veto.agent.tool.ToolDefinition;
+import top.focess.veto.api.agent.tool.ContextualInputSchemaSource;
+import top.focess.veto.api.agent.tool.ControlSubmission;
+import top.focess.veto.api.agent.tool.ToolInputSchema;
 
 /** Produces native tool definitions from the runtime capability manifest. */
 @Service
@@ -53,8 +50,7 @@ public class VetoCapabilityTranslator implements CapabilityTranslator {
         var context = new ContextualInputSchemaSource.Context(flat, javaRecordTools, submissions);
         for (int i = 0; i < manifest.size(); i++) {
             if (!(manifest.get(i) instanceof LocalToolDefinition local)) continue;
-            var annotation =
-                    local.argsClass().getAnnotation(ToolInputSchema.class);
+            var annotation = local.argsClass().getAnnotation(ToolInputSchema.class);
             if (annotation == null) continue;
             ContextualInputSchemaSource schemaSource;
             try {

@@ -378,9 +378,9 @@ fail backend startup.
 The core release contains no plugin implementation JARs. Build optional
 installable packages with `localPluginPackages`, then copy chosen directories
 from `release/plugin-packages/<version>/` into the backend's `plugins/` directory.
-Development classpaths still support transitional `ServiceLoader` discovery. Existing
-`veto.plugins.paths` remains available for explicitly configured script package
-directories.
+The backend discovers Java and script plugins only from installed `plugin.json` packages;
+placing a plugin JAR on the development classpath does not activate it. Script
+packages must also be installed under the same `plugins/` directory.
 The experimental script runtime validates descriptors, starts persistent Node workers,
 and registers namespaced tools through the shared catalog. Plugin calls retain ordinary
 Gateway approval and role restrictions. `GET /api/plugins` provides administrator-only

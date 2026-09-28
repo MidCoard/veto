@@ -6,15 +6,12 @@ import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
-
-import org.jspecify.annotations.NonNull;
-import org.junit.jupiter.api.Test;
-
-import top.focess.veto.api.llm.ToolCall;
-import top.focess.veto.api.llm.VetoResponse;
-
 import java.util.List;
 import java.util.Map;
+import org.jspecify.annotations.NonNull;
+import org.junit.jupiter.api.Test;
+import top.focess.veto.api.llm.ToolCall;
+import top.focess.veto.api.llm.VetoResponse;
 
 /**
  * Guards the snake_case binding of the universal {@link VetoResponse} ({@code veto_pulse}) schema —
@@ -31,13 +28,10 @@ class VetoResponseDeserializationTest {
         for (String idField : List.of("", ",\"call_id\":null")) {
             ToolCall parsed =
                     mapper.readValue(
-                            "{\"tool_name\":\"think\",\"args\":{}" + idField + "}",
-                            ToolCall.class);
+                            "{\"tool_name\":\"think\",\"args\":{}" + idField + "}", ToolCall.class);
             assertTrue(parsed.callId().startsWith("call_"));
         }
-        ToolCall restored =
-                mapper.readValue(
-                        mapper.writeValueAsString(created), ToolCall.class);
+        ToolCall restored = mapper.readValue(mapper.writeValueAsString(created), ToolCall.class);
         assertEquals(created.callId(), restored.callId());
     }
 
@@ -45,7 +39,7 @@ class VetoResponseDeserializationTest {
     void jsonCannotSupplyNativeCalls() throws Exception {
         String json =
                 "{\"thought\":\"t\",\"calls\":[{\"tool_name\":\"list_files\",\"args\":{\"path\":\"/x\"}}],"
-                    + "\"message\":null}";
+                        + "\"message\":null}";
         VetoResponse response = mapper.readValue(json, VetoResponse.class);
         assertEquals("t", response.thought());
         assertFalse(response.hasCalls(), "JSON cannot construct adapter-owned native calls");
@@ -70,10 +64,7 @@ class VetoResponseDeserializationTest {
     void planIsNotAResponseFieldAndNullFieldsAreNotSerialized() throws Exception {
         assertThrows(
                 JsonProcessingException.class,
-                () ->
-                        mapper.readValue(
-                                "{\"guide\":{\"actions\":[]}}",
-                                VetoResponse.class));
+                () -> mapper.readValue("{\"guide\":{\"actions\":[]}}", VetoResponse.class));
         assertEquals(
                 "{\"message\":\"done\"}",
                 mapper.writeValueAsString(new VetoResponse(null, null, "done")));

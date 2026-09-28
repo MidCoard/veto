@@ -3,11 +3,12 @@ package top.focess.veto.agent.tool;
 import static org.junit.jupiter.api.Assertions.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
-
 import top.focess.veto.agent.drift.ReadHistory;
 import top.focess.veto.agent.intercept.IngressDefense;
 import top.focess.veto.agent.intercept.ToolExecutionPermit;
@@ -20,10 +21,6 @@ import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.builtin.web.FinishReadTool;
 import top.focess.veto.builtin.web.WebFetchTool;
 import top.focess.veto.integration.plugins.PluginTestSupport;
-
-import java.util.Map;
-import java.util.UUID;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 class ReaderExecutionMaskingTest {
     @ParameterizedTest
@@ -38,9 +35,7 @@ class ReaderExecutionMaskingTest {
                         ToolCapability.NETWORK_EGRESS,
                         Danger.SAFE,
                         false,
-                        toolName.equals("web_fetch")
-                                ? WebFetchTool.class
-                                : FinishReadTool.class,
+                        toolName.equals("web_fetch") ? WebFetchTool.class : FinishReadTool.class,
                         Object.class,
                         Map.of());
         var call = new ToolCall(toolName, Map.of(), "reader-call");

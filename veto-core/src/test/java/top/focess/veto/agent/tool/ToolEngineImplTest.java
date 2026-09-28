@@ -7,7 +7,16 @@ import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpServer;
-
+import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.IdentityHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+import java.util.stream.StreamSupport;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -17,7 +26,6 @@ import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.context.ApplicationContext;
-
 import top.focess.veto.agent.intercept.ToolExecutionPermit;
 import top.focess.veto.agent.mcp.transport.McpTransport;
 import top.focess.veto.agent.workspace.PathMode;
@@ -45,17 +53,6 @@ import top.focess.veto.integration.plugins.PluginManager;
 import top.focess.veto.integration.plugins.ProcessHostFixture;
 import top.focess.veto.integration.plugins.WorkflowPluginFixture;
 import top.focess.veto.sandbox.TestSandboxFactory;
-
-import java.net.InetSocketAddress;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.IdentityHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.UUID;
-import java.util.stream.StreamSupport;
 
 /**
  * Validates {@link ToolEngineImpl}: manifest assembly, native dispatch with invocation-bound
@@ -149,7 +146,7 @@ class ToolEngineImplTest {
             security = "Test-only agent tool.",
             examples = {"{\"output\":\"{}\"}", "{\"output\":\"[]\"}", "{\"output\":\"42\"}"},
             returnExamples = {"{}", "[]", "42"})
-    private static class JsonAgentTool implements AgentTool<JsonAgentArgs> {
+    private static class JsonAgentTool extends AgentTool<JsonAgentArgs> {
         public @NonNull ToolCapability getCapability() {
             return ToolCapability.LOOP_CONTROL;
         }
@@ -390,7 +387,7 @@ class ToolEngineImplTest {
                 "{\"reason\":\"timeout\"}"
             },
             returnExamples = {"ok", "ok", "ok"})
-    private static final class FailingAgentTool implements AgentTool<FailingAgentArgs> {
+    private static final class FailingAgentTool extends AgentTool<FailingAgentArgs> {
 
         @Override
         public @NonNull ToolCapability getCapability() {
@@ -559,8 +556,7 @@ class ToolEngineImplTest {
                 new ToolCall(
                         "view_file", Map.of("absolutePath", file.toString()), "forged-definition");
         assertThrows(
-                SecurityException.class,
-                () -> executeAuthorized(engine, call, forged, tempDir));
+                SecurityException.class, () -> executeAuthorized(engine, call, forged, tempDir));
     }
 
     @Test
@@ -620,8 +616,7 @@ class ToolEngineImplTest {
     @Test
     void resolveDefinitionDistinguishesFlavours() {
         ToolEngineImpl engine = newEngine();
-        assertInstanceOf(
-                NativeToolDefinition.class, definition(engine, "view_file"));
+        assertInstanceOf(NativeToolDefinition.class, definition(engine, "view_file"));
     }
 
     @Test
@@ -712,8 +707,7 @@ class ToolEngineImplTest {
                         "list_dir", ListDirTool.Args.class,
                         "grep_search", GrepSearchTool.Args.class,
                         "write_to_file", WriteToFileTool.Args.class,
-                        "replace_file_content",
-                                ReplaceFileContentTool.Args.class);
+                        "replace_file_content", ReplaceFileContentTool.Args.class);
 
         filesystemTools.forEach(
                 (toolName, argsClass) -> {
@@ -1265,8 +1259,8 @@ class ToolEngineImplTest {
                     String result =
                             request.contains("tools/list")
                                     ? "{\"tools\":[{\"name\":\"lookup_event\",\"description\":\"Look"
-                                          + " up an"
-                                          + " event\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"event_id\":{\"type\":\"string\"}},\"required\":[\"event_id\"]}}]}"
+                                            + " up an"
+                                            + " event\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"event_id\":{\"type\":\"string\"}},\"required\":[\"event_id\"]}}]}"
                                     : "{\"content\":[{\"type\":\"text\",\"text\":\"event"
                                             + " found\"}],\"isError\":false}";
                     byte[] response =

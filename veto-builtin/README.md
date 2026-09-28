@@ -30,10 +30,14 @@ keyless and the default. Select Brave with `veto.websearch.provider: brave` and 
 `veto.websearch.brave.api-key`; the application binds that value to the builtin plugin's
 `brave-api-key` configuration. BuiltinPlugin closes both providers with its lifecycle.
 
-Other plugins register a named JSON service through `StandardContributionPoints.SERVICES`.
-The search contract is `veto.search:<name>` version 1; select `<name>` through
-`veto.websearch.provider`. See the generic service API and JSON protocol in veto-api/README.md.
-The host registry preserves session selection, authorization and plugin lifecycle checks.
+Builtin publishes one `veto.search` version 1 service. Its `providers` operation lists
+available providers, and `search` takes a provider name with the query and filters.
+Another plugin can register a provider by discovering this service through the generic
+`PluginServices` directory, registering a revocable JSON callback there, then invoking
+the service's `register` operation with its provider name and opaque callback ID.
+Service-directory change events let a provider retry registration after startup or
+runtime enable. The host checks session selection, authorization and plugin lifecycle
+on service and callback calls; disabling a provider revokes its callback.
 
 Group lifecycle tools, including create_group, are grouped in `group/GroupTools`.
 Delegation uses the same `HostCapabilityTool` dispatch as other host-backed agent tools.

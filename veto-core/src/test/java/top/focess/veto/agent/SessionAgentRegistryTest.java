@@ -4,19 +4,17 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
-import org.jspecify.annotations.NonNull;
-import org.junit.jupiter.api.Test;
-
-import top.focess.veto.agent.identity.AgentPersona;
-import top.focess.veto.agent.identity.Role;
-import top.focess.veto.api.agent.AgentAction;
-import top.focess.veto.api.agent.AgentState;
-
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import org.jspecify.annotations.NonNull;
+import org.junit.jupiter.api.Test;
+import top.focess.veto.agent.identity.AgentPersona;
+import top.focess.veto.agent.identity.Role;
+import top.focess.veto.api.agent.AgentAction;
+import top.focess.veto.api.agent.AgentState;
 
 class SessionAgentRegistryTest {
     @Test

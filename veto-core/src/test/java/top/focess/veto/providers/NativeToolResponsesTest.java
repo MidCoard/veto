@@ -4,10 +4,10 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.mock;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-
+import java.util.List;
+import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
-
 import top.focess.veto.api.agent.tool.ToolDocumentation;
 import top.focess.veto.api.llm.LlmClient;
 import top.focess.veto.api.llm.LlmOptions;
@@ -23,9 +23,6 @@ import top.focess.veto.api.llm.exceptions.ModelSchemaException;
 import top.focess.veto.llm.core.*;
 import top.focess.veto.llm.provider.AbstractLlmProvider;
 import top.focess.veto.observability.AuditLogger;
-
-import java.util.List;
-import java.util.Map;
 
 class NativeToolResponsesTest {
 
@@ -279,8 +276,7 @@ class NativeToolResponsesTest {
                                         new NativeToolResponses.Call("read", args, "a"))));
         for (String bad : List.of("[]", "null", "{", "{\"path\":1,\"path\":2}", "{} {}"))
             assertThrows(
-                    ModelSchemaException.class,
-                    () -> NativeToolResponses.arguments(mapper, bad));
+                    ModelSchemaException.class, () -> NativeToolResponses.arguments(mapper, bad));
     }
 
     @Test

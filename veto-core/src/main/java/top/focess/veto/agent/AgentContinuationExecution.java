@@ -5,6 +5,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.AgentRuntimeState.ActivatedObservation;
 import top.focess.veto.agent.ExecutionControl.Wait;
@@ -61,8 +62,7 @@ final class AgentContinuationExecution {
     }
 
     @NonNull RequestEpisode newEpisode() {
-        return new RequestEpisode(
-                java.util.UUID.randomUUID().toString(), runtime.maxCallsPerEpisode);
+        return new RequestEpisode(UUID.randomUUID().toString(), runtime.maxCallsPerEpisode);
     }
 
     void remember(@NonNull RequestEpisode episode) {

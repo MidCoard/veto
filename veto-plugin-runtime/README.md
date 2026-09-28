@@ -41,7 +41,9 @@ in the [project README](../README.md). Run from the repository root, replacing t
 example absolute paths with paths on your machine:
 
 ```sh
-sh ./gradlew :veto-core:bootRun --args='--veto.plugins.trusted-code=true --veto.plugins.node-command=/absolute/path/to/node --veto.plugins.paths=/absolute/path/to/veto/veto-plugin-runtime/examples/text-tools'
+mkdir -p plugins/text
+cp veto-plugin-runtime/examples/text-tools/plugin.json veto-plugin-runtime/examples/text-tools/worker.mjs plugins/text/
+sh ./gradlew :veto-core:bootRun --args='--veto.plugins.trusted-code=true --veto.plugins.node-command=/absolute/path/to/node'
 ```
 
 The [example package](examples/text-tools/plugin.json) and its
@@ -80,13 +82,12 @@ shared with the host; plugin implementation and private library classes are
 loaded through that package's classloader. Do not import another plugin's
 classes. A script package uses the existing `tools` manifest fields plus
 `"type": "script"` and a `"name"`; its entry point is the `.mjs` filename.
-The previous explicitly listed script-package format remains accepted.
+Script packages are discovered only as immediate child directories of the installation root.
 
 | Property | Default | Meaning |
 |---|---|---|
 | `veto.plugins.directory` | `plugins` | Installation root; immediate child directories are plugin packages |
 | `veto.plugins.disabled` | empty | Installed package IDs inventoried but not instantiated at startup; an admin can enable them for the current backend process |
-| `veto.plugins.paths` | empty | Comma-separated absolute package directories; at most 16 |
 | `veto.plugins.node-command` | empty | Absolute path to a Node executable; required when packages are configured |
 | `veto.plugins.trusted-code` | `false` | Explicit operator acknowledgement that installed scripts run as the server user |
 | `veto.plugins.script-mode` | `trusted` | `isolated` currently refuses configured script packages before loading; no verified strict OS launcher is available |
@@ -189,15 +190,12 @@ as the normal approval permit. Package loading and worker startup follow host co
 If an installed package no longer matches a session's pinned revision, activation fails
 rather than silently changing that session's implementation.
 
-The built-in `top.focess.secret-protection` provider is an ordinary
-ServiceLoader-discovered plugin using this same selection mechanism. It
-registers the credential-import tool (effect `PRIVILEGED`), the typed
-input/file-capture/file-observation protections, the session-less
-`veto:observation-middleware` masking contribution and lifecycle-event
-listeners. It obtains its vault access and its detection model as
-host-granted services through `PluginContext`; without them, credential imports
-fail at call time and detection degrades to its deterministic fallback. Script
-packages currently support tools only.
+The optional `top.focess.secret-protection` package is discovered from its
+`plugin.json` manifest and uses this same selection mechanism. It registers
+the credential-import tool, text-boundary and lifecycle listeners, and the
+session-less `veto:observation-middleware` masking contribution. It obtains
+vault access through `PluginContext`; without that grant, credential imports
+fail at call time. Script packages currently support tools only.
 
 ## Host/runtime boundary
 

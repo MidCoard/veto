@@ -23,7 +23,17 @@ public final class BeforeTextCommitEvent extends WorkflowEvent {
     private @NonNull String text;
     private boolean replaced;
 
-    /** Creates a host-attributed text event for one selected session and agent. */
+    /**
+     * Creates a host-attributed text event for one selected session and agent.
+     *
+     * @param owner authenticated owner identity
+     * @param sessionId selected session identity
+     * @param agentId calling agent identity
+     * @param cancellation request cancellation signal
+     * @param phase text publication boundary
+     * @param sourceId individual source identity
+     * @param text original text
+     */
     public BeforeTextCommitEvent(
             @NonNull String owner,
             @NonNull String sessionId,
@@ -38,28 +48,48 @@ public final class BeforeTextCommitEvent extends WorkflowEvent {
         this.text = text;
     }
 
-    /** Returns the host-defined text boundary. */
+    /**
+     * Returns host-defined text boundary.
+     *
+     * @return host-defined text boundary
+     */
     public @NonNull Phase phase() {
         return phase;
     }
 
-    /** Returns the identity of this individual source. */
+    /**
+     * Returns identity of this individual source.
+     *
+     * @return identity of this individual source
+     */
     public @NonNull String sourceId() {
         return sourceId;
     }
 
-    /** Returns the current text after preceding listeners. */
+    /**
+     * Returns current text after preceding listeners.
+     *
+     * @return current text after preceding listeners
+     */
     public @NonNull String text() {
         return text;
     }
 
-    /** Replaces the text before the host publishes it. */
+    /**
+     * Replaces the text before the host publishes it.
+     *
+     * @param text replacement text
+     */
     public void setText(@NonNull String text) {
         this.text = text;
         this.replaced = true;
     }
 
-    /** Reports whether a listener supplied a replacement observation. */
+    /**
+     * Returns whether a listener supplied replacement text.
+     *
+     * @return whether a listener supplied replacement text
+     */
     public boolean replaced() {
         return replaced;
     }

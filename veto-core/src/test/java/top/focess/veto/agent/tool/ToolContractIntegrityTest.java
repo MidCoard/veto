@@ -8,13 +8,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-
+import java.util.ArrayList;
+import java.util.List;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-
 import top.focess.veto.api.agent.tool.CapabilityTool;
 import top.focess.veto.api.agent.tool.NativeTool;
 import top.focess.veto.api.agent.tool.ToolCapability;
@@ -26,9 +26,6 @@ import top.focess.veto.api.agent.tool.WorkspaceReadTool;
 import top.focess.veto.api.agent.tool.WorkspaceWriteTool;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
 import top.focess.veto.integration.plugins.PluginManager;
-
-import java.util.ArrayList;
-import java.util.List;
 
 /**
  * Cross-checks every documented call example against the tool's real runtime argument validator.
@@ -90,8 +87,7 @@ class ToolContractIntegrityTest {
     @Test
     void everyWorkspaceReadToolUsesTheTypedCapabilityBoundary() {
         for (NativeTool<?> tool : nativeTools) {
-            ToolSecurity security =
-                    tool.getClass().getAnnotation(ToolSecurity.class);
+            ToolSecurity security = tool.getClass().getAnnotation(ToolSecurity.class);
             if (security != null && security.capability() == ToolCapability.WORKSPACE_READ) {
                 assertTrue(
                         tool instanceof WorkspaceReadTool<?>,
@@ -105,8 +101,7 @@ class ToolContractIntegrityTest {
     @Test
     void everyWorkspaceWriteToolUsesTheTypedCapabilityBoundary() {
         for (NativeTool<?> tool : nativeTools) {
-            ToolSecurity security =
-                    tool.getClass().getAnnotation(ToolSecurity.class);
+            ToolSecurity security = tool.getClass().getAnnotation(ToolSecurity.class);
             if (security != null && security.capability() == ToolCapability.WORKSPACE_WRITE) {
                 assertTrue(
                         tool instanceof WorkspaceWriteTool<?>,

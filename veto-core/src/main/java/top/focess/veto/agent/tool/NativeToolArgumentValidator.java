@@ -4,16 +4,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.databind.node.TextNode;
-
-import org.jspecify.annotations.NonNull;
-
-import top.focess.veto.api.agent.tool.RequiredWhen;
-import top.focess.veto.api.agent.tool.ToolErrorCode;
-import top.focess.veto.api.agent.tool.ToolExecutionException;
-import top.focess.veto.api.agent.tool.ToolInputSchema;
-import top.focess.veto.api.agent.tool.ToolResultFormat;
-import top.focess.veto.api.agent.tool.ToolResultStatus;
-
 import java.lang.reflect.AnnotatedArrayType;
 import java.lang.reflect.AnnotatedParameterizedType;
 import java.lang.reflect.AnnotatedType;
@@ -25,6 +15,13 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.regex.Pattern;
+import org.jspecify.annotations.NonNull;
+import top.focess.veto.api.agent.tool.RequiredWhen;
+import top.focess.veto.api.agent.tool.ToolErrorCode;
+import top.focess.veto.api.agent.tool.ToolExecutionException;
+import top.focess.veto.api.agent.tool.ToolInputSchema;
+import top.focess.veto.api.agent.tool.ToolResultFormat;
+import top.focess.veto.api.agent.tool.ToolResultStatus;
 
 /** Validates native-tool arguments against the same record schema advertised to the model. */
 public final class NativeToolArgumentValidator {
@@ -170,8 +167,7 @@ public final class NativeToolArgumentValidator {
                         childPath(path, component.getName()),
                         issues);
             }
-            RequiredWhen requiredWhen =
-                    component.getAnnotation(RequiredWhen.class);
+            RequiredWhen requiredWhen = component.getAnnotation(RequiredWhen.class);
             if (requiredWhen == null) {
                 continue;
             }

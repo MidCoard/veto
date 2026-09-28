@@ -1,10 +1,11 @@
 package top.focess.veto.api.event;
 
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.api.plugin.contract.DataLifecycle;
 
 /**
  * Notifies that an owner runtime closed. Permanent data is not implicitly deleted; required
- * deletion stays on {@link top.focess.veto.api.plugin.contract.DataLifecycle}.
+ * deletion stays on {@link DataLifecycle}.
  */
 public final class OwnerClosedEvent extends LifecycleEvent {
     /**

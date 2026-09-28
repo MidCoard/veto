@@ -4,15 +4,13 @@ import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
-
 import top.focess.veto.model.tier.ModelTierProfileEntity;
 import top.focess.veto.model.tier.ModelTierProfileService;
 import top.focess.veto.vault.KeysteadVault;
-
-import java.util.Optional;
 
 class ModelTierControllerTest {
     @Test

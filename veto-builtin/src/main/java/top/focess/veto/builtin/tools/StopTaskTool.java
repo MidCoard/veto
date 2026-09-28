@@ -1,9 +1,7 @@
 package top.focess.veto.builtin.tools;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
-
 import org.jspecify.annotations.NonNull;
-
 import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.tool.Doc;
 import top.focess.veto.api.agent.tool.NativeTool;
@@ -76,7 +74,7 @@ import top.focess.veto.builtin.process.TaskControlCapability;
                     + " \"exitCode\": 0}",
             "Task not found: bg-99"
         })
-public final class StopTaskTool implements NativeTool<StopTaskTool.Args> {
+public final class StopTaskTool extends NativeTool<StopTaskTool.Args> {
     private final TaskControlCapability capability;
 
     /** Declaration-only instance; the host supplies the capability at execution time. */

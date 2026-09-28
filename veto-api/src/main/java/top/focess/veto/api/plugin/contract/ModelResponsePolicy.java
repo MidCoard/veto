@@ -7,14 +7,17 @@ import top.focess.veto.api.agent.control.SourceEvidence;
 import top.focess.veto.api.llm.VetoResponse;
 
 /** Per-exchange feature policy. Host still enforces model schema, budget and evidence receipts. */
-public interface ModelResponsePolicy {
+public abstract class ModelResponsePolicy {
+    /** Constructs a model response aspect. */
+    protected ModelResponsePolicy() {}
+
     /**
      * Structured correction prompt requested after policy rejection.
      *
      * @param resource host-resolved prompt resource
      * @param data immutable interpolation data copied on construction
      */
-    record Correction(@NonNull String resource, @NonNull Map<String, Object> data) {
+    public record Correction(@NonNull String resource, @NonNull Map<String, Object> data) {
         /** Defensively copies the interpolation data. */
         public Correction {
             data = Map.copyOf(data);
@@ -28,13 +31,13 @@ public interface ModelResponsePolicy {
      * @param receipt optional evidence receipt
      * @param correction optional correction for a subsequent attempt
      */
-    record Result(
+    public record Result(
             @NonNull VetoResponse response,
             SourceEvidence.@Nullable Receipt receipt,
             @Nullable Correction correction) {}
 
     /** Mutable policy state scoped to one model exchange. */
-    interface Exchange {
+    public interface Exchange {
         /**
          * Checks one response against the host-provided evidence view.
          *
@@ -60,5 +63,5 @@ public interface ModelResponsePolicy {
      *
      * @return independent policy state for one exchange
      */
-    @NonNull Exchange open();
+    public abstract @NonNull Exchange open();
 }

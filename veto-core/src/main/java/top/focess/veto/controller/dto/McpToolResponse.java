@@ -1,6 +1,7 @@
 package top.focess.veto.controller.dto;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.databind.JsonNode;
 import org.jspecify.annotations.*;
 
 /** Payload describing a single tool exposed by an MCP server, including its input schema. */
@@ -10,5 +11,5 @@ public record McpToolResponse(
         @NonNull String description,
         @NonNull String capability,
         @NonNull String defaultDanger,
-        com.fasterxml.jackson.databind.@NonNull JsonNode inputSchema)
+        @NonNull JsonNode inputSchema)
         implements RestResponse {}

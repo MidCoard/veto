@@ -7,7 +7,6 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import org.junit.jupiter.api.Test;
-
 import top.focess.command.CommandManager;
 import top.focess.command.CommandPermission;
 import top.focess.command.CommandResult;
@@ -21,8 +20,7 @@ class VersionCommandTest {
     @Test
     void reportsVersionsLicenseAndSource() {
         VetoCommandSender sender = mock(VetoCommandSender.class);
-        when(sender.hasPermission(any(CommandPermission.class)))
-                .thenReturn(true);
+        when(sender.hasPermission(any(CommandPermission.class))).thenReturn(true);
         when(sender.clientProductVersion()).thenReturn(Version.parse("2.3.4"));
 
         CommandManager manager = new CommandManager();

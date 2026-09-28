@@ -35,8 +35,7 @@ class LenientStringListModuleTest {
         var value = mapper.readValue(json, Args.class);
         assertEquals(List.of("build"), value.commands().getFirst().args());
         assertThrows(
-                JsonProcessingException.class,
-                () -> mapper.readValue(json + " {}", Args.class));
+                JsonProcessingException.class, () -> mapper.readValue(json + " {}", Args.class));
     }
 
     @Test

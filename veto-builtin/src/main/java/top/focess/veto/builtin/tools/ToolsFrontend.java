@@ -1,29 +1,32 @@
 package top.focess.veto.builtin.tools;
 
-import org.jspecify.annotations.NonNull;
-
-import top.focess.veto.api.plugin.contract.FrontendContribution;
-
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import org.jspecify.annotations.NonNull;
+import top.focess.veto.api.plugin.contract.FrontendContribution;
+import top.focess.veto.api.plugin.contract.JsonValue;
+import top.focess.veto.api.plugin.contract.PluginFailure;
 
 /** Builtin presentation ships with the plugin and requires no backend actions. */
-public final class ToolsFrontend {
-    private ToolsFrontend() {}
+public final class ToolsFrontend extends FrontendContribution {
+    /** Constructs the builtin tool presentation aspect. */
+    public ToolsFrontend() {}
 
     /** Serves the bundled tools script; every frontend action is rejected. */
-    public static @NonNull FrontendContribution contribution() {
-        try (var stream =
-                ToolsFrontend.class
-                        .getResourceAsStream("/frontend/tools.js")) {
+    @Override
+    public @NonNull String module() {
+        try (var stream = ToolsFrontend.class.getResourceAsStream("/frontend/tools.js")) {
             if (stream == null) throw new IllegalStateException("Missing tools frontend");
-            return new FrontendContribution(
-                    new String(stream.readAllBytes(), StandardCharsets.UTF_8),
-                    (scope, action, arguments) -> {
-                        throw new IllegalArgumentException("Tools presentation has no actions");
-                    });
+            return new String(stream.readAllBytes(), StandardCharsets.UTF_8);
         } catch (IOException failure) {
             throw new IllegalStateException("Cannot load tools frontend", failure);
         }
+    }
+
+    @Override
+    public @NonNull JsonValue handle(
+            @NonNull Scope scope, @NonNull String action, JsonValue.@NonNull ObjectValue arguments)
+            throws PluginFailure {
+        throw new IllegalArgumentException("Tools presentation has no actions");
     }
 }

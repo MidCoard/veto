@@ -1,11 +1,24 @@
 package top.focess.veto.agent;
 
 import static org.junit.jupiter.api.Assertions.*;
-
 import static top.focess.veto.integration.plugins.MonitorTestSupport.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-
+import java.time.Duration;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import org.checkerframework.checker.nullness.qual.Nullable;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
@@ -15,7 +28,6 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Mockito;
 import org.springframework.context.ApplicationContext;
 import org.springframework.test.util.ReflectionTestUtils;
-
 import top.focess.veto.agent.continuation.RequestContinuationEntity;
 import top.focess.veto.agent.continuation.RequestContinuationRepository;
 import top.focess.veto.agent.continuation.RequestContinuationStore;
@@ -33,12 +45,14 @@ import top.focess.veto.agent.translation.DefaultCapabilityTranslator;
 import top.focess.veto.api.agent.AgentResult;
 import top.focess.veto.api.agent.AgentState;
 import top.focess.veto.api.agent.screening.Danger;
+import top.focess.veto.api.agent.tool.AgentTool;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.agent.tool.ToolResult;
 import top.focess.veto.api.agent.workflow.PluginAwait;
 import top.focess.veto.api.event.AfterModelEvent;
 import top.focess.veto.api.event.BeforeInputEvent;
 import top.focess.veto.api.event.BeforeModelEvent;
+import top.focess.veto.api.event.BeforeTextCommitEvent;
 import top.focess.veto.api.event.EventHandler;
 import top.focess.veto.api.event.Listener;
 import top.focess.veto.api.llm.ChatMessage;
@@ -55,10 +69,9 @@ import top.focess.veto.api.llm.exceptions.ModelSchemaException;
 import top.focess.veto.api.plugin.agent.AgentProfile;
 import top.focess.veto.api.plugin.agent.IsolatedAgent;
 import top.focess.veto.api.plugin.contract.AgentConfiguration;
+import top.focess.veto.api.plugin.contract.FrontendContribution;
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
-import top.focess.veto.api.plugin.contract.FrontendContribution;
-import top.focess.veto.api.event.BeforeTextCommitEvent;
 import top.focess.veto.api.plugin.contribution.Contribution;
 import top.focess.veto.builtin.group.GroupRegistry;
 import top.focess.veto.builtin.monitor.MonitorEntity;
@@ -92,22 +105,6 @@ import top.focess.veto.session.SessionService;
 import top.focess.veto.util.Nullness;
 import top.focess.veto.vault.KeysteadVault;
 import top.focess.veto.vault.UserContext;
-
-import java.time.Duration;
-import java.time.Instant;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.UUID;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Targets {@link AgentRunner}'s schema-violation retry path in isolation from the broader
@@ -650,7 +647,7 @@ class AgentRunnerTest {
                         groups(groups),
                         host(sessionService, registry, vault));
         @NonNull SessionPlugins selected = Mockito.mock();
-        Mockito.when(selected.workSource(Mockito.anyString())).thenReturn(monitors);
+        Mockito.when(selected.workSource(Mockito.anyString())).thenReturn(work(monitors));
         runtime.attachSessionPlugins(selected);
         var due = Instant.now().plusSeconds(10);
         monitors.createTimer("alice", session.getId(), identity.getId(), "Review", due);
@@ -685,7 +682,8 @@ class AgentRunnerTest {
     private static @NonNull ToolEngine questionEngine(@NonNull QuestionRuntime questions) {
         @NonNull ApplicationContext spring = Mockito.mock();
         var tool = new AskUserTool(questions);
-        var engine = new ToolEngineImpl(new ObjectMapper(), List.of(tool), spring);
+        Mockito.when(spring.getBeansOfType(AgentTool.class)).thenReturn(Map.of("askUser", tool));
+        var engine = new ToolEngineImpl(new ObjectMapper(), List.of(), spring);
         ReflectionTestUtils.invokeMethod(engine, "init");
         return engine;
     }
@@ -1496,7 +1494,7 @@ class AgentRunnerTest {
                                                                 message.content()
                                                                         .contains(
                                                                                 "[Runtime"
-                                                                                    + " cancellation]")));
+                                                                                        + " cancellation]")));
                             }
                             return new VetoResponse(null, null, "completed");
                         });

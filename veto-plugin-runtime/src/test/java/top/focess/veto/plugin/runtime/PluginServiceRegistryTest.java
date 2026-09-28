@@ -2,22 +2,47 @@ package top.focess.veto.plugin.runtime;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
-
 import top.focess.veto.api.plugin.*;
 import top.focess.veto.api.plugin.contract.*;
 import top.focess.veto.api.plugin.contribution.*;
 import top.focess.veto.api.plugin.service.*;
 import top.focess.veto.api.plugin.storage.PluginStorage;
 
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.atomic.AtomicBoolean;
-
 class PluginServiceRegistryTest {
+    private static @NonNull PluginService service(
+            @NonNull String name, int version, @NonNull ServiceHandler handler) {
+        return service(
+                name, version, ServiceScope.GLOBAL, (caller, request) -> handler.invoke(request));
+    }
+
+    private static @NonNull PluginService service(
+            @NonNull String name,
+            int version,
+            @NonNull ServiceScope scope,
+            @NonNull ScopedServiceHandler handler) {
+        return new PluginService(name, version, scope) {
+            @Override
+            public @NonNull JsonValue invoke(
+                    @NonNull ServiceCallContext caller, @NonNull JsonValue request)
+                    throws ServiceException {
+                try {
+                    return handler.invoke(caller, request);
+                } catch (ServiceException failure) {
+                    throw failure;
+                } catch (Exception failure) {
+                    throw new ServiceException(ServiceException.Code.FAILED);
+                }
+            }
+        };
+    }
+
     @Test
     void consumerUsesNamedJsonServiceWithoutProviderTypes() throws Exception {
         try (var pair = new Pair()) {
@@ -162,7 +187,7 @@ class PluginServiceRegistryTest {
         }
     }
 
-    private static final class TestPlugin extends AbstractVetoPlugin {
+    private static final class TestPlugin extends VetoPlugin {
         final @NonNull String id;
         @NonNull PluginContext context =
                 new PluginContext(
@@ -182,21 +207,25 @@ class PluginServiceRegistryTest {
             return new PluginIdentity(id, "1.0.0");
         }
 
-        protected @NonNull PluginContributions onInitialize(
+        public @NonNull PluginContributions initialize(
                 @NonNull PluginContext context, JsonValue.@NonNull ObjectValue configuration) {
             this.context = context;
+            return contributions();
+        }
+
+        @Override
+        public @NonNull PluginContributions contributions() {
             if (id.equals("demo.provider"))
                 return new PluginContributions(
                         List.of(
                                 Contribution.of(
                                         StandardContributionPoints.SERVICES,
                                         "echo",
-                                        new ServiceRegistration(
-                                                "demo:echo", 1, request -> request)),
+                                        service("demo:echo", 1, request -> request)),
                                 Contribution.of(
                                         StandardContributionPoints.SERVICES,
                                         "failure",
-                                        new ServiceRegistration(
+                                        service(
                                                 "demo:failure",
                                                 1,
                                                 request -> {
@@ -206,7 +235,7 @@ class PluginServiceRegistryTest {
                                 Contribution.of(
                                         StandardContributionPoints.SERVICES,
                                         "user",
-                                        new ServiceRegistration(
+                                        service(
                                                 "demo:user",
                                                 1,
                                                 ServiceScope.USER,
@@ -219,7 +248,7 @@ class PluginServiceRegistryTest {
                                 Contribution.of(
                                         StandardContributionPoints.SERVICES,
                                         "session",
-                                        new ServiceRegistration(
+                                        service(
                                                 "demo:session",
                                                 1,
                                                 ServiceScope.SESSION,
@@ -234,7 +263,7 @@ class PluginServiceRegistryTest {
                             Contribution.of(
                                     StandardContributionPoints.SERVICES,
                                     "relay",
-                                    new ServiceRegistration(
+                                    service(
                                             "demo:relay",
                                             1,
                                             request ->
@@ -244,9 +273,9 @@ class PluginServiceRegistryTest {
                                                             .invoke(request)))));
         }
 
-        protected void onStart() {}
+        public void start() {}
 
-        protected void onClose() {}
+        public void close() {}
     }
 
     private static final class Pair implements AutoCloseable {
@@ -292,9 +321,7 @@ class PluginServiceRegistryTest {
                                                     "Plugin context is not bound to a lifecycle"
                                                             + " owner");
                                         },
-                                        Map.of(
-                                                PluginServices.class,
-                                                registry.forPlugin(runtime))),
+                                        Map.of(PluginServices.class, registry.forPlugin(runtime))),
                                 new JsonValue.ObjectValue(Map.of()));
                 builder.stage(
                         new ContributionSource(

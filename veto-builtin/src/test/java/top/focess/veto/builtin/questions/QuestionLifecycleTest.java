@@ -3,21 +3,19 @@ package top.focess.veto.builtin.questions;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
-
 import top.focess.veto.api.event.AgentTerminatedEvent;
 import top.focess.veto.api.event.OwnerClosedEvent;
 import top.focess.veto.api.event.SessionClosedEvent;
 import top.focess.veto.api.plugin.PluginHost;
 import top.focess.veto.api.plugin.contract.FrontendContribution.Scope;
-
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
 
 class QuestionLifecycleTest {
     @Test

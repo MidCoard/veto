@@ -1,7 +1,17 @@
 package top.focess.veto.builtin.workspace;
 
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.FileSystems;
+import java.nio.file.NoSuchFileException;
+import java.nio.file.Path;
+import java.nio.file.PathMatcher;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
 import org.jspecify.annotations.NonNull;
-
 import top.focess.veto.api.agent.capability.WorkspaceFile;
 import top.focess.veto.api.agent.capability.WorkspaceReadCapability;
 import top.focess.veto.api.agent.screening.Danger;
@@ -15,18 +25,6 @@ import top.focess.veto.api.agent.tool.ToolErrors;
 import top.focess.veto.api.agent.tool.ToolResultFormat;
 import top.focess.veto.api.agent.tool.ToolSecurity;
 import top.focess.veto.api.agent.tool.WorkspaceReadTool;
-
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStreamReader;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.FileSystems;
-import java.nio.file.NoSuchFileException;
-import java.nio.file.Path;
-import java.nio.file.PathMatcher;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Locale;
 
 /** Searches file contents through a call-scoped workspace-read capability. */
 @ToolSecurity(capability = ToolCapability.WORKSPACE_READ, defaultDanger = Danger.SAFE)
@@ -102,7 +100,7 @@ import java.util.Locale;
             "/abs/project/config/app.yml:7: password: ${DB_PASSWORD}",
             "Invalid arguments: includes contains an invalid glob."
         })
-public final class GrepSearchTool implements WorkspaceReadTool<GrepSearchTool.Args> {
+public final class GrepSearchTool extends WorkspaceReadTool<GrepSearchTool.Args> {
 
     /** Model-facing arguments of {@code grep_search}. */
     public record Args(

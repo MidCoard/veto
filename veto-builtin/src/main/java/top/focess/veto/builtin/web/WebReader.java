@@ -6,10 +6,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
-import org.checkerframework.checker.nullness.qual.NonNull;
-import org.checkerframework.framework.qual.DefaultQualifier;
-import org.checkerframework.framework.qual.TypeUseLocation;
-import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import top.focess.veto.api.agent.capability.NetworkEgressCapability;
 import top.focess.veto.api.agent.tool.ToolErrorCode;
@@ -19,22 +16,14 @@ import top.focess.veto.api.plugin.agent.AgentHost;
 /**
  * The feature journey: approved document, private reading, validated evidence, and settled exit.
  */
-@NullMarked
-@DefaultQualifier(
-        value = NonNull.class,
-        locations = {
-            TypeUseLocation.FIELD,
-            TypeUseLocation.PARAMETER,
-            TypeUseLocation.RETURN,
-            TypeUseLocation.UPPER_BOUND
-        })
 public final class WebReader {
-    private final Supplier<AgentHost> host;
-    private final ReaderConfig configuration;
-    private final ObjectMapper mapper = new ObjectMapper();
+    private final @NonNull Supplier<@NonNull AgentHost> host;
+    private final @NonNull ReaderConfig configuration;
+    private final @NonNull ObjectMapper mapper = new ObjectMapper();
 
     /** Creates the reader over the given agent-host supplier and configuration. */
-    public WebReader(Supplier<AgentHost> host, ReaderConfig configuration) {
+    public WebReader(
+            @NonNull Supplier<@NonNull AgentHost> host, @NonNull ReaderConfig configuration) {
         this.host = host;
         this.configuration = configuration;
     }
@@ -43,7 +32,8 @@ public final class WebReader {
      * Runs one isolated read of the approved URL toward the objective; returns the JSON result or a
      * tool failure.
      */
-    public String read(String objective, NetworkEgressCapability network) {
+    public @NonNull String read(
+            @NonNull String objective, @NonNull NetworkEgressCapability network) {
         long started = System.nanoTime();
         try (var destination = network.openApprovedDestination("url")) {
             var document = new AtomicReference<@Nullable WebReadSession>();

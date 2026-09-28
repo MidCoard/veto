@@ -4,36 +4,33 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-
+import java.nio.file.Path;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.context.ApplicationContext;
-
 import top.focess.veto.agent.drift.ReadHistory;
 import top.focess.veto.agent.intercept.*;
 import top.focess.veto.agent.screening.*;
 import top.focess.veto.agent.workspace.*;
 import top.focess.veto.api.agent.tool.CapabilityTool;
 import top.focess.veto.api.credentials.CredentialImportAccess;
+import top.focess.veto.api.event.BeforeTextCommitEvent;
 import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
+import top.focess.veto.api.plugin.contract.FrontendContribution;
 import top.focess.veto.api.plugin.contract.PluginFailure;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
-import top.focess.veto.api.plugin.contract.FrontendContribution;
-import top.focess.veto.api.event.BeforeTextCommitEvent;
 import top.focess.veto.integration.plugins.HostResourceConfiguration;
 import top.focess.veto.integration.plugins.PluginHostServices;
 import top.focess.veto.integration.plugins.PluginManager;
 import top.focess.veto.integration.plugins.PluginTestSupport;
 import top.focess.veto.util.Nullness;
 import top.focess.veto.vault.KeysteadVault;
-
-import java.nio.file.Path;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
 
 class CredentialImportIntegrationTest {
     private static final @NonNull String IMPORT_TOOL =
@@ -82,8 +79,7 @@ class CredentialImportIntegrationTest {
                             "call");
             var screened =
                     assertInstanceOf(
-                            GatewayResult.Screened.class,
-                            gateway.screen(call, definition));
+                            GatewayResult.Screened.class, gateway.screen(call, definition));
             assertInstanceOf(
                     ApprovalDecision.Prompt.class,
                     new HitlRegistry().decide("agent", call, definition, screened));

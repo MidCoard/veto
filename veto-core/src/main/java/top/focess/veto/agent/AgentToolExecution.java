@@ -371,7 +371,8 @@ final class AgentToolExecution {
                                 UUID.randomUUID().toString(),
                                 transformed.content());
                 selected.dispatch(event);
-                if (event.isPrevent()) throw new IllegalStateException("File observation prevented");
+                if (event.isPrevent())
+                    throw new IllegalStateException("File observation prevented");
                 if (event.replaced()) replacement = event.text();
             }
             String observation = runtime.toolBoundary.defend(authorized, transformed, replacement);

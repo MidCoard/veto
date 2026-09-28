@@ -4,6 +4,9 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
 
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -13,12 +16,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
-
 import top.focess.veto.api.llm.ProviderType;
-
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
 
 /**
  * Exercises the per-user, DB-backed {@link DefaultModelTierService}: profile lifecycle, per-field
@@ -343,9 +341,7 @@ class DefaultModelTierServiceTest {
 
         // Bob has his own active "default" profile, unconfigured -> incomplete.
         assertEquals("default", service.activeProfile("bob"));
-        assertThrows(
-                ModelTierConfigException.class,
-                () -> service.resolve("bob", ModelTier.TOP));
+        assertThrows(ModelTierConfigException.class, () -> service.resolve("bob", ModelTier.TOP));
         assertEquals(1, service.listProfiles("alice").size());
         assertEquals(1, service.listProfiles("bob").size());
     }

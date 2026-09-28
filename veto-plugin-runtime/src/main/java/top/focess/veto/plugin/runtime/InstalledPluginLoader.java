@@ -2,6 +2,8 @@ package top.focess.veto.plugin.runtime;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import java.io.IOException;
+import java.lang.reflect.Constructor;
+import java.lang.reflect.InvocationTargetException;
 import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
@@ -15,6 +17,7 @@ import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import top.focess.veto.api.plugin.PluginContext;
 import top.focess.veto.api.plugin.PluginContributions;
+import top.focess.veto.api.plugin.PluginDeclinedException;
 import top.focess.veto.api.plugin.PluginIdentity;
 import top.focess.veto.api.plugin.VetoPlugin;
 import top.focess.veto.api.plugin.contract.JsonValue;
@@ -172,11 +175,12 @@ public final class InstalledPluginLoader {
         try {
             Class<?> implementation = Class.forName(entryPoint, true, loader);
             if (!VetoPlugin.class.isAssignableFrom(implementation))
-                throw new IOException("Java entry point does not implement VetoPlugin");
-            VetoPlugin plugin = (VetoPlugin) implementation.getConstructor().newInstance();
-            if (!identity.equals(plugin.identity()))
-                throw new IOException("Java plugin identity differs from its manifest");
-            return new LoadedJavaPlugin(plugin, identity, name, loader);
+                throw new IOException("Java entry point must implement VetoPlugin");
+            Constructor<? extends VetoPlugin> constructor =
+                    implementation
+                            .asSubclass(VetoPlugin.class)
+                            .getConstructor(PluginContext.class, JsonValue.ObjectValue.class);
+            return new LoadedJavaPlugin(constructor, identity, name, loader);
         } catch (ReflectiveOperationException | LinkageError | IOException failure) {
             loader.close();
             throw new IOException("Java plugin loading failed: " + id, failure);
@@ -190,37 +194,82 @@ public final class InstalledPluginLoader {
         return file.toUri().toURL();
     }
 
-    private record LoadedJavaPlugin(
-            @NonNull VetoPlugin delegate,
-            @NonNull PluginIdentity identity,
-            @NonNull String displayName,
-            @NonNull PluginClassLoader loader)
-            implements VetoPlugin {
+    private static final class LoadedJavaPlugin extends VetoPlugin {
+        private final @NonNull Constructor<? extends VetoPlugin> constructor;
+        private final @NonNull PluginIdentity identity;
+        private final @NonNull String displayName;
+        private final @NonNull PluginClassLoader loader;
+        private @Nullable VetoPlugin delegate;
+
+        private LoadedJavaPlugin(
+                @NonNull Constructor<? extends VetoPlugin> constructor,
+                @NonNull PluginIdentity identity,
+                @NonNull String displayName,
+                @NonNull PluginClassLoader loader) {
+            this.constructor = constructor;
+            this.identity = identity;
+            this.displayName = displayName;
+            this.loader = loader;
+        }
+
+        public @NonNull PluginIdentity identity() {
+            return identity;
+        }
+
+        public @NonNull String displayName() {
+            return displayName;
+        }
+
         public @Nullable String preferredToolName(@NonNull String localId) {
-            return delegate.preferredToolName(localId);
+            VetoPlugin current = delegate;
+            return current == null ? null : current.preferredToolName(localId);
         }
 
         public @NonNull Set<@NonNull String> historicalIds() {
-            return delegate.historicalIds();
+            VetoPlugin current = delegate;
+            return current == null ? Set.of() : current.historicalIds();
+        }
+
+        public @NonNull PluginContributions contributions() {
+            VetoPlugin current = delegate;
+            if (current == null) throw new IllegalStateException("Plugin has not initialized");
+            return current.contributions();
         }
 
         public @NonNull PluginContributions initialize(
                 @NonNull PluginContext context, JsonValue.@NonNull ObjectValue configuration)
                 throws PluginFailure {
-            return delegate.initialize(context, configuration);
+            if (delegate != null) throw new PluginFailure(PluginFailure.Code.INTERNAL_FAILURE);
+            try {
+                VetoPlugin created = constructor.newInstance(context, configuration);
+                delegate = created;
+                if (!identity.equals(created.identity()))
+                    throw new PluginFailure(PluginFailure.Code.INVALID_CONFIGURATION);
+                return created.initialize(context, configuration);
+            } catch (InvocationTargetException failure) {
+                Throwable cause = failure.getCause();
+                if (cause instanceof PluginDeclinedException declined) throw declined;
+                if (cause instanceof PluginFailure declared) throw declared;
+                throw new PluginFailure(PluginFailure.Code.INTERNAL_FAILURE);
+            } catch (ReflectiveOperationException failure) {
+                throw new PluginFailure(PluginFailure.Code.INTERNAL_FAILURE);
+            }
         }
 
         public void start() throws PluginFailure {
-            delegate.start();
+            created().start();
         }
 
         public void stopping() throws PluginFailure {
-            delegate.stopping();
+            VetoPlugin current = delegate;
+            if (current != null) current.stopping();
         }
 
         public void close() throws PluginFailure {
             try {
-                delegate.close();
+                VetoPlugin current = delegate;
+                delegate = null;
+                if (current != null) current.close();
             } finally {
                 try {
                     loader.close();
@@ -228,6 +277,12 @@ public final class InstalledPluginLoader {
                     throw new PluginFailure(PluginFailure.Code.INTERNAL_FAILURE);
                 }
             }
+        }
+
+        private @NonNull VetoPlugin created() throws PluginFailure {
+            VetoPlugin current = delegate;
+            if (current == null) throw new PluginFailure(PluginFailure.Code.INTERNAL_FAILURE);
+            return current;
         }
     }
 }

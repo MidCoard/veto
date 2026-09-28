@@ -1,7 +1,11 @@
 package top.focess.veto.builtin.web;
 
+import java.net.URI;
+import java.net.http.HttpTimeoutException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
 import org.jspecify.annotations.NonNull;
-
 import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.tool.Doc;
 import top.focess.veto.api.agent.tool.NativeTool;
@@ -16,12 +20,6 @@ import top.focess.veto.api.agent.tool.ToolSecurity;
 import top.focess.veto.builtin.search.SearchOptions;
 import top.focess.veto.builtin.search.SearchProvider;
 import top.focess.veto.builtin.search.SearchResult;
-
-import java.net.URI;
-import java.net.http.HttpTimeoutException;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Locale;
 
 /**
  * {@code web_search} - search the web and return titled, linked results. Uses a pluggable {@link
@@ -146,7 +144,7 @@ import java.util.Locale;
             - https://spring.io/blog/spring-boot-4-0""",
             "Invalid arguments: query must be at least 2 characters."
         })
-public final class WebSearchTool implements NativeTool<WebSearchTool.Args> {
+public final class WebSearchTool extends NativeTool<WebSearchTool.Args> {
     private static final int DEFAULT_MAX_RESULTS = 10;
     private static final int MAX_OUTPUT_CHARS = 64_000;
 
@@ -163,10 +161,10 @@ public final class WebSearchTool implements NativeTool<WebSearchTool.Args> {
                     @NonNull String query,
             @SecurityHint(ParamCategory.GENERIC)
                     @Doc("Only include results from these domains (optional).")
-                    List<String> allowed_domains,
+                    List<@NonNull String> allowed_domains,
             @SecurityHint(ParamCategory.GENERIC)
                     @Doc("Never include results from these domains (optional).")
-                    List<String> blocked_domains) {}
+                    List<@NonNull String> blocked_domains) {}
 
     @Override
     public @NonNull String getName() {
@@ -190,12 +188,12 @@ public final class WebSearchTool implements NativeTool<WebSearchTool.Args> {
                 new SearchOptions(
                         args.allowed_domains(), args.blocked_domains(), DEFAULT_MAX_RESULTS);
         try {
-            List<SearchResult> results =
+            List<@NonNull SearchResult> results =
                     applyDomainFilters(provider.search(query, options), options);
             if (results.isEmpty()) {
                 return "(no results)";
             }
-            List<SearchResult> bounded =
+            List<@NonNull SearchResult> bounded =
                     results.size() <= DEFAULT_MAX_RESULTS
                             ? results
                             : results.subList(0, DEFAULT_MAX_RESULTS);
@@ -235,7 +233,7 @@ public final class WebSearchTool implements NativeTool<WebSearchTool.Args> {
                 : diagnostic + ".";
     }
 
-    private @NonNull String format(@NonNull List<SearchResult> results) {
+    private @NonNull String format(@NonNull List<@NonNull SearchResult> results) {
         StringBuilder sb = new StringBuilder();
         sb.append("Found ").append(results.size()).append(" results:\n\n");
         for (int i = 0; i < results.size(); i++) {
@@ -260,14 +258,14 @@ public final class WebSearchTool implements NativeTool<WebSearchTool.Args> {
         return sb.toString();
     }
 
-    private static @NonNull List<SearchResult> applyDomainFilters(
-            @NonNull List<SearchResult> results, @NonNull SearchOptions options) {
-        List<String> allowed = options.allowedDomains();
-        List<String> blocked = options.blockedDomains();
+    private static @NonNull List<@NonNull SearchResult> applyDomainFilters(
+            @NonNull List<@NonNull SearchResult> results, @NonNull SearchOptions options) {
+        List<@NonNull String> allowed = options.allowedDomains();
+        List<@NonNull String> blocked = options.blockedDomains();
         if ((allowed == null || allowed.isEmpty()) && (blocked == null || blocked.isEmpty())) {
             return results;
         }
-        List<SearchResult> filtered = new ArrayList<>();
+        List<@NonNull SearchResult> filtered = new ArrayList<>();
         for (SearchResult result : results) {
             String host = hostOf(result.url());
             if (host == null || (blocked != null && matchesAny(host, blocked))) {
@@ -281,7 +279,8 @@ public final class WebSearchTool implements NativeTool<WebSearchTool.Args> {
         return List.copyOf(filtered);
     }
 
-    private static boolean matchesAny(@NonNull String host, @NonNull List<String> domains) {
+    private static boolean matchesAny(
+            @NonNull String host, @NonNull List<@NonNull String> domains) {
         for (String candidate : domains) {
             if (candidate == null) {
                 continue;

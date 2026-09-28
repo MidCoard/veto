@@ -4,18 +4,16 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.*;
 
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
-
 import top.focess.veto.api.agent.control.ControlHost;
 import top.focess.veto.api.agent.tool.ToolExecutionException;
 import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.api.llm.VetoResponse;
 import top.focess.veto.api.llm.exceptions.ModelSchemaException;
-
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
 
 class ResponseEnforcerTest {
     @Test
@@ -102,10 +100,7 @@ class ResponseEnforcerTest {
                                         List.of(
                                                 new AnswerWithCitationsTool.Source(
                                                         null, "Launch Friday.")))));
-        var error =
-                assertThrows(
-                        ToolExecutionException.class,
-                        () -> tool.execute(args));
+        var error = assertThrows(ToolExecutionException.class, () -> tool.execute(args));
         assertTrue(error.content().contains("ordinary text"));
         assertFalse(error.content().contains("matches several"));
         verifyNoInteractions(host);

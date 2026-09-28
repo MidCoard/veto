@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -63,7 +64,7 @@ class PluginContractTest {
                 IllegalArgumentException.class,
                 () ->
                         new JsonValue.ArrayValue(
-                                java.util.Collections.nCopies(4096, JsonValue.NullValue.INSTANCE)));
+                                Collections.nCopies(4096, JsonValue.NullValue.INSTANCE)));
         JsonValue nested = JsonValue.NullValue.INSTANCE;
         for (int depth = 0; depth < 32; depth++) nested = new JsonValue.ArrayValue(List.of(nested));
         JsonValue tooDeep = nested;
@@ -78,13 +79,13 @@ class PluginContractTest {
     void stagedContributionsAreImmutableAndResourcesStayPackageRelative() {
         for (String path :
                 List.of("../secret.md", "/prompts/a.md", "prompts/../a.md", "prompts/a\\b.md"))
-            assertThrows(IllegalArgumentException.class, () -> new PromptContribution(path));
+            assertThrows(IllegalArgumentException.class, () -> new PromptContribution(path) {});
         var registrations = new ArrayList<Contribution<?>>();
         registrations.add(
                 Contribution.of(
                         StandardContributionPoints.CATEGORIES,
                         "text",
-                        new ToolCategory("Text", "Text tools")));
+                        new ToolCategory("Text", "Text tools") {}));
         var contributions = new PluginContributions(registrations);
         registrations.clear();
         assertEquals(1, contributions.entries().size());
@@ -96,8 +97,8 @@ class PluginContractTest {
         Cancellation cancelled = () -> true;
         var failure = assertThrows(PluginFailure.class, cancelled::checkCancelled);
         assertEquals(PluginFailure.Code.CANCELLED, failure.code());
-        assertEquals("CANCELLED", failure.getMessage());
-        assertNull(failure.getCause());
+        assertTrue("CANCELLED".equals(failure.getMessage()));
+        assertTrue(failure.getCause() == null);
         assertEquals(0, failure.getStackTrace().length);
     }
 }

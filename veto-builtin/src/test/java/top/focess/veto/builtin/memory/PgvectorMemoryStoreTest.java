@@ -8,6 +8,7 @@ import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
@@ -70,7 +71,7 @@ class PgvectorMemoryStoreTest {
             Timestamp.from(Instant.now()),
             "[0.25,0.75]"
         };
-        when(select.getResultList()).thenReturn(java.util.Collections.singletonList(row));
+        when(select.getResultList()).thenReturn(Collections.singletonList(row));
         when(delete.executeUpdate()).thenReturn(1);
         var promoted = new PgvectorMemoryStore(database, new HashEmbedder()).promote(id, user);
         if (promoted == null) throw new AssertionError("Expected promotion to return the new id");

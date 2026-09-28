@@ -3,9 +3,12 @@ package top.focess.veto.integration.plugins;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
+import java.util.List;
+import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
-
 import top.focess.veto.api.event.BeforeInputEvent;
 import top.focess.veto.api.event.EventHandler;
 import top.focess.veto.api.event.Listener;
@@ -13,18 +16,13 @@ import top.focess.veto.api.plugin.contract.*;
 import top.focess.veto.api.plugin.contribution.*;
 import top.focess.veto.plugin.runtime.*;
 
-import java.util.List;
-import java.util.Set;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
-
 class WorkflowHooksTest {
     private static @NonNull BeforeInputEvent input(boolean cancelled, @NonNull String text) {
         return new BeforeInputEvent("owner", "session", "agent", () -> cancelled, text);
     }
 
     /** Appends a fixed suffix; optionally counts how many times it ran. */
-    public static final class AppendListener implements Listener {
+    public static final class AppendListener extends Listener {
         private final AtomicInteger calls;
         private final @NonNull String suffix;
 
@@ -42,7 +40,7 @@ class WorkflowHooksTest {
     }
 
     /** Always throws, to verify a handler failure is sanitized and halts the chain. */
-    public static final class FailingListener implements Listener {
+    public static final class FailingListener extends Listener {
         private final @NonNull AtomicInteger calls;
 
         public FailingListener(@NonNull AtomicInteger calls) {
@@ -78,8 +76,7 @@ class WorkflowHooksTest {
             assertEquals("AB", event.text());
             assertEquals(1, calls.get());
             assertThrows(
-                    IllegalStateException.class,
-                    () -> fixture.sessions.dispatch(input(true, "")));
+                    IllegalStateException.class, () -> fixture.sessions.dispatch(input(true, "")));
             assertEquals(1, calls.get());
             SessionPlugins none = spy(fixture.sessions);
             doReturn(List.of()).when(none).bindings("session");
@@ -88,8 +85,7 @@ class WorkflowHooksTest {
             assertEquals("unchanged", unchanged.text());
             fixture.runtime.close();
             assertThrows(
-                    IllegalStateException.class,
-                    () -> fixture.sessions.dispatch(input(false, "")));
+                    IllegalStateException.class, () -> fixture.sessions.dispatch(input(false, "")));
         }
     }
 

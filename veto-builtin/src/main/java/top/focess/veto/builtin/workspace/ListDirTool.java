@@ -1,7 +1,10 @@
 package top.focess.veto.builtin.workspace;
 
+import java.io.IOException;
+import java.nio.file.NoSuchFileException;
+import java.util.ArrayList;
+import java.util.Comparator;
 import org.jspecify.annotations.NonNull;
-
 import top.focess.veto.api.agent.capability.WorkspaceFile;
 import top.focess.veto.api.agent.capability.WorkspaceReadCapability;
 import top.focess.veto.api.agent.screening.Danger;
@@ -15,11 +18,6 @@ import top.focess.veto.api.agent.tool.ToolErrors;
 import top.focess.veto.api.agent.tool.ToolResultFormat;
 import top.focess.veto.api.agent.tool.ToolSecurity;
 import top.focess.veto.api.agent.tool.WorkspaceReadTool;
-
-import java.io.IOException;
-import java.nio.file.NoSuchFileException;
-import java.util.ArrayList;
-import java.util.Comparator;
 
 /** {@code list_dir} — list contents of a directory (files and child subdirectories). */
 @ToolSecurity(capability = ToolCapability.WORKSPACE_READ, defaultDanger = Danger.SAFE)
@@ -90,7 +88,7 @@ import java.util.Comparator;
             "app.yml\nlocal.properties",
             "Not a directory: /abs/project/notes.txt"
         })
-public final class ListDirTool implements WorkspaceReadTool<ListDirTool.Args> {
+public final class ListDirTool extends WorkspaceReadTool<ListDirTool.Args> {
 
     /** Model-facing arguments of {@code list_dir}. */
     public record Args(

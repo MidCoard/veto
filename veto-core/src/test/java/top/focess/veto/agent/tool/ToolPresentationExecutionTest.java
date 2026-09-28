@@ -4,14 +4,15 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-
-import org.checkerframework.framework.qual.DefaultQualifier;
+import java.nio.file.Path;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.context.ApplicationContext;
-
 import top.focess.veto.agent.intercept.ToolExecutionPermit;
 import top.focess.veto.agent.workspace.PathMode;
 import top.focess.veto.agent.workspace.Workspace;
@@ -20,12 +21,6 @@ import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.api.resources.CatalogueTree;
 
-import java.nio.file.Path;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
-
-@DefaultQualifier(NonNull.class)
 class ToolPresentationExecutionTest {
     @Test
     void forgedCallToHiddenToolNeverReachesHandler(@TempDir @NonNull Path root) {
@@ -64,8 +59,8 @@ class ToolPresentationExecutionTest {
             resultFormats = ToolResultFormat.PLAINTEXT,
             examples = "{}",
             returnExamples = "ok")
-    static final class ConditionalTool
-            implements AgentTool<ConditionalTool.Args>, ToolPresentation {
+    static final class ConditionalTool extends AgentTool<ConditionalTool.Args>
+            implements ToolPresentation {
         boolean executed;
 
         public @NonNull String getName() {

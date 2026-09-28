@@ -4,10 +4,10 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-
+import java.util.List;
+import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
-
 import top.focess.veto.agent.tool.AgentToolDefinition;
 import top.focess.veto.agent.tool.NativeToolDefinition;
 import top.focess.veto.agent.tool.ToolSchemaCompiler;
@@ -19,9 +19,6 @@ import top.focess.veto.builtin.planning.SubmitPlanTool;
 import top.focess.veto.builtin.response.AnswerWithCitationsTool;
 import top.focess.veto.builtin.tools.LoadSkillTool;
 import top.focess.veto.builtin.workspace.ViewFileTool;
-
-import java.util.List;
-import java.util.Map;
 
 /**
  * Validates {@link VetoCapabilityTranslator} against the per-turn veto_pulse variant matrix and the
@@ -159,10 +156,7 @@ class VetoCapabilityTranslatorTest {
 
     private static @NonNull AgentToolDefinition planDefinition(@NonNull String name) {
         return AgentToolDefinition.from(
-                name,
-                SubmitPlanTool.class,
-                SubmitPlanTool.Args.class,
-                ToolCapability.LOOP_CONTROL);
+                name, SubmitPlanTool.class, SubmitPlanTool.Args.class, ToolCapability.LOOP_CONTROL);
     }
 
     private static @NonNull JsonNode variantFor(

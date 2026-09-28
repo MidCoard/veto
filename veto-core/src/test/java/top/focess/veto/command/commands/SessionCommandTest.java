@@ -3,9 +3,9 @@ package top.focess.veto.command.commands;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
+import java.util.Optional;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
-
 import top.focess.command.CommandManager;
 import top.focess.command.CommandPermission;
 import top.focess.command.CommandResult;
@@ -15,8 +15,6 @@ import top.focess.veto.command.VetoCommandSender;
 import top.focess.veto.model.SessionEntity;
 import top.focess.veto.session.LlmConfig;
 import top.focess.veto.session.SessionService;
-
-import java.util.Optional;
 
 /**
  * Verifies the /session command dispatches to SessionService (create + auto-activate when idle).
@@ -40,8 +38,7 @@ class SessionCommandTest {
                 .thenReturn(Optional.of(new LlmConfig(ProviderType.DEEPSEEK, "deepseek-v4", "k")));
 
         VetoCommandSender sender = mock(VetoCommandSender.class);
-        when(sender.hasPermission(any(CommandPermission.class)))
-                .thenReturn(true);
+        when(sender.hasPermission(any(CommandPermission.class))).thenReturn(true);
         when(sender.isLoggedIn()).thenReturn(true);
         when(sender.username()).thenReturn("alice");
         when(sender.requireUsername()).thenReturn("alice");
@@ -67,8 +64,7 @@ class SessionCommandTest {
         when(service.activeSession("term-1")).thenReturn(Optional.of("existing-session-id"));
 
         VetoCommandSender sender = mock(VetoCommandSender.class);
-        when(sender.hasPermission(any(CommandPermission.class)))
-                .thenReturn(true);
+        when(sender.hasPermission(any(CommandPermission.class))).thenReturn(true);
         when(sender.isLoggedIn()).thenReturn(true);
         when(sender.username()).thenReturn("alice");
         when(sender.requireUsername()).thenReturn("alice");
@@ -92,8 +88,7 @@ class SessionCommandTest {
                 .thenThrow(new IllegalArgumentException("Pattern not found: nope"));
 
         VetoCommandSender sender = mock(VetoCommandSender.class);
-        when(sender.hasPermission(any(CommandPermission.class)))
-                .thenReturn(true);
+        when(sender.hasPermission(any(CommandPermission.class))).thenReturn(true);
         when(sender.isLoggedIn()).thenReturn(true);
         when(sender.username()).thenReturn("alice");
         when(sender.requireUsername()).thenReturn("alice");
@@ -118,8 +113,7 @@ class SessionCommandTest {
                 .thenReturn(Optional.of(new LlmConfig(ProviderType.DEEPSEEK, "deepseek-v4", "k")));
 
         VetoCommandSender sender = mock(VetoCommandSender.class);
-        when(sender.hasPermission(any(CommandPermission.class)))
-                .thenReturn(true);
+        when(sender.hasPermission(any(CommandPermission.class))).thenReturn(true);
         when(sender.isLoggedIn()).thenReturn(true);
         when(sender.username()).thenReturn("alice");
         when(sender.requireUsername()).thenReturn("alice");

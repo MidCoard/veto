@@ -5,12 +5,22 @@ import static org.mockito.Mockito.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpServer;
-
+import java.net.InetSocketAddress;
+import java.net.URI;
+import java.nio.charset.StandardCharsets;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
-
 import top.focess.veto.agent.AgentRunner;
 import top.focess.veto.agent.SessionAgentRegistry;
 import top.focess.veto.agent.VetoAgent;
@@ -42,19 +52,6 @@ import top.focess.veto.model.tier.ModelBinding;
 import top.focess.veto.model.tier.ModelTier;
 import top.focess.veto.model.tier.ModelTierRegistry;
 import top.focess.veto.vault.UserContext;
-
-import java.net.InetSocketAddress;
-import java.net.URI;
-import java.nio.charset.StandardCharsets;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicReference;
 
 class WebReadChildAuthorityTest {
     @AfterEach
@@ -98,7 +95,8 @@ class WebReadChildAuthorityTest {
                                                                 frame ->
                                                                         frame.getClassName()
                                                                                         .equals(
-                                                                                                AgentRunner.class
+                                                                                                AgentRunner
+                                                                                                        .class
                                                                                                         .getName())
                                                                                 && frame.getMethodName()
                                                                                         .equals(
@@ -255,10 +253,7 @@ class WebReadChildAuthorityTest {
                         65536);
         assertThrows(
                 SecurityException.class,
-                () ->
-                        access.bind(
-                                mock(IsolatedAgent.Runtime.class),
-                                "fetch_page"));
+                () -> access.bind(mock(IsolatedAgent.Runtime.class), "fetch_page"));
         var runtime = new AtomicReference<IsolatedAgent.Runtime>();
         var child =
                 executions.open(

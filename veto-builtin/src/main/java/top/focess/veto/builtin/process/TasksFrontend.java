@@ -1,24 +1,20 @@
 package top.focess.veto.builtin.process;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-
-import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
-
-import top.focess.veto.api.plugin.contract.FrontendContribution;
-import top.focess.veto.api.plugin.contract.JsonValue;
-import top.focess.veto.api.plugin.contract.JsonValues;
-import top.focess.veto.api.plugin.contract.PluginFailure;
-import top.focess.veto.builtin.process.BackgroundTasks.Scope;
-
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
+import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
+import top.focess.veto.api.plugin.contract.FrontendContribution;
+import top.focess.veto.api.plugin.contract.JsonValue;
+import top.focess.veto.api.plugin.contract.JsonValues;
+import top.focess.veto.api.plugin.contract.PluginFailure;
 
 /** Scoped process cards and bounded, explicitly paged access to retained output. */
-public final class TasksFrontend {
+public final class TasksFrontend extends FrontendContribution {
     private final @NonNull BackgroundTasks tasks;
     private final @NonNull ObjectMapper mapper = new ObjectMapper();
 
@@ -28,13 +24,10 @@ public final class TasksFrontend {
     }
 
     /** Serves the bundled tasks script and routes its actions to {@link #handle}. */
-    public @NonNull FrontendContribution contribution() {
-        try (var source =
-                TasksFrontend.class
-                        .getResourceAsStream("/frontend/tasks.js")) {
+    public @NonNull String module() {
+        try (var source = TasksFrontend.class.getResourceAsStream("/frontend/tasks.js")) {
             if (source == null) throw new IllegalStateException("Missing tasks frontend");
-            return new FrontendContribution(
-                    new String(source.readAllBytes(), StandardCharsets.UTF_8), this::handle);
+            return new String(source.readAllBytes(), StandardCharsets.UTF_8);
         } catch (IOException failure) {
             throw new IllegalStateException("Cannot load tasks frontend", failure);
         }
@@ -101,7 +94,7 @@ public final class TasksFrontend {
     }
 
     private @NonNull Map<String, @Nullable Object> row(
-            @NonNull Scope scope, @NonNull TaskInfo task) {
+            BackgroundTasks.@NonNull Scope scope, @NonNull TaskInfo task) {
         Map<String, @Nullable Object> result = new LinkedHashMap<>();
         result.put("taskId", task.taskId());
         result.put("taskInstanceId", task.taskInstanceId().toString());

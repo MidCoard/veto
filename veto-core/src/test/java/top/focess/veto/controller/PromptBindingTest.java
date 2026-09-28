@@ -3,10 +3,12 @@ package top.focess.veto.controller;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
-
 import top.focess.veto.agent.AgentProfiles;
 import top.focess.veto.agent.AgentService;
 import top.focess.veto.api.agent.AgentResult;
@@ -23,10 +25,6 @@ import top.focess.veto.model.tier.ModelTierRegistry;
 import top.focess.veto.session.LlmConfig;
 import top.focess.veto.session.SessionService;
 import top.focess.veto.vault.KeysteadVault;
-
-import java.util.Map;
-import java.util.Optional;
-import java.util.Set;
 
 class PromptBindingTest {
     private final ModelBinding model =

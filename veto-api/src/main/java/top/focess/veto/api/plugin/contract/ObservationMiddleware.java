@@ -7,8 +7,10 @@ import org.jspecify.annotations.NonNull;
  * required final protection after all transforms, before publication. Implementations cannot
  * execute a tool or call the downstream pipeline themselves.
  */
-@FunctionalInterface
-public interface ObservationMiddleware {
+public abstract class ObservationMiddleware {
+    /** Constructs an observation aspect. */
+    protected ObservationMiddleware() {}
+
     /**
      * Transforms one protected observation.
      *
@@ -17,6 +19,6 @@ public interface ObservationMiddleware {
      * @return transformed observation text
      * @throws PluginFailure when transformation cannot complete
      */
-    @NonNull String transform(@NonNull String observation, @NonNull Cancellation cancellation)
-            throws PluginFailure;
+    public abstract @NonNull String transform(
+            @NonNull String observation, @NonNull Cancellation cancellation) throws PluginFailure;
 }

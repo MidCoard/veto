@@ -6,22 +6,9 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-
 import static top.focess.veto.builtin.questions.QuestionTestSupport.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-
-import org.jspecify.annotations.NonNull;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.Timeout;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.ValueSource;
-
-import top.focess.veto.api.agent.tool.ToolErrorCode;
-import top.focess.veto.api.agent.tool.ToolExecutionException;
-import top.focess.veto.api.agent.tool.ToolResultStatus;
-import top.focess.veto.builtin.tools.AskUserTool;
-
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -32,6 +19,15 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import org.jspecify.annotations.NonNull;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
+import top.focess.veto.api.agent.tool.ToolErrorCode;
+import top.focess.veto.api.agent.tool.ToolExecutionException;
+import top.focess.veto.api.agent.tool.ToolResultStatus;
+import top.focess.veto.builtin.tools.AskUserTool;
 
 @Timeout(10)
 class AskUserToolTest {
@@ -134,9 +130,7 @@ class AskUserToolTest {
             var result = executor.submit(() -> tool.execute(new AskUserTool.Args(questions(10))));
             assertTrue(registry.cancel(scope("test-agent"), awaitPending()));
             var failure =
-                    assertThrows(
-                            ExecutionException.class,
-                            () -> result.get(2, TimeUnit.SECONDS));
+                    assertThrows(ExecutionException.class, () -> result.get(2, TimeUnit.SECONDS));
             var cause = failure.getCause();
             if (cause == null) throw new AssertionError("Missing tool failure");
             var error = assertInstanceOf(ToolExecutionException.class, cause);
@@ -174,8 +168,7 @@ class AskUserToolTest {
             worker.interrupt();
             var error =
                     assertInstanceOf(
-                            ToolExecutionException.class,
-                            completed.get(2, TimeUnit.SECONDS));
+                            ToolExecutionException.class, completed.get(2, TimeUnit.SECONDS));
             assertEquals(ToolResultStatus.CANCELLED, error.status());
             assertEquals(ToolErrorCode.LIFECYCLE.TOOL_INTERRUPTED, error.errorCode());
             assertTrue(interrupted.get());

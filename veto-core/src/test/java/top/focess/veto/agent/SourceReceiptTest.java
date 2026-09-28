@@ -4,10 +4,13 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
-
 import top.focess.veto.agent.intercept.ToolExecutionPermit;
 import top.focess.veto.agent.screening.DeployerPolicy;
 import top.focess.veto.agent.tool.ToolCallContext;
@@ -17,12 +20,6 @@ import top.focess.veto.agent.tool.ToolInvocationFixture;
 import top.focess.veto.api.agent.control.SourceEvidence;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.llm.*;
-
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.UUID;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 class SourceReceiptTest {
     private static @NonNull VetoRequest request() {
@@ -61,8 +58,7 @@ class SourceReceiptTest {
                         active::get);
         var receipt = evidence.inspect(declaration()).receipt();
         assertThrows(
-                SecurityException.class,
-                () -> evidence.finish(new SourceEvidence.Receipt() {}));
+                SecurityException.class, () -> evidence.finish(new SourceEvidence.Receipt() {}));
         var other =
                 new RequestEvidence(
                         task,
@@ -122,8 +118,7 @@ class SourceReceiptTest {
         assertThrows(
                 SecurityException.class,
                 () -> returnedWork.consume(receipt, task, "answer-call", "[Launch](cite:launch)"));
-        assertThrows(
-                SecurityException.class, () -> returnedWork.register(receipt));
+        assertThrows(SecurityException.class, () -> returnedWork.register(receipt));
         if (work.consume(receipt, task, "answer-call", "[Launch](cite:launch)") == null)
             throw new AssertionError("Missing verified source");
         assertThrows(
@@ -170,8 +165,7 @@ class SourceReceiptTest {
                     call.callId(),
                     () -> {
                         assertThrows(
-                                IllegalArgumentException.class,
-                                () -> control.finish(" ", null));
+                                IllegalArgumentException.class, () -> control.finish(" ", null));
                         control.finish("[fake](cite:invented)", null);
                         return true;
                     });
@@ -180,9 +174,7 @@ class SourceReceiptTest {
                 throw new AssertionError("No finish");
             assertNull(finish.citations());
             assertNull(finish.response().citations());
-            assertThrows(
-                    SecurityException.class,
-                    () -> control.finish("later", null));
+            assertThrows(SecurityException.class, () -> control.finish("later", null));
         } finally {
             ToolCallContextHolder.clear();
         }

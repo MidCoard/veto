@@ -7,7 +7,10 @@ import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 
 /** Plugin-owned inbox and completion policy; the host only executes admitted continuations. */
-public interface AgentInbox {
+public abstract class AgentInbox {
+    /** Constructs an agent inbox aspect. */
+    protected AgentInbox() {}
+
     /**
      * Host-selected inbox scope.
      *
@@ -15,7 +18,8 @@ public interface AgentInbox {
      * @param agentId selected agent
      * @param requestId active durable request, or {@code null} when polling outside a request
      */
-    record Scope(@NonNull String sessionId, @NonNull String agentId, @Nullable String requestId) {}
+    public record Scope(
+            @NonNull String sessionId, @NonNull String agentId, @Nullable String requestId) {}
 
     /**
      * continuationId is an opaque plugin-local durable key; the host namespaces it. Null uses the
@@ -29,7 +33,7 @@ public interface AgentInbox {
      * @param attributes immutable plugin-defined attributes copied on construction
      * @param continuationId optional plugin-local continuation key
      */
-    record Observation(
+    public record Observation(
             @NonNull String id,
             @Nullable String requestId,
             @NonNull String content,
@@ -49,7 +53,7 @@ public interface AgentInbox {
      * @param scope host-selected inbox scope
      * @return immutable pending observations
      */
-    @NonNull List<Observation> pending(@NonNull Scope scope);
+    public abstract @NonNull List<Observation> pending(@NonNull Scope scope);
 
     /**
      * Records that the host admitted and began the observation.
@@ -57,7 +61,7 @@ public interface AgentInbox {
      * @param scope host-selected inbox scope
      * @param observation admitted observation
      */
-    void started(@NonNull Scope scope, @NonNull Observation observation);
+    public abstract void started(@NonNull Scope scope, @NonNull Observation observation);
 
     /**
      * Records terminal completion with the actual host success outcome.
@@ -66,7 +70,8 @@ public interface AgentInbox {
      * @param observation completed observation
      * @param success actual host execution outcome
      */
-    void completed(@NonNull Scope scope, @NonNull Observation observation, boolean success);
+    public abstract void completed(
+            @NonNull Scope scope, @NonNull Observation observation, boolean success);
 
     /**
      * Records cancellation before terminal completion.
@@ -74,5 +79,5 @@ public interface AgentInbox {
      * @param scope host-selected inbox scope
      * @param observation cancelled observation
      */
-    void cancelled(@NonNull Scope scope, @NonNull Observation observation);
+    public abstract void cancelled(@NonNull Scope scope, @NonNull Observation observation);
 }

@@ -1,0 +1,61 @@
+package top.focess.veto.builtin.search;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
+
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import org.jspecify.annotations.NonNull;
+import org.junit.jupiter.api.Test;
+import top.focess.veto.api.plugin.contract.JsonValue;
+import top.focess.veto.api.plugin.service.PluginServices;
+import top.focess.veto.api.plugin.service.ServiceCallContext;
+import top.focess.veto.api.plugin.service.ServiceScope;
+
+class SearchHubTest {
+    @Test
+    void externalProviderUsesOpaqueCallbackAndDisappearsOnRevocation() throws Exception {
+        var services = mock(PluginServices.class);
+        var callback = mock(PluginServices.CallbackHandle.class);
+        when(callback.providerId()).thenReturn("example.provider");
+        when(services.findCallback("opaque-1")).thenReturn(Optional.of(callback));
+        when(callback.invoke(any()))
+                .thenReturn(
+                        SearchProtocol.encodeResults(
+                                List.of(
+                                        new SearchResult(
+                                                "Example", "https://example.org", "hit"))));
+        var hub = new SearchHub(services, List.of());
+        var caller =
+                new ServiceCallContext("example.provider", ServiceScope.GLOBAL, null, null, null);
+        hub.invoke(
+                caller,
+                new JsonValue.ObjectValue(
+                        Map.of(
+                                "op", new JsonValue.StringValue("register"),
+                                "name", new JsonValue.StringValue("example"),
+                                "callback", new JsonValue.StringValue("opaque-1"))));
+        assertEquals(
+                List.of(new JsonValue.StringValue("example")),
+                ((JsonValue.ArrayValue) hub.invoke(caller, operation("providers"))).values());
+        assertEquals(
+                "Example",
+                SearchProtocol.results(
+                                hub.invoke(
+                                        caller,
+                                        SearchProtocol.searchRequest(
+                                                "example", "query", SearchOptions.of(3))))
+                        .getFirst()
+                        .title());
+        when(services.findCallback("opaque-1")).thenReturn(Optional.empty());
+        assertTrue(
+                ((JsonValue.ArrayValue) hub.invoke(caller, operation("providers")))
+                        .values()
+                        .isEmpty());
+    }
+
+    private static JsonValue.@NonNull ObjectValue operation(@NonNull String name) {
+        return new JsonValue.ObjectValue(Map.of("op", new JsonValue.StringValue(name)));
+    }
+}

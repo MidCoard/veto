@@ -8,7 +8,10 @@ import top.focess.veto.api.plugin.PluginHost;
  *
  * @param <T> immutable argument value decoded by the host
  */
-public interface PreparedTool<T> extends NativeTool<T> {
+public abstract class PreparedTool<T> extends NativeTool<T> {
+    /** Constructs a tool whose intent is prepared before admission. */
+    protected PreparedTool() {}
+
     /**
      * Describes the exact effect to screen before execution.
      *
@@ -19,5 +22,6 @@ public interface PreparedTool<T> extends NativeTool<T> {
      * @param invocation identity and context of the current invocation
      * @return normalized intent and screening facts
      */
-    @NonNull ToolPreparation prepare(@NonNull T args, PluginHost.@NonNull Invocation invocation);
+    public abstract @NonNull ToolPreparation prepare(
+            @NonNull T args, PluginHost.@NonNull Invocation invocation);
 }

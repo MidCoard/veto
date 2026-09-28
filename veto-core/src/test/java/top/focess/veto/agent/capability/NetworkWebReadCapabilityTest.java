@@ -4,24 +4,6 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
-
-import org.jspecify.annotations.NonNull;
-import org.junit.jupiter.api.Test;
-import org.springframework.test.util.ReflectionTestUtils;
-
-import top.focess.veto.agent.intercept.ToolExecutionPermit;
-import top.focess.veto.agent.tool.ToolCallContext;
-import top.focess.veto.agent.tool.ToolCallContextHolder;
-import top.focess.veto.agent.tool.ToolContractValidator;
-import top.focess.veto.agent.tool.ToolSchemaCompiler;
-import top.focess.veto.agent.workspace.PathMode;
-import top.focess.veto.agent.workspace.Workspace;
-import top.focess.veto.api.agent.screening.Danger;
-import top.focess.veto.api.agent.tool.*;
-import top.focess.veto.api.http.ApprovedHttpDestination;
-import top.focess.veto.api.llm.ToolCall;
-import top.focess.veto.api.llm.ToolResultPresentationMode;
-
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.URI;
@@ -34,6 +16,21 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import org.jspecify.annotations.NonNull;
+import org.junit.jupiter.api.Test;
+import org.springframework.test.util.ReflectionTestUtils;
+import top.focess.veto.agent.intercept.ToolExecutionPermit;
+import top.focess.veto.agent.tool.ToolCallContext;
+import top.focess.veto.agent.tool.ToolCallContextHolder;
+import top.focess.veto.agent.tool.ToolContractValidator;
+import top.focess.veto.agent.tool.ToolSchemaCompiler;
+import top.focess.veto.agent.workspace.PathMode;
+import top.focess.veto.agent.workspace.Workspace;
+import top.focess.veto.api.agent.screening.Danger;
+import top.focess.veto.api.agent.tool.*;
+import top.focess.veto.api.http.ApprovedHttpDestination;
+import top.focess.veto.api.llm.ToolCall;
+import top.focess.veto.api.llm.ToolResultPresentationMode;
 
 /** Exercises host URL authority without depending on a feature tool or model reader. */
 class NetworkWebReadCapabilityTest {
@@ -53,7 +50,7 @@ class NetworkWebReadCapabilityTest {
                 "{\"url\":\"https://example.net/health\",\"otherUrl\":\"unused\"}"
             },
             returnExamples = {"probe", "probe", "probe"})
-    static final class HttpProbe implements NativeTool<HttpProbe.Args> {
+    static final class HttpProbe extends NativeTool<HttpProbe.Args> {
         record Args(
                 @SecurityHint(ParamCategory.URL) @NonNull String url, @NonNull String otherUrl) {}
 

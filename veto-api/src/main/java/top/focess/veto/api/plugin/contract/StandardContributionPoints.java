@@ -1,18 +1,18 @@
 package top.focess.veto.api.plugin.contract;
 
+import java.util.HashSet;
+import java.util.List;
 import org.jspecify.annotations.NonNull;
-
 import top.focess.veto.api.agent.tool.RemoteTool;
+import top.focess.veto.api.agent.tool.Tool;
+import top.focess.veto.api.event.EventPriority;
 import top.focess.veto.api.event.Listener;
 import top.focess.veto.api.llm.LlmProvider;
 import top.focess.veto.api.plugin.contribution.ContributionCatalog;
 import top.focess.veto.api.plugin.contribution.ContributionId;
 import top.focess.veto.api.plugin.contribution.ContributionPoint;
 import top.focess.veto.api.plugin.contribution.ProtocolPointDefinition;
-import top.focess.veto.api.plugin.service.ServiceRegistration;
-
-import java.util.HashSet;
-import java.util.List;
+import top.focess.veto.api.plugin.service.PluginService;
 
 /**
  * Host-defined public registration points. The catalog itself knows none of these types, and
@@ -46,11 +46,11 @@ public final class StandardContributionPoints {
                     ContributionPoint.Cardinality.MULTIPLE);
 
     /** Named JSON service registrations. */
-    public static final @NonNull ContributionPoint<ServiceRegistration> SERVICES =
+    public static final @NonNull ContributionPoint<PluginService> SERVICES =
             new ContributionPoint<>(
                     new ContributionId("veto:services"),
                     1,
-                    ServiceRegistration.class,
+                    PluginService.class,
                     ContributionPoint.Cardinality.MULTIPLE);
 
     /** Definitions of JSON contribution points supplied by plugins. */
@@ -73,9 +73,9 @@ public final class StandardContributionPoints {
      * Event listeners subscribed to host-dispatched workflow and lifecycle events. This is the
      * unified replacement for the former workflow-hook point and for the former best-effort
      * session-lifecycle point: a listener's {@code @EventHandler} methods are compiled once at
-     * registration and dispatched in {@link top.focess.veto.api.event.EventPriority} order under
-     * the contributing plugin's admission. Required permanent-data deletion stays on {@link
-     * #DATA_LIFECYCLE}, which is a transactional participant rather than a notification.
+     * registration and dispatched in {@link EventPriority} order under the contributing plugin's
+     * admission. Required permanent-data deletion stays on {@link #DATA_LIFECYCLE}, which is a
+     * transactional participant rather than a notification.
      */
     public static final @NonNull ContributionPoint<Listener> LISTENERS =
             new ContributionPoint<>(
@@ -119,11 +119,11 @@ public final class StandardContributionPoints {
      * All plugin tools: record-authored {@code AgentTool}/{@code NativeTool} implementations and
      * portable {@link RemoteTool} implementations share one registration group.
      */
-    public static final @NonNull ContributionPoint<Object> TOOLS =
+    public static final @NonNull ContributionPoint<Tool> TOOLS =
             new ContributionPoint<>(
                     new ContributionId("veto:tools"),
                     1,
-                    Object.class,
+                    Tool.class,
                     ContributionPoint.Cardinality.MULTIPLE);
 
     /** Tool presentation categories. */

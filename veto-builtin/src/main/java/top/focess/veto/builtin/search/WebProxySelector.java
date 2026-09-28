@@ -37,7 +37,8 @@ public final class WebProxySelector extends ProxySelector {
         return fromEnvironment(System.getenv());
     }
 
-    static @Nullable ProxySelector fromEnvironment(@NonNull Map<String, String> environment) {
+    static @Nullable ProxySelector fromEnvironment(
+            @NonNull Map<@NonNull String, @NonNull String> environment) {
         Proxy http = parseProxy(value(environment, "HTTP_PROXY"));
         Proxy https = parseProxy(value(environment, "HTTPS_PROXY"));
         Proxy all = parseProxy(value(environment, "ALL_PROXY"));
@@ -100,7 +101,7 @@ public final class WebProxySelector extends ProxySelector {
     }
 
     private static @Nullable String value(
-            @NonNull Map<String, String> environment, @NonNull String name) {
+            @NonNull Map<@NonNull String, @NonNull String> environment, @NonNull String name) {
         String value = environment.get(name);
         return value != null ? value : environment.get(name.toLowerCase(Locale.ROOT));
     }
@@ -130,7 +131,7 @@ public final class WebProxySelector extends ProxySelector {
         if (value == null || value.isBlank()) {
             return List.of();
         }
-        List<String> entries = new ArrayList<>();
+        List<@NonNull String> entries = new ArrayList<>();
         for (String entry : value.split(",")) {
             String normalized = entry.strip().toLowerCase(Locale.ROOT);
             if (!normalized.isEmpty()) {

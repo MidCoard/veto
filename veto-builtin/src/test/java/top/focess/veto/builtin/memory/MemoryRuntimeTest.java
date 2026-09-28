@@ -4,21 +4,20 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
+import java.time.Instant;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
-
 import top.focess.veto.api.plugin.PluginContext;
 import top.focess.veto.api.plugin.PluginHost;
 import top.focess.veto.api.plugin.PluginIdentity;
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.storage.PluginStorage;
 import top.focess.veto.builtin.memory.embedder.HashEmbedder;
-
-import java.time.Instant;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
 
 class MemoryRuntimeTest {
     private final @NonNull PluginHost host = mock(PluginHost.class);
@@ -48,7 +47,7 @@ class MemoryRuntimeTest {
                                 "token", userIdentity.toString(), session.toString()));
         when(storage.currentUser())
                 .thenReturn(new PluginStorage.UserScope("token", userIdentity.toString()));
-        var services = new java.util.HashMap<Class<?>, Object>();
+        var services = new HashMap<Class<?>, Object>();
         services.put(PluginHost.class, host);
         services.put(PluginStorage.class, storage);
         if (backend != null) services.put(MemoryBackendFactory.class, backend);

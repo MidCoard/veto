@@ -3,11 +3,16 @@ package top.focess.veto.agent.tool;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
+import java.nio.charset.StandardCharsets;
+import java.nio.file.FileAlreadyExistsException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Map;
+import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-
 import top.focess.veto.agent.capability.CapabilityAccess;
 import top.focess.veto.agent.capability.CapabilityResolver;
 import top.focess.veto.agent.intercept.ToolExecutionPermit;
@@ -22,13 +27,6 @@ import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.builtin.workspace.ViewFileTool;
 import top.focess.veto.builtin.workspace.WriteToFileTool;
-
-import java.nio.charset.StandardCharsets;
-import java.nio.file.FileAlreadyExistsException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.Map;
-import java.util.UUID;
 
 class CapabilityAccessTest {
     private static final @NonNull UUID USER = UUID.randomUUID();
@@ -83,8 +81,7 @@ class CapabilityAccessTest {
             throws Exception {
         Path file = Files.writeString(root.resolve("allowed.txt"), "approved");
         bind(capture(new ViewFileTool(), Map.of("absolutePath", file.toString()), root), "agent");
-        var workspace =
-                CapabilityResolver.require(WorkspaceReadCapability.class);
+        var workspace = CapabilityResolver.require(WorkspaceReadCapability.class);
         var handle = workspace.file(file.toString());
         assertFalse(handle instanceof WritableWorkspaceFile);
         try (var input = handle.openRead()) {
@@ -100,8 +97,7 @@ class CapabilityAccessTest {
         Path file = Files.writeString(root.resolve("read.txt"), "approved");
         var permit = capture(new ViewFileTool(), Map.of("absolutePath", file.toString()), root);
         bind(permit, "agent");
-        var workspace =
-                CapabilityResolver.require(WorkspaceReadCapability.class);
+        var workspace = CapabilityResolver.require(WorkspaceReadCapability.class);
         var handle = workspace.file(file.toString());
         var input = handle.openRead();
         ToolCallContextHolder.clear();
@@ -132,8 +128,7 @@ class CapabilityAccessTest {
                                 false),
                         root),
                 "agent");
-        var workspace =
-                CapabilityResolver.require(WorkspaceWriteCapability.class);
+        var workspace = CapabilityResolver.require(WorkspaceWriteCapability.class);
         var handle = workspace.file(file.toString());
         try (var out = handle.openForCreate()) {
             out.write("first".getBytes(StandardCharsets.UTF_8));
@@ -152,8 +147,7 @@ class CapabilityAccessTest {
                         root),
                 "agent");
         var replacement =
-                CapabilityResolver.require(WorkspaceWriteCapability.class)
-                        .file(file.toString());
+                CapabilityResolver.require(WorkspaceWriteCapability.class).file(file.toString());
         assertThrows(FileAlreadyExistsException.class, () -> replacement.openForCreate());
         try (var out = replacement.openForReplace()) {
             out.write("second".getBytes(StandardCharsets.UTF_8));
@@ -178,8 +172,7 @@ class CapabilityAccessTest {
                         root),
                 "agent");
         var fileHandle =
-                CapabilityResolver.require(WorkspaceWriteCapability.class)
-                        .file(file.toString());
+                CapabilityResolver.require(WorkspaceWriteCapability.class).file(file.toString());
         var output = fileHandle.openForCreate();
         output.write(120);
         ToolCallContextHolder.clear();

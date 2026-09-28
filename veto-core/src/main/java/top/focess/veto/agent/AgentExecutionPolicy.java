@@ -1,25 +1,14 @@
 package top.focess.veto.agent;
 
-import org.checkerframework.checker.nullness.qual.NonNull;
-import org.checkerframework.framework.qual.DefaultQualifier;
-import org.checkerframework.framework.qual.TypeUseLocation;
-import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import top.focess.veto.api.plugin.agent.IsolatedAgent;
 
 /** Immutable terminal policy and host effect guard, independent of feature tool names. */
-@NullMarked
-@DefaultQualifier(
-        value = NonNull.class,
-        locations = {
-            TypeUseLocation.FIELD,
-            TypeUseLocation.PARAMETER,
-            TypeUseLocation.RETURN,
-            TypeUseLocation.UPPER_BOUND
-        })
-public record AgentExecutionPolicy(IsolatedAgent.@Nullable Terminal terminal, Runnable check) {
+public record AgentExecutionPolicy(
+        IsolatedAgent.@Nullable Terminal terminal, @NonNull Runnable check) {
     /** The default policy: no terminal tool and a no-op host effect guard. */
-    public static AgentExecutionPolicy ordinary() {
+    public static @NonNull AgentExecutionPolicy ordinary() {
         return new AgentExecutionPolicy(null, () -> {});
     }
 }

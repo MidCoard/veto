@@ -5,10 +5,9 @@ import static org.mockito.Mockito.*;
 
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
-import top.focess.veto.api.plugin.contract.PluginFailure;
-import top.focess.veto.api.plugin.contract.StandardContributionPoints;
-import top.focess.veto.api.plugin.contract.FrontendContribution;
 import top.focess.veto.api.event.BeforeTextCommitEvent;
+import top.focess.veto.api.plugin.contract.FrontendContribution;
+import top.focess.veto.api.plugin.contract.PluginFailure;
 import top.focess.veto.command.PromptHandler;
 import top.focess.veto.integration.plugins.PluginLifecycleEvents;
 import top.focess.veto.integration.plugins.PluginManager;
@@ -69,11 +68,7 @@ class AuthLifecycleManagerTest {
             throws PluginFailure {
         String captured =
                 PluginTestSupport.protect(
-                        plugins,
-                        BeforeTextCommitEvent.Phase.INPUT,
-                        scope,
-                        "source",
-                        text);
+                        plugins, BeforeTextCommitEvent.Phase.INPUT, scope, "source", text);
         var matcher = java.util.regex.Pattern.compile("s_[a-f0-9]{32}").matcher(captured);
         if (!matcher.find()) throw new AssertionError("Expected reference is missing");
         return matcher.group();

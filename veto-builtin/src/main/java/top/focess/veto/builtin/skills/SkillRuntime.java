@@ -1,17 +1,6 @@
 package top.focess.veto.builtin.skills;
 
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper;
-
-import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
-
-import top.focess.veto.api.plugin.PluginContext;
-import top.focess.veto.api.plugin.PluginHost;
-import top.focess.veto.api.plugin.contract.JsonValue;
-import top.focess.veto.api.plugin.storage.PluginStorage;
-import top.focess.veto.api.resources.CatalogueAccess;
-import top.focess.veto.api.resources.CatalogueTree;
-
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -22,6 +11,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
+import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
+import top.focess.veto.api.plugin.PluginContext;
+import top.focess.veto.api.plugin.PluginHost;
+import top.focess.veto.api.plugin.contract.JsonValue;
+import top.focess.veto.api.plugin.storage.PluginStorage;
+import top.focess.veto.api.resources.CatalogueAccess;
+import top.focess.veto.api.resources.CatalogueTree;
 
 /** Builtin owns skill selection, discovery and durable integrity anchors. */
 public final class SkillRuntime implements AutoCloseable {

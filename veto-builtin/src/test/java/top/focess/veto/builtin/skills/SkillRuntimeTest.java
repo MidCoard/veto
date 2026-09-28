@@ -3,9 +3,12 @@ package top.focess.veto.builtin.skills;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
-
 import top.focess.veto.api.plugin.PluginContext;
 import top.focess.veto.api.plugin.PluginHost;
 import top.focess.veto.api.plugin.PluginIdentity;
@@ -14,11 +17,6 @@ import top.focess.veto.api.plugin.storage.PluginStorage;
 import top.focess.veto.api.resources.CatalogueAccess;
 import top.focess.veto.api.resources.CatalogueTree;
 import top.focess.veto.builtin.tools.LoadSkillTool;
-
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
 
 class SkillRuntimeTest {
     @Test
@@ -79,7 +77,7 @@ class SkillRuntimeTest {
         assertTrue(fixture.saved.isEmpty());
     }
 
-    private static String skill(String description) {
+    private static @NonNull String skill(@NonNull String description) {
         return "---\nname: review\ndescription: "
                 + description
                 + "\n---\n"
@@ -88,10 +86,10 @@ class SkillRuntimeTest {
     }
 
     private static final class Tree implements CatalogueTree {
-        final String id;
-        String body = "";
+        final @NonNull String id;
+        @NonNull String body = "";
 
-        Tree(String id) {
+        Tree(@NonNull String id) {
             this.id = id;
         }
 
@@ -121,12 +119,12 @@ class SkillRuntimeTest {
     }
 
     private static final class Fixture {
-        final Tree personal = new Tree("personal"), project = new Tree("project");
-        final PluginHost host = mock(PluginHost.class);
-        final PluginStorage storage = mock(PluginStorage.class);
+        final @NonNull Tree personal = new Tree("personal"), project = new Tree("project");
+        final @NonNull PluginHost host = mock(PluginHost.class);
+        final @NonNull PluginStorage storage = mock(PluginStorage.class);
         final PluginStorage.Store store = mock(PluginStorage.Store.class);
-        final Map<String, PluginStorage.Entry> saved = new LinkedHashMap<>();
-        final CatalogueAccess resources =
+        final @NonNull Map<@NonNull String, PluginStorage.Entry> saved = new LinkedHashMap<>();
+        final @NonNull CatalogueAccess resources =
                 new CatalogueAccess() {
                     public @NonNull Optional<CatalogueTree> shared(@NonNull String name) {
                         return Optional.of(personal);
@@ -136,7 +134,7 @@ class SkillRuntimeTest {
                         return project;
                     }
                 };
-        final SkillRuntime runtime;
+        final @NonNull SkillRuntime runtime;
 
         Fixture() {
             when(storage.application()).thenReturn(store);
@@ -155,7 +153,7 @@ class SkillRuntimeTest {
             runtime = createRuntime(resources, host, storage);
         }
 
-        SkillRuntime newRuntime() {
+        @NonNull SkillRuntime newRuntime() {
             return createRuntime(resources, host, storage);
         }
 

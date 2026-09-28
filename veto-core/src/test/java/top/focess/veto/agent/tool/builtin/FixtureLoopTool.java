@@ -1,7 +1,6 @@
 package top.focess.veto.agent.tool.builtin;
 
 import org.jspecify.annotations.NonNull;
-
 import top.focess.veto.api.agent.tool.AgentTool;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.agent.tool.ToolDoc;
@@ -19,7 +18,7 @@ import top.focess.veto.api.agent.tool.ToolResultFormat;
         resultFormats = {ToolResultFormat.PLAINTEXT},
         examples = {"{}"},
         returnExamples = {"fixture result"})
-public final class FixtureLoopTool implements AgentTool<FixtureLoopTool.Args> {
+public final class FixtureLoopTool extends AgentTool<FixtureLoopTool.Args> {
     @Override
     public @NonNull String getName() {
         return "fixture_loop";

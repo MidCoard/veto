@@ -15,10 +15,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BooleanSupplier;
 import java.util.stream.Collectors;
-import org.checkerframework.checker.nullness.qual.NonNull;
-import org.checkerframework.framework.qual.DefaultQualifier;
-import org.checkerframework.framework.qual.TypeUseLocation;
-import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
@@ -68,30 +65,21 @@ import top.focess.veto.util.Nullness;
 
 /** Host assembly and lifetime of a private invocation child; no feature policy or result parser. */
 @Component
-@NullMarked
-@DefaultQualifier(
-        value = NonNull.class,
-        locations = {
-            TypeUseLocation.FIELD,
-            TypeUseLocation.PARAMETER,
-            TypeUseLocation.RETURN,
-            TypeUseLocation.UPPER_BOUND
-        })
 public final class IsolatedExecutions {
     private static final class Invocation {
         private volatile @Nullable Child child;
     }
 
-    private static final ConcurrentHashMap<ToolCallContext, Invocation> INVOCATIONS =
-            new ConcurrentHashMap<>();
-    private static final ConcurrentHashMap<String, Scope> PRIVATE_CONTEXTS =
-            new ConcurrentHashMap<>();
+    private static final @NonNull ConcurrentHashMap<@NonNull ToolCallContext, @NonNull Invocation>
+            INVOCATIONS = new ConcurrentHashMap<>();
+    private static final @NonNull ConcurrentHashMap<@NonNull String, @NonNull Scope>
+            PRIVATE_CONTEXTS = new ConcurrentHashMap<>();
 
     /**
      * Throws when the given context belongs to an isolated execution rather than a real parent
      * invocation.
      */
-    public static void requireNonIsolatedParent(ToolCallContext context) {
+    public static void requireNonIsolatedParent(@NonNull ToolCallContext context) {
         if (PRIVATE_CONTEXTS.containsKey(context.agentId()))
             throw new SecurityException(
                     "Isolated execution requires an explicitly delegated destination");
@@ -116,13 +104,13 @@ public final class IsolatedExecutions {
         }
     }
 
-    private final ObjectMapper mapper;
-    private final UniformLLMCaller caller;
-    private final ModelTierRegistry models;
-    private final CapabilityTranslator translator;
-    private final SessionAgentRegistry registry;
-    private final TurnLogService history;
-    private final IngressDefense ingress;
+    private final @NonNull ObjectMapper mapper;
+    private final @NonNull UniformLLMCaller caller;
+    private final @NonNull ModelTierRegistry models;
+    private final @NonNull CapabilityTranslator translator;
+    private final @NonNull SessionAgentRegistry registry;
+    private final @NonNull TurnLogService history;
+    private final @NonNull IngressDefense ingress;
     private final int callCeiling;
     private final int secondsCeiling;
     private final int inputCeiling;
@@ -130,13 +118,13 @@ public final class IsolatedExecutions {
 
     /** Creates the engine with operator-configured ceilings; every ceiling must be positive. */
     public IsolatedExecutions(
-            @Qualifier(LlmJacksonConfig.LLM_OBJECT_MAPPER) ObjectMapper mapper,
-            UniformLLMCaller caller,
-            ModelTierRegistry models,
-            CapabilityTranslator translator,
-            SessionAgentRegistry registry,
-            TurnLogService history,
-            IngressDefense ingress,
+            @Qualifier(LlmJacksonConfig.LLM_OBJECT_MAPPER) @NonNull ObjectMapper mapper,
+            @NonNull UniformLLMCaller caller,
+            @NonNull ModelTierRegistry models,
+            @NonNull CapabilityTranslator translator,
+            @NonNull SessionAgentRegistry registry,
+            @NonNull TurnLogService history,
+            @NonNull IngressDefense ingress,
             @Value("${veto.isolated.max-calls:128}") int callCeiling,
             @Value("${veto.isolated.max-seconds:600}") int secondsCeiling,
             @Value("${veto.isolated.max-input-tokens:1048576}") int inputCeiling,
@@ -160,8 +148,10 @@ public final class IsolatedExecutions {
      * Opens an isolated child for the current authorized parent invocation, clamped to host
      * ceilings. The {@code admitted} supplier must stay true for the child's whole lifetime.
      */
-    public Child open(
-            IsolatedAgent.Spec spec, IsolatedAgent.Factory factory, BooleanSupplier admitted) {
+    public @NonNull Child open(
+            IsolatedAgent.@NonNull Spec spec,
+            IsolatedAgent.@NonNull Factory factory,
+            @NonNull BooleanSupplier admitted) {
         var current = ToolCallContextHolder.get();
         if (current == null) throw new SecurityException("No authorized parent invocation");
         var parent = CapabilityAccess.require(current.executionPermit().capability());
@@ -316,7 +306,7 @@ public final class IsolatedExecutions {
         }
     }
 
-    private IsolatedAgent.Limits limits(IsolatedAgent.Spec spec) {
+    private IsolatedAgent.@NonNull Limits limits(IsolatedAgent.@NonNull Spec spec) {
         var requested = spec.limits();
         return new IsolatedAgent.Limits(
                 Math.min(requested.calls(), callCeiling),
@@ -328,12 +318,12 @@ public final class IsolatedExecutions {
                 requested.framingReserveBytes());
     }
 
-    private String render(AgentProfile.Prompt prompt) {
+    private @NonNull String render(AgentProfile.@NonNull Prompt prompt) {
         return PromptCompiler.compileDocument(prompt.resource(), JsonValues.toMap(prompt.data()))
                 .text();
     }
 
-    private String json(@Nullable Object value) {
+    private @NonNull String json(@Nullable Object value) {
         if (value == null) return "null";
         try {
             return mapper.writeValueAsString(value);
@@ -346,7 +336,8 @@ public final class IsolatedExecutions {
         return text == null ? 0 : text.getBytes(StandardCharsets.UTF_8).length;
     }
 
-    private ModelBinding resolve(String owner, List<String> tiers) {
+    private @NonNull ModelBinding resolve(
+            @NonNull String owner, @NonNull List<@NonNull String> tiers) {
         ModelTierConfigException failure = null;
         for (String tier : tiers) {
             try {
@@ -361,32 +352,32 @@ public final class IsolatedExecutions {
 
     /** Host-issued contract context; API-only plugins cannot construct it. */
     public static final class Scope implements IsolatedAgent.Runtime {
-        private final ToolCallContext parent;
-        private final Thread parentThread;
-        private final BooleanSupplier admitted;
-        private final String id;
-        private final String model;
+        private final @NonNull ToolCallContext parent;
+        private final @NonNull Thread parentThread;
+        private final @NonNull BooleanSupplier admitted;
+        private final @NonNull String id;
+        private final @NonNull String model;
         private final long started = System.nanoTime();
         private final long deadline;
-        private final IsolatedAgent.Terminal terminal;
-        private final IsolatedAgent.Limits limits;
-        private Set<String> privateTools = Set.of();
-        private final AtomicInteger calls = new AtomicInteger();
-        private final AtomicLong input = new AtomicLong(), output = new AtomicLong();
+        private final IsolatedAgent.@NonNull Terminal terminal;
+        private final IsolatedAgent.@NonNull Limits limits;
+        private @NonNull Set<@NonNull String> privateTools = Set.of();
+        private final @NonNull AtomicInteger calls = new AtomicInteger();
+        private final @NonNull AtomicLong input = new AtomicLong(), output = new AtomicLong();
         private volatile int observationBudget;
-        private Runnable checkTools = () -> {};
+        private @NonNull Runnable checkTools = () -> {};
         private volatile boolean closed;
         private volatile boolean completed;
         private @Nullable HttpDestinationGrant destination;
 
         private Scope(
-                ToolCallContext parent,
-                Thread parentThread,
-                BooleanSupplier admitted,
-                String id,
-                String model,
-                IsolatedAgent.Limits limits,
-                IsolatedAgent.Terminal terminal) {
+                @NonNull ToolCallContext parent,
+                @NonNull Thread parentThread,
+                @NonNull BooleanSupplier admitted,
+                @NonNull String id,
+                @NonNull String model,
+                IsolatedAgent.@NonNull Limits limits,
+                IsolatedAgent.@NonNull Terminal terminal) {
             this.parent = parent;
             this.parentThread = parentThread;
             this.admitted = admitted;
@@ -397,7 +388,7 @@ public final class IsolatedExecutions {
             this.limits = limits;
         }
 
-        public String id() {
+        public @NonNull String id() {
             return id;
         }
 
@@ -405,12 +396,12 @@ public final class IsolatedExecutions {
             return deadline;
         }
 
-        public ToolCallContext parent() {
+        public @NonNull ToolCallContext parent() {
             return parent;
         }
 
         /** Binds the one HTTP destination grant this execution may use; binding twice fails. */
-        public void bind(HttpDestinationGrant grant) {
+        public void bind(@NonNull HttpDestinationGrant grant) {
             authorizeParent();
             if (destination != null) throw new SecurityException("Destination already bound");
             destination = grant;
@@ -440,7 +431,7 @@ public final class IsolatedExecutions {
         }
 
         /** Verifies the current tool invocation is the given private tool of this execution. */
-        public void authorize(String operation) {
+        public void authorize(@NonNull String operation) {
             if (!privateTools.contains(operation))
                 throw new SecurityException("Operation is not a private tool");
             var context = ToolCallContextHolder.get();
@@ -466,7 +457,7 @@ public final class IsolatedExecutions {
             return observationBudget;
         }
 
-        public IsolatedAgent.Usage usage() {
+        public IsolatedAgent.@NonNull Usage usage() {
             return new IsolatedAgent.Usage(
                     id,
                     model,
@@ -477,7 +468,7 @@ public final class IsolatedExecutions {
         }
 
         /** Settles the declaring invocation with the result through the terminal tool. */
-        public void complete(String result) {
+        public void complete(@NonNull String result) {
             authorize(terminal.tool());
             completed = true;
             ToolCallContextHolder.finish(result);
@@ -486,23 +477,27 @@ public final class IsolatedExecutions {
 
     /** A live isolated child agent; owned by the opening parent invocation and closed with it. */
     public static final class Child implements IsolatedAgent {
-        private final Scope scope;
-        private final IsolatedAgent.Tools tools;
-        private final VetoAgent agent;
-        private final AgentRunner runner;
+        private final @NonNull Scope scope;
+        private final IsolatedAgent.@NonNull Tools tools;
+        private final @NonNull VetoAgent agent;
+        private final @NonNull AgentRunner runner;
         private @Nullable RequestHandle request;
         private volatile boolean closed;
-        private final AtomicBoolean closeRequested = new AtomicBoolean();
-        private final AtomicLong terminationDeadline = new AtomicLong();
-        private Runnable onClosed = () -> {};
+        private final @NonNull AtomicBoolean closeRequested = new AtomicBoolean();
+        private final @NonNull AtomicLong terminationDeadline = new AtomicLong();
+        private @NonNull Runnable onClosed = () -> {};
 
         /** Registers the close callback, run immediately when the child is already closed. */
-        public synchronized void onClosed(Runnable callback) {
+        public synchronized void onClosed(@NonNull Runnable callback) {
             if (closed) callback.run();
             else onClosed = callback;
         }
 
-        private Child(Scope scope, IsolatedAgent.Tools tools, VetoAgent agent, AgentRunner runner) {
+        private Child(
+                @NonNull Scope scope,
+                IsolatedAgent.@NonNull Tools tools,
+                @NonNull VetoAgent agent,
+                @NonNull AgentRunner runner) {
             this.scope = scope;
             this.tools = tools;
             this.agent = agent;
@@ -531,23 +526,23 @@ public final class IsolatedExecutions {
                                             }));
         }
 
-        public Scope scope() {
+        public @NonNull Scope scope() {
             return scope;
         }
 
-        public String id() {
+        public @NonNull String id() {
             return agent.id();
         }
 
-        public AgentState state() {
+        public @NonNull AgentState state() {
             return agent.state();
         }
 
-        public IsolatedAgent.Limits limits() {
+        public IsolatedAgent.@NonNull Limits limits() {
             return scope.limits;
         }
 
-        public IsolatedAgent.Usage usage() {
+        public IsolatedAgent.@NonNull Usage usage() {
             return scope.usage();
         }
 
@@ -556,7 +551,7 @@ public final class IsolatedExecutions {
         }
 
         /** Submits the single request this child accepts; a second submission fails. */
-        public synchronized AgentHost.Request submit(String prompt) {
+        public synchronized AgentHost.@NonNull Request submit(@NonNull String prompt) {
             scope.authorizeParent();
             scope.check();
             if (request != null)
@@ -564,19 +559,19 @@ public final class IsolatedExecutions {
             var handle = agent.submitRequest(prompt);
             request = handle;
             return new AgentHost.Request() {
-                public String id() {
+                public @NonNull String id() {
                     return handle.requestId();
                 }
 
-                public CompletableFuture<AgentResult> result() {
+                public @NonNull CompletableFuture<@NonNull AgentResult> result() {
                     return handle.result().copy();
                 }
 
-                public CompletableFuture<Boolean> settled() {
+                public @NonNull CompletableFuture<@NonNull Boolean> settled() {
                     return handle.settled().copy();
                 }
 
-                public boolean cancel(Duration timeout) throws InterruptedException {
+                public boolean cancel(@NonNull Duration timeout) throws InterruptedException {
                     return agent.cancelTask(handle.result(), timeout);
                 }
             };
@@ -594,7 +589,7 @@ public final class IsolatedExecutions {
         }
 
         /** Blocks until the child agent terminates or the timeout elapses; true when terminated. */
-        public boolean awaitTermination(Duration timeout) throws InterruptedException {
+        public boolean awaitTermination(@NonNull Duration timeout) throws InterruptedException {
             return agent.awaitTermination(timeout);
         }
 

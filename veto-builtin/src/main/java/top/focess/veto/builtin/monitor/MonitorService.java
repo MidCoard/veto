@@ -19,11 +19,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import top.focess.veto.api.agent.workflow.PluginAwait;
 import top.focess.veto.api.event.AgentTerminatedEvent;
-import top.focess.veto.api.event.EventHandler;
-import top.focess.veto.api.event.Listener;
 import top.focess.veto.api.event.SessionClosedEvent;
 import top.focess.veto.api.plugin.PluginHost;
-import top.focess.veto.api.plugin.contract.AgentInbox;
+import top.focess.veto.api.plugin.contract.AgentInbox.Observation;
+import top.focess.veto.api.plugin.contract.AgentInbox.Scope;
 import top.focess.veto.builtin.group.DagNode;
 import top.focess.veto.builtin.group.GroupObservations;
 import top.focess.veto.builtin.group.GroupState;
@@ -33,7 +32,7 @@ import top.focess.veto.builtin.process.ProcessObserver;
 import top.focess.veto.builtin.process.TaskInfo;
 
 /** Domain observations and time triggers share persistence and a single runner delivery path. */
-public class MonitorService implements AgentInbox, Listener, ProcessObserver {
+public class MonitorService implements ProcessObserver {
     private static final @NonNull Logger log =
             LoggerFactory.getLogger("top.focess.veto.builtin.monitor.MonitorService");
 
@@ -577,7 +576,6 @@ public class MonitorService implements AgentInbox, Listener, ProcessObserver {
         }
     }
 
-    @Override
     public @NonNull List<Observation> pending(@NonNull Scope scope) {
         return pending(scope.agentId(), scope.sessionId()).stream()
                 .map(
@@ -618,7 +616,6 @@ public class MonitorService implements AgentInbox, Listener, ProcessObserver {
                 dispatch == null || dispatch.equals("") ? null : (String) dispatch);
     }
 
-    @Override
     public void started(@NonNull Scope scope, @NonNull Observation observation) {
         Event event = event(observation);
         acknowledge(scope.agentId(), event);
@@ -626,17 +623,14 @@ public class MonitorService implements AgentInbox, Listener, ProcessObserver {
         refreshForeground();
     }
 
-    @Override
     public void completed(@NonNull Scope scope, @NonNull Observation observation, boolean success) {
         activationCompleted(scope.agentId(), event(observation), success);
     }
 
-    @Override
     public void cancelled(@NonNull Scope scope, @NonNull Observation observation) {
         activationCancelled(scope.agentId(), scope.sessionId(), event(observation));
     }
 
-    @EventHandler
     public synchronized void onSessionClosed(@NonNull SessionClosedEvent event) {
         foreground
                 .entrySet()
@@ -657,7 +651,6 @@ public class MonitorService implements AgentInbox, Listener, ProcessObserver {
                 .removeIf(entry -> removed.contains(entry.getValue().event().monitorId()));
     }
 
-    @EventHandler
     public void onAgentTerminated(@NonNull AgentTerminatedEvent event) {
         cancelForAgent(event.agentId());
     }

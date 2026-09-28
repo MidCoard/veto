@@ -2,14 +2,6 @@ package top.focess.veto.vault;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-import org.jspecify.annotations.NonNull;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
-
-import top.focess.veto.api.credentials.CredentialWriter;
-import top.focess.veto.secret.references.SecretCandidateStore;
-
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Optional;
@@ -18,6 +10,12 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import org.jspecify.annotations.NonNull;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+import top.focess.veto.api.credentials.CredentialWriter;
+import top.focess.veto.secret.references.SecretCandidateStore;
 
 /**
  * Verifies {@link KeysteadVault} against the real keystead {@code OneFileVaultStore} crypto: signup
@@ -320,11 +318,8 @@ class KeysteadVaultTest {
     void lockedVaultRejectsOperations(@TempDir @NonNull Path tempDir) {
         KeysteadVault vault = newVault(tempDir);
         assertThrows(
-                KeysteadVault.VaultLockedException.class,
-                () -> vault.readNoteBody("anything"));
-        assertThrows(
-                KeysteadVault.VaultLockedException.class,
-                () -> vault.saveNote("k", "v"));
+                KeysteadVault.VaultLockedException.class, () -> vault.readNoteBody("anything"));
+        assertThrows(KeysteadVault.VaultLockedException.class, () -> vault.saveNote("k", "v"));
     }
 
     @Test
@@ -334,9 +329,7 @@ class KeysteadVaultTest {
         vault.logout("alice");
 
         KeysteadVault reopened = newVault(tempDir);
-        assertThrows(
-                Exception.class,
-                () -> reopened.login("alice", "wrong-password"));
+        assertThrows(Exception.class, () -> reopened.login("alice", "wrong-password"));
     }
 
     @Test

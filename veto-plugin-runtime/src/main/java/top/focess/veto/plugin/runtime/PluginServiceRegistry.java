@@ -1,21 +1,5 @@
 package top.focess.veto.plugin.runtime;
 
-import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
-
-import top.focess.veto.api.plugin.PluginState;
-import top.focess.veto.api.plugin.contract.JsonValue;
-import top.focess.veto.api.plugin.contract.PluginFailure;
-import top.focess.veto.api.plugin.contract.StandardContributionPoints;
-import top.focess.veto.api.plugin.contribution.ContributionCatalog;
-import top.focess.veto.api.plugin.service.PluginServices;
-import top.focess.veto.api.plugin.service.ServiceCallContext;
-import top.focess.veto.api.plugin.service.ServiceException;
-import top.focess.veto.api.plugin.service.ServiceHandler;
-import top.focess.veto.api.plugin.service.ServiceRegistration;
-import top.focess.veto.api.plugin.service.ServiceScope;
-import top.focess.veto.api.plugin.storage.PluginStorage;
-
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
@@ -25,20 +9,31 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiPredicate;
+import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
+import top.focess.veto.api.plugin.PluginState;
+import top.focess.veto.api.plugin.contract.JsonValue;
+import top.focess.veto.api.plugin.contract.PluginFailure;
+import top.focess.veto.api.plugin.contract.StandardContributionPoints;
+import top.focess.veto.api.plugin.contribution.ContributionCatalog;
+import top.focess.veto.api.plugin.service.PluginService;
+import top.focess.veto.api.plugin.service.PluginServices;
+import top.focess.veto.api.plugin.service.ServiceCallContext;
+import top.focess.veto.api.plugin.service.ServiceException;
+import top.focess.veto.api.plugin.service.ServiceHandler;
+import top.focess.veto.api.plugin.service.ServiceScope;
+import top.focess.veto.api.plugin.storage.PluginStorage;
 
 /** Atomically bound service directory; implementation objects never escape to consumers. */
 public final class PluginServiceRegistry {
     private record Key(@NonNull String name, int version) {}
 
     private record Entry(
-            @NonNull ServiceRegistration service,
-            @NonNull PluginLifecycle owner,
-            long generation) {}
+            @NonNull PluginService service, @NonNull PluginLifecycle owner, long generation) {}
 
     private record Outcome(@Nullable JsonValue value, @Nullable ServiceException failure) {}
 
-    private record CallbackEntry(
-            @NonNull ServiceHandler handler, @NonNull PluginLifecycle owner) {}
+    private record CallbackEntry(@NonNull ServiceHandler handler, @NonNull PluginLifecycle owner) {}
 
     private volatile @NonNull Map<Key, Entry> entries = Map.of();
     private final @NonNull ConcurrentHashMap<String, CallbackEntry> callbacks =
@@ -106,8 +101,9 @@ public final class PluginServiceRegistry {
                         remaining.put(key, entry);
                 });
         entries = Map.copyOf(remaining);
-        callbacks.entrySet().removeIf(
-                entry -> entry.getValue().owner().identity().id().equals(providerId));
+        callbacks
+                .entrySet()
+                .removeIf(entry -> entry.getValue().owner().identity().id().equals(providerId));
     }
 
     /** Returns the service view authorized for the given calling plugin. */
@@ -124,7 +120,7 @@ public final class PluginServiceRegistry {
         return new PluginServices() {
             // Owner handles are registered by bind() and closed by the host plugin lifecycle.
             @SuppressWarnings("resource")
-            private boolean visible(Entry entry) {
+            private boolean visible(@NonNull Entry entry) {
                 return entry.owner().state() == PluginState.ACTIVE
                         && allowed.test(
                                 caller == null ? "" : caller.identity().id(),
@@ -210,8 +206,7 @@ public final class PluginServiceRegistry {
                         });
             }
 
-            public @NonNull CallbackRegistration registerCallback(
-                    @NonNull ServiceHandler handler) {
+            public @NonNull CallbackRegistration registerCallback(@NonNull ServiceHandler handler) {
                 if (caller == null) throw new IllegalStateException("Plugin caller is required");
                 String id = UUID.randomUUID().toString();
                 CallbackEntry registration = new CallbackEntry(handler, caller);
@@ -255,11 +250,15 @@ public final class PluginServiceRegistry {
                                             () ->
                                                     current.owner()
                                                             .execute(
-                                                                    () -> invokeCallbackHandler(
-                                                                            current.handler(),
-                                                                            request));
+                                                                    () ->
+                                                                            invokeCallbackHandler(
+                                                                                    current
+                                                                                            .handler(),
+                                                                                    request));
                                     Outcome outcome =
-                                            caller == null ? operation.run() : caller.execute(operation);
+                                            caller == null
+                                                    ? operation.run()
+                                                    : caller.execute(operation);
                                     if (outcome.failure() != null) throw outcome.failure();
                                     JsonValue result = outcome.value();
                                     if (result == null)
@@ -311,11 +310,11 @@ public final class PluginServiceRegistry {
     }
 
     private static @NonNull Outcome invokeHandler(
-            @NonNull ServiceRegistration service,
+            @NonNull PluginService service,
             @NonNull ServiceCallContext context,
             @NonNull JsonValue request) {
         try {
-            return new Outcome(service.handler().invoke(context, request), null);
+            return new Outcome(service.invoke(context, request), null);
         } catch (ServiceException failure) {
             return new Outcome(null, failure);
         } catch (Exception failure) {

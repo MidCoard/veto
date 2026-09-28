@@ -13,8 +13,7 @@ public final class ControlSubmissions {
      */
     public static ControlSubmission.Kind kindOf(ToolDefinition definition) {
         if (!(definition instanceof LocalToolDefinition local)) return null;
-        var annotation =
-                local.toolClass().getAnnotation(ControlSubmission.class);
+        var annotation = local.toolClass().getAnnotation(ControlSubmission.class);
         return annotation == null ? null : annotation.value();
     }
 }

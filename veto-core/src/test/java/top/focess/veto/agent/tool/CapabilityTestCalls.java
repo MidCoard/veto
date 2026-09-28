@@ -2,9 +2,9 @@ package top.focess.veto.agent.tool;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-
+import java.util.Map;
+import java.util.UUID;
 import org.jspecify.annotations.NonNull;
-
 import top.focess.veto.agent.capability.CapabilityResolver;
 import top.focess.veto.agent.capability.ProtectedWorkspaceReadCapabilityImpl;
 import top.focess.veto.agent.intercept.ToolExecutionPermit;
@@ -16,9 +16,6 @@ import top.focess.veto.api.agent.tool.WorkspaceReadTool;
 import top.focess.veto.api.agent.tool.WorkspaceWriteTool;
 import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
-
-import java.util.Map;
-import java.util.UUID;
 
 /** Creates an exact approved-call scope for direct capability integration tests. */
 public final class CapabilityTestCalls {
@@ -87,10 +84,7 @@ public final class CapabilityTestCalls {
                         .execute(args, new ProtectedWorkspaceReadCapabilityImpl());
             if (tool instanceof WorkspaceWriteTool<?> write)
                 return ((WorkspaceWriteTool<T>) write)
-                        .execute(
-                                args,
-                                CapabilityResolver.require(
-                                        WorkspaceWriteCapability.class));
+                        .execute(args, CapabilityResolver.require(WorkspaceWriteCapability.class));
             return tool.execute(args);
         } finally {
             if (!hadContext) {

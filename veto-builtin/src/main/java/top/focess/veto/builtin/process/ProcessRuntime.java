@@ -1,7 +1,10 @@
 package top.focess.veto.builtin.process;
 
+import java.time.Duration;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import org.jspecify.annotations.NonNull;
-
 import top.focess.veto.api.agent.tool.ToolPreparation;
 import top.focess.veto.api.event.AgentTerminatedEvent;
 import top.focess.veto.api.event.EventHandler;
@@ -17,13 +20,8 @@ import top.focess.veto.api.process.CommandResult;
 import top.focess.veto.api.process.ProcessHost;
 import top.focess.veto.builtin.process.BackgroundTasks.Scope;
 
-import java.time.Duration;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-
 /** Builtin policy and views around host-authorized process effects. */
-public final class ProcessRuntime implements Listener {
+public final class ProcessRuntime extends Listener {
     private final @NonNull PluginContext context;
     private final @NonNull BackgroundTasks tasks;
     private final @NonNull TaskEvents events;

@@ -4,16 +4,13 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-
+import java.util.HashSet;
+import java.util.List;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
-
 import top.focess.veto.api.agent.tool.ToolExecutionException;
 import top.focess.veto.builtin.planning.PlanPreflight;
 import top.focess.veto.builtin.planning.SubmitPlanTool;
-
-import java.util.HashSet;
-import java.util.List;
 
 class NativeToolArgumentValidatorTest {
     private final @NonNull ObjectMapper mapper = new ObjectMapper();
@@ -119,16 +116,11 @@ class NativeToolArgumentValidatorTest {
                         """
                 {"items":[{"kind":"amount","value":"$unknown"},{"kind":"amount","value":"wrong"}]}
                 """);
-        var error =
-                assertThrows(
-                        ToolExecutionException.class,
-                        () -> validatePrepared(bad, schema));
+        var error = assertThrows(ToolExecutionException.class, () -> validatePrepared(bad, schema));
         assertTrue(String.valueOf(error.getMessage()).contains("items[1].value"));
         var doubleEscaped =
                 mapper.readTree("{\"items\":[{\"kind\":\"literal\",\"value\":\"$$$price\"}]}");
-        assertThrows(
-                ToolExecutionException.class,
-                () -> validatePrepared(doubleEscaped, schema));
+        assertThrows(ToolExecutionException.class, () -> validatePrepared(doubleEscaped, schema));
     }
 
     @Test
@@ -196,9 +188,7 @@ class NativeToolArgumentValidatorTest {
                         ToolExecutionException.class,
                         () ->
                                 NativeToolArgumentValidator.validate(
-                                        "submit_plan",
-                                        args,
-                                        SubmitPlanTool.Args.class));
+                                        "submit_plan", args, SubmitPlanTool.Args.class));
         return String.valueOf(error.getMessage());
     }
 

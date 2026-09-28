@@ -1,6 +1,8 @@
 package top.focess.veto.plugin.runtime;
 
 import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
@@ -36,7 +38,7 @@ public final class PluginLifecycle implements AutoCloseable {
     // Cleanup is owned by the lifecycle executor; admission/count changes use this monitor.
     private boolean cleaned;
     private boolean stopping;
-    private final @NonNull String activationId = java.util.UUID.randomUUID().toString();
+    private final @NonNull String activationId = UUID.randomUUID().toString();
     private final @NonNull Map<PluginAwait, PluginAwait> waits = new ConcurrentHashMap<>();
 
     private final @NonNull Map<Object, Runnable> resources = new ConcurrentHashMap<>();
@@ -153,6 +155,21 @@ public final class PluginLifecycle implements AutoCloseable {
         return plugin.identity();
     }
 
+    /** Returns entry metadata without requiring construction. */
+    public @NonNull String displayName() {
+        return plugin.displayName();
+    }
+
+    /** Returns historical identities before or after construction. */
+    public @NonNull Set<@NonNull String> historicalIds() {
+        return plugin.historicalIds();
+    }
+
+    /** Returns a tool-name preference without requiring construction. */
+    public @Nullable String preferredToolName(@NonNull String localId) {
+        return plugin.preferredToolName(localId);
+    }
+
     public @NonNull PluginState state() {
         return state;
     }
@@ -184,14 +201,13 @@ public final class PluginLifecycle implements AutoCloseable {
                                 if (!identity().equals(context.identity()))
                                     throw new PluginFailure(
                                             PluginFailure.Code.INVALID_CONFIGURATION);
-                                var contributions =
-                                        plugin.initialize(
-                                                new PluginContext(
-                                                        context.identity(),
-                                                        this::fail,
-                                                        this::state,
-                                                        context.hostServices()),
-                                                configuration);
+                                var bound =
+                                        new PluginContext(
+                                                context.identity(),
+                                                this::fail,
+                                                this::state,
+                                                context.hostServices());
+                                var contributions = plugin.initialize(bound, configuration);
                                 state = PluginState.INITIALIZED;
                                 return contributions;
                             } catch (PluginDeclinedException declined) {

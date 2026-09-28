@@ -2,6 +2,19 @@ package top.focess.veto.integration.plugins;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import java.io.File;
+import java.io.IOException;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -10,7 +23,6 @@ import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
-
 import top.focess.veto.VetoApplication;
 import top.focess.veto.agent.intercept.ToolExecutionPermit;
 import top.focess.veto.agent.tool.*;
@@ -23,19 +35,6 @@ import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.model.SessionEntity;
 import top.focess.veto.model.SessionRepository;
 import top.focess.veto.plugin.runtime.*;
-
-import java.io.File;
-import java.io.IOException;
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
-import java.util.UUID;
 
 /**
  * Starts the real Veto application and HTTP listener, then dispatches through its real tool engine.
@@ -90,16 +89,38 @@ class ScriptPluginBootTest {
         throw new IllegalStateException("Node.js is required for plugin startup tests");
     }
 
+    private static @NonNull String installedPackages() {
+        Path root = STATE.resolve("plugins");
+        try {
+            copyPackage(
+                    Path.of(PluginTestSupport.pluginPackages()).resolve("top.focess.builtin"),
+                    root.resolve("top.focess.builtin"));
+            copyPackage(
+                    Path.of("../veto-plugin-runtime/examples/text-tools")
+                            .toAbsolutePath()
+                            .normalize(),
+                    root.resolve("text"));
+        } catch (IOException e) {
+            throw new IllegalStateException(e);
+        }
+        return root.toString();
+    }
+
+    private static void copyPackage(@NonNull Path source, @NonNull Path target) throws IOException {
+        try (var files = Files.walk(source)) {
+            for (Path file : files.toList()) {
+                Path destination = target.resolve(source.relativize(file));
+                if (Files.isDirectory(file)) Files.createDirectories(destination);
+                else if (!Files.exists(destination) || Files.mismatch(file, destination) != -1L)
+                    Files.copy(file, destination, StandardCopyOption.REPLACE_EXISTING);
+            }
+        }
+    }
+
     @DynamicPropertySource
     static void configure(@NonNull DynamicPropertyRegistry registry) {
-        registry.add(
-                "veto.plugins.paths",
-                () ->
-                        Path.of("../veto-plugin-runtime/examples/text-tools")
-                                .toAbsolutePath()
-                                .normalize()
-                                .toString());
         registry.add("veto.plugins.node-command", ScriptPluginBootTest::node);
+        registry.add("veto.plugins.directory", ScriptPluginBootTest::installedPackages);
         registry.add("veto.vault.vault-home", () -> STATE.resolve("vault").toString());
     }
 
@@ -232,10 +253,11 @@ class ScriptPluginBootTest {
                 IOException.class,
                 () ->
                         new PluginManager(
-                                "/unused",
+                                installedPackages(),
                                 node(),
                                 false,
                                 5000,
-                                PluginTestSupport.providerOf(null)));
+                                PluginTestSupport.providerOf(null),
+                                new PluginConfigurations()));
     }
 }

@@ -1,9 +1,12 @@
 # LLM provider plugin
 
-ServiceLoader plugin `top.focess.llm-providers` contributes OpenAI, Anthropic,
+Installable plugin `top.focess.llm-providers` contributes OpenAI, Anthropic,
 Gemini and DeepSeek adapters through `veto:llm-providers`. This module depends on
 `veto-api` and vendor SDKs, with no core or Spring dependency. It owns SDK creation,
 request mapping, response decoding and SDK pool cleanup.
+
+Build its optional `plugin.json` package with `localPluginPackages` and install
+the directory under the backend's `plugins/` folder.
 
 Provider contracts live in `top.focess.veto.api.llm`. The host supplies
 `PromptRenderer`, backed by MDC and `PromptCompiler`; adapters cannot silently use

@@ -3,9 +3,9 @@ package top.focess.veto.agent.loop;
 import static org.junit.jupiter.api.Assertions.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-
+import java.util.*;
+import java.util.regex.Pattern;
 import org.junit.jupiter.api.Test;
-
 import top.focess.veto.api.agent.tool.ToolResult;
 import top.focess.veto.api.agent.tool.ToolResultFormat;
 import top.focess.veto.api.agent.tool.ToolResultStatus;
@@ -21,9 +21,6 @@ import top.focess.veto.builtin.planning.Scope;
 import top.focess.veto.builtin.planning.StopAction;
 import top.focess.veto.builtin.planning.ToolAction;
 import top.focess.veto.util.Nullness;
-
-import java.util.*;
-import java.util.regex.Pattern;
 
 class PlanBindingsTest {
     @Test
@@ -91,9 +88,7 @@ class PlanBindingsTest {
                         0.2);
         assertEquals("[$literal, b] and two words", generate.resolvePrompt(scope));
         assertFalse(scope.contains("alias"));
-        assertThrows(
-                IllegalArgumentException.class,
-                () -> scope.resolveValue("$missing"));
+        assertThrows(IllegalArgumentException.class, () -> scope.resolveValue("$missing"));
     }
 
     @Test

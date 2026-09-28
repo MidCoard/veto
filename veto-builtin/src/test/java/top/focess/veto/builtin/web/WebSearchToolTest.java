@@ -4,9 +4,10 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.net.http.HttpTimeoutException;
+import java.util.List;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
-
 import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.tool.ToolErrors;
 import top.focess.veto.api.agent.tool.ToolExecutionException;
@@ -15,16 +16,13 @@ import top.focess.veto.builtin.search.SearchOptions;
 import top.focess.veto.builtin.search.SearchProvider;
 import top.focess.veto.builtin.search.SearchResult;
 
-import java.net.http.HttpTimeoutException;
-import java.util.List;
-
+@SuppressWarnings(
+        "override.receiver") // Test implementations use javac's non-null anonymous receiver.
 class WebSearchToolTest {
 
     @Test
     void anonymousSearchIsElevatedByDefault() {
-        ToolSecurity security =
-                WebSearchTool.class
-                        .getAnnotation(ToolSecurity.class);
+        ToolSecurity security = WebSearchTool.class.getAnnotation(ToolSecurity.class);
         if (security == null) {
             throw new AssertionError("web_search must declare @ToolSecurity");
         }
@@ -54,7 +52,7 @@ class WebSearchToolTest {
         SearchProvider provider =
                 new SearchProvider() {
                     @Override
-                    public @NonNull List<SearchResult> search(
+                    public @NonNull List<@NonNull SearchResult> search(
                             @NonNull String query, @NonNull SearchOptions options) {
                         throw new IllegalStateException("bad \"response\"\\payload");
                     }
@@ -77,7 +75,7 @@ class WebSearchToolTest {
     private static final class TimeoutProvider implements SearchProvider {
 
         @Override
-        public @NonNull List<SearchResult> search(
+        public @NonNull List<@NonNull SearchResult> search(
                 @NonNull String query, @NonNull SearchOptions options) throws HttpTimeoutException {
             throw new HttpTimeoutException("request timed out");
         }

@@ -6,15 +6,12 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-
+import java.util.EnumSet;
 import org.junit.jupiter.api.Test;
-
 import top.focess.veto.api.agent.tool.ToolErrorCode;
 import top.focess.veto.api.agent.tool.ToolExecutionException;
 import top.focess.veto.builtin.group.BlackboardMessage;
 import top.focess.veto.builtin.group.GroupTools;
-
-import java.util.EnumSet;
 
 class AgentToolParameterContractTest {
     @Test

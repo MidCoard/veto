@@ -4,21 +4,18 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-
-import org.jspecify.annotations.NonNull;
-import org.junit.jupiter.api.Test;
-
-import top.focess.veto.api.plugin.PluginHost;
-import top.focess.veto.api.plugin.contract.JsonValue;
-import top.focess.veto.builtin.monitor.MonitorRecord;
-import top.focess.veto.builtin.monitor.MonitorRepository;
-import top.focess.veto.builtin.monitor.MonitorService;
-
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
+import org.jspecify.annotations.NonNull;
+import org.junit.jupiter.api.Test;
+import top.focess.veto.api.plugin.PluginHost;
+import top.focess.veto.api.plugin.contract.JsonValue;
+import top.focess.veto.builtin.monitor.MonitorRecord;
+import top.focess.veto.builtin.monitor.MonitorRepository;
+import top.focess.veto.builtin.monitor.MonitorService;
 
 class TaskEventsTest {
     @Test
@@ -235,9 +232,7 @@ class TaskEventsTest {
                 scope, exited, BackgroundTasks.ExitCause.USER_STOP, BackgroundTasks.Change.EXITED);
         assertEquals(1, monitor.pending("agent", session.toString()).size());
         var saved = monitor.list("owner", session.toString()).getFirst();
-        var replayed =
-                mapper.readValue(
-                        mapper.writeValueAsString(saved), MonitorRecord.class);
+        var replayed = mapper.readValue(mapper.writeValueAsString(saved), MonitorRecord.class);
         assertEquals(event, replayed.pending().getFirst());
         events.close();
     }

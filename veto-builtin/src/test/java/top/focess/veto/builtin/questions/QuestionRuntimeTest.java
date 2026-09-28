@@ -4,12 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-
 import static top.focess.veto.builtin.questions.QuestionTestSupport.*;
-
-import org.jspecify.annotations.NonNull;
-import org.junit.jupiter.api.Test;
-
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -18,6 +13,8 @@ import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import org.jspecify.annotations.NonNull;
+import org.junit.jupiter.api.Test;
 
 class QuestionRuntimeTest {
 

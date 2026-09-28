@@ -1,7 +1,9 @@
 package top.focess.veto.builtin.tools;
 
+import java.time.Duration;
+import java.util.List;
+import java.util.Map;
 import org.jspecify.annotations.NonNull;
-
 import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.tool.Doc;
 import top.focess.veto.api.agent.tool.ParamCategory;
@@ -21,10 +23,6 @@ import top.focess.veto.api.process.ChainMode;
 import top.focess.veto.api.process.Command;
 import top.focess.veto.builtin.process.ProcessExecutionCapability;
 import top.focess.veto.builtin.process.TaskInfo;
-
-import java.time.Duration;
-import java.util.List;
-import java.util.Map;
 
 /**
  * {@code run_task} - launch a long-running command as a detached background task. Takes the same
@@ -111,15 +109,15 @@ import java.util.Map;
                     + " build\", \"cwd\": \"/abs/project\", \"requestedTimeoutSeconds\": 1200,"
                     + " \"effectiveTimeoutSeconds\": 600}",
             "{\"status\": \"started\", \"taskId\": \"bg-5\", \"pid\": 12387, \"command\": \"gradle"
-                + " test --continuous\", \"cwd\": \"/abs/project\", \"requestedTimeoutSeconds\":"
-                + " 1800, \"effectiveTimeoutSeconds\": 600}",
+                    + " test --continuous\", \"cwd\": \"/abs/project\", \"requestedTimeoutSeconds\":"
+                    + " 1800, \"effectiveTimeoutSeconds\": 600}",
             "{\"status\": \"started\", \"taskId\": \"bg-6\", \"pid\": 12402, \"command\": \"python"
-                + " -m http.server 8000\", \"cwd\": \"/abs/project\", \"requestedTimeoutSeconds\":"
-                + " 3600, \"effectiveTimeoutSeconds\": 600}",
+                    + " -m http.server 8000\", \"cwd\": \"/abs/project\", \"requestedTimeoutSeconds\":"
+                    + " 3600, \"effectiveTimeoutSeconds\": 600}",
             "Invalid arguments: exactly one command is required (background mode does not chain);"
                     + " got 2."
         })
-public final class RunTaskTool implements PreparedTool<RunTaskTool.Args> {
+public final class RunTaskTool extends PreparedTool<RunTaskTool.Args> {
     private final ProcessExecutionCapability capability;
 
     /** Declaration-only instance; the host supplies the capability at execution time. */
@@ -226,10 +224,10 @@ public final class RunTaskTool implements PreparedTool<RunTaskTool.Args> {
                 new Result(
                         "started",
                         "If the assignment needs the final result, call view_task once with this"
-                            + " taskId and waitForExit=true. Do not finish the assignment with a"
-                            + " waiting message or poll. If only starting a long-lived service was"
-                            + " requested, report that it started without waiting for exit. Answer"
-                            + " in the user's language.",
+                                + " taskId and waitForExit=true. Do not finish the assignment with a"
+                                + " waiting message or poll. If only starting a long-lived service was"
+                                + " requested, report that it started without waiting for exit. Answer"
+                                + " in the user's language.",
                         info.taskId(),
                         info.pid(),
                         info.command(),

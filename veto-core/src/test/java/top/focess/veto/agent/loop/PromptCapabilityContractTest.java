@@ -3,11 +3,14 @@ package top.focess.veto.agent.loop;
 import static org.junit.jupiter.api.Assertions.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-
 import top.focess.veto.agent.identity.AgentPersona;
 import top.focess.veto.agent.identity.Role;
 import top.focess.veto.agent.identity.SystemPromptResolver;
@@ -27,12 +30,6 @@ import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.builtin.planning.SubmitPlanTool;
 import top.focess.veto.builtin.response.AnswerWithCitationsTool;
 import top.focess.veto.builtin.tools.AskUserTool;
-
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
 
 class PromptCapabilityContractTest {
     @Test
@@ -256,9 +253,7 @@ class PromptCapabilityContractTest {
                 new com.fasterxml.jackson.databind.ObjectMapper()
                         .valueToTree(nativeTool.inputSchema());
         var questions = schema.path("properties").path("questions");
-        assertEquals(
-                ToolSchemaCompiler.compileFromRecord(AskUserTool.Args.class),
-                schema);
+        assertEquals(ToolSchemaCompiler.compileFromRecord(AskUserTool.Args.class), schema);
         assertEquals(1, questions.path("minItems").asInt());
         assertEquals(10, questions.path("maxItems").asInt());
         var options = questions.path("items").path("properties").path("options");

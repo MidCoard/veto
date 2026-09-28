@@ -10,24 +10,30 @@ import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.contract.PluginFailure;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
 import top.focess.veto.api.plugin.contribution.Contribution;
-import top.focess.veto.api.plugin.service.ServiceRegistration;
+import top.focess.veto.api.plugin.service.PluginService;
+import top.focess.veto.api.plugin.service.ServiceCallContext;
+import top.focess.veto.api.plugin.service.ServiceScope;
 
 /** Compilation fixture for the provider documented in veto-api/README.md. */
-public final class TextProviderPlugin implements VetoPlugin {
+public final class TextProviderPlugin extends VetoPlugin {
+    public TextProviderPlugin(
+            @NonNull PluginContext context, JsonValue.@NonNull ObjectValue configuration) {}
+
     public @NonNull PluginIdentity identity() {
         return new PluginIdentity("example.text", "1.0.0");
     }
 
-    public @NonNull PluginContributions initialize(
-            @NonNull PluginContext context, JsonValue.@NonNull ObjectValue configuration) {
+    public @NonNull PluginContributions contributions() {
         var service =
-                new ServiceRegistration(
-                        "example:text",
-                        1,
-                        request ->
-                                request instanceof JsonValue.StringValue text
-                                        ? new JsonValue.StringValue(text.value().trim())
-                                        : JsonValue.NullValue.INSTANCE);
+                new PluginService("example:text", 1, ServiceScope.GLOBAL) {
+                    @Override
+                    public @NonNull JsonValue invoke(
+                            @NonNull ServiceCallContext caller, @NonNull JsonValue request) {
+                        return request instanceof JsonValue.StringValue text
+                                ? new JsonValue.StringValue(text.value().trim())
+                                : JsonValue.NullValue.INSTANCE;
+                    }
+                };
         return new PluginContributions(
                 List.of(Contribution.of(StandardContributionPoints.SERVICES, "text", service)));
     }

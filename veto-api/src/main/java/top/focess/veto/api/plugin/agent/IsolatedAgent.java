@@ -2,11 +2,10 @@ package top.focess.veto.api.plugin.agent;
 
 import java.time.Duration;
 import java.util.List;
-import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.agent.tool.NativeTool;
 
 /** One ephemeral child owned by the currently authorized tool invocation. */
-@NullMarked
 public interface IsolatedAgent extends AgentHost.Child, AutoCloseable {
     /**
      * Hard execution limits requested for an isolated child.
@@ -19,7 +18,7 @@ public interface IsolatedAgent extends AgentHost.Child, AutoCloseable {
      */
     record Limits(
             int calls,
-            Duration timeout,
+            @NonNull Duration timeout,
             int inputTokens,
             int outputTokens,
             int framingReserveBytes) {
@@ -42,7 +41,7 @@ public interface IsolatedAgent extends AgentHost.Child, AutoCloseable {
      * @param reservedCalls calls reserved so the terminal action remains reachable
      * @param prompt prompt describing the terminal result contract
      */
-    record Terminal(String tool, int reservedCalls, AgentProfile.Prompt prompt) {
+    record Terminal(@NonNull String tool, int reservedCalls, AgentProfile.@NonNull Prompt prompt) {
         /** Validates the terminal tool name and reserved call count. */
         public Terminal {
             if (tool.isBlank() || reservedCalls < 1)
@@ -61,12 +60,12 @@ public interface IsolatedAgent extends AgentHost.Child, AutoCloseable {
      * @param terminal terminal result contract
      */
     record Spec(
-            String name,
-            AgentProfile.Prompt description,
-            AgentProfile.Prompt system,
-            List<String> tiers,
-            Limits limits,
-            Terminal terminal) {
+            @NonNull String name,
+            AgentProfile.@NonNull Prompt description,
+            AgentProfile.@NonNull Prompt system,
+            @NonNull List<@NonNull String> tiers,
+            @NonNull Limits limits,
+            @NonNull Terminal terminal) {
         /** Defensively copies and validates the model-tier preference list. */
         public Spec {
             tiers = List.copyOf(tiers);
@@ -85,8 +84,8 @@ public interface IsolatedAgent extends AgentHost.Child, AutoCloseable {
      * @param outputTokens consumed output tokens
      */
     record Usage(
-            String id,
-            String model,
+            @NonNull String id,
+            @NonNull String model,
             long elapsedMillis,
             int calls,
             long inputTokens,
@@ -99,14 +98,14 @@ public interface IsolatedAgent extends AgentHost.Child, AutoCloseable {
          *
          * @return the isolated execution ID
          */
-        String id();
+        @NonNull String id();
 
         /**
          * Requires host authorization for the named operation.
          *
          * @param operation operation whose authority is required
          */
-        void authorize(String operation);
+        void authorize(@NonNull String operation);
 
         /**
          * Returns the payload allowance for a single observation.
@@ -120,14 +119,14 @@ public interface IsolatedAgent extends AgentHost.Child, AutoCloseable {
          *
          * @return the current host-accounted usage snapshot
          */
-        Usage usage();
+        @NonNull Usage usage();
 
         /**
          * Completes the isolated execution with its terminal result.
          *
          * @param result terminal result payload
          */
-        void complete(String result);
+        void complete(@NonNull String result);
     }
 
     /** Invocation-scoped native tools and their lifecycle checks. */
@@ -137,7 +136,7 @@ public interface IsolatedAgent extends AgentHost.Child, AutoCloseable {
          *
          * @return the complete tool set exposed to the child
          */
-        List<NativeTool<?>> tools();
+        @NonNull List<@NonNull NativeTool<?>> tools();
 
         /** Performs an optional readiness check before execution starts. */
         default void check() {}
@@ -155,7 +154,7 @@ public interface IsolatedAgent extends AgentHost.Child, AutoCloseable {
          * @param runtime host bridge for the isolated invocation
          * @return the opened tool set
          */
-        Tools open(Runtime runtime);
+        @NonNull Tools open(@NonNull Runtime runtime);
     }
 
     /**
@@ -163,14 +162,14 @@ public interface IsolatedAgent extends AgentHost.Child, AutoCloseable {
      *
      * @return the effective execution limits
      */
-    Limits limits();
+    @NonNull Limits limits();
 
     /**
      * Returns usage accounted by the host so far.
      *
      * @return the current host-accounted usage snapshot
      */
-    Usage usage();
+    @NonNull Usage usage();
 
     /**
      * Reports whether the execution has consumed any enforced budget.

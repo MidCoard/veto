@@ -1,7 +1,12 @@
 package top.focess.veto.builtin.memory;
 
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.UUID;
 import org.jspecify.annotations.NonNull;
-
 import top.focess.veto.api.agent.tool.Doc;
 import top.focess.veto.api.agent.tool.ParamCategory;
 import top.focess.veto.api.agent.tool.RequiredWhen;
@@ -10,13 +15,6 @@ import top.focess.veto.api.agent.tool.ToolDoc;
 import top.focess.veto.api.agent.tool.ToolErrorCode;
 import top.focess.veto.api.agent.tool.ToolErrors;
 import top.focess.veto.api.agent.tool.ToolResultFormat;
-
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.UUID;
 
 /**
  * Agent-facing memory tools. Their agent-tool definition flavour means the Gateway returns {@code
@@ -139,7 +137,7 @@ public final class MemoryTools {
                         + "  test placeholder\n",
                 "no matching memories"
             })
-    public static final class RecallMemory implements MemoryReadTool<RecallMemory.Args> {
+    public static final class RecallMemory extends MemoryReadTool<RecallMemory.Args> {
 
         private final MemoryReadCapability capability;
 
@@ -261,7 +259,7 @@ public final class MemoryTools {
                 "promoted: 123e4567-e89b-12d3-a456-426614174003",
                 "Invalid arguments: PROMOTE accepts only promoteMemoryId; memory not promoted."
             })
-    public static final class WriteMemory implements MemoryWriteTool<WriteMemory.Args> {
+    public static final class WriteMemory extends MemoryWriteTool<WriteMemory.Args> {
 
         private final MemoryWriteCapability capability;
 
@@ -415,7 +413,7 @@ public final class MemoryTools {
                 "forgotten: 123e4567-e89b-12d3-a456-426614174001",
                 "Memory not found: the memory does not exist or is not owned; nothing forgotten."
             })
-    public static final class ForgetMemory implements MemoryWriteTool<ForgetMemory.Args> {
+    public static final class ForgetMemory extends MemoryWriteTool<ForgetMemory.Args> {
 
         private final MemoryWriteCapability capability;
 

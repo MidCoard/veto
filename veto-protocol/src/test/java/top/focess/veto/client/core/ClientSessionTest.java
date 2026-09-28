@@ -2,19 +2,17 @@ package top.focess.veto.client.core;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-import org.jspecify.annotations.NonNull;
-import org.junit.jupiter.api.Test;
-
-import top.focess.veto.contract.IpcClient;
-import top.focess.veto.contract.IpcFrame;
-import top.focess.veto.contract.IpcMeta;
-
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CountDownLatch;
+import org.jspecify.annotations.NonNull;
+import org.junit.jupiter.api.Test;
+import top.focess.veto.contract.IpcClient;
+import top.focess.veto.contract.IpcFrame;
+import top.focess.veto.contract.IpcMeta;
 
 /**
  * Direct, deterministic tests of {@link ClientSession}'s protocol logic — one per cell of the

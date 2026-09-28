@@ -1,10 +1,8 @@
 package top.focess.veto.api.plugin.contribution;
 
-import org.jspecify.annotations.NonNull;
-
-import top.focess.veto.api.plugin.contract.JsonValue;
-
 import java.util.List;
+import org.jspecify.annotations.NonNull;
+import top.focess.veto.api.plugin.contract.JsonValue;
 
 /**
  * Read-only discovery of plugin-defined JSON contribution groups. The directory is live: a disabled
@@ -35,5 +33,5 @@ public interface PluginContributionsDirectory {
     @NonNull List<Entry> entries(@NonNull ContributionId pointId, int major);
 
     /** Directory used when the host provides no plugin-defined groups. */
-    PluginContributionsDirectory EMPTY = (pointId, major) -> List.of();
+    @NonNull PluginContributionsDirectory EMPTY = (pointId, major) -> List.of();
 }

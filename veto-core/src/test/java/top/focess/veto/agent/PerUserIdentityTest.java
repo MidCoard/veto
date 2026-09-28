@@ -3,13 +3,16 @@ package top.focess.veto.agent;
 import static org.junit.jupiter.api.Assertions.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-
+import java.time.Duration;
+import java.util.List;
+import java.util.UUID;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 import org.springframework.test.util.ReflectionTestUtils;
-
 import top.focess.veto.agent.identity.SystemPromptResolver;
 import top.focess.veto.agent.intercept.HitlRegistry;
 import top.focess.veto.agent.intercept.IngressDefense;
@@ -26,12 +29,6 @@ import top.focess.veto.memory.TurnLogService;
 import top.focess.veto.memory.TurnRecordEntity;
 import top.focess.veto.memory.TurnRecordRepository;
 import top.focess.veto.vault.UserContext;
-
-import java.time.Duration;
-import java.util.List;
-import java.util.UUID;
-import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Tests that per-user identity is threaded from the transport through {@link AgentService#submit}
@@ -105,8 +102,7 @@ class PerUserIdentityTest {
         assertTrue(result.success(), "Episode should complete successfully");
 
         // Verify turns were logged under the supplied userId, not DEFAULT_USER_ID
-        ArgumentCaptor<TurnRecordEntity> captor =
-                ArgumentCaptor.forClass(TurnRecordEntity.class);
+        ArgumentCaptor<TurnRecordEntity> captor = ArgumentCaptor.forClass(TurnRecordEntity.class);
         Mockito.verify(repo, Mockito.atLeastOnce()).save(captor.capture());
         TurnRecordEntity first = captor.getAllValues().get(0);
         assertEquals(
@@ -138,8 +134,7 @@ class PerUserIdentityTest {
         assertTrue(result.success());
 
         // Turns logged under DEFAULT_USER_ID
-        ArgumentCaptor<TurnRecordEntity> captor =
-                ArgumentCaptor.forClass(TurnRecordEntity.class);
+        ArgumentCaptor<TurnRecordEntity> captor = ArgumentCaptor.forClass(TurnRecordEntity.class);
         Mockito.verify(repo, Mockito.atLeastOnce()).save(captor.capture());
         TurnRecordEntity first = captor.getAllValues().get(0);
         assertEquals(AgentService.DEFAULT_USER_ID.toString(), first.getUserId());

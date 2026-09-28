@@ -5,11 +5,14 @@ import static org.junit.jupiter.api.Assertions.*;
 import com.anthropic.client.okhttp.AnthropicOkHttpClient;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpServer;
-
+import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
-
 import top.focess.veto.agent.tool.AgentToolDefinition;
 import top.focess.veto.agent.tool.RemoteToolDefinition;
 import top.focess.veto.agent.tool.ToolSchemaCompiler;
@@ -28,12 +31,6 @@ import top.focess.veto.api.llm.exceptions.ModelSchemaException;
 import top.focess.veto.builtin.planning.SubmitPlanTool;
 import top.focess.veto.builtin.tools.AskUserTool;
 import top.focess.veto.llm.core.*;
-
-import java.net.InetSocketAddress;
-import java.nio.charset.StandardCharsets;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.CopyOnWriteArrayList;
 
 /** Verifies real SDK serialization and native response decoding without a remote model or key. */
 class AnthropicNativeToolWireTest {
@@ -116,7 +113,7 @@ class AnthropicNativeToolWireTest {
                     String content =
                             bodies.size() == 1
                                     ? "[{\"type\":\"tool_use\",\"id\":\"native-1\",\"name\":\"view_file\",\"input\":{\"absolutePath\":\"/workspace/中文"
-                                          + " notes.txt\"}}]"
+                                            + " notes.txt\"}}]"
                                     : "[{\"type\":\"text\",\"text\":\"{\\\"message\\\":\\\"Read"
                                             + " complete\\\"}\"}]";
                     byte[] response =
@@ -158,9 +155,7 @@ class AnthropicNativeToolWireTest {
                             ToolDocumentation.empty(),
                             List.of(),
                             List.of());
-            var askSchema =
-                    ToolSchemaCompiler.compileFromRecord(
-                            AskUserTool.Args.class);
+            var askSchema = ToolSchemaCompiler.compileFromRecord(AskUserTool.Args.class);
             var askTool =
                     new ToolDefinition(
                             "ask_user",

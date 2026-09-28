@@ -4,17 +4,14 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-
+import java.time.Instant;
+import java.util.List;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
-
 import top.focess.veto.agent.TurnRecord;
 import top.focess.veto.agent.TurnType;
 import top.focess.veto.memory.TurnRecordEntity;
 import top.focess.veto.memory.TurnRecordRepository;
-
-import java.time.Instant;
-import java.util.List;
-import java.util.UUID;
 
 class SessionHistoryLoaderTest {
 
@@ -95,7 +92,7 @@ class SessionHistoryLoaderTest {
         when(systemPrompt.getPayload())
                 .thenReturn(
                         "{\"content\":\"legacy"
-                            + " prompt\",\"provider\":\"DEEPSEEK\",\"model\":\"legacy-model\"}");
+                                + " prompt\",\"provider\":\"DEEPSEEK\",\"model\":\"legacy-model\"}");
         when(systemPrompt.getTimestamp()).thenReturn(Instant.EPOCH);
 
         TurnRecordEntity recall = mock(TurnRecordEntity.class);

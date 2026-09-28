@@ -1,9 +1,7 @@
 package top.focess.veto.api.agent.tool;
 
-import org.jspecify.annotations.NonNull;
-
-
 import java.util.List;
+import org.jspecify.annotations.NonNull;
 
 /** Shared reflection helpers for record-authored tool documentation. */
 public final class ToolDocs {

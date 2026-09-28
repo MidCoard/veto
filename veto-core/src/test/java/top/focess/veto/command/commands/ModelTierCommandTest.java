@@ -3,9 +3,10 @@ package top.focess.veto.command.commands;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
+import java.util.List;
+import java.util.Optional;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
-
 import top.focess.command.CommandManager;
 import top.focess.command.CommandPermission;
 import top.focess.command.CommandResult;
@@ -19,9 +20,6 @@ import top.focess.veto.model.tier.ModelTierProfileEntity;
 import top.focess.veto.model.tier.ModelTierProfileService;
 import top.focess.veto.model.tier.ModelTierRegistry;
 
-import java.util.List;
-import java.util.Optional;
-
 /**
  * Verifies the {@code /modeltier} command dispatches to {@link ModelTierProfileService} / {@link
  * ModelTierRegistry} and renders the right output for each subcommand. The service layer is covered
@@ -32,8 +30,7 @@ class ModelTierCommandTest {
 
     private static @NonNull VetoCommandSender aliceSender() {
         VetoCommandSender sender = mock(VetoCommandSender.class);
-        when(sender.hasPermission(any(CommandPermission.class)))
-                .thenReturn(true);
+        when(sender.hasPermission(any(CommandPermission.class))).thenReturn(true);
         when(sender.isLoggedIn()).thenReturn(true);
         when(sender.username()).thenReturn("alice");
         when(sender.requireUsername()).thenReturn("alice");

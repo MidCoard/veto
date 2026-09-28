@@ -3,17 +3,14 @@ package top.focess.veto.agent.tool;
 import static org.junit.jupiter.api.Assertions.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-
-import org.junit.jupiter.api.Test;
-
-import top.focess.veto.agent.loop.PromptLibrary;
-import top.focess.veto.builtin.group.GroupTools.CreateGroup.Args;
-import top.focess.veto.util.Nullness;
-
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.regex.Pattern;
+import org.junit.jupiter.api.Test;
+import top.focess.veto.agent.loop.PromptLibrary;
+import top.focess.veto.builtin.group.GroupTools.CreateGroup.Args;
+import top.focess.veto.util.Nullness;
 
 class DelegationExamplesTest {
     @Test
@@ -32,8 +29,7 @@ class DelegationExamplesTest {
             var arguments = mapper.readTree(json);
             assertFalse(arguments.has("calls"));
             assertTrue(arguments.has("task"), "JSON examples must be native tool arguments");
-            NativeToolArgumentValidator.validate(
-                    "create_group", arguments, Args.class);
+            NativeToolArgumentValidator.validate("create_group", arguments, Args.class);
             var args = mapper.treeToValue(arguments, Args.class);
             assertFalse(args.task().isBlank());
             assertEquals(1, arguments.size());

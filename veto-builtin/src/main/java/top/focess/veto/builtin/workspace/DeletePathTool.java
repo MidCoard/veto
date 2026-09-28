@@ -1,7 +1,13 @@
 package top.focess.veto.builtin.workspace;
 
+import java.io.IOException;
+import java.nio.file.DirectoryNotEmptyException;
+import java.nio.file.NoSuchFileException;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import org.jspecify.annotations.NonNull;
-
 import top.focess.veto.api.agent.capability.WorkspaceWriteCapability;
 import top.focess.veto.api.agent.capability.WritableWorkspaceFile;
 import top.focess.veto.api.agent.screening.Danger;
@@ -17,14 +23,6 @@ import top.focess.veto.api.agent.tool.ToolJson;
 import top.focess.veto.api.agent.tool.ToolResultFormat;
 import top.focess.veto.api.agent.tool.ToolSecurity;
 import top.focess.veto.api.agent.tool.WorkspaceWriteTool;
-
-import java.io.IOException;
-import java.nio.file.DirectoryNotEmptyException;
-import java.nio.file.NoSuchFileException;
-import java.time.Duration;
-import java.time.Instant;
-import java.util.ArrayList;
-import java.util.List;
 
 /** Deletes one authorized path, with explicit recursive intent for non-empty directories. */
 @ToolSecurity(
@@ -85,7 +83,7 @@ import java.util.List;
             "{\"status\":\"deleted\",\"path\":\"/abs/project/generated\",\"kind\":\"directory\",\"entriesDeleted\":42}",
             "Path not found: /abs/project/no-such-path.txt"
         })
-public final class DeletePathTool implements WorkspaceWriteTool<DeletePathTool.Args> {
+public final class DeletePathTool extends WorkspaceWriteTool<DeletePathTool.Args> {
     private static final int MAX_ENTRIES = 50_000;
     private static final @NonNull Duration MAX_DURATION = Duration.ofSeconds(10);
 

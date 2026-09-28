@@ -12,10 +12,11 @@ import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
-import top.focess.veto.api.plugin.AbstractVetoPlugin;
 import top.focess.veto.api.plugin.PluginContext;
 import top.focess.veto.api.plugin.PluginContributions;
 import top.focess.veto.api.plugin.PluginIdentity;
+import top.focess.veto.api.plugin.VetoPlugin;
+import top.focess.veto.api.plugin.contract.Cancellation;
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.contract.ObservationMiddleware;
 import top.focess.veto.api.plugin.contract.PluginFailure;
@@ -32,6 +33,23 @@ import top.focess.veto.plugin.runtime.*;
  * middleware is covered by {@link PluginManagerDiscoveryTest}.
  */
 class ApplyObservationMiddlewareTest {
+    @FunctionalInterface
+    private interface Transform {
+        @NonNull String apply(@NonNull String text, @NonNull Cancellation cancellation)
+                throws PluginFailure;
+    }
+
+    private static @NonNull ObservationMiddleware middleware(@NonNull Transform transform) {
+        return new ObservationMiddleware() {
+            @Override
+            public @NonNull String transform(
+                    @NonNull String observation, @NonNull Cancellation cancellation)
+                    throws PluginFailure {
+                return transform.apply(observation, cancellation);
+            }
+        };
+    }
+
     private @Nullable ExecutorService executor;
 
     @AfterEach
@@ -39,7 +57,7 @@ class ApplyObservationMiddlewareTest {
         if (executor != null) executor.shutdownNow();
     }
 
-    private static final class MiddlewarePlugin extends AbstractVetoPlugin {
+    private static final class MiddlewarePlugin extends VetoPlugin {
         private final @NonNull PluginIdentity identity;
         private final @NonNull ObservationMiddleware middleware;
 
@@ -54,8 +72,7 @@ class ApplyObservationMiddlewareTest {
         }
 
         @Override
-        protected @NonNull PluginContributions onInitialize(
-                @NonNull PluginContext context, JsonValue.@NonNull ObjectValue configuration) {
+        public @NonNull PluginContributions contributions() {
             return new PluginContributions(
                     List.of(
                             Contribution.of(
@@ -65,10 +82,10 @@ class ApplyObservationMiddlewareTest {
         }
 
         @Override
-        protected void onStart() {}
+        public void start() {}
 
         @Override
-        protected void onClose() {}
+        public void close() {}
     }
 
     /**
@@ -117,10 +134,11 @@ class ApplyObservationMiddlewareTest {
                 managerWith(
                         new MiddlewarePlugin(
                                 "fixture.first",
-                                (observation, cancellation) -> observation + "|first"),
+                                middleware((observation, cancellation) -> observation + "|first")),
                         new MiddlewarePlugin(
                                 "fixture.second",
-                                (observation, cancellation) -> observation + "|second"))) {
+                                middleware(
+                                        (observation, cancellation) -> observation + "|second")))) {
             assertEquals(
                     "observation|first|second", manager.applyObservationMiddleware("observation"));
         }
@@ -139,9 +157,11 @@ class ApplyObservationMiddlewareTest {
                 managerWith(
                         new MiddlewarePlugin(
                                 "fixture.failing",
-                                (observation, cancellation) -> {
-                                    throw new PluginFailure(PluginFailure.Code.INTERNAL_FAILURE);
-                                }))) {
+                                middleware(
+                                        (observation, cancellation) -> {
+                                            throw new PluginFailure(
+                                                    PluginFailure.Code.INTERNAL_FAILURE);
+                                        })))) {
             assertThrows(
                     IllegalStateException.class,
                     () -> manager.applyObservationMiddleware("observation"));

@@ -10,44 +10,42 @@ import org.junit.jupiter.api.Test;
 import top.focess.veto.api.agent.workflow.ModelFlow;
 import top.focess.veto.api.plugin.PluginContext;
 import top.focess.veto.api.plugin.PluginHost;
+import top.focess.veto.api.plugin.PluginIdentity;
 import top.focess.veto.api.plugin.contract.JsonValue;
-import top.focess.veto.api.plugin.contract.PluginFailure;
 import top.focess.veto.builtin.BuiltinPlugin;
 import top.focess.veto.plugin.runtime.*;
 
 class PluginLifecycleFlowTest {
     @Test
-    void builtinRejectsInitializationWithoutHost() throws Exception {
-        var plugin = new BuiltinPlugin();
+    void builtinRejectsConstructionWithoutHost() {
         var context =
                 new PluginContext(
-                        plugin.identity(),
+                        new PluginIdentity("top.focess.builtin", "1.0.100"),
                         () -> {},
                         () -> {
                             throw new IllegalStateException("No lifecycle owner");
                         },
                         Map.of());
         assertThrows(
-                PluginFailure.class,
-                () -> plugin.initialize(context, new JsonValue.ObjectValue(Map.of())));
-        plugin.close();
+                IllegalStateException.class,
+                () -> new BuiltinPlugin(context, new JsonValue.ObjectValue(Map.of())));
     }
 
     @Test
     void unloadingTheSubmittingPluginRejectsDeferredSteps() throws Exception {
         try (var executor = Executors.newSingleThreadExecutor()) {
-            var plugin = new BuiltinPlugin();
-            var managed = new PluginLifecycle(plugin, executor);
-            managed.initialize(
+            var context =
                     new PluginContext(
-                            plugin.identity(),
+                            new PluginIdentity("top.focess.builtin", "1.0.100"),
                             () -> {},
                             () -> {
                                 throw new IllegalStateException(
                                         "Plugin context is not bound to a lifecycle owner");
                             },
-                            Map.of(PluginHost.class, mock(requireNonNull(PluginHost.class)))),
-                    new JsonValue.ObjectValue(Map.of()));
+                            Map.of(PluginHost.class, mock(requireNonNull(PluginHost.class))));
+            var configuration = new JsonValue.ObjectValue(Map.of());
+            var managed = new PluginLifecycle(new BuiltinPlugin(context, configuration), executor);
+            managed.initialize(context, configuration);
             managed.start();
             var delegate = mock(requireNonNull(ModelFlow.class));
             var runtime = mock(requireNonNull(ModelFlow.Runtime.class));

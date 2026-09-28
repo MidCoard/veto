@@ -3,38 +3,31 @@ package top.focess.veto.builtin;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.mock;
 
+import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
-
 import top.focess.veto.api.plugin.PluginContext;
 import top.focess.veto.api.plugin.PluginHost;
-import top.focess.veto.api.plugin.VetoPlugin;
+import top.focess.veto.api.plugin.PluginIdentity;
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
 import top.focess.veto.builtin.workspace.ViewFileTool;
 
-import java.util.List;
-import java.util.Map;
-import java.util.ServiceLoader;
-
 class BuiltinPluginTest {
     @Test
-    void realBuiltinPluginLoadsWithoutCoreAndContributesToolsAndSearchProviders() throws Exception {
-        var plugin =
-                ServiceLoader.load(VetoPlugin.class).findFirst().orElseThrow();
+    void realBuiltinPluginContributesToolsAndSearchProvidersWithoutCore() throws Exception {
+        var context =
+                new PluginContext(
+                        new PluginIdentity("top.focess.builtin", "1.0.100"),
+                        () -> {},
+                        () -> {
+                            throw new IllegalStateException("Plugin context is not bound");
+                        },
+                        Map.of(PluginHost.class, mock(PluginHost.class)));
+        var configuration = new JsonValue.ObjectValue(Map.of());
+        var plugin = new BuiltinPlugin(context, configuration);
         try (plugin) {
-            var contributions =
-                    plugin.initialize(
-                            new PluginContext(
-                                    plugin.identity(),
-                                    () -> {},
-                                    () -> {
-                                        throw new IllegalStateException(
-                                                "Plugin context is not bound to a lifecycle owner");
-                                    },
-                                    Map.of(
-                                            PluginHost.class,
-                                            mock(PluginHost.class))),
-                            new JsonValue.ObjectValue(Map.of()));
+            var contributions = plugin.initialize(context, configuration);
             plugin.start();
             assertEquals(
                     List.of(
@@ -80,7 +73,7 @@ class BuiltinPluginTest {
                             .map(e -> e.localId())
                             .sorted()
                             .toList());
-            assertEquals(52, contributions.entries().size());
+            assertEquals(51, contributions.entries().size());
             var featurePoints =
                     Map.of(
                             StandardContributionPoints.AGENT_INBOX,
@@ -109,7 +102,7 @@ class BuiltinPluginTest {
                                             .sorted()
                                             .toList()));
             assertEquals(
-                    List.of("brave", "duckduckgo"),
+                    List.of("search"),
                     contributions.entries().stream()
                             .filter(e -> e.point().equals(StandardContributionPoints.SERVICES))
                             .map(e -> e.localId())

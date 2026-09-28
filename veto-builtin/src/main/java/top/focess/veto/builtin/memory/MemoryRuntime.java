@@ -1,7 +1,11 @@
 package top.focess.veto.builtin.memory;
 
+import java.time.Instant;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+import java.util.UUID;
 import org.jspecify.annotations.NonNull;
-
 import top.focess.veto.api.agent.tool.ToolErrors;
 import top.focess.veto.api.llm.TextEmbedding;
 import top.focess.veto.api.plugin.PluginContext;
@@ -12,14 +16,8 @@ import top.focess.veto.api.plugin.storage.PluginStorage;
 import top.focess.veto.builtin.memory.embedder.Embedder;
 import top.focess.veto.builtin.memory.embedder.HashEmbedder;
 
-import java.time.Instant;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
-import java.util.UUID;
-
 /** Owns memory backend selection and caller-bound feature policy for one builtin activation. */
-public final class MemoryRuntime implements DataLifecycle {
+public final class MemoryRuntime extends DataLifecycle {
     private final @NonNull Set<String> deletingOwners = new HashSet<>();
     private final @NonNull Set<String> deletingSessions = new HashSet<>();
     private final @NonNull PluginContext context;
@@ -32,7 +30,7 @@ public final class MemoryRuntime implements DataLifecycle {
             @NonNull PluginContext context, JsonValue.@NonNull ObjectValue configuration) {
         this.context = context;
         var selected = configuration.values().get("memory-store");
-        profile = selected instanceof JsonValue.StringValue value ? value.value() : "memory";
+        profile = selected instanceof JsonValue.StringValue(String value) ? value : "memory";
         if (!List.of("memory", "vector", "jpa", "pgvector").contains(profile))
             throw new IllegalArgumentException("Unknown memory backend");
         var remote = context.service(TextEmbedding.class).orElse(null);
@@ -97,8 +95,7 @@ public final class MemoryRuntime implements DataLifecycle {
         if (!deletingOwners.add(userId))
             throw new IllegalStateException("Account cleanup already pending");
         try {
-            var backend =
-                    context.service(MemoryBackendFactory.class).orElse(null);
+            var backend = context.service(MemoryBackendFactory.class).orElse(null);
             if (backend != null) backend.deleteOwner(UUID.fromString(userId));
             else if (profile.equals("jpa") || profile.equals("pgvector"))
                 throw new IllegalStateException("Durable cleanup unavailable");
@@ -124,8 +121,7 @@ public final class MemoryRuntime implements DataLifecycle {
         if (!deletingSessions.add(key))
             throw new IllegalStateException("Session cleanup already pending");
         try {
-            var backend =
-                    context.service(MemoryBackendFactory.class).orElse(null);
+            var backend = context.service(MemoryBackendFactory.class).orElse(null);
             if (backend != null)
                 backend.deleteSession(UUID.fromString(userId), UUID.fromString(sessionId));
             else if (profile.equals("jpa") || profile.equals("pgvector"))

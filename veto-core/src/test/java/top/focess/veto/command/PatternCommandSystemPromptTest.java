@@ -5,7 +5,6 @@ import static org.mockito.Mockito.*;
 
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
-
 import top.focess.command.CommandManager;
 import top.focess.command.CommandPermission;
 import top.focess.command.CommandResult;
@@ -30,8 +29,7 @@ class PatternCommandSystemPromptTest {
     void createBindsToTierAndDoesNotStoreSystemPrompt() {
         AgentPatternRepository repo = mock(AgentPatternRepository.class);
         VetoCommandSender sender = mock(VetoCommandSender.class);
-        when(sender.hasPermission(any(CommandPermission.class)))
-                .thenReturn(true);
+        when(sender.hasPermission(any(CommandPermission.class))).thenReturn(true);
         when(sender.isLoggedIn()).thenReturn(true);
         when(sender.username()).thenReturn("alice");
         when(sender.requireUsername()).thenReturn("alice");
@@ -70,9 +68,7 @@ class PatternCommandSystemPromptTest {
         // With the field removed from the entity, this is the structural guarantee it is gone.
         assertThrows(
                 NoSuchFieldException.class,
-                () ->
-                        AgentPatternEntity.class
-                                .getDeclaredField("systemPrompt"),
+                () -> AgentPatternEntity.class.getDeclaredField("systemPrompt"),
                 "AgentPatternEntity must not carry a systemPrompt field");
     }
 }

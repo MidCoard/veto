@@ -4,11 +4,21 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.stream.Stream;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.NoSuchBeanDefinitionException;
 import org.springframework.beans.factory.ObjectProvider;
-
+import top.focess.veto.api.event.BeforeTextCommitEvent;
 import top.focess.veto.api.plugin.PluginBinding;
 import top.focess.veto.api.plugin.PluginHost;
 import top.focess.veto.api.plugin.agent.AgentHost;
@@ -17,7 +27,6 @@ import top.focess.veto.api.plugin.contract.FrontendContribution;
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.contract.PluginFailure;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
-import top.focess.veto.api.event.BeforeTextCommitEvent;
 import top.focess.veto.integration.plugins.storage.ConfigurationStorageFixture;
 import top.focess.veto.integration.plugins.storage.PluginStorageFactory;
 import top.focess.veto.model.SessionEntity;
@@ -25,16 +34,7 @@ import top.focess.veto.model.SessionRepository;
 import top.focess.veto.plugin.runtime.*;
 import top.focess.veto.session.SessionHistoryLoader;
 
-import java.io.IOException;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.stream.Stream;
-
-/** Shared wiring for plugin-backed tests: provider stubs plus real ServiceLoader discovery. */
+/** Shared wiring for plugin-backed tests using installable manifest packages. */
 public final class PluginTestSupport {
     private PluginTestSupport() {}
 
@@ -70,22 +70,34 @@ public final class PluginTestSupport {
         };
     }
 
-    /** Starts a manager whose plugins come from ServiceLoader discovery (no script packages). */
+    /** Starts a manager whose plugins come from packaged plugin.json manifests. */
     public static @NonNull PluginManager manager() throws IOException {
         return manager(null);
     }
 
+    public static @NonNull String pluginPackages() {
+        String configured = System.getProperty("veto.test.plugin-packages");
+        if (configured == null || !Files.isDirectory(Path.of(configured)))
+            throw new IllegalStateException("Packaged test plugins are unavailable");
+        return configured;
+    }
+
     public static @NonNull PluginManager manager(@Nullable PluginHostServices services)
             throws IOException {
-        return new PluginManager("", "", false, 5000, providerOf(configurationServices(services)));
+        return new PluginManager(
+                pluginPackages(),
+                "",
+                false,
+                5000,
+                providerOf(configurationServices(services)),
+                new PluginConfigurations());
     }
 
     /** Only configuration storage is provided; accidental child execution fails visibly. */
     public static @NonNull PluginHostServices configurationServices(
             @Nullable PluginHostServices services) {
         Map<@NonNull Class<?>, @NonNull Object> merged = new HashMap<>();
-        merged.put(
-                PluginStorageFactory.class, new ConfigurationStorageFixture());
+        merged.put(PluginStorageFactory.class, new ConfigurationStorageFixture());
         merged.put(
                 PluginHost.class,
                 new PluginHost() {
@@ -163,11 +175,12 @@ public final class PluginTestSupport {
                         phase,
                         sourceId,
                         text);
-        manager.events().submit(
-                event,
-                manager.plugins().stream()
-                        .map(plugin -> plugin.identity().id())
-                        .collect(java.util.stream.Collectors.toSet()));
+        manager.events()
+                .submit(
+                        event,
+                        manager.plugins().stream()
+                                .map(plugin -> plugin.identity().id())
+                                .collect(java.util.stream.Collectors.toSet()));
         if (event.isPrevent()) throw new IllegalStateException("Text publication prevented");
         return event.text();
     }

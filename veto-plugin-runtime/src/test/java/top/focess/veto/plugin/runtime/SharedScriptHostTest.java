@@ -3,9 +3,11 @@ package top.focess.veto.plugin.runtime;
 import static org.junit.jupiter.api.Assertions.*;
 
 import java.io.File;
+import java.io.IOException;
 import java.nio.file.*;
 import java.time.Duration;
 import java.util.Objects;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -59,7 +61,7 @@ class SharedScriptHostTest {
     void sharedHostTimeoutFailsAllRegisteredPlugins(@TempDir @NonNull Path root) throws Exception {
         Path script = root.resolve("blocked.mjs");
         Files.writeString(script, "while(true){};");
-        var failures = new java.util.concurrent.atomic.AtomicInteger();
+        var failures = new AtomicInteger();
         try (var host = new ScriptHost(node(), 500)) {
             host.register("blocked", failures::incrementAndGet);
             host.register("peer", failures::incrementAndGet);
@@ -67,7 +69,7 @@ class SharedScriptHostTest {
                     Duration.ofSeconds(4),
                     () ->
                             assertThrows(
-                                    java.io.IOException.class,
+                                    IOException.class,
                                     () ->
                                             host.invoke(
                                                     "blocked",

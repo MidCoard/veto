@@ -5,19 +5,16 @@ import static org.mockito.Mockito.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpServer;
-
-import org.jspecify.annotations.NonNull;
-import org.junit.jupiter.api.Test;
-
-import top.focess.veto.api.llm.*;
-import top.focess.veto.observability.AuditLogger;
-import top.focess.veto.plugin.runtime.*;
-
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
+import org.jspecify.annotations.NonNull;
+import org.junit.jupiter.api.Test;
+import top.focess.veto.api.llm.*;
+import top.focess.veto.observability.AuditLogger;
+import top.focess.veto.plugin.runtime.*;
 
 class PluginLlmProvidersTest {
     @Test

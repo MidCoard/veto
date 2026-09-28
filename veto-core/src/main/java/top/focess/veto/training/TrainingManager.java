@@ -4,17 +4,8 @@ import static top.focess.veto.util.LogValues.safe;
 
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
-
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
-
-import org.jspecify.annotations.NonNull;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.stereotype.Service;
-
-import top.focess.veto.security.HostPathInput;
-
 import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -26,6 +17,11 @@ import java.util.Map;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Pattern;
+import org.jspecify.annotations.NonNull;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+import top.focess.veto.security.HostPathInput;
 
 /**
  * Orchestrates the model training lifecycle. Launches Python training scripts as subprocesses (same
@@ -369,8 +365,7 @@ public class TrainingManager {
             }
 
             if (Files.exists(reportPath)) {
-                return objectMapper.readValue(
-                        reportPath.toFile(), QualityReport.class);
+                return objectMapper.readValue(reportPath.toFile(), QualityReport.class);
             }
         } catch (Exception e) {
             log.error("Quality filter failed", e);

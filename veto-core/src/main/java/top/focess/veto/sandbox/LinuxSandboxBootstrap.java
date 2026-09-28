@@ -4,14 +4,11 @@ import com.sun.jna.Library;
 import com.sun.jna.Native;
 import com.sun.jna.Pointer;
 import com.sun.jna.Structure;
-
-import org.jspecify.annotations.NonNull;
-
-
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import org.jspecify.annotations.NonNull;
 
 /** Inner Linux stage that applies {@code no_new_privs} and seccomp before the target starts. */
 final class LinuxSandboxBootstrap {

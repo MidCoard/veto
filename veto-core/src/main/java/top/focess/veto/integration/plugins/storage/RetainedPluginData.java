@@ -135,8 +135,11 @@ public class RetainedPluginData {
         };
     }
 
+    // Checker treats a nested enum valueOf result as nullable under the package default.
+    @SuppressWarnings("ConstantValue")
     private @NonNull Metadata metadata(@NonNull PluginRecord row) {
         PluginStorage.Kind kind = PluginStorage.Kind.valueOf(row.kind);
+        if (kind == null) throw new IllegalStateException("Unknown plugin record kind");
         PluginLifecycle installed;
         try {
             installed = plugins.plugin(row.plugin);

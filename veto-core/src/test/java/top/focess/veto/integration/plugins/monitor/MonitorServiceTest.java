@@ -2,16 +2,20 @@ package top.focess.veto.integration.plugins.monitor;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
-
 import static top.focess.veto.integration.plugins.MonitorTestSupport.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
-
 import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.api.plugin.PluginHost;
 import top.focess.veto.builtin.group.Blackboard;
@@ -25,14 +29,6 @@ import top.focess.veto.builtin.monitor.*;
 import top.focess.veto.builtin.monitor.MonitorRecord.ActivationState;
 import top.focess.veto.builtin.process.TaskInfo;
 import top.focess.veto.util.Nullness;
-
-import java.time.Instant;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.UUID;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 class MonitorServiceTest {
     @Test
@@ -372,9 +368,7 @@ class MonitorServiceTest {
         assertEquals("request-old", event.requestId());
         assertEquals("dispatch-old", event.dispatchId());
         var persisted =
-                mapper.readValue(
-                        mapper.writeValueAsString(event),
-                        MonitorRecord.Event.class);
+                mapper.readValue(mapper.writeValueAsString(event), MonitorRecord.Event.class);
         assertEquals(event, persisted);
         var history = GroupHistoryView.nodes(group);
         assertEquals("request-old", history.getFirst().requestId());

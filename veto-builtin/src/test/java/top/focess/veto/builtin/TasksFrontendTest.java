@@ -27,7 +27,7 @@ class TasksFrontendTest {
         var scope =
                 new FrontendContribution.Scope(
                         invocation.owner(), invocation.sessionId(), invocation.agentId());
-        var contribution = new TasksFrontend(tasks).contribution();
+        var contribution = new TasksFrontend(tasks);
         var handler = contribution.handler();
         var args =
                 new JsonValue.ObjectValue(

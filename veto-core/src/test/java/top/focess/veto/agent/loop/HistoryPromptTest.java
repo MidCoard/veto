@@ -4,20 +4,17 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.mock;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
-
 import top.focess.veto.agent.TurnRecord;
 import top.focess.veto.agent.TurnType;
 import top.focess.veto.agent.translation.CapabilityTranslator;
 import top.focess.veto.api.llm.NativeToolState;
 import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
-
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
 
 class HistoryPromptTest {
     @Test
@@ -124,9 +121,7 @@ class HistoryPromptTest {
         var state = new NativeToolState("GEMINI", 1, "test", "batch", "signed-parts", 0);
         var call = new ToolCall("read", Map.of()).withNativeState(state);
         var turn = TurnRecord.toolCall(2, call);
-        var restored =
-                mapper.readValue(
-                        mapper.writeValueAsString(turn), TurnRecord.class);
+        var restored = mapper.readValue(mapper.writeValueAsString(turn), TurnRecord.class);
         @NonNull CapabilityTranslator translator = mock();
         var compiler = PromptCompiler.isolated(translator, mapper, "System", 100000);
         var messages =

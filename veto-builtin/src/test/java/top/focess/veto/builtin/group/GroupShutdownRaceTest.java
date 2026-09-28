@@ -3,12 +3,6 @@ package top.focess.veto.builtin.group;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.Timeout;
-
-import top.focess.veto.api.plugin.PluginHost;
-import top.focess.veto.api.plugin.contract.AgentConfiguration;
-
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
@@ -17,6 +11,10 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
+import top.focess.veto.api.plugin.PluginHost;
+import top.focess.veto.api.plugin.contract.AgentConfiguration;
 
 class GroupShutdownRaceTest {
     @Test

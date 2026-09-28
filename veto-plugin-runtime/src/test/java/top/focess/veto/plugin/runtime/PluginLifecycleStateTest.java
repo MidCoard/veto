@@ -12,11 +12,11 @@ import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.api.plugin.*;
-import top.focess.veto.api.plugin.AbstractVetoPlugin;
 import top.focess.veto.api.plugin.PluginContext;
 import top.focess.veto.api.plugin.PluginContributions;
 import top.focess.veto.api.plugin.PluginIdentity;
 import top.focess.veto.api.plugin.PluginState;
+import top.focess.veto.api.plugin.VetoPlugin;
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.contract.PluginFailure;
 
@@ -102,7 +102,7 @@ class PluginLifecycleStateTest {
         }
     }
 
-    private static final class Observer extends AbstractVetoPlugin {
+    private static final class Observer extends VetoPlugin {
         private @Nullable PluginContext context;
         private final @NonNull List<PluginState> callbacks = new ArrayList<>();
         private final boolean failStart;
@@ -121,19 +121,24 @@ class PluginLifecycleStateTest {
             return current;
         }
 
-        protected @NonNull PluginContributions onInitialize(
+        public @NonNull PluginContributions initialize(
                 @NonNull PluginContext context, JsonValue.@NonNull ObjectValue configuration) {
             this.context = context;
             callbacks.add(context.state());
+            return contributions();
+        }
+
+        @Override
+        public @NonNull PluginContributions contributions() {
             return new PluginContributions(List.of());
         }
 
-        protected void onStart() {
+        public void start() {
             callbacks.add(context().state());
             if (failStart) throw new IllegalStateException("Start failed");
         }
 
-        protected void onClose() {
+        public void close() {
             callbacks.add(context().state());
         }
     }

@@ -7,12 +7,20 @@ import static org.mockito.Mockito.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
-
+import java.net.URI;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
-
 import top.focess.veto.agent.SessionAgentRegistry;
 import top.focess.veto.agent.TurnRecord;
 import top.focess.veto.agent.TurnType;
@@ -43,22 +51,10 @@ import top.focess.veto.model.tier.ModelTierRegistry;
 import top.focess.veto.util.Nullness;
 import top.focess.veto.vault.UserContext;
 
-import java.net.URI;
-import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicReference;
-
 class WebFetchExecutorLoopTest {
     private final @NonNull ObjectMapper mapper = new ObjectMapper();
     private final @NonNull TurnLogService turnLog = spy(new TurnLogService(null, mapper));
-    private final @NonNull ApprovedHttpDestination access =
-            mock(ApprovedHttpDestination.class);
+    private final @NonNull ApprovedHttpDestination access = mock(ApprovedHttpDestination.class);
     private final @NonNull List<@NonNull VetoRequest> requests = new ArrayList<>();
     private final @NonNull ModelTierRegistry models = mock();
 
@@ -75,8 +71,7 @@ class WebFetchExecutorLoopTest {
                         new ModelBinding(
                                 ProviderType.DEEPSEEK, "small-reader", "key", 0, 2048, null, 4096));
         ToolExecutionException error =
-                assertThrows(
-                        ToolExecutionException.class, () -> execute(tool));
+                assertThrows(ToolExecutionException.class, () -> execute(tool));
         assertEquals(ToolErrorCode.READER.READER_MODEL, error.errorCode());
         assertTrue(requests.isEmpty());
         verify(access, never()).fetch();
@@ -418,8 +413,7 @@ class WebFetchExecutorLoopTest {
                         4,
                         10);
         ToolExecutionException error =
-                assertThrows(
-                        ToolExecutionException.class, () -> execute(tool));
+                assertThrows(ToolExecutionException.class, () -> execute(tool));
         String message = error.content();
         assertEquals(ToolErrorCode.READER.READER_MODEL, error.errorCode());
         assertFalse(message.contains("provider secret"));
@@ -436,8 +430,7 @@ class WebFetchExecutorLoopTest {
         AtomicReference<Thread> worker = new AtomicReference<>();
         WebFetchTool tool = tool(blocking(interrupted, worker, new CountDownLatch(1)), 4, 1);
         ToolExecutionException error =
-                assertThrows(
-                        ToolExecutionException.class, () -> execute(tool));
+                assertThrows(ToolExecutionException.class, () -> execute(tool));
         String message = error.content();
         assertTrue(message.contains("time budget"));
         assertTrue(interrupted.await(3, TimeUnit.SECONDS));

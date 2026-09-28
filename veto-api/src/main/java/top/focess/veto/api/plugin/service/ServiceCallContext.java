@@ -1,11 +1,9 @@
 package top.focess.veto.api.plugin.service;
 
+import java.util.Objects;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
-
 import top.focess.veto.api.plugin.storage.PluginStorage;
-
-import java.util.Objects;
 
 /**
  * Host-derived caller facts supplied to one admitted service invocation. Scope identities are

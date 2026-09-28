@@ -4,22 +4,21 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import java.util.List;
 import org.junit.jupiter.api.Test;
-
-import top.focess.veto.api.agent.tool.CapabilityTool;
+import top.focess.veto.api.agent.tool.NativeTool;
+import top.focess.veto.api.agent.tool.RemoteTool;
+import top.focess.veto.api.agent.tool.Tool;
 import top.focess.veto.api.plugin.PluginIdentity;
 import top.focess.veto.api.plugin.PluginState;
 import top.focess.veto.api.plugin.VetoPlugin;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
-import top.focess.veto.api.agent.tool.RemoteTool;
 import top.focess.veto.api.plugin.contribution.ContributionCatalog;
 import top.focess.veto.api.plugin.contribution.ContributionEntry;
 import top.focess.veto.api.plugin.contribution.ContributionSource;
 import top.focess.veto.integration.plugins.PluginManager;
 import top.focess.veto.plugin.runtime.PluginLifecycle;
 import top.focess.veto.vault.UserContext;
-
-import java.util.List;
 
 class PluginControllerTest {
     @Test
@@ -34,10 +33,10 @@ class PluginControllerTest {
                         identity.id(), identity.version(), ContributionSource.Origin.PLUGIN);
         var portable = source.qualify("portable");
         var nativeTool = source.qualify("native");
-        ContributionEntry<Object> portableEntry =
+        ContributionEntry<Tool> portableEntry =
                 new ContributionEntry<>(portable, source, mock(RemoteTool.class));
-        CapabilityTool<?> nativeImplementation = mock(CapabilityTool.class);
-        ContributionEntry<Object> nativeEntry =
+        NativeTool<?> nativeImplementation = mock(NativeTool.class);
+        ContributionEntry<Tool> nativeEntry =
                 new ContributionEntry<>(nativeTool, source, nativeImplementation);
         when(manager.plugins()).thenReturn(List.of(lifecycle));
         when(manager.registrations()).thenReturn(List.of());

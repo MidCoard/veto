@@ -3,15 +3,13 @@ package top.focess.veto.builtin.group;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
-import org.jspecify.annotations.NonNull;
-import org.junit.jupiter.api.Test;
-
-import top.focess.veto.api.plugin.agent.AgentHost;
-
 import java.time.Duration;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import org.jspecify.annotations.NonNull;
+import org.junit.jupiter.api.Test;
+import top.focess.veto.api.plugin.agent.AgentHost;
 
 class GroupMemberRemovalTest {
     private final @NonNull Blackboard board = new Blackboard();
@@ -68,8 +66,7 @@ class GroupMemberRemovalTest {
         Group group = group(DagNode.NodeState.VERIFIED);
         when(spawner.stopMateAndConfirm(group.groupId(), "mate")).thenReturn(false, true);
         assertInstanceOf(
-                NodeEdit.Rejected.class,
-                orchestrator.removeMate(group.groupId(), "mate", spawner));
+                NodeEdit.Rejected.class, orchestrator.removeMate(group.groupId(), "mate", spawner));
         assertTrue(
                 GroupTestHost.required(registry.get(group.groupId())).mates().containsKey("mate"));
         assertInstanceOf(
@@ -87,8 +84,7 @@ class GroupMemberRemovalTest {
                         "sibling",
                         false));
         assertInstanceOf(
-                NodeEdit.Applied.class,
-                orchestrator.removeMate(group.groupId(), "mate", spawner));
+                NodeEdit.Applied.class, orchestrator.removeMate(group.groupId(), "mate", spawner));
         Group updated = GroupTestHost.required(registry.get(group.groupId()));
         assertFalse(updated.mates().containsKey("mate"));
         assertTrue(updated.mates().containsKey("sibling"));
@@ -108,8 +104,7 @@ class GroupMemberRemovalTest {
     void realSpawnerWaitsForMemberConfirmationAndRetainsCompletedTask() throws Exception {
         Group group = group(DagNode.NodeState.VERIFIED);
         AgentHost.Child agent = mock(AgentHost.Child.class);
-        when(agent.awaitTermination(any(Duration.class)))
-                .thenReturn(false, true);
+        when(agent.awaitTermination(any(Duration.class))).thenReturn(false, true);
         GroupSpawner runtime =
                 new GroupSpawner(registry, board, (g, id, name, responsibility) -> agent);
         runtime.restoreMates(group.withoutMate("sibling"));

@@ -7,12 +7,9 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
-import org.checkerframework.framework.qual.DefaultQualifier;
-import org.checkerframework.framework.qual.TypeUseLocation;
 import org.hibernate.annotations.OnDelete;
 import org.hibernate.annotations.OnDeleteAction;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.NullMarked;
 import org.jspecify.annotations.Nullable;
 import top.focess.veto.model.SessionEntity;
 import top.focess.veto.vault.UserEntity;
@@ -24,38 +21,29 @@ import top.focess.veto.vault.UserEntity;
         uniqueConstraints =
                 @UniqueConstraint(
                         columnNames = {"plugin_id", "scope_kind", "scope_id", "entry_key"}))
-@NullMarked
-@DefaultQualifier(
-        value = NonNull.class,
-        locations = {
-            TypeUseLocation.FIELD,
-            TypeUseLocation.PARAMETER,
-            TypeUseLocation.RETURN,
-            TypeUseLocation.UPPER_BOUND
-        })
 public class PluginRecord {
-    @Id String id = "";
+    @Id @NonNull String id = "";
 
     @Column(name = "plugin_id", nullable = false)
-    String plugin = "";
+    @NonNull String plugin = "";
 
     @Column(name = "scope_kind", nullable = false)
-    String kind = "";
+    @NonNull String kind = "";
 
     @Column(name = "scope_id", nullable = false)
-    String scope = "";
+    @NonNull String scope = "";
 
     @Column(name = "entry_key", nullable = false, length = 256)
-    String key = "";
+    @NonNull String key = "";
 
     @Column(nullable = false)
-    String revision = "";
+    @NonNull String revision = "";
 
     @Column(nullable = false)
     int schemaVersion;
 
     @Column(nullable = false, columnDefinition = "TEXT")
-    String payload = "";
+    @NonNull String payload = "";
 
     @ManyToOne
     @JoinColumn(name = "owner_username")

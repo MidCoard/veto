@@ -1,7 +1,8 @@
 package top.focess.veto.builtin.tools;
 
+import java.util.List;
+import java.util.Map;
 import org.jspecify.annotations.NonNull;
-
 import top.focess.veto.api.agent.tool.AgentTool;
 import top.focess.veto.api.agent.tool.Doc;
 import top.focess.veto.api.agent.tool.ToolCapability;
@@ -13,9 +14,6 @@ import top.focess.veto.api.agent.tool.ToolPrompt;
 import top.focess.veto.api.agent.tool.ToolResultFormat;
 import top.focess.veto.api.resources.CatalogueTree;
 import top.focess.veto.builtin.skills.SkillRuntime;
-
-import java.util.List;
-import java.util.Map;
 
 /**
  * {@code load_skill} — load a skill's full instructions into context as an observation, so the
@@ -78,7 +76,7 @@ import java.util.Map;
             "Skill not found: 'deploy' is not registered or its stored content failed verification."
         })
 @ToolPrompt("builtin-skills")
-public final class LoadSkillTool implements AgentTool<LoadSkillTool.Args>, ToolPresentation {
+public final class LoadSkillTool extends AgentTool<LoadSkillTool.Args> implements ToolPresentation {
 
     private final SkillRuntime runtime;
 

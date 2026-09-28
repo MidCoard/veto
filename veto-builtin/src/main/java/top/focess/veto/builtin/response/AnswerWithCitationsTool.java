@@ -1,15 +1,13 @@
 package top.focess.veto.builtin.response;
 
+import java.util.ArrayList;
+import java.util.List;
 import org.jspecify.annotations.NonNull;
-
 import top.focess.veto.api.agent.control.ControlHost;
 import top.focess.veto.api.agent.control.SourceEvidence;
 import top.focess.veto.api.agent.tool.*;
 import top.focess.veto.api.llm.VetoResponse;
 import top.focess.veto.api.llm.exceptions.ModelSchemaException;
-
-import java.util.ArrayList;
-import java.util.List;
 
 /** {@code answer_with_citations} - submit the final answer with validated citation links. */
 @ControlSubmission(ControlSubmission.Kind.FINISH)
@@ -17,24 +15,24 @@ import java.util.List;
 @ToolDoc(
         description =
                 "Use only for answers that need verified, clickable citations to conversation text"
-                    + " or tool results. Ordinary answers use plain text, without this tool. Supply"
-                    + " message with [label](cite:id) links and a nonempty citations array of exact"
-                    + " source quotes. Call this tool alone; it publishes the answer.",
+                        + " or tool results. Ordinary answers use plain text, without this tool. Supply"
+                        + " message with [label](cite:id) links and a nonempty citations array of exact"
+                        + " source quotes. Call this tool alone; it publishes the answer.",
         behavior =
                 "Locates each exact quote in the visible conversation and verifies its source and"
-                    + " returns the answer with verified source metadata. In a conversation this"
-                    + " publishes the answer and finishes the turn; in plan generation it becomes"
-                    + " the step output. Call this tool alone. Its message is the answer; no extra"
-                    + " final text is needed after success.",
+                        + " returns the answer with verified source metadata. In a conversation this"
+                        + " publishes the answer and finishes the turn; in plan generation it becomes"
+                        + " the step output. Call this tool alone. Its message is the answer; no extra"
+                        + " final text is needed after success.",
         whenToUse =
                 "Use when the user requests clickable conversation sources or the answer attributes"
-                    + " an exact passage to a prior message or tool result. The current user"
-                    + " message is also a valid source. String values inside JSON tool results can"
-                    + " be quoted.",
+                        + " an exact passage to a prior message or tool result. The current user"
+                        + " message is also a valid source. String values inside JSON tool results can"
+                        + " be quoted.",
         whenNotToUse =
                 "Reply directly in text for answers without verified conversation references."
-                    + " Ordinary external URLs do not require this tool. A plain blockquote or a"
-                    + " handwritten citation marker does not create source metadata.",
+                        + " Ordinary external URLs do not require this tool. A plain blockquote or a"
+                        + " handwritten citation marker does not create source metadata.",
         resultContract =
                 "Success: JSON {\"status\":\"accepted\"}; the submitted answer is published with"
                         + " verified source links. Failure (INVALID_CITATION) returns `Citation"
@@ -43,38 +41,38 @@ import java.util.List;
                         + " without a citation.",
         errorsAndEdgeCases =
                 "Use [label](cite:id) links in message and declare each id once; every declaration"
-                    + " must have a link and every link must have a declaration. Both citations and"
-                    + " each sources value are nonempty arrays, even for one item. Omit"
-                    + " message_index normally: do not count messages. Identical complete results"
-                    + " from the same tool and arguments retain all repeated occurrences as"
-                    + " sources. Otherwise, use a longer unique quote or select a message_index"
-                    + " from the returned candidates. Copy punctuation and whitespace verbatim."
-                    + " Each citation supports 1-8 passages, each up to 4000 characters; at most 32"
-                    + " citations. References attach to this answer; no memory write or file"
-                    + " creation is needed.",
+                        + " must have a link and every link must have a declaration. Both citations and"
+                        + " each sources value are nonempty arrays, even for one item. Omit"
+                        + " message_index normally: do not count messages. Identical complete results"
+                        + " from the same tool and arguments retain all repeated occurrences as"
+                        + " sources. Otherwise, use a longer unique quote or select a message_index"
+                        + " from the returned candidates. Copy punctuation and whitespace verbatim."
+                        + " Each citation supports 1-8 passages, each up to 4000 characters; at most 32"
+                        + " citations. References attach to this answer; no memory write or file"
+                        + " creation is needed.",
         security =
                 "References are limited to the calling agent's current visible input. This tool"
-                    + " cannot retrieve other sessions or access files. A matched quote establishes"
-                    + " its source, not the truth of its claim.",
+                        + " cannot retrieve other sessions or access files. A matched quote establishes"
+                        + " its source, not the truth of its claim.",
         resultFormats = {ToolResultFormat.JSON},
         examples = {
             "{\"message\":\"The meeting starts at"
-                + " [14:30](cite:meeting).\",\"citations\":[{\"id\":\"meeting\",\"sources\":[{\"quote\":\"The"
-                + " meeting starts at 14:30.\"}]}]}",
+                    + " [14:30](cite:meeting).\",\"citations\":[{\"id\":\"meeting\",\"sources\":[{\"quote\":\"The"
+                    + " meeting starts at 14:30.\"}]}]}",
             "{\"message\":\"The build uses [Gradle 8.5](cite:gradle) and targets [Java"
-                + " 21](cite:java).\",\"citations\":[{\"id\":\"gradle\",\"sources\":[{\"quote\":\"The"
-                + " build uses Gradle 8.5\"}]},{\"id\":\"java\",\"sources\":[{\"quote\":\"and"
-                + " targets Java 21\"}]}]}",
+                    + " 21](cite:java).\",\"citations\":[{\"id\":\"gradle\",\"sources\":[{\"quote\":\"The"
+                    + " build uses Gradle 8.5\"}]},{\"id\":\"java\",\"sources\":[{\"quote\":\"and"
+                    + " targets Java 21\"}]}]}",
             "{\"message\":\"Both reviewers approved the change: [the"
-                + " approvals](cite:approvals).\",\"citations\":[{\"id\":\"approvals\",\"sources\":[{\"quote\":\"Alice"
-                + " approved the pull request.\"},{\"quote\":\"Bob approved the pull"
-                + " request.\"}]}]}",
+                    + " approvals](cite:approvals).\",\"citations\":[{\"id\":\"approvals\",\"sources\":[{\"quote\":\"Alice"
+                    + " approved the pull request.\"},{\"quote\":\"Bob approved the pull"
+                    + " request.\"}]}]}",
             "{\"message\":\"The configured timeout is [30"
-                + " seconds](cite:timeout).\",\"citations\":[{\"id\":\"timeout\",\"sources\":[{\"message_index\":7,\"quote\":\"\\\"timeout\\\":"
-                + " \\\"30 seconds\\\"\"}]}]}",
+                    + " seconds](cite:timeout).\",\"citations\":[{\"id\":\"timeout\",\"sources\":[{\"message_index\":7,\"quote\":\"\\\"timeout\\\":"
+                    + " \\\"30 seconds\\\"\"}]}]}",
             "{\"message\":\"The deadline is [next"
-                + " Friday](cite:deadline).\",\"citations\":[{\"id\":\"deadline\",\"sources\":[{\"quote\":\"The"
-                + " deadline is next Friday.\"}]}]}"
+                    + " Friday](cite:deadline).\",\"citations\":[{\"id\":\"deadline\",\"sources\":[{\"quote\":\"The"
+                    + " deadline is next Friday.\"}]}]}"
         },
         returnExamples = {
             "{\"status\":\"accepted\"}",
@@ -85,7 +83,7 @@ import java.util.List;
                     + " evidence. Copy a longer exact passage from the source; do not paraphrase or"
                     + " invent a message index."
         })
-public final class AnswerWithCitationsTool implements ControlTool<AnswerWithCitationsTool.Args> {
+public final class AnswerWithCitationsTool extends ControlTool<AnswerWithCitationsTool.Args> {
     private final ControlHost capability;
 
     /** Declaration-only instance; the host supplies the capability at execution time. */
@@ -168,8 +166,8 @@ public final class AnswerWithCitationsTool implements ControlTool<AnswerWithCita
                     @ArraySize(min = 1, max = 32)
                     @Doc(
                             "Nonempty array of declarations for every cite: link. Do not call this"
-                                + " tool with [] or for an answer without citation links; reply in"
-                                + " plain text instead.")
+                                    + " tool with [] or for an answer without citation links; reply in"
+                                    + " plain text instead.")
                     List<@NonNull Citation> citations) {}
 
     /** One {@code cite:} link declaration with its supporting sources. */

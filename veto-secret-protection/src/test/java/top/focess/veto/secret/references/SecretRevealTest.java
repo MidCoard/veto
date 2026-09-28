@@ -3,6 +3,7 @@ package top.focess.veto.secret.references;
 import static org.junit.jupiter.api.Assertions.*;
 
 import java.time.*;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 class SecretRevealTest {
@@ -15,7 +16,7 @@ class SecretRevealTest {
         String ref = capture.candidates().getFirst().reference();
         assertEquals(value, store.reveal(scope, ref).orElseThrow());
         for (var foreign :
-                java.util.List.of(
+                List.of(
                         new SecretCandidateStore.Scope("other", "session", "agent"),
                         new SecretCandidateStore.Scope("owner", "other", "agent"),
                         new SecretCandidateStore.Scope("owner", "session", "other")))

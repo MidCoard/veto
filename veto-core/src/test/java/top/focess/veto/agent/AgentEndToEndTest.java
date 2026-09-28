@@ -4,12 +4,22 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-
+import java.nio.file.Path;
+import java.time.Duration;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Collectors;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 import org.springframework.test.util.ReflectionTestUtils;
-
 import top.focess.veto.agent.identity.AgentPersona;
 import top.focess.veto.agent.identity.Role;
 import top.focess.veto.agent.identity.SystemPromptResolver;
@@ -45,19 +55,6 @@ import top.focess.veto.llm.core.UniformLLMCaller;
 import top.focess.veto.model.SessionEntity;
 import top.focess.veto.model.tier.ModelBinding;
 import top.focess.veto.model.tier.ModelTierRegistry;
-
-import java.nio.file.Path;
-import java.time.Duration;
-import java.util.ArrayDeque;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.UUID;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicReference;
-import java.util.stream.Collectors;
 
 /**
  * Exercises the agent loop end-to-end (AgentService → VetoAgent → AgentRunner) with a scripted
@@ -398,9 +395,7 @@ class AgentEndToEndTest {
 
         // The STANDALONE persona mutated to LEADER, the Leader binding applied, the group stamped.
         AgentPersona persona =
-                assertInstanceOf(
-                        AgentPersona.class,
-                        requireField(runner.personaView()));
+                assertInstanceOf(AgentPersona.class, requireField(runner.personaView()));
         assertEquals(Role.LEADER, persona.role(), "persona role advanced to LEADER");
         assertEquals(Role.LEADER, agent.persona().role());
         assertEquals(runner.whitelistedToolsView(), agent.whitelistedTools());
@@ -495,9 +490,7 @@ class AgentEndToEndTest {
 
         // The stashed STANDALONE persona + binding are restored and the group stamp cleared.
         AgentPersona persona =
-                assertInstanceOf(
-                        AgentPersona.class,
-                        requireField(runner.personaView()));
+                assertInstanceOf(AgentPersona.class, requireField(runner.personaView()));
         assertEquals(Role.STANDALONE, persona.role(), "persona role restored to STANDALONE");
         assertEquals(Role.STANDALONE, agent.persona().role());
         assertEquals(runner.whitelistedToolsView(), agent.whitelistedTools());
@@ -749,9 +742,7 @@ class AgentEndToEndTest {
                         : ToolCapability.GROUP_CONTROL,
                 Danger.SAFE,
                 Object.class,
-                "create_group".equals(name)
-                        ? CreateGroupArgs.class
-                        : DisbandGroupArgs.class,
+                "create_group".equals(name) ? CreateGroupArgs.class : DisbandGroupArgs.class,
                 Map.of());
     }
 

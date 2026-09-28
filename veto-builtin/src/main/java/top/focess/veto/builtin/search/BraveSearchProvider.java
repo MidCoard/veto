@@ -13,9 +13,6 @@ import java.util.ArrayList;
 import java.util.List;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
-import top.focess.veto.api.search.SearchOptions;
-import top.focess.veto.api.search.SearchProvider;
-import top.focess.veto.api.search.SearchResult;
 
 /**
  * Brave Search API provider — higher-quality results than the keyless default, but requires an API
@@ -51,8 +48,8 @@ public class BraveSearchProvider implements SearchProvider, AutoCloseable {
 
     @Override
     @SuppressWarnings("UastIncorrectHttpHeaderInspection")
-    public @NonNull List<SearchResult> search(@NonNull String query, @NonNull SearchOptions options)
-            throws Exception {
+    public @NonNull List<@NonNull SearchResult> search(
+            @NonNull String query, @NonNull SearchOptions options) throws Exception {
         if (apiKey == null || apiKey.isBlank()) {
             throw new IllegalStateException(
                     "web_search provider is 'brave' but no API key is set - configure"
@@ -76,8 +73,8 @@ public class BraveSearchProvider implements SearchProvider, AutoCloseable {
                         .header("X-Subscription-Token", apiKey)
                         .GET()
                         .build();
-        HttpResponse<String> response =
-                httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+        HttpResponse<@NonNull String> response =
+                httpClient.<@NonNull String>send(request, HttpResponse.BodyHandlers.ofString());
         if (response.statusCode() != 200) {
             throw new IllegalStateException("Brave search failed: HTTP " + response.statusCode());
         }
@@ -89,10 +86,10 @@ public class BraveSearchProvider implements SearchProvider, AutoCloseable {
         return "brave";
     }
 
-    private @NonNull List<SearchResult> parse(@NonNull String body) throws Exception {
+    private @NonNull List<@NonNull SearchResult> parse(@NonNull String body) throws Exception {
         JsonNode root = mapper.readTree(body);
         JsonNode results = root.path("web").path("results");
-        List<SearchResult> out = new ArrayList<>();
+        List<@NonNull SearchResult> out = new ArrayList<>();
         if (results.isArray()) {
             for (JsonNode r : results) {
                 String title = r.path("title").asText("");

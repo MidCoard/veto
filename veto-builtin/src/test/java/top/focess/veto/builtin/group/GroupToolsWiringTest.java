@@ -2,18 +2,16 @@ package top.focess.veto.builtin.group;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import java.util.List;
+import java.util.Set;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
-
 import top.focess.veto.api.agent.tool.ToolExecutionException;
 import top.focess.veto.api.plugin.PluginHost;
 import top.focess.veto.builtin.group.GroupTools.CreateGroup;
 import top.focess.veto.builtin.group.GroupTools.DisbandGroup;
 import top.focess.veto.builtin.group.GroupTools.InspectGroup;
 import top.focess.veto.builtin.group.GroupTools.PostMessage;
-
-import java.util.List;
-import java.util.Set;
-import java.util.UUID;
 
 /** Actual tool bodies and plugin runtime, with only the public host boundary substituted. */
 class GroupToolsWiringTest {

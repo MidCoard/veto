@@ -8,7 +8,9 @@ import top.focess.veto.api.agent.capability.WorkspaceWriteCapability;
  *
  * @param <T> immutable argument value decoded by the host
  */
-public interface WorkspaceWriteTool<T> extends NativeTool<T> {
+public abstract class WorkspaceWriteTool<T> extends NativeTool<T> {
+    /** Constructs a tool using call-scoped workspace writes. */
+    protected WorkspaceWriteTool() {}
 
     /**
      * Executes with the supplied authorized write capability.
@@ -18,8 +20,8 @@ public interface WorkspaceWriteTool<T> extends NativeTool<T> {
      * @return model-visible result content
      * @throws Exception when execution cannot produce a successful result
      */
-    @NonNull String execute(@NonNull T args, @NonNull WorkspaceWriteCapability capability)
-            throws Exception;
+    public abstract @NonNull String execute(
+            @NonNull T args, @NonNull WorkspaceWriteCapability capability) throws Exception;
 
     /**
      * Rejects execution without a host-supplied write capability.
@@ -29,7 +31,7 @@ public interface WorkspaceWriteTool<T> extends NativeTool<T> {
      * @throws Exception always, because direct execution lacks authority
      */
     @Override
-    default @NonNull String execute(@NonNull T args) throws Exception {
+    public @NonNull String execute(@NonNull T args) throws Exception {
         throw new SecurityException("Host must supply an authorized workspace capability");
     }
 }

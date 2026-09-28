@@ -1,9 +1,13 @@
 package top.focess.veto.integration.plugins;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
-
 import top.focess.veto.agent.TurnType;
 import top.focess.veto.agent.tool.ToolDefinition;
 import top.focess.veto.api.agent.control.SourceEvidence;
@@ -24,12 +28,6 @@ import top.focess.veto.integration.plugins.storage.PluginInvocationScope;
 import top.focess.veto.model.SessionRepository;
 import top.focess.veto.plugin.runtime.*;
 import top.focess.veto.session.SessionHistoryLoader;
-
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Optional;
-import java.util.Set;
-import java.util.stream.Collectors;
 
 /**
  * Immutable session selection. Installed packages are a catalog, never a global availability

@@ -3,10 +3,9 @@ package top.focess.veto.agent.loop;
 import static org.junit.jupiter.api.Assertions.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-
+import java.util.List;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
-
 import top.focess.veto.agent.tool.*;
 import top.focess.veto.agent.tool.ControlSubmissions;
 import top.focess.veto.agent.tool.builtin.*;
@@ -15,8 +14,6 @@ import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.ToolExecutionException;
 import top.focess.veto.builtin.planning.SubmitPlanTool;
 import top.focess.veto.builtin.response.AnswerWithCitationsTool;
-
-import java.util.List;
 
 class ControlSubmissionToolsTest {
     private final @NonNull ObjectMapper mapper = new ObjectMapper();
@@ -63,15 +60,14 @@ class ControlSubmissionToolsTest {
     @Test
     void citedAnswerRequiresSourcesAndConstrainedIds() throws Exception {
         var type = AnswerWithCitationsTool.Args.class;
-        var example =
-                ToolDocs.examplesOf(AnswerWithCitationsTool.class).getFirst();
+        var example = ToolDocs.examplesOf(AnswerWithCitationsTool.class).getFirst();
         NativeToolArgumentValidator.validate(
                 "answer_with_citations", mapper.readTree(example), type);
         for (String bad :
                 List.of(
                         "{\"message\":\"Answer\",\"citations\":[]}",
                         "{\"message\":\"[source](cite:meeting)\",\"citations\":[{\"id\":\"meeting\",\"sources\":{\"quote\":\"The"
-                            + " meeting starts at 14:30.\"}}]}",
+                                + " meeting starts at 14:30.\"}}]}",
                         example.replace("\"meeting\"", "\"bad id\"")))
             assertThrows(
                     ToolExecutionException.class,

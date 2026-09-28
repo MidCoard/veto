@@ -5,4 +5,7 @@ package top.focess.veto.api.agent.tool;
  *
  * @param <T> immutable argument value decoded by the host
  */
-public interface AgentTool<T> extends CapabilityTool<T> {}
+public abstract class AgentTool<T> extends Tool implements CapabilityTool<T> {
+    /** Constructs an agent tool. */
+    protected AgentTool() {}
+}

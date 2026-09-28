@@ -5,18 +5,16 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.net.URI;
+import java.util.Collections;
+import java.util.List;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
-
 import top.focess.veto.api.agent.tool.ToolExecutionException;
 import top.focess.veto.builtin.web.model.Execution;
 import top.focess.veto.builtin.web.model.FetchedPage;
 import top.focess.veto.builtin.web.model.FinishReadArgs;
 import top.focess.veto.builtin.web.model.Result;
-
-import java.net.URI;
-import java.util.Collections;
-import java.util.List;
 
 class WebFetchExecutorResultTest {
     private static final @NonNull Execution EXECUTION =

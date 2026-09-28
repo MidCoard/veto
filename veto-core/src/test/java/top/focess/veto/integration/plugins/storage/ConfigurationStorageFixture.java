@@ -1,81 +1,76 @@
 package top.focess.veto.integration.plugins.storage;
 
-import org.checkerframework.framework.qual.DefaultQualifier;
-import org.checkerframework.framework.qual.TypeUseLocation;
-import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
-
-import top.focess.veto.agent.tool.ToolCallContextHolder;
-import top.focess.veto.api.plugin.storage.PluginStorage;
-import top.focess.veto.plugin.runtime.PluginLifecycle;
-
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
+import top.focess.veto.agent.tool.ToolCallContextHolder;
+import top.focess.veto.api.plugin.storage.PluginStorage;
+import top.focess.veto.plugin.runtime.PluginLifecycle;
 
 /** In-memory configuration fixture; each bound plugin has independent stores and scope tokens. */
-@DefaultQualifier(
-        value = NonNull.class,
-        locations = {
-            TypeUseLocation.FIELD,
-            TypeUseLocation.PARAMETER,
-            TypeUseLocation.RETURN,
-            TypeUseLocation.UPPER_BOUND
-        })
 public final class ConfigurationStorageFixture implements PluginStorageFactory {
-    public PluginStorage bind(PluginLifecycle plugin) {
+    public @NonNull PluginStorage bind(@NonNull PluginLifecycle plugin) {
         return new Storage();
     }
 
-    public String authorizeSession(PluginStorage storage, PluginStorage.SessionScope scope) {
+    public @NonNull String authorizeSession(
+            @NonNull PluginStorage storage, PluginStorage.@NonNull SessionScope scope) {
         storage.session(scope);
         return scope.userId();
     }
 
-    public String authorizeUser(PluginStorage storage, PluginStorage.UserScope scope) {
+    public @NonNull String authorizeUser(
+            @NonNull PluginStorage storage, PluginStorage.@NonNull UserScope scope) {
         storage.user(scope);
         return scope.userId();
     }
 
-    public PluginStorage.UserScope transferUser(
-            PluginStorage caller, PluginStorage.UserScope scope, PluginStorage provider) {
+    public PluginStorage.@NonNull UserScope transferUser(
+            @NonNull PluginStorage caller,
+            PluginStorage.@NonNull UserScope scope,
+            @NonNull PluginStorage provider) {
         throw new UnsupportedOperationException("Fixture has no user scopes");
     }
 
-    public PluginStorage.SessionScope transferSession(
-            PluginStorage caller, PluginStorage.SessionScope scope, PluginStorage provider) {
+    public PluginStorage.@NonNull SessionScope transferSession(
+            @NonNull PluginStorage caller,
+            PluginStorage.@NonNull SessionScope scope,
+            @NonNull PluginStorage provider) {
         throw new UnsupportedOperationException("Fixture has no cross-plugin scopes");
     }
 
     private static final class Storage implements PluginStorage {
-        private final Map<String, SessionScope> scopes = new HashMap<>();
-        private final Map<String, Store> stores = new HashMap<>();
+        private final @NonNull Map<@NonNull String, @NonNull SessionScope> scopes = new HashMap<>();
+        private final @NonNull Map<@NonNull String, @NonNull Store> stores = new HashMap<>();
 
-        public Store application() {
+        public @NonNull Store application() {
             throw new UnsupportedOperationException("Fixture supports session configuration only");
         }
 
-        public Store user(UserScope scope) {
+        public @NonNull Store user(@NonNull UserScope scope) {
             throw new UnsupportedOperationException("Fixture supports session configuration only");
         }
 
-        public synchronized Store session(SessionScope scope) {
+        public synchronized @NonNull Store session(@NonNull SessionScope scope) {
             var issued = scopes.get(scope.sessionId());
             if (issued == null || !scope.equals(issued))
                 throw new SecurityException("Unknown fixture scope");
             return stores.computeIfAbsent(scope.sessionId(), ignored -> new MemoryStore());
         }
 
-        public synchronized Page<Scope> scopes(Kind kind, @Nullable String cursor, int limit) {
+        public synchronized @NonNull Page<@NonNull Scope> scopes(
+                @NonNull Kind kind, @Nullable String cursor, int limit) {
             if (cursor != null) throw new IllegalArgumentException("Unknown cursor");
             return new Page<>(
                     kind == Kind.SESSION ? List.copyOf(scopes.values()) : List.of(), null);
         }
 
-        public synchronized SessionScope currentSession() {
+        public synchronized @NonNull SessionScope currentSession() {
             var invocation = PluginInvocationScope.current();
             var call = ToolCallContextHolder.get();
             @Nullable String owner =
@@ -96,20 +91,22 @@ public final class ConfigurationStorageFixture implements PluginStorageFactory {
             return scope;
         }
 
-        public UserScope currentUser() {
+        public @NonNull UserScope currentUser() {
             throw new UnsupportedOperationException("Fixture supports session configuration only");
         }
     }
 
     private static final class MemoryStore implements PluginStorage.Store {
-        private final Map<String, PluginStorage.Entry> rows = new HashMap<>();
+        private final @NonNull Map<@NonNull String, PluginStorage.@NonNull Entry> rows =
+                new HashMap<>();
 
-        public synchronized Optional<PluginStorage.Entry> get(String key) {
+        public synchronized @NonNull Optional<PluginStorage.@NonNull Entry> get(
+                @NonNull String key) {
             return Optional.ofNullable(rows.get(key));
         }
 
-        public synchronized PluginStorage.Page<PluginStorage.Entry> list(
-                String prefix, @Nullable String cursor, int limit) {
+        public synchronized PluginStorage.@NonNull Page<PluginStorage.@NonNull Entry> list(
+                @NonNull String prefix, @Nullable String cursor, int limit) {
             if (cursor != null) throw new IllegalArgumentException("Unknown cursor");
             var found = rows.values().stream().filter(row -> row.key().startsWith(prefix)).toList();
             if (found.size() > limit)
@@ -117,8 +114,10 @@ public final class ConfigurationStorageFixture implements PluginStorageFactory {
             return new PluginStorage.Page<>(found, null);
         }
 
-        public synchronized PluginStorage.Entry put(
-                String key, @Nullable String revision, PluginStorage.Document document) {
+        public synchronized PluginStorage.@NonNull Entry put(
+                @NonNull String key,
+                @Nullable String revision,
+                PluginStorage.@NonNull Document document) {
             var old = rows.get(key);
             if (!Objects.equals(old == null ? null : old.revision(), revision))
                 throw new PluginStorage.Conflict();
@@ -127,7 +126,7 @@ public final class ConfigurationStorageFixture implements PluginStorageFactory {
             return entry;
         }
 
-        public synchronized void delete(String key, String revision) {
+        public synchronized void delete(@NonNull String key, @NonNull String revision) {
             var old = rows.get(key);
             if (old == null || !old.revision().equals(revision)) throw new PluginStorage.Conflict();
             rows.remove(key);

@@ -7,19 +7,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
-
-import org.jspecify.annotations.NonNull;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.Assumptions;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.ValueSource;
-
-import top.focess.veto.agent.mcp.transport.McpJsonRpcClient;
-import top.focess.veto.agent.mcp.transport.McpTransport;
-import top.focess.veto.util.Nullness;
-
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.StandardProtocolFamily;
@@ -33,6 +20,16 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import org.jspecify.annotations.NonNull;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Assumptions;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
+import top.focess.veto.agent.mcp.transport.McpJsonRpcClient;
+import top.focess.veto.agent.mcp.transport.McpTransport;
+import top.focess.veto.util.Nullness;
 
 /** Tests for remote MCP tool discovery and invocation over JSON-RPC transports. */
 class McpJsonRpcClientTest {
@@ -133,9 +130,9 @@ class McpJsonRpcClientTest {
                                             StandardCharsets.UTF_8));
                             byte[] bytes =
                                     ("data:"
-                                         + " {\"jsonrpc\":\"2.0\",\"method\":\"notifications/message\"}\n\n"
-                                         + "data:"
-                                         + " {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"text\":\"你好\"}}\n\n")
+                                                    + " {\"jsonrpc\":\"2.0\",\"method\":\"notifications/message\"}\n\n"
+                                                    + "data:"
+                                                    + " {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"text\":\"你好\"}}\n\n")
                                             .getBytes(StandardCharsets.UTF_8);
                             exchange.getResponseHeaders().set("Content-Type", "text/event-stream");
                             exchange.sendResponseHeaders(200, bytes.length);
