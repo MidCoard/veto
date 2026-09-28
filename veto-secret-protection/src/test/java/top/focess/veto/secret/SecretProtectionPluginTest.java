@@ -2,12 +2,9 @@ package top.focess.veto.secret;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-import java.util.List;
-import java.util.Map;
-import java.util.ServiceLoader;
-import java.util.stream.Collectors;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
+
 import top.focess.veto.api.agent.tool.CapabilityTool;
 import top.focess.veto.api.credentials.CredentialImportAccess;
 import top.focess.veto.api.credentials.CredentialWriter;
@@ -20,14 +17,19 @@ import top.focess.veto.api.plugin.VetoPlugin;
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.contract.ObservationMiddleware;
 import top.focess.veto.api.plugin.contract.PluginFailure;
-import top.focess.veto.api.plugin.contract.TextProtection;
+import top.focess.veto.api.plugin.contract.FrontendContribution;
+import top.focess.veto.api.event.BeforeTextCommitEvent;
 import top.focess.veto.api.plugin.contribution.Contribution;
 
+import java.util.List;
+import java.util.Map;
+import java.util.ServiceLoader;
+import java.util.stream.Collectors;
+
 /** The plugin is self-contained: ServiceLoader discovery, typed points, and host-service import. */
-@SuppressWarnings("nullness") // Cross-module class literals read as nullable.
 class SecretProtectionPluginTest {
-    private static final TextProtection.@NonNull Scope SCOPE =
-            new TextProtection.Scope("owner", "session", "agent");
+    private static final FrontendContribution.@NonNull Scope SCOPE =
+            new FrontendContribution.Scope("owner", "session", "agent");
 
     private static @NonNull List<Contribution<?>> initialize(
             @NonNull SecretProtectionPlugin plugin,
@@ -67,35 +69,35 @@ class SecretProtectionPluginTest {
         assertEquals(
                 java.util.Set.of(
                         "veto:frontend",
-                        "veto:input-protection",
-                        "veto:file-observation",
-                        "veto:file-protection",
                         "veto:observation-middleware",
                         "veto:listeners",
-                        "veto:native-tools"),
+                        "veto:tools"),
                 byPoint.keySet());
-        assertInstanceOf(TextProtection.class, byPoint.get("veto:input-protection"));
-        assertInstanceOf(ObservationMiddleware.class, byPoint.get("veto:observation-middleware"));
+        assertInstanceOf(
+                ObservationMiddleware.class,
+                byPoint.get("veto:observation-middleware"));
         assertInstanceOf(Listener.class, byPoint.get("veto:listeners"));
-        assertInstanceOf(CapabilityTool.class, byPoint.get("veto:native-tools"));
+        assertInstanceOf(CapabilityTool.class, byPoint.get("veto:tools"));
     }
 
     @Test
     void lifecycleEventsDriveCaptureAvailability() throws Exception {
         var entries = initialize(new SecretProtectionPlugin(), Map.of());
-        var input = textProtection(entries, "veto:input-protection");
-        var lifecycle = contribution(entries, SecretProtectionPlugin.SecretLifecycle.class);
-        String captured = input.transform(SCOPE, "user", "password=alpha");
+        var lifecycle =
+                contribution(
+                        entries, SecretProtectionPlugin.SecretLifecycle.class);
+        String captured = commit(lifecycle, SCOPE, "password=alpha");
         assertTrue(captured.contains("[SECRET_REF:s_"), captured);
         lifecycle.onOwnerClosed(new OwnerClosedEvent("owner"));
         assertThrows(
                 IllegalStateException.class,
-                () -> input.transform(SCOPE, "user", "password=alpha"));
+                () -> commit(lifecycle, SCOPE, "password=alpha"));
         lifecycle.onOwnerOpen(new OwnerOpenEvent("owner"));
-        assertTrue(input.transform(SCOPE, "user", "password=beta").contains("[SECRET_REF:s_"));
+        assertTrue(commit(lifecycle, SCOPE, "password=beta").contains("[SECRET_REF:s_"));
         lifecycle.onSessionClosed(new SessionClosedEvent("owner", "session"));
         assertThrows(
-                IllegalStateException.class, () -> input.transform(SCOPE, "user", "password=beta"));
+                IllegalStateException.class,
+                () -> commit(lifecycle, SCOPE, "password=beta"));
     }
 
     @Test
@@ -121,12 +123,13 @@ class SecretProtectionPluginTest {
     @Test
     void importToolRequiresTheHostGrantedService() throws Exception {
         var entries = initialize(new SecretProtectionPlugin(), Map.of());
-        var input = textProtection(entries, "veto:input-protection");
-        String reference = reference(input.transform(SCOPE, "user", "password=synthetic-token"));
+        var lifecycle = contribution(entries, SecretProtectionPlugin.SecretLifecycle.class);
+        String reference = reference(commit(lifecycle, SCOPE, "password=synthetic-token"));
         var tool = contribution(entries, CapabilityTool.class);
         var failure =
                 assertThrows(
-                        IllegalStateException.class, () -> invoke(tool, reference, "Repository"));
+                        IllegalStateException.class,
+                        () -> invoke(tool, reference, "Repository"));
         assertEquals("Import host is unavailable", failure.getMessage());
     }
 
@@ -155,11 +158,15 @@ class SecretProtectionPluginTest {
                                 "owner", "session", "agent", writer);
         var entries =
                 initialize(
-                        new SecretProtectionPlugin(), Map.of(CredentialImportAccess.class, access));
-        var input = textProtection(entries, "veto:input-protection");
-        String reference = reference(input.transform(SCOPE, "user", "password=synthetic-token"));
+                        new SecretProtectionPlugin(),
+                        Map.of(CredentialImportAccess.class, access));
+        var lifecycle = contribution(entries, SecretProtectionPlugin.SecretLifecycle.class);
+        String reference = reference(commit(lifecycle, SCOPE, "password=synthetic-token"));
         String receipt =
-                invoke(contribution(entries, CapabilityTool.class), reference, "Repository");
+                invoke(
+                        contribution(entries, CapabilityTool.class),
+                        reference,
+                        "Repository");
         assertTrue(receipt.contains("\"credential_ref\":\"cred_test\""), receipt);
         assertTrue(receipt.contains("\"status\":\"created\""), receipt);
     }
@@ -171,12 +178,21 @@ class SecretProtectionPluginTest {
         throw new AssertionError("Contribution missing: " + type.getSimpleName());
     }
 
-    private static @NonNull TextProtection textProtection(
-            @NonNull List<Contribution<?>> entries, @NonNull String pointId) {
-        for (var entry : entries)
-            if (entry.point().id().value().equals(pointId))
-                return (TextProtection) entry.implementation();
-        throw new AssertionError("Contribution missing: " + pointId);
+    private static @NonNull String commit(
+            SecretProtectionPlugin.@NonNull SecretLifecycle lifecycle,
+            FrontendContribution.@NonNull Scope scope,
+            @NonNull String text) {
+        var event =
+                new BeforeTextCommitEvent(
+                        scope.ownerId(),
+                        scope.sessionId(),
+                        scope.agentId(),
+                        () -> false,
+                        BeforeTextCommitEvent.Phase.INPUT,
+                        "user",
+                        text);
+        lifecycle.onTextCommit(event);
+        return event.text();
     }
 
     @SuppressWarnings({"unchecked", "rawtypes"}) // The contributed handler is a CapabilityTool<?>.

@@ -1,9 +1,7 @@
 package top.focess.veto.builtin.workspace;
 
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.FileAlreadyExistsException;
 import org.jspecify.annotations.NonNull;
+
 import top.focess.veto.api.agent.capability.WorkspaceWriteCapability;
 import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.tool.Doc;
@@ -12,13 +10,16 @@ import top.focess.veto.api.agent.tool.Required;
 import top.focess.veto.api.agent.tool.SecurityHint;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.agent.tool.ToolDoc;
-import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.ToolErrorCode;
 import top.focess.veto.api.agent.tool.ToolErrors;
 import top.focess.veto.api.agent.tool.ToolJson;
 import top.focess.veto.api.agent.tool.ToolResultFormat;
 import top.focess.veto.api.agent.tool.ToolSecurity;
 import top.focess.veto.api.agent.tool.WorkspaceWriteTool;
+
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.FileAlreadyExistsException;
 
 /** {@code write_to_file} — create a new file or completely overwrite an existing file. */
 @ToolSecurity(capability = ToolCapability.WORKSPACE_WRITE, defaultDanger = Danger.ELEVATED)
@@ -75,13 +76,26 @@ import top.focess.veto.api.agent.tool.WorkspaceWriteTool;
                 refused with PATH_PROTECTED.
                 """,
         security =
-                "With overwrite=true the file's previous contents are lost and cannot be recovered. Do not write secrets into files.",
+                "With overwrite=true the file's previous contents are lost and cannot be recovered."
+                        + " Do not write secrets into files.",
         examples = {
-            "{\"absolutePath\": \"/abs/project/src/Main.java\", \"codeContent\": \"package x;\\n\\npublic class Main {}\\n\", \"overwrite\": false}",
-            "{\"absolutePath\": \"/abs/project/notes/todo.md\", \"codeContent\": \"# Todo\\n- [ ] first task\\n\", \"overwrite\": false}",
-            "{\"absolutePath\": \"/abs/project/src/Main.java\", \"codeContent\": \"package x;\\n\\npublic class Main {\\n    public static void main(String[] args) {}\\n}\\n\", \"overwrite\": true}",
-            "{\"absolutePath\": \"/abs/project/build/marker.txt\", \"codeContent\": \"\", \"overwrite\": false}",
-            "{\"absolutePath\": \"/abs/project/src/Main.java\", \"codeContent\": \"package x;\\n\", \"overwrite\": false}"
+            "{\"absolutePath\": \"/abs/project/src/Main.java\", \"codeContent\": \"package x;\\n"
+                    + "\\n"
+                    + "public class Main {}\\n"
+                    + "\", \"overwrite\": false}",
+            "{\"absolutePath\": \"/abs/project/notes/todo.md\", \"codeContent\": \"# Todo\\n"
+                    + "- [ ] first task\\n"
+                    + "\", \"overwrite\": false}",
+            "{\"absolutePath\": \"/abs/project/src/Main.java\", \"codeContent\": \"package x;\\n"
+                    + "\\n"
+                    + "public class Main {\\n"
+                    + "    public static void main(String[] args) {}\\n"
+                    + "}\\n"
+                    + "\", \"overwrite\": true}",
+            "{\"absolutePath\": \"/abs/project/build/marker.txt\", \"codeContent\": \"\","
+                    + " \"overwrite\": false}",
+            "{\"absolutePath\": \"/abs/project/src/Main.java\", \"codeContent\": \"package x;\\n"
+                    + "\", \"overwrite\": false}"
         },
         returnExamples = {
             "{\"status\":\"ok\",\"file\":\"/abs/project/src/Main.java\",\"bytes\":33}",
@@ -108,7 +122,7 @@ public final class WriteToFileTool implements WorkspaceWriteTool<WriteToFileTool
 
     @Override
     public @NonNull Class<Args> getArgsClass() {
-        return ToolDocs.nonNullClass(Args.class);
+        return Args.class;
     }
 
     @Override

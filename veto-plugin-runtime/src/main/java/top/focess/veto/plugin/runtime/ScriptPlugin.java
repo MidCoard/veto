@@ -20,7 +20,7 @@ import top.focess.veto.api.plugin.PluginIdentity;
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.contract.PluginFailure;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
-import top.focess.veto.api.plugin.contract.Tool;
+import top.focess.veto.api.agent.tool.RemoteTool;
 import top.focess.veto.api.plugin.contract.ToolContribution;
 import top.focess.veto.api.plugin.contribution.Contribution;
 
@@ -89,7 +89,7 @@ public final class ScriptPlugin extends AbstractVetoPlugin {
                                                         tool.description(),
                                                         PluginJson.object(tool.inputSchema()),
                                                         PluginJson.object(tool.outputSchema()),
-                                                        Tool.Effect.EXTERNAL_UNKNOWN,
+                                                        RemoteTool.Effect.EXTERNAL_UNKNOWN,
                                                         Set.of(),
                                                         (arguments, cancellation) -> {
                                                             cancellation.checkCancelled();

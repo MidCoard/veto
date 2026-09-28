@@ -7,18 +7,7 @@ import static org.mockito.Mockito.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
-import java.net.URI;
-import java.time.Duration;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.UUID;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicReference;
+
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
@@ -26,6 +15,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.springframework.context.ApplicationContext;
 import org.springframework.test.util.ReflectionTestUtils;
+
 import top.focess.veto.agent.capability.DestinationTestGrants;
 import top.focess.veto.agent.capability.NetworkEgressCapabilityImpl;
 import top.focess.veto.agent.identity.SystemPromptResolver;
@@ -38,7 +28,6 @@ import top.focess.veto.agent.translation.DefaultCapabilityTranslator;
 import top.focess.veto.agent.web.ReaderTestHarness;
 import top.focess.veto.api.agent.AgentState;
 import top.focess.veto.api.agent.tool.AgentTool;
-import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.http.ApprovedHttpDestination;
 import top.focess.veto.api.http.HttpDocument;
 import top.focess.veto.api.llm.LlmBinding;
@@ -56,6 +45,19 @@ import top.focess.veto.memory.TurnRecordRepository;
 import top.focess.veto.model.tier.ModelBinding;
 import top.focess.veto.model.tier.ModelTier;
 import top.focess.veto.model.tier.ModelTierRegistry;
+
+import java.net.URI;
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 class WebReadAgentIntegrationTest {
     @ParameterizedTest
@@ -124,12 +126,17 @@ class WebReadAgentIntegrationTest {
                                                                 ? Collections.nCopies(9, "Gap")
                                                                 : maxRounds == 3
                                                                         ? List.of(
-                                                                                "Other timeout behavior is not established by the inspected evidence.")
+                                                                                "Other timeout"
+                                                                                    + " behavior is"
+                                                                                    + " not established"
+                                                                                    + " by the"
+                                                                                    + " inspected"
+                                                                                    + " evidence.")
                                                                         : List.of()));
                         default -> throw new AssertionError("Reader unexpectedly restarted");
                     };
                 };
-        var models = mock(ToolDocs.nonNullClass(ModelTierRegistry.class));
+        var models = mock(ModelTierRegistry.class);
         when(models.resolve("test-owner", ModelTier.LOW))
                 .thenReturn(
                         new ModelBinding(
@@ -148,21 +155,22 @@ class WebReadAgentIntegrationTest {
                         32000,
                         2048,
                         () -> {});
-        var access = mock(ToolDocs.nonNullClass(ApprovedHttpDestination.class));
+        var access = mock(ApprovedHttpDestination.class);
         when(access.fetch())
                 .thenReturn(
                         new HttpDocument(
                                 URI.create("https://example.com/docs"),
                                 200,
                                 "text/html",
-                                "<main><p>Timeout is 30 seconds.</p><p>RAW_CHILD_PAGE_SENTINEL</p></main>",
+                                "<main><p>Timeout is 30"
+                                        + " seconds.</p><p>RAW_CHILD_PAGE_SENTINEL</p></main>",
                                 false,
                                 10000));
 
-        var network = mock(ToolDocs.nonNullClass(NetworkEgressCapabilityImpl.class));
+        var network = mock(NetworkEgressCapabilityImpl.class);
         when(network.openApprovedDestination("url"))
                 .thenAnswer(invocation -> DestinationTestGrants.wrap(access, () -> {}));
-        var context = mock(ToolDocs.nonNullClass(ApplicationContext.class));
+        var context = mock(ApplicationContext.class);
         when(context.getBeansOfType(AgentTool.class))
                 .thenReturn(
                         Map.of(
@@ -396,7 +404,8 @@ class WebReadAgentIntegrationTest {
                         invocation -> {
                             assertFalse(
                                     Thread.currentThread().isInterrupted(),
-                                    "Reader stop must be able to persist its lifecycle without closing DB sockets");
+                                    "Reader stop must be able to persist its lifecycle without"
+                                            + " closing DB sockets");
                             return invocation.callRealMethod();
                         })
                 .when(registry)
@@ -424,7 +433,7 @@ class WebReadAgentIntegrationTest {
                     }
                     throw new IllegalStateException("Reader released");
                 };
-        var models = mock(ToolDocs.nonNullClass(ModelTierRegistry.class));
+        var models = mock(ModelTierRegistry.class);
         when(models.resolve("test-owner", ModelTier.LOW))
                 .thenReturn(new ModelBinding(ProviderType.DEEPSEEK, "reader", "key", 0, 2048));
         @NonNull TurnRecordRepository turnRepository = mock();
@@ -441,7 +450,7 @@ class WebReadAgentIntegrationTest {
                         32000,
                         2048,
                         () -> {});
-        var access = mock(ToolDocs.nonNullClass(ApprovedHttpDestination.class));
+        var access = mock(ApprovedHttpDestination.class);
 
         doAnswer(
                         invocation -> {
@@ -450,10 +459,10 @@ class WebReadAgentIntegrationTest {
                         })
                 .when(access)
                 .close();
-        var network = mock(ToolDocs.nonNullClass(NetworkEgressCapabilityImpl.class));
+        var network = mock(NetworkEgressCapabilityImpl.class);
         when(network.openApprovedDestination("url"))
                 .thenAnswer(invocation -> DestinationTestGrants.wrap(access, () -> {}));
-        var context = mock(ToolDocs.nonNullClass(ApplicationContext.class));
+        var context = mock(ApplicationContext.class);
         when(context.getBeansOfType(AgentTool.class))
                 .thenReturn(
                         Map.of(
@@ -485,7 +494,8 @@ class WebReadAgentIntegrationTest {
                             if (turn != null && "CANCELLED".equals(turn.payload().get("outcome"))) {
                                 assertFalse(
                                         Thread.currentThread().isInterrupted(),
-                                        "Cancellation history must be written without a pending interrupt");
+                                        "Cancellation history must be written without a pending"
+                                                + " interrupt");
                                 persistedCancellations.incrementAndGet();
                             }
                             return null;

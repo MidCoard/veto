@@ -3,18 +3,12 @@ package top.focess.veto.integration.plugins;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
-import java.nio.file.Path;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
 import org.checkerframework.framework.qual.DefaultQualifier;
 import org.checkerframework.framework.qual.TypeUseLocation;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
+
 import top.focess.veto.agent.intercept.ToolExecutionPermit;
 import top.focess.veto.agent.tool.NativeToolDefinition;
 import top.focess.veto.agent.tool.Provenance;
@@ -24,12 +18,19 @@ import top.focess.veto.agent.workspace.PathMode;
 import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.tool.ToolCapability;
-import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.workflow.PluginAwait;
 import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.api.plugin.PluginHost;
 import top.focess.veto.api.plugin.storage.PluginStorage;
+
+import java.nio.file.Path;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 @DefaultQualifier(
         value = NonNull.class,
@@ -71,8 +72,8 @@ class BoundPluginHostTest {
                                     ToolCapability.PLUGIN_LOCAL,
                                     Danger.SAFE,
                                     false,
-                                    ToolDocs.nonNullClass(BoundPluginHostTest.class),
-                                    ToolDocs.nonNullClass(BoundPluginHostTest.class),
+                                    BoundPluginHostTest.class,
+                                    BoundPluginHostTest.class,
                                     Map.of(),
                                     new Provenance("test.plugin", binding, "1.0.0", "operation"));
                     var user = UUID.randomUUID();

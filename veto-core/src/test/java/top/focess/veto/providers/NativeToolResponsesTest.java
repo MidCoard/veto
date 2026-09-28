@@ -4,11 +4,10 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.mock;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.util.List;
-import java.util.Map;
+
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
-import top.focess.veto.api.agent.tool.ToolDocs;
+
 import top.focess.veto.api.agent.tool.ToolDocumentation;
 import top.focess.veto.api.llm.LlmClient;
 import top.focess.veto.api.llm.LlmOptions;
@@ -25,6 +24,9 @@ import top.focess.veto.llm.core.*;
 import top.focess.veto.llm.provider.AbstractLlmProvider;
 import top.focess.veto.observability.AuditLogger;
 
+import java.util.List;
+import java.util.Map;
+
 class NativeToolResponsesTest {
 
     @Test
@@ -35,10 +37,10 @@ class NativeToolResponsesTest {
         for (String invalid :
                 List.of("True", "true because the task is done", "{\"result\":true}", ""))
             assertThrows(
-                    ToolDocs.nonNullClass(ModelSchemaException.class),
+                    ModelSchemaException.class,
                     () -> NativeToolResponses.normalize(mapper, request, invalid, List.of()));
         assertThrows(
-                ToolDocs.nonNullClass(ModelSchemaException.class),
+                ModelSchemaException.class,
                 () ->
                         NativeToolResponses.normalize(
                                 mapper,
@@ -55,13 +57,13 @@ class NativeToolResponsesTest {
         var call = new NativeToolResponses.Call("read", mapper.createObjectNode(), "id");
         assertEquals("", NativeToolResponses.normalize(mapper, request, "", List.of(call)));
         assertThrows(
-                ToolDocs.nonNullClass(ModelSchemaException.class),
+                ModelSchemaException.class,
                 () -> NativeToolResponses.normalize(mapper, request, "Finished", List.of()));
         assertThrows(
-                ToolDocs.nonNullClass(ModelSchemaException.class),
+                ModelSchemaException.class,
                 () -> NativeToolResponses.normalize(mapper, request, "Progress", List.of(call)));
         assertThrows(
-                ToolDocs.nonNullClass(ModelSchemaException.class),
+                ModelSchemaException.class,
                 () ->
                         NativeToolResponses.normalize(
                                 mapper,
@@ -73,7 +75,7 @@ class NativeToolResponsesTest {
                                                 "read", mapper.createObjectNode(), "id2"))));
         var finalOnly = request.withResponseContract(ResponseContract.completion("finish", true));
         assertThrows(
-                ToolDocs.nonNullClass(ModelSchemaException.class),
+                ModelSchemaException.class,
                 () -> NativeToolResponses.normalize(mapper, finalOnly, "", List.of(call)));
     }
 
@@ -85,7 +87,7 @@ class NativeToolResponsesTest {
                 NativeToolResponses.normalize(
                         mapper, request, "{\"summary\":\"done\"}", List.of()));
         assertThrows(
-                ToolDocs.nonNullClass(ModelSchemaException.class),
+                ModelSchemaException.class,
                 () ->
                         NativeToolResponses.normalize(
                                 mapper,
@@ -115,15 +117,15 @@ class NativeToolResponsesTest {
         assertEquals("", NativeToolResponses.normalize(mapper, request, "", List.of(call)));
         for (String text : List.of("", "Plain answer", "{\"summary\":\"done\"}"))
             assertThrows(
-                    ToolDocs.nonNullClass(ModelSchemaException.class),
+                    ModelSchemaException.class,
                     () -> NativeToolResponses.normalize(mapper, request, text, List.of()));
         assertThrows(
-                ToolDocs.nonNullClass(ModelSchemaException.class),
+                ModelSchemaException.class,
                 () ->
                         NativeToolResponses.normalize(
                                 mapper, request, "Accompanying text", List.of(call)));
         assertThrows(
-                ToolDocs.nonNullClass(ModelSchemaException.class),
+                ModelSchemaException.class,
                 () ->
                         NativeToolResponses.normalize(
                                 mapper,
@@ -191,8 +193,7 @@ class NativeToolResponsesTest {
                         "{\"calls\":null}",
                         "{\"message\":\"ok\",\"calls\":[{\"tool_name\":\"read\",\"args\":{}}]}")) {
             var provider =
-                    new AbstractLlmProvider(
-                            mapper, mock(ToolDocs.nonNullClass(AuditLogger.class))) {
+                    new AbstractLlmProvider(mapper, mock(AuditLogger.class)) {
                         @Override
                         public boolean supports(@NonNull ProviderType type) {
                             return true;
@@ -259,7 +260,7 @@ class NativeToolResponsesTest {
     void rejectsUnknownToolsDuplicateIdsAndMalformedArguments() {
         var args = mapper.createObjectNode();
         assertThrows(
-                ToolDocs.nonNullClass(ModelSchemaException.class),
+                ModelSchemaException.class,
                 () ->
                         NativeToolResponses.normalize(
                                 mapper,
@@ -267,7 +268,7 @@ class NativeToolResponsesTest {
                                 "",
                                 List.of(new NativeToolResponses.Call("unknown", args, "a"))));
         assertThrows(
-                ToolDocs.nonNullClass(ModelSchemaException.class),
+                ModelSchemaException.class,
                 () ->
                         NativeToolResponses.normalize(
                                 mapper,
@@ -278,7 +279,7 @@ class NativeToolResponsesTest {
                                         new NativeToolResponses.Call("read", args, "a"))));
         for (String bad : List.of("[]", "null", "{", "{\"path\":1,\"path\":2}", "{} {}"))
             assertThrows(
-                    ToolDocs.nonNullClass(ModelSchemaException.class),
+                    ModelSchemaException.class,
                     () -> NativeToolResponses.arguments(mapper, bad));
     }
 

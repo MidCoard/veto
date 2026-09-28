@@ -1,5 +1,14 @@
 package top.focess.veto.builtin.process;
 
+import org.jspecify.annotations.NonNull;
+import org.slf4j.LoggerFactory;
+
+import top.focess.veto.api.plugin.PluginHost;
+import top.focess.veto.api.plugin.contract.JsonValue;
+import top.focess.veto.builtin.process.BackgroundTasks.Change;
+import top.focess.veto.builtin.process.BackgroundTasks.ExitCause;
+import top.focess.veto.builtin.process.BackgroundTasks.Scope;
+
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -11,14 +20,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
-import org.jspecify.annotations.NonNull;
-import org.slf4j.LoggerFactory;
-import top.focess.veto.api.agent.tool.ToolDocs;
-import top.focess.veto.api.plugin.PluginHost;
-import top.focess.veto.api.plugin.contract.JsonValue;
-import top.focess.veto.builtin.process.BackgroundTasks.Change;
-import top.focess.veto.builtin.process.BackgroundTasks.ExitCause;
-import top.focess.veto.builtin.process.BackgroundTasks.Scope;
 
 /** Builtin owns process-to-monitor interpretation, retries and frontend invalidation. */
 public final class TaskEvents implements BackgroundTasks.Listener, AutoCloseable {
@@ -111,7 +112,7 @@ public final class TaskEvents implements BackgroundTasks.Listener, AutoCloseable
                     "task_" + change.name().toLowerCase(Locale.ROOT),
                     new JsonValue.ObjectValue(facts));
         } catch (RuntimeException error) {
-            LoggerFactory.getLogger(ToolDocs.nonNullClass(TaskEvents.class))
+            LoggerFactory.getLogger(TaskEvents.class)
                     .debug(
                             "Process event transport unavailable: {}",
                             error.getClass().getSimpleName());
@@ -119,7 +120,7 @@ public final class TaskEvents implements BackgroundTasks.Listener, AutoCloseable
         try {
             host.invalidate(scope.session(), "tasks");
         } catch (RuntimeException error) {
-            LoggerFactory.getLogger(ToolDocs.nonNullClass(TaskEvents.class))
+            LoggerFactory.getLogger(TaskEvents.class)
                     .debug(
                             "Process invalidation unavailable: {}",
                             error.getClass().getSimpleName());
@@ -138,7 +139,7 @@ public final class TaskEvents implements BackgroundTasks.Listener, AutoCloseable
             observer.changed(value.scope().owner(), value.task(), value.cause().name());
             pending.remove(id, value);
         } catch (RuntimeException failure) {
-            LoggerFactory.getLogger(ToolDocs.nonNullClass(TaskEvents.class))
+            LoggerFactory.getLogger(TaskEvents.class)
                     .debug(
                             "Process observation awaits persistence retry: {}",
                             failure.getClass().getSimpleName());

@@ -2,18 +2,20 @@ package top.focess.veto.plugin.runtime;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import org.jspecify.annotations.NonNull;
+import org.junit.jupiter.api.Test;
+
+import top.focess.veto.api.plugin.*;
+import top.focess.veto.api.plugin.contract.*;
+import top.focess.veto.api.plugin.contribution.*;
+import top.focess.veto.api.plugin.service.*;
+import top.focess.veto.api.plugin.storage.PluginStorage;
+
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
-import org.jspecify.annotations.NonNull;
-import org.junit.jupiter.api.Test;
-import top.focess.veto.api.agent.tool.ToolDocs;
-import top.focess.veto.api.plugin.*;
-import top.focess.veto.api.plugin.contract.*;
-import top.focess.veto.api.plugin.contribution.*;
-import top.focess.veto.api.plugin.service.*;
 
 class PluginServiceRegistryTest {
     @Test
@@ -29,10 +31,70 @@ class PluginServiceRegistryTest {
             assertEquals(
                     "demo.provider",
                     services.find("demo:echo", 1).orElseThrow().descriptor().providerId());
-            assertEquals(3, services.available().size());
+            assertEquals(5, services.available().size());
             assertThrows(
                     ClassNotFoundException.class,
                     () -> Class.forName("top.focess.veto.builtin.BuiltinPlugin"));
+        }
+    }
+
+    @Test
+    void userServiceRequiresAValidatedCallerScope() throws Exception {
+        try (var pair = new Pair()) {
+            var handle = pair.consumer.context.services().find("demo:user", 1).orElseThrow();
+            assertEquals(ServiceScope.USER, handle.descriptor().scope());
+            assertEquals(
+                    ServiceException.Code.INVALID_REQUEST,
+                    assertThrows(
+                                    ServiceException.class,
+                                    () -> handle.invoke(JsonValue.NullValue.INSTANCE))
+                            .code());
+            assertEquals(
+                    ServiceException.Code.UNAVAILABLE,
+                    assertThrows(
+                                    ServiceException.class,
+                                    () ->
+                                            handle.invoke(
+                                                    new PluginStorage.UserScope("forged", "owner"),
+                                                    JsonValue.NullValue.INSTANCE))
+                            .code());
+            assertEquals(
+                    new JsonValue.StringValue("owner"),
+                    handle.invoke(
+                            new PluginStorage.UserScope("valid", "owner"),
+                            JsonValue.NullValue.INSTANCE));
+        }
+    }
+
+    @Test
+    void sessionServiceRejectsUserAndExpiredSessionScopes() throws Exception {
+        try (var pair = new Pair()) {
+            var handle = pair.consumer.context.services().find("demo:session", 1).orElseThrow();
+            assertEquals(ServiceScope.SESSION, handle.descriptor().scope());
+            assertEquals(
+                    ServiceException.Code.UNAVAILABLE,
+                    assertThrows(
+                                    ServiceException.class,
+                                    () ->
+                                            handle.invoke(
+                                                    new PluginStorage.UserScope("valid", "owner"),
+                                                    JsonValue.NullValue.INSTANCE))
+                            .code());
+            assertEquals(
+                    ServiceException.Code.UNAVAILABLE,
+                    assertThrows(
+                                    ServiceException.class,
+                                    () ->
+                                            handle.invoke(
+                                                    new PluginStorage.SessionScope(
+                                                            "expired", "owner", "session"),
+                                                    JsonValue.NullValue.INSTANCE))
+                            .code());
+            assertEquals(
+                    new JsonValue.StringValue("session"),
+                    handle.invoke(
+                            new PluginStorage.SessionScope("valid", "owner", "session"),
+                            JsonValue.NullValue.INSTANCE));
         }
     }
 
@@ -140,6 +202,32 @@ class PluginServiceRegistryTest {
                                                 request -> {
                                                     throw new IllegalStateException(
                                                             "private-provider-secret");
+                                                })),
+                                Contribution.of(
+                                        StandardContributionPoints.SERVICES,
+                                        "user",
+                                        new ServiceRegistration(
+                                                "demo:user",
+                                                1,
+                                                ServiceScope.USER,
+                                                (call, request) -> {
+                                                    String owner = call.userId();
+                                                    if (owner == null)
+                                                        throw new AssertionError("Missing user");
+                                                    return new JsonValue.StringValue(owner);
+                                                })),
+                                Contribution.of(
+                                        StandardContributionPoints.SERVICES,
+                                        "session",
+                                        new ServiceRegistration(
+                                                "demo:session",
+                                                1,
+                                                ServiceScope.SESSION,
+                                                (call, request) -> {
+                                                    String session = call.sessionId();
+                                                    if (session == null)
+                                                        throw new AssertionError("Missing session");
+                                                    return new JsonValue.StringValue(session);
                                                 }))));
             return new PluginContributions(
                     List.of(
@@ -165,7 +253,25 @@ class PluginServiceRegistryTest {
         final @NonNull ExecutorService executor = Executors.newSingleThreadExecutor();
         final @NonNull AtomicBoolean allowed = new AtomicBoolean(true);
         final @NonNull PluginServiceRegistry registry =
-                new PluginServiceRegistry((caller, provider) -> allowed.get());
+                new PluginServiceRegistry(
+                        (caller, provider) -> allowed.get(),
+                        (caller, provider, required, scope) -> {
+                            if (!scope.token().equals("valid"))
+                                throw new ServiceException(ServiceException.Code.UNAVAILABLE);
+                            if (required == ServiceScope.USER
+                                    && scope instanceof PluginStorage.UserScope user)
+                                return new ServiceCallContext(
+                                        caller, required, user.userId(), null, user);
+                            if (required == ServiceScope.SESSION
+                                    && scope instanceof PluginStorage.SessionScope session)
+                                return new ServiceCallContext(
+                                        caller,
+                                        required,
+                                        session.userId(),
+                                        session.sessionId(),
+                                        session);
+                            throw new ServiceException(ServiceException.Code.UNAVAILABLE);
+                        });
         final @NonNull TestPlugin consumer = new TestPlugin("demo.consumer");
         final @NonNull PluginLifecycle consumerRuntime = new PluginLifecycle(consumer, executor);
         final @NonNull PluginLifecycle providerRuntime =
@@ -183,10 +289,11 @@ class PluginServiceRegistryTest {
                                         () -> {},
                                         () -> {
                                             throw new IllegalStateException(
-                                                    "Plugin context is not bound to a lifecycle owner");
+                                                    "Plugin context is not bound to a lifecycle"
+                                                            + " owner");
                                         },
                                         Map.of(
-                                                ToolDocs.nonNullClass(PluginServices.class),
+                                                PluginServices.class,
                                                 registry.forPlugin(runtime))),
                                 new JsonValue.ObjectValue(Map.of()));
                 builder.stage(

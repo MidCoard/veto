@@ -7,18 +7,13 @@ import com.google.genai.Client;
 import com.google.genai.types.HttpOptions;
 import com.openai.client.okhttp.OpenAIOkHttpClient;
 import com.sun.net.httpserver.HttpServer;
-import java.net.InetSocketAddress;
-import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.atomic.AtomicReference;
+
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
+
 import top.focess.veto.agent.TurnRecord;
 import top.focess.veto.agent.translation.VetoCapabilityTranslator;
-import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.ToolDocumentation;
 import top.focess.veto.api.llm.ChatMessage;
 import top.focess.veto.api.llm.LlmClient;
@@ -33,6 +28,13 @@ import top.focess.veto.api.llm.ToolDefinition;
 import top.focess.veto.api.llm.VetoRequest;
 import top.focess.veto.api.llm.exceptions.ModelSchemaException;
 import top.focess.veto.llm.core.*;
+
+import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
 
 /** Actual SDK/REST HTTP tests against local substitutes; no model credentials are used. */
 class NativeProvidersWireTest {
@@ -239,7 +241,8 @@ class NativeProvidersWireTest {
             // execution.
             for (String mixed :
                     List.of(
-                            "{\"calls\":[{\"tool_name\":\"read_file\",\"args\":{\"path\":\"/中文 notes\"}}]}",
+                            "{\"calls\":[{\"tool_name\":\"read_file\",\"args\":{\"path\":\"/中文"
+                                    + " notes\"}}]}",
                             "{\"calls\":[{\"tool_name\":\"read_file\",\"args\":{\"path\":\"different\"}}]}",
                             "{\"guide\":{\"actions\":[]}}")) {
                 reply.set(wire(type, mixed, true));
@@ -271,7 +274,7 @@ class NativeProvidersWireTest {
             }
             reply.set(truncated.toString());
             assertThrows(
-                    ToolDocs.nonNullClass(ModelSchemaException.class),
+                    ModelSchemaException.class,
                     () -> client.complete(new ResolvedRequest(request, url, "local-invalid")));
             var noTools =
                     new VetoRequest(
@@ -288,7 +291,7 @@ class NativeProvidersWireTest {
                             ResponseContract.ordinary());
             reply.set(wire(type, "", true));
             assertThrows(
-                    ToolDocs.nonNullClass(ModelSchemaException.class),
+                    ModelSchemaException.class,
                     () -> client.complete(new ResolvedRequest(noTools, url, "local-invalid")));
             String disabled = captured.get();
             assertNotNull(disabled);

@@ -1,9 +1,7 @@
 package top.focess.veto.builtin.tools;
 
-import java.time.Duration;
-import java.util.List;
-import java.util.Map;
 import org.jspecify.annotations.NonNull;
+
 import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.tool.Doc;
 import top.focess.veto.api.agent.tool.ParamCategory;
@@ -11,7 +9,6 @@ import top.focess.veto.api.agent.tool.PreparedTool;
 import top.focess.veto.api.agent.tool.SecurityHint;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.agent.tool.ToolDoc;
-import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.ToolErrorCode;
 import top.focess.veto.api.agent.tool.ToolErrors;
 import top.focess.veto.api.agent.tool.ToolJson;
@@ -24,6 +21,10 @@ import top.focess.veto.api.process.ChainMode;
 import top.focess.veto.api.process.Command;
 import top.focess.veto.builtin.process.ProcessExecutionCapability;
 import top.focess.veto.builtin.process.TaskInfo;
+
+import java.time.Duration;
+import java.util.List;
+import java.util.Map;
 
 /**
  * {@code run_task} - launch a long-running command as a detached background task. Takes the same
@@ -42,7 +43,8 @@ import top.focess.veto.builtin.process.TaskInfo;
 @ToolDoc(
         resultFormats = {ToolResultFormat.JSON},
         description =
-                "Launch a long-running command as a detached background task (non-blocking). Returns a taskId immediately; the process keeps running across turns.",
+                "Launch a long-running command as a detached background task (non-blocking)."
+                        + " Returns a taskId immediately; the process keeps running across turns.",
         behavior =
                 """
                 Starts `commands[0]` from the session workspace using `run_command` direct-execution rules. \
@@ -86,20 +88,36 @@ import top.focess.veto.builtin.process.TaskInfo;
                 - Only the latest 5000 output lines are retained; an unterminated line is capped at 65536 bytes.
                 """,
         security =
-                "The task runs with the same direct-execution rules as run_command: no shell, and executable and args cannot be combined to smuggle flags. Background execution does not grant additional file or network access.",
+                "The task runs with the same direct-execution rules as run_command: no shell, and"
+                        + " executable and args cannot be combined to smuggle flags. Background"
+                        + " execution does not grant additional file or network access.",
         examples = {
-            "{\"commands\": [{\"executable\": \"npm\", \"args\": [\"run\", \"dev\"]}], \"timeout\": 0}",
-            "{\"commands\": [{\"executable\": \"gradle\", \"args\": [\"build\"]}], \"timeout\": 1200}",
-            "{\"commands\": [{\"executable\": \"gradle\", \"args\": [\"test\", \"--continuous\"]}], \"timeout\": 1800}",
-            "{\"commands\": [{\"executable\": \"python\", \"args\": [\"-m\", \"http.server\", \"8000\"]}], \"network\": true, \"timeout\": 3600}",
-            "{\"commands\": [{\"executable\": \"gradle\", \"args\": [\"build\"]}, {\"executable\": \"gradle\", \"args\": [\"test\"]}], \"timeout\": 1200}"
+            "{\"commands\": [{\"executable\": \"npm\", \"args\": [\"run\", \"dev\"]}], \"timeout\":"
+                    + " 0}",
+            "{\"commands\": [{\"executable\": \"gradle\", \"args\": [\"build\"]}], \"timeout\":"
+                    + " 1200}",
+            "{\"commands\": [{\"executable\": \"gradle\", \"args\": [\"test\", \"--continuous\"]}],"
+                    + " \"timeout\": 1800}",
+            "{\"commands\": [{\"executable\": \"python\", \"args\": [\"-m\", \"http.server\","
+                    + " \"8000\"]}], \"network\": true, \"timeout\": 3600}",
+            "{\"commands\": [{\"executable\": \"gradle\", \"args\": [\"build\"]}, {\"executable\":"
+                    + " \"gradle\", \"args\": [\"test\"]}], \"timeout\": 1200}"
         },
         returnExamples = {
-            "{\"status\": \"started\", \"taskId\": \"bg-3\", \"pid\": 12345, \"command\": \"npm run dev\", \"cwd\": \"/abs/project\", \"requestedTimeoutSeconds\": 0, \"effectiveTimeoutSeconds\": 600}",
-            "{\"status\": \"started\", \"taskId\": \"bg-4\", \"pid\": 12351, \"command\": \"gradle build\", \"cwd\": \"/abs/project\", \"requestedTimeoutSeconds\": 1200, \"effectiveTimeoutSeconds\": 600}",
-            "{\"status\": \"started\", \"taskId\": \"bg-5\", \"pid\": 12387, \"command\": \"gradle test --continuous\", \"cwd\": \"/abs/project\", \"requestedTimeoutSeconds\": 1800, \"effectiveTimeoutSeconds\": 600}",
-            "{\"status\": \"started\", \"taskId\": \"bg-6\", \"pid\": 12402, \"command\": \"python -m http.server 8000\", \"cwd\": \"/abs/project\", \"requestedTimeoutSeconds\": 3600, \"effectiveTimeoutSeconds\": 600}",
-            "Invalid arguments: exactly one command is required (background mode does not chain); got 2."
+            "{\"status\": \"started\", \"taskId\": \"bg-3\", \"pid\": 12345, \"command\": \"npm run"
+                    + " dev\", \"cwd\": \"/abs/project\", \"requestedTimeoutSeconds\": 0,"
+                    + " \"effectiveTimeoutSeconds\": 600}",
+            "{\"status\": \"started\", \"taskId\": \"bg-4\", \"pid\": 12351, \"command\": \"gradle"
+                    + " build\", \"cwd\": \"/abs/project\", \"requestedTimeoutSeconds\": 1200,"
+                    + " \"effectiveTimeoutSeconds\": 600}",
+            "{\"status\": \"started\", \"taskId\": \"bg-5\", \"pid\": 12387, \"command\": \"gradle"
+                + " test --continuous\", \"cwd\": \"/abs/project\", \"requestedTimeoutSeconds\":"
+                + " 1800, \"effectiveTimeoutSeconds\": 600}",
+            "{\"status\": \"started\", \"taskId\": \"bg-6\", \"pid\": 12402, \"command\": \"python"
+                + " -m http.server 8000\", \"cwd\": \"/abs/project\", \"requestedTimeoutSeconds\":"
+                + " 3600, \"effectiveTimeoutSeconds\": 600}",
+            "Invalid arguments: exactly one command is required (background mode does not chain);"
+                    + " got 2."
         })
 public final class RunTaskTool implements PreparedTool<RunTaskTool.Args> {
     private final ProcessExecutionCapability capability;
@@ -120,11 +138,13 @@ public final class RunTaskTool implements PreparedTool<RunTaskTool.Args> {
                     @Doc("Exactly one command: {executable, args}. Background mode does not chain.")
                     @NonNull List<RunCommandTool.@NonNull CommandInput> commands,
             @Doc(
-                            "Request network access for this task. Defaults to false; true may require approval.")
+                            "Request network access for this task. Defaults to false; true may"
+                                    + " require approval.")
                     Boolean network,
             @NonNull
                     @Doc(
-                            "Requested max lifetime in seconds. 0 selects the configured maximum; larger values are capped by that maximum.")
+                            "Requested max lifetime in seconds. 0 selects the configured maximum;"
+                                    + " larger values are capped by that maximum.")
                     Integer timeout) {}
 
     @Override
@@ -134,7 +154,7 @@ public final class RunTaskTool implements PreparedTool<RunTaskTool.Args> {
 
     @Override
     public @NonNull Class<Args> getArgsClass() {
-        return ToolDocs.nonNullClass(Args.class);
+        return Args.class;
     }
 
     @Override
@@ -205,10 +225,11 @@ public final class RunTaskTool implements PreparedTool<RunTaskTool.Args> {
         return ToolJson.object(
                 new Result(
                         "started",
-                        "If the assignment needs the final result, call view_task once with this taskId and waitForExit=true."
-                                + " Do not finish the assignment with a waiting message or poll."
-                                + " If only starting a long-lived service was requested, report that it started without waiting for exit."
-                                + " Answer in the user's language.",
+                        "If the assignment needs the final result, call view_task once with this"
+                            + " taskId and waitForExit=true. Do not finish the assignment with a"
+                            + " waiting message or poll. If only starting a long-lived service was"
+                            + " requested, report that it started without waiting for exit. Answer"
+                            + " in the user's language.",
                         info.taskId(),
                         info.pid(),
                         info.command(),

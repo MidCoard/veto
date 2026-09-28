@@ -4,14 +4,16 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.util.HashSet;
-import java.util.List;
+
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
-import top.focess.veto.api.agent.tool.ToolDocs;
+
 import top.focess.veto.api.agent.tool.ToolExecutionException;
 import top.focess.veto.builtin.planning.PlanPreflight;
 import top.focess.veto.builtin.planning.SubmitPlanTool;
+
+import java.util.HashSet;
+import java.util.List;
 
 class NativeToolArgumentValidatorTest {
     private final @NonNull ObjectMapper mapper = new ObjectMapper();
@@ -26,7 +28,7 @@ class NativeToolArgumentValidatorTest {
         var arguments = mapper.readTree("{\"mode\":\"malformed-secret-value\"}");
         var error =
                 assertThrows(
-                        ToolDocs.nonNullClass(ToolExecutionException.class),
+                        ToolExecutionException.class,
                         () ->
                                 NativeToolArgumentValidator.validateAgainstSchema(
                                         "sample", arguments, schema));
@@ -90,7 +92,7 @@ class NativeToolArgumentValidatorTest {
                                     "sample", mapper.readTree(json), schema));
         for (String json : List.of("{\"count\":\"wrong\"}", "{\"count\":{}}", "{\"count\":true}"))
             assertThrows(
-                    ToolDocs.nonNullClass(ToolExecutionException.class),
+                    ToolExecutionException.class,
                     () ->
                             NativeToolArgumentValidator.validateAgainstSchema(
                                     "sample", mapper.readTree(json), schema));
@@ -119,13 +121,13 @@ class NativeToolArgumentValidatorTest {
                 """);
         var error =
                 assertThrows(
-                        ToolDocs.nonNullClass(ToolExecutionException.class),
+                        ToolExecutionException.class,
                         () -> validatePrepared(bad, schema));
         assertTrue(String.valueOf(error.getMessage()).contains("items[1].value"));
         var doubleEscaped =
                 mapper.readTree("{\"items\":[{\"kind\":\"literal\",\"value\":\"$$$price\"}]}");
         assertThrows(
-                ToolDocs.nonNullClass(ToolExecutionException.class),
+                ToolExecutionException.class,
                 () -> validatePrepared(doubleEscaped, schema));
     }
 
@@ -135,7 +137,7 @@ class NativeToolArgumentValidatorTest {
                 mapper.readTree(
                         "{\"type\":\"object\",\"properties\":{\"x\":{\"type\":[\"integer\",\"null\"]}}}");
         assertThrows(
-                ToolDocs.nonNullClass(ToolExecutionException.class),
+                ToolExecutionException.class,
                 () ->
                         NativeToolArgumentValidator.validateAgainstSchema(
                                 "sample", mapper.readTree("{\"x\":false}"), schema));
@@ -159,7 +161,7 @@ class NativeToolArgumentValidatorTest {
                     mapper.readTree("{\"type\":\"object\",\"properties\":{\"x\":" + child + "}}");
             String invalid = child.contains("enum") ? "{\"x\":null}" : "{\"x\":42}";
             assertThrows(
-                    ToolDocs.nonNullClass(ToolExecutionException.class),
+                    ToolExecutionException.class,
                     () ->
                             NativeToolArgumentValidator.validateAgainstSchema(
                                     "sample", mapper.readTree(invalid), schema));
@@ -181,7 +183,7 @@ class NativeToolArgumentValidatorTest {
                         NativeToolArgumentValidator.validateAgainstSchema(
                                 "sample", mapper.readTree("{\"kind\":null}"), schema));
         assertThrows(
-                ToolDocs.nonNullClass(ToolExecutionException.class),
+                ToolExecutionException.class,
                 () ->
                         NativeToolArgumentValidator.validateAgainstSchema(
                                 "sample", mapper.readTree("{}"), schema));
@@ -191,12 +193,12 @@ class NativeToolArgumentValidatorTest {
         var args = mapper.readTree(json);
         var error =
                 assertThrows(
-                        ToolDocs.nonNullClass(ToolExecutionException.class),
+                        ToolExecutionException.class,
                         () ->
                                 NativeToolArgumentValidator.validate(
                                         "submit_plan",
                                         args,
-                                        ToolDocs.nonNullClass(SubmitPlanTool.Args.class)));
+                                        SubmitPlanTool.Args.class));
         return String.valueOf(error.getMessage());
     }
 

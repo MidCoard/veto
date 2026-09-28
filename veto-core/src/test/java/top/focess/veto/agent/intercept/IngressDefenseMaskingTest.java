@@ -3,29 +3,31 @@ package top.focess.veto.agent.intercept;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
-import java.io.IOException;
-import java.util.Map;
-import java.util.concurrent.CompletableFuture;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+
 import top.focess.veto.agent.drift.ReadHistory;
 import top.focess.veto.agent.tool.NativeToolDefinition;
 import top.focess.veto.agent.tool.ToolSchemaCompiler;
 import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.tool.ParamCategory;
 import top.focess.veto.api.agent.tool.ToolCapability;
-import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.ToolResult;
 import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
-import top.focess.veto.api.plugin.contract.TextProtection;
+import top.focess.veto.api.plugin.contract.FrontendContribution;
+import top.focess.veto.api.event.BeforeTextCommitEvent;
 import top.focess.veto.builtin.workspace.ViewFileTool;
 import top.focess.veto.integration.plugins.PluginLifecycleEvents;
 import top.focess.veto.integration.plugins.PluginManager;
 import top.focess.veto.integration.plugins.PluginTestSupport;
 import top.focess.veto.veto.LlamaCppBridge;
+
+import java.io.IOException;
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * Integration test for the {@link SemanticMasker}-into-{@link IngressDefense} wiring: a risky
@@ -50,11 +52,11 @@ class IngressDefenseMaskingTest {
 
     @Test
     void protectedFileReferencesSurviveMaskingOnlyWithinTheirLiveScope() throws Exception {
-        var scope = new TextProtection.Scope("owner", "session", "agent");
+        var scope = new FrontendContribution.Scope("owner", "session", "agent");
         String captured =
                 PluginTestSupport.protect(
                         plugins,
-                        StandardContributionPoints.FILE_PROTECTION,
+                        BeforeTextCommitEvent.Phase.FILE_CAPTURE,
                         scope,
                         "file",
                         "token=synthetic-token");
@@ -62,7 +64,7 @@ class IngressDefenseMaskingTest {
         var fileCall = new ToolCall("view_file", Map.of("absolutePath", "/fixture"), "file-call");
         var fileResult =
                 ToolResult.success("view_file", "file-call", captured + "\npassword=extra-secret");
-        LlamaCppBridge bridge = mock(ToolDocs.nonNullClass(LlamaCppBridge.class));
+        LlamaCppBridge bridge = mock(LlamaCppBridge.class);
         when(bridge.isAvailable()).thenReturn(true);
         when(bridge.infer(anyString(), anyString()))
                 .thenReturn(CompletableFuture.completedFuture("{\"risk\":\"high\"}"));
@@ -73,11 +75,12 @@ class IngressDefenseMaskingTest {
         String observed =
                 PluginTestSupport.protect(
                         plugins,
-                        StandardContributionPoints.FILE_OBSERVATION,
+                        BeforeTextCommitEvent.Phase.FILE_OBSERVATION,
                         scope,
                         "file",
                         fileResult.content());
-        String masked = defense.frameProtectedFile(fileCall, definition, fileResult, observed);
+        String masked =
+                defense.frameReplacementObservation(fileCall, definition, fileResult, observed);
         assertTrue(masked.startsWith(captured + "\n"), masked);
         assertFalse(masked.contains("extra-secret"));
         assertFalse(masked.contains("synthetic-token"));
@@ -88,8 +91,8 @@ class IngressDefenseMaskingTest {
                 () ->
                         PluginTestSupport.protect(
                                 plugins,
-                                StandardContributionPoints.FILE_OBSERVATION,
-                                new TextProtection.Scope("owner", "session", "other-agent"),
+                                BeforeTextCommitEvent.Phase.FILE_OBSERVATION,
+                                new FrontendContribution.Scope("owner", "session", "other-agent"),
                                 "file",
                                 fileResult.content()));
         new PluginLifecycleEvents(plugins).ownerClosed("owner");
@@ -98,7 +101,7 @@ class IngressDefenseMaskingTest {
                 () ->
                         PluginTestSupport.protect(
                                 plugins,
-                                StandardContributionPoints.FILE_OBSERVATION,
+                                BeforeTextCommitEvent.Phase.FILE_OBSERVATION,
                                 scope,
                                 "file",
                                 fileResult.content()));
@@ -113,7 +116,7 @@ class IngressDefenseMaskingTest {
                 Danger.SAFE,
                 false,
                 Object.class,
-                ToolDocs.nonNullClass(Void.class),
+                Void.class,
                 Map.of("path", ParamCategory.FILESYSTEM_PATH));
     }
 
@@ -128,7 +131,7 @@ class IngressDefenseMaskingTest {
     @Test
     void riskyObservationConsultsSlmSemanticMasker() {
         // A SemanticMasker backed by an available SLM that rates the observation "high" risk.
-        LlamaCppBridge bridge = mock(ToolDocs.nonNullClass(LlamaCppBridge.class));
+        LlamaCppBridge bridge = mock(LlamaCppBridge.class);
         when(bridge.isAvailable()).thenReturn(true);
         when(bridge.infer(anyString(), anyString()))
                 .thenReturn(CompletableFuture.completedFuture("{\"risk\":\"high\"}"));

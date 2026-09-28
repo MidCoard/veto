@@ -4,7 +4,7 @@ import org.jspecify.annotations.NonNull;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.scheduling.annotation.EnableScheduling;
-import top.focess.veto.api.agent.tool.ToolDocs;
+
 import top.focess.veto.sandbox.SandboxBootstrap;
 
 /**
@@ -26,6 +26,6 @@ public class VetoApplication {
             System.exit(SandboxBootstrap.run(args));
             return;
         }
-        SpringApplication.run(ToolDocs.nonNullClass(VetoApplication.class), args);
+        SpringApplication.run(VetoApplication.class, args);
     }
 }

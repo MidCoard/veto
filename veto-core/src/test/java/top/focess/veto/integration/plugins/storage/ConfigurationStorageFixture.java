@@ -1,18 +1,20 @@
 package top.focess.veto.integration.plugins.storage;
 
+import org.checkerframework.framework.qual.DefaultQualifier;
+import org.checkerframework.framework.qual.TypeUseLocation;
+import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
+
+import top.focess.veto.agent.tool.ToolCallContextHolder;
+import top.focess.veto.api.plugin.storage.PluginStorage;
+import top.focess.veto.plugin.runtime.PluginLifecycle;
+
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
-import org.checkerframework.framework.qual.DefaultQualifier;
-import org.checkerframework.framework.qual.TypeUseLocation;
-import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
-import top.focess.veto.agent.tool.ToolCallContextHolder;
-import top.focess.veto.api.plugin.storage.PluginStorage;
-import top.focess.veto.plugin.runtime.PluginLifecycle;
 
 /** In-memory configuration fixture; each bound plugin has independent stores and scope tokens. */
 @DefaultQualifier(
@@ -31,6 +33,21 @@ public final class ConfigurationStorageFixture implements PluginStorageFactory {
     public String authorizeSession(PluginStorage storage, PluginStorage.SessionScope scope) {
         storage.session(scope);
         return scope.userId();
+    }
+
+    public String authorizeUser(PluginStorage storage, PluginStorage.UserScope scope) {
+        storage.user(scope);
+        return scope.userId();
+    }
+
+    public PluginStorage.UserScope transferUser(
+            PluginStorage caller, PluginStorage.UserScope scope, PluginStorage provider) {
+        throw new UnsupportedOperationException("Fixture has no user scopes");
+    }
+
+    public PluginStorage.SessionScope transferSession(
+            PluginStorage caller, PluginStorage.SessionScope scope, PluginStorage provider) {
+        throw new UnsupportedOperationException("Fixture has no cross-plugin scopes");
     }
 
     private static final class Storage implements PluginStorage {

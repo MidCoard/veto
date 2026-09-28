@@ -4,15 +4,17 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+
+import org.junit.jupiter.api.Test;
+
+import top.focess.veto.agent.TurnRecord;
+import top.focess.veto.agent.TurnType;
+import top.focess.veto.memory.TurnRecordEntity;
+import top.focess.veto.memory.TurnRecordRepository;
+
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
-import org.junit.jupiter.api.Test;
-import top.focess.veto.agent.TurnRecord;
-import top.focess.veto.agent.TurnType;
-import top.focess.veto.api.agent.tool.ToolDocs;
-import top.focess.veto.memory.TurnRecordEntity;
-import top.focess.veto.memory.TurnRecordRepository;
 
 class SessionHistoryLoaderTest {
 
@@ -35,7 +37,7 @@ class SessionHistoryLoaderTest {
                         agent,
                         new ObjectMapper());
 
-        TurnRecordRepository repo = mock(ToolDocs.nonNullClass(TurnRecordRepository.class));
+        TurnRecordRepository repo = mock(TurnRecordRepository.class);
         when(repo.findBySessionIdOrderByTurnNumberAsc(session.toString()))
                 .thenReturn(List.of(row1, row2));
 
@@ -69,7 +71,7 @@ class SessionHistoryLoaderTest {
                         mate,
                         new ObjectMapper());
 
-        TurnRecordRepository repo = mock(ToolDocs.nonNullClass(TurnRecordRepository.class));
+        TurnRecordRepository repo = mock(TurnRecordRepository.class);
         when(repo.findBySessionIdAndAgentIdOrderByTurnNumberAsc(session.toString(), mate))
                 .thenReturn(List.of(mateTurn));
 
@@ -87,21 +89,22 @@ class SessionHistoryLoaderTest {
     @Test
     void normalizesLegacyDuplicateTurnTypesAtTheReadBoundary() {
         UUID session = UUID.randomUUID();
-        TurnRecordEntity systemPrompt = mock(ToolDocs.nonNullClass(TurnRecordEntity.class));
+        TurnRecordEntity systemPrompt = mock(TurnRecordEntity.class);
         when(systemPrompt.getTurnNumber()).thenReturn(1);
         when(systemPrompt.getType()).thenReturn("SYSTEM_PROMPT");
         when(systemPrompt.getPayload())
                 .thenReturn(
-                        "{\"content\":\"legacy prompt\",\"provider\":\"DEEPSEEK\",\"model\":\"legacy-model\"}");
+                        "{\"content\":\"legacy"
+                            + " prompt\",\"provider\":\"DEEPSEEK\",\"model\":\"legacy-model\"}");
         when(systemPrompt.getTimestamp()).thenReturn(Instant.EPOCH);
 
-        TurnRecordEntity recall = mock(ToolDocs.nonNullClass(TurnRecordEntity.class));
+        TurnRecordEntity recall = mock(TurnRecordEntity.class);
         when(recall.getTurnNumber()).thenReturn(2);
         when(recall.getType()).thenReturn("RECALL");
         when(recall.getPayload()).thenReturn("{\"from_index\":0,\"content\":\"resume here\"}");
         when(recall.getTimestamp()).thenReturn(Instant.EPOCH);
 
-        TurnRecordRepository repo = mock(ToolDocs.nonNullClass(TurnRecordRepository.class));
+        TurnRecordRepository repo = mock(TurnRecordRepository.class);
         when(repo.findBySessionIdOrderByTurnNumberAsc(session.toString()))
                 .thenReturn(List.of(systemPrompt, recall));
 
@@ -118,7 +121,7 @@ class SessionHistoryLoaderTest {
 
     @Test
     void emptyWhenNoHistory() {
-        TurnRecordRepository repo = mock(ToolDocs.nonNullClass(TurnRecordRepository.class));
+        TurnRecordRepository repo = mock(TurnRecordRepository.class);
         when(repo.findBySessionIdOrderByTurnNumberAsc(anyString())).thenReturn(List.of());
         SessionHistoryLoader loader = new SessionHistoryLoader(repo, new ObjectMapper());
         assertTrue(loader.load("no-such-session").isEmpty());

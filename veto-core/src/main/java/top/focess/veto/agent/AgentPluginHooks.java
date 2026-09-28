@@ -2,6 +2,7 @@ package top.focess.veto.agent;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.CancellationException;
 import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
@@ -13,6 +14,7 @@ import top.focess.veto.api.event.AfterToolEvent;
 import top.focess.veto.api.event.BeforeInputEvent;
 import top.focess.veto.api.event.BeforeModelEvent;
 import top.focess.veto.api.event.BeforeObservationEvent;
+import top.focess.veto.api.event.BeforeTextCommitEvent;
 import top.focess.veto.api.event.BeforeToolEvent;
 import top.focess.veto.api.event.ModelCall;
 import top.focess.veto.api.event.WorkflowEvent;
@@ -21,8 +23,6 @@ import top.focess.veto.api.llm.VetoRequest;
 import top.focess.veto.api.llm.VetoResponse;
 import top.focess.veto.api.plugin.contract.Cancellation;
 import top.focess.veto.api.plugin.contract.ModelResponsePolicy;
-import top.focess.veto.api.plugin.contract.StandardContributionPoints;
-import top.focess.veto.api.plugin.contract.TextProtection;
 import top.focess.veto.integration.plugins.SessionPlugins;
 import top.focess.veto.llm.core.UniformLLMCaller;
 import top.focess.veto.plugin.runtime.PluginJson;
@@ -144,15 +144,22 @@ final class AgentPluginHooks {
     }
 
     @NonNull String captureUserPrompt(@NonNull String prompt) {
-        var selected = plugins.get();
-        if (selected == null) return prompt;
+        if (plugins.get() == null) return prompt;
         if (!alive.getAsBoolean() || owner == null || owner.isBlank())
             throw new ProtectedInputException();
         try {
-            return selected.protect(
-                    StandardContributionPoints.INPUT_PROTECTION,
-                    new TextProtection.Scope(owner, sessionId, agentId),
-                    prompt);
+            var event =
+                    new BeforeTextCommitEvent(
+                            owner,
+                            sessionId,
+                            agentId,
+                            cancellation,
+                            BeforeTextCommitEvent.Phase.INPUT,
+                            UUID.randomUUID().toString(),
+                            prompt);
+            dispatch(event);
+            if (event.isPrevent()) throw new ProtectedInputException();
+            return event.text();
         } catch (RuntimeException failure) {
             throw new ProtectedInputException();
         }

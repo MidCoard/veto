@@ -1,19 +1,24 @@
-package top.focess.veto.api.plugin.contract;
+package top.focess.veto.api.agent.tool;
+
+import org.jspecify.annotations.NonNull;
+
+import top.focess.veto.api.plugin.contract.Cancellation;
+import top.focess.veto.api.plugin.contract.JsonValue;
+import top.focess.veto.api.plugin.contract.PluginFailure;
+import top.focess.veto.api.plugin.contribution.ContributionId;
 
 import java.util.Set;
-import org.jspecify.annotations.NonNull;
-import top.focess.veto.api.plugin.contribution.ContributionId;
 
 /**
  * A portable, out-of-process plugin tool. It declares explicit JSON schemas and exchanges {@link
  * JsonValue}, the only form a non-Java host process can consume. The host maps it onto its internal
  * tool model and remains responsible for authorization on every call.
  *
- * <p>In-process JAR plugins instead contribute a {@code CapabilityTool} through the {@code
- * veto:native-tools} point; the host compiles that record by reflection and executes it through its
+ * <p>In-process JAR plugins contribute an {@code AgentTool} or {@code NativeTool} through the
+ * {@code veto:tools} point; the host compiles that record by reflection and executes it through its
  * internal tool state exactly as it does for built-in native tools.
  */
-public interface Tool {
+public interface RemoteTool {
     /** Declared effects; the host remains responsible for authorization. */
     enum Effect {
         /** Deterministic local computation with no requested host trust-boundary crossing. */

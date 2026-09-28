@@ -2,20 +2,21 @@ package top.focess.veto.providers;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import org.junit.jupiter.api.Test;
+
+import top.focess.veto.api.plugin.*;
+import top.focess.veto.api.plugin.contract.*;
+
 import java.util.Map;
 import java.util.ServiceLoader;
 import java.util.Set;
 import java.util.stream.Collectors;
-import org.junit.jupiter.api.Test;
-import top.focess.veto.api.agent.tool.ToolDocs;
-import top.focess.veto.api.plugin.*;
-import top.focess.veto.api.plugin.contract.*;
 
 class LlmProvidersPluginTest {
     @Test
     void loadsAndRegistersAllTransportsWithoutCoreOrSpring() throws Exception {
         try (var plugin =
-                ServiceLoader.load(ToolDocs.nonNullClass(VetoPlugin.class))
+                ServiceLoader.load(VetoPlugin.class)
                         .findFirst()
                         .orElseThrow()) {
             var contributions =

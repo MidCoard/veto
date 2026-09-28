@@ -1,5 +1,21 @@
 package top.focess.veto.builtin.workspace;
 
+import org.jspecify.annotations.NonNull;
+
+import top.focess.veto.api.agent.capability.WorkspaceFile;
+import top.focess.veto.api.agent.capability.WorkspaceReadCapability;
+import top.focess.veto.api.agent.screening.Danger;
+import top.focess.veto.api.agent.tool.Doc;
+import top.focess.veto.api.agent.tool.ParamCategory;
+import top.focess.veto.api.agent.tool.SecurityHint;
+import top.focess.veto.api.agent.tool.ToolCapability;
+import top.focess.veto.api.agent.tool.ToolDoc;
+import top.focess.veto.api.agent.tool.ToolErrorCode;
+import top.focess.veto.api.agent.tool.ToolErrors;
+import top.focess.veto.api.agent.tool.ToolResultFormat;
+import top.focess.veto.api.agent.tool.ToolSecurity;
+import top.focess.veto.api.agent.tool.WorkspaceReadTool;
+
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -11,21 +27,6 @@ import java.nio.file.PathMatcher;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
-import org.jspecify.annotations.NonNull;
-import top.focess.veto.api.agent.capability.WorkspaceFile;
-import top.focess.veto.api.agent.capability.WorkspaceReadCapability;
-import top.focess.veto.api.agent.screening.Danger;
-import top.focess.veto.api.agent.tool.Doc;
-import top.focess.veto.api.agent.tool.ParamCategory;
-import top.focess.veto.api.agent.tool.SecurityHint;
-import top.focess.veto.api.agent.tool.ToolCapability;
-import top.focess.veto.api.agent.tool.ToolDoc;
-import top.focess.veto.api.agent.tool.ToolDocs;
-import top.focess.veto.api.agent.tool.ToolErrorCode;
-import top.focess.veto.api.agent.tool.ToolErrors;
-import top.focess.veto.api.agent.tool.ToolResultFormat;
-import top.focess.veto.api.agent.tool.ToolSecurity;
-import top.focess.veto.api.agent.tool.WorkspaceReadTool;
 
 /** Searches file contents through a call-scoped workspace-read capability. */
 @ToolSecurity(capability = ToolCapability.WORKSPACE_READ, defaultDanger = Danger.SAFE)
@@ -79,18 +80,25 @@ import top.focess.veto.api.agent.tool.WorkspaceReadTool;
                     - `caseInsensitive` and `includes` are optional; omit them for a case-sensitive search of all files.
                     """,
         security =
-                "Symbolic links are never followed and protected files are never opened. Matched lines are returned verbatim, including any sensitive file content.",
+                "Symbolic links are never followed and protected files are never opened. Matched"
+                        + " lines are returned verbatim, including any sensitive file content.",
         examples = {
             "{\"absolutePath\": \"/abs/project/src\", \"query\": \"TODO\"}",
-            "{\"absolutePath\": \"/abs/project/src\", \"query\": \"todo\", \"caseInsensitive\": true}",
-            "{\"absolutePath\": \"/abs/project/src\", \"query\": \"public class \", \"includes\": [\"*.java\"]}",
+            "{\"absolutePath\": \"/abs/project/src\", \"query\": \"todo\", \"caseInsensitive\":"
+                    + " true}",
+            "{\"absolutePath\": \"/abs/project/src\", \"query\": \"public class \", \"includes\":"
+                    + " [\"*.java\"]}",
             "{\"absolutePath\": \"/abs/project/config/app.yml\", \"query\": \"password\"}",
-            "{\"absolutePath\": \"/abs/project/src\", \"query\": \"alpha\", \"includes\": [\"[broken\"]}"
+            "{\"absolutePath\": \"/abs/project/src\", \"query\": \"alpha\", \"includes\":"
+                    + " [\"[broken\"]}"
         },
         returnExamples = {
-            "/abs/project/src/Main.java:12: // TODO: refactor\n/abs/project/src/util/Helper.java:30: // TODO(jess): cleanup",
-            "/abs/project/src/Main.java:12: // TODO: refactor\n/abs/project/src/notes.md:3: - todo: write docs",
-            "/abs/project/src/Main.java:3: public class Main {\n/abs/project/src/util/Helper.java:7: public class Helper {",
+            "/abs/project/src/Main.java:12: // TODO: refactor\n"
+                    + "/abs/project/src/util/Helper.java:30: // TODO(jess): cleanup",
+            "/abs/project/src/Main.java:12: // TODO: refactor\n"
+                    + "/abs/project/src/notes.md:3: - todo: write docs",
+            "/abs/project/src/Main.java:3: public class Main {\n"
+                    + "/abs/project/src/util/Helper.java:7: public class Helper {",
             "/abs/project/config/app.yml:7: password: ${DB_PASSWORD}",
             "Invalid arguments: includes contains an invalid glob."
         })
@@ -111,7 +119,7 @@ public final class GrepSearchTool implements WorkspaceReadTool<GrepSearchTool.Ar
 
     @Override
     public @NonNull Class<Args> getArgsClass() {
-        return ToolDocs.nonNullClass(Args.class);
+        return Args.class;
     }
 
     @Override

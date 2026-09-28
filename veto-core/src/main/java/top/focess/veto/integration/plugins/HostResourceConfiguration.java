@@ -1,18 +1,19 @@
 package top.focess.veto.integration.plugins;
 
-import java.util.HashMap;
-import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+
 import top.focess.veto.agent.capability.CapabilityAccess;
 import top.focess.veto.api.agent.tool.ToolCapability;
-import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.credentials.CredentialImportAccess;
 import top.focess.veto.api.credentials.CredentialWriter;
 import top.focess.veto.vault.KeysteadVault;
 import top.focess.veto.veto.LlamaCppBridge;
+
+import java.util.HashMap;
+import java.util.Map;
 
 /** Generic, host-granted storage and local-model resources. No plugin earns authority by name. */
 @Configuration(proxyBeanMethods = false)
@@ -28,12 +29,12 @@ public class HostResourceConfiguration {
         KeysteadVault vault = vaultProvider.getIfAvailable();
         if (vault != null)
             services.put(
-                    ToolDocs.nonNullClass(CredentialImportAccess.class), credentialImport(vault));
+                    CredentialImportAccess.class, credentialImport(vault));
         LlamaCppBridge bridge = bridgeProvider.getIfAvailable();
         if (bridge != null) {
             PluginLocalModelFactory factory =
                     plugin -> new BoundLocalModelCompletion(plugin, bridge);
-            services.put(ToolDocs.nonNullClass(PluginLocalModelFactory.class), factory);
+            services.put(PluginLocalModelFactory.class, factory);
         }
         return new PluginHostServices(services);
     }

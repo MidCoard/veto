@@ -8,6 +8,12 @@ import com.sun.jna.platform.win32.Kernel32;
 import com.sun.jna.ptr.IntByReference;
 import com.sun.jna.ptr.PointerByReference;
 import com.sun.jna.win32.StdCallLibrary;
+
+import org.jspecify.annotations.NonNull;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -26,10 +32,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
-import org.jspecify.annotations.NonNull;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import top.focess.veto.api.agent.tool.ToolDocs;
 
 /** Windows AppContainer identity and inheritable workspace ACL provisioner. */
 final class WindowsWorkspaceSecurity {
@@ -56,9 +58,8 @@ final class WindowsWorkspaceSecurity {
             new HashMap<>();
 
     WindowsWorkspaceSecurity() {
-        api = Native.load("advapi32", ToolDocs.nonNullClass(WindowsAclApi.class));
-        appContainerApi =
-                Native.load("userenv", ToolDocs.nonNullClass(WindowsAppContainerApi.class));
+        api = Native.load("advapi32", WindowsAclApi.class);
+        appContainerApi = Native.load("userenv", WindowsAppContainerApi.class);
     }
 
     boolean isAvailable() {
@@ -102,7 +103,8 @@ final class WindowsWorkspaceSecurity {
             localFree(allApplicationPackagesSid.getValue());
             api.FreeSid(sid.getValue());
             throw new IllegalStateException(
-                    "ConvertStringSidToSidW(All Restricted Application Packages) failed (Win32 error="
+                    "ConvertStringSidToSidW(All Restricted Application Packages) failed (Win32"
+                            + " error="
                             + Kernel32.INSTANCE.GetLastError()
                             + ")");
         }

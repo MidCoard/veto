@@ -4,21 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.time.Duration;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.Set;
-import java.util.UUID;
-import java.util.concurrent.CancellationException;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicReference;
+
 import org.checkerframework.framework.qual.DefaultQualifier;
 import org.checkerframework.framework.qual.TypeUseLocation;
 import org.jspecify.annotations.NonNull;
@@ -26,6 +12,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.test.util.ReflectionTestUtils;
+
 import top.focess.veto.agent.AgentService;
 import top.focess.veto.agent.RequestHandle;
 import top.focess.veto.agent.SessionAgentRegistry;
@@ -39,7 +26,6 @@ import top.focess.veto.api.agent.AgentResult;
 import top.focess.veto.api.agent.AgentState;
 import top.focess.veto.api.agent.tool.NativeTool;
 import top.focess.veto.api.agent.tool.ToolCapability;
-import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.llm.ProviderType;
 import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
@@ -66,6 +52,22 @@ import top.focess.veto.model.tier.ModelTierRegistry;
 import top.focess.veto.plugin.runtime.PluginLifecycle;
 import top.focess.veto.session.SessionHistoryLoader;
 import top.focess.veto.vault.KeysteadVault;
+
+import java.time.Duration;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 @DefaultQualifier(
         value = NonNull.class,
@@ -209,7 +211,7 @@ class PluginAgentHostsTest {
                 if (cooperative) parentResult.get(5, TimeUnit.SECONDS);
                 else
                     assertThrows(
-                            ToolDocs.nonNullClass(ExecutionException.class),
+                            ExecutionException.class,
                             () -> parentResult.get(5, TimeUnit.SECONDS));
                 stopped.get(5, TimeUnit.SECONDS);
                 var handle = requestHandle.get();
@@ -295,7 +297,7 @@ class PluginAgentHostsTest {
                             identities,
                             registry,
                             scopes,
-                            mock(ToolDocs.nonNullClass(SessionHistoryLoader.class)),
+                            mock(SessionHistoryLoader.class),
                             vault);
             host = hosts.bind(plugin, storage);
         }

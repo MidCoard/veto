@@ -4,13 +4,10 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.List;
-import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+
 import top.focess.veto.agent.screening.Relevance;
 import top.focess.veto.agent.screening.Screening;
 import top.focess.veto.agent.tool.AgentToolDefinition;
@@ -20,9 +17,13 @@ import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.tool.ParamCategory;
 import top.focess.veto.api.agent.tool.ToolCapability;
-import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.secret.detection.SecretMasker;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.List;
+import java.util.Map;
 
 /**
  * Tests for the session-scoped permission-grant system. Covers:
@@ -53,7 +54,7 @@ class PermissionGrantTest {
                         Danger.SAFE,
                         false,
                         Object.class,
-                        ToolDocs.nonNullClass(Object.class),
+                        Object.class,
                         Map.of("path", ParamCategory.FILESYSTEM_PATH));
         ToolCall call =
                 new ToolCall("view_file", Map.of("path", subdir.resolve("Main.java").toString()));
@@ -84,7 +85,7 @@ class PermissionGrantTest {
                         Danger.SAFE,
                         false,
                         Object.class,
-                        ToolDocs.nonNullClass(Object.class),
+                        Object.class,
                         Map.of("path", ParamCategory.FILESYSTEM_PATH));
         ToolCall call =
                 new ToolCall("view_file", Map.of("path", other.resolve("x.txt").toString()));
@@ -107,7 +108,7 @@ class PermissionGrantTest {
                         Danger.ELEVATED,
                         false,
                         Object.class,
-                        ToolDocs.nonNullClass(Object.class),
+                        Object.class,
                         Map.of("path", ParamCategory.FILESYSTEM_PATH));
         ToolCall call =
                 new ToolCall(
@@ -143,7 +144,7 @@ class PermissionGrantTest {
                         Danger.ELEVATED,
                         false,
                         Object.class,
-                        ToolDocs.nonNullClass(Object.class),
+                        Object.class,
                         Map.of());
         PermissionGrant.ToolCallSpec spec = MatchKeyExtractor.extract(gitStatus, execDef, ws);
         PermissionGrant.CommandGrant grant =
@@ -170,7 +171,7 @@ class PermissionGrantTest {
                         Danger.ELEVATED,
                         false,
                         Object.class,
-                        ToolDocs.nonNullClass(Object.class),
+                        Object.class,
                         Map.of());
         PermissionGrant.ToolCallSpec spec = MatchKeyExtractor.extract(gitPush, execDef, ws);
         PermissionGrant.CommandGrant grant =
@@ -194,7 +195,7 @@ class PermissionGrantTest {
                         Danger.SAFE,
                         false,
                         Object.class,
-                        ToolDocs.nonNullClass(Object.class),
+                        Object.class,
                         Map.of("path", ParamCategory.FILESYSTEM_PATH));
         ToolCall call = new ToolCall("view_file", Map.of("path", root.resolve("a.txt").toString()));
 

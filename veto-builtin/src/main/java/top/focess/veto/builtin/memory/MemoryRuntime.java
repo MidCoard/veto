@@ -1,12 +1,7 @@
 package top.focess.veto.builtin.memory;
 
-import java.time.Instant;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
-import java.util.UUID;
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.api.agent.tool.ToolDocs;
+
 import top.focess.veto.api.agent.tool.ToolErrors;
 import top.focess.veto.api.llm.TextEmbedding;
 import top.focess.veto.api.plugin.PluginContext;
@@ -16,6 +11,12 @@ import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.storage.PluginStorage;
 import top.focess.veto.builtin.memory.embedder.Embedder;
 import top.focess.veto.builtin.memory.embedder.HashEmbedder;
+
+import java.time.Instant;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+import java.util.UUID;
 
 /** Owns memory backend selection and caller-bound feature policy for one builtin activation. */
 public final class MemoryRuntime implements DataLifecycle {
@@ -34,7 +35,7 @@ public final class MemoryRuntime implements DataLifecycle {
         profile = selected instanceof JsonValue.StringValue value ? value.value() : "memory";
         if (!List.of("memory", "vector", "jpa", "pgvector").contains(profile))
             throw new IllegalArgumentException("Unknown memory backend");
-        var remote = context.service(ToolDocs.nonNullClass(TextEmbedding.class)).orElse(null);
+        var remote = context.service(TextEmbedding.class).orElse(null);
         embedder =
                 remote == null
                         ? new HashEmbedder()
@@ -45,7 +46,8 @@ public final class MemoryRuntime implements DataLifecycle {
                                 } catch (IllegalStateException failure) {
                                     return ToolErrors.failure(
                                             () -> "MEMORY_EMBEDDING_FAILED",
-                                            "Memory embedding failed; memory operation did not complete.");
+                                            "Memory embedding failed; memory operation did not"
+                                                    + " complete.");
                                 }
                             }
 
@@ -62,18 +64,19 @@ public final class MemoryRuntime implements DataLifecycle {
                         case "memory" -> new InMemoryMemoryStore(embedder);
                         case "vector" -> new VectorIndexMemoryStore(new VectorIndex(), embedder);
                         default ->
-                                context.service(ToolDocs.nonNullClass(MemoryBackendFactory.class))
+                                context.service(MemoryBackendFactory.class)
                                         .orElseThrow(
                                                 () ->
                                                         new IllegalStateException(
-                                                                "Durable memory backend unavailable"))
+                                                                "Durable memory backend"
+                                                                        + " unavailable"))
                                         .open(profile, embedder);
                     };
         return store;
     }
 
     private PluginHost.@NonNull Invocation authorize(@NonNull String tool) {
-        return context.service(ToolDocs.nonNullClass(PluginHost.class))
+        return context.service(PluginHost.class)
                 .orElseThrow(() -> new SecurityException("Plugin invocation unavailable"))
                 .invocation(tool);
     }
@@ -95,7 +98,7 @@ public final class MemoryRuntime implements DataLifecycle {
             throw new IllegalStateException("Account cleanup already pending");
         try {
             var backend =
-                    context.service(ToolDocs.nonNullClass(MemoryBackendFactory.class)).orElse(null);
+                    context.service(MemoryBackendFactory.class).orElse(null);
             if (backend != null) backend.deleteOwner(UUID.fromString(userId));
             else if (profile.equals("jpa") || profile.equals("pgvector"))
                 throw new IllegalStateException("Durable cleanup unavailable");
@@ -122,7 +125,7 @@ public final class MemoryRuntime implements DataLifecycle {
             throw new IllegalStateException("Session cleanup already pending");
         try {
             var backend =
-                    context.service(ToolDocs.nonNullClass(MemoryBackendFactory.class)).orElse(null);
+                    context.service(MemoryBackendFactory.class).orElse(null);
             if (backend != null)
                 backend.deleteSession(UUID.fromString(userId), UUID.fromString(sessionId));
             else if (profile.equals("jpa") || profile.equals("pgvector"))

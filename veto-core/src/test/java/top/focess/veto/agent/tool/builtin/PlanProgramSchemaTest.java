@@ -5,17 +5,19 @@ import static org.junit.jupiter.api.Assertions.*;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
+
 import top.focess.veto.agent.tool.NativeToolArgumentValidator;
-import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.ToolDocumentation;
 import top.focess.veto.api.agent.tool.ToolExecutionException;
 import top.focess.veto.api.llm.ToolDefinition;
 import top.focess.veto.builtin.planning.PlanProgramSchema;
+
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 class PlanProgramSchemaTest {
     private static final @NonNull ObjectMapper MAPPER = new ObjectMapper();
@@ -38,7 +40,7 @@ class PlanProgramSchemaTest {
         for (String value : List.of("null", "true", "1", "\"text\"", "\"AUTO\"")) {
             var args = generationArguments(",\"response_mode\":" + value);
             assertThrows(
-                    ToolDocs.nonNullClass(ToolExecutionException.class),
+                    ToolExecutionException.class,
                     () ->
                             NativeToolArgumentValidator.validateAgainstSchema(
                                     "submit_plan", args, schema));
@@ -57,7 +59,7 @@ class PlanProgramSchemaTest {
                         NativeToolArgumentValidator.validateAgainstSchema(
                                 "submit_plan", generationArguments(""), schema));
         assertThrows(
-                ToolDocs.nonNullClass(ToolExecutionException.class),
+                ToolExecutionException.class,
                 () ->
                         NativeToolArgumentValidator.validateAgainstSchema(
                                 "submit_plan",
@@ -116,10 +118,10 @@ class PlanProgramSchemaTest {
         assertTrue(inputs.path("additionalProperties").isObject());
         assertDoesNotThrow(() -> validate(plan, "{\"first\":1,\"second\":\"$count\"}"));
         assertThrows(
-                ToolDocs.nonNullClass(ToolExecutionException.class),
+                ToolExecutionException.class,
                 () -> validate(plan, "{\"first\":-1}"));
         assertThrows(
-                ToolDocs.nonNullClass(ToolExecutionException.class),
+                ToolExecutionException.class,
                 () -> validate(plan, "{\"first\":true}"));
     }
 
@@ -138,13 +140,13 @@ class PlanProgramSchemaTest {
         assertDoesNotThrow(() -> validate(plan, "{\"kind\":\"lookup\",\"key\":\"known\"}"));
         assertDoesNotThrow(() -> validate(plan, "{\"kind\":\"list\",\"limit\":\"$count\"}"));
         assertThrows(
-                ToolDocs.nonNullClass(ToolExecutionException.class),
+                ToolExecutionException.class,
                 () -> validate(plan, "{\"kind\":\"lookup\"}"));
         assertThrows(
-                ToolDocs.nonNullClass(ToolExecutionException.class),
+                ToolExecutionException.class,
                 () -> validate(plan, "{\"kind\":\"list\",\"limit\":null}"));
         assertThrows(
-                ToolDocs.nonNullClass(ToolExecutionException.class),
+                ToolExecutionException.class,
                 () -> validate(plan, "\"$all_inputs\""));
     }
 
@@ -162,10 +164,9 @@ class PlanProgramSchemaTest {
         assertDoesNotThrow(() -> validate(plan, "{\"count\":2}"));
         assertDoesNotThrow(() -> validate(plan, "{\"count\":\"$count\"}"));
         assertThrows(
-                ToolDocs.nonNullClass(ToolExecutionException.class),
+                ToolExecutionException.class,
                 () -> validate(plan, "{\"count\":0}"));
-        assertThrows(
-                ToolDocs.nonNullClass(ToolExecutionException.class), () -> validate(plan, "{}"));
+        assertThrows(ToolExecutionException.class, () -> validate(plan, "{}"));
     }
 
     @Test
@@ -178,10 +179,10 @@ class PlanProgramSchemaTest {
                 """);
         assertDoesNotThrow(() -> validate(plan, "{\"entry_first\":1,\"entry_next\":\"$count\"}"));
         assertThrows(
-                ToolDocs.nonNullClass(ToolExecutionException.class),
+                ToolExecutionException.class,
                 () -> validate(plan, "{\"unknown\":1}"));
         assertThrows(
-                ToolDocs.nonNullClass(ToolExecutionException.class),
+                ToolExecutionException.class,
                 () -> validate(plan, "{\"entry_first\":false}"));
     }
 
@@ -196,7 +197,7 @@ class PlanProgramSchemaTest {
         assertDoesNotThrow(() -> validate(plan, "{}"));
         assertDoesNotThrow(() -> validate(plan, "{\"nullable\":null}"));
         assertThrows(
-                ToolDocs.nonNullClass(ToolExecutionException.class),
+                ToolExecutionException.class,
                 () -> validate(plan, "{\"optional\":null}"));
     }
 
@@ -220,16 +221,16 @@ class PlanProgramSchemaTest {
                                 plan,
                                 "{\"tree\":{\"name\":\"root\",\"child\":{\"name\":\"leaf\"}},\"external\":\"ok\"}"));
         assertThrows(
-                ToolDocs.nonNullClass(ToolExecutionException.class),
+                ToolExecutionException.class,
                 () -> validate(plan, "{\"tree\":{},\"external\":\"ok\"}"));
         assertThrows(
-                ToolDocs.nonNullClass(ToolExecutionException.class),
+                ToolExecutionException.class,
                 () ->
                         validate(
                                 plan,
                                 "{\"tree\":{\"name\":\"root\",\"child\":12},\"external\":\"ok\"}"));
         assertThrows(
-                ToolDocs.nonNullClass(ToolExecutionException.class),
+                ToolExecutionException.class,
                 () -> validate(plan, "{\"tree\":{\"name\":\"root\"},\"external\":\"x\"}"));
     }
 }

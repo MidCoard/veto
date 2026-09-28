@@ -1,19 +1,21 @@
 package top.focess.veto.builtin.monitor;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+
+import org.checkerframework.checker.nullness.qual.NonNull;
+import org.checkerframework.framework.qual.DefaultQualifier;
+import org.checkerframework.framework.qual.TypeUseLocation;
+
+import top.focess.veto.api.plugin.contract.FrontendContribution;
+import top.focess.veto.api.plugin.contract.JsonValue;
+import top.focess.veto.api.plugin.contract.JsonValues;
+import top.focess.veto.api.plugin.contract.PluginFailure;
+
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import org.checkerframework.checker.nullness.qual.NonNull;
-import org.checkerframework.framework.qual.DefaultQualifier;
-import org.checkerframework.framework.qual.TypeUseLocation;
-import top.focess.veto.api.agent.tool.ToolDocs;
-import top.focess.veto.api.plugin.contract.FrontendContribution;
-import top.focess.veto.api.plugin.contract.JsonValue;
-import top.focess.veto.api.plugin.contract.JsonValues;
-import top.focess.veto.api.plugin.contract.PluginFailure;
 
 /** Monitor presentation and actions ship with the same plugin as their domain lifecycle. */
 @DefaultQualifier(
@@ -36,7 +38,7 @@ public final class MonitorFrontend {
     /** Serves the bundled monitors script and routes its actions to {@link #handle}. */
     public FrontendContribution contribution() {
         try (var stream =
-                ToolDocs.nonNullClass(MonitorFrontend.class)
+                MonitorFrontend.class
                         .getResourceAsStream("/frontend/monitors.js")) {
             if (stream == null) throw new IllegalStateException("Missing monitor frontend");
             return new FrontendContribution(

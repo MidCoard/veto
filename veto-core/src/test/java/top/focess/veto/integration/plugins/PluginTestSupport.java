@@ -4,19 +4,11 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-import java.io.IOException;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.stream.Stream;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.NoSuchBeanDefinitionException;
 import org.springframework.beans.factory.ObjectProvider;
-import top.focess.veto.api.agent.tool.ToolDocs;
+
 import top.focess.veto.api.plugin.PluginBinding;
 import top.focess.veto.api.plugin.PluginHost;
 import top.focess.veto.api.plugin.agent.AgentHost;
@@ -25,14 +17,22 @@ import top.focess.veto.api.plugin.contract.FrontendContribution;
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.contract.PluginFailure;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
-import top.focess.veto.api.plugin.contract.TextProtection;
-import top.focess.veto.api.plugin.contribution.ContributionPoint;
+import top.focess.veto.api.event.BeforeTextCommitEvent;
 import top.focess.veto.integration.plugins.storage.ConfigurationStorageFixture;
 import top.focess.veto.integration.plugins.storage.PluginStorageFactory;
 import top.focess.veto.model.SessionEntity;
 import top.focess.veto.model.SessionRepository;
 import top.focess.veto.plugin.runtime.*;
 import top.focess.veto.session.SessionHistoryLoader;
+
+import java.io.IOException;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.stream.Stream;
 
 /** Shared wiring for plugin-backed tests: provider stubs plus real ServiceLoader discovery. */
 public final class PluginTestSupport {
@@ -85,10 +85,9 @@ public final class PluginTestSupport {
             @Nullable PluginHostServices services) {
         Map<@NonNull Class<?>, @NonNull Object> merged = new HashMap<>();
         merged.put(
-                ToolDocs.nonNullClass(PluginStorageFactory.class),
-                new ConfigurationStorageFixture());
+                PluginStorageFactory.class, new ConfigurationStorageFixture());
         merged.put(
-                ToolDocs.nonNullClass(PluginHost.class),
+                PluginHost.class,
                 new PluginHost() {
                     @Override
                     public @NonNull Invocation invocation(@NonNull String tool) {
@@ -122,7 +121,7 @@ public final class PluginTestSupport {
                                 }
                             };
                         };
-        merged.put(ToolDocs.nonNullClass(PluginAgentHostFactory.class), hosts);
+        merged.put(PluginAgentHostFactory.class, hosts);
         if (services != null) merged.putAll(services.services());
         return new PluginHostServices(merged);
     }
@@ -131,8 +130,8 @@ public final class PluginTestSupport {
      * Session selection backed by a stub repository; every session selects every discovered plugin.
      */
     public static @NonNull SessionPlugins sessionPlugins(@NonNull PluginManager manager) {
-        SessionRepository sessions = mock(ToolDocs.nonNullClass(SessionRepository.class));
-        SessionHistoryLoader history = mock(ToolDocs.nonNullClass(SessionHistoryLoader.class));
+        SessionRepository sessions = mock(SessionRepository.class);
+        SessionHistoryLoader history = mock(SessionHistoryLoader.class);
         var entity = new SessionEntity("owner", "session");
         entity.setPluginBindings(
                 manager.plugins().stream()
@@ -147,29 +146,36 @@ public final class PluginTestSupport {
         return new SessionPlugins(manager, sessions, history);
     }
 
-    /** Applies the discovered plugins' protection chain outside the session-binding machinery. */
+    /** Dispatches the selected plugins' text event outside the session-binding machinery. */
     public static @NonNull String protect(
             @NonNull PluginManager manager,
-            @NonNull ContributionPoint<? extends TextProtection> point,
-            TextProtection.@NonNull Scope scope,
+            BeforeTextCommitEvent.@NonNull Phase phase,
+            FrontendContribution.@NonNull Scope scope,
             @NonNull String sourceId,
             @NonNull String text)
             throws PluginFailure {
-        String result = text;
-        for (var entry : manager.catalog().entries(point)) {
-            String input = result;
-            result =
-                    manager.plugin(entry.source().namespace())
-                            .execute(
-                                    () -> entry.implementation().transform(scope, sourceId, input));
-        }
-        return result;
+        var event =
+                new BeforeTextCommitEvent(
+                        scope.ownerId(),
+                        scope.sessionId(),
+                        scope.agentId(),
+                        () -> false,
+                        phase,
+                        sourceId,
+                        text);
+        manager.events().submit(
+                event,
+                manager.plugins().stream()
+                        .map(plugin -> plugin.identity().id())
+                        .collect(java.util.stream.Collectors.toSet()));
+        if (event.isPrevent()) throw new IllegalStateException("Text publication prevented");
+        return event.text();
     }
 
     /** Reveals a reference through the plugin's frontend "show" action; empty when unavailable. */
     public static @NonNull Optional<String> reveal(
             @NonNull PluginManager manager,
-            TextProtection.@NonNull Scope scope,
+            FrontendContribution.@NonNull Scope scope,
             @NonNull String reference)
             throws PluginFailure {
         var entry =

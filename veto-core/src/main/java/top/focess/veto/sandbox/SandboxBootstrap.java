@@ -5,14 +5,16 @@ import com.sun.jna.Native;
 import com.sun.jna.WString;
 import com.sun.jna.platform.win32.Kernel32;
 import com.sun.jna.platform.win32.WinNT;
+
+import org.jspecify.annotations.NonNull;
+
+
 import java.io.File;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.regex.Pattern;
-import org.jspecify.annotations.NonNull;
-import top.focess.veto.api.agent.tool.ToolDocs;
 
 /** Trusted pre-target bootstrap for the Windows and Linux OS sandbox backends. */
 public final class SandboxBootstrap {
@@ -165,7 +167,7 @@ public final class SandboxBootstrap {
 
     private static boolean awaitGate(@NonNull String gateName, @NonNull String readyName) {
         BootstrapKernel32 kernel =
-                Native.load("kernel32", ToolDocs.nonNullClass(BootstrapKernel32.class));
+                Native.load("kernel32", BootstrapKernel32.class);
         WinNT.HANDLE gate = kernel.OpenEventW(SYNCHRONIZE, false, new WString(gateName));
         if (gate == null || gate.getPointer() == null) {
             System.err.println(

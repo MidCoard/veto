@@ -3,30 +3,33 @@ package top.focess.veto.builtin.search;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
-import java.net.http.HttpTimeoutException;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
-import top.focess.veto.api.agent.tool.ToolDocs;
+
 import top.focess.veto.api.plugin.PluginContext;
 import top.focess.veto.api.plugin.PluginHost;
 import top.focess.veto.api.plugin.PluginIdentity;
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.service.PluginServices;
+import top.focess.veto.api.plugin.service.ServiceCallContext;
 import top.focess.veto.api.plugin.service.ServiceException;
-import top.focess.veto.api.search.SearchOptions;
-import top.focess.veto.api.search.SearchProvider;
-import top.focess.veto.api.search.SearchResult;
-import top.focess.veto.api.search.SearchServices;
+import top.focess.veto.api.plugin.service.ServiceScope;
+import top.focess.veto.builtin.search.SearchOptions;
+import top.focess.veto.builtin.search.SearchProvider;
+import top.focess.veto.builtin.search.SearchResult;
+import top.focess.veto.builtin.search.SearchServices;
+
+import java.net.http.HttpTimeoutException;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 
 class SearchServiceClientTest {
     @Test
     void defaultAndThirdPartySelectionUseNamedProtocolWithoutCaching() throws Exception {
-        var host = mock(ToolDocs.nonNullClass(PluginHost.class));
-        var services = mock(ToolDocs.nonNullClass(PluginServices.class));
-        var handle = mock(ToolDocs.nonNullClass(PluginServices.Handle.class));
+        var host = mock(PluginHost.class);
+        var services = mock(PluginServices.class);
+        var handle = mock(PluginServices.Handle.class);
         when(services.find("veto.search:third-party", 1)).thenReturn(Optional.of(handle));
         var options = new SearchOptions(List.of("example.com"), List.of("blocked.com"), 3);
         var registration =
@@ -49,7 +52,16 @@ class SearchServiceClientTest {
                         call -> {
                             JsonValue request = call.getArgument(0);
                             if (request == null) throw new AssertionError("Missing request");
-                            return registration.handler().invoke(request);
+                            return registration
+                                    .handler()
+                                    .invoke(
+                                            new ServiceCallContext(
+                                                    "test.consumer",
+                                                    ServiceScope.GLOBAL,
+                                                    null,
+                                                    null,
+                                                    null),
+                                            request);
                         });
         var context = context(host, services);
         assertEquals(
@@ -71,8 +83,8 @@ class SearchServiceClientTest {
 
     @Test
     void missingPermitStopsBeforeServiceDiscovery() {
-        var host = mock(ToolDocs.nonNullClass(PluginHost.class));
-        var services = mock(ToolDocs.nonNullClass(PluginServices.class));
+        var host = mock(PluginHost.class);
+        var services = mock(PluginServices.class);
         when(host.invocation("web_search")).thenThrow(new SecurityException("No permit"));
         var client =
                 new SearchServiceClient(
@@ -85,16 +97,16 @@ class SearchServiceClientTest {
 
     @Test
     void serviceErrorsRetainCanonicalTimeoutAndSafeFailure() throws Exception {
-        var host = mock(ToolDocs.nonNullClass(PluginHost.class));
-        var services = mock(ToolDocs.nonNullClass(PluginServices.class));
-        var handle = mock(ToolDocs.nonNullClass(PluginServices.Handle.class));
+        var host = mock(PluginHost.class);
+        var services = mock(PluginServices.class);
+        var handle = mock(PluginServices.Handle.class);
         when(services.find("veto.search:duckduckgo", 1)).thenReturn(Optional.of(handle));
         var client =
                 new SearchServiceClient(
                         context(host, services), new JsonValue.ObjectValue(Map.of()));
         when(handle.invoke(any())).thenThrow(new ServiceException(ServiceException.Code.TIMEOUT));
         assertThrows(
-                ToolDocs.nonNullClass(HttpTimeoutException.class),
+                HttpTimeoutException.class,
                 () -> client.search("query", new SearchOptions(null, null, 3)));
         doThrow(new ServiceException(ServiceException.Code.FAILED)).when(handle).invoke(any());
         assertEquals(
@@ -115,7 +127,7 @@ class SearchServiceClientTest {
                             "Plugin context is not bound to a lifecycle owner");
                 },
                 Map.of(
-                        ToolDocs.nonNullClass(PluginHost.class), host,
-                        ToolDocs.nonNullClass(PluginServices.class), services));
+                        PluginHost.class, host,
+                        PluginServices.class, services));
     }
 }

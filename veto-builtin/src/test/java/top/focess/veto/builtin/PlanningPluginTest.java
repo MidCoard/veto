@@ -4,13 +4,11 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicReference;
+
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
+
 import top.focess.veto.api.agent.control.ControlHost;
 import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.ToolResult;
@@ -19,6 +17,11 @@ import top.focess.veto.api.llm.*;
 import top.focess.veto.builtin.planning.ActionsProgramParser;
 import top.focess.veto.builtin.planning.PlanProgram;
 import top.focess.veto.builtin.planning.SubmitPlanTool;
+
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 /** Runs the real plan tool and interpreter on the API-only plugin classpath. */
 class PlanningPluginTest {
@@ -36,8 +39,8 @@ class PlanningPluginTest {
                 .push(any());
         var mapper = new ObjectMapper();
         var tool = new SubmitPlanTool();
-        var example = ToolDocs.examplesOf(ToolDocs.nonNullClass(SubmitPlanTool.class)).getFirst();
-        var args = mapper.readValue(example, ToolDocs.nonNullClass(SubmitPlanTool.Args.class));
+        var example = ToolDocs.examplesOf(SubmitPlanTool.class).getFirst();
+        var args = mapper.readValue(example, SubmitPlanTool.Args.class);
         assertEquals("{\"status\":\"accepted\"}", tool.execute(args, capability));
         var plan = submitted.get();
         if (plan == null) throw new AssertionError("Missing plugin work");

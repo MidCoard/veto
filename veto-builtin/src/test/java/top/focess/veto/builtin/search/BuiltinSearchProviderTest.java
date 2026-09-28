@@ -4,6 +4,18 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.mock;
 
 import com.sun.net.httpserver.HttpServer;
+
+import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
+import org.junit.jupiter.api.Test;
+
+import top.focess.veto.api.plugin.PluginContext;
+import top.focess.veto.api.plugin.PluginHost;
+import top.focess.veto.api.plugin.VetoPlugin;
+import top.focess.veto.api.plugin.contract.JsonValue;
+import top.focess.veto.api.plugin.contract.StandardContributionPoints;
+import top.focess.veto.builtin.search.SearchOptions;
+
 import java.net.InetSocketAddress;
 import java.net.http.HttpClient;
 import java.nio.charset.StandardCharsets;
@@ -11,24 +23,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.ServiceLoader;
 import java.util.concurrent.atomic.AtomicReference;
-import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
-import org.junit.jupiter.api.Test;
-import top.focess.veto.api.agent.tool.ToolDocs;
-import top.focess.veto.api.plugin.PluginContext;
-import top.focess.veto.api.plugin.PluginHost;
-import top.focess.veto.api.plugin.VetoPlugin;
-import top.focess.veto.api.plugin.contract.JsonValue;
-import top.focess.veto.api.plugin.contract.StandardContributionPoints;
-import top.focess.veto.api.search.SearchOptions;
 
 class BuiltinSearchProviderTest {
     @Test
     void pluginLoadsAndContributesWithOnlyApiAndLibraryDependencies() throws Exception {
         var plugin =
-                ServiceLoader.load(ToolDocs.nonNullClass(VetoPlugin.class))
-                        .findFirst()
-                        .orElseThrow();
+                ServiceLoader.load(VetoPlugin.class).findFirst().orElseThrow();
         try {
             var contributions =
                     plugin.initialize(
@@ -41,7 +41,7 @@ class BuiltinSearchProviderTest {
                                     },
                                     Map.of(
                                             PluginHost.class,
-                                            mock(ToolDocs.nonNullClass(PluginHost.class)))),
+                                            mock(PluginHost.class))),
                             new JsonValue.ObjectValue(
                                     Map.of(
                                             "brave-api-key",

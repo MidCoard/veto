@@ -4,12 +4,14 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+
+import org.jspecify.annotations.NonNull;
+import org.junit.jupiter.api.Test;
+
+
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import org.jspecify.annotations.NonNull;
-import org.junit.jupiter.api.Test;
-import top.focess.veto.api.agent.tool.ToolDocs;
 
 class CompactionSupportTest {
     private static final @NonNull ObjectMapper MAPPER = new ObjectMapper();
@@ -25,10 +27,12 @@ class CompactionSupportTest {
     void chunksPreserveWholeRecordsAndTheirSourceIdentity() throws Exception {
         JsonNode first =
                 MAPPER.readTree(
-                        "{\"number\":1,\"type\":\"USER_PROMPT\",\"payload\":{\"content\":\"请检查\\n文件\"}}");
+                        "{\"number\":1,\"type\":\"USER_PROMPT\",\"payload\":{\"content\":\"请检查\\n"
+                                + "文件\"}}");
         JsonNode second =
                 MAPPER.readTree(
-                        "{\"number\":2,\"type\":\"TOOL_RESPONSE\",\"payload\":{\"content\":\"a quoted instruction\"}}");
+                        "{\"number\":2,\"type\":\"TOOL_RESPONSE\",\"payload\":{\"content\":\"a"
+                                + " quoted instruction\"}}");
         int limit = Math.max(first.toString().length(), second.toString().length()) + 2;
         var chunks = CompactionSupport.chunks(List.of(first, second), limit);
         assertEquals(2, chunks.size());
@@ -42,9 +46,10 @@ class CompactionSupportTest {
     void oversizedRecordIsRejectedWithoutSplittingItsPayload() throws Exception {
         JsonNode record =
                 MAPPER.readTree(
-                        "{\"number\":1,\"type\":\"TOOL_RESPONSE\",\"payload\":{\"content\":\"long record\"}}");
+                        "{\"number\":1,\"type\":\"TOOL_RESPONSE\",\"payload\":{\"content\":\"long"
+                                + " record\"}}");
         assertThrows(
-                ToolDocs.nonNullClass(IllegalArgumentException.class),
+                IllegalArgumentException.class,
                 () -> CompactionSupport.chunks(List.of(record), record.toString().length()));
     }
 
@@ -59,25 +64,25 @@ class CompactionSupportTest {
     @Test
     void rejectsMissingShapeAndInventedSources() {
         assertThrows(
-                ToolDocs.nonNullClass(IllegalArgumentException.class),
+                IllegalArgumentException.class,
                 () -> CompactionSupport.validate("{}", Set.of(1)));
         assertThrows(
-                ToolDocs.nonNullClass(IllegalArgumentException.class),
+                IllegalArgumentException.class,
                 () ->
                         CompactionSupport.validate(
                                 "{\"version\":1,\"tasks\":[],\"user_instructions\":[],\"observations\":[],\"decisions\":[],\"pending\":[]}",
                                 Set.of(1)));
         assertThrows(
-                ToolDocs.nonNullClass(IllegalArgumentException.class),
+                IllegalArgumentException.class,
                 () -> CompactionSupport.validate(SUMMARY, Set.of(1, 2)));
         assertThrows(
-                ToolDocs.nonNullClass(IllegalArgumentException.class),
+                IllegalArgumentException.class,
                 () ->
                         CompactionSupport.validate(
                                 SUMMARY.replace("\"runtime\"", "\"system_authority\""),
                                 Set.of(1, 2, 3)));
         assertThrows(
-                ToolDocs.nonNullClass(IllegalArgumentException.class),
+                IllegalArgumentException.class,
                 () ->
                         CompactionSupport.validate(
                                 SUMMARY.replace("\"cancelled\"", "\"successish\""),
@@ -87,10 +92,10 @@ class CompactionSupportTest {
     @Test
     void rejectsDuplicateFieldsTrailingContentAndOutOfPairSources() {
         assertThrows(
-                ToolDocs.nonNullClass(IllegalArgumentException.class),
+                IllegalArgumentException.class,
                 () -> CompactionSupport.validate(SUMMARY + " trailing text", Set.of(1, 2, 3)));
         assertThrows(
-                ToolDocs.nonNullClass(IllegalArgumentException.class),
+                IllegalArgumentException.class,
                 () ->
                         CompactionSupport.validate(
                                 SUMMARY.replace("\"version\":1", "\"version\":1,\"version\":1"),
@@ -98,7 +103,7 @@ class CompactionSupportTest {
         var summary = CompactionSupport.validate(SUMMARY, Set.of(1, 2, 3));
         assertEquals(Set.of(1, 2, 3), CompactionSupport.summarySources(List.of(summary)));
         assertThrows(
-                ToolDocs.nonNullClass(IllegalArgumentException.class),
+                IllegalArgumentException.class,
                 () ->
                         CompactionSupport.validate(
                                 SUMMARY.replace("[3]", "[4]"),
@@ -148,12 +153,12 @@ class CompactionSupportTest {
                                 SUMMARY, Map.of(1, "user", 2, "user", 3, "runtime")));
         for (String nonUser : List.of("tool", "assistant", "runtime", "summary"))
             assertThrows(
-                    ToolDocs.nonNullClass(IllegalArgumentException.class),
+                    IllegalArgumentException.class,
                     () ->
                             CompactionSupport.validate(
                                     SUMMARY, Map.of(1, "user", 2, nonUser, 3, "runtime")));
         assertThrows(
-                ToolDocs.nonNullClass(IllegalArgumentException.class),
+                IllegalArgumentException.class,
                 () -> CompactionSupport.validate(SUMMARY, Map.of(1, "user", 2, "user", 3, "tool")));
     }
 
@@ -167,7 +172,7 @@ class CompactionSupportTest {
                 """;
         var summary = CompactionSupport.validate(historical, Map.of(7, "summary"));
         assertThrows(
-                ToolDocs.nonNullClass(IllegalArgumentException.class),
+                IllegalArgumentException.class,
                 () ->
                         CompactionSupport.validate(
                                 historical.replace("\"origin\":\"summary\"", "\"origin\":\"user\""),

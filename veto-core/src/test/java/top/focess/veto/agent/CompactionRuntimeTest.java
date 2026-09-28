@@ -4,14 +4,10 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.UUID;
-import java.util.concurrent.atomic.AtomicInteger;
+
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
+
 import top.focess.veto.agent.drift.ReadHistory;
 import top.focess.veto.agent.identity.AgentPersona;
 import top.focess.veto.agent.intercept.Gateway;
@@ -21,12 +17,18 @@ import top.focess.veto.agent.loop.CompactionSupport;
 import top.focess.veto.agent.loop.PromptCompiler;
 import top.focess.veto.agent.loop.PromptLibrary;
 import top.focess.veto.agent.tool.ToolEngine;
-import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.llm.LlmBinding;
 import top.focess.veto.api.llm.LlmOptions;
 import top.focess.veto.api.llm.ProviderType;
 import top.focess.veto.api.llm.VetoResponse;
 import top.focess.veto.llm.core.*;
+
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
 
 class CompactionRuntimeTest {
     @Test
@@ -126,10 +128,10 @@ class CompactionRuntimeTest {
 
     private @NonNull AgentRunner runner(@NonNull UniformLLMCaller caller) {
         String id = UUID.randomUUID().toString();
-        var gateway = mock(ToolDocs.nonNullClass(Gateway.class));
+        var gateway = mock(Gateway.class);
         when(gateway.readHistory()).thenReturn(new ReadHistory());
-        var compiler = mock(ToolDocs.nonNullClass(PromptCompiler.class));
-        var tools = mock(ToolDocs.nonNullClass(ToolEngine.class));
+        var compiler = mock(PromptCompiler.class);
+        var tools = mock(ToolEngine.class);
         when(compiler.recordRuntimeSource(any()))
                 .thenAnswer(invocation -> invocation.getArgument(0));
         return new AgentRunner(

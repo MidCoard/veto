@@ -5,15 +5,16 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.*;
 
-import java.util.Optional;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
-import top.focess.veto.api.agent.tool.ToolDocs;
+
 import top.focess.veto.session.SessionService;
 import top.focess.veto.vault.KeysteadVault;
 import top.focess.veto.vault.UserContext;
+
+import java.util.Optional;
 
 class RequestAuthorizationTest {
 
@@ -24,8 +25,8 @@ class RequestAuthorizationTest {
 
     @Test
     void sessionAccessRequiresUnlockedVaultAndUsesCurrentOwner() {
-        KeysteadVault vault = mock(ToolDocs.nonNullClass(KeysteadVault.class));
-        SessionService sessions = mock(ToolDocs.nonNullClass(SessionService.class));
+        KeysteadVault vault = mock(KeysteadVault.class);
+        SessionService sessions = mock(SessionService.class);
         UserContext.set("alice");
         assertEquals(
                 HttpStatus.UNAUTHORIZED,

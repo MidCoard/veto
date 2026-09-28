@@ -5,14 +5,11 @@ import static org.mockito.Mockito.mock;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
-import java.nio.file.Path;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
+
 import top.focess.veto.agent.TurnRecord;
 import top.focess.veto.agent.TurnType;
 import top.focess.veto.agent.identity.AgentPersona;
@@ -22,7 +19,6 @@ import top.focess.veto.agent.translation.CapabilityTranslator;
 import top.focess.veto.agent.translation.VetoCapabilityTranslator;
 import top.focess.veto.agent.workspace.PathMode;
 import top.focess.veto.agent.workspace.Workspace;
-import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.ToolResult;
 import top.focess.veto.api.llm.ChatMessage;
 import top.focess.veto.api.llm.LlmOptions;
@@ -32,6 +28,12 @@ import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.api.llm.VetoRequest;
 import top.focess.veto.llm.core.*;
+
+import java.nio.file.Path;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 class PromptCompilerContextBudgetTest {
     @Test
@@ -45,8 +47,7 @@ class PromptCompilerContextBudgetTest {
         ObjectMapper mapper = new ObjectMapper().registerModule(new JavaTimeModule());
         var restored =
                 mapper.readValue(
-                        mapper.writeValueAsString(recorded),
-                        ToolDocs.nonNullClass(TurnRecord.class));
+                        mapper.writeValueAsString(recorded), TurnRecord.class);
         var messages =
                 compiler.resolveRewinds(
                         List.of(TurnRecord.userPrompt(1, "Old task"), restored),

@@ -1,5 +1,16 @@
 package top.focess.veto.agent.tool;
 
+import org.jspecify.annotations.NonNull;
+
+import top.focess.veto.api.plugin.PluginState;
+import top.focess.veto.api.plugin.contribution.Contribution;
+import top.focess.veto.api.plugin.contribution.ContributionCatalog;
+import top.focess.veto.api.plugin.contribution.ContributionId;
+import top.focess.veto.api.plugin.contribution.ContributionPoint;
+import top.focess.veto.api.plugin.contribution.ContributionSource;
+import top.focess.veto.plugin.runtime.PluginLifecycle;
+import top.focess.veto.plugin.runtime.ScriptPlugin;
+
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -9,16 +20,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import org.jspecify.annotations.NonNull;
-import top.focess.veto.api.agent.tool.ToolDocs;
-import top.focess.veto.api.plugin.PluginState;
-import top.focess.veto.api.plugin.contribution.Contribution;
-import top.focess.veto.api.plugin.contribution.ContributionCatalog;
-import top.focess.veto.api.plugin.contribution.ContributionId;
-import top.focess.veto.api.plugin.contribution.ContributionPoint;
-import top.focess.veto.api.plugin.contribution.ContributionSource;
-import top.focess.veto.plugin.runtime.PluginLifecycle;
-import top.focess.veto.plugin.runtime.ScriptPlugin;
 
 /**
  * Immutable host tool view built through the shared contribution layer. The private runtime
@@ -29,7 +30,7 @@ final class ToolCatalog {
             new ContributionPoint<>(
                     new ContributionId("veto:runtime-tools"),
                     1,
-                    ToolDocs.nonNullClass(RegisteredTool.class),
+                    RegisteredTool.class,
                     ContributionPoint.Cardinality.MULTIPLE);
     private static final @NonNull ContributionSource SOURCE =
             new ContributionSource("veto.runtime", "1", ContributionSource.Origin.BUILTIN);

@@ -7,20 +7,12 @@ import static org.mockito.Mockito.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
-import java.net.URI;
-import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicReference;
+
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+
 import top.focess.veto.agent.SessionAgentRegistry;
 import top.focess.veto.agent.TurnRecord;
 import top.focess.veto.agent.TurnType;
@@ -31,7 +23,6 @@ import top.focess.veto.agent.tool.CapabilityTestCalls;
 import top.focess.veto.agent.tool.ToolCallContextHolder;
 import top.focess.veto.agent.translation.DefaultCapabilityTranslator;
 import top.focess.veto.api.agent.AgentState;
-import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.ToolErrorCode;
 import top.focess.veto.api.agent.tool.ToolExecutionException;
 import top.focess.veto.api.http.ApprovedHttpDestination;
@@ -52,11 +43,22 @@ import top.focess.veto.model.tier.ModelTierRegistry;
 import top.focess.veto.util.Nullness;
 import top.focess.veto.vault.UserContext;
 
+import java.net.URI;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
+
 class WebFetchExecutorLoopTest {
     private final @NonNull ObjectMapper mapper = new ObjectMapper();
     private final @NonNull TurnLogService turnLog = spy(new TurnLogService(null, mapper));
     private final @NonNull ApprovedHttpDestination access =
-            mock(ToolDocs.nonNullClass(ApprovedHttpDestination.class));
+            mock(ApprovedHttpDestination.class);
     private final @NonNull List<@NonNull VetoRequest> requests = new ArrayList<>();
     private final @NonNull ModelTierRegistry models = mock();
 
@@ -74,7 +76,7 @@ class WebFetchExecutorLoopTest {
                                 ProviderType.DEEPSEEK, "small-reader", "key", 0, 2048, null, 4096));
         ToolExecutionException error =
                 assertThrows(
-                        ToolDocs.nonNullClass(ToolExecutionException.class), () -> execute(tool));
+                        ToolExecutionException.class, () -> execute(tool));
         assertEquals(ToolErrorCode.READER.READER_MODEL, error.errorCode());
         assertTrue(requests.isEmpty());
         verify(access, never()).fetch();
@@ -138,7 +140,7 @@ class WebFetchExecutorLoopTest {
         assertEquals(
                 "The timeout is 30 seconds.", json.path("evidence").get(0).path("quote").asText());
         assertEquals("reader-model", json.path("execution").path("model").asText());
-        var captured = ArgumentCaptor.forClass(ToolDocs.nonNullClass(TurnRecord.class));
+        var captured = ArgumentCaptor.forClass(TurnRecord.class);
         verify(turnLog, atLeastOnce()).log(captured.capture(), any(), any(), anyString());
         var lastResult =
                 captured.getAllValues().stream()
@@ -371,7 +373,8 @@ class WebFetchExecutorLoopTest {
                                     message ->
                                             message.content()
                                                             .contains(
-                                                                    "not in this turn's tool catalog")
+                                                                    "not in this turn's tool"
+                                                                            + " catalog")
                                                     && message.content().contains(name)),
                     name);
             verify(access).fetch();
@@ -400,7 +403,8 @@ class WebFetchExecutorLoopTest {
                                 message ->
                                         message.content()
                                                 .contains(
-                                                        "Invalid arguments: evidence must reference a read segment.")));
+                                                        "Invalid arguments: evidence must reference"
+                                                                + " a read segment.")));
         assertEquals(4, requests.size());
     }
 
@@ -415,7 +419,7 @@ class WebFetchExecutorLoopTest {
                         10);
         ToolExecutionException error =
                 assertThrows(
-                        ToolDocs.nonNullClass(ToolExecutionException.class), () -> execute(tool));
+                        ToolExecutionException.class, () -> execute(tool));
         String message = error.content();
         assertEquals(ToolErrorCode.READER.READER_MODEL, error.errorCode());
         assertFalse(message.contains("provider secret"));
@@ -433,7 +437,7 @@ class WebFetchExecutorLoopTest {
         WebFetchTool tool = tool(blocking(interrupted, worker, new CountDownLatch(1)), 4, 1);
         ToolExecutionException error =
                 assertThrows(
-                        ToolDocs.nonNullClass(ToolExecutionException.class), () -> execute(tool));
+                        ToolExecutionException.class, () -> execute(tool));
         String message = error.content();
         assertTrue(message.contains("time budget"));
         assertTrue(interrupted.await(3, TimeUnit.SECONDS));
@@ -471,7 +475,7 @@ class WebFetchExecutorLoopTest {
             parent.join(3000);
             assertFalse(parent.isAlive());
             assertTrue(interrupted.await(3, TimeUnit.SECONDS));
-            assertInstanceOf(ToolDocs.nonNullClass(ToolExecutionException.class), failure.get());
+            assertInstanceOf(ToolExecutionException.class, failure.get());
             assertNull(result.get());
             Thread thread = worker.get();
             assertNotNull(thread);
@@ -518,7 +522,7 @@ class WebFetchExecutorLoopTest {
 
     private @NonNull WebFetchTool tool(
             @NonNull UniformLLMCaller caller, int rounds, int timeout, int maxInputTokens) {
-        var network = mock(ToolDocs.nonNullClass(NetworkEgressCapabilityImpl.class));
+        var network = mock(NetworkEgressCapabilityImpl.class);
 
         when(access.fetch())
                 .thenReturn(
@@ -526,7 +530,8 @@ class WebFetchExecutorLoopTest {
                                 URI.create("https://example.com/docs"),
                                 200,
                                 "text/html",
-                                "<main><p>The timeout is 30 seconds.</p><p>UNRELATED_PAGE_BODY</p></main>",
+                                "<main><p>The timeout is 30"
+                                        + " seconds.</p><p>UNRELATED_PAGE_BODY</p></main>",
                                 false,
                                 10000));
         when(models.resolve("test-owner", ModelTier.LOW))
@@ -556,7 +561,7 @@ class WebFetchExecutorLoopTest {
                                 throw new AssertionError("Missing parent context");
                             var sessionId = context.sessionId();
                             if (sessionId == null) throw new AssertionError("Missing session");
-                            var parent = mock(ToolDocs.nonNullClass(VetoAgent.class));
+                            var parent = mock(VetoAgent.class);
                             when(parent.id()).thenReturn(context.agentId());
                             when(parent.state()).thenReturn(AgentState.RUNNING);
                             registry.register(sessionId, parent);

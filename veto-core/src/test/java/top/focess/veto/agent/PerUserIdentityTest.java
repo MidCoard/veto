@@ -3,23 +3,19 @@ package top.focess.veto.agent;
 import static org.junit.jupiter.api.Assertions.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.time.Duration;
-import java.util.List;
-import java.util.UUID;
-import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.atomic.AtomicBoolean;
+
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 import org.springframework.test.util.ReflectionTestUtils;
+
 import top.focess.veto.agent.identity.SystemPromptResolver;
 import top.focess.veto.agent.intercept.HitlRegistry;
 import top.focess.veto.agent.intercept.IngressDefense;
 import top.focess.veto.agent.loop.PromptCompiler;
 import top.focess.veto.agent.translation.DefaultCapabilityTranslator;
 import top.focess.veto.api.agent.AgentResult;
-import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.llm.LlmBinding;
 import top.focess.veto.api.llm.LlmOptions;
 import top.focess.veto.api.llm.ProviderType;
@@ -30,6 +26,12 @@ import top.focess.veto.memory.TurnLogService;
 import top.focess.veto.memory.TurnRecordEntity;
 import top.focess.veto.memory.TurnRecordRepository;
 import top.focess.veto.vault.UserContext;
+
+import java.time.Duration;
+import java.util.List;
+import java.util.UUID;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Tests that per-user identity is threaded from the transport through {@link AgentService#submit}
@@ -84,7 +86,7 @@ class PerUserIdentityTest {
      */
     @Test
     void suppliedUserIdFlowsToTurnLog() throws Exception {
-        TurnRecordRepository repo = Mockito.mock(ToolDocs.nonNullClass(TurnRecordRepository.class));
+        TurnRecordRepository repo = Mockito.mock(TurnRecordRepository.class);
         TurnLogService turnLog = new TurnLogService(repo, new ObjectMapper());
 
         List<VetoRequest> seenRequests = new CopyOnWriteArrayList<>();
@@ -104,7 +106,7 @@ class PerUserIdentityTest {
 
         // Verify turns were logged under the supplied userId, not DEFAULT_USER_ID
         ArgumentCaptor<TurnRecordEntity> captor =
-                ArgumentCaptor.forClass(ToolDocs.nonNullClass(TurnRecordEntity.class));
+                ArgumentCaptor.forClass(TurnRecordEntity.class);
         Mockito.verify(repo, Mockito.atLeastOnce()).save(captor.capture());
         TurnRecordEntity first = captor.getAllValues().get(0);
         assertEquals(
@@ -123,7 +125,7 @@ class PerUserIdentityTest {
      */
     @Test
     void defaultUserIdUsedWhenNotSupplied() throws Exception {
-        TurnRecordRepository repo = Mockito.mock(ToolDocs.nonNullClass(TurnRecordRepository.class));
+        TurnRecordRepository repo = Mockito.mock(TurnRecordRepository.class);
         TurnLogService turnLog = new TurnLogService(repo, new ObjectMapper());
 
         UniformLLMCaller caller = request -> new VetoResponse("Done.", null, "Task complete.");
@@ -137,7 +139,7 @@ class PerUserIdentityTest {
 
         // Turns logged under DEFAULT_USER_ID
         ArgumentCaptor<TurnRecordEntity> captor =
-                ArgumentCaptor.forClass(ToolDocs.nonNullClass(TurnRecordEntity.class));
+                ArgumentCaptor.forClass(TurnRecordEntity.class);
         Mockito.verify(repo, Mockito.atLeastOnce()).save(captor.capture());
         TurnRecordEntity first = captor.getAllValues().get(0);
         assertEquals(AgentService.DEFAULT_USER_ID.toString(), first.getUserId());
@@ -151,7 +153,7 @@ class PerUserIdentityTest {
      */
     @Test
     void ownerStampedOnAgentThreadForCredentialResolution() throws Exception {
-        TurnRecordRepository repo = Mockito.mock(ToolDocs.nonNullClass(TurnRecordRepository.class));
+        TurnRecordRepository repo = Mockito.mock(TurnRecordRepository.class);
         TurnLogService turnLog = new TurnLogService(repo, new ObjectMapper());
 
         List<String> seen = new CopyOnWriteArrayList<>();
@@ -192,7 +194,7 @@ class PerUserIdentityTest {
      */
     @Test
     void nullOwnerLeavesUserContextUnset() throws Exception {
-        TurnRecordRepository repo = Mockito.mock(ToolDocs.nonNullClass(TurnRecordRepository.class));
+        TurnRecordRepository repo = Mockito.mock(TurnRecordRepository.class);
         TurnLogService turnLog = new TurnLogService(repo, new ObjectMapper());
 
         AtomicBoolean sawNullContext = new AtomicBoolean();

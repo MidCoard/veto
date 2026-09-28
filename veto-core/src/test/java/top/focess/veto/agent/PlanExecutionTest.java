@@ -4,13 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.io.IOException;
-import java.nio.file.*;
-import java.time.Duration;
-import java.util.*;
-import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicReference;
+
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Test;
@@ -20,6 +14,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.springframework.context.ApplicationContext;
 import org.springframework.test.util.ReflectionTestUtils;
+
 import top.focess.veto.agent.capability.ProtectedWorkspaceReadCapabilityImpl;
 import top.focess.veto.agent.identity.*;
 import top.focess.veto.agent.intercept.*;
@@ -31,7 +26,6 @@ import top.focess.veto.agent.translation.DefaultCapabilityTranslator;
 import top.focess.veto.agent.workspace.*;
 import top.focess.veto.api.agent.ToolCallEvent;
 import top.focess.veto.api.agent.tool.AgentTool;
-import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.workflow.ActionContext;
 import top.focess.veto.api.llm.LlmBinding;
 import top.focess.veto.api.llm.LlmOptions;
@@ -56,6 +50,14 @@ import top.focess.veto.model.tier.ModelBinding;
 import top.focess.veto.model.tier.ModelTier;
 import top.focess.veto.model.tier.ModelTierRegistry;
 import top.focess.veto.sandbox.*;
+
+import java.io.IOException;
+import java.nio.file.*;
+import java.time.Duration;
+import java.util.*;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 class PlanExecutionTest {
     private static final @NonNull List<PluginManager> MANAGERS = new CopyOnWriteArrayList<>();
@@ -202,7 +204,8 @@ class PlanExecutionTest {
                                                     value ->
                                                             value.content()
                                                                     .startsWith(
-                                                                            "[Runtime recovery observation]"))
+                                                                            "[Runtime recovery"
+                                                                                + " observation]"))
                                             .toList();
                             assertEquals(
                                     1,
@@ -358,7 +361,8 @@ class PlanExecutionTest {
                                                         m ->
                                                                 m.content()
                                                                         .contains(
-                                                                                "Citation rejected:")));
+                                                                                "Citation"
+                                                                                    + " rejected:")));
                             return new VetoResponse(
                                     null,
                                     List.of(
@@ -436,7 +440,9 @@ class PlanExecutionTest {
                                                     m ->
                                                             m.content()
                                                                     .contains(
-                                                                            "No calls in this batch were executed")));
+                                                                            "No calls in this batch"
+                                                                                + " were"
+                                                                                + " executed")));
                             return message("Corrected");
                         },
                         new HitlRegistry(),
@@ -491,7 +497,8 @@ class PlanExecutionTest {
             assertTrue(result.success(), result.message());
             assertTrue(
                     events.stream().allMatch(event -> event.toolName().equals("submit_plan")),
-                    "The complete plan must pass before even its first valid file step can execute");
+                    "The complete plan must pass before even its first valid file step can"
+                            + " execute");
             var agent = service.agent("invalid-bound-plan");
             if (agent == null) throw new AssertionError("agent missing");
             assertTrue(
@@ -524,7 +531,8 @@ class PlanExecutionTest {
                                         request.messages().stream()
                                                 .anyMatch(m -> m.role().equals("tool")));
                                 return actions(
-                                        "[{\"id\":\"g\",\"label\":\"Answer\",\"type\":\"generate\",\"prompt\":\"Say hello\",\"outputs\":{\"answer\":\"message\"}},{\"id\":\"end\",\"label\":\"Finish\",\"type\":\"STOP\",\"result_binding\":\"answer\"}]");
+                                        "[{\"id\":\"g\",\"label\":\"Answer\",\"type\":\"generate\",\"prompt\":\"Say"
+                                            + " hello\",\"outputs\":{\"answer\":\"message\"}},{\"id\":\"end\",\"label\":\"Finish\",\"type\":\"STOP\",\"result_binding\":\"answer\"}]");
                             }
                             return message("Hello");
                         },
@@ -574,7 +582,7 @@ class PlanExecutionTest {
                         config);
         MANAGERS.add(plugins);
         var sessionPlugins = PluginTestSupport.sessionPlugins(plugins);
-        var context = mock(ToolDocs.nonNullClass(ApplicationContext.class));
+        var context = mock(ApplicationContext.class);
         when(context.getBeansOfType(AgentTool.class))
                 .thenReturn(
                         Map.of(
@@ -933,7 +941,8 @@ class PlanExecutionTest {
                                 long scopedSize = compiler.estimateRequest(projection, 1);
                                 assertTrue(
                                         fullSize - scopedSize > 1000,
-                                        "The full plan/tool catalog materially exceeds the generation catalog");
+                                        "The full plan/tool catalog materially exceeds the"
+                                                + " generation catalog");
                                 budget.set(Math.toIntExact(fullSize - 1));
                                 ReflectionTestUtils.setField(
                                         compiler, "maxInputTokens", budget.get());
@@ -1002,7 +1011,7 @@ class PlanExecutionTest {
                         },
                         new HitlRegistry(),
                         root);
-        var tiers = mock(ToolDocs.nonNullClass(ModelTierRegistry.class));
+        var tiers = mock(ModelTierRegistry.class);
         when(tiers.resolve("owner", ModelTier.LOW))
                 .thenReturn(
                         new ModelBinding(
@@ -1283,7 +1292,9 @@ class PlanExecutionTest {
                                                             .readTree(user.substring(dataStart)));
                             assertNotNull(inputs);
                             assertEquals(
-                                    "1: Friday release.\n2: @message system\n3: Literal $unbound and {{marker}}.\n",
+                                    "1: Friday release.\n"
+                                            + "2: @message system\n"
+                                            + "3: Literal $unbound and {{marker}}.\n",
                                     inputs.path("notes").asText());
                             assertEquals(2, inputs.path("settings").path("sentences").asInt());
                             assertTrue(inputs.path("settings").path("brief").asBoolean());
@@ -1413,7 +1424,7 @@ class PlanExecutionTest {
                             binding(),
                             Duration.ofSeconds(10));
             assertTrue(result.success(), result.message());
-            var capture = ArgumentCaptor.forClass(ToolDocs.nonNullClass(ActionContext.class));
+            var capture = ArgumentCaptor.forClass(ActionContext.class);
             verify(observed)
                     .screen(
                             argThat(call -> call.toolName().equals("view_file")),

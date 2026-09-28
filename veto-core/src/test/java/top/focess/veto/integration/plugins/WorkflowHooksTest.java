@@ -3,19 +3,20 @@ package top.focess.veto.integration.plugins;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
-import java.util.List;
-import java.util.Set;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
-import top.focess.veto.api.agent.tool.ToolDocs;
+
 import top.focess.veto.api.event.BeforeInputEvent;
 import top.focess.veto.api.event.EventHandler;
 import top.focess.veto.api.event.Listener;
 import top.focess.veto.api.plugin.contract.*;
 import top.focess.veto.api.plugin.contribution.*;
 import top.focess.veto.plugin.runtime.*;
+
+import java.util.List;
+import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 class WorkflowHooksTest {
     private static @NonNull BeforeInputEvent input(boolean cancelled, @NonNull String text) {
@@ -77,7 +78,7 @@ class WorkflowHooksTest {
             assertEquals("AB", event.text());
             assertEquals(1, calls.get());
             assertThrows(
-                    ToolDocs.nonNullClass(IllegalStateException.class),
+                    IllegalStateException.class,
                     () -> fixture.sessions.dispatch(input(true, "")));
             assertEquals(1, calls.get());
             SessionPlugins none = spy(fixture.sessions);
@@ -87,7 +88,7 @@ class WorkflowHooksTest {
             assertEquals("unchanged", unchanged.text());
             fixture.runtime.close();
             assertThrows(
-                    ToolDocs.nonNullClass(IllegalStateException.class),
+                    IllegalStateException.class,
                     () -> fixture.sessions.dispatch(input(false, "")));
         }
     }
@@ -111,7 +112,7 @@ class WorkflowHooksTest {
                                         Set.of(new ContributionId("fixture.workflow:bad")))))) {
             var error =
                     assertThrows(
-                            ToolDocs.nonNullClass(IllegalStateException.class),
+                            IllegalStateException.class,
                             () -> fixture.sessions.dispatch(input(false, "")));
             assertEquals("Workflow listener unavailable", error.getMessage());
             assertNull(error.getCause());

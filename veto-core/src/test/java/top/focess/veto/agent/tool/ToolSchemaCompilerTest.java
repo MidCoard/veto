@@ -4,17 +4,16 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.util.HashMap;
-import java.util.List;
+
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
+
 import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.tool.ParamCategory;
 import top.focess.veto.api.agent.tool.Required;
 import top.focess.veto.api.agent.tool.RequiredWhen;
 import top.focess.veto.api.agent.tool.StringConstraint;
 import top.focess.veto.api.agent.tool.ToolCapability;
-import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.ToolErrorCode;
 import top.focess.veto.api.agent.tool.ToolExecutionException;
 import top.focess.veto.api.agent.tool.ToolSecurity;
@@ -26,6 +25,9 @@ import top.focess.veto.builtin.tools.ViewTaskTool;
 import top.focess.veto.builtin.workspace.DeletePathTool;
 import top.focess.veto.builtin.workspace.FindFilesTool;
 
+import java.util.HashMap;
+import java.util.List;
+
 /**
  * Validates {@link ToolSchemaCompiler#compileFromRecord}, in particular that nested record
  * components are reflected into the schema instead of being flattened to {@code items: string}.
@@ -36,8 +38,7 @@ class ToolSchemaCompilerTest {
     void advertisesQuestionAndOptionCardinalityInNestedSchema() {
         var schema =
                 ToolSchemaCompiler.compileFromRecord(
-                        ToolDocs.nonNullClass(
-                                top.focess.veto.builtin.tools.AskUserTool.Args.class));
+                        top.focess.veto.builtin.tools.AskUserTool.Args.class);
         var questions = schema.path("properties").path("questions");
         assertEquals(1, questions.path("minItems").asInt());
         assertEquals(10, questions.path("maxItems").asInt());
@@ -54,13 +55,13 @@ class ToolSchemaCompilerTest {
                 IllegalArgumentException.class,
                 () ->
                         ToolSchemaCompiler.compileFromRecord(
-                                ToolDocs.nonNullClass(InvalidStringConstraint.class)));
+                                InvalidStringConstraint.class));
     }
 
     @Test
     void advertisesQuestionTextConstraints() {
         var properties =
-                ToolSchemaCompiler.compileFromRecord(ToolDocs.nonNullClass(Question.class))
+                ToolSchemaCompiler.compileFromRecord(Question.class)
                         .path("properties");
         assertEquals(12, properties.path("header").path("maxLength").asInt());
         assertEquals(1, properties.path("header").path("minLength").asInt());
@@ -108,7 +109,7 @@ class ToolSchemaCompilerTest {
                         Danger.SAFE,
                         false,
                         Object.class,
-                        ToolDocs.nonNullClass(NestedContracts.class),
+                        NestedContracts.class,
                         hints);
         var agentDefinition =
                 new AgentToolDefinition(
@@ -117,24 +118,23 @@ class ToolSchemaCompilerTest {
                         ToolCapability.LOOP_CONTROL,
                         Danger.SAFE,
                         Object.class,
-                        ToolDocs.nonNullClass(NestedContracts.class),
+                        NestedContracts.class,
                         hints);
         hints.clear();
         assertEquals(ParamCategory.FILESYSTEM_PATH, nativeDefinition.paramHints().get("path"));
         assertEquals(ParamCategory.FILESYSTEM_PATH, agentDefinition.paramHints().get("path"));
         assertThrows(
-                ToolDocs.nonNullClass(UnsupportedOperationException.class),
+                UnsupportedOperationException.class,
                 () -> nativeDefinition.paramHints().clear());
         assertThrows(
-                ToolDocs.nonNullClass(UnsupportedOperationException.class),
+                UnsupportedOperationException.class,
                 () -> agentDefinition.paramHints().clear());
     }
 
     @Test
     void nestedCollectionsKeepTheirElementSchema() throws Exception {
         JsonNode schema =
-                ToolSchemaCompiler.compileFromRecord(
-                        ToolDocs.nonNullClass(NestedCollections.class));
+                ToolSchemaCompiler.compileFromRecord(NestedCollections.class);
         assertEquals(
                 "integer",
                 schema.path("properties")
@@ -144,12 +144,12 @@ class ToolSchemaCompilerTest {
                         .path("type")
                         .asText());
         assertThrows(
-                ToolDocs.nonNullClass(ToolExecutionException.class),
+                ToolExecutionException.class,
                 () ->
                         NativeToolArgumentValidator.validate(
                                 "matrix",
                                 new ObjectMapper().readTree("{\"matrix\":[[\"wrong\"]]}"),
-                                ToolDocs.nonNullClass(NestedCollections.class)));
+                                NestedCollections.class));
     }
 
     @Test
@@ -158,12 +158,12 @@ class ToolSchemaCompilerTest {
                 List.of("{\"entries\":[null]}", "{\"entries\":[{\"mode\":\"WRITE\"}]}")) {
             ToolExecutionException failure =
                     assertThrows(
-                            ToolDocs.nonNullClass(ToolExecutionException.class),
+                            ToolExecutionException.class,
                             () ->
                                     NativeToolArgumentValidator.validate(
                                             "nested",
                                             new ObjectMapper().readTree(json),
-                                            ToolDocs.nonNullClass(NestedContracts.class)));
+                                            NestedContracts.class));
             assertTrue(String.valueOf(failure.getMessage()).contains("entries[0]"));
         }
         assertDoesNotThrow(
@@ -172,7 +172,7 @@ class ToolSchemaCompilerTest {
                                 "nested",
                                 new ObjectMapper()
                                         .readTree("{\"entries\":[{\"mode\":\"PROMOTE\"}]}"),
-                                ToolDocs.nonNullClass(NestedContracts.class)));
+                                NestedContracts.class));
     }
 
     @Test
@@ -182,25 +182,25 @@ class ToolSchemaCompilerTest {
                         NativeToolArgumentValidator.validate(
                                 "matrix",
                                 new ObjectMapper().readTree("{\"matrix\":[[null]]}"),
-                                ToolDocs.nonNullClass(NestedCollections.class)));
+                                NestedCollections.class));
     }
 
     @Test
     void nullArgumentsAreRejectedAtTheBoundary() {
         assertThrows(
-                ToolDocs.nonNullClass(ToolExecutionException.class),
+                ToolExecutionException.class,
                 () ->
                         NativeToolArgumentValidator.validate(
                                 "matrix",
                                 new ObjectMapper().nullNode(),
-                                ToolDocs.nonNullClass(NestedCollections.class)));
+                                NestedCollections.class));
     }
 
     @Test
     void nestedRecordCollectionGetsObjectItemsSchema() {
         JsonNode schema =
                 ToolSchemaCompiler.compileFromRecord(
-                        ToolDocs.nonNullClass(RunCommandTool.Args.class));
+                        RunCommandTool.Args.class);
 
         JsonNode commands = schema.path("properties").path("commands");
         assertEquals("array", commands.path("type").asText(), "commands is an array");
@@ -241,9 +241,9 @@ class ToolSchemaCompilerTest {
     void processToolSchemasDoNotExposeWorkingDirectory() {
         JsonNode runCommand =
                 ToolSchemaCompiler.compileFromRecord(
-                        ToolDocs.nonNullClass(RunCommandTool.Args.class));
+                        RunCommandTool.Args.class);
         JsonNode runTask =
-                ToolSchemaCompiler.compileFromRecord(ToolDocs.nonNullClass(RunTaskTool.Args.class));
+                ToolSchemaCompiler.compileFromRecord(RunTaskTool.Args.class);
 
         assertFalse(runCommand.path("properties").has("cwd"));
         assertFalse(runTask.path("properties").has("cwd"));
@@ -252,14 +252,12 @@ class ToolSchemaCompilerTest {
     @Test
     void toolManagedLimitsAreNotExposedAsCallArguments() {
         JsonNode findFiles =
-                ToolSchemaCompiler.compileFromRecord(
-                        ToolDocs.nonNullClass(FindFilesTool.Args.class));
+                ToolSchemaCompiler.compileFromRecord(FindFilesTool.Args.class);
         JsonNode viewTask =
-                ToolSchemaCompiler.compileFromRecord(
-                        ToolDocs.nonNullClass(ViewTaskTool.Args.class));
+                ToolSchemaCompiler.compileFromRecord(ViewTaskTool.Args.class);
         JsonNode recallMemory =
                 ToolSchemaCompiler.compileFromRecord(
-                        ToolDocs.nonNullClass(MemoryTools.RecallMemory.Args.class));
+                        MemoryTools.RecallMemory.Args.class);
 
         assertFalse(findFiles.path("properties").has("maxResults"));
         assertFalse(viewTask.path("properties").has("lines"));
@@ -270,8 +268,8 @@ class ToolSchemaCompilerTest {
     @Test
     void destructiveToolDeclaresItsDangerFloorDirectly() {
         ToolSecurity security =
-                ToolDocs.nonNullClass(DeletePathTool.class)
-                        .getAnnotation(ToolDocs.nonNullClass(ToolSecurity.class));
+                DeletePathTool.class
+                        .getAnnotation(ToolSecurity.class);
         if (security == null) {
             throw new AssertionError("delete_path must declare @ToolSecurity");
         }
@@ -297,7 +295,7 @@ class ToolSchemaCompilerTest {
     void schemaRoundTripsThroughObjectMapper() throws Exception {
         JsonNode schema =
                 ToolSchemaCompiler.compileFromRecord(
-                        ToolDocs.nonNullClass(RunCommandTool.Args.class));
+                        RunCommandTool.Args.class);
         String json = new ObjectMapper().writeValueAsString(schema);
         assertTrue(json.contains("\"commands\""), "serialized schema keeps commands");
         assertTrue(json.contains("\"executable\""), "serialized schema keeps nested executable");
@@ -307,7 +305,7 @@ class ToolSchemaCompilerTest {
     void forgetMemoryIdIsRequired() {
         JsonNode schema =
                 ToolSchemaCompiler.compileFromRecord(
-                        ToolDocs.nonNullClass(MemoryTools.ForgetMemory.Args.class));
+                        MemoryTools.ForgetMemory.Args.class);
 
         assertTrue(
                 contains(schema.path("required"), "memoryId"),
@@ -318,7 +316,7 @@ class ToolSchemaCompilerTest {
     void enumArgumentIsRenderedAsAStringEnum() {
         JsonNode schema =
                 ToolSchemaCompiler.compileFromRecord(
-                        ToolDocs.nonNullClass(MemoryTools.WriteMemory.Args.class));
+                        MemoryTools.WriteMemory.Args.class);
 
         JsonNode mode = schema.path("properties").path("mode");
         assertEquals("string", mode.path("type").asText());
@@ -330,18 +328,18 @@ class ToolSchemaCompilerTest {
     @Test
     void primitiveRequirementMustBeExplicit() {
         JsonNode schema =
-                ToolSchemaCompiler.compileFromRecord(
-                        ToolDocs.nonNullClass(ExplicitPrimitive.class));
+                ToolSchemaCompiler.compileFromRecord(ExplicitPrimitive.class);
 
         assertTrue(contains(schema.path("required"), "count"));
         IllegalArgumentException failure =
                 assertThrows(
-                        ToolDocs.nonNullClass(IllegalArgumentException.class),
+                        IllegalArgumentException.class,
                         () ->
                                 ToolSchemaCompiler.compileFromRecord(
-                                        ToolDocs.nonNullClass(ImplicitPrimitive.class)));
+                                        ImplicitPrimitive.class));
         assertEquals(
-                "Primitive tool parameter 'count' must declare @Required or use a boxed optional type",
+                "Primitive tool parameter 'count' must declare @Required or use a boxed optional"
+                        + " type",
                 failure.getMessage());
     }
 
@@ -349,10 +347,10 @@ class ToolSchemaCompilerTest {
     void referencesUseNonNullRatherThanRequired() {
         IllegalArgumentException failure =
                 assertThrows(
-                        ToolDocs.nonNullClass(IllegalArgumentException.class),
+                        IllegalArgumentException.class,
                         () ->
                                 ToolSchemaCompiler.compileFromRecord(
-                                        ToolDocs.nonNullClass(RequiredReference.class)));
+                                        RequiredReference.class));
 
         assertEquals(
                 "Reference tool parameter 'value' must use @NonNull instead of @Required",
@@ -365,12 +363,12 @@ class ToolSchemaCompilerTest {
 
         ToolExecutionException missing =
                 assertThrows(
-                        ToolDocs.nonNullClass(ToolExecutionException.class),
+                        ToolExecutionException.class,
                         () ->
                                 NativeToolArgumentValidator.validate(
                                         "conditional",
                                         mapper.readTree("{\"mode\":\"WRITE\"}"),
-                                        ToolDocs.nonNullClass(ConditionalArgs.class)));
+                                        ConditionalArgs.class));
         assertTrue(
                 String.valueOf(missing.getMessage())
                         .contains("missing required parameter 'content' when 'mode' is 'WRITE'"));
@@ -378,12 +376,12 @@ class ToolSchemaCompilerTest {
 
         ToolExecutionException blank =
                 assertThrows(
-                        ToolDocs.nonNullClass(ToolExecutionException.class),
+                        ToolExecutionException.class,
                         () ->
                                 NativeToolArgumentValidator.validate(
                                         "conditional",
                                         mapper.readTree("{\"mode\":\"WRITE\",\"content\":\"  \"}"),
-                                        ToolDocs.nonNullClass(ConditionalArgs.class)));
+                                        ConditionalArgs.class));
         assertTrue(
                 String.valueOf(blank.getMessage())
                         .contains("parameter 'content' must not be blank"));
@@ -394,6 +392,6 @@ class ToolSchemaCompilerTest {
                         NativeToolArgumentValidator.validate(
                                 "conditional",
                                 mapper.readTree("{\"mode\":\"PROMOTE\"}"),
-                                ToolDocs.nonNullClass(ConditionalArgs.class)));
+                                ConditionalArgs.class));
     }
 }

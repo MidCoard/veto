@@ -5,17 +5,19 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.util.ArrayList;
-import java.util.List;
+
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
-import top.focess.veto.api.agent.tool.ToolDocs;
+
 import top.focess.veto.api.agent.tool.ToolErrorCode;
 import top.focess.veto.api.agent.tool.ToolExecutionException;
 import top.focess.veto.builtin.questions.Option;
 import top.focess.veto.builtin.questions.Question;
 import top.focess.veto.builtin.response.AnswerWithCitationsTool;
 import top.focess.veto.builtin.tools.AskUserTool;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * The declarative argument bounds of the builtin tools live only on their record annotations
@@ -25,9 +27,9 @@ import top.focess.veto.builtin.tools.AskUserTool;
  */
 class BuiltinToolSchemaValidationTest {
     private static final @NonNull Class<AskUserTool.Args> ASK_USER_ARGS =
-            ToolDocs.nonNullClass(AskUserTool.Args.class);
+            AskUserTool.Args.class;
     private static final @NonNull Class<AnswerWithCitationsTool.Args> ANSWER_WITH_CITATIONS_ARGS =
-            ToolDocs.nonNullClass(AnswerWithCitationsTool.Args.class);
+            AnswerWithCitationsTool.Args.class;
 
     private final @NonNull ObjectMapper mapper = new ObjectMapper();
 
@@ -104,7 +106,7 @@ class BuiltinToolSchemaValidationTest {
         JsonNode json = mapper.valueToTree(args);
         var error =
                 assertThrows(
-                        ToolDocs.nonNullClass(ToolExecutionException.class),
+                        ToolExecutionException.class,
                         () -> NativeToolArgumentValidator.validate(toolName, json, argsClass));
         assertEquals(ToolErrorCode.VALIDATION.INVALID_ARGUMENTS, error.errorCode());
     }

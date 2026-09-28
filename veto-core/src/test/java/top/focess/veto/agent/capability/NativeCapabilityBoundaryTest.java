@@ -2,12 +2,13 @@ package top.focess.veto.agent.capability;
 
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-import java.util.List;
 import org.junit.jupiter.api.Test;
+
 import top.focess.veto.agent.tool.ToolCallContextHolder;
-import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.integration.plugins.ProcessHostFixture;
 import top.focess.veto.sandbox.TestSandboxFactory;
+
+import java.util.List;
 
 class NativeCapabilityBoundaryTest {
     @Test
@@ -16,12 +17,11 @@ class NativeCapabilityBoundaryTest {
         try (var fixture =
                 new ProcessHostFixture(
                         TestSandboxFactory.uncontainedSubprocesses(), List.of(), false)) {
-            assertThrows(ToolDocs.nonNullClass(SecurityException.class), fixture.host::runApproved);
-            assertThrows(
-                    ToolDocs.nonNullClass(SecurityException.class), fixture.host::startApproved);
+            assertThrows(SecurityException.class, fixture.host::runApproved);
+            assertThrows(SecurityException.class, fixture.host::startApproved);
             var network = new NetworkEgressCapabilityImpl(5, 1000, false);
             assertThrows(
-                    ToolDocs.nonNullClass(SecurityException.class),
+                    SecurityException.class,
                     () -> network.openApprovedDestination("url"));
         }
     }

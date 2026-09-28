@@ -2,6 +2,28 @@ package top.focess.veto.integration.plugins;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import org.jspecify.annotations.NonNull;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.test.annotation.DirtiesContext;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
+
+import top.focess.veto.VetoApplication;
+import top.focess.veto.agent.intercept.ToolExecutionPermit;
+import top.focess.veto.agent.tool.*;
+import top.focess.veto.agent.workspace.PathMode;
+import top.focess.veto.agent.workspace.Workspace;
+import top.focess.veto.api.agent.screening.Danger;
+import top.focess.veto.api.agent.tool.ToolResultStatus;
+import top.focess.veto.api.llm.ToolCall;
+import top.focess.veto.api.llm.ToolResultPresentationMode;
+import top.focess.veto.model.SessionEntity;
+import top.focess.veto.model.SessionRepository;
+import top.focess.veto.plugin.runtime.*;
+
 import java.io.File;
 import java.io.IOException;
 import java.net.URI;
@@ -14,27 +36,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
-import org.jspecify.annotations.NonNull;
-import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.web.server.LocalServerPort;
-import org.springframework.test.annotation.DirtiesContext;
-import org.springframework.test.context.DynamicPropertyRegistry;
-import org.springframework.test.context.DynamicPropertySource;
-import top.focess.veto.VetoApplication;
-import top.focess.veto.agent.intercept.ToolExecutionPermit;
-import top.focess.veto.agent.tool.*;
-import top.focess.veto.agent.workspace.PathMode;
-import top.focess.veto.agent.workspace.Workspace;
-import top.focess.veto.api.agent.screening.Danger;
-import top.focess.veto.api.agent.tool.ToolDocs;
-import top.focess.veto.api.agent.tool.ToolResultStatus;
-import top.focess.veto.api.llm.ToolCall;
-import top.focess.veto.api.llm.ToolResultPresentationMode;
-import top.focess.veto.model.SessionEntity;
-import top.focess.veto.model.SessionRepository;
-import top.focess.veto.plugin.runtime.*;
 
 /**
  * Starts the real Veto application and HTTP listener, then dispatches through its real tool engine.
@@ -108,7 +109,7 @@ class ScriptPluginBootTest {
         assertTrue(plugins.scriptPlugins().getFirst().active());
         var definition =
                 assertInstanceOf(
-                        ToolDocs.nonNullClass(RemoteToolDefinition.class),
+                        RemoteToolDefinition.class,
                         top.focess.veto.util.Nullness.requireNonNull(
                                 engine.resolveDefinition("plugin_text__length")));
         assertEquals(Danger.ELEVATED, definition.defaultDanger());

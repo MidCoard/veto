@@ -8,13 +8,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import java.util.ArrayList;
-import java.util.List;
+
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+
 import top.focess.veto.api.agent.tool.CapabilityTool;
 import top.focess.veto.api.agent.tool.NativeTool;
 import top.focess.veto.api.agent.tool.ToolCapability;
@@ -26,6 +26,9 @@ import top.focess.veto.api.agent.tool.WorkspaceReadTool;
 import top.focess.veto.api.agent.tool.WorkspaceWriteTool;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
 import top.focess.veto.integration.plugins.PluginManager;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Cross-checks every documented call example against the tool's real runtime argument validator.
@@ -42,15 +45,17 @@ class ToolContractIntegrityTest {
     void readProductionPluginCatalog() {
         var natives = new ArrayList<NativeTool<?>>();
         var contributed = new ArrayList<CapabilityTool<?>>();
-        for (var entry : plugins.catalog().entries(StandardContributionPoints.NATIVE_TOOLS)) {
+        for (var entry : plugins.catalog().entries(StandardContributionPoints.TOOLS)) {
             var tool = entry.implementation();
-            contributed.add(tool);
+            if (tool instanceof CapabilityTool<?> local) contributed.add(local);
             if (tool instanceof NativeTool<?> nativeTool) natives.add(nativeTool);
         }
         tools = List.copyOf(contributed);
         nativeTools = List.copyOf(natives);
         assertEquals(
-                plugins.catalog().entries(StandardContributionPoints.NATIVE_TOOLS).size(),
+                plugins.catalog().entries(StandardContributionPoints.TOOLS).stream()
+                        .filter(entry -> entry.implementation() instanceof CapabilityTool<?>)
+                        .count(),
                 tools.size(),
                 "every contributed handler must be checked");
         assertEquals(38, tools.size());
@@ -86,7 +91,7 @@ class ToolContractIntegrityTest {
     void everyWorkspaceReadToolUsesTheTypedCapabilityBoundary() {
         for (NativeTool<?> tool : nativeTools) {
             ToolSecurity security =
-                    tool.getClass().getAnnotation(ToolDocs.nonNullClass(ToolSecurity.class));
+                    tool.getClass().getAnnotation(ToolSecurity.class);
             if (security != null && security.capability() == ToolCapability.WORKSPACE_READ) {
                 assertTrue(
                         tool instanceof WorkspaceReadTool<?>,
@@ -101,7 +106,7 @@ class ToolContractIntegrityTest {
     void everyWorkspaceWriteToolUsesTheTypedCapabilityBoundary() {
         for (NativeTool<?> tool : nativeTools) {
             ToolSecurity security =
-                    tool.getClass().getAnnotation(ToolDocs.nonNullClass(ToolSecurity.class));
+                    tool.getClass().getAnnotation(ToolSecurity.class);
             if (security != null && security.capability() == ToolCapability.WORKSPACE_WRITE) {
                 assertTrue(
                         tool instanceof WorkspaceWriteTool<?>,
@@ -143,7 +148,7 @@ class ToolContractIntegrityTest {
             ((ObjectNode) missingParent).remove(required.name());
             ToolExecutionException missingFailure =
                     assertThrows(
-                            ToolDocs.nonNullClass(ToolExecutionException.class),
+                            ToolExecutionException.class,
                             () ->
                                     NativeToolArgumentValidator.validate(
                                             toolName, missing, argsClass),
@@ -164,7 +169,7 @@ class ToolContractIntegrityTest {
             ((ObjectNode) nullParent).putNull(required.name());
             ToolExecutionException nullFailure =
                     assertThrows(
-                            ToolDocs.nonNullClass(ToolExecutionException.class),
+                            ToolExecutionException.class,
                             () ->
                                     NativeToolArgumentValidator.validate(
                                             toolName, explicitNull, argsClass),

@@ -1,13 +1,14 @@
 package top.focess.veto.builtin.tools;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+
 import org.jspecify.annotations.NonNull;
+
 import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.tool.Doc;
 import top.focess.veto.api.agent.tool.NativeTool;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.agent.tool.ToolDoc;
-import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.ToolErrorCode;
 import top.focess.veto.api.agent.tool.ToolErrors;
 import top.focess.veto.api.agent.tool.ToolJson;
@@ -23,7 +24,8 @@ import top.focess.veto.builtin.process.TaskControlCapability;
 @ToolDoc(
         resultFormats = {ToolResultFormat.JSON},
         description =
-                "Force-stop a background task launched by run_task. The only sanctioned way to stop a task; idempotent.",
+                "Force-stop a background task launched by run_task. The only sanctioned way to stop"
+                        + " a task; idempotent.",
         behavior =
                 """
                 Requests a force-stop of the task's direct process and waits up to five seconds \
@@ -59,7 +61,8 @@ import top.focess.veto.builtin.process.TaskControlCapability;
                 be alive; inspect it with `view_task` before assuming termination completed.
                 """,
         security =
-                "You can stop only your own tasks. Prefer this tool over an operating-system kill command.",
+                "You can stop only your own tasks. Prefer this tool over an operating-system kill"
+                        + " command.",
         examples = {
             "{\"taskId\": \"bg-3\"}",
             "{\"taskId\": \"bg-7\"}",
@@ -69,7 +72,8 @@ import top.focess.veto.builtin.process.TaskControlCapability;
         returnExamples = {
             "{\"status\": \"stopped\", \"taskId\": \"bg-3\", \"alive\": false, \"exitCode\": 1}",
             "{\"status\": \"stop_requested\", \"taskId\": \"bg-7\", \"alive\": true}",
-            "{\"status\": \"already_exited\", \"taskId\": \"bg-12\", \"alive\": false, \"exitCode\": 0}",
+            "{\"status\": \"already_exited\", \"taskId\": \"bg-12\", \"alive\": false,"
+                    + " \"exitCode\": 0}",
             "Task not found: bg-99"
         })
 public final class StopTaskTool implements NativeTool<StopTaskTool.Args> {
@@ -95,7 +99,7 @@ public final class StopTaskTool implements NativeTool<StopTaskTool.Args> {
 
     @Override
     public @NonNull Class<Args> getArgsClass() {
-        return ToolDocs.nonNullClass(Args.class);
+        return Args.class;
     }
 
     @Override

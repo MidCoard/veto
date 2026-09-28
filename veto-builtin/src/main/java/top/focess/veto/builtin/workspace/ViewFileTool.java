@@ -1,13 +1,7 @@
 package top.focess.veto.builtin.workspace;
 
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.StringReader;
-import java.nio.ByteBuffer;
-import java.nio.charset.MalformedInputException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.NoSuchFileException;
 import org.jspecify.annotations.NonNull;
+
 import top.focess.veto.api.agent.capability.WorkspaceFile;
 import top.focess.veto.api.agent.capability.WorkspaceReadCapability;
 import top.focess.veto.api.agent.screening.Danger;
@@ -16,12 +10,19 @@ import top.focess.veto.api.agent.tool.ParamCategory;
 import top.focess.veto.api.agent.tool.SecurityHint;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.agent.tool.ToolDoc;
-import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.ToolErrorCode;
 import top.focess.veto.api.agent.tool.ToolErrors;
 import top.focess.veto.api.agent.tool.ToolResultFormat;
 import top.focess.veto.api.agent.tool.ToolSecurity;
 import top.focess.veto.api.agent.tool.WorkspaceReadTool;
+
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.StringReader;
+import java.nio.ByteBuffer;
+import java.nio.charset.MalformedInputException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.NoSuchFileException;
 
 /** {@code view_file} — read lines of a text file from the local filesystem. */
 @ToolSecurity(capability = ToolCapability.WORKSPACE_READ, defaultDanger = Danger.SAFE)
@@ -37,9 +38,11 @@ import top.focess.veto.api.agent.tool.WorkspaceReadTool;
                 Output stops at 5000 lines or 1000000 characters with \
                 `[truncated; request a narrower line range]`.""",
         whenToUse =
-                "Inspect text or read current source before editing; numbered lines support replace_file_content.",
+                "Inspect text or read current source before editing; numbered lines support"
+                        + " replace_file_content.",
         whenNotToUse =
-                "Use grep_search for cross-file patterns and list_dir for discovery. UTF-8 text only; read-only.",
+                "Use grep_search for cross-file patterns and list_dir for discovery. UTF-8 text"
+                        + " only; read-only.",
         resultContract =
                 """
                     - Success: one output line per source line as \
@@ -68,7 +71,8 @@ import top.focess.veto.api.agent.tool.WorkspaceReadTool;
                     refused with PATH_PROTECTED.
                     """,
         security =
-                "Detected secrets are replaced with session references before lines are returned, so file secrets do not enter the conversation.",
+                "Detected secrets are replaced with session references before lines are returned,"
+                        + " so file secrets do not enter the conversation.",
         examples = {
             "{\"absolutePath\": \"/abs/src/Main.java\"}",
             "{\"absolutePath\": \"/abs/src/Main.java\", \"startLine\": 10, \"endLine\": 20}",
@@ -78,7 +82,9 @@ import top.focess.veto.api.agent.tool.WorkspaceReadTool;
         },
         returnExamples = {
             "1: package com.example;\n2: \n3: public class Main {",
-            "10:     public static void main(String[] args) {\n11:         System.out.println(\"hi\");\n12:     }",
+            "10:     public static void main(String[] args) {\n"
+                    + "11:         System.out.println(\"hi\");\n"
+                    + "12:     }",
             "100: }\n101: ",
             "1: server:\n2:   port: 8443\n3:   host: 0.0.0.0",
             "Not a regular file: /abs/project/missing-file.txt"
@@ -111,7 +117,7 @@ public final class ViewFileTool implements WorkspaceReadTool<ViewFileTool.Args> 
 
     @Override
     public @NonNull Class<Args> getArgsClass() {
-        return ToolDocs.nonNullClass(Args.class);
+        return Args.class;
     }
 
     @Override

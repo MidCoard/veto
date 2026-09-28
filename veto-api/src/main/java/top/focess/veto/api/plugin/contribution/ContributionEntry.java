@@ -10,5 +10,5 @@ import org.jspecify.annotations.NonNull;
  * @param source loader-attributed contribution source
  * @param implementation registered implementation
  */
-public record ContributionEntry<T extends @NonNull Object>(
+public record ContributionEntry<T>(
         @NonNull ContributionId id, @NonNull ContributionSource source, T implementation) {}

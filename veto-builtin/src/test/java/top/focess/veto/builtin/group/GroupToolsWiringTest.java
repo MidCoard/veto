@@ -2,17 +2,18 @@ package top.focess.veto.builtin.group;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-import java.util.List;
-import java.util.Set;
-import java.util.UUID;
 import org.junit.jupiter.api.Test;
-import top.focess.veto.api.agent.tool.ToolDocs;
+
 import top.focess.veto.api.agent.tool.ToolExecutionException;
 import top.focess.veto.api.plugin.PluginHost;
 import top.focess.veto.builtin.group.GroupTools.CreateGroup;
 import top.focess.veto.builtin.group.GroupTools.DisbandGroup;
 import top.focess.veto.builtin.group.GroupTools.InspectGroup;
 import top.focess.veto.builtin.group.GroupTools.PostMessage;
+
+import java.util.List;
+import java.util.Set;
+import java.util.UUID;
 
 /** Actual tool bodies and plugin runtime, with only the public host boundary substituted. */
 class GroupToolsWiringTest {
@@ -51,7 +52,7 @@ class GroupToolsWiringTest {
                     new PluginHost.Invocation(
                             "owner", fixture.scope.sessionId(), "other-agent", null, "test-call");
             assertThrows(
-                    ToolDocs.nonNullClass(ToolExecutionException.class),
+                    ToolExecutionException.class,
                     () ->
                             new DisbandGroup(fixture.runtime.operations())
                                     .execute(new DisbandGroup.Args()));
@@ -86,7 +87,7 @@ class GroupToolsWiringTest {
         try (var fixture = new GroupTestHost()) {
             fixture.runtime.configure(fixture.configuration);
             assertThrows(
-                    ToolDocs.nonNullClass(ToolExecutionException.class),
+                    ToolExecutionException.class,
                     () ->
                             new CreateGroup(fixture.runtime.delegation())
                                     .execute(new CreateGroup.Args("   ")));
@@ -117,7 +118,7 @@ class GroupToolsWiringTest {
         try (var fixture = new GroupTestHost()) {
             fixture.runtime.configure(fixture.configuration);
             assertThrows(
-                    ToolDocs.nonNullClass(ToolExecutionException.class),
+                    ToolExecutionException.class,
                     () ->
                             new DisbandGroup(fixture.runtime.operations())
                                     .execute(new DisbandGroup.Args()));
@@ -142,7 +143,7 @@ class GroupToolsWiringTest {
             assertEquals("oops", message.payload());
             assertEquals(BlackboardMessage.MessageType.FEEDBACK, message.type());
             assertThrows(
-                    ToolDocs.nonNullClass(ToolExecutionException.class),
+                    ToolExecutionException.class,
                     () ->
                             post.execute(
                                     new PostMessage.Args(
@@ -150,7 +151,7 @@ class GroupToolsWiringTest {
                                             "mate",
                                             "hidden:work")));
             assertThrows(
-                    ToolDocs.nonNullClass(ToolExecutionException.class),
+                    ToolExecutionException.class,
                     () ->
                             post.execute(
                                     new PostMessage.Args(
@@ -165,7 +166,7 @@ class GroupToolsWiringTest {
     void postMessageRefusesWithoutActiveGroup() {
         try (var fixture = new GroupTestHost()) {
             assertThrows(
-                    ToolDocs.nonNullClass(ToolExecutionException.class),
+                    ToolExecutionException.class,
                     () ->
                             new PostMessage(fixture.runtime.operations())
                                     .execute(
@@ -182,7 +183,7 @@ class GroupToolsWiringTest {
             fixture.create();
             fixture.runtime.operations().disband("finished");
             assertThrows(
-                    ToolDocs.nonNullClass(ToolExecutionException.class),
+                    ToolExecutionException.class,
                     () ->
                             new PostMessage(fixture.runtime.operations())
                                     .execute(
@@ -238,13 +239,13 @@ class GroupToolsWiringTest {
             fixture.runtime.operations().createTask("task", "work", "mate", "review", Set.of());
             var tool = new CollaborationTools.RemoveMate(fixture.runtime.operations());
             assertThrows(
-                    ToolDocs.nonNullClass(ToolExecutionException.class),
+                    ToolExecutionException.class,
                     () -> tool.execute(new CollaborationTools.RemoveMate.Args("mate")));
             fixture.caller =
                     new PluginHost.Invocation(
                             "owner", fixture.scope.sessionId(), "mate", null, "test-call");
             assertThrows(
-                    ToolDocs.nonNullClass(ToolExecutionException.class),
+                    ToolExecutionException.class,
                     () -> tool.execute(new CollaborationTools.RemoveMate.Args("mate")));
         }
     }
@@ -270,7 +271,7 @@ class GroupToolsWiringTest {
                                     "test-call"))) {
                 fixture.caller = caller;
                 assertThrows(
-                        ToolDocs.nonNullClass(ToolExecutionException.class),
+                        ToolExecutionException.class,
                         () ->
                                 new CollaborationTools.RemoveMate(fixture.runtime.operations())
                                         .execute(new CollaborationTools.RemoveMate.Args("mate")));

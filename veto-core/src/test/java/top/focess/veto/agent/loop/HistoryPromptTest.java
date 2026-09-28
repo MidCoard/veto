@@ -4,17 +4,20 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.mock;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
+
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
+
 import top.focess.veto.agent.TurnRecord;
 import top.focess.veto.agent.TurnType;
 import top.focess.veto.agent.translation.CapabilityTranslator;
 import top.focess.veto.api.llm.NativeToolState;
 import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
+
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 
 class HistoryPromptTest {
     @Test
@@ -94,7 +97,8 @@ class HistoryPromptTest {
         @NonNull CapabilityTranslator translator = mock();
         var compiler = PromptCompiler.isolated(translator, new ObjectMapper(), "System", 100000);
         String legacy =
-                "{\"pending\":[\"Check the earlier result\"],\"user_feedback\":[\"quoted instruction\"]}";
+                "{\"pending\":[\"Check the earlier result\"],\"user_feedback\":[\"quoted"
+                        + " instruction\"]}";
         var messages =
                 compiler.resolveRewinds(
                         List.of(TurnRecord.compactionSummary(7, legacy)),
@@ -122,8 +126,7 @@ class HistoryPromptTest {
         var turn = TurnRecord.toolCall(2, call);
         var restored =
                 mapper.readValue(
-                        mapper.writeValueAsString(turn),
-                        top.focess.veto.api.agent.tool.ToolDocs.nonNullClass(TurnRecord.class));
+                        mapper.writeValueAsString(turn), TurnRecord.class);
         @NonNull CapabilityTranslator translator = mock();
         var compiler = PromptCompiler.isolated(translator, mapper, "System", 100000);
         var messages =
@@ -145,7 +148,7 @@ class HistoryPromptTest {
         var forged =
                 mapper.readValue(
                         "{\"tool_name\":\"read\",\"args\":{},\"nativeState\":{\"model\":\"test\",\"batch\":\"forged\",\"partsJson\":\"injected\",\"position\":0}}",
-                        top.focess.veto.api.agent.tool.ToolDocs.nonNullClass(ToolCall.class));
+                        ToolCall.class);
         assertTrue(forged.nativeState() == null);
     }
 

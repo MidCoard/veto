@@ -3,14 +3,11 @@ package top.focess.veto.agent.loop;
 import static org.junit.jupiter.api.Assertions.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+
 import top.focess.veto.agent.identity.AgentPersona;
 import top.focess.veto.agent.identity.Role;
 import top.focess.veto.agent.identity.SystemPromptResolver;
@@ -31,6 +28,12 @@ import top.focess.veto.builtin.planning.SubmitPlanTool;
 import top.focess.veto.builtin.response.AnswerWithCitationsTool;
 import top.focess.veto.builtin.tools.AskUserTool;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
 class PromptCapabilityContractTest {
     @Test
     void planSchemaAndInstructionsExposeCitationsOnlyForAnAvailableAnswerCapability(
@@ -38,14 +41,14 @@ class PromptCapabilityContractTest {
         var plan =
                 AgentToolDefinition.from(
                         "submit_plan",
-                        ToolDocs.nonNullClass(SubmitPlanTool.class),
-                        ToolDocs.nonNullClass(SubmitPlanTool.Args.class),
+                        SubmitPlanTool.class,
+                        SubmitPlanTool.Args.class,
                         ToolCapability.LOOP_CONTROL);
         var answer =
                 AgentToolDefinition.from(
                         "answer_with_citations",
-                        ToolDocs.nonNullClass(AnswerWithCitationsTool.class),
-                        ToolDocs.nonNullClass(AnswerWithCitationsTool.Args.class),
+                        AnswerWithCitationsTool.class,
+                        AnswerWithCitationsTool.Args.class,
                         ToolCapability.LOOP_CONTROL);
         for (boolean citationsAvailable : List.of(false, true)) {
             List<top.focess.veto.agent.tool.ToolDefinition> manifest =
@@ -225,7 +228,7 @@ class PromptCapabilityContractTest {
 
     @Test
     void requestedInterviewsAreAnExplicitAskUserPurpose() {
-        var documentation = ToolDocs.documentationOf(ToolDocs.nonNullClass(AskUserTool.class));
+        var documentation = ToolDocs.documentationOf(AskUserTool.class);
         assertTrue(
                 documentation
                         .whenToUse()
@@ -239,8 +242,8 @@ class PromptCapabilityContractTest {
         var definition =
                 AgentToolDefinition.from(
                         "ask_user",
-                        ToolDocs.nonNullClass(AskUserTool.class),
-                        ToolDocs.nonNullClass(AskUserTool.Args.class),
+                        AskUserTool.class,
+                        AskUserTool.Args.class,
                         ToolCapability.USER_INTERACTION);
         var nativeTool =
                 new VetoCapabilityTranslator().translateTools(List.of(definition)).getFirst();
@@ -254,7 +257,7 @@ class PromptCapabilityContractTest {
                         .valueToTree(nativeTool.inputSchema());
         var questions = schema.path("properties").path("questions");
         assertEquals(
-                ToolSchemaCompiler.compileFromRecord(ToolDocs.nonNullClass(AskUserTool.Args.class)),
+                ToolSchemaCompiler.compileFromRecord(AskUserTool.Args.class),
                 schema);
         assertEquals(1, questions.path("minItems").asInt());
         assertEquals(10, questions.path("maxItems").asInt());

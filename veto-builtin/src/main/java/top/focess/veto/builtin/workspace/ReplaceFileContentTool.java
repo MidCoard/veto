@@ -1,9 +1,7 @@
 package top.focess.veto.builtin.workspace;
 
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.NoSuchFileException;
 import org.jspecify.annotations.NonNull;
+
 import top.focess.veto.api.agent.capability.WorkspaceWriteCapability;
 import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.tool.Doc;
@@ -12,13 +10,16 @@ import top.focess.veto.api.agent.tool.Required;
 import top.focess.veto.api.agent.tool.SecurityHint;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.agent.tool.ToolDoc;
-import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.ToolErrorCode;
 import top.focess.veto.api.agent.tool.ToolErrors;
 import top.focess.veto.api.agent.tool.ToolJson;
 import top.focess.veto.api.agent.tool.ToolResultFormat;
 import top.focess.veto.api.agent.tool.ToolSecurity;
 import top.focess.veto.api.agent.tool.WorkspaceWriteTool;
+
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.NoSuchFileException;
 
 /** {@code replace_file_content} — replace a single contiguous block of text in an existing file. */
 @ToolSecurity(capability = ToolCapability.WORKSPACE_WRITE, defaultDanger = Danger.ELEVATED)
@@ -88,13 +89,34 @@ import top.focess.veto.api.agent.tool.WorkspaceWriteTool;
                     Windows reparse-point targets are rejected rather than followed or replaced.
                     """,
         security =
-                "The matched block is replaced in place, so an unintended unique match overwrites the wrong text; quote enough context to pin the target. A failed match leaves the file unchanged.",
+                "The matched block is replaced in place, so an unintended unique match overwrites"
+                        + " the wrong text; quote enough context to pin the target. A failed match"
+                        + " leaves the file unchanged.",
         examples = {
-            "{\"absolutePath\": \"/abs/project/src/Main.java\", \"startLine\": 12, \"endLine\": 12, \"targetContent\": \"int x = 1;\", \"replacementContent\": \"int x = 2;\"}",
-            "{\"absolutePath\": \"/abs/project/src/Main.java\", \"startLine\": 5, \"endLine\": 8, \"targetContent\": \"    void run() {\\n        start();\\n    }\", \"replacementContent\": \"    void run() {\\n        prepare();\\n        start();\\n    }\"}",
-            "{\"absolutePath\": \"/abs/project/src/Main.java\", \"startLine\": 20, \"endLine\": 22, \"targetContent\": \"    // TODO: drop debug logging\\n    log.debug(\\\"state\\\");\\n\", \"replacementContent\": \"\"}",
-            "{\"absolutePath\": \"/abs/project/src/Service.java\", \"startLine\": 40, \"endLine\": 46, \"targetContent\": \"    @Override\\n    public String name() {\\n        return \\\"legacy\\\";\\n    }\", \"replacementContent\": \"    @Override\\n    public String name() {\\n        return \\\"modern\\\";\\n    }\"}",
-            "{\"absolutePath\": \"/abs/project/src/Main.java\", \"startLine\": 1, \"endLine\": 5, \"targetContent\": \"this text does not exist anywhere\", \"replacementContent\": \"x\"}"
+            "{\"absolutePath\": \"/abs/project/src/Main.java\", \"startLine\": 12, \"endLine\": 12,"
+                    + " \"targetContent\": \"int x = 1;\", \"replacementContent\": \"int x = 2;\"}",
+            "{\"absolutePath\": \"/abs/project/src/Main.java\", \"startLine\": 5, \"endLine\": 8,"
+                    + " \"targetContent\": \"    void run() {\\n"
+                    + "        start();\\n"
+                    + "    }\", \"replacementContent\": \"    void run() {\\n"
+                    + "        prepare();\\n"
+                    + "        start();\\n"
+                    + "    }\"}",
+            "{\"absolutePath\": \"/abs/project/src/Main.java\", \"startLine\": 20, \"endLine\": 22,"
+                    + " \"targetContent\": \"    // TODO: drop debug logging\\n"
+                    + "    log.debug(\\\"state\\\");\\n"
+                    + "\", \"replacementContent\": \"\"}",
+            "{\"absolutePath\": \"/abs/project/src/Service.java\", \"startLine\": 40, \"endLine\":"
+                    + " 46, \"targetContent\": \"    @Override\\n"
+                    + "    public String name() {\\n"
+                    + "        return \\\"legacy\\\";\\n"
+                    + "    }\", \"replacementContent\": \"    @Override\\n"
+                    + "    public String name() {\\n"
+                    + "        return \\\"modern\\\";\\n"
+                    + "    }\"}",
+            "{\"absolutePath\": \"/abs/project/src/Main.java\", \"startLine\": 1, \"endLine\": 5,"
+                    + " \"targetContent\": \"this text does not exist anywhere\","
+                    + " \"replacementContent\": \"x\"}"
         },
         returnExamples = {
             "{\"status\":\"ok\",\"file\":\"/abs/project/src/Main.java\"}",
@@ -125,7 +147,7 @@ public final class ReplaceFileContentTool
 
     @Override
     public @NonNull Class<Args> getArgsClass() {
-        return ToolDocs.nonNullClass(Args.class);
+        return Args.class;
     }
 
     @Override

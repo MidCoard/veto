@@ -2,21 +2,14 @@ package top.focess.veto.agent.tool;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.time.Duration;
-import java.util.List;
-import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+
 import top.focess.veto.agent.intercept.ToolExecutionPermit;
 import top.focess.veto.agent.workspace.PathMode;
 import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.api.agent.tool.ToolCapability;
-import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.ToolPreparation;
 import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
@@ -24,6 +17,14 @@ import top.focess.veto.api.plugin.PluginHost;
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.integration.plugins.ProcessHostFixture;
 import top.focess.veto.sandbox.TestSandboxFactory;
+
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.Duration;
+import java.util.List;
+import java.util.Map;
 
 class ProcessHostAuthorityTest {
     private static @NonNull ToolDefinition definition(
@@ -83,12 +84,11 @@ class ProcessHostAuthorityTest {
                             Workspace.single(directory, PathMode.REAL));
             bind(fixture, permit);
             assertThrows(
-                    ToolDocs.nonNullClass(SecurityException.class),
+                    SecurityException.class,
                     () -> ToolCallContextHolder.withoutEffects(() -> fixture.host.runApproved()));
             fixture.host.runApproved();
             assertThrows(
-                    ToolDocs.nonNullClass(SecurityException.class),
-                    () -> fixture.host.runApproved());
+                    SecurityException.class, () -> fixture.host.runApproved());
         } finally {
             ToolCallContextHolder.clear();
         }
@@ -100,7 +100,8 @@ class ProcessHostAuthorityTest {
         var source = directory.resolve("Input.java");
         Files.writeString(
                 source,
-                "class Input { public static void main(String[] a) throws Exception { System.out.write(System.in.readAllBytes()); } }");
+                "class Input { public static void main(String[] a) throws Exception {"
+                        + " System.out.write(System.in.readAllBytes()); } }");
         try (var fixture =
                 new ProcessHostFixture(
                         TestSandboxFactory.uncontainedSubprocesses(), List.of(), true)) {
@@ -161,7 +162,7 @@ class ProcessHostAuthorityTest {
                 ToolCallContextHolder.clear();
                 assertEquals(5, write.byteCount());
                 write.write();
-                assertThrows(ToolDocs.nonNullClass(SecurityException.class), write::write);
+                assertThrows(SecurityException.class, write::write);
                 assertTrue(running.awaitExit(Duration.ofSeconds(20)));
                 String output = new String(running.output().readAllBytes(), StandardCharsets.UTF_8);
                 assertTrue(output.endsWith("hello"), output);
@@ -206,8 +207,8 @@ class ProcessHostAuthorityTest {
                 var retainedOutput = second.output();
                 ToolCallContextHolder.clear();
                 fixture.admitted.set(false);
-                assertThrows(ToolDocs.nonNullClass(IOException.class), retainedOutput::available);
-                assertThrows(ToolDocs.nonNullClass(SecurityException.class), write::write);
+                assertThrows(IOException.class, retainedOutput::available);
+                assertThrows(SecurityException.class, write::write);
                 fixture.admitted.set(true);
             } finally {
                 second.close();

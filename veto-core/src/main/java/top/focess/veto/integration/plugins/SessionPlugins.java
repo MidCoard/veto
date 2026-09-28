@@ -1,18 +1,12 @@
 package top.focess.veto.integration.plugins;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Optional;
-import java.util.Set;
-import java.util.UUID;
-import java.util.stream.Collectors;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
+
 import top.focess.veto.agent.TurnType;
 import top.focess.veto.agent.tool.ToolDefinition;
 import top.focess.veto.api.agent.control.SourceEvidence;
-import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.event.WorkflowEvent;
 import top.focess.veto.api.llm.VetoResponse;
 import top.focess.veto.api.plugin.PluginBinding;
@@ -24,13 +18,18 @@ import top.focess.veto.api.plugin.contract.AgentInbox;
 import top.focess.veto.api.plugin.contract.ModelResponsePolicy;
 import top.focess.veto.api.plugin.contract.PluginFailure;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
-import top.focess.veto.api.plugin.contract.TextProtection;
 import top.focess.veto.api.plugin.contribution.ContributionPoint;
 import top.focess.veto.api.plugin.storage.PluginStorage;
 import top.focess.veto.integration.plugins.storage.PluginInvocationScope;
 import top.focess.veto.model.SessionRepository;
 import top.focess.veto.plugin.runtime.*;
 import top.focess.veto.session.SessionHistoryLoader;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * Immutable session selection. Installed packages are a catalog, never a global availability
@@ -186,9 +185,8 @@ public class SessionPlugins {
                     || (configurationOwner != null && !configurationOwner.equals(namespace)))
                 continue;
             if (manager.plugin(namespace).state() != PluginState.ACTIVE) continue;
-            var storage =
-                    manager.hostService(namespace, ToolDocs.nonNullClass(PluginStorage.class));
-            var host = manager.hostService(namespace, ToolDocs.nonNullClass(AgentHost.class));
+            var storage = manager.hostService(namespace, PluginStorage.class);
+            var host = manager.hostService(namespace, AgentHost.class);
             if (storage == null || host == null)
                 throw new IllegalStateException("Agent configuration services unavailable");
             var invocation = new PluginInvocationScope(owner, session);
@@ -269,33 +267,6 @@ public class SessionPlugins {
             }
         }
         return List.copyOf(result);
-    }
-
-    /** Threads text through the selected plugins' contributions to the protection point. */
-    public @NonNull String protect(
-            @NonNull ContributionPoint<? extends TextProtection> point,
-            TextProtection.@NonNull Scope scope,
-            @NonNull String text) {
-        var ids = selectedIds(scope.sessionId());
-        String result = text;
-        for (var entry : manager.catalog().entries(point)) {
-            if (!ids.contains(entry.source().namespace())) continue;
-            String input = result;
-            try {
-                result =
-                        manager.plugin(entry.source().namespace())
-                                .execute(
-                                        () ->
-                                                entry.implementation()
-                                                        .transform(
-                                                                scope,
-                                                                UUID.randomUUID().toString(),
-                                                                input));
-            } catch (PluginFailure failure) {
-                throw new IllegalStateException("Session text protection unavailable", failure);
-            }
-        }
-        return result;
     }
 
     /** Returns a lazily resolved composite work source of the session's selected plugins. */

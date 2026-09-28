@@ -1,9 +1,7 @@
 package top.focess.veto.builtin;
 
-import java.util.ArrayList;
-import java.util.List;
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.api.agent.tool.ToolDocs;
+
 import top.focess.veto.api.plugin.PluginContext;
 import top.focess.veto.api.plugin.PluginHost;
 import top.focess.veto.api.plugin.contract.JsonValue;
@@ -15,6 +13,9 @@ import top.focess.veto.builtin.process.TaskEvents;
 import top.focess.veto.builtin.questions.QuestionRuntime;
 import top.focess.veto.builtin.search.BraveSearchProvider;
 import top.focess.veto.builtin.skills.SkillRuntime;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /** Owns the builtin plugin's host-bound components as one initialized lifecycle unit. */
 final class BuiltinComponents implements AutoCloseable {
@@ -33,10 +34,7 @@ final class BuiltinComponents implements AutoCloseable {
             @NonNull PluginContext context, JsonValue.@NonNull ObjectValue configuration) {
         List<Runnable> cleanup = new ArrayList<>();
         try {
-            host =
-                    context.service(ToolDocs.nonNullClass(PluginHost.class))
-                            .orElseThrow(
-                                    () -> new IllegalStateException("Plugin host unavailable"));
+            host = context.host();
             questions = new QuestionRuntime(host);
             cleanup.add(questions::close);
             groups = new GroupRuntime(context, configuration);

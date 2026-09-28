@@ -4,14 +4,9 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+
 import jakarta.persistence.EntityManager;
-import java.time.Instant;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.Set;
-import java.util.UUID;
-import java.util.concurrent.CompletableFuture;
+
 import org.checkerframework.framework.qual.DefaultQualifier;
 import org.checkerframework.framework.qual.TypeUseLocation;
 import org.jspecify.annotations.NonNull;
@@ -27,9 +22,9 @@ import org.springframework.orm.jpa.SharedEntityManagerCreator;
 import org.springframework.orm.jpa.vendor.HibernateJpaVendorAdapter;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.server.ResponseStatusException;
+
 import top.focess.veto.agent.SessionAgentRegistry;
 import top.focess.veto.agent.tool.ToolCallContextHolder;
-import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.plugin.PluginBinding;
 import top.focess.veto.api.plugin.PluginIdentity;
 import top.focess.veto.api.plugin.PluginState;
@@ -52,6 +47,14 @@ import top.focess.veto.plugin.runtime.PluginLifecycle;
 import top.focess.veto.util.Nullness;
 import top.focess.veto.vault.UserContext;
 import top.focess.veto.vault.UserEntity;
+
+import java.time.Instant;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 
 @NullMarked
 @DefaultQualifier(
@@ -146,7 +149,7 @@ class ScopedPluginStorageTest {
             first.session(scope(first)).put("retained-session", null, VALUE);
             first.application().put("retained-application", null, VALUE);
 
-            var manager = mock(ToolDocs.nonNullClass(PluginManager.class));
+            var manager = mock(PluginManager.class);
             var data =
                     new RetainedPluginData(
                             database, manager, new RequestAuthorization("admin"::equals));
@@ -178,7 +181,7 @@ class ScopedPluginStorageTest {
                             .entries()
                             .size());
             assertThrows(
-                    ToolDocs.nonNullClass(ResponseStatusException.class),
+                    ResponseStatusException.class,
                     () -> data.list(PluginStorage.Kind.APPLICATION, null, null, 10));
 
             UserContext.set("intruder");
@@ -195,7 +198,7 @@ class ScopedPluginStorageTest {
                             .isEmpty());
             var denied =
                     assertThrows(
-                            ToolDocs.nonNullClass(ResponseStatusException.class),
+                            ResponseStatusException.class,
                             () -> transactions.execute(status -> data.export(userRecord.id())));
             assertEquals(404, denied.getStatusCode().value());
 
@@ -238,20 +241,20 @@ class ScopedPluginStorageTest {
             ToolCallContextHolder.withoutEffects(
                     () -> {
                         assertThrows(
-                                ToolDocs.nonNullClass(SecurityException.class),
+                                SecurityException.class,
                                 () -> store.put("new", null, VALUE));
                         assertThrows(
-                                ToolDocs.nonNullClass(SecurityException.class),
+                                SecurityException.class,
                                 () -> store.delete("existing", original.revision()));
                         ToolCallContextHolder.withoutEffects(
                                 () -> {
                                     assertThrows(
-                                            ToolDocs.nonNullClass(SecurityException.class),
+                                            SecurityException.class,
                                             () -> store.put("nested", null, VALUE));
                                     return true;
                                 });
                         assertThrows(
-                                ToolDocs.nonNullClass(SecurityException.class),
+                                SecurityException.class,
                                 () -> store.put("after-nested", null, VALUE));
                         return true;
                     });
@@ -288,7 +291,7 @@ class ScopedPluginStorageTest {
         @NonNull SessionRepository sessions = mock();
         @NonNull SessionPlugins selected = mock();
         @NonNull PluginManager plugins = mock();
-        var row = database.find(ToolDocs.nonNullClass(SessionEntity.class), session);
+        var row = database.find(SessionEntity.class, session);
         when(sessions.findFirstByNameAndOwnerOrderByLastActiveAtDesc("test", "owner"))
                 .thenReturn(Optional.of(Nullness.requireNonNull(row)));
         when(selected.bindings(session))
@@ -396,6 +399,37 @@ class ScopedPluginStorageTest {
     }
 
     @Test
+    void serviceScopeTransferIssuesProviderOwnedGrant() {
+        var callerSession = scope(first);
+        var providerSession = host.transferSession(first, callerSession, second);
+        assertNotEquals(callerSession.token(), providerSession.token());
+        assertEquals(callerSession.userId(), providerSession.userId());
+        assertEquals(callerSession.sessionId(), providerSession.sessionId());
+        assertDoesNotThrow(() -> second.session(providerSession));
+        assertThrows(SecurityException.class, () -> first.session(providerSession));
+        assertThrows(SecurityException.class, () -> second.session(callerSession));
+        assertThrows(
+                SecurityException.class,
+                () ->
+                        host.transferSession(
+                                first,
+                                new PluginStorage.SessionScope(
+                                        "forged",
+                                        callerSession.userId(),
+                                        callerSession.sessionId()),
+                                second));
+
+        PluginStorage.UserScope callerUser;
+        try (var invocation = new PluginInvocationScope("owner", session)) {
+            callerUser = first.currentUser();
+        }
+        var providerUser = host.transferUser(first, callerUser, second);
+        assertNotEquals(callerUser.token(), providerUser.token());
+        assertDoesNotThrow(() -> second.user(providerUser));
+        assertThrows(SecurityException.class, () -> first.user(providerUser));
+    }
+
+    @Test
     void casAndDeletionRecreationRejectStaleRevisions() {
         var store = first.application();
         var initial = store.put("key", null, VALUE);
@@ -436,7 +470,7 @@ class ScopedPluginStorageTest {
                 status -> {
                     host.deleteSession(session);
                     database.remove(
-                            database.find(ToolDocs.nonNullClass(SessionEntity.class), session));
+                            database.find(SessionEntity.class, session));
                     status.setRollbackOnly();
                 });
         assertTrue(store.get("key").isPresent());
@@ -445,7 +479,7 @@ class ScopedPluginStorageTest {
                 status -> {
                     host.deleteSession(session);
                     database.remove(
-                            database.find(ToolDocs.nonNullClass(SessionEntity.class), session));
+                            database.find(SessionEntity.class, session));
                 });
         when(plugin.state()).thenReturn(PluginState.ACTIVE);
         assertThrows(SecurityException.class, () -> store.put("late", null, VALUE));
@@ -494,9 +528,8 @@ class ScopedPluginStorageTest {
                 status -> {
                     host.deleteUser("owner");
                     database.remove(
-                            database.find(ToolDocs.nonNullClass(SessionEntity.class), session));
-                    database.remove(
-                            database.find(ToolDocs.nonNullClass(UserEntity.class), "owner"));
+                            database.find(SessionEntity.class, session));
+                    database.remove(database.find(UserEntity.class, "owner"));
                     database.flush();
                     database.persist(
                             new UserEntity(

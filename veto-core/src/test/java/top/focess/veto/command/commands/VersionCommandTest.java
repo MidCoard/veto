@@ -7,12 +7,12 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import org.junit.jupiter.api.Test;
+
 import top.focess.command.CommandManager;
 import top.focess.command.CommandPermission;
 import top.focess.command.CommandResult;
 import top.focess.command.ExecutionResult;
 import top.focess.veto.VetoVersion;
-import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.command.VetoCommandSender;
 import top.focess.veto.contract.Version;
 
@@ -20,8 +20,8 @@ class VersionCommandTest {
 
     @Test
     void reportsVersionsLicenseAndSource() {
-        VetoCommandSender sender = mock(ToolDocs.nonNullClass(VetoCommandSender.class));
-        when(sender.hasPermission(any(ToolDocs.nonNullClass(CommandPermission.class))))
+        VetoCommandSender sender = mock(VetoCommandSender.class);
+        when(sender.hasPermission(any(CommandPermission.class)))
                 .thenReturn(true);
         when(sender.clientProductVersion()).thenReturn(Version.parse("2.3.4"));
 

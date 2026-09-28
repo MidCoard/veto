@@ -4,17 +4,19 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.util.List;
+
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
+
 import top.focess.veto.agent.screening.*;
 import top.focess.veto.agent.tool.*;
 import top.focess.veto.api.agent.control.ControlHost;
-import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.ToolExecutionException;
 import top.focess.veto.api.llm.ToolDefinition;
 import top.focess.veto.builtin.planning.ActionsProgramParser;
 import top.focess.veto.builtin.planning.PlanPreflight;
+
+import java.util.List;
 
 class GatewayRemotePlanValidationTest {
     private static final @NonNull ObjectMapper MAPPER = new ObjectMapper();
@@ -59,13 +61,13 @@ class GatewayRemotePlanValidationTest {
                 """;
         assertDoesNotThrow(() -> validate(schema, "{\"source\":\"$source\",\"limit\":1}"));
         assertThrows(
-                ToolDocs.nonNullClass(ToolExecutionException.class),
+                ToolExecutionException.class,
                 () -> validate(schema, "{\"source\":\"$source\"}"));
         assertThrows(
-                ToolDocs.nonNullClass(ToolExecutionException.class),
+                ToolExecutionException.class,
                 () -> validate(schema, "{\"source\":\"$source\",\"limit\":false}"));
         assertThrows(
-                ToolDocs.nonNullClass(ToolExecutionException.class),
+                ToolExecutionException.class,
                 () -> validate(schema, "{\"source\":\"$source\",\"limit\":1,\"unknown\":true}"));
     }
 
@@ -80,13 +82,13 @@ class GatewayRemotePlanValidationTest {
         assertDoesNotThrow(() -> validate(schema, "{\"home\":\"$$HOME\"}"));
         assertDoesNotThrow(() -> validate(schema, "{\"home\":\"$$HOME\",\"source\":\"$source\"}"));
         assertThrows(
-                ToolDocs.nonNullClass(ToolExecutionException.class),
+                ToolExecutionException.class,
                 () -> validate(schema, "{\"home\":\"$$OTHER\"}"));
         assertThrows(
-                ToolDocs.nonNullClass(ToolExecutionException.class),
+                ToolExecutionException.class,
                 () -> validate(schema, "{\"home\":\"$$OTHER\",\"source\":\"$source\"}"));
         assertThrows(
-                ToolDocs.nonNullClass(ToolExecutionException.class),
+                ToolExecutionException.class,
                 () -> validate(schema, "{\"home\":\"$$$HOME\"}"));
     }
 
@@ -98,26 +100,26 @@ class GatewayRemotePlanValidationTest {
                 """;
         assertDoesNotThrow(() -> validate(schema, "{\"known\":1,\"later\":\"$count\"}"));
         assertThrows(
-                ToolDocs.nonNullClass(ToolExecutionException.class),
+                ToolExecutionException.class,
                 () -> validate(schema, "{\"known\":-1,\"later\":\"$count\"}"));
     }
 
     @Test
     void remoteInvalidReferencesFailClosed() {
         assertThrows(
-                ToolDocs.nonNullClass(ToolExecutionException.class),
+                ToolExecutionException.class,
                 () ->
                         validate(
                                 "{\"type\":\"object\",\"properties\":{\"value\":{\"$ref\":\"#/$defs/missing\"}}}",
                                 "{\"value\":\"anything\"}"));
         assertThrows(
-                ToolDocs.nonNullClass(ToolExecutionException.class),
+                ToolExecutionException.class,
                 () ->
                         validate(
                                 "{\"type\":\"object\",\"properties\":{\"value\":{\"$ref\":\"https://example.com/schema\"}}}",
                                 "{\"value\":\"anything\"}"));
         assertThrows(
-                ToolDocs.nonNullClass(ToolExecutionException.class),
+                ToolExecutionException.class,
                 () ->
                         validate(
                                 "{\"$defs\":{\"loop\":{\"$ref\":\"#/$defs/loop\"}},\"type\":\"object\",\"properties\":{\"value\":{\"$ref\":\"#/$defs/loop\"}}}",

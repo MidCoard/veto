@@ -4,9 +4,6 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
-import java.time.Duration;
-import java.util.List;
-import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -14,6 +11,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.core.env.Environment;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+
 import top.focess.veto.agent.AgentService;
 import top.focess.veto.agent.TurnRecord;
 import top.focess.veto.agent.identity.Role;
@@ -26,6 +24,10 @@ import top.focess.veto.api.plugin.contract.StandardContributionPoints;
 import top.focess.veto.llm.core.UniformLLMCaller;
 import top.focess.veto.model.SessionEntity;
 import top.focess.veto.model.SessionRepository;
+
+import java.time.Duration;
+import java.util.List;
+import java.util.UUID;
 
 /** Runs in a JVM whose classpath physically excludes every bundled plugin. */
 @SpringBootTest(
@@ -83,7 +85,7 @@ class ZeroPluginBootTest {
         assertFalse(environment.containsProperty("veto.plan.max-steps"));
         assertFalse(environment.containsProperty("veto.skills.project-dir"));
         assertTrue(plugins.plugins().isEmpty());
-        assertTrue(plugins.catalog().entries(StandardContributionPoints.NATIVE_TOOLS).isEmpty());
+        assertTrue(plugins.catalog().entries(StandardContributionPoints.TOOLS).isEmpty());
         assertTrue(plugins.catalog().entries(StandardContributionPoints.FRONTEND).isEmpty());
         var session = new SessionEntity("owner", "zero-plugin-" + oldBuiltinSession);
         session.setPluginBindings(

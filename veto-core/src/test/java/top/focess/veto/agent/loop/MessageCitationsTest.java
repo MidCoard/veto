@@ -3,12 +3,12 @@ package top.focess.veto.agent.loop;
 import static org.junit.jupiter.api.Assertions.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.util.List;
-import java.util.Map;
+
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
+
 import top.focess.veto.agent.TurnRecord;
 import top.focess.veto.agent.TurnType;
 import top.focess.veto.agent.translation.VetoCapabilityTranslator;
@@ -21,6 +21,9 @@ import top.focess.veto.api.llm.ResponseContract;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.api.llm.VetoRequest;
 import top.focess.veto.api.llm.VetoResponse;
+
+import java.util.List;
+import java.util.Map;
 
 class MessageCitationsTest {
     @ParameterizedTest
@@ -74,8 +77,7 @@ class MessageCitationsTest {
                                 ChatMessage.user("runtime correction")));
         var error =
                 assertThrows(
-                        top.focess.veto.api.agent.tool.ToolDocs.nonNullClass(
-                                IllegalArgumentException.class),
+                        IllegalArgumentException.class,
                         () ->
                                 MessageCitations.resolve(
                                         request,
@@ -88,8 +90,7 @@ class MessageCitationsTest {
         assertTrue(String.valueOf(error.getMessage()).contains("[0, 1]"));
         for (String quote : List.of("Missing", "runtime correction"))
             assertThrows(
-                    top.focess.veto.api.agent.tool.ToolDocs.nonNullClass(
-                            IllegalArgumentException.class),
+                    IllegalArgumentException.class,
                     () ->
                             MessageCitations.resolve(
                                     request,
@@ -456,8 +457,7 @@ class MessageCitationsTest {
                                             .withSourceTurns(List.of(4))));
             var error =
                     assertThrows(
-                            top.focess.veto.api.agent.tool.ToolDocs.nonNullClass(
-                                    IllegalArgumentException.class),
+                            IllegalArgumentException.class,
                             () ->
                                     MessageCitations.resolve(
                                             request, answer(null, "Launch Friday.")));
@@ -483,8 +483,7 @@ class MessageCitationsTest {
                         ChatMessage.user("Launch Friday."))) {
             var request = request(ProviderType.OPENAI, List.of(message));
             assertThrows(
-                    top.focess.veto.api.agent.tool.ToolDocs.nonNullClass(
-                            IllegalArgumentException.class),
+                    IllegalArgumentException.class,
                     () -> MessageCitations.resolve(request, answer(0, "Launch Friday.")));
         }
     }
@@ -506,8 +505,7 @@ class MessageCitationsTest {
                 assertEquals(Boolean.FALSE, repaired.getFirst().toolSuccess());
                 assertEquals(List.of(5), repaired.getFirst().sourceTurns());
                 assertThrows(
-                        top.focess.veto.api.agent.tool.ToolDocs.nonNullClass(
-                                IllegalArgumentException.class),
+                        IllegalArgumentException.class,
                         () ->
                                 MessageCitations.resolve(
                                         request(ProviderType.OPENAI, repaired),

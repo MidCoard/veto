@@ -4,15 +4,16 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.util.concurrent.CompletableFuture;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentMatchers;
 import org.springframework.test.util.ReflectionTestUtils;
-import top.focess.veto.api.agent.tool.ToolDocs;
+
+
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.util.concurrent.CompletableFuture;
 
 class LocalModelTransportTest {
     @Test
@@ -22,7 +23,7 @@ class LocalModelTransportTest {
         @NonNull HttpClient http = mock();
         var pending = new CompletableFuture<HttpResponse<String>>();
         when(http.sendAsync(
-                        any(ToolDocs.nonNullClass(HttpRequest.class)),
+                        any(HttpRequest.class),
                         ArgumentMatchers.<HttpResponse.BodyHandler<String>>any()))
                 .thenReturn(pending);
         var bridge = new LlamaCppBridge(config, grammars);

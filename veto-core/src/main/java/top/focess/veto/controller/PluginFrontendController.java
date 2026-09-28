@@ -1,14 +1,12 @@
 package top.focess.veto.controller;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
+
 import org.jspecify.annotations.NonNull;
 import org.springframework.http.*;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
+
 import top.focess.veto.agent.SessionAgentRegistry;
 import top.focess.veto.api.plugin.PluginBinding;
 import top.focess.veto.api.plugin.PluginState;
@@ -19,6 +17,11 @@ import top.focess.veto.integration.plugins.storage.PluginInvocationScope;
 import top.focess.veto.model.SessionEntity;
 import top.focess.veto.model.SessionRepository;
 import top.focess.veto.plugin.runtime.*;
+
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 
 /** Session-authorized frontend code and actions; separate from model tools and history. */
 @RestController
@@ -96,10 +99,6 @@ public final class PluginFrontendController {
 
     private @NonNull Map<String, String> toolNames(@NonNull String pluginId) {
         Map<String, String> names = new LinkedHashMap<>();
-        for (var entry : plugins.catalog().entries(StandardContributionPoints.NATIVE_TOOLS)) {
-            if (pluginId.equals(entry.source().namespace()))
-                names.put(entry.id().localId(), plugins.toolName(pluginId, entry.id().value()));
-        }
         for (var entry : plugins.catalog().entries(StandardContributionPoints.TOOLS)) {
             if (pluginId.equals(entry.source().namespace()))
                 names.put(entry.id().localId(), plugins.toolName(pluginId, entry.id().value()));

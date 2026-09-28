@@ -2,15 +2,16 @@ package top.focess.veto.agent.intercept;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-import java.util.List;
-import java.util.Map;
 import org.junit.jupiter.api.Test;
+
 import top.focess.veto.agent.screening.Relevance;
 import top.focess.veto.agent.screening.Screening;
 import top.focess.veto.api.agent.screening.Danger;
-import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.event.BeforeToolEvent;
 import top.focess.veto.api.llm.ToolCall;
+
+import java.util.List;
+import java.util.Map;
 
 class WorkflowApprovalTest {
     @Test
@@ -19,7 +20,7 @@ class WorkflowApprovalTest {
         var call = new ToolCall("internal", Map.of());
         var prompt =
                 assertInstanceOf(
-                        ToolDocs.nonNullClass(ApprovalDecision.Prompt.class),
+                        ApprovalDecision.Prompt.class,
                         hitl.decide(
                                 "agent",
                                 call,
@@ -29,7 +30,7 @@ class WorkflowApprovalTest {
         assertEquals(
                 List.of(VetoOption.ACCEPT_GENERIC, VetoOption.GENERIC_DECLINE), prompt.options());
         assertInstanceOf(
-                ToolDocs.nonNullClass(ApprovalDecision.Refused.class),
+                ApprovalDecision.Refused.class,
                 hitl.decide(
                         "agent",
                         call,
@@ -58,7 +59,7 @@ class WorkflowApprovalTest {
                                 VetoScenario.GENERIC,
                                 "blocked"));
         assertInstanceOf(
-                ToolDocs.nonNullClass(ApprovalDecision.Refused.class),
+                ApprovalDecision.Refused.class,
                 hitl.decide(
                         "agent",
                         new ToolCall("dangerous", Map.of()),

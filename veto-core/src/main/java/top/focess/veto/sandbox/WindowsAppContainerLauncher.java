@@ -14,10 +14,12 @@ import com.sun.jna.platform.win32.WinNT;
 import com.sun.jna.ptr.IntByReference;
 import com.sun.jna.ptr.PointerByReference;
 import com.sun.jna.win32.StdCallLibrary;
+
+import org.jspecify.annotations.NonNull;
+
+
 import java.util.ArrayList;
 import java.util.List;
-import org.jspecify.annotations.NonNull;
-import top.focess.veto.api.agent.tool.ToolDocs;
 
 /** Starts one target in an AppContainer on a private desktop with permit-scoped capabilities. */
 final class WindowsAppContainerLauncher {
@@ -39,9 +41,9 @@ final class WindowsAppContainerLauncher {
 
     static boolean isAvailable() {
         try {
-            Native.load("userenv", ToolDocs.nonNullClass(AppContainerApi.class));
-            Native.load("kernel32", ToolDocs.nonNullClass(ProcessApi.class));
-            Native.load("advapi32", ToolDocs.nonNullClass(SecurityApi.class));
+            Native.load("userenv", AppContainerApi.class);
+            Native.load("kernel32", ProcessApi.class);
+            Native.load("advapi32", SecurityApi.class);
             return true;
         } catch (LinkageError | RuntimeException unavailable) {
             return false;
@@ -57,9 +59,9 @@ final class WindowsAppContainerLauncher {
             return 125;
         }
         AppContainerApi containers =
-                Native.load("userenv", ToolDocs.nonNullClass(AppContainerApi.class));
-        ProcessApi processes = Native.load("kernel32", ToolDocs.nonNullClass(ProcessApi.class));
-        SecurityApi security = Native.load("advapi32", ToolDocs.nonNullClass(SecurityApi.class));
+                Native.load("userenv", AppContainerApi.class);
+        ProcessApi processes = Native.load("kernel32", ProcessApi.class);
+        SecurityApi security = Native.load("advapi32", SecurityApi.class);
         PointerByReference appContainerSid = new PointerByReference();
         int derive =
                 containers.DeriveAppContainerSidFromAppContainerName(

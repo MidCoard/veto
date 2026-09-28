@@ -2,19 +2,20 @@ package top.focess.veto.integration.plugins;
 
 import static org.mockito.Mockito.*;
 
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.api.agent.tool.ToolDocs;
+
 import top.focess.veto.api.plugin.*;
 import top.focess.veto.api.plugin.contract.*;
 import top.focess.veto.api.plugin.contribution.*;
 import top.focess.veto.event.EventListenerRegistry;
 import top.focess.veto.event.PluginExecutor;
 import top.focess.veto.plugin.runtime.*;
+
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 /** Real lifecycle and catalog behind a test discovery adapter. */
 public final class WorkflowPluginFixture implements AutoCloseable {
@@ -67,7 +68,7 @@ public final class WorkflowPluginFixture implements AutoCloseable {
                                         ContributionSource.Origin.PLUGIN),
                                 contributions)
                         .freeze();
-        manager = mock(ToolDocs.nonNullClass(PluginManager.class));
+        manager = mock(PluginManager.class);
         when(manager.catalog()).thenReturn(catalog);
         when(manager.plugins()).thenReturn(List.of(runtime));
         when(manager.plugin("fixture.workflow")).thenReturn(runtime);

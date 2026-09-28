@@ -3,16 +3,13 @@ package top.focess.veto.controller;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
-import java.util.Map;
-import java.util.Optional;
-import java.util.Set;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+
 import top.focess.veto.agent.AgentProfiles;
 import top.focess.veto.agent.AgentService;
 import top.focess.veto.api.agent.AgentResult;
-import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.llm.LlmBinding;
 import top.focess.veto.api.llm.ProviderType;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
@@ -26,6 +23,10 @@ import top.focess.veto.model.tier.ModelTierRegistry;
 import top.focess.veto.session.LlmConfig;
 import top.focess.veto.session.SessionService;
 import top.focess.veto.vault.KeysteadVault;
+
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
 
 class PromptBindingTest {
     private final ModelBinding model =
@@ -63,7 +64,7 @@ class PromptBindingTest {
             throw new AssertionError("Prompt submission must return an HTTP response");
         }
         assertEquals(202, response.getStatusCode().value());
-        var binding = ArgumentCaptor.forClass(ToolDocs.nonNullClass(LlmBinding.class));
+        var binding = ArgumentCaptor.forClass(LlmBinding.class);
         verify(agents).submitNow(eq("session-id"), eq("Explain TCP"), binding.capture());
         assertEquals(model.llmOptions(), binding.getValue().options());
         assertEquals(model.model(), binding.getValue().model());
@@ -83,7 +84,7 @@ class PromptBindingTest {
                         anyString(), anyString(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(AgentResult.success("done", Map.of()));
         new PromptHandler(vault, agents, sessions).handle("Explain TCP", "terminal", sender);
-        var binding = ArgumentCaptor.forClass(ToolDocs.nonNullClass(LlmBinding.class));
+        var binding = ArgumentCaptor.forClass(LlmBinding.class);
         verify(agents)
                 .submit(
                         eq("session-id"),

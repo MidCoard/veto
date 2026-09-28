@@ -4,13 +4,10 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.UUID;
-import java.util.concurrent.atomic.AtomicBoolean;
+
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
+
 import top.focess.veto.agent.intercept.ToolExecutionPermit;
 import top.focess.veto.agent.screening.DeployerPolicy;
 import top.focess.veto.agent.tool.ToolCallContext;
@@ -19,8 +16,13 @@ import top.focess.veto.agent.tool.ToolEngine;
 import top.focess.veto.agent.tool.ToolInvocationFixture;
 import top.focess.veto.api.agent.control.SourceEvidence;
 import top.focess.veto.api.agent.tool.ToolCapability;
-import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.llm.*;
+
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 class SourceReceiptTest {
     private static @NonNull VetoRequest request() {
@@ -59,7 +61,7 @@ class SourceReceiptTest {
                         active::get);
         var receipt = evidence.inspect(declaration()).receipt();
         assertThrows(
-                ToolDocs.nonNullClass(SecurityException.class),
+                SecurityException.class,
                 () -> evidence.finish(new SourceEvidence.Receipt() {}));
         var other =
                 new RequestEvidence(
@@ -69,26 +71,25 @@ class SourceReceiptTest {
                         "model-two",
                         List.of(TurnRecord.userPrompt(1, "Launch Friday.")),
                         () -> true);
-        assertThrows(ToolDocs.nonNullClass(SecurityException.class), () -> other.finish(receipt));
+        assertThrows(SecurityException.class, () -> other.finish(receipt));
         var sealed = RequestEvidence.seal(receipt, boundary, "[Launch](cite:launch)");
         if (RequestEvidence.forRequest(sealed, task, "model-one", "[Launch](cite:launch)") == null)
             throw new AssertionError("Missing verified source");
         assertThrows(
-                ToolDocs.nonNullClass(SecurityException.class),
+                SecurityException.class,
                 () ->
                         RequestEvidence.forRequest(
                                 sealed, new Object(), "model-one", "[Launch](cite:launch)"));
         assertThrows(
-                ToolDocs.nonNullClass(SecurityException.class),
+                SecurityException.class,
                 () ->
                         RequestEvidence.forRequest(
                                 sealed, task, "model-two", "[Launch](cite:launch)"));
         assertThrows(
-                ToolDocs.nonNullClass(SecurityException.class),
+                SecurityException.class,
                 () -> RequestEvidence.forRequest(sealed, task, "model-one", "different answer"));
         active.set(false);
-        assertThrows(
-                ToolDocs.nonNullClass(SecurityException.class), () -> evidence.finish(receipt));
+        assertThrows(SecurityException.class, () -> evidence.finish(receipt));
     }
 
     @Test
@@ -113,21 +114,20 @@ class SourceReceiptTest {
         work.register(null); // A later predicate generation has no source receipt.
         var otherWork = new RequestEvidence.WorkSources();
         assertThrows(
-                ToolDocs.nonNullClass(SecurityException.class),
+                SecurityException.class,
                 () -> otherWork.consume(receipt, task, "answer-call", "[Launch](cite:launch)"));
         var returnedWork = new RequestEvidence.WorkSources();
         returnedWork.register(receipt);
         returnedWork.close();
         assertThrows(
-                ToolDocs.nonNullClass(SecurityException.class),
+                SecurityException.class,
                 () -> returnedWork.consume(receipt, task, "answer-call", "[Launch](cite:launch)"));
         assertThrows(
-                ToolDocs.nonNullClass(SecurityException.class),
-                () -> returnedWork.register(receipt));
+                SecurityException.class, () -> returnedWork.register(receipt));
         if (work.consume(receipt, task, "answer-call", "[Launch](cite:launch)") == null)
             throw new AssertionError("Missing verified source");
         assertThrows(
-                ToolDocs.nonNullClass(SecurityException.class),
+                SecurityException.class,
                 () -> work.consume(receipt, task, "answer-call", "[Launch](cite:launch)"));
     }
 
@@ -170,7 +170,7 @@ class SourceReceiptTest {
                     call.callId(),
                     () -> {
                         assertThrows(
-                                ToolDocs.nonNullClass(IllegalArgumentException.class),
+                                IllegalArgumentException.class,
                                 () -> control.finish(" ", null));
                         control.finish("[fake](cite:invented)", null);
                         return true;
@@ -181,7 +181,7 @@ class SourceReceiptTest {
             assertNull(finish.citations());
             assertNull(finish.response().citations());
             assertThrows(
-                    ToolDocs.nonNullClass(SecurityException.class),
+                    SecurityException.class,
                     () -> control.finish("later", null));
         } finally {
             ToolCallContextHolder.clear();

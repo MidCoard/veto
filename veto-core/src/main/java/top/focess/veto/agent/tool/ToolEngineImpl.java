@@ -5,10 +5,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Set;
+
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -17,6 +14,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.ApplicationContext;
 import org.springframework.stereotype.Service;
+
 import top.focess.veto.agent.capability.CapabilityResolver;
 import top.focess.veto.agent.capability.ImportedCredentialLeases;
 import top.focess.veto.agent.capability.ProtectedWorkspaceReadCapabilityImpl;
@@ -34,7 +32,6 @@ import top.focess.veto.api.agent.tool.HostCapabilityTool;
 import top.focess.veto.api.agent.tool.NativeTool;
 import top.focess.veto.api.agent.tool.PreparedTool;
 import top.focess.veto.api.agent.tool.ToolCapability;
-import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.ToolErrorCode;
 import top.focess.veto.api.agent.tool.ToolErrors;
 import top.focess.veto.api.agent.tool.ToolExecutionException;
@@ -49,7 +46,7 @@ import top.focess.veto.api.plugin.PluginState;
 import top.focess.veto.api.plugin.contract.Cancellation;
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
-import top.focess.veto.api.plugin.contract.Tool;
+import top.focess.veto.api.agent.tool.RemoteTool;
 import top.focess.veto.integration.plugins.IsolatedExecutions;
 import top.focess.veto.integration.plugins.PluginManager;
 import top.focess.veto.integration.plugins.SessionPlugins;
@@ -60,6 +57,11 @@ import top.focess.veto.plugin.runtime.PluginLifecycleFlow;
 import top.focess.veto.plugin.runtime.PluginSchema;
 import top.focess.veto.sandbox.SandboxSubstrate;
 import top.focess.veto.util.Nullness;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Set;
 
 /**
  * The tool engine implementation — manages server registrations, schema discovery, and tool
@@ -177,26 +179,24 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
         List<RegisteredTool> staged = new ArrayList<>();
         for (var entry : manager.catalog().entries(StandardContributionPoints.TOOLS)) {
             var plugin = manager.plugin(entry.source().namespace());
-            Tool descriptor = entry.implementation();
-            RemoteToolDefinition definition =
-                    ToolSchemaCompiler.compilePluginScript(
-                            descriptor,
-                            manager.toolName(entry),
-                            PluginJson.toNode(descriptor.inputSchema()),
-                            plugin.bindingId(),
-                            plugin.identity().id(),
-                            plugin.identity().version());
-            staged.add(new RegisteredTool.Plugin(definition, descriptor, plugin));
-        }
-        for (var entry : manager.catalog().entries(StandardContributionPoints.NATIVE_TOOLS)) {
-            var plugin = manager.plugin(entry.source().namespace());
-            CapabilityTool<?> tool = entry.implementation();
-            staged.add(
-                    ToolRegistration.local(
-                            tool,
-                            manager.toolName(entry.source().namespace(), entry.id().value()),
-                            plugin,
-                            entry.id().localId()));
+            if (entry.implementation() instanceof RemoteTool descriptor) {
+                RemoteToolDefinition definition =
+                        ToolSchemaCompiler.compilePluginScript(
+                                descriptor,
+                                manager.toolName(entry),
+                                PluginJson.toNode(descriptor.inputSchema()),
+                                plugin.bindingId(),
+                                plugin.identity().id(),
+                                plugin.identity().version());
+                staged.add(new RegisteredTool.Plugin(definition, descriptor, plugin));
+            } else if (entry.implementation() instanceof CapabilityTool<?> tool) {
+                staged.add(
+                        ToolRegistration.local(
+                                tool,
+                                manager.toolName(entry.source().namespace(), entry.id().value()),
+                                plugin,
+                                entry.id().localId()));
+            }
         }
         return List.copyOf(staged);
     }
@@ -519,7 +519,7 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
             @NonNull WorkspaceWriteTool<T> tool, @NonNull JsonNode jsonArgs) throws Exception {
         return tool.execute(
                 Nullness.requireNonNull(mapper.treeToValue(jsonArgs, tool.getArgsClass())),
-                CapabilityResolver.require(ToolDocs.nonNullClass(WorkspaceWriteCapability.class)));
+                CapabilityResolver.require(WorkspaceWriteCapability.class));
     }
 
     /** External tool execution over the transport recorded during MCP discovery. */

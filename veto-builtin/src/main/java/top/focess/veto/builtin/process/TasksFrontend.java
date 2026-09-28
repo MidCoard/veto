@@ -1,19 +1,21 @@
 package top.focess.veto.builtin.process;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.util.LinkedHashMap;
-import java.util.Map;
-import java.util.UUID;
+
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
-import top.focess.veto.api.agent.tool.ToolDocs;
+
 import top.focess.veto.api.plugin.contract.FrontendContribution;
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.contract.JsonValues;
 import top.focess.veto.api.plugin.contract.PluginFailure;
 import top.focess.veto.builtin.process.BackgroundTasks.Scope;
+
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.UUID;
 
 /** Scoped process cards and bounded, explicitly paged access to retained output. */
 public final class TasksFrontend {
@@ -28,7 +30,7 @@ public final class TasksFrontend {
     /** Serves the bundled tasks script and routes its actions to {@link #handle}. */
     public @NonNull FrontendContribution contribution() {
         try (var source =
-                ToolDocs.nonNullClass(TasksFrontend.class)
+                TasksFrontend.class
                         .getResourceAsStream("/frontend/tasks.js")) {
             if (source == null) throw new IllegalStateException("Missing tasks frontend");
             return new FrontendContribution(

@@ -35,7 +35,7 @@ public final class ContributionCatalog {
      * @return immutable ordered entries, possibly empty
      * @throws IllegalArgumentException if the point was not defined with the same contract
      */
-    public <T extends @NonNull Object> @NonNull List<ContributionEntry<T>> entries(
+    public <T> @NonNull List<ContributionEntry<T>> entries(
             @NonNull ContributionPoint<T> point) {
         Definition<?> definition = definitions.get(point.id());
         if (definition == null || !definition.point().equals(point)) throw invalid();
@@ -52,7 +52,7 @@ public final class ContributionCatalog {
         return List.copyOf(result);
     }
 
-    private record Definition<T extends @NonNull Object>(
+    private record Definition<T>(
             @NonNull ContributionPoint<T> point, @NonNull Consumer<T> validator) {
         void validate(@NonNull Contribution<?> contribution) {
             if (!point.equals(contribution.point())) throw invalid();
@@ -104,7 +104,7 @@ public final class ContributionCatalog {
          * @param validator validator for implementations at the point
          * @return this builder
          */
-        public <T extends @NonNull Object> @NonNull Builder define(
+        public <T> @NonNull Builder define(
                 @NonNull ContributionPoint<T> point, @NonNull Consumer<T> validator) {
             mutable();
             if (definitions.size() >= 256 || definitions.containsKey(point.id())) throw invalid();

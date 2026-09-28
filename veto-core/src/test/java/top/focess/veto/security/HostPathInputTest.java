@@ -3,11 +3,12 @@ package top.focess.veto.security;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-import java.nio.file.Path;
-import java.util.Objects;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
-import top.focess.veto.api.agent.tool.ToolDocs;
+
+
+import java.nio.file.Path;
+import java.util.Objects;
 
 class HostPathInputTest {
 
@@ -26,7 +27,7 @@ class HostPathInputTest {
     @Test
     void absoluteNormalizedRejectsRelativePath() {
         assertThrows(
-                ToolDocs.nonNullClass(IllegalArgumentException.class),
+                IllegalArgumentException.class,
                 () -> HostPathInput.absoluteNormalized("relative/path", "path"));
     }
 
@@ -35,7 +36,7 @@ class HostPathInputTest {
         String traversal =
                 WORKING_DIRECTORY.resolve("allowed").resolve("..").resolve("escape").toString();
         assertThrows(
-                ToolDocs.nonNullClass(IllegalArgumentException.class),
+                IllegalArgumentException.class,
                 () -> HostPathInput.absoluteNormalized(traversal, "path"));
     }
 

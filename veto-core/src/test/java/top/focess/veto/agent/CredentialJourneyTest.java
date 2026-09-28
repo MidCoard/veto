@@ -4,21 +4,13 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.*;
-import java.time.Duration;
-import java.util.*;
-import java.util.Map;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.regex.Pattern;
+
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.test.util.ReflectionTestUtils;
+
 import top.focess.veto.agent.capability.*;
 import top.focess.veto.agent.identity.*;
 import top.focess.veto.agent.intercept.*;
@@ -29,7 +21,6 @@ import top.focess.veto.agent.tool.builtin.*;
 import top.focess.veto.agent.translation.DefaultCapabilityTranslator;
 import top.focess.veto.agent.web.*;
 import top.focess.veto.agent.workspace.*;
-import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.ToolResult;
 import top.focess.veto.api.llm.LlmBinding;
 import top.focess.veto.api.llm.LlmOptions;
@@ -48,6 +39,17 @@ import top.focess.veto.model.SessionEntity;
 import top.focess.veto.model.SessionRepository;
 import top.focess.veto.sandbox.*;
 import top.focess.veto.vault.*;
+
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.*;
+import java.time.Duration;
+import java.util.*;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.regex.Pattern;
 
 class CredentialJourneyTest {
     private static final @NonNull String IMPORT_TOOL =
@@ -116,7 +118,7 @@ class CredentialJourneyTest {
                         PluginTestSupport.providerOf(plugins),
                         PluginTestSupport.providerOf(sessionPlugins)));
         var toolContext =
-                mock(ToolDocs.nonNullClass(org.springframework.context.ApplicationContext.class));
+                mock(org.springframework.context.ApplicationContext.class);
         when(toolContext.getBeansOfType(top.focess.veto.api.agent.tool.AgentTool.class))
                 .thenReturn(
                         Map.of(
@@ -164,7 +166,8 @@ class CredentialJourneyTest {
                     assertFalse(observed.contains(token));
                     assertFalse(
                             observed.contains(pluginToken),
-                            "A plugin's final observation must be protected before the model sees it");
+                            "A plugin's final observation must be protected before the model sees"
+                                    + " it");
                     int step = calls.getAndIncrement();
                     if (step == 0) {
                         if (!usePlan)
@@ -309,7 +312,8 @@ class CredentialJourneyTest {
             var result =
                     service.submit(
                             session,
-                            "Read the configuration, import its credential and read example/project",
+                            "Read the configuration, import its credential and read"
+                                    + " example/project",
                             new LlmBinding(
                                     ProviderType.DEEPSEEK,
                                     "scripted",

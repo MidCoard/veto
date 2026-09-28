@@ -1,9 +1,7 @@
 package top.focess.veto.builtin.tools;
 
-import java.time.Duration;
-import java.util.List;
-import java.util.Map;
 import org.jspecify.annotations.NonNull;
+
 import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.tool.Doc;
 import top.focess.veto.api.agent.tool.ParamCategory;
@@ -11,7 +9,6 @@ import top.focess.veto.api.agent.tool.PreparedTool;
 import top.focess.veto.api.agent.tool.SecurityHint;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.agent.tool.ToolDoc;
-import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.ToolErrorCode;
 import top.focess.veto.api.agent.tool.ToolErrors;
 import top.focess.veto.api.agent.tool.ToolPreparation;
@@ -24,12 +21,17 @@ import top.focess.veto.api.process.Command;
 import top.focess.veto.api.process.CommandResult;
 import top.focess.veto.builtin.process.ProcessExecutionCapability;
 
+import java.time.Duration;
+import java.util.List;
+import java.util.Map;
+
 /** Executes screened commands through the sandbox using the standard native-tool path. */
 @ToolSecurity(capability = ToolCapability.PROCESS_EXECUTION, defaultDanger = Danger.ELEVATED)
 @ToolDoc(
         resultFormats = {ToolResultFormat.PLAINTEXT},
         description =
-                "Run one or more commands inside the sandbox. The model lists discrete commands; Veto connects them per `connect`.",
+                "Run one or more commands inside the sandbox. The model lists discrete commands;"
+                        + " Veto connects them per `connect`.",
         behavior =
                 """
                 Each `commands` entry is `{executable, args}` where `executable` is a binary name or path \
@@ -82,13 +84,21 @@ import top.focess.veto.builtin.process.ProcessExecutionCapability;
                 an observed executable path rather than guessing repeatedly.
                 """,
         security =
-                "Commands spawn directly without a shell, so executable and args cannot be combined to smuggle shell operators or extra flags.",
+                "Commands spawn directly without a shell, so executable and args cannot be combined"
+                        + " to smuggle shell operators or extra flags.",
         examples = {
             "{\"commands\": [{\"executable\": \"git\", \"args\": [\"status\"]}], \"timeout\": 60}",
-            "{\"commands\": [{\"executable\": \"gradle\", \"args\": [\"build\"]}, {\"executable\": \"gradle\", \"args\": [\"test\"]}], \"connect\": \"STOP_ON_FAILURE\", \"timeout\": 600}",
-            "{\"commands\": [{\"executable\": \"grep\", \"args\": [\"-r\", \"TODO\", \"src\"]}, {\"executable\": \"wc\", \"args\": [\"-l\"]}], \"connect\": \"PIPE\", \"timeout\": 120}",
-            "{\"commands\": [{\"executable\": \"gradle\", \"args\": [\"clean\"]}, {\"executable\": \"gradle\", \"args\": [\"build\"]}, {\"executable\": \"gradle\", \"args\": [\"test\"]}], \"connect\": \"RUN_ALL\", \"timeout\": 900}",
-            "{\"commands\": [{\"executable\": \"definitely-not-a-real-executable-xyz\", \"args\": []}], \"timeout\": 10}"
+            "{\"commands\": [{\"executable\": \"gradle\", \"args\": [\"build\"]}, {\"executable\":"
+                    + " \"gradle\", \"args\": [\"test\"]}], \"connect\": \"STOP_ON_FAILURE\","
+                    + " \"timeout\": 600}",
+            "{\"commands\": [{\"executable\": \"grep\", \"args\": [\"-r\", \"TODO\", \"src\"]},"
+                    + " {\"executable\": \"wc\", \"args\": [\"-l\"]}], \"connect\": \"PIPE\","
+                    + " \"timeout\": 120}",
+            "{\"commands\": [{\"executable\": \"gradle\", \"args\": [\"clean\"]}, {\"executable\":"
+                    + " \"gradle\", \"args\": [\"build\"]}, {\"executable\": \"gradle\", \"args\":"
+                    + " [\"test\"]}], \"connect\": \"RUN_ALL\", \"timeout\": 900}",
+            "{\"commands\": [{\"executable\": \"definitely-not-a-real-executable-xyz\", \"args\":"
+                    + " []}], \"timeout\": 10}"
         },
         returnExamples = {
             "On branch main\nnothing to commit, working tree clean",
@@ -113,26 +123,31 @@ public final class RunCommandTool implements PreparedTool<RunCommandTool.Args> {
     /** A single discrete command in the chain. */
     public record CommandInput(
             @Doc(
-                            "Binary name resolved by the sandbox using the operating system's executable lookup rules, e.g. 'gradle'. Not a shell string.")
+                            "Binary name resolved by the sandbox using the operating system's"
+                                + " executable lookup rules, e.g. 'gradle'. Not a shell string.")
                     @NonNull String executable,
             @Doc(
-                            "Literal argv array. Veto and the process launcher do not expand globs or environment variables.")
+                            "Literal argv array. Veto and the process launcher do not expand globs"
+                                    + " or environment variables.")
                     @NonNull List<@NonNull String> args) {}
 
     /** Model-facing arguments of {@code run_command}. */
     public record Args(
             @SecurityHint(ParamCategory.SHELL_COMMAND)
                     @Doc(
-                            "Discrete commands; Veto connects them per `connect`. No shell, no chaining operators in input.")
+                            "Discrete commands; Veto connects them per `connect`. No shell, no"
+                                    + " chaining operators in input.")
                     @NonNull List<@NonNull CommandInput> commands,
             @Doc("How Veto connects the commands: STOP_ON_FAILURE (default), RUN_ALL, or PIPE.")
                     ChainMode connect,
             @Doc(
-                            "Request network access for this execution. Defaults to false; true may require approval.")
+                            "Request network access for this execution. Defaults to false; true may"
+                                    + " require approval.")
                     Boolean network,
             @NonNull
                     @Doc(
-                            "Timeout in seconds. 0 selects the configured maximum; larger values are capped by that maximum.")
+                            "Timeout in seconds. 0 selects the configured maximum; larger values"
+                                    + " are capped by that maximum.")
                     Integer timeout) {
 
         /** Compatibility constructor for callers that accept the default deny-network posture. */
@@ -151,7 +166,7 @@ public final class RunCommandTool implements PreparedTool<RunCommandTool.Args> {
 
     @Override
     public @NonNull Class<Args> getArgsClass() {
-        return ToolDocs.nonNullClass(Args.class);
+        return Args.class;
     }
 
     @Override

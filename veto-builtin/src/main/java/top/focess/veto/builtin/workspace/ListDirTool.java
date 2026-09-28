@@ -1,10 +1,7 @@
 package top.focess.veto.builtin.workspace;
 
-import java.io.IOException;
-import java.nio.file.NoSuchFileException;
-import java.util.ArrayList;
-import java.util.Comparator;
 import org.jspecify.annotations.NonNull;
+
 import top.focess.veto.api.agent.capability.WorkspaceFile;
 import top.focess.veto.api.agent.capability.WorkspaceReadCapability;
 import top.focess.veto.api.agent.screening.Danger;
@@ -13,12 +10,16 @@ import top.focess.veto.api.agent.tool.ParamCategory;
 import top.focess.veto.api.agent.tool.SecurityHint;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.agent.tool.ToolDoc;
-import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.ToolErrorCode;
 import top.focess.veto.api.agent.tool.ToolErrors;
 import top.focess.veto.api.agent.tool.ToolResultFormat;
 import top.focess.veto.api.agent.tool.ToolSecurity;
 import top.focess.veto.api.agent.tool.WorkspaceReadTool;
+
+import java.io.IOException;
+import java.nio.file.NoSuchFileException;
+import java.util.ArrayList;
+import java.util.Comparator;
 
 /** {@code list_dir} — list contents of a directory (files and child subdirectories). */
 @ToolSecurity(capability = ToolCapability.WORKSPACE_READ, defaultDanger = Danger.SAFE)
@@ -75,7 +76,8 @@ import top.focess.veto.api.agent.tool.WorkspaceReadTool;
                     refused with PATH_PROTECTED.
                     """,
         security =
-                "Protected entries, symbolic links, and reparse points are silently omitted, so the listing never reveals them.",
+                "Protected entries, symbolic links, and reparse points are silently omitted, so the"
+                        + " listing never reveals them.",
         examples = {
             "{\"absolutePath\": \"/abs/project\"}",
             "{\"absolutePath\": \"/abs/project/src/main/java\"}",
@@ -102,7 +104,7 @@ public final class ListDirTool implements WorkspaceReadTool<ListDirTool.Args> {
 
     @Override
     public @NonNull Class<Args> getArgsClass() {
-        return ToolDocs.nonNullClass(Args.class);
+        return Args.class;
     }
 
     @Override

@@ -2,6 +2,15 @@ package top.focess.veto.llm.embedding;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+
+import org.jspecify.annotations.NonNull;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import top.focess.veto.api.llm.ProviderType;
+import top.focess.veto.api.llm.TextEmbedding;
+import top.focess.veto.llm.credential.CredentialResolver;
+
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -10,19 +19,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.TimeUnit;
-import org.jspecify.annotations.NonNull;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import top.focess.veto.api.agent.tool.ToolDocs;
-import top.focess.veto.api.llm.ProviderType;
-import top.focess.veto.api.llm.TextEmbedding;
-import top.focess.veto.llm.credential.CredentialResolver;
 
 /** Generic provider embedding transport with fixed configuration, bounded input and response. */
 public final class ProviderEmbeddingClient implements TextEmbedding {
 
     private static final @NonNull Logger log =
-            LoggerFactory.getLogger(ToolDocs.nonNullClass(ProviderEmbeddingClient.class));
+            LoggerFactory.getLogger(ProviderEmbeddingClient.class);
     private static final @NonNull HttpClient HTTP =
             HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
     private static final @NonNull Duration REQUEST_TIMEOUT = Duration.ofSeconds(30);

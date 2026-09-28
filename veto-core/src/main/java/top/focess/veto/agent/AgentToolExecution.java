@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.AgentRuntimeState.VetoRefusedException;
 import top.focess.veto.agent.ExecutionControl.Wait;
@@ -31,9 +32,8 @@ import top.focess.veto.api.agent.tool.ToolErrorCode;
 import top.focess.veto.api.agent.tool.ToolResult;
 import top.focess.veto.api.agent.tool.ToolResultFormat;
 import top.focess.veto.api.agent.tool.ToolResultStatus;
+import top.focess.veto.api.event.BeforeTextCommitEvent;
 import top.focess.veto.api.llm.ToolCall;
-import top.focess.veto.api.plugin.contract.StandardContributionPoints;
-import top.focess.veto.api.plugin.contract.TextProtection;
 import top.focess.veto.bus.DeltaFrame;
 
 /** Screens tool batches, obtains approvals and executes under host-issued permits. */
@@ -353,29 +353,28 @@ final class AgentToolExecution {
             transformed = transformed.withContent(pluginObservation);
 
             // (g) final ingress defense, immediately before committing the observation to history.
-            String protectedText = null;
+            String replacement = null;
             var selected = runtime.sessionPlugins;
             String currentOwner = runtime.owner;
             if (transformed.success()
                     && def instanceof NativeToolDefinition
                     && def.capability() == ToolCapability.WORKSPACE_READ
                     && selected != null
-                    && currentOwner != null
-                    && selected.has(
-                            runtime.sessionId.toString(),
-                            StandardContributionPoints.FILE_OBSERVATION)) {
-                // The owning plugin masks plain segments while preserving SECRET_REF markers.
-                protectedText =
-                        selected.protect(
-                                StandardContributionPoints.FILE_OBSERVATION,
-                                new TextProtection.Scope(
-                                        currentOwner,
-                                        runtime.sessionId.toString(),
-                                        runtime.agentId),
+                    && currentOwner != null) {
+                var event =
+                        new BeforeTextCommitEvent(
+                                currentOwner,
+                                runtime.sessionId.toString(),
+                                runtime.agentId,
+                                () -> Thread.currentThread().isInterrupted(),
+                                BeforeTextCommitEvent.Phase.FILE_OBSERVATION,
+                                UUID.randomUUID().toString(),
                                 transformed.content());
+                selected.dispatch(event);
+                if (event.isPrevent()) throw new IllegalStateException("File observation prevented");
+                if (event.replaced()) replacement = event.text();
             }
-            String observation =
-                    runtime.toolBoundary.defend(authorized, transformed, protectedText);
+            String observation = runtime.toolBoundary.defend(authorized, transformed, replacement);
 
             ToolResult observed = transformed.withContent(observation);
             runtime.output().appendToolResponse(observed);

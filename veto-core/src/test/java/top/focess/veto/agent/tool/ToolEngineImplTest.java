@@ -7,16 +7,7 @@ import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpServer;
-import java.net.InetSocketAddress;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.IdentityHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.UUID;
-import java.util.stream.StreamSupport;
+
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -26,6 +17,7 @@ import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.context.ApplicationContext;
+
 import top.focess.veto.agent.intercept.ToolExecutionPermit;
 import top.focess.veto.agent.mcp.transport.McpTransport;
 import top.focess.veto.agent.workspace.PathMode;
@@ -54,6 +46,17 @@ import top.focess.veto.integration.plugins.ProcessHostFixture;
 import top.focess.veto.integration.plugins.WorkflowPluginFixture;
 import top.focess.veto.sandbox.TestSandboxFactory;
 
+import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.IdentityHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+import java.util.stream.StreamSupport;
+
 /**
  * Validates {@link ToolEngineImpl}: manifest assembly, native dispatch with invocation-bound
  * arguments, {@code run_command} routing through the no-shell substrate, and agent-tool dispatch.
@@ -72,10 +75,9 @@ class ToolEngineImplTest {
     void pluginFileToolUsesTheOrdinaryPermitAndSessionBoundary(@TempDir @NonNull Path root)
             throws Exception {
         var contribution =
-                Contribution.of(
-                        StandardContributionPoints.NATIVE_TOOLS, "view_file", new ViewFileTool());
+                Contribution.of(StandardContributionPoints.TOOLS, "view_file", new ViewFileTool());
         try (var fixture = new WorkflowPluginFixture(List.of(contribution))) {
-            var context = mock(ToolDocs.nonNullClass(ApplicationContext.class));
+            var context = mock(ApplicationContext.class);
             when(context.getBeansOfType(PluginManager.class))
                     .thenReturn(Map.of("plugins", fixture.manager));
             var engine = new ToolEngineImpl(new ObjectMapper(), List.of(), context);
@@ -159,7 +161,7 @@ class ToolEngineImplTest {
 
         @Override
         public @NonNull Class<JsonAgentArgs> getArgsClass() {
-            return ToolDocs.nonNullClass(JsonAgentArgs.class);
+            return JsonAgentArgs.class;
         }
 
         @Override
@@ -241,7 +243,7 @@ class ToolEngineImplTest {
                         ToolCapability.PLUGIN_LOCAL);
         var failure =
                 assertThrows(
-                        ToolDocs.nonNullClass(IllegalArgumentException.class),
+                        IllegalArgumentException.class,
                         () -> ToolContractValidator.validateHandler(tool, wrongDefinition));
         assertTrue(
                 String.valueOf(failure.getMessage()).contains("handler capability does not match"));
@@ -263,10 +265,10 @@ class ToolEngineImplTest {
 
     private static @NonNull IllegalArgumentException registrationFailure(
             @NonNull AgentTool<?> tool) {
-        var context = mock(ToolDocs.nonNullClass(ApplicationContext.class));
+        var context = mock(ApplicationContext.class);
         when(context.getBeansOfType(AgentTool.class)).thenReturn(Map.of("invalid", tool));
         var engine = new ToolEngineImpl(new ObjectMapper(), List.of(), context);
-        return assertThrows(ToolDocs.nonNullClass(IllegalArgumentException.class), engine::init);
+        return assertThrows(IllegalArgumentException.class, engine::init);
     }
 
     @ParameterizedTest
@@ -283,7 +285,7 @@ class ToolEngineImplTest {
             })
     void agentExecutionRejectsUnboundOrMismatchedAuthorization(@NonNull String mismatch)
             throws Exception {
-        ApplicationContext appCtx = mock(ToolDocs.nonNullClass(ApplicationContext.class));
+        ApplicationContext appCtx = mock(ApplicationContext.class);
         var tool = new JsonAgentTool();
         when(appCtx.getBeansOfType(AgentTool.class)).thenReturn(Map.of("jsonAgentTool", tool));
         ToolEngineImpl engine = new ToolEngineImpl(new ObjectMapper(), List.of(), appCtx);
@@ -295,7 +297,7 @@ class ToolEngineImplTest {
                         ? AgentToolDefinition.from(
                                 "json_agent",
                                 tool.getClass(),
-                                ToolDocs.nonNullClass(JsonAgentArgs.class),
+                                JsonAgentArgs.class,
                                 ToolCapability.PLUGIN_LOCAL)
                         : definition;
         ToolExecutionPermit permit =
@@ -341,7 +343,7 @@ class ToolEngineImplTest {
 
     private @NonNull ToolResult executeJsonOutput(@NonNull String output) throws Exception {
         ObjectMapper mapper = new ObjectMapper();
-        ApplicationContext appCtx = mock(ToolDocs.nonNullClass(ApplicationContext.class));
+        ApplicationContext appCtx = mock(ApplicationContext.class);
         when(appCtx.getBeansOfType(AgentTool.class))
                 .thenReturn(Map.of("jsonAgentTool", new JsonAgentTool()));
         ToolEngineImpl engine = new ToolEngineImpl(mapper, List.of(), appCtx);
@@ -402,7 +404,7 @@ class ToolEngineImplTest {
 
         @Override
         public @NonNull Class<FailingAgentArgs> getArgsClass() {
-            return ToolDocs.nonNullClass(FailingAgentArgs.class);
+            return FailingAgentArgs.class;
         }
 
         @Override
@@ -532,7 +534,7 @@ class ToolEngineImplTest {
                         Map.of("absolutePath", tempDir.toString()),
                         "mismatched-definition");
         assertThrows(
-                ToolDocs.nonNullClass(SecurityException.class),
+                SecurityException.class,
                 () -> executeAuthorized(engine, call, definition(engine, "list_dir"), tempDir));
     }
 
@@ -557,7 +559,7 @@ class ToolEngineImplTest {
                 new ToolCall(
                         "view_file", Map.of("absolutePath", file.toString()), "forged-definition");
         assertThrows(
-                ToolDocs.nonNullClass(SecurityException.class),
+                SecurityException.class,
                 () -> executeAuthorized(engine, call, forged, tempDir));
     }
 
@@ -566,7 +568,7 @@ class ToolEngineImplTest {
         ObjectMapper mapper =
                 new ObjectMapper()
                         .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
-        ApplicationContext appCtx = mock(ToolDocs.nonNullClass(ApplicationContext.class));
+        ApplicationContext appCtx = mock(ApplicationContext.class);
         when(appCtx.getBeansOfType(AgentTool.class))
                 .thenReturn(Map.of("failingAgentTool", new FailingAgentTool()));
         ToolEngineImpl engine = new ToolEngineImpl(mapper, List.of(), appCtx);
@@ -591,7 +593,7 @@ class ToolEngineImplTest {
                 new ObjectMapper()
                         .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
         FailingAgentTool tool = spy(new FailingAgentTool());
-        ApplicationContext appCtx = mock(ToolDocs.nonNullClass(ApplicationContext.class));
+        ApplicationContext appCtx = mock(ApplicationContext.class);
         when(appCtx.getBeansOfType(AgentTool.class)).thenReturn(Map.of("failingAgentTool", tool));
         ToolEngineImpl engine = new ToolEngineImpl(mapper, List.of(), appCtx);
         engine.init();
@@ -604,7 +606,7 @@ class ToolEngineImplTest {
         assertFalse(result.success());
         assertTrue(
                 result.content().contains("missing required parameter 'reason'"), result.content());
-        verify(tool, never()).execute(any(ToolDocs.nonNullClass(FailingAgentArgs.class)));
+        verify(tool, never()).execute(any(FailingAgentArgs.class));
     }
 
     @Test
@@ -619,7 +621,7 @@ class ToolEngineImplTest {
     void resolveDefinitionDistinguishesFlavours() {
         ToolEngineImpl engine = newEngine();
         assertInstanceOf(
-                ToolDocs.nonNullClass(NativeToolDefinition.class), definition(engine, "view_file"));
+                NativeToolDefinition.class, definition(engine, "view_file"));
     }
 
     @Test
@@ -706,12 +708,12 @@ class ToolEngineImplTest {
 
         Map<String, Class<?>> filesystemTools =
                 Map.of(
-                        "view_file", ToolDocs.nonNullClass(ViewFileTool.Args.class),
-                        "list_dir", ToolDocs.nonNullClass(ListDirTool.Args.class),
-                        "grep_search", ToolDocs.nonNullClass(GrepSearchTool.Args.class),
-                        "write_to_file", ToolDocs.nonNullClass(WriteToFileTool.Args.class),
+                        "view_file", ViewFileTool.Args.class,
+                        "list_dir", ListDirTool.Args.class,
+                        "grep_search", GrepSearchTool.Args.class,
+                        "write_to_file", WriteToFileTool.Args.class,
                         "replace_file_content",
-                                ToolDocs.nonNullClass(ReplaceFileContentTool.Args.class));
+                                ReplaceFileContentTool.Args.class);
 
         filesystemTools.forEach(
                 (toolName, argsClass) -> {
@@ -768,7 +770,7 @@ class ToolEngineImplTest {
                         .readValue(
                                 "{\"tool_name\":\"list_dir\",\"args\":{\"absolutePath\":null},"
                                         + "\"call_id\":\"cid-null\"}",
-                                ToolDocs.nonNullClass(ToolCall.class));
+                                ToolCall.class);
 
         ToolResult result = engine.execute(call, definition(engine, "list_dir"));
 
@@ -1262,8 +1264,9 @@ class ToolEngineImplTest {
                                     StandardCharsets.UTF_8);
                     String result =
                             request.contains("tools/list")
-                                    ? "{\"tools\":[{\"name\":\"lookup_event\",\"description\":\"Look up an"
-                                            + " event\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"event_id\":{\"type\":\"string\"}},\"required\":[\"event_id\"]}}]}"
+                                    ? "{\"tools\":[{\"name\":\"lookup_event\",\"description\":\"Look"
+                                          + " up an"
+                                          + " event\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"event_id\":{\"type\":\"string\"}},\"required\":[\"event_id\"]}}]}"
                                     : "{\"content\":[{\"type\":\"text\",\"text\":\"event"
                                             + " found\"}],\"isError\":false}";
                     byte[] response =
@@ -1296,7 +1299,7 @@ class ToolEngineImplTest {
 
     @Test
     void failedBuiltinInitializationPublishesNoPartialCatalog() {
-        var context = mock(ToolDocs.nonNullClass(ApplicationContext.class));
+        var context = mock(ApplicationContext.class);
         var engine = new ToolEngineImpl(new ObjectMapper(), List.of(new ViewFileTool()), context);
         when(context.getBeansOfType(AgentTool.class))
                 .thenAnswer(
@@ -1317,7 +1320,7 @@ class ToolEngineImplTest {
 
     @Test
     void duplicateBuiltinBatchCannotPublishOrReplaceAnExistingDefinition() {
-        var context = mock(ToolDocs.nonNullClass(ApplicationContext.class));
+        var context = mock(ApplicationContext.class);
         when(context.getBeansOfType(AgentTool.class)).thenReturn(Map.of());
         var engine =
                 new ToolEngineImpl(

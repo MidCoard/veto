@@ -2,15 +2,16 @@ package top.focess.veto.agent.screening;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
+
 import top.focess.veto.agent.intercept.VetoScenario;
 import top.focess.veto.agent.tool.AgentToolDefinition;
 import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.tool.ToolCapability;
-import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.llm.ToolCall;
+
+import java.util.Map;
 
 class ScreeningTest {
 
@@ -44,7 +45,7 @@ class ScreeningTest {
                 ToolCapability.AGENT_CONTROL,
                 Danger.SAFE,
                 Object.class,
-                ToolDocs.nonNullClass(Object.class),
+                Object.class,
                 Map.of());
     }
 }

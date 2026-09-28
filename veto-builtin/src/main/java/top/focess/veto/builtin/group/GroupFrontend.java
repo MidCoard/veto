@@ -1,6 +1,14 @@
 package top.focess.veto.builtin.group;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+
+import org.jspecify.annotations.NonNull;
+
+import top.focess.veto.api.plugin.contract.FrontendContribution;
+import top.focess.veto.api.plugin.contract.JsonValue;
+import top.focess.veto.api.plugin.contract.JsonValues;
+import top.focess.veto.api.plugin.contract.PluginFailure;
+
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -9,12 +17,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
-import org.jspecify.annotations.NonNull;
-import top.focess.veto.api.agent.tool.ToolDocs;
-import top.focess.veto.api.plugin.contract.FrontendContribution;
-import top.focess.veto.api.plugin.contract.JsonValue;
-import top.focess.veto.api.plugin.contract.JsonValues;
-import top.focess.veto.api.plugin.contract.PluginFailure;
 
 /** Bounded wire pages; complete durable history remains readable through text chunks. */
 public final class GroupFrontend {
@@ -29,7 +31,7 @@ public final class GroupFrontend {
     /** Serves the bundled groups script and routes its actions to {@link #handle}. */
     public @NonNull FrontendContribution contribution() {
         try (var stream =
-                ToolDocs.nonNullClass(GroupFrontend.class)
+                GroupFrontend.class
                         .getResourceAsStream("/frontend/groups.js")) {
             if (stream == null) throw new IllegalStateException("Missing group frontend");
             return new FrontendContribution(

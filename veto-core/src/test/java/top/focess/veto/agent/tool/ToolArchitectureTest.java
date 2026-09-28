@@ -3,17 +3,12 @@ package top.focess.veto.agent.tool;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.mock;
 
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.stream.Collectors;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.ApplicationContext;
+
 import top.focess.veto.agent.AgentProfiles;
 import top.focess.veto.api.agent.tool.AgentTool;
 import top.focess.veto.api.agent.tool.CapabilityTool;
@@ -27,6 +22,13 @@ import top.focess.veto.api.plugin.contract.StandardContributionPoints;
 import top.focess.veto.api.plugin.storage.PluginStorage;
 import top.focess.veto.builtin.group.GroupProfiles;
 import top.focess.veto.integration.plugins.PluginManager;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 /** Checks that registered tools expose coherent authoring contracts. */
 @SpringBootTest
@@ -50,7 +52,7 @@ class ToolArchitectureTest {
     @Test
     void allBuiltinToolsArePluginContributionsWithConfiguredDistributionNames() {
         var entries =
-                plugins.catalog().entries(StandardContributionPoints.NATIVE_TOOLS).stream()
+                plugins.catalog().entries(StandardContributionPoints.TOOLS).stream()
                         .filter(entry -> entry.source().namespace().equals("top.focess.builtin"))
                         .toList();
         assertEquals(37, entries.size());
@@ -72,12 +74,12 @@ class ToolArchitectureTest {
     void actualCatalogIdentitySurvivesDefaultNamesAndOperatorAliases() {
         for (String prefix : List.of("plugin_top_focess_builtin__", "operator_")) {
             List<AgentConfiguration.@NonNull Tool> tools = new ArrayList<>();
-            for (var entry : plugins.catalog().entries(StandardContributionPoints.NATIVE_TOOLS)) {
+            for (var entry : plugins.catalog().entries(StandardContributionPoints.TOOLS)) {
                 if (!entry.source().namespace().equals("top.focess.builtin")) continue;
                 String local = entry.id().localId();
                 var registered =
                         ToolRegistration.local(
-                                entry.implementation(),
+                                (CapabilityTool<?>) entry.implementation(),
                                 prefix + local,
                                 plugins.plugin(entry.source().namespace()),
                                 local);
@@ -94,7 +96,7 @@ class ToolArchitectureTest {
                             null,
                             null,
                             Map.of());
-            var session = mock(ToolDocs.nonNullClass(AgentHost.Session.class));
+            var session = mock(AgentHost.Session.class);
             var configuration =
                     new AgentConfiguration.Context(
                             "owner",
@@ -115,8 +117,8 @@ class ToolArchitectureTest {
     @Test
     void everyRegisteredToolHasACoherentContract() {
         List<CapabilityTool<?>> tools = new ArrayList<>();
-        for (var entry : plugins.catalog().entries(StandardContributionPoints.NATIVE_TOOLS))
-            tools.add(entry.implementation());
+        for (var entry : plugins.catalog().entries(StandardContributionPoints.TOOLS))
+            if (entry.implementation() instanceof CapabilityTool<?> tool) tools.add(tool);
         assertFalse(tools.isEmpty());
         for (CapabilityTool<?> tool : tools) {
             ToolDefinition definition =

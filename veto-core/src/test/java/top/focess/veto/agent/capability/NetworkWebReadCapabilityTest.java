@@ -4,21 +4,11 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
-import java.io.IOException;
-import java.net.InetSocketAddress;
-import java.net.URI;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Path;
-import java.time.Duration;
-import java.util.Map;
-import java.util.UUID;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicReference;
+
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
+
 import top.focess.veto.agent.intercept.ToolExecutionPermit;
 import top.focess.veto.agent.tool.ToolCallContext;
 import top.focess.veto.agent.tool.ToolCallContextHolder;
@@ -31,6 +21,19 @@ import top.focess.veto.api.agent.tool.*;
 import top.focess.veto.api.http.ApprovedHttpDestination;
 import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
+
+import java.io.IOException;
+import java.net.InetSocketAddress;
+import java.net.URI;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
+import java.time.Duration;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 /** Exercises host URL authority without depending on a feature tool or model reader. */
 class NetworkWebReadCapabilityTest {
@@ -59,7 +62,7 @@ class NetworkWebReadCapabilityTest {
         }
 
         public @NonNull Class<Args> getArgsClass() {
-            return ToolDocs.nonNullClass(Args.class);
+            return Args.class;
         }
 
         public @NonNull String execute(@NonNull Args args) {
@@ -152,7 +155,7 @@ class NetworkWebReadCapabilityTest {
         try {
             var error =
                     assertThrows(
-                            ToolDocs.nonNullClass(ToolExecutionException.class),
+                            ToolExecutionException.class,
                             () -> fetch(network(true), url(origin, "/start")));
             assertTrue(error.content().contains("cross-origin redirect"));
             assertEquals(0, requests.get());
@@ -176,7 +179,7 @@ class NetworkWebReadCapabilityTest {
         try {
             var error =
                     assertThrows(
-                            ToolDocs.nonNullClass(ToolExecutionException.class),
+                            ToolExecutionException.class,
                             () -> fetch(network(false), url(server, "/private")));
             assertTrue(error.content().contains("private, loopback"));
             assertEquals(0, requests.get());
@@ -284,7 +287,7 @@ class NetworkWebReadCapabilityTest {
             long started = System.nanoTime();
             var error =
                     assertThrows(
-                            ToolDocs.nonNullClass(ToolExecutionException.class),
+                            ToolExecutionException.class,
                             () ->
                                     fetch(
                                             new NetworkEgressCapabilityImpl(1, 1000, true),

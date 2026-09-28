@@ -3,22 +3,13 @@ package top.focess.veto.agent;
 import static org.junit.jupiter.api.Assertions.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.nio.file.Path;
-import java.time.Duration;
-import java.util.ArrayDeque;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicReference;
+
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.test.util.ReflectionTestUtils;
+
 import top.focess.veto.agent.identity.SystemPromptResolver;
 import top.focess.veto.agent.intercept.HitlRegistry;
 import top.focess.veto.agent.intercept.IngressDefense;
@@ -37,7 +28,6 @@ import top.focess.veto.api.agent.AgentState;
 import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.tool.ParamCategory;
 import top.focess.veto.api.agent.tool.ToolCapability;
-import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.ToolResult;
 import top.focess.veto.api.llm.LlmBinding;
 import top.focess.veto.api.llm.LlmOptions;
@@ -47,6 +37,18 @@ import top.focess.veto.api.llm.VetoResponse;
 import top.focess.veto.api.llm.exceptions.LlmException;
 import top.focess.veto.api.process.Command;
 import top.focess.veto.llm.core.UniformLLMCaller;
+
+import java.nio.file.Path;
+import java.time.Duration;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 @SuppressWarnings("initialization.field.uninitialized")
 class NewRequirementsTest {
@@ -66,7 +68,7 @@ class NewRequirementsTest {
                 Danger.ELEVATED,
                 false,
                 Object.class,
-                ToolDocs.nonNullClass(ExecArgs.class),
+                ExecArgs.class,
                 Map.of());
     }
 
@@ -78,7 +80,7 @@ class NewRequirementsTest {
                 Danger.SAFE,
                 false,
                 Object.class,
-                ToolDocs.nonNullClass(ReadArgs.class),
+                ReadArgs.class,
                 Map.of("path", ParamCategory.FILESYSTEM_PATH));
     }
 
@@ -198,7 +200,8 @@ class NewRequirementsTest {
                                         Duration.ofSeconds(10),
                                         msg -> {
                                             System.out.println(
-                                                    "TEST DEBUG: streamedMessage set called with message: "
+                                                    "TEST DEBUG: streamedMessage set called with"
+                                                            + " message: "
                                                             + msg);
                                             streamedMessage.set(msg);
                                         });

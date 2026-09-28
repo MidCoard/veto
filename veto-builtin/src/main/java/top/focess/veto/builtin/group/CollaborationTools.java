@@ -1,14 +1,16 @@
 package top.focess.veto.builtin.group;
 
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Set;
 import org.jspecify.annotations.NonNull;
+
 import top.focess.veto.api.agent.tool.Doc;
 import top.focess.veto.api.agent.tool.ToolDoc;
 import top.focess.veto.api.agent.tool.ToolErrorCode;
 import top.focess.veto.api.agent.tool.ToolErrors;
 import top.focess.veto.api.agent.tool.ToolResultFormat;
+
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Set;
 
 /** Leader-facing collaboration tools for managing mates and their assigned tasks. */
 public final class CollaborationTools {
@@ -19,14 +21,21 @@ public final class CollaborationTools {
             resultFormats = {ToolResultFormat.PLAINTEXT},
             description = "Cancel one group task and confirm execution exit.",
             behavior =
-                    "Cancels queued work before dispatch or interrupts the exact running attempt. Keeps the collaborator and history. Pending cancellation continues to occupy the Mate until execution and the result waiter exit.",
+                    "Cancels queued work before dispatch or interrupts the exact running attempt."
+                        + " Keeps the collaborator and history. Pending cancellation continues to"
+                        + " occupy the Mate until execution and the result waiter exit.",
             whenToUse = "Use when the user asks to stop assigned work.",
             whenNotToUse =
                     "Not for removing a collaborator or stopping independent background processes.",
             resultContract =
-                    "Success means CANCELLED with execution exit confirmed. A pending response means CANCEL_REQUESTED; inspect_group or retry can confirm later. Dependents remain blocked, other work can continue. Failure (failure, REQUEST_REJECTED): `Task not cancelled: <reason>`.",
+                    "Success means CANCELLED with execution exit confirmed. A pending response"
+                        + " means CANCEL_REQUESTED; inspect_group or retry can confirm later."
+                        + " Dependents remain blocked, other work can continue. Failure (failure,"
+                        + " REQUEST_REJECTED): `Task not cancelled: <reason>`.",
             errorsAndEdgeCases =
-                    "Unknown or already successful tasks fail (failure, REQUEST_REJECTED). Cancelled tasks are idempotent. Cancellation does not undo completed side effects or satisfy dependencies.",
+                    "Unknown or already successful tasks fail (failure, REQUEST_REJECTED)."
+                        + " Cancelled tasks are idempotent. Cancellation does not undo completed"
+                        + " side effects or satisfy dependencies.",
             security = "Caller must lead the current owner and Session scoped group.",
             examples = {
                 "{\"taskId\":\"analysis\"}",
@@ -35,9 +44,15 @@ public final class CollaborationTools {
                 "{\"taskId\":\"unknown-task\"}"
             },
             returnExamples = {
-                "Task cancelled; execution exit confirmed. Dependent tasks remain blocked; explicitly replan or cancel them. Mate identity and history retained. Independent background processes are not stopped.",
-                "Task cancelled; execution exit confirmed. Dependent tasks remain blocked; explicitly replan or cancel them. Mate identity and history retained. Independent background processes are not stopped.",
-                "Task cancelled; execution exit confirmed. Dependent tasks remain blocked; explicitly replan or cancel them. Mate identity and history retained. Independent background processes are not stopped.",
+                "Task cancelled; execution exit confirmed. Dependent tasks remain blocked;"
+                    + " explicitly replan or cancel them. Mate identity and history retained."
+                    + " Independent background processes are not stopped.",
+                "Task cancelled; execution exit confirmed. Dependent tasks remain blocked;"
+                    + " explicitly replan or cancel them. Mate identity and history retained."
+                    + " Independent background processes are not stopped.",
+                "Task cancelled; execution exit confirmed. Dependent tasks remain blocked;"
+                    + " explicitly replan or cancel them. Mate identity and history retained."
+                    + " Independent background processes are not stopped.",
                 "Task not cancelled: Unknown task: unknown-task"
             })
     public static final class CancelTask implements GroupControlTool<CancelTask.Args> {
@@ -62,7 +77,6 @@ public final class CollaborationTools {
         }
 
         @Override
-        @SuppressWarnings("nullness:return")
         public @NonNull Class<Args> getArgsClass() {
             return Args.class;
         }
@@ -81,7 +95,9 @@ public final class CollaborationTools {
                 return ToolErrors.failure(
                         ToolErrorCode.GROUP.REQUEST_REJECTED,
                         "Task not cancelled: " + rejected.reason());
-            return "Task cancelled; execution exit confirmed. Dependent tasks remain blocked; explicitly replan or cancel them. Mate identity and history retained. Independent background processes are not stopped.";
+            return "Task cancelled; execution exit confirmed. Dependent tasks remain blocked;"
+                       + " explicitly replan or cancel them. Mate identity and history retained."
+                       + " Independent background processes are not stopped.";
         }
     }
 
@@ -90,13 +106,18 @@ public final class CollaborationTools {
             resultFormats = {ToolResultFormat.PLAINTEXT},
             description = "Remove an idle collaborator from your group.",
             behavior =
-                    "Rejects unfinished assigned tasks. Requests member shutdown and confirms actual execution exit before removing membership. Keeps task and Agent history.",
+                    "Rejects unfinished assigned tasks. Requests member shutdown and confirms"
+                        + " actual execution exit before removing membership. Keeps task and Agent"
+                        + " history.",
             whenToUse = "Use when the user no longer needs this collaborator in the team.",
             whenNotToUse = "Not a task cancellation tool. Finish or cancel assigned work first.",
             resultContract =
-                    "Success confirms member execution and dispatch waiter stopped. A timeout retains membership; retry to confirm exit. Failure (failure, REQUEST_REJECTED): `Mate not removed: <reason>`.",
+                    "Success confirms member execution and dispatch waiter stopped. A timeout"
+                        + " retains membership; retry to confirm exit. Failure (failure,"
+                        + " REQUEST_REJECTED): `Mate not removed: <reason>`.",
             errorsAndEdgeCases =
-                    "Unfinished task ids are listed. A stopping member cannot receive new work. Independent background processes are not stopped.",
+                    "Unfinished task ids are listed. A stopping member cannot receive new work."
+                        + " Independent background processes are not stopped.",
             security = "Caller must lead the current owner and Session scoped group.",
             examples = {
                 "{\"mateId\":\"9b2e8c1a-4d5f-4e7b-8c9d-0a1b2c3d4e5f\"}",
@@ -105,9 +126,12 @@ public final class CollaborationTools {
                 "{\"mateId\":\"00000000-0000-0000-0000-000000000000\"}"
             },
             returnExamples = {
-                "Mate removed; execution exit confirmed. History retained. Independent background processes are not stopped.",
-                "Mate removed; execution exit confirmed. History retained. Independent background processes are not stopped.",
-                "Mate removed; execution exit confirmed. History retained. Independent background processes are not stopped.",
+                "Mate removed; execution exit confirmed. History retained. Independent background"
+                    + " processes are not stopped.",
+                "Mate removed; execution exit confirmed. History retained. Independent background"
+                    + " processes are not stopped.",
+                "Mate removed; execution exit confirmed. History retained. Independent background"
+                    + " processes are not stopped.",
                 "Mate not removed: Unknown Mate in this group: 00000000-0000-0000-0000-000000000000"
             })
     public static final class RemoveMate implements GroupControlTool<RemoveMate.Args> {
@@ -132,7 +156,6 @@ public final class CollaborationTools {
         }
 
         @Override
-        @SuppressWarnings("nullness:return")
         public @NonNull Class<Args> getArgsClass() {
             return Args.class;
         }
@@ -151,7 +174,8 @@ public final class CollaborationTools {
                 return ToolErrors.failure(
                         ToolErrorCode.GROUP.REQUEST_REJECTED,
                         "Mate not removed: " + rejected.reason());
-            return "Mate removed; execution exit confirmed. History retained. Independent background processes are not stopped.";
+            return "Mate removed; execution exit confirmed. History retained. Independent"
+                       + " background processes are not stopped.";
         }
     }
 
@@ -160,19 +184,26 @@ public final class CollaborationTools {
             resultFormats = {ToolResultFormat.PLAINTEXT},
             description = "Create a named collaborator in your group.",
             behavior =
-                    "Creates an idle Mate with an independent history. Responsibility describes its work, not resource permissions. The returned Mate id identifies the same collaborator for future tasks.",
+                    "Creates an idle Mate with an independent history. Responsibility describes its"
+                        + " work, not resource permissions. The returned Mate id identifies the"
+                        + " same collaborator for future tasks.",
             whenToUse = "Create the people needed for your plan before assigning tasks.",
             whenNotToUse =
-                    "Do not create another member merely because an existing member is busy; tasks can queue.",
+                    "Do not create another member merely because an existing member is busy; tasks"
+                        + " can queue.",
             resultContract =
-                    "Returns the created Mate id. Blank name or responsibility (failure, INVALID_ARGUMENTS): `Mate not created: name and responsibility must not be blank.`. Failure leaves no assigned task.",
+                    "Returns the created Mate id. Blank name or responsibility (failure,"
+                        + " INVALID_ARGUMENTS): `Mate not created: name and responsibility must not"
+                        + " be blank.`. Failure leaves no assigned task.",
             errorsAndEdgeCases =
                     "Blank names or responsibilities and unavailable groups are rejected.",
             security = "Caller must lead the current owner and Session scoped group.",
             examples = {
                 "{\"name\":\"Alice\",\"responsibility\":\"Review the supplied calculations\"}",
-                "{\"name\":\"Priya\",\"responsibility\":\"Implement and test the retry logic in the billing client\"}",
-                "{\"name\":\"Kenji\",\"responsibility\":\"Investigate the memory regression and report findings with evidence\"}",
+                "{\"name\":\"Priya\",\"responsibility\":\"Implement and test the retry logic in the"
+                    + " billing client\"}",
+                "{\"name\":\"Kenji\",\"responsibility\":\"Investigate the memory regression and"
+                    + " report findings with evidence\"}",
                 "{\"name\":\"Morgan\",\"responsibility\":\"  \"}"
             },
             returnExamples = {
@@ -205,7 +236,6 @@ public final class CollaborationTools {
         }
 
         @Override
-        @SuppressWarnings("nullness:return") // Java class literals cannot be null.
         public @NonNull Class<Args> getArgsClass() {
             return Args.class;
         }
@@ -233,28 +263,49 @@ public final class CollaborationTools {
             resultFormats = {ToolResultFormat.PLAINTEXT},
             description = "Assign one concrete task to an existing collaborator.",
             behavior =
-                    "Registers work for the specified Mate. It starts after direct dependencies complete and the Mate is free; dependency reports are supplied automatically. Results are reported automatically to the Leader.",
+                    "Registers work for the specified Mate. It starts after direct dependencies"
+                        + " complete and the Mate is free; dependency reports are supplied"
+                        + " automatically. Results are reported automatically to the Leader.",
             whenToUse =
-                    "Use for work assigned to a collaborator, including follow-up work for the same person.",
+                    "Use for work assigned to a collaborator, including follow-up work for the same"
+                        + " person.",
             whenNotToUse =
-                    "Do not use for background processes or create a task for your own final synthesis.",
+                    "Do not use for background processes or create a task for your own final"
+                        + " synthesis.",
             resultContract =
-                    "Returns the registered task id and assignee. Registration is not completion. Failure (failure, REQUEST_REJECTED): `Task not created: <reason>`.",
+                    "Returns the registered task id and assignee. Registration is not completion."
+                        + " Failure (failure, REQUEST_REJECTED): `Task not created: <reason>`.",
             errorsAndEdgeCases =
-                    "Unknown members, duplicate ids and missing dependencies fail (failure, REQUEST_REJECTED). A busy member causes queueing, not substitution.",
+                    "Unknown members, duplicate ids and missing dependencies fail (failure,"
+                        + " REQUEST_REJECTED). A busy member causes queueing, not substitution.",
             security = "Caller must lead the current owner and Session scoped group.",
             examples = {
-                "{\"taskId\":\"calculation\",\"description\":\"Calculate the supplied order total\",\"mateId\":\"9b2e8c1a-4d5f-4e7b-8c9d-0a1b2c3d4e5f\"}",
-                "{\"taskId\":\"integration-tests\",\"description\":\"Run the integration suite against the migrated schema and report failures\",\"mateId\":\"5c1a2b3d-7e8f-4a5b-9c0d-1e2f3a4b5c6d\",\"dependsOn\":[\"schema-migration\"]}",
-                "{\"taskId\":\"release-notes\",\"description\":\"Draft the release notes from the completed feature and fix reports\",\"mateId\":\"9b2e8c1a-4d5f-4e7b-8c9d-0a1b2c3d4e5f\",\"dependsOn\":[\"feature-api\",\"fix-retry\"]}",
-                "{\"taskId\":\"retry-regression-test\",\"description\":\"Add a regression test for the race fixed in fix-retry\",\"mateId\":\"5c1a2b3d-7e8f-4a5b-9c0d-1e2f3a4b5c6d\",\"dependsOn\":[\"integration-tests\"]}",
-                "{\"taskId\":\"docs\",\"description\":\"Write the API documentation\",\"mateId\":\"00000000-0000-0000-0000-000000000000\"}"
+                "{\"taskId\":\"calculation\",\"description\":\"Calculate the supplied order"
+                    + " total\",\"mateId\":\"9b2e8c1a-4d5f-4e7b-8c9d-0a1b2c3d4e5f\"}",
+                "{\"taskId\":\"integration-tests\",\"description\":\"Run the integration suite"
+                    + " against the migrated schema and report"
+                    + " failures\",\"mateId\":\"5c1a2b3d-7e8f-4a5b-9c0d-1e2f3a4b5c6d\",\"dependsOn\":[\"schema-migration\"]}",
+                "{\"taskId\":\"release-notes\",\"description\":\"Draft the release notes from the"
+                    + " completed feature and fix"
+                    + " reports\",\"mateId\":\"9b2e8c1a-4d5f-4e7b-8c9d-0a1b2c3d4e5f\",\"dependsOn\":[\"feature-api\",\"fix-retry\"]}",
+                "{\"taskId\":\"retry-regression-test\",\"description\":\"Add a regression test for"
+                    + " the race fixed in"
+                    + " fix-retry\",\"mateId\":\"5c1a2b3d-7e8f-4a5b-9c0d-1e2f3a4b5c6d\",\"dependsOn\":[\"integration-tests\"]}",
+                "{\"taskId\":\"docs\",\"description\":\"Write the API"
+                    + " documentation\",\"mateId\":\"00000000-0000-0000-0000-000000000000\"}"
             },
             returnExamples = {
-                "Task registered: calculation; assigned Mate: 9b2e8c1a-4d5f-4e7b-8c9d-0a1b2c3d4e5f. It waits for its dependencies and this Mate to become available.",
-                "Task registered: integration-tests; assigned Mate: 5c1a2b3d-7e8f-4a5b-9c0d-1e2f3a4b5c6d. It waits for its dependencies and this Mate to become available.",
-                "Task registered: release-notes; assigned Mate: 9b2e8c1a-4d5f-4e7b-8c9d-0a1b2c3d4e5f. It waits for its dependencies and this Mate to become available.",
-                "Task registered: retry-regression-test; assigned Mate: 5c1a2b3d-7e8f-4a5b-9c0d-1e2f3a4b5c6d. It waits for its dependencies and this Mate to become available.",
+                "Task registered: calculation; assigned Mate: 9b2e8c1a-4d5f-4e7b-8c9d-0a1b2c3d4e5f."
+                    + " It waits for its dependencies and this Mate to become available.",
+                "Task registered: integration-tests; assigned Mate:"
+                    + " 5c1a2b3d-7e8f-4a5b-9c0d-1e2f3a4b5c6d. It waits for its dependencies and"
+                    + " this Mate to become available.",
+                "Task registered: release-notes; assigned Mate:"
+                    + " 9b2e8c1a-4d5f-4e7b-8c9d-0a1b2c3d4e5f. It waits for its dependencies and"
+                    + " this Mate to become available.",
+                "Task registered: retry-regression-test; assigned Mate:"
+                    + " 5c1a2b3d-7e8f-4a5b-9c0d-1e2f3a4b5c6d. It waits for its dependencies and"
+                    + " this Mate to become available.",
                 "Task not created: Unknown Mate in this group: 00000000-0000-0000-0000-000000000000"
             })
     public static final class CreateTask implements GroupControlTool<CreateTask.Args> {
@@ -290,7 +341,6 @@ public final class CollaborationTools {
         }
 
         @Override
-        @SuppressWarnings("nullness:return") // Java class literals cannot be null.
         public @NonNull Class<Args> getArgsClass() {
             return Args.class;
         }
@@ -310,7 +360,8 @@ public final class CollaborationTools {
             if (group == null)
                 return ToolErrors.failure(
                         ToolErrorCode.GROUP.NO_ACTIVE_GROUP,
-                        "Task not created: no active group in your context. create_task is a Leader tool inside a group.");
+                        "Task not created: no active group in your context. create_task is a Leader"
+                            + " tool inside a group.");
             String responsibility = group.mates().get(args.mateId());
             if (responsibility == null)
                 return ToolErrors.failure(

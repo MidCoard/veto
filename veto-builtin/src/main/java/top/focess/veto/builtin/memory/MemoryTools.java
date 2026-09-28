@@ -1,21 +1,22 @@
 package top.focess.veto.builtin.memory;
 
+import org.jspecify.annotations.NonNull;
+
+import top.focess.veto.api.agent.tool.Doc;
+import top.focess.veto.api.agent.tool.ParamCategory;
+import top.focess.veto.api.agent.tool.RequiredWhen;
+import top.focess.veto.api.agent.tool.SecurityHint;
+import top.focess.veto.api.agent.tool.ToolDoc;
+import top.focess.veto.api.agent.tool.ToolErrorCode;
+import top.focess.veto.api.agent.tool.ToolErrors;
+import top.focess.veto.api.agent.tool.ToolResultFormat;
+
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
-import org.jspecify.annotations.NonNull;
-import top.focess.veto.api.agent.tool.Doc;
-import top.focess.veto.api.agent.tool.ParamCategory;
-import top.focess.veto.api.agent.tool.RequiredWhen;
-import top.focess.veto.api.agent.tool.SecurityHint;
-import top.focess.veto.api.agent.tool.ToolDoc;
-import top.focess.veto.api.agent.tool.ToolDocs;
-import top.focess.veto.api.agent.tool.ToolErrorCode;
-import top.focess.veto.api.agent.tool.ToolErrors;
-import top.focess.veto.api.agent.tool.ToolResultFormat;
 
 /**
  * Agent-facing memory tools. Their agent-tool definition flavour means the Gateway returns {@code
@@ -77,7 +78,8 @@ public final class MemoryTools {
     @ToolDoc(
             resultFormats = {ToolResultFormat.PLAINTEXT},
             description =
-                    "Search the current session's captured memory and the user's cross-session insights together.",
+                    "Search the current session's captured memory and the user's cross-session"
+                            + " insights together.",
             behavior =
                     """
                     Embeds `query`, searches both the current session and the user's cross-session \
@@ -111,7 +113,8 @@ public final class MemoryTools {
                     Refine the query before retrying; never invent absent memories.
                     """,
             security =
-                    "Session results belong to the current session; all results belong to the current user.",
+                    "Session results belong to the current session; all results belong to the"
+                            + " current user.",
             examples = {
                 "{\"query\": \"UserService authentication\"}",
                 "{\"query\": \"build configuration\"}",
@@ -119,13 +122,20 @@ public final class MemoryTools {
                 "{\"query\": \"deployment rollback procedure\"}"
             },
             returnExamples = {
-                "2 memories:\n- [CROSS_SESSION] id=123e4567-e89b-12d3-a456-426614174000 score=0.880 src=INSIGHT {}\n"
+                "2 memories:\n"
+                        + "- [CROSS_SESSION] id=123e4567-e89b-12d3-a456-426614174000 score=0.880"
+                        + " src=INSIGHT {}\n"
                         + "  Prefer constructor injection over field injection...\n"
-                        + "- [SESSION] id=123e4567-e89b-12d3-a456-426614174001 score=0.820 src=turn_range {from=12, to=12}\n"
+                        + "- [SESSION] id=123e4567-e89b-12d3-a456-426614174001 score=0.820"
+                        + " src=turn_range {from=12, to=12}\n"
                         + "  UserService.authenticate validates the JWT expiry and...",
-                "1 memories:\n- [CROSS_SESSION] id=123e4567-e89b-12d3-a456-426614174002 score=0.910 src=INSIGHT {}\n"
+                "1 memories:\n"
+                        + "- [CROSS_SESSION] id=123e4567-e89b-12d3-a456-426614174002 score=0.910"
+                        + " src=INSIGHT {}\n"
                         + "  This project uses Gradle 8.5 with Kotlin DSL...",
-                "1 memories:\n- [CROSS_SESSION] id=ffde62f9-716f-41e4-bcec-8d63fbf8ed7c score=0.900 src=stored {raw=insight_origin {origin=write_memory}}\n"
+                "1 memories:\n"
+                        + "- [CROSS_SESSION] id=ffde62f9-716f-41e4-bcec-8d63fbf8ed7c score=0.900"
+                        + " src=stored {raw=insight_origin {origin=write_memory}}\n"
                         + "  test placeholder\n",
                 "no matching memories"
             })
@@ -155,7 +165,7 @@ public final class MemoryTools {
 
         @Override
         public @NonNull Class<Args> getArgsClass() {
-            return ToolDocs.nonNullClass(Args.class);
+            return Args.class;
         }
 
         @Override
@@ -181,7 +191,8 @@ public final class MemoryTools {
     @ToolDoc(
             resultFormats = {ToolResultFormat.PLAINTEXT},
             description =
-                    "Write durable cross-session memory, or promote a Session-LTM memory to cross-session visibility.",
+                    "Write durable cross-session memory, or promote a Session-LTM memory to"
+                            + " cross-session visibility.",
             behavior =
                     """
                     Set `mode` to `WRITE` to store `content` as new durable Cross-Session memory, tagged \
@@ -228,13 +239,20 @@ public final class MemoryTools {
                     contents in durable memory.
                     """,
             security =
-                    "Content is stored as supplied and persists across sessions. Never include secrets.",
+                    "Content is stored as supplied and persists across sessions. Never include"
+                            + " secrets.",
             examples = {
-                "{\"mode\": \"WRITE\", \"content\": \"topic: evidence-demo\\nThe quick brown fox jumps over the lazy dog\"}",
-                "{\"mode\": \"WRITE\", \"content\": \"Decision: audit records are append-only; corrections are written as new compensating entries, never edits.\"}",
-                "{\"mode\": \"WRITE\", \"content\": \"Prefer constructor injection\", \"projectId\": \"123e4567-e89b-12d3-a456-426614174000\"}",
-                "{\"mode\": \"PROMOTE\", \"promoteMemoryId\": \"123e4567-e89b-12d3-a456-426614174000\"}",
-                "{\"mode\": \"PROMOTE\", \"promoteMemoryId\": \"123e4567-e89b-12d3-a456-426614174000\", \"content\": \"Replacement content that PROMOTE rejects\"}"
+                "{\"mode\": \"WRITE\", \"content\": \"topic: evidence-demo\\n"
+                        + "The quick brown fox jumps over the lazy dog\"}",
+                "{\"mode\": \"WRITE\", \"content\": \"Decision: audit records are append-only;"
+                        + " corrections are written as new compensating entries, never edits.\"}",
+                "{\"mode\": \"WRITE\", \"content\": \"Prefer constructor injection\","
+                        + " \"projectId\": \"123e4567-e89b-12d3-a456-426614174000\"}",
+                "{\"mode\": \"PROMOTE\", \"promoteMemoryId\":"
+                        + " \"123e4567-e89b-12d3-a456-426614174000\"}",
+                "{\"mode\": \"PROMOTE\", \"promoteMemoryId\":"
+                        + " \"123e4567-e89b-12d3-a456-426614174000\", \"content\": \"Replacement"
+                        + " content that PROMOTE rejects\"}"
             },
             returnExamples = {
                 "memory written: af7730d5-47ab-4e63-b61c-3fda7777b5a0",
@@ -269,7 +287,8 @@ public final class MemoryTools {
                         @NonNull Mode mode,
                 @SecurityHint(ParamCategory.GENERIC)
                         @Doc(
-                                "Durable memory text; required only in WRITE mode. Never include secrets.")
+                                "Durable memory text; required only in WRITE mode. Never include"
+                                        + " secrets.")
                         @RequiredWhen(field = "mode", values = "WRITE", rejectBlank = true)
                         String content,
                 @Doc("Session-LTM memory UUID; required only in PROMOTE mode.")
@@ -284,7 +303,7 @@ public final class MemoryTools {
 
         @Override
         public @NonNull Class<Args> getArgsClass() {
-            return ToolDocs.nonNullClass(Args.class);
+            return Args.class;
         }
 
         @Override
@@ -304,7 +323,8 @@ public final class MemoryTools {
                         || (requestedProjectId != null && !requestedProjectId.isBlank())) {
                     return ToolErrors.failure(
                             ToolErrorCode.VALIDATION.INVALID_ARGUMENTS,
-                            "Invalid arguments: PROMOTE accepts only promoteMemoryId; memory not promoted.");
+                            "Invalid arguments: PROMOTE accepts only promoteMemoryId; memory not"
+                                    + " promoted.");
                 }
                 String promoteId =
                         requireValue(
@@ -317,24 +337,28 @@ public final class MemoryTools {
                             ? "promoted: " + promoted.value()
                             : ToolErrors.failure(
                                     ToolErrorCode.MEMORY.NOT_FOUND,
-                                    "Memory not found: the memory does not exist or is not owned; not promoted.");
+                                    "Memory not found: the memory does not exist or is not owned;"
+                                            + " not promoted.");
                 } catch (IllegalArgumentException e) {
                     return ToolErrors.failure(
                             ToolErrorCode.MEMORY.NOT_FOUND,
-                            "Memory not found: the memory does not exist or is not owned; not promoted.");
+                            "Memory not found: the memory does not exist or is not owned; not"
+                                    + " promoted.");
                 }
             }
             if (requestedPromoteId != null && !requestedPromoteId.isBlank()) {
                 return ToolErrors.failure(
                         ToolErrorCode.VALIDATION.INVALID_ARGUMENTS,
-                        "Invalid arguments: WRITE does not accept promoteMemoryId; memory not written.");
+                        "Invalid arguments: WRITE does not accept promoteMemoryId; memory not"
+                                + " written.");
             }
             String content =
                     requireValue(requestedContent, "RequiredWhen validation must supply content");
             if (content.length() > MAX_MEMORY_CHARS) {
                 return ToolErrors.failure(
                         ToolErrorCode.MEMORY.TOO_LARGE,
-                        "Memory too large: the content exceeds 64000 characters; memory not written.");
+                        "Memory too large: the content exceeds 64000 characters; memory not"
+                                + " written.");
             }
             UUID projectId = parseUuidOrNull(requestedProjectId);
             if (requestedProjectId != null && !requestedProjectId.isBlank() && projectId == null) {
@@ -379,7 +403,8 @@ public final class MemoryTools {
                     share the contract's failure body so tenant isolation reveals nothing.
                     """,
             security =
-                    "Deletion is permanent. Remove only a memory you have verified should be removed.",
+                    "Deletion is permanent. Remove only a memory you have verified should be"
+                            + " removed.",
             examples = {
                 "{\"memoryId\": \"af7730d5-47ab-4e63-b61c-3fda7777b5a0\"}",
                 "{\"memoryId\": \"123e4567-e89b-12d3-a456-426614174001\"}",
@@ -416,7 +441,7 @@ public final class MemoryTools {
 
         @Override
         public @NonNull Class<Args> getArgsClass() {
-            return ToolDocs.nonNullClass(Args.class);
+            return Args.class;
         }
 
         @Override
@@ -432,7 +457,8 @@ public final class MemoryTools {
             if (id.isBlank()) {
                 return ToolErrors.failure(
                         ToolErrorCode.MEMORY.NOT_FOUND,
-                        "Memory not found: the memory does not exist or is not owned; nothing forgotten.");
+                        "Memory not found: the memory does not exist or is not owned; nothing"
+                                + " forgotten.");
             }
             try {
                 MemoryId memoryId = new MemoryId(UUID.fromString(id.strip()));
@@ -441,11 +467,13 @@ public final class MemoryTools {
                         ? "forgotten: " + memoryId.value()
                         : ToolErrors.failure(
                                 ToolErrorCode.MEMORY.NOT_FOUND,
-                                "Memory not found: the memory does not exist or is not owned; nothing forgotten.");
+                                "Memory not found: the memory does not exist or is not owned;"
+                                        + " nothing forgotten.");
             } catch (IllegalArgumentException e) {
                 return ToolErrors.failure(
                         ToolErrorCode.MEMORY.NOT_FOUND,
-                        "Memory not found: the memory does not exist or is not owned; nothing forgotten.");
+                        "Memory not found: the memory does not exist or is not owned; nothing"
+                                + " forgotten.");
             }
         }
     }

@@ -9,11 +9,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.net.URI;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Optional;
-import java.util.UUID;
+
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentMatchers;
@@ -24,11 +20,17 @@ import org.springframework.http.server.ServerHttpResponse;
 import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketHandler;
 import org.springframework.web.socket.WebSocketSession;
-import top.focess.veto.api.agent.tool.ToolDocs;
+
 import top.focess.veto.model.SessionEntity;
 import top.focess.veto.model.SessionRepository;
 import top.focess.veto.vault.SessionManager;
 import top.focess.veto.veto.VetoGateway;
+
+import java.net.URI;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
 
 class VetoWebSocketSecurityTest {
 
@@ -38,14 +40,14 @@ class VetoWebSocketSecurityTest {
         String token = sessionManager.createSession("alice");
         VetoWebSocketAuthInterceptor interceptor = new VetoWebSocketAuthInterceptor(sessionManager);
         @NonNull ServerHttpRequest validRequest = request("ws://localhost/ws?token=" + token);
-        ServerHttpResponse validResponse = mock(ToolDocs.nonNullClass(ServerHttpResponse.class));
+        ServerHttpResponse validResponse = mock(ServerHttpResponse.class);
         Map<String, Object> attributes = new HashMap<>();
 
         assertTrue(
                 interceptor.beforeHandshake(
                         validRequest,
                         validResponse,
-                        mock(ToolDocs.nonNullClass(WebSocketHandler.class)),
+                        mock(WebSocketHandler.class),
                         attributes));
         assertTrue(
                 "alice"
@@ -54,24 +56,22 @@ class VetoWebSocketSecurityTest {
                                         VetoWebSocketAuthInterceptor
                                                 .AUTHENTICATED_USER_ATTRIBUTE)));
 
-        ServerHttpResponse rejectedResponse = mock(ToolDocs.nonNullClass(ServerHttpResponse.class));
+        ServerHttpResponse rejectedResponse = mock(ServerHttpResponse.class);
         assertFalse(
                 interceptor.beforeHandshake(
                         request("ws://localhost/ws?token=invalid"),
                         rejectedResponse,
-                        mock(ToolDocs.nonNullClass(WebSocketHandler.class)),
+                        mock(WebSocketHandler.class),
                         new HashMap<>()));
         verify(rejectedResponse).setStatusCode(HttpStatus.UNAUTHORIZED);
     }
 
     @Test
     void deltaFramesReachOnlyConnectionsOwnedByTheSessionUser() throws Exception {
-        SessionRepository sessions = mock(ToolDocs.nonNullClass(SessionRepository.class));
+        SessionRepository sessions = mock(SessionRepository.class);
         VetoWebSocketHandler handler =
                 new VetoWebSocketHandler(
-                        new ObjectMapper(),
-                        mock(ToolDocs.nonNullClass(VetoGateway.class)),
-                        sessions);
+                        new ObjectMapper(), mock(VetoGateway.class), sessions);
         @NonNull WebSocketSession alice = socket("alice-socket", "alice");
         @NonNull WebSocketSession bob = socket("bob-socket", "bob");
         handler.afterConnectionEstablished(alice);
@@ -92,14 +92,14 @@ class VetoWebSocketSecurityTest {
     }
 
     private static @NonNull ServerHttpRequest request(@NonNull String uri) {
-        ServerHttpRequest request = mock(ToolDocs.nonNullClass(ServerHttpRequest.class));
+        ServerHttpRequest request = mock(ServerHttpRequest.class);
         when(request.getHeaders()).thenReturn(new HttpHeaders());
         when(request.getURI()).thenReturn(URI.create(uri));
         return request;
     }
 
     private static @NonNull WebSocketSession socket(@NonNull String id, @NonNull String owner) {
-        WebSocketSession session = mock(ToolDocs.nonNullClass(WebSocketSession.class));
+        WebSocketSession session = mock(WebSocketSession.class);
         when(session.getId()).thenReturn(id);
         when(session.isOpen()).thenReturn(true);
         when(session.getAttributes())

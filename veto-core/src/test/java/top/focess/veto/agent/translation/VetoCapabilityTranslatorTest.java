@@ -4,22 +4,24 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.util.List;
-import java.util.Map;
+
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
+
 import top.focess.veto.agent.tool.AgentToolDefinition;
 import top.focess.veto.agent.tool.NativeToolDefinition;
 import top.focess.veto.agent.tool.ToolSchemaCompiler;
 import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.tool.ParamCategory;
 import top.focess.veto.api.agent.tool.ToolCapability;
-import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.llm.ToolDefinition;
 import top.focess.veto.builtin.planning.SubmitPlanTool;
 import top.focess.veto.builtin.response.AnswerWithCitationsTool;
 import top.focess.veto.builtin.tools.LoadSkillTool;
 import top.focess.veto.builtin.workspace.ViewFileTool;
+
+import java.util.List;
+import java.util.Map;
 
 /**
  * Validates {@link VetoCapabilityTranslator} against the per-turn veto_pulse variant matrix and the
@@ -31,9 +33,7 @@ class VetoCapabilityTranslatorTest {
 
     @Test
     void translateToolsFlattensManifestToNameDescriptionSchema() {
-        // Java class literals are non-null; Checker treats this literal as nullable.
-        @SuppressWarnings("nullness:assignment")
-        @NonNull Class<?> toolClass = LoadSkillTool.class;
+        var toolClass = LoadSkillTool.class;
         NativeToolDefinition nativeDef =
                 new NativeToolDefinition(
                         "view_file",
@@ -42,7 +42,7 @@ class VetoCapabilityTranslatorTest {
                         Danger.SAFE,
                         false,
                         toolClass,
-                        ToolDocs.nonNullClass(LoadSkillTool.Args.class),
+                        LoadSkillTool.Args.class,
                         Map.<String, ParamCategory>of());
         AgentToolDefinition agent =
                 new AgentToolDefinition(
@@ -51,7 +51,7 @@ class VetoCapabilityTranslatorTest {
                         ToolCapability.PLUGIN_LOCAL,
                         Danger.SAFE,
                         toolClass,
-                        ToolDocs.nonNullClass(LoadSkillTool.Args.class),
+                        LoadSkillTool.Args.class,
                         Map.<String, ParamCategory>of());
         List<ToolDefinition> flat = translator.translateTools(List.of(nativeDef, agent));
         assertEquals(2, flat.size());
@@ -89,8 +89,8 @@ class VetoCapabilityTranslatorTest {
         var answer =
                 AgentToolDefinition.from(
                         "renamed_answer_submission",
-                        ToolDocs.nonNullClass(AnswerWithCitationsTool.class),
-                        ToolDocs.nonNullClass(AnswerWithCitationsTool.Args.class),
+                        AnswerWithCitationsTool.class,
+                        AnswerWithCitationsTool.Args.class,
                         ToolCapability.LOOP_CONTROL);
         var flat = translator.translateTools(List.of(tool, plan, answer));
         JsonNode variants =
@@ -160,8 +160,8 @@ class VetoCapabilityTranslatorTest {
     private static @NonNull AgentToolDefinition planDefinition(@NonNull String name) {
         return AgentToolDefinition.from(
                 name,
-                ToolDocs.nonNullClass(SubmitPlanTool.class),
-                ToolDocs.nonNullClass(SubmitPlanTool.Args.class),
+                SubmitPlanTool.class,
+                SubmitPlanTool.Args.class,
                 ToolCapability.LOOP_CONTROL);
     }
 

@@ -1,11 +1,14 @@
 package top.focess.veto.api.plugin.contract;
 
-import java.util.Set;
 import org.jspecify.annotations.NonNull;
+
+import top.focess.veto.api.agent.tool.RemoteTool;
 import top.focess.veto.api.plugin.contribution.ContributionId;
 
+import java.util.Set;
+
 /**
- * Stock schema-authored {@link Tool}; its qualified identity comes from the catalog.
+ * Stock schema-authored {@link RemoteTool}; its qualified identity comes from the catalog.
  *
  * @param description human-readable tool description
  * @param inputSchema JSON schema for arguments
@@ -21,7 +24,7 @@ public record ToolContribution(
         @NonNull Effect effect,
         @NonNull Set<@NonNull ContributionId> categories,
         @NonNull ToolHandler handler)
-        implements Tool {
+        implements RemoteTool {
     /** Defensively copies categories and validates the description. */
     public ToolContribution {
         categories = Set.copyOf(categories);

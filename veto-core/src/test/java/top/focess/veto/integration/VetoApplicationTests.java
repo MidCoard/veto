@@ -2,15 +2,6 @@ package top.focess.veto.integration;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-import java.io.IOException;
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.List;
-import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
@@ -23,10 +14,10 @@ import org.springframework.http.*;
 import org.springframework.http.client.ClientHttpResponse;
 import org.springframework.web.client.DefaultResponseErrorHandler;
 import org.springframework.web.client.RestTemplate;
+
 import top.focess.veto.VetoApplication;
 import top.focess.veto.agent.tool.ToolEngine;
 import top.focess.veto.agent.tool.ToolEngineImpl;
-import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.bus.DeltaBroker;
 import top.focess.veto.integration.plugins.PluginTestSupport;
 import top.focess.veto.memory.TurnLogService;
@@ -37,6 +28,16 @@ import top.focess.veto.veto.LlamaCppBridge;
 import top.focess.veto.veto.SlmConfiguration;
 import top.focess.veto.veto.VetoGateway;
 import top.focess.veto.veto.VetoGatewayConfiguration;
+
+import java.io.IOException;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.List;
+import java.util.Map;
 
 /**
  * Full Spring Boot integration tests for Project Veto. Verifies context loading, DI wiring, and the
@@ -94,23 +95,23 @@ class VetoApplicationTests {
 
     @Test
     void mcpEngineImplIsActive() {
-        ToolEngine engine = context.getBean(ToolDocs.nonNullClass(ToolEngine.class));
+        ToolEngine engine = context.getBean(ToolEngine.class);
         assertNotNull(engine, "ToolEngine bean should exist");
         assertInstanceOf(
-                ToolDocs.nonNullClass(ToolEngineImpl.class),
+                ToolEngineImpl.class,
                 engine,
                 "The application must use the production tool engine");
     }
 
     @Test
     void deltaBrokerIsInjected() {
-        DeltaBroker broker = context.getBean(ToolDocs.nonNullClass(DeltaBroker.class));
+        DeltaBroker broker = context.getBean(DeltaBroker.class);
         assertNotNull(broker, "DeltaBroker should be injected as a Spring bean");
     }
 
     @Test
     void turnLogServiceIsInjected() {
-        TurnLogService turnLog = context.getBean(ToolDocs.nonNullClass(TurnLogService.class));
+        TurnLogService turnLog = context.getBean(TurnLogService.class);
         assertNotNull(turnLog, "TurnLogService should be injected as a Spring bean");
     }
 
@@ -154,9 +155,9 @@ class VetoApplicationTests {
         VetoGateway disabledGateway =
                 new VetoGateway(
                         disabledConfig,
-                        context.getBean(ToolDocs.nonNullClass(LlamaCppBridge.class)),
+                        context.getBean(LlamaCppBridge.class),
                         PluginTestSupport.providerOf(null),
-                        context.getBean(ToolDocs.nonNullClass(AuditLogger.class)));
+                        context.getBean(AuditLogger.class));
 
         String sensitive = "Secret: my-api-key";
         VetoGateway.VetoResult result =
@@ -184,7 +185,8 @@ class VetoApplicationTests {
     @Test
     void outboundMaskingUsesThePluginObservationMiddleware() {
         String multiSecret =
-                "IP: 10.0.0.50, Email: admin@internal.corp, SSH: -----BEGIN OPENSSH PRIVATE KEY-----test-----END OPENSSH PRIVATE KEY-----";
+                "IP: 10.0.0.50, Email: admin@internal.corp, SSH: -----BEGIN OPENSSH PRIVATE"
+                        + " KEY-----test-----END OPENSSH PRIVATE KEY-----";
         var result = vetoGateway.processOutbound(multiSecret, "mask-1", "mask-1", "IT");
 
         assertEquals(VetoGateway.VetoDecision.REDACT, result.decision());
@@ -292,7 +294,7 @@ class VetoApplicationTests {
     void restRejectsMalformedJsonAtTheBoundary() {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
-        var sessions = context.getBean(ToolDocs.nonNullClass(SessionManager.class));
+        var sessions = context.getBean(SessionManager.class);
         headers.set("X-Veto-Session-Token", sessions.createSession("json-boundary-owner"));
         for (String path : List.of("/api/auth/setup", "/api/auth/login")) {
             HttpEntity<String> request =
@@ -382,7 +384,7 @@ class VetoApplicationTests {
         String createUrl = "http://localhost:" + port + "/api/tasks";
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
-        var sessions = context.getBean(ToolDocs.nonNullClass(SessionManager.class));
+        var sessions = context.getBean(SessionManager.class);
         headers.set("X-Veto-Session-Token", sessions.createSession("task-owner"));
         HttpEntity<Void> authenticated = new HttpEntity<>(headers);
         for (HttpMethod method : List.of(HttpMethod.GET, HttpMethod.POST)) {

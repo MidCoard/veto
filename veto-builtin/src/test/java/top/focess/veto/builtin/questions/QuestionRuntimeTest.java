@@ -4,7 +4,12 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import static top.focess.veto.builtin.questions.QuestionTestSupport.*;
+
+import org.jspecify.annotations.NonNull;
+import org.junit.jupiter.api.Test;
+
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -13,9 +18,6 @@ import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-import org.jspecify.annotations.NonNull;
-import org.junit.jupiter.api.Test;
-import top.focess.veto.api.agent.tool.ToolDocs;
 
 class QuestionRuntimeTest {
 
@@ -43,7 +45,7 @@ class QuestionRuntimeTest {
         QuestionRuntime registry = new QuestionRuntime(host());
         var first = registry.register(invocation("agent", "call"), List.of(question()));
         assertThrows(
-                ToolDocs.nonNullClass(IllegalStateException.class),
+                IllegalStateException.class,
                 () -> registry.register(invocation("agent", "call"), List.of(question())));
         assertFalse(first.isDone());
         assertTrue(registry.answer(scope("agent"), "call", Map.of("choice", "First")));
@@ -108,7 +110,7 @@ class QuestionRuntimeTest {
         answers.put("choice", "Changed");
         assertEquals("Custom", pending.join().answers().get("choice"));
         assertThrows(
-                ToolDocs.nonNullClass(UnsupportedOperationException.class),
+                UnsupportedOperationException.class,
                 () -> pending.join().answers().put("choice", "Changed"));
     }
 

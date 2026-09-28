@@ -5,20 +5,16 @@ import static org.junit.jupiter.api.Assertions.*;
 import com.anthropic.client.okhttp.AnthropicOkHttpClient;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpServer;
-import java.net.InetSocketAddress;
-import java.nio.charset.StandardCharsets;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.CopyOnWriteArrayList;
+
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+
 import top.focess.veto.agent.tool.AgentToolDefinition;
 import top.focess.veto.agent.tool.RemoteToolDefinition;
 import top.focess.veto.agent.tool.ToolSchemaCompiler;
 import top.focess.veto.agent.translation.VetoCapabilityTranslator;
 import top.focess.veto.api.agent.tool.ToolCapability;
-import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.ToolDocumentation;
 import top.focess.veto.api.llm.ChatMessage;
 import top.focess.veto.api.llm.LlmOptions;
@@ -32,6 +28,12 @@ import top.focess.veto.api.llm.exceptions.ModelSchemaException;
 import top.focess.veto.builtin.planning.SubmitPlanTool;
 import top.focess.veto.builtin.tools.AskUserTool;
 import top.focess.veto.llm.core.*;
+
+import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 /** Verifies real SDK serialization and native response decoding without a remote model or key. */
 class AnthropicNativeToolWireTest {
@@ -85,7 +87,7 @@ class AnthropicNativeToolWireTest {
                     new AnthropicLlmClient(sdk, new ObjectMapper(), ProviderTestPrompts.PROMPTS);
             var error =
                     assertThrows(
-                            ToolDocs.nonNullClass(ModelSchemaException.class),
+                            ModelSchemaException.class,
                             () -> client.complete(new ResolvedRequest(request, null, "unused")));
             String diagnostic = String.valueOf(error.getMessage());
             assertTrue(diagnostic.contains("stop_reason=" + stopReason), diagnostic);
@@ -113,8 +115,10 @@ class AnthropicNativeToolWireTest {
                                     StandardCharsets.UTF_8));
                     String content =
                             bodies.size() == 1
-                                    ? "[{\"type\":\"tool_use\",\"id\":\"native-1\",\"name\":\"view_file\",\"input\":{\"absolutePath\":\"/workspace/中文 notes.txt\"}}]"
-                                    : "[{\"type\":\"text\",\"text\":\"{\\\"message\\\":\\\"Read complete\\\"}\"}]";
+                                    ? "[{\"type\":\"tool_use\",\"id\":\"native-1\",\"name\":\"view_file\",\"input\":{\"absolutePath\":\"/workspace/中文"
+                                          + " notes.txt\"}}]"
+                                    : "[{\"type\":\"text\",\"text\":\"{\\\"message\\\":\\\"Read"
+                                            + " complete\\\"}\"}]";
                     byte[] response =
                             ("{\"id\":\"test\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"test\",\"content\":"
                                             + content
@@ -156,7 +160,7 @@ class AnthropicNativeToolWireTest {
                             List.of());
             var askSchema =
                     ToolSchemaCompiler.compileFromRecord(
-                            ToolDocs.nonNullClass(AskUserTool.Args.class));
+                            AskUserTool.Args.class);
             var askTool =
                     new ToolDefinition(
                             "ask_user",
@@ -180,9 +184,8 @@ class AnthropicNativeToolWireTest {
                                                     mapper.valueToTree(tool.inputSchema())),
                                             AgentToolDefinition.from(
                                                     "submit_plan",
-                                                    ToolDocs.nonNullClass(SubmitPlanTool.class),
-                                                    ToolDocs.nonNullClass(
-                                                            SubmitPlanTool.Args.class),
+                                                    SubmitPlanTool.class,
+                                                    SubmitPlanTool.Args.class,
                                                     ToolCapability.LOOP_CONTROL)))
                             .getFirst();
             var client = new AnthropicLlmClient(sdk, mapper, ProviderTestPrompts.PROMPTS);
@@ -238,7 +241,8 @@ class AnthropicNativeToolWireTest {
                 assertTrue(sent.path("tools").path(0).path("strict").asBoolean());
                 assertFalse(
                         sent.path("tools").path(1).path("strict").asBoolean(),
-                        "ask_user retains unsupported length and array constraints with local validation");
+                        "ask_user retains unsupported length and array constraints with local"
+                                + " validation");
                 assertFalse(
                         sent.path("tools").path(2).path("strict").asBoolean(),
                         "Plan bindings require free maps, which are outside the strict subset");

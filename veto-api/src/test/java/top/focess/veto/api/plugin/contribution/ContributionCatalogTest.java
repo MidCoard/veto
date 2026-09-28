@@ -2,20 +2,22 @@ package top.focess.veto.api.plugin.contribution;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
+
 import top.focess.veto.api.plugin.contract.*;
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.contract.ObservationMiddleware;
 import top.focess.veto.api.plugin.contract.PluginFailure;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
-import top.focess.veto.api.plugin.contract.Tool;
+import top.focess.veto.api.agent.tool.RemoteTool;
 import top.focess.veto.api.plugin.contract.ToolCategory;
 import top.focess.veto.api.plugin.contract.ToolContribution;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 class ContributionCatalogTest {
     private static final ContributionSource BUILTIN =
@@ -31,6 +33,42 @@ class ContributionCatalogTest {
 
     private static ContributionCatalog.@NonNull Builder labels() {
         return new ContributionCatalog.Builder().define(LABELS, text -> {});
+    }
+
+    @Test
+    void pluginDefinedPointGroupsOtherPluginsJsonEntries() {
+        var schema = new JsonValue.ObjectValue(Map.of("type", new JsonValue.StringValue("object")));
+        var point =
+                new ProtocolPointDefinition(
+                        new ContributionId("example.plugin:processors"),
+                        1,
+                        schema,
+                        ContributionPoint.Cardinality.MULTIPLE);
+        var payload =
+                new JsonValue.ObjectValue(
+                        Map.of("service", new JsonValue.StringValue("example:process")));
+        var catalog =
+                new ContributionCatalog.Builder()
+                        .define(StandardContributionPoints.CONTRIBUTIONS, value -> {})
+                        .define(point.point(), value -> {})
+                        .stage(
+                                PLUGIN,
+                                List.of(
+                                        Contribution.of(
+                                                StandardContributionPoints.CONTRIBUTIONS,
+                                                "processors",
+                                                point)))
+                        .stage(
+                                BUILTIN,
+                                List.of(Contribution.of(point.point(), "processor", payload)))
+                        .freeze();
+        assertEquals(
+                point,
+                catalog.entries(StandardContributionPoints.CONTRIBUTIONS)
+                        .getFirst()
+                        .implementation());
+        assertEquals(payload, catalog.entries(point.point()).getFirst().implementation());
+        assertEquals("veto.core:processor", catalog.entries(point.point()).getFirst().id().value());
     }
 
     @Test
@@ -261,7 +299,7 @@ class ContributionCatalogTest {
                         "Example",
                         schema,
                         schema,
-                        Tool.Effect.COMPUTATION,
+                        RemoteTool.Effect.COMPUTATION,
                         Set.of(new ContributionId("veto.core:missing")),
                         (args, cancellation) -> JsonValue.NullValue.INSTANCE);
         var builder =

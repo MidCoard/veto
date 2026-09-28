@@ -1,7 +1,9 @@
 package top.focess.veto.api.agent.tool;
 
-import java.util.List;
 import org.jspecify.annotations.NonNull;
+
+
+import java.util.List;
 
 /** Shared reflection helpers for record-authored tool documentation. */
 public final class ToolDocs {
@@ -22,29 +24,13 @@ public final class ToolDocs {
     }
 
     /**
-     * Normalizes javac class-literal nullness for Checker Framework. A class literal cannot be
-     * null, but a nullable-by-default package otherwise gives the expression a nullable outer
-     * {@link Class} type.
-     *
-     * @param <T> represented type
-     * @param type class token to normalize
-     * @return the non-null class token
-     */
-    public static <T extends @NonNull Object> @NonNull Class<T> nonNullClass(Class<T> type) {
-        if (type == null) {
-            throw new IllegalArgumentException("Class token is required");
-        }
-        return type;
-    }
-
-    /**
      * Reads tool-class documentation without inferring an owner from the argument record.
      *
      * @param toolClass concrete tool implementation class
      * @return its annotation, or {@code null} when undocumented
      */
     public static ToolDoc toolDocOf(@NonNull Class<?> toolClass) {
-        return toolClass.getAnnotation(nonNullClass(ToolDoc.class));
+        return toolClass.getAnnotation(ToolDoc.class);
     }
 
     /**

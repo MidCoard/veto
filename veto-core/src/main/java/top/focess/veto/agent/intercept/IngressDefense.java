@@ -195,25 +195,23 @@ public class IngressDefense {
     }
 
     /**
-     * Masks and frames the substitute observation returned when a read hits a protected file: the
-     * protected text replaces the raw result as the observation body, while the semantic masker (if
-     * present) still assesses the raw result for a high-risk signal. The reserved refusal prefix is
-     * neutralized either way.
+     * Assesses the original observation for risk while publishing a listener-supplied replacement.
+     * This preserves opaque references that ordinary pattern masking would redact as raw tokens.
      */
-    public @NonNull String frameProtectedFile(
+    public @NonNull String frameReplacementObservation(
             @NonNull ToolCall call,
             @NonNull ToolDefinition def,
             @NonNull ToolResult result,
-            @NonNull String protectedText) {
+            @NonNull String replacement) {
         if (semanticMasker != null) {
             var assessed =
                     semanticMasker.maskWithSignal(
-                            result.content(), call, def, ignored -> protectedText);
+                            result.content(), call, def, ignored -> replacement);
             var highRisk = assessed.highRisk();
             if (highRisk != null) reportHighRisk(highRisk);
             return RefusalObservation.neutralize(assessed.masked());
         }
-        return RefusalObservation.neutralize(protectedText);
+        return RefusalObservation.neutralize(replacement);
     }
 
     private void invalidateWritePath(

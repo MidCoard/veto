@@ -5,13 +5,12 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.util.List;
-import java.util.Map;
+
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
-import top.focess.veto.api.agent.tool.ToolDocs;
+
 import top.focess.veto.builtin.planning.ActionsProgram;
 import top.focess.veto.builtin.planning.ActionsProgramParser;
 import top.focess.veto.builtin.planning.Check;
@@ -21,6 +20,9 @@ import top.focess.veto.builtin.planning.ProgramValidator;
 import top.focess.veto.builtin.planning.Scope;
 import top.focess.veto.builtin.planning.StopAction;
 import top.focess.veto.util.Nullness;
+
+import java.util.List;
+import java.util.Map;
 
 class ProgramValidatorTest {
 
@@ -39,7 +41,7 @@ class ProgramValidatorTest {
 
         ProgramValidator.InvalidProgramException error =
                 assertThrows(
-                        ToolDocs.nonNullClass(ProgramValidator.InvalidProgramException.class),
+                        ProgramValidator.InvalidProgramException.class,
                         () -> ProgramValidator.validate(program));
 
         assertEquals("action id must not be blank at index 0", error.getMessage());
@@ -51,7 +53,7 @@ class ProgramValidatorTest {
 
         ProgramValidator.InvalidProgramException error =
                 assertThrows(
-                        ToolDocs.nonNullClass(ProgramValidator.InvalidProgramException.class),
+                        ProgramValidator.InvalidProgramException.class,
                         () -> ProgramValidator.validate(program));
 
         assertEquals("action finish: label must not be blank", error.getMessage());
@@ -75,7 +77,7 @@ class ProgramValidatorTest {
                                         null),
                                 new StopAction("stop", "Stop", "answer")));
         assertThrows(
-                ToolDocs.nonNullClass(ProgramValidator.InvalidProgramException.class),
+                ProgramValidator.InvalidProgramException.class,
                 () -> ProgramValidator.validateInputs(program));
     }
 
@@ -130,7 +132,7 @@ class ProgramValidatorTest {
         var program =
                 new ActionsProgram(List.of(new StopAction("finish", "Return answer", reference)));
         assertThrows(
-                ToolDocs.nonNullClass(ProgramValidator.InvalidProgramException.class),
+                ProgramValidator.InvalidProgramException.class,
                 () -> ProgramValidator.validateInputs(program));
     }
 }

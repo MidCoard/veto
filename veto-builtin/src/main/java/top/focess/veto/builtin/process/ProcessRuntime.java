@@ -1,11 +1,7 @@
 package top.focess.veto.builtin.process;
 
-import java.time.Duration;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.api.agent.tool.ToolDocs;
+
 import top.focess.veto.api.agent.tool.ToolPreparation;
 import top.focess.veto.api.event.AgentTerminatedEvent;
 import top.focess.veto.api.event.EventHandler;
@@ -21,6 +17,11 @@ import top.focess.veto.api.process.CommandResult;
 import top.focess.veto.api.process.ProcessHost;
 import top.focess.veto.builtin.process.BackgroundTasks.Scope;
 
+import java.time.Duration;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+
 /** Builtin policy and views around host-authorized process effects. */
 public final class ProcessRuntime implements Listener {
     private final @NonNull PluginContext context;
@@ -34,7 +35,7 @@ public final class ProcessRuntime implements Listener {
         tasks =
                 new BackgroundTasks(
                         () ->
-                                context.service(ToolDocs.nonNullClass(ProcessHost.class))
+                                context.service(ProcessHost.class)
                                         .orElseThrow(
                                                 () ->
                                                         new IllegalStateException(
@@ -66,13 +67,13 @@ public final class ProcessRuntime implements Listener {
     }
 
     private @NonNull ProcessHost processHost() {
-        return context.service(ToolDocs.nonNullClass(ProcessHost.class))
+        return context.service(ProcessHost.class)
                 .orElseThrow(() -> new IllegalStateException("Process host unavailable"));
     }
 
     private @NonNull Scope scope(@NonNull String tool) {
         return Scope.from(
-                context.service(ToolDocs.nonNullClass(PluginHost.class))
+                context.service(PluginHost.class)
                         .orElseThrow(() -> new IllegalStateException("Plugin host unavailable"))
                         .invocation(tool));
     }

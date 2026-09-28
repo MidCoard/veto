@@ -6,13 +6,15 @@ import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.util.List;
-import java.util.Map;
+
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
-import top.focess.veto.api.agent.tool.ToolDocs;
+
 import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.api.llm.VetoResponse;
+
+import java.util.List;
+import java.util.Map;
 
 /**
  * Guards the snake_case binding of the universal {@link VetoResponse} ({@code veto_pulse}) schema —
@@ -30,12 +32,12 @@ class VetoResponseDeserializationTest {
             ToolCall parsed =
                     mapper.readValue(
                             "{\"tool_name\":\"think\",\"args\":{}" + idField + "}",
-                            ToolDocs.nonNullClass(ToolCall.class));
+                            ToolCall.class);
             assertTrue(parsed.callId().startsWith("call_"));
         }
         ToolCall restored =
                 mapper.readValue(
-                        mapper.writeValueAsString(created), ToolDocs.nonNullClass(ToolCall.class));
+                        mapper.writeValueAsString(created), ToolCall.class);
         assertEquals(created.callId(), restored.callId());
     }
 
@@ -43,8 +45,8 @@ class VetoResponseDeserializationTest {
     void jsonCannotSupplyNativeCalls() throws Exception {
         String json =
                 "{\"thought\":\"t\",\"calls\":[{\"tool_name\":\"list_files\",\"args\":{\"path\":\"/x\"}}],"
-                        + "\"message\":null}";
-        VetoResponse response = mapper.readValue(json, ToolDocs.nonNullClass(VetoResponse.class));
+                    + "\"message\":null}";
+        VetoResponse response = mapper.readValue(json, VetoResponse.class);
         assertEquals("t", response.thought());
         assertFalse(response.hasCalls(), "JSON cannot construct adapter-owned native calls");
     }
@@ -52,7 +54,7 @@ class VetoResponseDeserializationTest {
     @Test
     void bindsStopNoCalls() throws Exception {
         String json = "{\"message\":\"done\"}";
-        VetoResponse response = mapper.readValue(json, ToolDocs.nonNullClass(VetoResponse.class));
+        VetoResponse response = mapper.readValue(json, VetoResponse.class);
         assertFalse(response.hasCalls());
         assertEquals("done", response.message());
     }
@@ -67,11 +69,11 @@ class VetoResponseDeserializationTest {
     @Test
     void planIsNotAResponseFieldAndNullFieldsAreNotSerialized() throws Exception {
         assertThrows(
-                ToolDocs.nonNullClass(JsonProcessingException.class),
+                JsonProcessingException.class,
                 () ->
                         mapper.readValue(
                                 "{\"guide\":{\"actions\":[]}}",
-                                ToolDocs.nonNullClass(VetoResponse.class)));
+                                VetoResponse.class));
         assertEquals(
                 "{\"message\":\"done\"}",
                 mapper.writeValueAsString(new VetoResponse(null, null, "done")));
@@ -86,9 +88,9 @@ class VetoResponseDeserializationTest {
                         "{\"guide\":true}",
                         "{\"guide\":{}}")) {
             assertThrows(
-                    ToolDocs.nonNullClass(JsonProcessingException.class),
+                    JsonProcessingException.class,
                     () ->
-                            mapper.readerFor(ToolDocs.nonNullClass(VetoResponse.class))
+                            mapper.readerFor(VetoResponse.class)
                                     .with(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
                                     .with(DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
                                     .with(JsonParser.Feature.STRICT_DUPLICATE_DETECTION)

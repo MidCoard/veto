@@ -7,7 +7,7 @@ import com.tngtech.archunit.core.domain.JavaMethodCall;
 import com.tngtech.archunit.junit.AnalyzeClasses;
 import com.tngtech.archunit.junit.ArchTest;
 import com.tngtech.archunit.lang.ArchRule;
-import top.focess.veto.api.agent.tool.ToolDocs;
+
 import top.focess.veto.api.agent.tool.WorkspaceReadTool;
 import top.focess.veto.api.agent.tool.WorkspaceWriteTool;
 
@@ -52,7 +52,7 @@ class CapabilityBoundaryTest {
     static final ArchRule workspaceReadToolsCannotBypassTheirCapability =
             noClasses()
                     .that()
-                    .areAssignableTo(ToolDocs.nonNullClass(WorkspaceReadTool.class))
+                    .areAssignableTo(WorkspaceReadTool.class)
                     .and()
                     .areNotInterfaces()
                     .should()
@@ -64,7 +64,7 @@ class CapabilityBoundaryTest {
     static final ArchRule workspaceWriteToolsCannotBypassTheirCapability =
             noClasses()
                     .that()
-                    .areAssignableTo(ToolDocs.nonNullClass(WorkspaceWriteTool.class))
+                    .areAssignableTo(WorkspaceWriteTool.class)
                     .and()
                     .areNotInterfaces()
                     .should()

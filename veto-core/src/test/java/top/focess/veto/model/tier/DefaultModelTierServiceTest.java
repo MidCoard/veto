@@ -4,9 +4,6 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
 
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -16,8 +13,12 @@ import org.springframework.context.annotation.Import;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
-import top.focess.veto.api.agent.tool.ToolDocs;
+
 import top.focess.veto.api.llm.ProviderType;
+
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 
 /**
  * Exercises the per-user, DB-backed {@link DefaultModelTierService}: profile lifecycle, per-field
@@ -47,7 +48,7 @@ class DefaultModelTierServiceTest {
             fields.put(ModelTierField.TEMPERATURE, "invalid");
             IllegalArgumentException failure =
                     assertThrows(
-                            ToolDocs.nonNullClass(IllegalArgumentException.class),
+                            IllegalArgumentException.class,
                             () -> service.setFields(owner, "default", ModelTier.TOP, fields));
             assertTrue(String.valueOf(failure.getMessage()).contains("temp"));
             assertEquals("original", service.bindings(owner, "default").getFirst().getModel());
@@ -118,7 +119,7 @@ class DefaultModelTierServiceTest {
     void resolveFailsWhenUserHasNoActiveProfile() {
         ModelTierConfigException e =
                 assertThrows(
-                        ToolDocs.nonNullClass(ModelTierConfigException.class),
+                        ModelTierConfigException.class,
                         () -> service.resolve("alice", ModelTier.TOP));
         assertTrue(String.valueOf(e.getMessage()).contains("No active model-tier profile"));
     }
@@ -240,7 +241,7 @@ class DefaultModelTierServiceTest {
         // MID has no binding row in the profile.
         ModelTierConfigException e =
                 assertThrows(
-                        ToolDocs.nonNullClass(ModelTierConfigException.class),
+                        ModelTierConfigException.class,
                         () -> service.resolve("alice", ModelTier.MID));
         assertTrue(String.valueOf(e.getMessage()).contains("no binding for tier"));
     }
@@ -253,7 +254,7 @@ class DefaultModelTierServiceTest {
 
         ModelTierConfigException e =
                 assertThrows(
-                        ToolDocs.nonNullClass(ModelTierConfigException.class),
+                        ModelTierConfigException.class,
                         () -> service.resolve("alice", ModelTier.TOP));
         assertTrue(String.valueOf(e.getMessage()).contains("incomplete"));
     }
@@ -263,7 +264,7 @@ class DefaultModelTierServiceTest {
         service.createProfile("alice", "default");
         IllegalArgumentException e =
                 assertThrows(
-                        ToolDocs.nonNullClass(IllegalArgumentException.class),
+                        IllegalArgumentException.class,
                         () -> service.createProfile("alice", "default"));
         assertTrue(String.valueOf(e.getMessage()).contains("already exists"));
     }
@@ -272,7 +273,7 @@ class DefaultModelTierServiceTest {
     void setFieldRejectsUnknownProfile() {
         IllegalArgumentException e =
                 assertThrows(
-                        ToolDocs.nonNullClass(IllegalArgumentException.class),
+                        IllegalArgumentException.class,
                         () ->
                                 service.setField(
                                         "alice",
@@ -288,7 +289,7 @@ class DefaultModelTierServiceTest {
         service.createProfile("alice", "default");
         IllegalArgumentException e =
                 assertThrows(
-                        ToolDocs.nonNullClass(IllegalArgumentException.class),
+                        IllegalArgumentException.class,
                         () ->
                                 service.setField(
                                         "alice",
@@ -304,7 +305,7 @@ class DefaultModelTierServiceTest {
         service.createProfile("alice", "default");
         IllegalArgumentException e =
                 assertThrows(
-                        ToolDocs.nonNullClass(IllegalArgumentException.class),
+                        IllegalArgumentException.class,
                         () ->
                                 service.setField(
                                         "alice",
@@ -321,7 +322,7 @@ class DefaultModelTierServiceTest {
         service.createProfile("alice", "default");
         IllegalArgumentException e =
                 assertThrows(
-                        ToolDocs.nonNullClass(IllegalArgumentException.class),
+                        IllegalArgumentException.class,
                         () ->
                                 service.setField(
                                         "alice",
@@ -343,7 +344,7 @@ class DefaultModelTierServiceTest {
         // Bob has his own active "default" profile, unconfigured -> incomplete.
         assertEquals("default", service.activeProfile("bob"));
         assertThrows(
-                ToolDocs.nonNullClass(ModelTierConfigException.class),
+                ModelTierConfigException.class,
                 () -> service.resolve("bob", ModelTier.TOP));
         assertEquals(1, service.listProfiles("alice").size());
         assertEquals(1, service.listProfiles("bob").size());

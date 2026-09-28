@@ -3,10 +3,9 @@ package top.focess.veto.agent.loop;
 import static org.junit.jupiter.api.Assertions.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.util.*;
-import java.util.regex.Pattern;
+
 import org.junit.jupiter.api.Test;
-import top.focess.veto.api.agent.tool.ToolDocs;
+
 import top.focess.veto.api.agent.tool.ToolResult;
 import top.focess.veto.api.agent.tool.ToolResultFormat;
 import top.focess.veto.api.agent.tool.ToolResultStatus;
@@ -22,6 +21,9 @@ import top.focess.veto.builtin.planning.Scope;
 import top.focess.veto.builtin.planning.StopAction;
 import top.focess.veto.builtin.planning.ToolAction;
 import top.focess.veto.util.Nullness;
+
+import java.util.*;
+import java.util.regex.Pattern;
 
 class PlanBindingsTest {
     @Test
@@ -90,7 +92,7 @@ class PlanBindingsTest {
         assertEquals("[$literal, b] and two words", generate.resolvePrompt(scope));
         assertFalse(scope.contains("alias"));
         assertThrows(
-                ToolDocs.nonNullClass(IllegalArgumentException.class),
+                IllegalArgumentException.class,
                 () -> scope.resolveValue("$missing"));
     }
 
@@ -100,7 +102,7 @@ class PlanBindingsTest {
         var jump = new GotoAction("jump", "Jump", 0);
         var tool = new ToolAction("tool", "Tool", "think", Map.of(), Map.of());
         assertThrows(
-                ToolDocs.nonNullClass(ProgramValidator.InvalidProgramException.class),
+                ProgramValidator.InvalidProgramException.class,
                 () -> ProgramValidator.validate(new ActionsProgram(List.of(tool, jump, stop))));
         var condition =
                 new ConditionalGotoAction(
@@ -111,7 +113,7 @@ class PlanBindingsTest {
         assertTrue(CheckEvaluator.evaluate(condition.check(), scope, 3));
         assertFalse(CheckEvaluator.evaluate(condition.check(), scope, 4));
         assertThrows(
-                ToolDocs.nonNullClass(ProgramValidator.InvalidProgramException.class),
+                ProgramValidator.InvalidProgramException.class,
                 () ->
                         ProgramValidator.validate(
                                 new ActionsProgram(
@@ -128,11 +130,11 @@ class PlanBindingsTest {
                 mapper.readTree(
                         "[{\"id\":\"jump\",\"label\":\"Jump\",\"type\":\"goto\",\"index\":\"0\"}]");
         assertThrows(
-                ToolDocs.nonNullClass(ProgramValidator.InvalidProgramException.class),
+                ProgramValidator.InvalidProgramException.class,
                 () -> ActionsProgramParser.parse(input));
         Scope scope = new Scope(mapper);
         assertThrows(
-                ToolDocs.nonNullClass(IllegalArgumentException.class),
+                IllegalArgumentException.class,
                 () -> scope.bindTool(Map.of("x", "absent"), ToolResult.success("t", "id", "{}")));
     }
 
@@ -149,8 +151,7 @@ class PlanBindingsTest {
                 top.focess.veto.agent.tool.NativeToolArgumentValidator.validate(
                         "submit_plan",
                         json,
-                        ToolDocs.nonNullClass(
-                                top.focess.veto.builtin.planning.SubmitPlanTool.Args.class));
+                        top.focess.veto.builtin.planning.SubmitPlanTool.Args.class);
                 count++;
             }
         }

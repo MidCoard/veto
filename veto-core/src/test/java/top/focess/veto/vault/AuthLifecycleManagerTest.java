@@ -7,7 +7,8 @@ import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.api.plugin.contract.PluginFailure;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
-import top.focess.veto.api.plugin.contract.TextProtection;
+import top.focess.veto.api.plugin.contract.FrontendContribution;
+import top.focess.veto.api.event.BeforeTextCommitEvent;
 import top.focess.veto.command.PromptHandler;
 import top.focess.veto.integration.plugins.PluginLifecycleEvents;
 import top.focess.veto.integration.plugins.PluginManager;
@@ -19,8 +20,8 @@ class AuthLifecycleManagerTest {
         @NonNull KeysteadVault vault = mock();
         @NonNull PromptHandler prompts = mock();
         try (var plugins = PluginTestSupport.manager()) {
-            var scope = new TextProtection.Scope("alice", "session", "agent");
-            var other = new TextProtection.Scope("bob", "session", "agent");
+            var scope = new FrontendContribution.Scope("alice", "session", "agent");
+            var other = new FrontendContribution.Scope("bob", "session", "agent");
             String reference = capture(plugins, scope, "password=alpha");
             String otherReference = capture(plugins, other, "password=beta");
             var lifecycle = new AuthLifecycleManager(vault, prompts);
@@ -43,7 +44,7 @@ class AuthLifecycleManagerTest {
         @NonNull KeysteadVault vault = mock();
         @NonNull PromptHandler prompts = mock();
         try (var plugins = PluginTestSupport.manager()) {
-            var scope = new TextProtection.Scope("alice", "session", "agent");
+            var scope = new FrontendContribution.Scope("alice", "session", "agent");
             String old = capture(plugins, scope, "password=alpha");
             var lifecycle = new AuthLifecycleManager(vault, prompts);
             lifecycle.attachLifecycleEvents(new PluginLifecycleEvents(plugins));
@@ -63,13 +64,13 @@ class AuthLifecycleManagerTest {
 
     private static @NonNull String capture(
             @NonNull PluginManager plugins,
-            TextProtection.@NonNull Scope scope,
+            FrontendContribution.@NonNull Scope scope,
             @NonNull String text)
             throws PluginFailure {
         String captured =
                 PluginTestSupport.protect(
                         plugins,
-                        StandardContributionPoints.INPUT_PROTECTION,
+                        BeforeTextCommitEvent.Phase.INPUT,
                         scope,
                         "source",
                         text);

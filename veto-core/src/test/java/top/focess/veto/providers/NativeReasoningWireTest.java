@@ -10,23 +10,17 @@ import com.google.genai.Client;
 import com.google.genai.types.HttpOptions;
 import com.openai.client.okhttp.OpenAIOkHttpClient;
 import com.sun.net.httpserver.HttpServer;
-import java.net.InetSocketAddress;
-import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.atomic.AtomicReference;
+
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.test.util.ReflectionTestUtils;
+
 import top.focess.veto.agent.TurnRecord;
 import top.focess.veto.agent.TurnType;
 import top.focess.veto.agent.loop.PromptCompiler;
 import top.focess.veto.agent.translation.VetoCapabilityTranslator;
-import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.ToolDocumentation;
 import top.focess.veto.api.llm.ChatMessage;
 import top.focess.veto.api.llm.LlmClient;
@@ -41,6 +35,14 @@ import top.focess.veto.api.llm.VetoRequest;
 import top.focess.veto.llm.core.*;
 import top.focess.veto.llm.provider.AbstractLlmProvider;
 import top.focess.veto.observability.AuditLogger;
+
+import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
 
 class NativeReasoningWireTest {
     private static final @NonNull ObjectMapper MAPPER =
@@ -260,7 +262,7 @@ class NativeReasoningWireTest {
                                 MAPPER.writeValueAsString(
                                         new TurnRecord(
                                                 turn.turnNumber(), turn.type(), payload, null)),
-                                ToolDocs.nonNullClass(TurnRecord.class)));
+                                TurnRecord.class));
                 history.add(TurnRecord.toolResponse(number++, call.callId(), "result", true));
             }
             var compiler = PromptCompiler.isolated(translator, MAPPER, "System", 100000);

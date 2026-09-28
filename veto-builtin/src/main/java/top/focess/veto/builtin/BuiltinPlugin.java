@@ -1,11 +1,9 @@
 package top.focess.veto.builtin;
 
-import java.util.ArrayList;
-import java.util.List;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
+
 import top.focess.veto.api.agent.tool.CapabilityTool;
-import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.plugin.AbstractVetoPlugin;
 import top.focess.veto.api.plugin.PluginContext;
 import top.focess.veto.api.plugin.PluginContributions;
@@ -14,11 +12,10 @@ import top.focess.veto.api.plugin.agent.AgentHost;
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
 import top.focess.veto.api.plugin.contribution.Contribution;
-import top.focess.veto.api.search.SearchServices;
+import top.focess.veto.builtin.search.SearchServices;
 import top.focess.veto.builtin.group.*;
 import top.focess.veto.builtin.memory.MemoryTools;
 import top.focess.veto.builtin.monitor.MonitorFrontend;
-import top.focess.veto.builtin.monitor.MonitorRuntime;
 import top.focess.veto.builtin.monitor.MonitorTools;
 import top.focess.veto.builtin.planning.PlanConfig;
 import top.focess.veto.builtin.planning.SubmitPlanTool;
@@ -28,31 +25,18 @@ import top.focess.veto.builtin.response.AnswerWithCitationsTool;
 import top.focess.veto.builtin.response.CitationResponsePolicy;
 import top.focess.veto.builtin.search.DuckDuckGoSearchProvider;
 import top.focess.veto.builtin.search.SearchServiceClient;
-import top.focess.veto.builtin.skills.SkillRuntime;
 import top.focess.veto.builtin.tools.*;
 import top.focess.veto.builtin.web.*;
 import top.focess.veto.builtin.workspace.*;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /** Built-in tool implementations registered through the same API as third-party plugins. */
 public final class BuiltinPlugin extends AbstractVetoPlugin {
     private final @NonNull ReadGitHubRepositoryTool github = new ReadGitHubRepositoryTool();
     private final @NonNull DuckDuckGoSearchProvider duckduckgo = new DuckDuckGoSearchProvider();
     private @Nullable BuiltinComponents components;
-
-    /** Returns the skill runtime; fails until the plugin is initialized. */
-    public @NonNull SkillRuntime skillRuntime() {
-        return initialized().skills;
-    }
-
-    /** Returns the group runtime; fails until the plugin is initialized. */
-    public @NonNull GroupRuntime groupRuntime() {
-        return initialized().groups;
-    }
-
-    /** Returns the monitor runtime; fails until the plugin is initialized. */
-    public @NonNull MonitorRuntime monitorRuntime() {
-        return initialized().monitors;
-    }
 
     private @NonNull BuiltinComponents initialized() {
         BuiltinComponents current = components;
@@ -98,12 +82,12 @@ public final class BuiltinPlugin extends AbstractVetoPlugin {
                                 new WebReader(
                                         () ->
                                                 context.service(
-                                                                ToolDocs.nonNullClass(
-                                                                        AgentHost.class))
+                                                                AgentHost.class)
                                                         .orElseThrow(
                                                                 () ->
                                                                         new IllegalStateException(
-                                                                                "Isolated execution unavailable")),
+                                                                                "Isolated execution"
+                                                                                    + " unavailable")),
                                         new ReaderConfig(configuration.values()))),
                         new GroupTools.DisbandGroup(groupOperations),
                         new GroupTools.InspectGroup(groupOperations),
@@ -138,7 +122,7 @@ public final class BuiltinPlugin extends AbstractVetoPlugin {
                         StandardContributionPoints.DATA_LIFECYCLE, "memory-data", runtime.memory));
         for (var tool : tools) {
             contributions.add(
-                    Contribution.of(StandardContributionPoints.NATIVE_TOOLS, tool.getName(), tool));
+                    Contribution.of(StandardContributionPoints.TOOLS, tool.getName(), tool));
         }
         contributions.add(
                 Contribution.of(

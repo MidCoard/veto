@@ -5,16 +5,18 @@ import static org.mockito.Mockito.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpServer;
+
+import org.jspecify.annotations.NonNull;
+import org.junit.jupiter.api.Test;
+
+import top.focess.veto.api.llm.ProviderType;
+import top.focess.veto.llm.credential.CredentialResolver;
+
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.concurrent.atomic.AtomicReference;
-import org.jspecify.annotations.NonNull;
-import org.junit.jupiter.api.Test;
-import top.focess.veto.api.agent.tool.ToolDocs;
-import top.focess.veto.api.llm.ProviderType;
-import top.focess.veto.llm.credential.CredentialResolver;
 
 class ProviderEmbeddingClientTest {
     @Test
@@ -35,7 +37,7 @@ class ProviderEmbeddingClientTest {
                 });
         server.start();
         try {
-            var credentials = mock(ToolDocs.nonNullClass(CredentialResolver.class));
+            var credentials = mock(CredentialResolver.class);
             when(credentials.resolve(ProviderType.GEMINI, "configured"))
                     .thenReturn("synthetic-private-key");
             var profile = profile(server);
@@ -68,7 +70,7 @@ class ProviderEmbeddingClientTest {
                 });
         server.start();
         try {
-            var credentials = mock(ToolDocs.nonNullClass(CredentialResolver.class));
+            var credentials = mock(CredentialResolver.class);
             when(credentials.resolve(ProviderType.OPENAI, "configured"))
                     .thenReturn("synthetic-private-key");
             var failure =
@@ -103,7 +105,7 @@ class ProviderEmbeddingClientTest {
                 });
         server.start();
         try {
-            var credentials = mock(ToolDocs.nonNullClass(CredentialResolver.class));
+            var credentials = mock(CredentialResolver.class);
             when(credentials.resolve(ProviderType.OPENAI, "configured"))
                     .thenReturn("synthetic-private-key");
             var client =

@@ -4,23 +4,24 @@ import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
-import top.focess.veto.api.agent.tool.ToolDocs;
+
 import top.focess.veto.vault.AuthLifecycleManager;
 import top.focess.veto.vault.KeysteadVault;
 import top.focess.veto.vault.SessionManager;
 import top.focess.veto.vault.UserRegistry;
 
+import java.util.List;
+
 class AuthControllerTest {
     @Test
     void invalidRegistrationNeverCreatesAUserOrVault() throws Exception {
-        UserRegistry users = mock(ToolDocs.nonNullClass(UserRegistry.class));
-        SessionManager sessions = mock(ToolDocs.nonNullClass(SessionManager.class));
-        KeysteadVault vault = mock(ToolDocs.nonNullClass(KeysteadVault.class));
-        AuthLifecycleManager lifecycle = mock(ToolDocs.nonNullClass(AuthLifecycleManager.class));
+        UserRegistry users = mock(UserRegistry.class);
+        SessionManager sessions = mock(SessionManager.class);
+        KeysteadVault vault = mock(KeysteadVault.class);
+        AuthLifecycleManager lifecycle = mock(AuthLifecycleManager.class);
         var mvc =
                 MockMvcBuilders.standaloneSetup(
                                 new AuthController(users, sessions, vault, lifecycle))

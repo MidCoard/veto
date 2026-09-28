@@ -3,18 +3,10 @@ package top.focess.veto.integration.plugins;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
-import top.focess.veto.api.agent.tool.ToolDocs;
+
 import top.focess.veto.api.credentials.CredentialImportAccess;
 import top.focess.veto.api.llm.LocalModelCompletion;
 import top.focess.veto.api.plugin.AbstractVetoPlugin;
@@ -26,38 +18,46 @@ import top.focess.veto.plugin.runtime.PluginLifecycle;
 import top.focess.veto.vault.KeysteadVault;
 import top.focess.veto.veto.LlamaCppBridge;
 
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+
 class HostResourceConfigurationTest {
     @Test
     void grantsOnlyPresentHostResourcesWithoutAnyFeaturePluginClass() {
         new ApplicationContextRunner()
-                .withUserConfiguration(ToolDocs.nonNullClass(HostResourceConfiguration.class))
+                .withUserConfiguration(HostResourceConfiguration.class)
                 .run(
                         context ->
                                 assertTrue(
                                         context.getBean(
-                                                        ToolDocs.nonNullClass(
-                                                                PluginHostServices.class))
+                                                        PluginHostServices.class)
                                                 .services()
                                                 .isEmpty()));
         new ApplicationContextRunner()
-                .withUserConfiguration(ToolDocs.nonNullClass(HostResourceConfiguration.class))
+                .withUserConfiguration(HostResourceConfiguration.class)
                 .withBean(
-                        ToolDocs.nonNullClass(KeysteadVault.class),
-                        () -> mock(ToolDocs.nonNullClass(KeysteadVault.class)))
+                        KeysteadVault.class,
+                        () -> mock(KeysteadVault.class))
                 .withBean(
-                        ToolDocs.nonNullClass(LlamaCppBridge.class),
-                        () -> mock(ToolDocs.nonNullClass(LlamaCppBridge.class)))
+                        LlamaCppBridge.class,
+                        () -> mock(LlamaCppBridge.class))
                 .run(
                         context -> {
                             var services =
-                                    context.getBean(ToolDocs.nonNullClass(PluginHostServices.class))
+                                    context.getBean(PluginHostServices.class)
                                             .services();
                             assertTrue(
                                     services.containsKey(
-                                            ToolDocs.nonNullClass(CredentialImportAccess.class)));
+                                            CredentialImportAccess.class));
                             assertTrue(
                                     services.containsKey(
-                                            ToolDocs.nonNullClass(PluginLocalModelFactory.class)));
+                                            PluginLocalModelFactory.class));
                         });
     }
 

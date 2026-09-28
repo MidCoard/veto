@@ -3,6 +3,13 @@ package top.focess.veto.builtin.group;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
+import org.jspecify.annotations.NonNull;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
+
+import top.focess.veto.api.agent.AgentResult;
+import top.focess.veto.api.plugin.agent.AgentHost;
+
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
@@ -10,12 +17,6 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
-import org.jspecify.annotations.NonNull;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.Timeout;
-import top.focess.veto.api.agent.AgentResult;
-import top.focess.veto.api.agent.tool.ToolDocs;
-import top.focess.veto.api.plugin.agent.AgentHost;
 
 @Timeout(10)
 class MateAgentLifecycleTest {
@@ -48,7 +49,7 @@ class MateAgentLifecycleTest {
         UUID id = UUID.randomUUID();
         var board = new Blackboard();
         var child = GroupTestHost.child("mate");
-        var request = mock(ToolDocs.nonNullClass(AgentHost.Request.class));
+        var request = mock(AgentHost.Request.class);
         var result = CompletableFuture.completedFuture(AgentResult.success("report", Map.of()));
         when(request.result()).thenReturn(result);
         when(request.cancel(any())).thenReturn(false, true);
@@ -89,7 +90,7 @@ class MateAgentLifecycleTest {
         UUID id = UUID.randomUUID();
         var board = new Blackboard();
         var child = GroupTestHost.child("mate");
-        var request = mock(ToolDocs.nonNullClass(AgentHost.Request.class));
+        var request = mock(AgentHost.Request.class);
         var result = new CompletableFuture<AgentResult>();
         var submitted = new CountDownLatch(1);
         when(request.result()).thenReturn(result);
@@ -121,7 +122,7 @@ class MateAgentLifecycleTest {
         UUID id = UUID.randomUUID();
         var board = new Blackboard();
         var child = GroupTestHost.child("mate");
-        var request = mock(ToolDocs.nonNullClass(AgentHost.Request.class));
+        var request = mock(AgentHost.Request.class);
         var submitted = new CountDownLatch(1);
         when(request.result()).thenReturn(new CompletableFuture<>());
         when(child.submit(anyString()))

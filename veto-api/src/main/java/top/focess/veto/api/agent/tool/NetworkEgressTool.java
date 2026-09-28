@@ -1,6 +1,7 @@
 package top.focess.veto.api.agent.tool;
 
 import org.jspecify.annotations.NonNull;
+
 import top.focess.veto.api.agent.capability.NetworkEgressCapability;
 
 /**
@@ -14,7 +15,7 @@ public interface NetworkEgressTool<T>
      * @return the network capability interface required by this tool
      */
     default @NonNull Class<NetworkEgressCapability> capabilityType() {
-        return ToolDocs.nonNullClass(NetworkEgressCapability.class);
+        return NetworkEgressCapability.class;
     }
 
     /**

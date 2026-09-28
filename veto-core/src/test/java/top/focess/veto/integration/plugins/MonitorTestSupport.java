@@ -8,8 +8,8 @@ import static org.mockito.Mockito.mockingDetails;
 
 import org.jspecify.annotations.NonNull;
 import org.springframework.beans.factory.support.StaticListableBeanFactory;
+
 import top.focess.veto.agent.SessionAgentRegistry;
-import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.plugin.PluginHost;
 import top.focess.veto.api.plugin.contract.AgentInbox;
 import top.focess.veto.builtin.group.GroupObservations;
@@ -67,13 +67,13 @@ public final class MonitorTestSupport {
                         new PluginHostConfiguration()
                                 .runtimeHostServices(
                                         factory.getBeanProvider(
-                                                ToolDocs.nonNullClass(SessionAgentRegistry.class)),
+                                                SessionAgentRegistry.class),
                                         factory.getBeanProvider(
-                                                ToolDocs.nonNullClass(SessionService.class)),
+                                                SessionService.class),
                                         factory.getBeanProvider(
-                                                ToolDocs.nonNullClass(KeysteadVault.class)),
+                                                KeysteadVault.class),
                                         factory.getBeanProvider(
-                                                ToolDocs.nonNullClass(SessionInvalidations.class)))
+                                                SessionInvalidations.class))
                                 .services()
                                 .get(PluginHost.class));
     }

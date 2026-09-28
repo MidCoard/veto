@@ -1,24 +1,11 @@
 package top.focess.veto.agent;
 
 import static org.junit.jupiter.api.Assertions.*;
+
 import static top.focess.veto.integration.plugins.MonitorTestSupport.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.time.Duration;
-import java.time.Instant;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.UUID;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicReference;
+
 import org.checkerframework.checker.nullness.qual.Nullable;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
@@ -28,6 +15,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Mockito;
 import org.springframework.context.ApplicationContext;
 import org.springframework.test.util.ReflectionTestUtils;
+
 import top.focess.veto.agent.continuation.RequestContinuationEntity;
 import top.focess.veto.agent.continuation.RequestContinuationRepository;
 import top.focess.veto.agent.continuation.RequestContinuationStore;
@@ -46,7 +34,6 @@ import top.focess.veto.api.agent.AgentResult;
 import top.focess.veto.api.agent.AgentState;
 import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.tool.ToolCapability;
-import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.ToolResult;
 import top.focess.veto.api.agent.workflow.PluginAwait;
 import top.focess.veto.api.event.AfterModelEvent;
@@ -70,7 +57,8 @@ import top.focess.veto.api.plugin.agent.IsolatedAgent;
 import top.focess.veto.api.plugin.contract.AgentConfiguration;
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
-import top.focess.veto.api.plugin.contract.TextProtection;
+import top.focess.veto.api.plugin.contract.FrontendContribution;
+import top.focess.veto.api.event.BeforeTextCommitEvent;
 import top.focess.veto.api.plugin.contribution.Contribution;
 import top.focess.veto.builtin.group.GroupRegistry;
 import top.focess.veto.builtin.monitor.MonitorEntity;
@@ -104,6 +92,22 @@ import top.focess.veto.session.SessionService;
 import top.focess.veto.util.Nullness;
 import top.focess.veto.vault.KeysteadVault;
 import top.focess.veto.vault.UserContext;
+
+import java.time.Duration;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Targets {@link AgentRunner}'s schema-violation retry path in isolation from the broader
@@ -244,14 +248,14 @@ class AgentRunnerTest {
         var think =
                 AgentToolDefinition.from(
                         "fixture_loop",
-                        ToolDocs.nonNullClass(FixtureLoopTool.class),
-                        ToolDocs.nonNullClass(FixtureLoopTool.Args.class),
+                        FixtureLoopTool.class,
+                        FixtureLoopTool.Args.class,
                         ToolCapability.LOOP_CONTROL);
         var finish =
                 AgentToolDefinition.from(
                         "finish",
-                        ToolDocs.nonNullClass(FixtureLoopTool.class),
-                        ToolDocs.nonNullClass(FixtureLoopTool.Args.class),
+                        FixtureLoopTool.class,
+                        FixtureLoopTool.Args.class,
                         ToolCapability.LOOP_CONTROL);
         @NonNull ToolEngine engine = Mockito.mock();
         Mockito.when(engine.getActiveTools(Mockito.any())).thenReturn(List.of(think, finish));
@@ -481,7 +485,7 @@ class AgentRunnerTest {
                             null,
                             0,
                             ToolResultPresentationMode.BASIC);
-            var scope = new TextProtection.Scope("alice", session, agentId);
+            var scope = new FrontendContribution.Scope("alice", session, agentId);
             agent.submit("Inspect password=synthetic-token");
             assertTrue(agent.await(EPISODE_TIMEOUT).success());
             var userTurn =
@@ -509,7 +513,7 @@ class AgentRunnerTest {
             String verification =
                     PluginTestSupport.protect(
                             plugins,
-                            StandardContributionPoints.INPUT_PROTECTION,
+                            BeforeTextCommitEvent.Phase.INPUT,
                             scope,
                             "verification",
                             "password=synthetic-token");
@@ -558,7 +562,7 @@ class AgentRunnerTest {
             var previousResult = agent.result();
             var rejected =
                     assertThrows(
-                            ToolDocs.nonNullClass(ProtectedInputException.class),
+                            ProtectedInputException.class,
                             () -> agent.submit("password=synthetic-token [SECRET_REF:forged]"));
             assertFalse(String.valueOf(rejected.getMessage()).contains("synthetic-token"));
             assertSame(previousResult, agent.result());
@@ -945,7 +949,7 @@ class AgentRunnerTest {
     @ValueSource(longs = {1L, 2L})
     void restartedNotificationRestoresOriginalTaskAndRemainingBudget(long maxCalls)
             throws Exception {
-        var repository = Mockito.mock(ToolDocs.nonNullClass(RequestContinuationRepository.class));
+        var repository = Mockito.mock(RequestContinuationRepository.class);
         Map<String, RequestContinuationEntity> durable = new ConcurrentHashMap<>();
         Mockito.when(repository.saveAndFlush(Mockito.any()))
                 .thenAnswer(
@@ -1180,7 +1184,7 @@ class AgentRunnerTest {
                             requests.add(request);
                             return new VetoResponse(null, null, "done");
                         });
-        var plugins = Mockito.mock(ToolDocs.nonNullClass(SessionPlugins.class));
+        var plugins = Mockito.mock(SessionPlugins.class);
         Mockito.when(plugins.tools(Mockito.anyString(), Mockito.any()))
                 .thenAnswer(call -> call.getArgument(1));
         var transition =
@@ -1203,10 +1207,8 @@ class AgentRunnerTest {
                                 Mockito.any(),
                                 Mockito.anyString()))
                 .thenAnswer(call -> new AgentConfiguration.Intent(call.getArgument(4), transition));
-        Mockito.when(plugins.protect(Mockito.any(), Mockito.any(), Mockito.anyString()))
-                .thenAnswer(call -> call.getArgument(2));
         service.attachSessionPlugins(plugins);
-        service.setModelTierRegistry(Mockito.mock(ToolDocs.nonNullClass(ModelTierRegistry.class)));
+        service.setModelTierRegistry(Mockito.mock(ModelTierRegistry.class));
         String session = UUID.randomUUID().toString();
         try {
             var agent =
@@ -1493,7 +1495,8 @@ class AgentRunnerTest {
                                                         message ->
                                                                 message.content()
                                                                         .contains(
-                                                                                "[Runtime cancellation]")));
+                                                                                "[Runtime"
+                                                                                    + " cancellation]")));
                             }
                             return new VetoResponse(null, null, "completed");
                         });
@@ -1969,8 +1972,8 @@ class AgentRunnerTest {
         var definition =
                 AgentToolDefinition.from(
                         "fixture_loop",
-                        ToolDocs.nonNullClass(FixtureLoopTool.class),
-                        ToolDocs.nonNullClass(FixtureLoopTool.Args.class),
+                        FixtureLoopTool.class,
+                        FixtureLoopTool.Args.class,
                         ToolCapability.LOOP_CONTROL);
         @NonNull ToolEngine engine = Mockito.mock();
         Mockito.when(engine.getActiveTools(Mockito.any())).thenReturn(List.of(definition));
@@ -2444,8 +2447,6 @@ class AgentRunnerTest {
         @NonNull SessionPlugins selected = Mockito.mock();
         Mockito.when(selected.responsePolicies(Mockito.anyString()))
                 .thenAnswer(call -> List.of(new CitationResponsePolicy().open()));
-        Mockito.when(selected.protect(Mockito.any(), Mockito.any(), Mockito.anyString()))
-                .thenAnswer(call -> call.getArgument(2));
         Mockito.when(selected.tools(Mockito.anyString(), Mockito.any()))
                 .thenAnswer(call -> call.getArgument(1));
         // configure defaults to null: this fixture selects a response policy, not an agent profile.
@@ -2714,8 +2715,8 @@ class AgentRunnerTest {
                         ToolCapability.PROCESS_EXECUTION,
                         Danger.DANGEROUS,
                         true,
-                        ToolDocs.nonNullClass(RunTaskTool.class),
-                        ToolDocs.nonNullClass(RunTaskTool.Args.class),
+                        RunTaskTool.class,
+                        RunTaskTool.Args.class,
                         Map.of());
         Mockito.when(engine.getActiveTools(Mockito.any())).thenReturn(List.of(definition));
         Mockito.when(engine.resolveDefinition("run_task")).thenReturn(definition);

@@ -3,7 +3,7 @@ package top.focess.veto.agent.tool;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.capability.RemoteCallCapability;
 import top.focess.veto.api.agent.tool.CapabilityTool;
-import top.focess.veto.api.plugin.contract.Tool;
+import top.focess.veto.api.agent.tool.RemoteTool;
 import top.focess.veto.plugin.runtime.PluginLifecycle;
 
 /** Host-only adapters: bind each definition to its exact execution implementation. */
@@ -14,7 +14,7 @@ sealed interface RegisteredTool {
     /** An out-of-process script plugin tool, executed through the plugin runtime. */
     record Plugin(
             @NonNull RemoteToolDefinition definition,
-            @NonNull Tool descriptor,
+            @NonNull RemoteTool descriptor,
             @NonNull PluginLifecycle runtime)
             implements RegisteredTool {}
 

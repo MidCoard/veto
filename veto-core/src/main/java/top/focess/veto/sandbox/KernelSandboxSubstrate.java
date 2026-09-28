@@ -10,16 +10,18 @@ import com.sun.jna.WString;
 import com.sun.jna.platform.win32.BaseTSD;
 import com.sun.jna.platform.win32.Kernel32;
 import com.sun.jna.platform.win32.WinNT;
+
+import org.jspecify.annotations.NonNull;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Component;
+
+
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
-import org.jspecify.annotations.NonNull;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.stereotype.Component;
-import top.focess.veto.api.agent.tool.ToolDocs;
 
 /**
  * Kernel-level process containment used by {@link ConstrainedSubprocessSubstrate}.
@@ -80,8 +82,8 @@ public class KernelSandboxSubstrate {
         WindowsWorkspaceSecurity workspaceSecurity = null;
         try {
             if (IS_WINDOWS) {
-                w = Native.load("kernel32", ToolDocs.nonNullClass(WindowsKernel32.class));
-                wk = Native.load("kernel32", ToolDocs.nonNullClass(Kernel32.class));
+                w = Native.load("kernel32", WindowsKernel32.class);
+                wk = Native.load("kernel32", Kernel32.class);
                 appContainerLaunch = SandboxBootstrap.isAppContainerLaunchAvailable();
                 workspaceSecurity = new WindowsWorkspaceSecurity();
                 if (appContainerLaunch) {

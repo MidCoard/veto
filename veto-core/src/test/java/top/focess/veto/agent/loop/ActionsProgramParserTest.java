@@ -3,15 +3,17 @@ package top.focess.veto.agent.loop;
 import static org.junit.jupiter.api.Assertions.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.util.List;
-import java.util.Map;
+
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
-import top.focess.veto.api.agent.tool.ToolDocs;
+
 import top.focess.veto.builtin.planning.ActionsProgramParser;
 import top.focess.veto.builtin.planning.GenerateAction;
 import top.focess.veto.builtin.planning.ProgramValidator;
 import top.focess.veto.builtin.planning.Scope;
+
+import java.util.List;
+import java.util.Map;
 
 class ActionsProgramParserTest {
     private static final @NonNull ObjectMapper MAPPER = new ObjectMapper();
@@ -44,7 +46,7 @@ class ActionsProgramParserTest {
         for (String value : List.of("null", "true", "1", "\"text\"", "\"private-value\"")) {
             var exception =
                     assertThrows(
-                            ToolDocs.nonNullClass(ProgramValidator.InvalidProgramException.class),
+                            ProgramValidator.InvalidProgramException.class,
                             () -> generate(",\"response_mode\":" + value));
             assertEquals("response_mode must be TEXT or CITATIONS", exception.getMessage());
         }

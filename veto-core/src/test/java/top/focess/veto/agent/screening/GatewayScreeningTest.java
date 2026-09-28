@@ -2,15 +2,11 @@ package top.focess.veto.agent.screening;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.Map;
-import java.util.Optional;
-import java.util.concurrent.atomic.AtomicBoolean;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+
 import top.focess.veto.agent.drift.ReadHistory;
 import top.focess.veto.agent.intercept.Gateway;
 import top.focess.veto.agent.intercept.GatewayResult;
@@ -21,9 +17,14 @@ import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.tool.ParamCategory;
 import top.focess.veto.api.agent.tool.ToolCapability;
-import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.builtin.planning.PlanStepContext;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 @SuppressWarnings("initialization.field.uninitialized")
 class GatewayScreeningTest {
@@ -59,7 +60,7 @@ class GatewayScreeningTest {
                 Danger.SAFE,
                 false,
                 Object.class,
-                ToolDocs.nonNullClass(String.class),
+                String.class,
                 Map.of("path", ParamCategory.FILESYSTEM_PATH));
     }
 
@@ -71,7 +72,7 @@ class GatewayScreeningTest {
                 Danger.ELEVATED,
                 false,
                 Object.class,
-                ToolDocs.nonNullClass(String.class),
+                String.class,
                 Map.of("path", ParamCategory.FILESYSTEM_PATH));
     }
 
@@ -84,11 +85,11 @@ class GatewayScreeningTest {
                         ToolCapability.PLUGIN_LOCAL,
                         Danger.SAFE,
                         Object.class,
-                        ToolDocs.nonNullClass(String.class),
+                        String.class,
                         Map.of());
         GatewayResult r =
                 gateway().screen(new ToolCall("load_skill", Map.of("skillName", "x")), atd);
-        assertInstanceOf(ToolDocs.nonNullClass(GatewayResult.NotScreened.class), r);
+        assertInstanceOf(GatewayResult.NotScreened.class, r);
     }
 
     @Test
@@ -97,7 +98,7 @@ class GatewayScreeningTest {
         ToolCall call =
                 new ToolCall("view_file", Map.of("path", root.resolve("src/Main.java").toString()));
         GatewayResult r = gateway().screen(call, readDef());
-        assertInstanceOf(ToolDocs.nonNullClass(GatewayResult.Screened.class), r);
+        assertInstanceOf(GatewayResult.Screened.class, r);
         Screening s = ((GatewayResult.Screened) r).screening();
         assertEquals(Danger.SAFE, s.danger());
         assertEquals(Relevance.HIGH, s.relevance());
@@ -190,7 +191,7 @@ class GatewayScreeningTest {
         ToolCall call =
                 new ToolCall("write_to_file", Map.of("path", f.toString(), "content", "new"));
         GatewayResult r = g.screen(call, writeDef());
-        assertInstanceOf(ToolDocs.nonNullClass(GatewayResult.DriftResult.class), r);
+        assertInstanceOf(GatewayResult.DriftResult.class, r);
     }
 
     @Test
@@ -229,8 +230,7 @@ class GatewayScreeningTest {
                                         Map.of("path", "read:call-1"))
                                 .context());
         assertTrue(seen.get());
-        var screened =
-                assertInstanceOf(ToolDocs.nonNullClass(GatewayResult.Screened.class), result);
+        var screened = assertInstanceOf(GatewayResult.Screened.class, result);
         assertEquals(Relevance.LOW, screened.screening().relevance());
         assertEquals(Danger.DANGEROUS, screened.screening().danger());
     }

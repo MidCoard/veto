@@ -3,11 +3,8 @@ package top.focess.veto.builtin;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.mock;
 
-import java.util.List;
-import java.util.Map;
-import java.util.ServiceLoader;
 import org.junit.jupiter.api.Test;
-import top.focess.veto.api.agent.tool.ToolDocs;
+
 import top.focess.veto.api.plugin.PluginContext;
 import top.focess.veto.api.plugin.PluginHost;
 import top.focess.veto.api.plugin.VetoPlugin;
@@ -15,13 +12,15 @@ import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
 import top.focess.veto.builtin.workspace.ViewFileTool;
 
+import java.util.List;
+import java.util.Map;
+import java.util.ServiceLoader;
+
 class BuiltinPluginTest {
     @Test
     void realBuiltinPluginLoadsWithoutCoreAndContributesToolsAndSearchProviders() throws Exception {
         var plugin =
-                ServiceLoader.load(ToolDocs.nonNullClass(VetoPlugin.class))
-                        .findFirst()
-                        .orElseThrow();
+                ServiceLoader.load(VetoPlugin.class).findFirst().orElseThrow();
         try (plugin) {
             var contributions =
                     plugin.initialize(
@@ -34,7 +33,7 @@ class BuiltinPluginTest {
                                     },
                                     Map.of(
                                             PluginHost.class,
-                                            mock(ToolDocs.nonNullClass(PluginHost.class)))),
+                                            mock(PluginHost.class))),
                             new JsonValue.ObjectValue(Map.of()));
             plugin.start();
             assertEquals(
@@ -77,7 +76,7 @@ class BuiltinPluginTest {
                             "write_memory",
                             "write_to_file"),
                     contributions.entries().stream()
-                            .filter(e -> e.point().equals(StandardContributionPoints.NATIVE_TOOLS))
+                            .filter(e -> e.point().equals(StandardContributionPoints.TOOLS))
                             .map(e -> e.localId())
                             .sorted()
                             .toList());

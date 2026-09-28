@@ -2,16 +2,17 @@ package top.focess.veto.builtin.group;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-import java.util.List;
-import java.util.Set;
-import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
-import top.focess.veto.api.agent.tool.ToolDocs;
+
 import top.focess.veto.api.agent.tool.ToolErrors;
 import top.focess.veto.api.agent.tool.ToolExecutionException;
 import top.focess.veto.api.plugin.PluginHost;
+
+import java.util.List;
+import java.util.Set;
+import java.util.UUID;
 
 /** Tests for the Leader's execution-DAG node-authoring tools. */
 class DagToolsTest {
@@ -78,7 +79,7 @@ class DagToolsTest {
         setContext("leader-1", id);
         var tool = new CollaborationTools.CreateTask(createNode.groupControlCapability());
         assertThrows(
-                ToolDocs.nonNullClass(ToolExecutionException.class),
+                ToolExecutionException.class,
                 () ->
                         execute(
                                 tool,
@@ -97,7 +98,7 @@ class DagToolsTest {
         UUID groupId = activeGroup();
         NodeEdit edit =
                 orchestrator.addNode(groupId, "node-1", "Implement login", "coding", Set.of());
-        assertInstanceOf(ToolDocs.nonNullClass(NodeEdit.Applied.class), edit);
+        assertInstanceOf(NodeEdit.Applied.class, edit);
         DagNode node = findNode(requireGroup(registry.get(groupId)), "node-1");
         assertEquals(DagNode.NodeState.PENDING, node.state());
         assertEquals("coding", node.requiredSkillset());
@@ -108,8 +109,7 @@ class DagToolsTest {
         UUID groupId = activeGroup();
         orchestrator.addNode(groupId, "node-1", "a", "coding", Set.of());
         NodeEdit edit = orchestrator.addNode(groupId, "node-1", "b", "testing", Set.of());
-        NodeEdit.Rejected r =
-                assertInstanceOf(ToolDocs.nonNullClass(NodeEdit.Rejected.class), edit);
+        NodeEdit.Rejected r = assertInstanceOf(NodeEdit.Rejected.class, edit);
         assertTrue(r.reason().contains("already exists"), r.reason());
     }
 
@@ -117,8 +117,7 @@ class DagToolsTest {
     void addNodeRejectsUnknownDependency() throws Exception {
         UUID groupId = activeGroup();
         NodeEdit edit = orchestrator.addNode(groupId, "node-1", "a", "coding", Set.of("node-9"));
-        NodeEdit.Rejected r =
-                assertInstanceOf(ToolDocs.nonNullClass(NodeEdit.Rejected.class), edit);
+        NodeEdit.Rejected r = assertInstanceOf(NodeEdit.Rejected.class, edit);
         assertTrue(r.reason().contains("unknown dependency node-9"), r.reason());
     }
 
@@ -128,15 +127,14 @@ class DagToolsTest {
         orchestrator.addNode(groupId, "node-1", "a", "coding", Set.of());
         orchestrator.removeNode(groupId, "node-1");
         NodeEdit edit = orchestrator.addNode(groupId, "node-2", "b", "coding", Set.of("node-1"));
-        NodeEdit.Rejected r =
-                assertInstanceOf(ToolDocs.nonNullClass(NodeEdit.Rejected.class), edit);
+        NodeEdit.Rejected r = assertInstanceOf(NodeEdit.Rejected.class, edit);
         assertTrue(r.reason().contains("stale"), r.reason());
     }
 
     @Test
     void addNodeRejectsUnknownGroup() throws Exception {
         NodeEdit edit = orchestrator.addNode(UUID.randomUUID(), "node-1", "a", "coding", Set.of());
-        assertInstanceOf(ToolDocs.nonNullClass(NodeEdit.Rejected.class), edit);
+        assertInstanceOf(NodeEdit.Rejected.class, edit);
     }
 
     @Test
@@ -144,7 +142,7 @@ class DagToolsTest {
         UUID groupId = activeGroup();
         orchestrator.addNode(groupId, "node-1", "a", "coding", Set.of());
         NodeEdit edit = orchestrator.removeNode(groupId, "node-1");
-        assertInstanceOf(ToolDocs.nonNullClass(NodeEdit.Applied.class), edit);
+        assertInstanceOf(NodeEdit.Applied.class, edit);
         assertEquals(
                 DagNode.NodeState.STALE,
                 findNode(requireGroup(registry.get(groupId)), "node-1").state());
@@ -156,8 +154,7 @@ class DagToolsTest {
         orchestrator.addNode(groupId, "node-1", "a", "coding", Set.of());
         orchestrator.addNode(groupId, "node-2", "b", "testing", Set.of("node-1"));
         NodeEdit edit = orchestrator.removeNode(groupId, "node-1");
-        NodeEdit.Rejected r =
-                assertInstanceOf(ToolDocs.nonNullClass(NodeEdit.Rejected.class), edit);
+        NodeEdit.Rejected r = assertInstanceOf(NodeEdit.Rejected.class, edit);
         assertTrue(r.reason().contains("node-2"), r.reason());
         // The node is untouched.
         assertEquals(
@@ -182,8 +179,7 @@ class DagToolsTest {
                         0);
         registry.put(g.withDag(g.dag().withNode("node-1", verified)));
         NodeEdit edit = orchestrator.removeNode(groupId, "node-1");
-        NodeEdit.Rejected r =
-                assertInstanceOf(ToolDocs.nonNullClass(NodeEdit.Rejected.class), edit);
+        NodeEdit.Rejected r = assertInstanceOf(NodeEdit.Rejected.class, edit);
         assertTrue(r.reason().contains("verified"), r.reason());
     }
 
@@ -214,7 +210,8 @@ class DagToolsTest {
                         new DagTools.CreateNode.Args(
                                 "node-2", "Test login", "testing", List.of("node-1"), null, null));
         assertEquals(
-                "Node created: node-2 (skillset: testing, depends on: node-1). It becomes eligible after its dependencies verify.",
+                "Node created: node-2 (skillset: testing, depends on: node-1). It becomes eligible"
+                        + " after its dependencies verify.",
                 out);
     }
 
@@ -224,7 +221,7 @@ class DagToolsTest {
         setContext("leader-1", groupId);
         ToolExecutionException error =
                 assertThrows(
-                        ToolDocs.nonNullClass(ToolExecutionException.class),
+                        ToolExecutionException.class,
                         () ->
                                 execute(
                                         createNode,
@@ -236,7 +233,8 @@ class DagToolsTest {
                                                 null,
                                                 null)));
         assertEquals(
-                "Node not created: unknown dependency node-9. Create dependencies before the nodes that need them.",
+                "Node not created: unknown dependency node-9. Create dependencies before the nodes"
+                        + " that need them.",
                 ToolErrors.normalize(error.getMessage()));
     }
 
@@ -245,7 +243,7 @@ class DagToolsTest {
         setContext("agent-1", null);
         ToolExecutionException error =
                 assertThrows(
-                        ToolDocs.nonNullClass(ToolExecutionException.class),
+                        ToolExecutionException.class,
                         () ->
                                 execute(
                                         createNode,
@@ -279,7 +277,7 @@ class DagToolsTest {
                         "node-3", "b", "testing", List.of("node-1"), null, null));
         ToolExecutionException error =
                 assertThrows(
-                        ToolDocs.nonNullClass(ToolExecutionException.class),
+                        ToolExecutionException.class,
                         () -> execute(removeNode, new DagTools.RemoveNode.Args("node-1")));
         assertEquals(
                 "Node not removed: node-3 depends on node-1. Remove or re-plan it first.",

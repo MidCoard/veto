@@ -162,14 +162,13 @@ public final class ToolExecutionBoundary {
     @NonNull String defend(
             @NonNull AuthorizedInvocation authorized,
             @NonNull ToolResult result,
-            String protectedText) {
+            String replacement) {
         ScreenedInvocation screened = authorized.screened;
-        if (protectedText != null
+        if (replacement != null
                 && result.success()
-                && screened.definition.capability() == ToolCapability.WORKSPACE_READ) {
-            return ingress.frameProtectedFile(
-                    screened.call, screened.definition, result, protectedText);
-        }
+                && screened.definition.capability() == ToolCapability.WORKSPACE_READ)
+            return ingress.frameReplacementObservation(
+                    screened.call, screened.definition, result, replacement);
         return ingress.maskAndFrame(
                 screened.call,
                 screened.definition,

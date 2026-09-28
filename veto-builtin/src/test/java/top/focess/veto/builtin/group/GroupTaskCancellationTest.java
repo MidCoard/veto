@@ -3,19 +3,20 @@ package top.focess.veto.builtin.group;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
+import org.jspecify.annotations.NonNull;
+import org.junit.jupiter.api.Test;
+
+
 import java.time.Duration;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
-import org.jspecify.annotations.NonNull;
-import org.junit.jupiter.api.Test;
-import top.focess.veto.api.agent.tool.ToolDocs;
 
 class GroupTaskCancellationTest {
     private final @NonNull Blackboard board = new Blackboard();
     private final @NonNull GroupRegistry registry = new GroupRegistry();
     private final @NonNull GroupOrchestrator orchestrator = new GroupOrchestrator(registry, board);
-    private final @NonNull GroupSpawner spawner = mock(ToolDocs.nonNullClass(GroupSpawner.class));
+    private final @NonNull GroupSpawner spawner = mock(GroupSpawner.class);
 
     private @NonNull Group setup() {
         Group group =
@@ -61,7 +62,7 @@ class GroupTaskCancellationTest {
     void queuedCancellationDoesNotRunAndDoesNotSatisfyDependencies() {
         Group group = setup();
         assertInstanceOf(
-                ToolDocs.nonNullClass(NodeEdit.Applied.class),
+                NodeEdit.Applied.class,
                 orchestrator.cancelTask(group.groupId(), "first", spawner));
         orchestrator.tick(group.groupId());
         assertEquals(DagNode.NodeState.CANCELLED, node(group.groupId(), "first").state());
@@ -81,7 +82,7 @@ class GroupTaskCancellationTest {
         orchestrator.tick(group.groupId());
         orchestrator.cancelTask(group.groupId(), "first", spawner);
         assertInstanceOf(
-                ToolDocs.nonNullClass(NodeEdit.Rejected.class),
+                NodeEdit.Rejected.class,
                 orchestrator.removeNode(group.groupId(), "first"));
         orchestrator.tick(group.groupId());
         assertEquals(DagNode.NodeState.CANCEL_REQUESTED, node(group.groupId(), "first").state());
@@ -98,10 +99,10 @@ class GroupTaskCancellationTest {
                         eq(group.groupId()),
                         eq("mate"),
                         eq(dispatch),
-                        any(ToolDocs.nonNullClass(Duration.class))))
+                        any(Duration.class)))
                 .thenReturn(false, true);
         assertInstanceOf(
-                ToolDocs.nonNullClass(NodeEdit.Rejected.class),
+                NodeEdit.Rejected.class,
                 orchestrator.cancelTask(group.groupId(), "first", spawner));
         assertEquals(DagNode.NodeState.CANCEL_REQUESTED, node(group.groupId(), "first").state());
         board.post(
@@ -124,7 +125,7 @@ class GroupTaskCancellationTest {
         assertEquals(DagNode.NodeState.PENDING, node(group.groupId(), "dependent").state());
         assertEquals(DagNode.NodeState.RUNNING, node(group.groupId(), "sibling").state());
         assertInstanceOf(
-                ToolDocs.nonNullClass(NodeEdit.Applied.class),
+                NodeEdit.Applied.class,
                 orchestrator.cancelTask(group.groupId(), "first", spawner));
     }
 }

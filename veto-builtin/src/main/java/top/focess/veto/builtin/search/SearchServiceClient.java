@@ -1,17 +1,18 @@
 package top.focess.veto.builtin.search;
 
-import java.net.http.HttpTimeoutException;
-import java.util.List;
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.api.agent.tool.ToolDocs;
+
 import top.focess.veto.api.plugin.PluginContext;
 import top.focess.veto.api.plugin.PluginHost;
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.service.ServiceException;
-import top.focess.veto.api.search.SearchOptions;
-import top.focess.veto.api.search.SearchProvider;
-import top.focess.veto.api.search.SearchResult;
-import top.focess.veto.api.search.SearchServices;
+import top.focess.veto.builtin.search.SearchOptions;
+import top.focess.veto.builtin.search.SearchProvider;
+import top.focess.veto.builtin.search.SearchResult;
+import top.focess.veto.builtin.search.SearchServices;
+
+import java.net.http.HttpTimeoutException;
+import java.util.List;
 
 /** Plugin-owned selection; the host directory admits the caller and provider for each session. */
 public final class SearchServiceClient implements SearchProvider {
@@ -32,7 +33,7 @@ public final class SearchServiceClient implements SearchProvider {
 
     public @NonNull List<SearchResult> search(@NonNull String query, @NonNull SearchOptions options)
             throws Exception {
-        context.service(ToolDocs.nonNullClass(PluginHost.class))
+        context.service(PluginHost.class)
                 .orElseThrow(() -> new SecurityException("Host must authorize search invocation"))
                 .invocation("web_search");
         var handle =

@@ -2,17 +2,11 @@ package top.focess.veto.integration.plugins;
 
 import static org.mockito.Mockito.*;
 
-import java.io.IOException;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+
 import top.focess.veto.agent.SessionAgentRegistry;
-import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.plugin.PluginBinding;
 import top.focess.veto.api.plugin.PluginHost;
 import top.focess.veto.api.plugin.contract.FrontendContribution.Scope;
@@ -28,6 +22,13 @@ import top.focess.veto.model.SessionEntity;
 import top.focess.veto.model.SessionRepository;
 import top.focess.veto.plugin.runtime.PluginLifecycle;
 import top.focess.veto.vault.UserContext;
+
+import java.io.IOException;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
 
 /** Actual builtin contributions behind the generic authenticated frontend router. */
 public final class QuestionActionFixture implements AutoCloseable {
@@ -67,8 +68,28 @@ public final class QuestionActionFixture implements AutoCloseable {
                             PluginStorage.@NonNull SessionScope scope) {
                         return backing.authorizeSession(storage, scope);
                     }
+
+                    public @NonNull String authorizeUser(
+                            @NonNull PluginStorage storage,
+                            PluginStorage.@NonNull UserScope scope) {
+                        return backing.authorizeUser(storage, scope);
+                    }
+
+                    public PluginStorage.@NonNull UserScope transferUser(
+                            @NonNull PluginStorage caller,
+                            PluginStorage.@NonNull UserScope scope,
+                            @NonNull PluginStorage provider) {
+                        return backing.transferUser(caller, scope, provider);
+                    }
+
+                    public PluginStorage.@NonNull SessionScope transferSession(
+                            @NonNull PluginStorage caller,
+                            PluginStorage.@NonNull SessionScope scope,
+                            @NonNull PluginStorage provider) {
+                        return backing.transferSession(caller, scope, provider);
+                    }
                 };
-        granted.put(ToolDocs.nonNullClass(PluginStorageFactory.class), storageFactory);
+        granted.put(PluginStorageFactory.class, storageFactory);
         var configuration = new PluginConfigurations();
         configuration.setToolNames(Map.of("top.focess.builtin:ask_user", "ask_user"));
         manager =

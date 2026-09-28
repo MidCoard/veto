@@ -10,13 +10,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.StringJoiner;
-import java.util.UUID;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
+
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -24,9 +18,9 @@ import org.junit.jupiter.params.provider.EnumSource;
 import org.springframework.context.ApplicationContext;
 import org.springframework.http.MediaType;
 import org.springframework.test.util.ReflectionTestUtils;
+
 import top.focess.veto.agent.intercept.ToolExecutionPermit;
 import top.focess.veto.api.agent.tool.ToolCapability;
-import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.ToolErrorCode;
 import top.focess.veto.api.agent.tool.ToolResult;
 import top.focess.veto.api.agent.tool.ToolResultFormat;
@@ -37,6 +31,14 @@ import top.focess.veto.integration.plugins.PluginManager;
 import top.focess.veto.integration.plugins.QuestionActionFixture;
 import top.focess.veto.util.Nullness;
 import top.focess.veto.vault.UserContext;
+
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.StringJoiner;
+import java.util.UUID;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 /** Exercises the real tool dispatch, pending registry, and HTTP response path together. */
 @Timeout(15)
@@ -75,7 +77,7 @@ class AskUserActionTest {
         ObjectMapper mapper = new ObjectMapper();
         try (var fixture = new QuestionActionFixture()) {
             var registry = fixture.runtime;
-            ApplicationContext spring = mock(ToolDocs.nonNullClass(ApplicationContext.class));
+            ApplicationContext spring = mock(ApplicationContext.class);
             when(spring.getBeansOfType(PluginManager.class))
                     .thenReturn(Map.of("plugins", fixture.manager));
             ToolEngineImpl engine = new ToolEngineImpl(mapper, List.of(), spring);

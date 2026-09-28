@@ -5,22 +5,12 @@ import static org.mockito.Mockito.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpServer;
-import java.net.InetSocketAddress;
-import java.net.URI;
-import java.nio.charset.StandardCharsets;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicReference;
+
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
+
 import top.focess.veto.agent.AgentRunner;
 import top.focess.veto.agent.SessionAgentRegistry;
 import top.focess.veto.agent.VetoAgent;
@@ -34,7 +24,6 @@ import top.focess.veto.agent.web.ReaderTestHarness;
 import top.focess.veto.api.agent.AgentState;
 import top.focess.veto.api.agent.tool.NativeTool;
 import top.focess.veto.api.agent.tool.ToolCapability;
-import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.http.ApprovedHttpDestination;
 import top.focess.veto.api.http.HttpDocument;
 import top.focess.veto.api.llm.ProviderType;
@@ -53,6 +42,19 @@ import top.focess.veto.model.tier.ModelBinding;
 import top.focess.veto.model.tier.ModelTier;
 import top.focess.veto.model.tier.ModelTierRegistry;
 import top.focess.veto.vault.UserContext;
+
+import java.net.InetSocketAddress;
+import java.net.URI;
+import java.nio.charset.StandardCharsets;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 class WebReadChildAuthorityTest {
     @AfterEach
@@ -96,10 +98,7 @@ class WebReadChildAuthorityTest {
                                                                 frame ->
                                                                         frame.getClassName()
                                                                                         .equals(
-                                                                                                ToolDocs
-                                                                                                        .nonNullClass(
-                                                                                                                AgentRunner
-                                                                                                                        .class)
+                                                                                                AgentRunner.class
                                                                                                         .getName())
                                                                                 && frame.getMethodName()
                                                                                         .equals(
@@ -125,7 +124,7 @@ class WebReadChildAuthorityTest {
                                             "No extra model call after finish_read");
                         };
                     };
-            var models = mock(ToolDocs.nonNullClass(ModelTierRegistry.class));
+            var models = mock(ModelTierRegistry.class);
             when(models.resolve("test-owner", ModelTier.LOW))
                     .thenReturn(
                             new ModelBinding(
@@ -156,7 +155,7 @@ class WebReadChildAuthorityTest {
                                 parent.set(parentContext);
                                 var session = parentContext.sessionId();
                                 if (session == null) throw new AssertionError("Missing session");
-                                var parentAgent = mock(ToolDocs.nonNullClass(VetoAgent.class));
+                                var parentAgent = mock(VetoAgent.class);
                                 when(parentAgent.id()).thenReturn(parentContext.agentId());
                                 when(parentAgent.state()).thenReturn(AgentState.RUNNING);
                                 registry.register(session, parentAgent);
@@ -232,11 +231,11 @@ class WebReadChildAuthorityTest {
                         parent);
         var mapper = new ObjectMapper();
         var registry = new SessionAgentRegistry();
-        var parentAgent = mock(ToolDocs.nonNullClass(VetoAgent.class));
+        var parentAgent = mock(VetoAgent.class);
         when(parentAgent.id()).thenReturn("parent");
         when(parentAgent.state()).thenReturn(AgentState.RUNNING);
         registry.register(session, parentAgent);
-        var models = mock(ToolDocs.nonNullClass(ModelTierRegistry.class));
+        var models = mock(ModelTierRegistry.class);
         when(models.resolve("owner", ModelTier.LOW))
                 .thenReturn(new ModelBinding(ProviderType.DEEPSEEK, "reader", "key", 0, 2048));
         var executions =
@@ -258,7 +257,7 @@ class WebReadChildAuthorityTest {
                 SecurityException.class,
                 () ->
                         access.bind(
-                                mock(ToolDocs.nonNullClass(IsolatedAgent.Runtime.class)),
+                                mock(IsolatedAgent.Runtime.class),
                                 "fetch_page"));
         var runtime = new AtomicReference<IsolatedAgent.Runtime>();
         var child =
@@ -352,7 +351,7 @@ class WebReadChildAuthorityTest {
     void grantBindingMustNameAnActualPrivateTool() {
         var parent = install("parent", UUID.randomUUID(), "owner", UUID.randomUUID(), "alias");
         var mapper = new ObjectMapper();
-        var models = mock(ToolDocs.nonNullClass(ModelTierRegistry.class));
+        var models = mock(ModelTierRegistry.class);
         when(models.resolve("owner", ModelTier.LOW))
                 .thenReturn(new ModelBinding(ProviderType.DEEPSEEK, "reader", "key", 0, 2048));
         var executions =
@@ -445,7 +444,7 @@ class WebReadChildAuthorityTest {
         install("parent", UUID.randomUUID(), "owner", UUID.randomUUID(), "alias");
         var mapper = new ObjectMapper();
         var disposed = new AtomicInteger();
-        var models = mock(ToolDocs.nonNullClass(ModelTierRegistry.class));
+        var models = mock(ModelTierRegistry.class);
         when(models.resolve("owner", ModelTier.LOW))
                 .thenReturn(new ModelBinding(ProviderType.DEEPSEEK, "reader", "key", 0, 2048));
         var registry = new SessionAgentRegistry();

@@ -161,26 +161,23 @@ The current `StandardContributionPoints` are:
 | `AGENT_CONFIGURATION` | `veto:agent-configuration` | `AgentConfiguration` |
 | `AGENT_INBOX` | `veto:agent-inbox` | `AgentInbox` |
 | `SERVICES` | `veto:services` | `ServiceRegistration` |
+| `CONTRIBUTIONS` | `veto:contributions` | `ProtocolPointDefinition` |
 | `LLM_PROVIDERS` | `veto:llm-providers` | `LlmProvider` |
 | `LISTENERS` | `veto:listeners` | `Listener` |
 | `MODEL_RESPONSE` | `veto:model-response` | `ModelResponsePolicy` |
 | `FRONTEND` | `veto:frontend` | `FrontendContribution` |
-| `FILE_OBSERVATION` | `veto:file-observation` | `TextProtection` |
-| `INPUT_PROTECTION` | `veto:input-protection` | `TextProtection` |
-| `FILE_PROTECTION` | `veto:file-protection` | `TextProtection` |
 | `DATA_LIFECYCLE` | `veto:data-lifecycle` | `DataLifecycle` |
-| `TOOLS` | `veto:tools` | `Tool` |
-| `NATIVE_TOOLS` | `veto:native-tools` | `CapabilityTool<?>` |
+| `TOOLS` | `veto:tools` | `AgentTool`, `NativeTool`, or `RemoteTool` (host validated) |
 | `CATEGORIES` | `veto:tool-categories` | `ToolCategory` |
 | `PROMPTS` | `veto:prompts` | `PromptContribution` |
 | `OBSERVATION` | `veto:observation-middleware` | `ObservationMiddleware` |
 
-Use `NATIVE_TOOLS` for record-authored in-process Java tools. Use `TOOLS` and
-`ToolContribution` for schema-authored JSON tools. Registration validates coherence;
+Use `TOOLS` for record-authored in-process Java tools and schema-authored JSON tools.
+`ToolContribution` is the stock `RemoteTool` implementation. Registration validates coherence;
 execution still passes through selection, admission, cancellation, and resource checks.
 
-`FILE_OBSERVATION`, `INPUT_PROTECTION`, and `FILE_PROTECTION` all share the `TextProtection`
-contract; the application site is carried by the point identity, not by a marker subtype.
+`BeforeTextCommitEvent` identifies input, file-capture, and file-observation boundaries. Selected
+listeners transform text synchronously before publication; a listener failure prevents publication.
 
 ## Model flow and inbox
 
@@ -206,6 +203,10 @@ the entry point for typed Java boundaries when the host grants them. A plugin mu
 fail safely when an optional service is absent. A retained object cannot turn an expired call,
 stopped plugin, or revoked resource grant into a valid operation.
 
+`context.host()` returns a non-null `PluginHost` for a plugin that requires host-mediated
+effects. It fails initialization when the host has not granted that service. Plugins for which
+those effects are optional should keep using `context.service(PluginHost.class)`.
+
 `PluginHost.invocation(tool)` derives owner, session, agent, request, and call facts from a
 live authorized invocation; plugin-supplied identity text grants nothing. `await` attaches
 foreground waiting to that invocation. `wake` is only a scheduling hint. `publish` and
@@ -216,8 +217,16 @@ but its callback receives no automatic authorization for later effects.
 
 `context.services()` is a class-independent directory of name and exact major-version pairs.
 Requests and responses are bounded `JsonValue` trees. `available()` exposes protocol name,
-version, and host-attributed provider ID. Duplicate name/version pairs fail activation;
+version, scope, and host-attributed provider ID. Duplicate name/version pairs fail activation;
 distinct major versions may coexist.
+
+Each service registration declares `GLOBAL`, `USER`, or `SESSION`. Global handlers use
+`handle.invoke(request)`. Scoped handlers use `handle.invoke(scope, request)` with a scope issued
+to the calling plugin by `PluginStorage.currentUser()`, `currentSession()`, or authorized recovery.
+The host validates that grant on every call and supplies a `ServiceCallContext` to the provider;
+JSON identity fields confer no authority. A scoped call without a matching grant fails. The
+provider receives the validated user/session identity and a newly issued scope bound to its own
+`PluginStorage`; the caller's token is never transferred to it.
 
 Lookup and invocation apply caller/provider lifecycle and current selection checks. A retained
 handle pins a descriptor but bypasses no check; it does not retain provider implementation
@@ -227,6 +236,21 @@ schema is shared by its authors under the stable name and major version; plugins
 import one another's implementation classes or JARs. Expected public failures use
 `ServiceException`; unexpected provider diagnostics are hidden by the host. Provider classes,
 Java serialization, and arbitrary objects do not cross this boundary.
+
+## Plugin-defined contribution groups
+
+The standard `CONTRIBUTIONS` point registers a `ProtocolPointDefinition`. Its name must be
+qualified by the defining plugin ID, and its entries use a bounded JSON object schema. Another
+plugin can register a JSON entry with `Contribution.of(definition.point(), localId, value)` using
+only `veto-api`. At `start()` or later, `context.contributions().entries(pointId, major)` returns
+currently visible entries with host-attributed provider IDs. A missing or disabled point produces
+an empty group; entries submitted while its defining plugin is absent remain dormant until a
+compatible point is active. Discovery does not invoke an entry or grant service authority.
+
+All tools use the standard `TOOLS` point. Record-authored `AgentTool` and `NativeTool`
+implement `CapabilityTool`; schema-authored JSON tools implement `RemoteTool` directly. The
+point accepts heterogeneous values, and the host rejects anything outside these three contracts
+before publication. All execution passes through the gateway.
 
 ## Scoped storage
 
@@ -280,3 +304,5 @@ original IDs; an installed plugin may keep them readable by declaring unique his
 From the repository root, run `gradlew.bat :veto-api:check`. This compiles and tests the module
 and requires warning-free generated Javadocs. Use only `top.focess.veto.api` types from plugin
 code and keep host implementation types out of plugin artifacts.
+
+Class literals can be passed directly as `Foo.class`. The build-time Veto nullness checker treats the class-literal expression as non-null while keeping the usual nullable defaults for other expressions. `ToolDocs` contains only tool documentation helpers.

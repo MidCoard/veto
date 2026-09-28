@@ -17,7 +17,7 @@ import org.jspecify.annotations.NonNull;
  * @param before same-point contribution IDs that must follow this entry
  * @param after same-point contribution IDs that must precede this entry
  */
-public record Contribution<T extends @NonNull Object>(
+public record Contribution<T>(
         @NonNull ContributionPoint<T> point,
         @NonNull String localId,
         T implementation,
@@ -43,7 +43,7 @@ public record Contribution<T extends @NonNull Object>(
      * @param implementation contributed implementation
      * @return a contribution with empty ordering sets
      */
-    public static <T extends @NonNull Object> @NonNull Contribution<T> of(
+    public static <T> @NonNull Contribution<T> of(
             @NonNull ContributionPoint<T> point, @NonNull String localId, T implementation) {
         return new Contribution<>(point, localId, implementation, Set.of(), Set.of());
     }

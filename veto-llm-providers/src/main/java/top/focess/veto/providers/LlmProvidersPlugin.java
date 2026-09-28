@@ -1,14 +1,16 @@
 package top.focess.veto.providers;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.util.EnumSet;
-import java.util.Locale;
+
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.api.agent.tool.ToolDocs;
+
 import top.focess.veto.api.llm.*;
 import top.focess.veto.api.plugin.*;
 import top.focess.veto.api.plugin.contract.*;
 import top.focess.veto.api.plugin.contribution.Contribution;
+
+import java.util.EnumSet;
+import java.util.Locale;
 
 /** Bundled provider transports, using only the public plugin API and vendor SDKs. */
 public final class LlmProvidersPlugin extends AbstractVetoPlugin {
@@ -31,7 +33,7 @@ public final class LlmProvidersPlugin extends AbstractVetoPlugin {
         clients = factory;
         new LlmClientRegistration(factory).registerBuilders();
         return new PluginContributions(
-                EnumSet.allOf(ToolDocs.nonNullClass(ProviderType.class)).stream()
+                EnumSet.allOf(ProviderType.class).stream()
                         .<Contribution<?>>map(
                                 type ->
                                         Contribution.of(
@@ -44,7 +46,7 @@ public final class LlmProvidersPlugin extends AbstractVetoPlugin {
     private static @NonNull LlmClientFactory createFactory(@NonNull PluginContext context) {
         PromptRenderer prompts =
                 (source, data) ->
-                        context.service(ToolDocs.nonNullClass(PromptRenderer.class))
+                        context.service(PromptRenderer.class)
                                 .orElseThrow(
                                         () ->
                                                 new IllegalStateException(

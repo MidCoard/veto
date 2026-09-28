@@ -2,16 +2,18 @@ package top.focess.veto.contract;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.TimeUnit;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Drives {@link IpcClient} end-to-end over an in-memory {@link ClientTransport} — no ZMQ. A
@@ -121,9 +123,9 @@ class InMemoryTransportTest {
         IpcFrame.@NonNull ServerFrame f3 =
                 requireValue(
                         conn.receive(2, TimeUnit.SECONDS), "third server frame should not be null");
-        assertInstanceOf(nonNullClass(IpcFrame.Delta.class), f1);
-        assertInstanceOf(nonNullClass(IpcFrame.Delta.class), f2);
-        assertInstanceOf(nonNullClass(IpcFrame.Done.class), f3);
+        assertInstanceOf(Objects.requireNonNull(IpcFrame.Delta.class), f1);
+        assertInstanceOf(Objects.requireNonNull(IpcFrame.Delta.class), f2);
+        assertInstanceOf(Objects.requireNonNull(IpcFrame.Done.class), f3);
     }
 
     @Test
@@ -147,13 +149,6 @@ class InMemoryTransportTest {
             return value;
         }
         throw new AssertionError(message);
-    }
-
-    private static <T extends @NonNull Object> @NonNull Class<T> nonNullClass(Class<T> type) {
-        if (type != null) {
-            return type;
-        }
-        throw new AssertionError("Class token should not be null");
     }
 
     /** Minimal in-memory {@link ClientTransport} that auto-replies to Hello with Welcome. */

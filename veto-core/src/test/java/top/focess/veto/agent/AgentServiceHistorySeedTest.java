@@ -3,20 +3,16 @@ package top.focess.veto.agent;
 import static org.junit.jupiter.api.Assertions.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.time.Duration;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.UUID;
-import java.util.concurrent.atomic.AtomicReference;
+
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
+
 import top.focess.veto.agent.identity.SystemPromptResolver;
 import top.focess.veto.agent.intercept.HitlRegistry;
 import top.focess.veto.agent.intercept.IngressDefense;
 import top.focess.veto.agent.loop.PromptCompiler;
 import top.focess.veto.agent.translation.DefaultCapabilityTranslator;
-import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.llm.LlmBinding;
 import top.focess.veto.api.llm.LlmOptions;
 import top.focess.veto.api.llm.ProviderType;
@@ -24,6 +20,12 @@ import top.focess.veto.api.llm.VetoRequest;
 import top.focess.veto.api.llm.VetoResponse;
 import top.focess.veto.llm.core.UniformLLMCaller;
 import top.focess.veto.memory.TurnLogService;
+
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Verifies {@link AgentService#getOrCreateAgent} seeds replayed history on first creation (so a
@@ -95,11 +97,11 @@ class AgentServiceHistorySeedTest {
                 service.getOrCreateAgent(sessionId.toString(), binding, history, UUID.randomUUID());
         AgentRunner runner =
                 assertInstanceOf(
-                        ToolDocs.nonNullClass(AgentRunner.class),
+                        AgentRunner.class,
                         requireField(ReflectionTestUtils.getField(a, "runner")));
         int turnNumber =
                 assertInstanceOf(
-                        ToolDocs.nonNullClass(Integer.class),
+                        Integer.class,
                         requireField(runner.history().getLast().turnNumber()));
         assertEquals(5, turnNumber, "seedHistory advances turnNumber to the max replayed turn");
     }
@@ -154,7 +156,7 @@ class AgentServiceHistorySeedTest {
                 resumed.history().stream()
                         .noneMatch(turn -> turn.payload().containsKey("restored_from_turn")));
         VetoRequest request =
-                assertInstanceOf(ToolDocs.nonNullClass(VetoRequest.class), resumedRequest.get());
+                assertInstanceOf(VetoRequest.class, resumedRequest.get());
         assertEquals("system", request.messages().get(0).role());
         assertNotEquals(transformedSystemPrompt, request.messages().get(0).content());
         assertEquals("updated-after-restart", request.modelName());

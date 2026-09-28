@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
+
 import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.tool.Doc;
 import top.focess.veto.api.agent.tool.NativeTool;
@@ -13,7 +14,6 @@ import top.focess.veto.api.agent.tool.ParamCategory;
 import top.focess.veto.api.agent.tool.SecurityHint;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.agent.tool.ToolDoc;
-import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.ToolResultFormat;
 import top.focess.veto.api.agent.tool.ToolSecurity;
 import top.focess.veto.builtin.questions.QuestionRuntime;
@@ -25,7 +25,7 @@ class ToolContractValidatorTest {
     @Test
     void acceptsTypedUserInteractionNativeTool() {
         @NonNull QuestionRuntime runtime =
-                org.mockito.Mockito.mock(ToolDocs.nonNullClass(QuestionRuntime.class));
+                org.mockito.Mockito.mock(QuestionRuntime.class);
         var tool = new AskUserTool(runtime);
         assertDoesNotThrow(
                 () ->
@@ -56,7 +56,7 @@ class ToolContractValidatorTest {
         var tool = new InvalidProcessInputTool();
         var failure =
                 assertThrows(
-                        ToolDocs.nonNullClass(IllegalArgumentException.class),
+                        IllegalArgumentException.class,
                         () ->
                                 ToolContractValidator.validateHandler(
                                         tool, ToolSchemaCompiler.compileNative(tool)));
@@ -94,7 +94,7 @@ class ToolContractValidatorTest {
 
         @Override
         public @NonNull Class<Args> getArgsClass() {
-            return ToolDocs.nonNullClass(Args.class);
+            return Args.class;
         }
 
         @Override

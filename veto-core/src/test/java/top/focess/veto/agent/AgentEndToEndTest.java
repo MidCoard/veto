@@ -4,22 +4,12 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.nio.file.Path;
-import java.time.Duration;
-import java.util.ArrayDeque;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.UUID;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicReference;
-import java.util.stream.Collectors;
+
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 import org.springframework.test.util.ReflectionTestUtils;
+
 import top.focess.veto.agent.identity.AgentPersona;
 import top.focess.veto.agent.identity.Role;
 import top.focess.veto.agent.identity.SystemPromptResolver;
@@ -36,7 +26,6 @@ import top.focess.veto.api.agent.AgentResult;
 import top.focess.veto.api.agent.AgentState;
 import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.tool.ToolCapability;
-import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.ToolErrorCode;
 import top.focess.veto.api.agent.tool.ToolResult;
 import top.focess.veto.api.llm.LlmBinding;
@@ -56,6 +45,19 @@ import top.focess.veto.llm.core.UniformLLMCaller;
 import top.focess.veto.model.SessionEntity;
 import top.focess.veto.model.tier.ModelBinding;
 import top.focess.veto.model.tier.ModelTierRegistry;
+
+import java.nio.file.Path;
+import java.time.Duration;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Collectors;
 
 /**
  * Exercises the agent loop end-to-end (AgentService → VetoAgent → AgentRunner) with a scripted
@@ -168,9 +170,7 @@ class AgentEndToEndTest {
                         null,
                         null);
         if (engine instanceof TransformToolEngine transforms) {
-            var selection = Mockito.mock(ToolDocs.nonNullClass(SessionPlugins.class));
-            Mockito.when(selection.protect(Mockito.any(), Mockito.any(), Mockito.anyString()))
-                    .thenAnswer(call -> call.getArgument(2));
+            var selection = Mockito.mock(SessionPlugins.class);
             Mockito.when(selection.tools(Mockito.anyString(), Mockito.any()))
                     .thenAnswer(call -> call.getArgument(1));
             Mockito.when(
@@ -185,7 +185,7 @@ class AgentEndToEndTest {
                     .thenAnswer(
                             call -> transforms.intent(call.getArgument(4), call.getArgument(6)));
             service.attachSessionPlugins(selection);
-            var tiers = Mockito.mock(ToolDocs.nonNullClass(ModelTierRegistry.class));
+            var tiers = Mockito.mock(ModelTierRegistry.class);
             var model = transforms.leaderBinding;
             Mockito.when(tiers.resolve(Mockito.anyString(), Mockito.any()))
                     .thenReturn(
@@ -393,13 +393,13 @@ class AgentEndToEndTest {
         VetoAgent agent = requireAgent(service.agent("transform-fwd"));
         AgentRunner runner =
                 assertInstanceOf(
-                        ToolDocs.nonNullClass(AgentRunner.class),
+                        AgentRunner.class,
                         requireField(ReflectionTestUtils.getField(agent, "runner")));
 
         // The STANDALONE persona mutated to LEADER, the Leader binding applied, the group stamped.
         AgentPersona persona =
                 assertInstanceOf(
-                        ToolDocs.nonNullClass(AgentPersona.class),
+                        AgentPersona.class,
                         requireField(runner.personaView()));
         assertEquals(Role.LEADER, persona.role(), "persona role advanced to LEADER");
         assertEquals(Role.LEADER, agent.persona().role());
@@ -425,7 +425,8 @@ class AgentEndToEndTest {
                                         t.type() == TurnType.USER_PROMPT
                                                 && String.valueOf(t.payload().get("content"))
                                                         .contains(
-                                                                "Lead the group and ship the feature.")
+                                                                "Lead the group and ship the"
+                                                                        + " feature.")
                                                 && String.valueOf(t.payload().get("content"))
                                                         .contains("Ship the feature.")),
                 "the original request survives the delegation brief");
@@ -489,13 +490,13 @@ class AgentEndToEndTest {
         VetoAgent agent = requireAgent(service.agent("transform-rev"));
         AgentRunner runner =
                 assertInstanceOf(
-                        ToolDocs.nonNullClass(AgentRunner.class),
+                        AgentRunner.class,
                         requireField(ReflectionTestUtils.getField(agent, "runner")));
 
         // The stashed STANDALONE persona + binding are restored and the group stamp cleared.
         AgentPersona persona =
                 assertInstanceOf(
-                        ToolDocs.nonNullClass(AgentPersona.class),
+                        AgentPersona.class,
                         requireField(runner.personaView()));
         assertEquals(Role.STANDALONE, persona.role(), "persona role restored to STANDALONE");
         assertEquals(Role.STANDALONE, agent.persona().role());
@@ -522,7 +523,8 @@ class AgentEndToEndTest {
                                         t.type() == TurnType.USER_PROMPT
                                                 && String.valueOf(t.payload().get("content"))
                                                         .contains(
-                                                                "Delegation complete: feature shipped.")
+                                                                "Delegation complete: feature"
+                                                                        + " shipped.")
                                                 && String.valueOf(t.payload().get("content"))
                                                         .contains("Ship the feature.")),
                 "the disband brief was seeded as a user prompt");
@@ -558,14 +560,12 @@ class AgentEndToEndTest {
         var persona =
                 new AgentPersona(
                         UUID.randomUUID().toString(), "Mate", "Worker", Set.of(), Role.MATE);
-        var selection = Mockito.mock(ToolDocs.nonNullClass(SessionPlugins.class));
-        Mockito.when(selection.protect(Mockito.any(), Mockito.any(), Mockito.anyString()))
-                .thenAnswer(call -> call.getArgument(2));
+        var selection = Mockito.mock(SessionPlugins.class);
         Mockito.when(selection.tools(Mockito.anyString(), Mockito.any()))
                 .thenAnswer(call -> call.getArgument(1));
         service.attachSessionPlugins(selection);
-        service.setModelTierRegistry(Mockito.mock(ToolDocs.nonNullClass(ModelTierRegistry.class)));
-        var session = Mockito.mock(ToolDocs.nonNullClass(SessionEntity.class));
+        service.setModelTierRegistry(Mockito.mock(ModelTierRegistry.class));
+        var session = Mockito.mock(SessionEntity.class);
         Mockito.when(session.getId()).thenReturn(sessionId.toString());
         Mockito.when(session.getOwner()).thenReturn("owner");
         Mockito.when(session.getToolResultPresentation())
@@ -582,7 +582,7 @@ class AgentEndToEndTest {
         try {
             var runner =
                     assertInstanceOf(
-                            ToolDocs.nonNullClass(AgentRunner.class),
+                            AgentRunner.class,
                             requireField(ReflectionTestUtils.getField(mate, "runner")));
             assertEquals(sessionId, runner.sessionId());
             assertNotEquals(persona.id(), sessionId.toString());
@@ -714,7 +714,7 @@ class AgentEndToEndTest {
                         ToolCapability.WORKSPACE_READ,
                         Danger.SAFE,
                         Object.class,
-                        ToolDocs.nonNullClass(CalculatorArgs.class),
+                        CalculatorArgs.class,
                         Map.of());
 
         @Override
@@ -750,8 +750,8 @@ class AgentEndToEndTest {
                 Danger.SAFE,
                 Object.class,
                 "create_group".equals(name)
-                        ? ToolDocs.nonNullClass(CreateGroupArgs.class)
-                        : ToolDocs.nonNullClass(DisbandGroupArgs.class),
+                        ? CreateGroupArgs.class
+                        : DisbandGroupArgs.class,
                 Map.of());
     }
 
@@ -767,7 +767,7 @@ class AgentEndToEndTest {
             var tool = new top.focess.veto.builtin.planning.SubmitPlanTool();
             return AgentToolDefinition.from(
                     tool.getName(),
-                    ToolDocs.nonNullClass(top.focess.veto.builtin.planning.SubmitPlanTool.class),
+                    top.focess.veto.builtin.planning.SubmitPlanTool.class,
                     tool.getArgsClass(),
                     tool.getCapability());
         }

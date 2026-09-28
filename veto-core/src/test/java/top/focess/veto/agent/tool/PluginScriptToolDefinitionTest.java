@@ -3,22 +3,25 @@ package top.focess.veto.agent.tool;
 import static org.junit.jupiter.api.Assertions.*;
 
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
-import java.util.Map;
-import java.util.Set;
+
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
+
 import top.focess.veto.agent.tool.builtin.FixtureLoopTool;
 import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.tool.ToolCapability;
-import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.plugin.contract.JsonValue;
-import top.focess.veto.api.plugin.contract.Tool;
+import top.focess.veto.api.agent.tool.RemoteTool;
 import top.focess.veto.api.plugin.contract.ToolContribution;
 import top.focess.veto.util.Nullness;
 
+import java.util.Map;
+import java.util.Set;
+
 /** Effect-to-capability/danger mapping for plugin-contributed tool definitions. */
 class PluginScriptToolDefinitionTest {
-    private static @NonNull RemoteToolDefinition scriptDefinition(Tool.@NonNull Effect effect) {
+    private static @NonNull RemoteToolDefinition scriptDefinition(
+            RemoteTool.@NonNull Effect effect) {
         var schema = new JsonValue.ObjectValue(Map.of("type", new JsonValue.StringValue("object")));
         return ToolSchemaCompiler.compilePluginScript(
                 new ToolContribution(
@@ -37,7 +40,7 @@ class PluginScriptToolDefinitionTest {
 
     @Test
     void privilegedEffectMapsToPrivilegedCapabilityWithApprovalDanger() {
-        var definition = scriptDefinition(Tool.Effect.PRIVILEGED);
+        var definition = scriptDefinition(RemoteTool.Effect.PRIVILEGED);
         assertEquals(ToolCapability.PRIVILEGED, definition.capability());
         assertEquals(Danger.DANGEROUS, definition.defaultDanger());
         var provenance = Nullness.requireNonNull(definition.provenance());
@@ -48,7 +51,9 @@ class PluginScriptToolDefinitionTest {
     @Test
     void otherEffectsStayRemoteUnknownWithElevatedDanger() {
         for (var effect :
-                new Tool.Effect[] {Tool.Effect.COMPUTATION, Tool.Effect.EXTERNAL_UNKNOWN}) {
+                new RemoteTool.Effect[] {
+                    RemoteTool.Effect.COMPUTATION, RemoteTool.Effect.EXTERNAL_UNKNOWN
+                }) {
             var definition = scriptDefinition(effect);
             assertEquals(ToolCapability.REMOTE_UNKNOWN, definition.capability());
             assertEquals(Danger.ELEVATED, definition.defaultDanger());
@@ -65,15 +70,15 @@ class PluginScriptToolDefinitionTest {
                         ToolCapability.PRIVILEGED,
                         Danger.DANGEROUS,
                         false,
-                        ToolDocs.nonNullClass(FixtureLoopTool.class),
-                        ToolDocs.nonNullClass(FixtureLoopTool.Args.class),
+                        FixtureLoopTool.class,
+                        FixtureLoopTool.Args.class,
                         Map.of());
         assertDoesNotThrow(() -> ToolContractValidator.validate(nativeDefinition));
         var agentDefinition =
                 AgentToolDefinition.from(
                         "agent_fixture",
-                        ToolDocs.nonNullClass(FixtureLoopTool.class),
-                        ToolDocs.nonNullClass(FixtureLoopTool.Args.class),
+                        FixtureLoopTool.class,
+                        FixtureLoopTool.Args.class,
                         ToolCapability.PRIVILEGED);
         assertThrows(
                 IllegalArgumentException.class,

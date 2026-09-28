@@ -1,12 +1,14 @@
 package top.focess.veto.api.plugin;
 
+import org.jspecify.annotations.NonNull;
+
+import top.focess.veto.api.plugin.contribution.PluginContributionsDirectory;
+import top.focess.veto.api.plugin.service.PluginServices;
+import top.focess.veto.api.plugin.storage.PluginStorage;
+
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.Supplier;
-import org.jspecify.annotations.NonNull;
-import top.focess.veto.api.agent.tool.ToolDocs;
-import top.focess.veto.api.plugin.service.PluginServices;
-import top.focess.veto.api.plugin.storage.PluginStorage;
 
 /**
  * Host metadata, a live read-only lifecycle view, a failure signal, and host-granted services. Host
@@ -54,6 +56,19 @@ public record PluginContext(
     }
 
     /**
+     * Returns the host-mediated effects service required by this plugin, or fails initialization
+     * when the host did not grant it. Plugins that can operate without it should use {@link
+     * #service(Class)} instead. Retaining this object is not retained authorization.
+     *
+     * @return the granted plugin host
+     * @throws IllegalStateException when the host is unavailable
+     */
+    public @NonNull PluginHost host() {
+        return service(PluginHost.class)
+                .orElseThrow(() -> new IllegalStateException("Plugin host unavailable"));
+    }
+
+    /**
      * Returns the named JSON protocol directory for plugin-to-plugin communication. During
      * initialization the directory is not yet populated; discover providers in {@code start()} or
      * later. If the host does not grant a directory, this returns an empty one.
@@ -61,7 +76,17 @@ public record PluginContext(
      * @return the named service directory
      */
     public @NonNull PluginServices services() {
-        return service(ToolDocs.nonNullClass(PluginServices.class)).orElse(PluginServices.EMPTY);
+        return service(PluginServices.class).orElse(PluginServices.EMPTY);
+    }
+
+    /**
+     * Returns the live JSON directory of plugin-defined contribution groups.
+     *
+     * @return the directory, or an empty directory when the host has not granted it
+     */
+    public @NonNull PluginContributionsDirectory contributions() {
+        return service(PluginContributionsDirectory.class)
+                .orElse(PluginContributionsDirectory.EMPTY);
     }
 
     /**
@@ -71,7 +96,7 @@ public record PluginContext(
      * @return storage bound to this plugin's identity
      */
     public @NonNull PluginStorage storage() {
-        return service(ToolDocs.nonNullClass(PluginStorage.class))
+        return service(PluginStorage.class)
                 .orElseThrow(() -> new IllegalStateException("Plugin storage unavailable"));
     }
 

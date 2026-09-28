@@ -4,26 +4,27 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import java.net.http.HttpTimeoutException;
-import java.util.List;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
+
 import top.focess.veto.api.agent.screening.Danger;
-import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.ToolErrors;
 import top.focess.veto.api.agent.tool.ToolExecutionException;
 import top.focess.veto.api.agent.tool.ToolSecurity;
-import top.focess.veto.api.search.SearchOptions;
-import top.focess.veto.api.search.SearchProvider;
-import top.focess.veto.api.search.SearchResult;
+import top.focess.veto.builtin.search.SearchOptions;
+import top.focess.veto.builtin.search.SearchProvider;
+import top.focess.veto.builtin.search.SearchResult;
+
+import java.net.http.HttpTimeoutException;
+import java.util.List;
 
 class WebSearchToolTest {
 
     @Test
     void anonymousSearchIsElevatedByDefault() {
         ToolSecurity security =
-                ToolDocs.nonNullClass(WebSearchTool.class)
-                        .getAnnotation(ToolDocs.nonNullClass(ToolSecurity.class));
+                WebSearchTool.class
+                        .getAnnotation(ToolSecurity.class);
         if (security == null) {
             throw new AssertionError("web_search must declare @ToolSecurity");
         }
@@ -37,7 +38,7 @@ class WebSearchToolTest {
 
         ToolExecutionException error =
                 assertThrows(
-                        ToolDocs.nonNullClass(ToolExecutionException.class),
+                        ToolExecutionException.class,
                         () ->
                                 tool.execute(
                                         new WebSearchTool.Args(
@@ -67,7 +68,7 @@ class WebSearchToolTest {
 
         ToolExecutionException error =
                 assertThrows(
-                        ToolDocs.nonNullClass(ToolExecutionException.class),
+                        ToolExecutionException.class,
                         () -> tool.execute(new WebSearchTool.Args("search query", null, null)));
 
         assertTrue(ToolErrors.normalize(error.getMessage()).contains("bad \"response\"\\payload"));

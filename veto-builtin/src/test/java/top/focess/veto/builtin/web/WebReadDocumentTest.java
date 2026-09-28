@@ -5,13 +5,14 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import java.net.URI;
-import java.util.List;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
-import top.focess.veto.api.agent.tool.ToolDocs;
+
 import top.focess.veto.api.agent.tool.ToolExecutionException;
 import top.focess.veto.builtin.web.model.FetchedPage;
+
+import java.net.URI;
+import java.util.List;
 
 class WebReadDocumentTest {
     @Test
@@ -21,7 +22,8 @@ class WebReadDocumentTest {
                         "text/html",
                         "<main><h1>Introduction</h1>"
                                 + "<p>See retry rules later.</p>".repeat(30)
-                                + "<h2>Retry Rules</h2><pre>Retry\t rules:\n  preserve this spacing.</pre></main>",
+                                + "<h2>Retry Rules</h2><pre>Retry\t rules:\n"
+                                + "  preserve this spacing.</pre></main>",
                         false);
         var matches = document.find("  RETRY\u00a0\tRULES  ");
         assertEquals(24, matches.size());
@@ -32,16 +34,15 @@ class WebReadDocumentTest {
         assertTrue(document.inspected().isEmpty());
         String body = matches.get(1).id();
         assertThrows(
-                ToolDocs.nonNullClass(ToolExecutionException.class), () -> document.evidence(body));
+                ToolExecutionException.class, () -> document.evidence(body));
         var read = document.read(List.of(body)).getFirst();
         document.recordInspection(List.of(body));
         assertEquals("Retry\t rules:\n  preserve this spacing.", read.text());
         assertEquals(read.text(), document.evidence(body).quote());
         assertThrows(
-                ToolDocs.nonNullClass(ToolExecutionException.class),
-                () -> document.find("\u00a0\t"));
+                ToolExecutionException.class, () -> document.find("\u00a0\t"));
         assertThrows(
-                ToolDocs.nonNullClass(ToolExecutionException.class),
+                ToolExecutionException.class,
                 () -> document.find("x".repeat(201)));
     }
 
@@ -52,7 +53,8 @@ class WebReadDocumentTest {
                         "text/html",
                         "<main><h1>Reference</h1>"
                                 + "<p>Small paragraph.</p>".repeat(2500)
-                                + "<pre>  code\n    indentation</pre><h2>Contacts</h2><p>author@example.org</p></main>",
+                                + "<pre>  code\n"
+                                + "    indentation</pre><h2>Contacts</h2><p>author@example.org</p></main>",
                         false);
         assertFalse(document.truncated());
         assertEquals(2504, document.outline().size());
@@ -70,7 +72,8 @@ class WebReadDocumentTest {
         String html =
                 "<main><h1>Reference</h1>"
                         + ("<p>" + "Unrelated specification text. ".repeat(30) + "</p>").repeat(600)
-                        + "<h2>Authors' Addresses</h2><p>Mark Example: author@example.org</p></main>";
+                        + "<h2>Authors' Addresses</h2><p>Mark Example:"
+                        + " author@example.org</p></main>";
         var document = document("text/html", html, false);
         var matches = document.find("author@example.org");
         assertEquals(1, matches.size());
@@ -111,7 +114,8 @@ class WebReadDocumentTest {
         String html =
                 "<main><h1>Introduction</h1><p>"
                         + "Unrelated background. ".repeat(4000)
-                        + "</p><h2>Version 3 retries</h2><p>Retries default to seven attempts.</p></main>";
+                        + "</p><h2>Version 3 retries</h2><p>Retries default to seven"
+                        + " attempts.</p></main>";
         WebReadDocument document = document("text/html", html, false);
         String id =
                 document.outline().stream()
@@ -168,21 +172,21 @@ class WebReadDocumentTest {
     void rejectsUnreadOrUnknownEvidenceAndDoesNotPartiallyAuthorizeAnInvalidRead() {
         WebReadDocument document = document("text/plain", "Evidence text", false);
         assertThrows(
-                ToolDocs.nonNullClass(ToolExecutionException.class), () -> document.evidence("s1"));
+                ToolExecutionException.class, () -> document.evidence("s1"));
         assertThrows(
-                ToolDocs.nonNullClass(ToolExecutionException.class),
+                ToolExecutionException.class,
                 () -> document.read(List.of("s1", "unknown")));
         assertTrue(document.inspected().isEmpty());
 
         document.read(List.of("s1"));
         assertTrue(document.inspected().isEmpty());
         assertThrows(
-                ToolDocs.nonNullClass(ToolExecutionException.class), () -> document.evidence("s1"));
+                ToolExecutionException.class, () -> document.evidence("s1"));
         document.recordInspection(List.of("s1"));
         assertEquals("Evidence text", document.evidence("s1").quote());
         assertEquals("https://example.com/docs", document.evidence("s1").url());
         assertThrows(
-                ToolDocs.nonNullClass(ToolExecutionException.class),
+                ToolExecutionException.class,
                 () -> document.evidence("unknown"));
     }
 
@@ -194,7 +198,7 @@ class WebReadDocumentTest {
         first.recordInspection(List.of("s1"));
 
         assertThrows(
-                ToolDocs.nonNullClass(ToolExecutionException.class), () -> second.evidence("s1"));
+                ToolExecutionException.class, () -> second.evidence("s1"));
         second.read(List.of("s1"));
         second.recordInspection(List.of("s1"));
         assertEquals("Second source", second.evidence("s1").quote());
@@ -222,10 +226,10 @@ class WebReadDocumentTest {
     @Test
     void unsupportedAndEmptyPagesAreFailuresRatherThanNegativeFindings() {
         assertThrows(
-                ToolDocs.nonNullClass(ToolExecutionException.class),
+                ToolExecutionException.class,
                 () -> document("application/pdf", "%PDF", false));
         assertThrows(
-                ToolDocs.nonNullClass(ToolExecutionException.class),
+                ToolExecutionException.class,
                 () -> document("text/html", "<script>onlyScript()</script>", false));
     }
 

@@ -1,21 +1,7 @@
 package top.focess.veto.builtin.group;
 
-import java.time.Instant;
-import java.util.Comparator;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
-import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.Predicate;
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.api.agent.tool.ToolDocs;
+
 import top.focess.veto.api.event.AgentTerminatedEvent;
 import top.focess.veto.api.event.EventHandler;
 import top.focess.veto.api.event.Listener;
@@ -30,6 +16,21 @@ import top.focess.veto.api.plugin.agent.AgentProfile;
 import top.focess.veto.api.plugin.contract.AgentConfiguration;
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.storage.PluginStorage;
+
+import java.time.Instant;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Predicate;
 
 /** Owns the complete group feature, including activation, policy, persistence and shutdown. */
 public final class GroupRuntime
@@ -63,9 +64,9 @@ public final class GroupRuntime
     public GroupRuntime(@NonNull PluginContext context, JsonValue.@NonNull ObjectValue config) {
         configuration = new GroupConfig(config.values());
         configuration.tickMillis();
-        host = context.service(ToolDocs.nonNullClass(PluginHost.class)).orElse(null);
-        prompts = context.service(ToolDocs.nonNullClass(PromptRenderer.class)).orElse(null);
-        var storage = context.service(ToolDocs.nonNullClass(PluginStorage.class)).orElse(null);
+        host = context.service(PluginHost.class).orElse(null);
+        prompts = context.service(PromptRenderer.class).orElse(null);
+        var storage = context.service(PluginStorage.class).orElse(null);
         history = storage == null ? null : new GroupHistoryStore(storage);
         if (history != null) groups.attachHistory(history);
         if (host != null) groups.attachInvalidations(host);
@@ -169,7 +170,8 @@ public final class GroupRuntime
                 var roster = saved.mates();
                 if (roster == null)
                     throw new IllegalStateException(
-                            "Team snapshot has no complete member roster; recovery is unavailable. History is retained.");
+                            "Team snapshot has no complete member roster; recovery is unavailable."
+                                    + " History is retained.");
                 UUID id = UUID.fromString(saved.id());
                 group =
                         new Group(
@@ -491,7 +493,8 @@ public final class GroupRuntime
                         ? new DagNode.ResultSuccess(saved.report())
                         : new DagNode.ResultFailure(
                                 interrupted
-                                        ? "Interrupted by runtime loss; not replayed. Inspect prior side effects before assigning new work. "
+                                        ? "Interrupted by runtime loss; not replayed. Inspect prior"
+                                                + " side effects before assigning new work. "
                                                 + saved.report()
                                         : saved.report(),
                                 List.of());

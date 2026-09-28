@@ -1,9 +1,7 @@
 package top.focess.veto.builtin.workspace;
 
-import java.io.IOException;
-import java.nio.file.FileAlreadyExistsException;
-import java.nio.file.NoSuchFileException;
 import org.jspecify.annotations.NonNull;
+
 import top.focess.veto.api.agent.capability.WorkspaceWriteCapability;
 import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.tool.Doc;
@@ -11,13 +9,16 @@ import top.focess.veto.api.agent.tool.ParamCategory;
 import top.focess.veto.api.agent.tool.SecurityHint;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.agent.tool.ToolDoc;
-import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.ToolErrorCode;
 import top.focess.veto.api.agent.tool.ToolErrors;
 import top.focess.veto.api.agent.tool.ToolJson;
 import top.focess.veto.api.agent.tool.ToolResultFormat;
 import top.focess.veto.api.agent.tool.ToolSecurity;
 import top.focess.veto.api.agent.tool.WorkspaceWriteTool;
+
+import java.io.IOException;
+import java.nio.file.FileAlreadyExistsException;
+import java.nio.file.NoSuchFileException;
 
 /** Moves one file, link, or bounded directory tree without overwrite or copy-delete fallback. */
 @ToolSecurity(capability = ToolCapability.WORKSPACE_WRITE, defaultDanger = Danger.ELEVATED)
@@ -57,7 +58,9 @@ import top.focess.veto.api.agent.tool.WorkspaceWriteTool;
                 directory move before mutation. If an entry changes after preflight, the move stops \
                 with TREE_CHANGED before mutation.""",
         security =
-                "An existing destination is never overwritten, and a cross-filesystem move fails rather than falling back to copy-and-delete, so the source is never lost mid-move.",
+                "An existing destination is never overwritten, and a cross-filesystem move fails"
+                    + " rather than falling back to copy-and-delete, so the source is never lost"
+                    + " mid-move.",
         examples = {
             "{\"sourceAbsolutePath\":\"/abs/project/old.txt\",\"destinationAbsolutePath\":\"/abs/project/new.txt\"}",
             "{\"sourceAbsolutePath\":\"/abs/project/downloads/report.pdf\",\"destinationAbsolutePath\":\"/abs/project/reports/report.pdf\"}",
@@ -86,7 +89,7 @@ public final class MovePathTool implements WorkspaceWriteTool<MovePathTool.Args>
 
     @Override
     public @NonNull Class<Args> getArgsClass() {
-        return ToolDocs.nonNullClass(Args.class);
+        return Args.class;
     }
 
     @Override

@@ -3,20 +3,16 @@ package top.focess.veto.integration.plugins;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
-import java.net.http.HttpTimeoutException;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.atomic.AtomicInteger;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.context.properties.bind.Bindable;
 import org.springframework.boot.context.properties.bind.Binder;
 import org.springframework.boot.context.properties.source.MapConfigurationPropertySource;
+
 import top.focess.veto.agent.capability.CapabilityAccess;
 import top.focess.veto.agent.tool.CapabilityTestCalls;
 import top.focess.veto.agent.tool.ToolCallContextHolder;
 import top.focess.veto.api.agent.tool.ToolCapability;
-import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.ToolExecutionException;
 import top.focess.veto.api.plugin.PluginContext;
 import top.focess.veto.api.plugin.PluginHost;
@@ -25,13 +21,18 @@ import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
 import top.focess.veto.api.plugin.contribution.Contribution;
 import top.focess.veto.api.plugin.service.PluginServices;
-import top.focess.veto.api.search.SearchOptions;
-import top.focess.veto.api.search.SearchProvider;
-import top.focess.veto.api.search.SearchResult;
-import top.focess.veto.api.search.SearchServices;
+import top.focess.veto.builtin.search.SearchOptions;
+import top.focess.veto.builtin.search.SearchProvider;
+import top.focess.veto.builtin.search.SearchResult;
+import top.focess.veto.builtin.search.SearchServices;
 import top.focess.veto.builtin.search.SearchServiceClient;
 import top.focess.veto.builtin.web.WebSearchTool;
 import top.focess.veto.plugin.runtime.*;
+
+import java.net.http.HttpTimeoutException;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 
 class PluginSearchServiceIntegrationTest {
     @Test
@@ -47,8 +48,7 @@ class PluginSearchServiceIntegrationTest {
             assertTrue(result.contains("Java docs"));
             assertEquals(1, calls.get());
             fixture.runtime.close();
-            assertThrows(
-                    ToolDocs.nonNullClass(ToolExecutionException.class), () -> invoke(registry));
+            assertThrows(ToolExecutionException.class, () -> invoke(registry));
             assertEquals(1, calls.get());
         }
     }
@@ -57,12 +57,12 @@ class PluginSearchServiceIntegrationTest {
     void unselectedAndMissingProvidersDoNotExecute() throws Exception {
         var calls = new AtomicInteger();
         try (var fixture = fixture(provider(calls, false))) {
-            var unselected = mock(ToolDocs.nonNullClass(SessionPlugins.class));
+            var unselected = mock(SessionPlugins.class);
             assertThrows(
-                    ToolDocs.nonNullClass(ToolExecutionException.class),
+                    ToolExecutionException.class,
                     () -> invoke(client(fixture, unselected, "fixture")));
             assertThrows(
-                    ToolDocs.nonNullClass(ToolExecutionException.class),
+                    ToolExecutionException.class,
                     () -> invoke(client(fixture, fixture.sessions, "missing")));
             assertEquals(0, calls.get());
         }
@@ -73,7 +73,7 @@ class PluginSearchServiceIntegrationTest {
         try (var fixture = fixture(provider(new AtomicInteger(), true))) {
             var failure =
                     assertThrows(
-                            ToolDocs.nonNullClass(ToolExecutionException.class),
+                            ToolExecutionException.class,
                             () -> invoke(client(fixture, fixture.sessions, "fixture")));
             String message = failure.getMessage();
             if (message == null) throw new AssertionError("Missing failure message");
@@ -118,7 +118,7 @@ class PluginSearchServiceIntegrationTest {
                 new Binder(source)
                         .bind(
                                 "veto.plugins",
-                                Bindable.of(ToolDocs.nonNullClass(PluginConfigurations.class)))
+                                Bindable.of(PluginConfigurations.class))
                         .get();
         assertEquals(
                 Map.of("brave-api-key", new JsonValue.StringValue("synthetic-key")),
@@ -190,7 +190,7 @@ class PluginSearchServiceIntegrationTest {
                                     && selected.includes(session.toString(), caller);
                         });
         registry.bind(fixture.manager.catalog(), List.of(fixture.runtime));
-        var host = mock(ToolDocs.nonNullClass(PluginHost.class));
+        var host = mock(PluginHost.class);
         when(host.invocation(anyString()))
                 .thenAnswer(
                         call -> {
@@ -216,9 +216,9 @@ class PluginSearchServiceIntegrationTest {
                                     "Plugin context is not bound to a lifecycle owner");
                         },
                         Map.of(
-                                ToolDocs.nonNullClass(PluginHost.class),
+                                PluginHost.class,
                                 host,
-                                ToolDocs.nonNullClass(PluginServices.class),
+                                PluginServices.class,
                                 registry.forPlugin(fixture.runtime)));
         return new SearchServiceClient(
                 context,

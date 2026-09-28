@@ -3,6 +3,12 @@ package top.focess.veto.builtin.group;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
+
+import top.focess.veto.api.plugin.PluginHost;
+import top.focess.veto.api.plugin.contract.AgentConfiguration;
+
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
@@ -11,11 +17,6 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.Timeout;
-import top.focess.veto.api.agent.tool.ToolDocs;
-import top.focess.veto.api.plugin.PluginHost;
-import top.focess.veto.api.plugin.contract.AgentConfiguration;
 
 class GroupShutdownRaceTest {
     @Test
@@ -91,7 +92,7 @@ class GroupShutdownRaceTest {
         var second = GroupTestHost.child("two");
         var waits = new AtomicInteger();
         for (var child : List.of(first, second)) {
-            when(child.awaitTermination(any(ToolDocs.nonNullClass(Duration.class))))
+            when(child.awaitTermination(any(Duration.class)))
                     .thenAnswer(
                             call -> {
                                 Duration remaining = GroupTestHost.required(call.getArgument(0));
@@ -114,18 +115,17 @@ class GroupShutdownRaceTest {
                 Duration.ofNanos(System.nanoTime() - started).compareTo(Duration.ofSeconds(3)) < 0);
         for (var child : List.of(first, second)) {
             verify(child).close();
-            when(child.awaitTermination(any(ToolDocs.nonNullClass(Duration.class))))
-                    .thenReturn(true);
+            when(child.awaitTermination(any(Duration.class))).thenReturn(true);
         }
         spawner.stopRuntime(group.groupId());
         for (var child : List.of(first, second)) {
             verify(child).close();
-            verify(child, atLeast(2)).awaitTermination(any(ToolDocs.nonNullClass(Duration.class)));
+            verify(child, atLeast(2)).awaitTermination(any(Duration.class));
         }
         spawner.stopRuntime(group.groupId());
         for (var child : List.of(first, second)) {
             verify(child).close();
-            verify(child, atLeast(2)).awaitTermination(any(ToolDocs.nonNullClass(Duration.class)));
+            verify(child, atLeast(2)).awaitTermination(any(Duration.class));
         }
         GroupTestHost.required(registry.get(group.groupId()));
     }
@@ -134,7 +134,7 @@ class GroupShutdownRaceTest {
     void runtimeCloseAttemptsEveryGroupAndRetainsFailuresForRetry() throws Exception {
         var fixture = new GroupTestHost();
         var child = GroupTestHost.child("member");
-        when(child.awaitTermination(any(ToolDocs.nonNullClass(Duration.class)))).thenReturn(false);
+        when(child.awaitTermination(any(Duration.class))).thenReturn(false);
         when(fixture.agents.open(anyString(), anyString(), any())).thenReturn(child);
         fixture.create();
         fixture.runtime.operations().createMate("one", "work");
@@ -162,10 +162,10 @@ class GroupShutdownRaceTest {
         assertEquals(1, failure.getSuppressed().length);
         verify(child, times(2)).close();
         assertEquals(2, fixture.runtime.registry().snapshot().size());
-        when(child.awaitTermination(any(ToolDocs.nonNullClass(Duration.class)))).thenReturn(true);
+        when(child.awaitTermination(any(Duration.class))).thenReturn(true);
         fixture.close();
         verify(child, times(2)).close();
-        verify(child, times(4)).awaitTermination(any(ToolDocs.nonNullClass(Duration.class)));
+        verify(child, times(4)).awaitTermination(any(Duration.class));
         assertTrue(fixture.runtime.registry().snapshot().isEmpty());
     }
 

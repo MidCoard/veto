@@ -4,20 +4,21 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
-import java.time.Instant;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
-import top.focess.veto.api.agent.tool.ToolDocs;
+
 import top.focess.veto.api.plugin.PluginContext;
 import top.focess.veto.api.plugin.PluginHost;
 import top.focess.veto.api.plugin.PluginIdentity;
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.storage.PluginStorage;
 import top.focess.veto.builtin.memory.embedder.HashEmbedder;
+
+import java.time.Instant;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 
 class MemoryRuntimeTest {
     private final @NonNull PluginHost host = mock(PluginHost.class);
@@ -50,8 +51,7 @@ class MemoryRuntimeTest {
         var services = new java.util.HashMap<Class<?>, Object>();
         services.put(PluginHost.class, host);
         services.put(PluginStorage.class, storage);
-        if (backend != null)
-            services.put(ToolDocs.nonNullClass(MemoryBackendFactory.class), backend);
+        if (backend != null) services.put(MemoryBackendFactory.class, backend);
         return new MemoryRuntime(
                 new PluginContext(
                         new PluginIdentity("top.focess.builtin", "1.0.0"),
@@ -146,7 +146,7 @@ class MemoryRuntimeTest {
     @Test
     void durableCleanupFailureReleasesDeletionMarker() {
         UUID identity = UUID.randomUUID();
-        var factory = mock(ToolDocs.nonNullClass(MemoryBackendFactory.class));
+        var factory = mock(MemoryBackendFactory.class);
         doThrow(new IllegalStateException("cleanup failed")).when(factory).deleteOwner(identity);
         var runtime = runtime("alice", identity, "jpa", factory);
 
@@ -162,8 +162,8 @@ class MemoryRuntimeTest {
     @Test
     void durableProfilesAreLazyAndPreserveTheSelectedAdapter() {
         for (String profile : List.of("jpa", "pgvector")) {
-            var factory = mock(ToolDocs.nonNullClass(MemoryBackendFactory.class));
-            var store = mock(ToolDocs.nonNullClass(MemoryStore.class));
+            var factory = mock(MemoryBackendFactory.class);
+            var store = mock(MemoryStore.class);
             when(factory.open(eq(profile), any())).thenReturn(store);
             when(store.search(any())).thenReturn(List.of());
             var runtime = runtime("alice", profile, factory);
@@ -176,7 +176,7 @@ class MemoryRuntimeTest {
 
     @Test
     void absentInvocationCannotReachBackendAndWrongOperationCannotMutate() {
-        var factory = mock(ToolDocs.nonNullClass(MemoryBackendFactory.class));
+        var factory = mock(MemoryBackendFactory.class);
         var runtime = runtime("alice", "jpa", factory);
         when(host.invocation(anyString())).thenThrow(new SecurityException("no invocation"));
         assertThrows(

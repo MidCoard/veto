@@ -6,13 +6,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.nio.file.Path;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
+
 import top.focess.veto.agent.identity.AgentPersona;
 import top.focess.veto.agent.identity.Role;
 import top.focess.veto.agent.identity.SystemPromptResolver;
@@ -32,6 +29,12 @@ import top.focess.veto.builtin.memory.MemoryTools;
 import top.focess.veto.builtin.tools.RunCommandTool;
 import top.focess.veto.builtin.workspace.GrepSearchTool;
 
+import java.nio.file.Path;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
 /**
  * Renders the compiled system prompt for sample personas (STANDALONE/LEADER/MATE across deployer
  * policies) to verify the template + {@link PromptBlocks} linking, and prints them for visual
@@ -44,8 +47,8 @@ class PromptCompileRenderTest {
         var manifest =
                 AgentToolDefinition.from(
                         "run_command",
-                        ToolDocs.nonNullClass(RunCommandTool.class),
-                        ToolDocs.nonNullClass(RunCommandTool.Args.class),
+                        RunCommandTool.class,
+                        RunCommandTool.Args.class,
                         ToolCapability.PROCESS_EXECUTION);
         var tool = new VetoCapabilityTranslator().translateTools(List.of(manifest)).getFirst();
         var schema = new ObjectMapper().valueToTree(tool.inputSchema());
@@ -230,7 +233,7 @@ class PromptCompileRenderTest {
         assertFalse(environment.contains("npm.cmd"));
         assertFalse(environment.contains("Main.java"));
         assertTrue(
-                ToolDocs.documentationOf(ToolDocs.nonNullClass(RunCommandTool.class))
+                ToolDocs.documentationOf(RunCommandTool.class)
                         .behavior()
                         .contains("there is no shell"));
     }
@@ -342,7 +345,8 @@ class PromptCompileRenderTest {
         assertTrue(prompt.contains("as read-only unless the user also requests a change"), prompt);
         assertTrue(
                 prompt.contains(
-                        "Send workspace content, source code, personal data, or secrets to an external destination only when"),
+                        "Send workspace content, source code, personal data, or secrets to an"
+                                + " external destination only when"),
                 prompt);
         assertFalse(prompt.contains("configured skill registry"), prompt);
         assertTrue(
@@ -458,14 +462,12 @@ class PromptCompileRenderTest {
 
     @Test
     void forgetResultContractUsesOneNonDisclosingFailure() {
-        // Java class literals are non-null; Checker treats this nested literal as nullable.
-        @SuppressWarnings("nullness:assignment")
-        @NonNull Class<?> toolClass = MemoryTools.ForgetMemory.class;
+        var toolClass = MemoryTools.ForgetMemory.class;
         var manifest =
                 AgentToolDefinition.from(
                         "forget_memory",
                         toolClass,
-                        ToolDocs.nonNullClass(MemoryTools.ForgetMemory.Args.class),
+                        MemoryTools.ForgetMemory.Args.class,
                         ToolCapability.PLUGIN_LOCAL);
         List<ToolDefinition> flat =
                 new VetoCapabilityTranslator().translateTools(List.of(manifest));
@@ -477,7 +479,8 @@ class PromptCompileRenderTest {
         assertTrue(contract.contains("Success -> `forgotten: <memoryId>`"));
         assertTrue(
                 contract.contains(
-                        "Memory not found: the memory does not exist or is not owned; nothing forgotten."));
+                        "Memory not found: the memory does not exist or is not owned; nothing"
+                                + " forgotten."));
         assertFalse(contract.contains("Missing `memoryId`"));
         assertFalse(contract.contains("invalid memoryId"));
         assertFalse(contract.contains("error-special-plaintext"));
@@ -500,17 +503,17 @@ class PromptCompileRenderTest {
         Map<String, Object> schema =
                 mapper.convertValue(
                         ToolSchemaCompiler.compileFromRecord(
-                                ToolDocs.nonNullClass(GrepSearchTool.Args.class)),
+                                GrepSearchTool.Args.class),
                         new TypeReference<Map<String, Object>>() {});
         ToolDefinition tool =
                 new ToolDefinition(
                         "grep_search",
                         "Search for exact pattern matches inside files.",
                         schema,
-                        ToolDocs.examplesOf(ToolDocs.nonNullClass(GrepSearchTool.class)),
-                        ToolDocs.documentationOf(ToolDocs.nonNullClass(GrepSearchTool.class)),
-                        ToolDocs.returnExamplesOf(ToolDocs.nonNullClass(GrepSearchTool.class)),
-                        ToolDocs.resultFormatsOf(ToolDocs.nonNullClass(GrepSearchTool.class)));
+                        ToolDocs.examplesOf(GrepSearchTool.class),
+                        ToolDocs.documentationOf(GrepSearchTool.class),
+                        ToolDocs.returnExamplesOf(GrepSearchTool.class),
+                        ToolDocs.resultFormatsOf(GrepSearchTool.class));
         String block = PromptBlocks.tools(List.of(tool));
         System.out.println("===== REAL grep_search catalog entry =====\n" + block);
         assertTrue(block.contains("### `grep_search`"), "tool heading rendered:\n" + block);
@@ -529,12 +532,12 @@ class PromptCompileRenderTest {
         assertTrue(nativeSchema.path("required").toString().contains("absolutePath"));
         assertFalse(nativeSchema.path("required").toString().contains("caseInsensitive"));
         assertFalse(
-                ToolDocs.documentationOf(ToolDocs.nonNullClass(GrepSearchTool.class))
+                ToolDocs.documentationOf(GrepSearchTool.class)
                         .behavior()
                         .isBlank(),
                 "grep_search has a typed @ToolDoc behavior section");
         assertTrue(
-                ToolDocs.examplesOf(ToolDocs.nonNullClass(GrepSearchTool.class)).size() >= 3,
+                ToolDocs.examplesOf(GrepSearchTool.class).size() >= 3,
                 "grep_search demonstrates its optional filters without duplicate examples");
     }
 

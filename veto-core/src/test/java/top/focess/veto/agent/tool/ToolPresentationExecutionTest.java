@@ -4,16 +4,14 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.nio.file.Path;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
+
 import org.checkerframework.framework.qual.DefaultQualifier;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.context.ApplicationContext;
+
 import top.focess.veto.agent.intercept.ToolExecutionPermit;
 import top.focess.veto.agent.workspace.PathMode;
 import top.focess.veto.agent.workspace.Workspace;
@@ -21,6 +19,11 @@ import top.focess.veto.api.agent.tool.*;
 import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.api.resources.CatalogueTree;
+
+import java.nio.file.Path;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 
 @DefaultQualifier(NonNull.class)
 class ToolPresentationExecutionTest {
@@ -74,7 +77,7 @@ class ToolPresentationExecutionTest {
         }
 
         public @NonNull Class<Args> getArgsClass() {
-            return ToolDocs.nonNullClass(Args.class);
+            return Args.class;
         }
 
         public @NonNull State describe(@NonNull CatalogueTree tree) {

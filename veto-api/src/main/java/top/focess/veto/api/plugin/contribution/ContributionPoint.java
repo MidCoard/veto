@@ -14,7 +14,7 @@ import org.jspecify.annotations.NonNull;
  * @param contract exact Java implementation contract
  * @param cardinality allowed number of implementations
  */
-public record ContributionPoint<T extends @NonNull Object>(
+public record ContributionPoint<T>(
         @NonNull ContributionId id,
         int major,
         @NonNull Class<T> contract,

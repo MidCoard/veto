@@ -1,6 +1,17 @@
 package top.focess.veto.builtin.skills;
 
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper;
+
+import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
+
+import top.focess.veto.api.plugin.PluginContext;
+import top.focess.veto.api.plugin.PluginHost;
+import top.focess.veto.api.plugin.contract.JsonValue;
+import top.focess.veto.api.plugin.storage.PluginStorage;
+import top.focess.veto.api.resources.CatalogueAccess;
+import top.focess.veto.api.resources.CatalogueTree;
+
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -11,15 +22,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
-import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
-import top.focess.veto.api.agent.tool.ToolDocs;
-import top.focess.veto.api.plugin.PluginContext;
-import top.focess.veto.api.plugin.PluginHost;
-import top.focess.veto.api.plugin.contract.JsonValue;
-import top.focess.veto.api.plugin.storage.PluginStorage;
-import top.focess.veto.api.resources.CatalogueAccess;
-import top.focess.veto.api.resources.CatalogueTree;
 
 /** Builtin owns skill selection, discovery and durable integrity anchors. */
 public final class SkillRuntime implements AutoCloseable {
@@ -34,9 +36,9 @@ public final class SkillRuntime implements AutoCloseable {
     /** Resolves catalogue, storage and host services and reads the skills directory setting. */
     public SkillRuntime(
             @NonNull PluginContext context, JsonValue.@NonNull ObjectValue configuration) {
-        resources = context.service(ToolDocs.nonNullClass(CatalogueAccess.class)).orElse(null);
-        storage = context.service(ToolDocs.nonNullClass(PluginStorage.class)).orElse(null);
-        host = context.service(ToolDocs.nonNullClass(PluginHost.class)).orElse(null);
+        resources = context.service(CatalogueAccess.class).orElse(null);
+        storage = context.service(PluginStorage.class).orElse(null);
+        host = context.service(PluginHost.class).orElse(null);
         var configured = configuration.values().get("skills-project-directory");
         projectDirectory =
                 configured instanceof JsonValue.StringValue value && !value.value().isBlank()

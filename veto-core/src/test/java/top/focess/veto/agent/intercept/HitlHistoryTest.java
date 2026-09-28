@@ -4,11 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.nio.file.Path;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.UUID;
+
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -19,6 +15,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+
 import top.focess.veto.agent.screening.Relevance;
 import top.focess.veto.agent.screening.Screening;
 import top.focess.veto.agent.tool.NativeToolDefinition;
@@ -26,10 +23,15 @@ import top.focess.veto.agent.workspace.PathMode;
 import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.tool.ToolCapability;
-import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.model.RetiredAgentControls;
 import top.focess.veto.util.Nullness;
+
+import java.nio.file.Path;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
 
 @DataJpaTest
 @Import({HitlHistory.class, ObjectMapper.class})
@@ -53,7 +55,7 @@ class HitlHistoryTest {
                         Danger.ELEVATED,
                         false,
                         Object.class,
-                        ToolDocs.nonNullClass(Object.class),
+                        Object.class,
                         Map.of());
         var call =
                 new ToolCall(
@@ -87,7 +89,7 @@ class HitlHistoryTest {
             restored.setSession(agent, session);
             restored.setWorkspace(agent, Workspace.single(tmp, PathMode.REAL));
             assertInstanceOf(
-                    ToolDocs.nonNullClass(ApprovalDecision.AutoApprove.class),
+                    ApprovalDecision.AutoApprove.class,
                     restored.decide(agent, call, definition, screening));
             var other =
                     new ToolCall(
@@ -95,7 +97,7 @@ class HitlHistoryTest {
                             Map.of("url", "https://example.org", "objective", "title"),
                             "other");
             assertInstanceOf(
-                    ToolDocs.nonNullClass(ApprovalDecision.Prompt.class),
+                    ApprovalDecision.Prompt.class,
                     restored.decide(agent, other, definition, screening));
             assertTrue(restored.revokeGrant(agent, restored.grantLog(agent).getFirst()));
             var afterRevoke = new HitlRegistry();
@@ -103,7 +105,7 @@ class HitlHistoryTest {
             afterRevoke.setSession(agent, session);
             afterRevoke.setWorkspace(agent, Workspace.single(tmp, PathMode.REAL));
             assertInstanceOf(
-                    ToolDocs.nonNullClass(ApprovalDecision.Prompt.class),
+                    ApprovalDecision.Prompt.class,
                     afterRevoke.decide(agent, call, definition, screening));
         } finally {
             repository.deleteAll(
@@ -117,13 +119,15 @@ class HitlHistoryTest {
         jdbc.execute(
                 "ALTER TABLE agent_instances ADD COLUMN IF NOT EXISTS execution_wait VARCHAR(255)");
         jdbc.execute(
-                "ALTER TABLE agent_instances ADD COLUMN IF NOT EXISTS wait_request_id VARCHAR(255)");
+                "ALTER TABLE agent_instances ADD COLUMN IF NOT EXISTS wait_request_id"
+                        + " VARCHAR(255)");
         var migration = new RetiredAgentControls(jdbc);
         migration.run(new DefaultApplicationArguments());
         migration.run(new DefaultApplicationArguments());
         var columns =
                 jdbc.queryForList(
-                        "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'AGENT_INSTANCES'",
+                        "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME ="
+                                + " 'AGENT_INSTANCES'",
                         Nullness.requireNonNull(String.class));
         assertFalse(columns.contains("USER_PAUSED"));
         assertFalse(columns.contains("EXECUTION_WAIT"));

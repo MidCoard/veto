@@ -8,7 +8,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
-import top.focess.veto.api.agent.tool.ToolDocs;
 
 /**
  * Validates {@link LenientStringListModule}: a model that emits a string where a string array was
@@ -33,11 +32,11 @@ class LenientStringListModuleTest {
         var mapper = llmMapper().enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS);
         String json =
                 "{\"commands\":[{\"executable\":\"gradle\",\"args\":[\"build\"]}],\"cwd\":\"/abs\"}";
-        var value = mapper.readValue(json, ToolDocs.nonNullClass(Args.class));
+        var value = mapper.readValue(json, Args.class);
         assertEquals(List.of("build"), value.commands().getFirst().args());
         assertThrows(
                 JsonProcessingException.class,
-                () -> mapper.readValue(json + " {}", ToolDocs.nonNullClass(Args.class)));
+                () -> mapper.readValue(json + " {}", Args.class));
     }
 
     @Test
@@ -46,7 +45,7 @@ class LenientStringListModuleTest {
                 llmMapper()
                         .readValue(
                                 "{\"commands\":[{\"executable\":\"gradle\",\"args\":[\"build\",\"test\"]}],\"cwd\":\"/abs\"}",
-                                ToolDocs.nonNullClass(Args.class));
+                                Args.class);
         assertEquals(List.of("build", "test"), args.commands().get(0).args());
     }
 
@@ -57,7 +56,7 @@ class LenientStringListModuleTest {
                 llmMapper()
                         .readValue(
                                 "{\"commands\":[{\"executable\":\"cmd\",\"args\":\"[/c, if, not, exist, E:\\\\minecraft_modpack\\\\]\"}],\"cwd\":\"E:\\\\test\"}",
-                                ToolDocs.nonNullClass(Args.class));
+                                Args.class);
         assertEquals(
                 List.of("/c", "if", "not", "exist", "E:\\minecraft_modpack\\"),
                 args.commands().get(0).args());
@@ -69,7 +68,7 @@ class LenientStringListModuleTest {
                 llmMapper()
                         .readValue(
                                 "{\"commands\":[{\"executable\":\"gradle\",\"args\":\"[\\\"build\\\",\\\"test\\\"]\"}],\"cwd\":\"/abs\"}",
-                                ToolDocs.nonNullClass(Args.class));
+                                Args.class);
         assertEquals(List.of("build", "test"), args.commands().get(0).args());
     }
 
@@ -79,7 +78,7 @@ class LenientStringListModuleTest {
                 llmMapper()
                         .readValue(
                                 "{\"commands\":[{\"executable\":\"git\",\"args\":\"status\"}],\"cwd\":\"/abs\"}",
-                                ToolDocs.nonNullClass(Args.class));
+                                Args.class);
         assertEquals(List.of("status"), args.commands().get(0).args());
     }
 }

@@ -4,19 +4,18 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.time.Duration;
-import java.util.List;
+
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.test.util.ReflectionTestUtils;
+
 import top.focess.veto.agent.identity.SystemPromptResolver;
 import top.focess.veto.agent.intercept.HitlRegistry;
 import top.focess.veto.agent.intercept.IngressDefense;
 import top.focess.veto.agent.loop.PromptCompiler;
 import top.focess.veto.agent.translation.DefaultCapabilityTranslator;
 import top.focess.veto.api.agent.AgentResult;
-import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.llm.LlmBinding;
 import top.focess.veto.api.llm.LlmOptions;
 import top.focess.veto.api.llm.ProviderType;
@@ -25,6 +24,9 @@ import top.focess.veto.llm.core.UniformLLMCaller;
 import top.focess.veto.memory.TurnLogService;
 import top.focess.veto.memory.TurnRecordEntity;
 import top.focess.veto.memory.TurnRecordRepository;
+
+import java.time.Duration;
+import java.util.List;
 
 /**
  * Verifies the turn-log wiring end-to-end: an agent's {@code appendTurn} (driven by a submitted
@@ -37,7 +39,7 @@ class TurnLogWiringTest {
 
     @Test
     void submittedEpisodeLogsTurnsIntoRawLog() throws Exception {
-        TurnRecordRepository repo = mock(ToolDocs.nonNullClass(TurnRecordRepository.class));
+        TurnRecordRepository repo = mock(TurnRecordRepository.class);
         TurnLogService turnLog = new TurnLogService(repo, new ObjectMapper());
 
         ObjectMapper mapper = new ObjectMapper();
@@ -79,7 +81,7 @@ class TurnLogWiringTest {
 
         assertTrue(result.success(), "the episode finishes");
         ArgumentCaptor<TurnRecordEntity> records =
-                ArgumentCaptor.forClass(ToolDocs.nonNullClass(TurnRecordEntity.class));
+                ArgumentCaptor.forClass(TurnRecordEntity.class);
         verify(repo, atLeastOnce()).save(records.capture());
         List<TurnRecordEntity> persisted = records.getAllValues();
         assertEquals("AGENT_INIT", persisted.get(0).getType());

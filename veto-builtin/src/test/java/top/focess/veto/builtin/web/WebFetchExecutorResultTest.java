@@ -5,17 +5,18 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import java.net.URI;
-import java.util.Collections;
-import java.util.List;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
-import top.focess.veto.api.agent.tool.ToolDocs;
+
 import top.focess.veto.api.agent.tool.ToolExecutionException;
 import top.focess.veto.builtin.web.model.Execution;
 import top.focess.veto.builtin.web.model.FetchedPage;
 import top.focess.veto.builtin.web.model.FinishReadArgs;
 import top.focess.veto.builtin.web.model.Result;
+
+import java.net.URI;
+import java.util.Collections;
+import java.util.List;
 
 class WebFetchExecutorResultTest {
     private static final @NonNull Execution EXECUTION =
@@ -27,7 +28,7 @@ class WebFetchExecutorResultTest {
         FinishReadArgs finish =
                 new FinishReadArgs("complete", "30 seconds", List.of("s1"), List.of());
         assertThrows(
-                ToolDocs.nonNullClass(ToolExecutionException.class),
+                ToolExecutionException.class,
                 () -> WebReadSession.finish(finish, document, EXECUTION));
         document.read(List.of("s1"));
         document.recordInspection(List.of("s1"));
@@ -37,7 +38,7 @@ class WebFetchExecutorResultTest {
         assertEquals("The timeout is 30 seconds.", result.evidence().getFirst().quote());
         assertEquals(EXECUTION, result.execution());
         assertThrows(
-                ToolDocs.nonNullClass(ToolExecutionException.class),
+                ToolExecutionException.class,
                 () ->
                         WebReadSession.finish(
                                 new FinishReadArgs(
@@ -124,7 +125,7 @@ class WebFetchExecutorResultTest {
                         new FinishReadArgs(
                                 "partial", "Answer", List.of("s1"), List.of("x".repeat(501))))) {
             assertThrows(
-                    ToolDocs.nonNullClass(ToolExecutionException.class),
+                    ToolExecutionException.class,
                     () -> WebReadSession.finish(invalid, document, EXECUTION));
         }
     }
@@ -140,7 +141,7 @@ class WebFetchExecutorResultTest {
                         Collections.nCopies(9, "q".repeat(501)));
         var error =
                 assertThrows(
-                        ToolDocs.nonNullClass(ToolExecutionException.class),
+                        ToolExecutionException.class,
                         () -> WebReadSession.finish(invalid, document, EXECUTION));
         String message = error.getMessage();
         if (message == null) throw new AssertionError("Missing correction diagnostics");

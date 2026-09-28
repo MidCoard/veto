@@ -5,22 +5,24 @@ import static org.mockito.Mockito.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import java.nio.file.Path;
-import java.util.Map;
-import java.util.UUID;
+
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+
 import top.focess.veto.agent.capability.RemoteCallCapabilityImpl;
 import top.focess.veto.agent.intercept.ToolExecutionPermit;
 import top.focess.veto.agent.mcp.transport.McpJsonRpcClient;
 import top.focess.veto.agent.mcp.transport.McpTransport.SseMcpTransport;
 import top.focess.veto.agent.workspace.PathMode;
 import top.focess.veto.agent.workspace.Workspace;
-import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
+
+import java.nio.file.Path;
+import java.util.Map;
+import java.util.UUID;
 
 class RemoteCapabilityBoundaryTest {
     private final @NonNull ObjectMapper mapper = new ObjectMapper();
@@ -37,7 +39,7 @@ class RemoteCapabilityBoundaryTest {
         var definition = new RemoteToolDefinition("lookup", "Lookup", "server-one", schema);
         var otherServer = new RemoteToolDefinition("lookup", "Lookup", "server-two", schema);
         var transport = new SseMcpTransport("https://example.invalid/mcp", "");
-        var client = mock(ToolDocs.nonNullClass(McpJsonRpcClient.class));
+        var client = mock(McpJsonRpcClient.class);
         var capability = new RemoteCallCapabilityImpl(definition, transport, client);
         var otherCapability = new RemoteCallCapabilityImpl(otherServer, transport, client);
         var call = new ToolCall("lookup", Map.of("id", "allowed"), "approved-call");

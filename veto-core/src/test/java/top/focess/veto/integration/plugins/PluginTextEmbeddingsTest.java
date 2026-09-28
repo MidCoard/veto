@@ -3,26 +3,27 @@ package top.focess.veto.integration.plugins;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.UUID;
-import java.util.concurrent.CancellationException;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
+
 import top.focess.veto.agent.intercept.ToolExecutionPermit;
 import top.focess.veto.agent.screening.DeployerPolicy;
 import top.focess.veto.agent.tool.ToolCallContext;
 import top.focess.veto.agent.tool.ToolCallContextHolder;
 import top.focess.veto.api.agent.tool.ToolCapability;
-import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.llm.TextEmbedding;
 import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.api.plugin.PluginState;
 import top.focess.veto.plugin.runtime.PluginLifecycle;
+
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.CancellationException;
 
 class PluginTextEmbeddingsTest {
     @AfterEach
@@ -63,7 +64,7 @@ class PluginTextEmbeddingsTest {
     @Test
     void requiresSameActivePluginCallerAndExactCall() {
         var plugin = mock(PluginLifecycle.class);
-        var model = mock(ToolDocs.nonNullClass(TextEmbedding.class));
+        var model = mock(TextEmbedding.class);
         when(plugin.state()).thenReturn(PluginState.ACTIVE);
         when(plugin.bindingId()).thenReturn("instance");
         when(model.dimension()).thenReturn(2);
@@ -87,7 +88,7 @@ class PluginTextEmbeddingsTest {
     @Test
     void rejectsOversizeAndCancellationBeforeModelAccess() {
         var plugin = mock(PluginLifecycle.class);
-        var model = mock(ToolDocs.nonNullClass(TextEmbedding.class));
+        var model = mock(TextEmbedding.class);
         when(plugin.state()).thenReturn(PluginState.ACTIVE);
         when(plugin.bindingId()).thenReturn("instance");
         var port = new PluginTextEmbeddings(plugin, model);

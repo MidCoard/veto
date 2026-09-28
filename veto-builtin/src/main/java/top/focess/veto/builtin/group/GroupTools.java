@@ -1,21 +1,22 @@
 package top.focess.veto.builtin.group;
 
+import org.jspecify.annotations.NonNull;
+
+import top.focess.veto.api.agent.tool.Doc;
+import top.focess.veto.api.agent.tool.ParamCategory;
+import top.focess.veto.api.agent.tool.SecurityHint;
+import top.focess.veto.api.agent.tool.ToolDoc;
+import top.focess.veto.api.agent.tool.ToolErrorCode;
+import top.focess.veto.api.agent.tool.ToolErrors;
+import top.focess.veto.api.agent.tool.ToolPrompt;
+import top.focess.veto.api.agent.tool.ToolResultFormat;
+
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import org.jspecify.annotations.NonNull;
-import top.focess.veto.api.agent.tool.Doc;
-import top.focess.veto.api.agent.tool.ParamCategory;
-import top.focess.veto.api.agent.tool.SecurityHint;
-import top.focess.veto.api.agent.tool.ToolDoc;
-import top.focess.veto.api.agent.tool.ToolDocs;
-import top.focess.veto.api.agent.tool.ToolErrorCode;
-import top.focess.veto.api.agent.tool.ToolErrors;
-import top.focess.veto.api.agent.tool.ToolPrompt;
-import top.focess.veto.api.agent.tool.ToolResultFormat;
 
 /**
  * Agent-facing group management tools. The caller of {@code create_group} <em>transforms</em> into
@@ -37,10 +38,12 @@ public final class GroupTools {
             resultFormats = {ToolResultFormat.PLAINTEXT},
             description = "Request delegation for a task.",
             behavior =
-                    "Starts real collaboration using the supplied brief. Participants and work are arranged in the next stage.",
+                    "Starts real collaboration using the supplied brief. Participants and work are"
+                            + " arranged in the next stage.",
             whenToUse = "Use when the task meets the Delegation Rules in the system message.",
             whenNotToUse =
-                    "Unless the user explicitly requests collaborators, prefer direct execution for small or tightly coupled work.",
+                    "Unless the user explicitly requests collaborators, prefer direct execution for"
+                            + " small or tightly coupled work.",
             resultContract =
                     """
                     Success returns empty text. Failures:
@@ -55,11 +58,15 @@ public final class GroupTools {
                     failures; both leave the group uncreated.
                     """,
             security =
-                    "Delegation remains within the user's authorized task and workspace boundaries.",
+                    "Delegation remains within the user's authorized task and workspace"
+                            + " boundaries.",
             examples = {
-                "{\"task\": \"Review the persistence implementation and its callers, and verify the affected modules\"}",
-                "{\"task\": \"Migrate the billing module from JPA to jOOQ; deliver the converted repositories and passing integration tests\"}",
-                "{\"task\": \"Compare the three shortlisted message queues for the notification service and recommend one with a rationale\"}",
+                "{\"task\": \"Review the persistence implementation and its callers, and verify the"
+                        + " affected modules\"}",
+                "{\"task\": \"Migrate the billing module from JPA to jOOQ; deliver the converted"
+                        + " repositories and passing integration tests\"}",
+                "{\"task\": \"Compare the three shortlisted message queues for the notification"
+                        + " service and recommend one with a rationale\"}",
                 "{\"task\": \"   \"}"
             },
             returnExamples = {
@@ -96,7 +103,7 @@ public final class GroupTools {
 
         @Override
         public @NonNull Class<Args> getArgsClass() {
-            return ToolDocs.nonNullClass(Args.class);
+            return Args.class;
         }
 
         @Override
@@ -186,7 +193,7 @@ public final class GroupTools {
 
         @Override
         public @NonNull Class<Args> getArgsClass() {
-            return ToolDocs.nonNullClass(Args.class);
+            return Args.class;
         }
 
         @Override
@@ -264,10 +271,64 @@ public final class GroupTools {
                 "{\"sinceSeq\": -1}"
             },
             returnExamples = {
-                "Group state: ACTIVE\nA completed task means the assigned mate returned a report; it does not imply independent verification.\nMates:\n- 3f8a2c10-9b2e-4c1d-8e5f-2a6b7c8d9e0f: review backend session isolation\nTasks:\n- node-1 [RUNNING] mate=3f8a2c10-9b2e-4c1d-8e5f-2a6b7c8d9e0f skillset=coding dependsOn=[]\nImplement JWT login in UserService\nMessages are historical observations; task state above is authoritative.\nNew mate messages:\n- seq=2 sender=3f8a2c10-9b2e-4c1d-8e5f-2a6b7c8d9e0f type=FEEDBACK\ndispatch=(uncorrelated) currentDispatch=false\npayload=node-1:feedback:started review\nnextSinceSeq: 3",
-                "Group state: ACTIVE\nA completed task means the assigned mate returned a report; it does not imply independent verification.\nMates:\n- 3f8a2c10-9b2e-4c1d-8e5f-2a6b7c8d9e0f: review backend session isolation\nTasks:\n- node-1 [RUNNING] mate=3f8a2c10-9b2e-4c1d-8e5f-2a6b7c8d9e0f skillset=coding dependsOn=[]\nImplement JWT login in UserService\nMessages are historical observations; task state above is authoritative.\nNew mate messages:\n- (none)\nnextSinceSeq: 4",
-                "Group state: ACTIVE\nA completed task means the assigned mate returned a report; it does not imply independent verification.\nMates:\n- 3f8a2c10-9b2e-4c1d-8e5f-2a6b7c8d9e0f: review backend session isolation\nTasks:\n- node-1 [COMPLETED] mate=3f8a2c10-9b2e-4c1d-8e5f-2a6b7c8d9e0f skillset=coding dependsOn=[]\nImplement JWT login in UserService\nMessages are historical observations; task state above is authoritative.\nNew mate messages:\n- seq=6 sender=3f8a2c10-9b2e-4c1d-8e5f-2a6b7c8d9e0f type=ACCEPT\ndispatch=node-1-dispatch-3 currentDispatch=true\npayload=node-1: login implemented; session isolation verified\nnextSinceSeq: 6",
-                "Group state: ACTIVE\nA completed task means the assigned mate returned a report; it does not imply independent verification.\nMates:\n- 3f8a2c10-9b2e-4c1d-8e5f-2a6b7c8d9e0f: review backend session isolation\nTasks:\n- node-1 [RUNNING] mate=3f8a2c10-9b2e-4c1d-8e5f-2a6b7c8d9e0f skillset=coding dependsOn=[]\nImplement JWT login in UserService\nMessages are historical observations; task state above is authoritative.\nNew mate messages:\n- seq=5 sender=3f8a2c10-9b2e-4c1d-8e5f-2a6b7c8d9e0f type=FEEDBACK\ndispatch=(uncorrelated) currentDispatch=false\npayload=node-1:feedback:test failed\nnextSinceSeq: 5",
+                "Group state: ACTIVE\n"
+                    + "A completed task means the assigned mate returned a report; it does not"
+                    + " imply independent verification.\n"
+                    + "Mates:\n"
+                    + "- 3f8a2c10-9b2e-4c1d-8e5f-2a6b7c8d9e0f: review backend session isolation\n"
+                    + "Tasks:\n"
+                    + "- node-1 [RUNNING] mate=3f8a2c10-9b2e-4c1d-8e5f-2a6b7c8d9e0f skillset=coding"
+                    + " dependsOn=[]\n"
+                    + "Implement JWT login in UserService\n"
+                    + "Messages are historical observations; task state above is authoritative.\n"
+                    + "New mate messages:\n"
+                    + "- seq=2 sender=3f8a2c10-9b2e-4c1d-8e5f-2a6b7c8d9e0f type=FEEDBACK\n"
+                    + "dispatch=(uncorrelated) currentDispatch=false\n"
+                    + "payload=node-1:feedback:started review\n"
+                    + "nextSinceSeq: 3",
+                "Group state: ACTIVE\n"
+                    + "A completed task means the assigned mate returned a report; it does not"
+                    + " imply independent verification.\n"
+                    + "Mates:\n"
+                    + "- 3f8a2c10-9b2e-4c1d-8e5f-2a6b7c8d9e0f: review backend session isolation\n"
+                    + "Tasks:\n"
+                    + "- node-1 [RUNNING] mate=3f8a2c10-9b2e-4c1d-8e5f-2a6b7c8d9e0f skillset=coding"
+                    + " dependsOn=[]\n"
+                    + "Implement JWT login in UserService\n"
+                    + "Messages are historical observations; task state above is authoritative.\n"
+                    + "New mate messages:\n"
+                    + "- (none)\n"
+                    + "nextSinceSeq: 4",
+                "Group state: ACTIVE\n"
+                    + "A completed task means the assigned mate returned a report; it does not"
+                    + " imply independent verification.\n"
+                    + "Mates:\n"
+                    + "- 3f8a2c10-9b2e-4c1d-8e5f-2a6b7c8d9e0f: review backend session isolation\n"
+                    + "Tasks:\n"
+                    + "- node-1 [COMPLETED] mate=3f8a2c10-9b2e-4c1d-8e5f-2a6b7c8d9e0f"
+                    + " skillset=coding dependsOn=[]\n"
+                    + "Implement JWT login in UserService\n"
+                    + "Messages are historical observations; task state above is authoritative.\n"
+                    + "New mate messages:\n"
+                    + "- seq=6 sender=3f8a2c10-9b2e-4c1d-8e5f-2a6b7c8d9e0f type=ACCEPT\n"
+                    + "dispatch=node-1-dispatch-3 currentDispatch=true\n"
+                    + "payload=node-1: login implemented; session isolation verified\n"
+                    + "nextSinceSeq: 6",
+                "Group state: ACTIVE\n"
+                    + "A completed task means the assigned mate returned a report; it does not"
+                    + " imply independent verification.\n"
+                    + "Mates:\n"
+                    + "- 3f8a2c10-9b2e-4c1d-8e5f-2a6b7c8d9e0f: review backend session isolation\n"
+                    + "Tasks:\n"
+                    + "- node-1 [RUNNING] mate=3f8a2c10-9b2e-4c1d-8e5f-2a6b7c8d9e0f skillset=coding"
+                    + " dependsOn=[]\n"
+                    + "Implement JWT login in UserService\n"
+                    + "Messages are historical observations; task state above is authoritative.\n"
+                    + "New mate messages:\n"
+                    + "- seq=5 sender=3f8a2c10-9b2e-4c1d-8e5f-2a6b7c8d9e0f type=FEEDBACK\n"
+                    + "dispatch=(uncorrelated) currentDispatch=false\n"
+                    + "payload=node-1:feedback:test failed\n"
+                    + "nextSinceSeq: 5",
                 "Group not inspected: sinceSeq must be non-negative."
             })
     public static final class InspectGroup implements GroupControlTool<InspectGroup.Args> {
@@ -300,7 +361,7 @@ public final class GroupTools {
 
         @Override
         public @NonNull Class<Args> getArgsClass() {
-            return ToolDocs.nonNullClass(Args.class);
+            return Args.class;
         }
 
         @Override
@@ -351,11 +412,14 @@ public final class GroupTools {
             resultFormats = {ToolResultFormat.PLAINTEXT},
             description = "Record a Leader note in the group's Blackboard.",
             behavior =
-                    "Records a note for the Leader. Does not deliver instructions to Mates or execute work.",
+                    "Records a note for the Leader. Does not deliver instructions to Mates or"
+                            + " execute work.",
             whenToUse =
-                    "Record a short status, feedback, artifact reference or log reference for your own coordination.",
+                    "Record a short status, feedback, artifact reference or log reference for your"
+                            + " own coordination.",
             whenNotToUse =
-                    "For Mate work, use create_task with mateId. TASK_DISPATCH and ACCEPT are reserved for task execution and completion.",
+                    "For Mate work, use create_task with mateId. TASK_DISPATCH and ACCEPT are"
+                            + " reserved for task execution and completion.",
             resultContract =
                     """
                     On success: `posted`. On failure: `Not posted: <reason>` with code \
@@ -364,21 +428,28 @@ public final class GroupTools {
                     payload over 4096 characters).
                     """,
             errorsAndEdgeCases =
-                    "Only receiver LEADER is accepted. Disbanded groups, blank payloads and payloads over 4096 characters are rejected.",
+                    "Only receiver LEADER is accepted. Disbanded groups, blank payloads and"
+                            + " payloads over 4096 characters are rejected.",
             security = "Notes cannot create tasks or mark work completed.",
             examples = {
-                "{\"type\":\"STATUS\",\"payload\":\"Review the failed node before scheduling replacement work.\"}",
-                "{\"type\":\"ARTIFACT_REF\",\"payload\":\"Draft report: reports/drift-analysis.md\"}",
-                "{\"type\":\"LOG_REF\",\"payload\":\"Failed node output: logs/build-2026-09-19.log\"}",
-                "{\"type\":\"FEEDBACK\",\"receiver\":\"LEADER\",\"payload\":\"The retry fix addressed the race; re-run the soak test before closing.\"}",
-                "{\"type\":\"STATUS\",\"receiver\":\"3f8a2c10-9b2e-4c1d-8e5f-2a6b7c8d9e0f\",\"payload\":\"Direct the billing review at the retry logic.\"}"
+                "{\"type\":\"STATUS\",\"payload\":\"Review the failed node before scheduling"
+                        + " replacement work.\"}",
+                "{\"type\":\"ARTIFACT_REF\",\"payload\":\"Draft report:"
+                        + " reports/drift-analysis.md\"}",
+                "{\"type\":\"LOG_REF\",\"payload\":\"Failed node output:"
+                        + " logs/build-2026-09-19.log\"}",
+                "{\"type\":\"FEEDBACK\",\"receiver\":\"LEADER\",\"payload\":\"The retry fix"
+                        + " addressed the race; re-run the soak test before closing.\"}",
+                "{\"type\":\"STATUS\",\"receiver\":\"3f8a2c10-9b2e-4c1d-8e5f-2a6b7c8d9e0f\",\"payload\":\"Direct"
+                    + " the billing review at the retry logic.\"}"
             },
             returnExamples = {
                 "posted",
                 "posted",
                 "posted",
                 "posted",
-                "Not posted: use create_task with mateId for tracked Mate work. post_message only records Leader notes."
+                "Not posted: use create_task with mateId for tracked Mate work. post_message only"
+                        + " records Leader notes."
             })
     public static final class PostMessage implements GroupControlTool<PostMessage.Args> {
 
@@ -404,7 +475,8 @@ public final class GroupTools {
                         String receiver,
                 @SecurityHint(ParamCategory.GENERIC)
                         @Doc(
-                                "Non-blank payload up to 4096 characters. Prefer paths over file contents.")
+                                "Non-blank payload up to 4096 characters. Prefer paths over file"
+                                        + " contents.")
                         @NonNull String payload) {}
 
         @Override
@@ -414,7 +486,7 @@ public final class GroupTools {
 
         @Override
         public @NonNull Class<Args> getArgsClass() {
-            return ToolDocs.nonNullClass(Args.class);
+            return Args.class;
         }
 
         @Override
@@ -442,7 +514,8 @@ public final class GroupTools {
                     || args.type() == BlackboardMessage.MessageType.ACCEPT) {
                 return ToolErrors.failure(
                         ToolErrorCode.VALIDATION.INVALID_ARGUMENTS,
-                        "Not posted: use create_task with mateId for tracked Mate work. post_message only records Leader notes.");
+                        "Not posted: use create_task with mateId for tracked Mate work."
+                                + " post_message only records Leader notes.");
             }
             if (group.state() == GroupState.DISBANDED) {
                 return ToolErrors.failure(

@@ -4,23 +4,24 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.*;
 
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
+
 import top.focess.veto.api.agent.control.ControlHost;
-import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.ToolExecutionException;
 import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.api.llm.VetoResponse;
 import top.focess.veto.api.llm.exceptions.ModelSchemaException;
 
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
 class ResponseEnforcerTest {
     @Test
     void handwrittenCitationLinksRequireToolMetadataButCodeExamplesRemainText() {
         assertThrows(
-                ToolDocs.nonNullClass(ModelSchemaException.class),
+                ModelSchemaException.class,
                 () ->
                         ResponseEnforcer.enforce(
                                 new VetoResponse(null, null, "Launch [Friday](cite:launch)")));
@@ -82,7 +83,7 @@ class ResponseEnforcerTest {
 
         ModelSchemaException error =
                 assertThrows(
-                        ToolDocs.nonNullClass(ModelSchemaException.class),
+                        ModelSchemaException.class,
                         () -> ResponseEnforcer.enforce(response, Set.of("think")));
         String message = error.getMessage();
         assertTrue(message != null && message.contains("is not in this turn's tool catalog"));
@@ -103,7 +104,7 @@ class ResponseEnforcerTest {
                                                         null, "Launch Friday.")))));
         var error =
                 assertThrows(
-                        ToolDocs.nonNullClass(ToolExecutionException.class),
+                        ToolExecutionException.class,
                         () -> tool.execute(args));
         assertTrue(error.content().contains("ordinary text"));
         assertFalse(error.content().contains("matches several"));

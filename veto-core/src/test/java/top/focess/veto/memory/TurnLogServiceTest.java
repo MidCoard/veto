@@ -4,16 +4,18 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.util.Map;
-import java.util.UUID;
+
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
+
 import top.focess.veto.agent.TurnRecord;
-import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.bus.DeltaBroker;
+
+import java.util.Map;
+import java.util.UUID;
 
 /**
  * Verifies {@link TurnLogService} persists turns to the raw-turn log ({@link TurnRecordRepository})
@@ -86,7 +88,7 @@ class TurnLogServiceTest {
         var service = new TurnLogService(repo, new ObjectMapper());
         when(repo.save(any())).thenThrow(new IllegalStateException("database unavailable"));
         assertThrows(
-                ToolDocs.nonNullClass(IllegalStateException.class),
+                IllegalStateException.class,
                 () ->
                         service.logRequired(
                                 TurnRecord.userPrompt(1, "event"),
@@ -95,7 +97,7 @@ class TurnLogServiceTest {
                                 "agent"));
         service.setEnabled(false);
         assertThrows(
-                ToolDocs.nonNullClass(IllegalStateException.class),
+                IllegalStateException.class,
                 () ->
                         service.logRequired(
                                 TurnRecord.userPrompt(2, "event"),
@@ -106,8 +108,7 @@ class TurnLogServiceTest {
 
     @Test
     void logWritesRawTurnLog() {
-        @NonNull TurnRecordRepository repo =
-                mock(ToolDocs.nonNullClass(TurnRecordRepository.class));
+        @NonNull TurnRecordRepository repo = mock(TurnRecordRepository.class);
         @NonNull TurnLogService service = new TurnLogService(repo, new ObjectMapper());
 
         @NonNull UUID session = UUID.randomUUID();
@@ -115,13 +116,12 @@ class TurnLogServiceTest {
         @NonNull String agent = UUID.randomUUID().toString();
         service.log(TurnRecord.userPrompt(1, "hello world"), session, user, agent);
 
-        verify(repo, times(1)).save(any(ToolDocs.nonNullClass(TurnRecordEntity.class)));
+        verify(repo, times(1)).save(any(TurnRecordEntity.class));
     }
 
     @Test
     void rawTurnLogCarriesTenantAndPayload() {
-        @NonNull TurnRecordRepository repo =
-                mock(ToolDocs.nonNullClass(TurnRecordRepository.class));
+        @NonNull TurnRecordRepository repo = mock(TurnRecordRepository.class);
         @NonNull TurnLogService service = new TurnLogService(repo, new ObjectMapper());
 
         @NonNull UUID session = UUID.randomUUID();
@@ -130,7 +130,7 @@ class TurnLogServiceTest {
         service.log(TurnRecord.userPrompt(7, "do the thing"), session, user, agent);
 
         @NonNull ArgumentCaptor<TurnRecordEntity> captor =
-                ArgumentCaptor.forClass(ToolDocs.nonNullClass(TurnRecordEntity.class));
+                ArgumentCaptor.forClass(TurnRecordEntity.class);
         verify(repo).save(captor.capture());
         @NonNull TurnRecordEntity saved = requireValue(captor.getValue(), "captured turn required");
         assertEquals(user.toString(), saved.getUserId());
@@ -143,8 +143,7 @@ class TurnLogServiceTest {
 
     @Test
     void toolCallIsLoggedForCoherentReplay() {
-        @NonNull TurnRecordRepository repo =
-                mock(ToolDocs.nonNullClass(TurnRecordRepository.class));
+        @NonNull TurnRecordRepository repo = mock(TurnRecordRepository.class);
         @NonNull TurnLogService service = new TurnLogService(repo, new ObjectMapper());
 
         @NonNull UUID session = UUID.randomUUID();
@@ -154,7 +153,7 @@ class TurnLogServiceTest {
         @NonNull ToolCall call = new ToolCall("read_file", Map.of("path", "a.txt"), "call-1");
         service.log(TurnRecord.toolCall(3, call), session, user, UUID.randomUUID().toString());
 
-        verify(repo, times(1)).save(any(ToolDocs.nonNullClass(TurnRecordEntity.class)));
+        verify(repo, times(1)).save(any(TurnRecordEntity.class));
     }
 
     @Test

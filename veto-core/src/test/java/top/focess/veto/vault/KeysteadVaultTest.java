@@ -2,6 +2,14 @@ package top.focess.veto.vault;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import org.jspecify.annotations.NonNull;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+import top.focess.veto.api.credentials.CredentialWriter;
+import top.focess.veto.secret.references.SecretCandidateStore;
+
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Optional;
@@ -10,13 +18,6 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
-import org.jspecify.annotations.NonNull;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
-import top.focess.veto.api.agent.tool.ToolDocs;
-import top.focess.veto.api.credentials.CredentialWriter;
-import top.focess.veto.secret.references.SecretCandidateStore;
 
 /**
  * Verifies {@link KeysteadVault} against the real keystead {@code OneFileVaultStore} crypto: signup
@@ -101,7 +102,7 @@ class KeysteadVaultTest {
                                     value -> fail("Wrong service must not receive credential")));
             vault.logout("alice");
             assertThrows(
-                    ToolDocs.nonNullClass(KeysteadVault.VaultLockedException.class),
+                    KeysteadVault.VaultLockedException.class,
                     () ->
                             vault.withImportedCredential(
                                     "alice",
@@ -182,7 +183,7 @@ class KeysteadVaultTest {
                             vault.createImportedCredential(
                                     "alice", importId, "github", "Repository", "different-token"));
             assertThrows(
-                    ToolDocs.nonNullClass(KeysteadVault.VaultLockedException.class),
+                    KeysteadVault.VaultLockedException.class,
                     () ->
                             vault.createImportedCredential(
                                     "bob", importId, "github", "Repository", "synthetic-token"));
@@ -319,10 +320,10 @@ class KeysteadVaultTest {
     void lockedVaultRejectsOperations(@TempDir @NonNull Path tempDir) {
         KeysteadVault vault = newVault(tempDir);
         assertThrows(
-                ToolDocs.nonNullClass(KeysteadVault.VaultLockedException.class),
+                KeysteadVault.VaultLockedException.class,
                 () -> vault.readNoteBody("anything"));
         assertThrows(
-                ToolDocs.nonNullClass(KeysteadVault.VaultLockedException.class),
+                KeysteadVault.VaultLockedException.class,
                 () -> vault.saveNote("k", "v"));
     }
 
@@ -334,7 +335,7 @@ class KeysteadVaultTest {
 
         KeysteadVault reopened = newVault(tempDir);
         assertThrows(
-                ToolDocs.nonNullClass(Exception.class),
+                Exception.class,
                 () -> reopened.login("alice", "wrong-password"));
     }
 

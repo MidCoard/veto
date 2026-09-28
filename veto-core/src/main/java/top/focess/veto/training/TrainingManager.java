@@ -4,8 +4,17 @@ import static top.focess.veto.util.LogValues.safe;
 
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
+
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
+
+import org.jspecify.annotations.NonNull;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+
+import top.focess.veto.security.HostPathInput;
+
 import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -17,12 +26,6 @@ import java.util.Map;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Pattern;
-import org.jspecify.annotations.NonNull;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.stereotype.Service;
-import top.focess.veto.api.agent.tool.ToolDocs;
-import top.focess.veto.security.HostPathInput;
 
 /**
  * Orchestrates the model training lifecycle. Launches Python training scripts as subprocesses (same
@@ -367,7 +370,7 @@ public class TrainingManager {
 
             if (Files.exists(reportPath)) {
                 return objectMapper.readValue(
-                        reportPath.toFile(), ToolDocs.nonNullClass(QualityReport.class));
+                        reportPath.toFile(), QualityReport.class);
             }
         } catch (Exception e) {
             log.error("Quality filter failed", e);
@@ -508,8 +511,7 @@ public class TrainingManager {
         try {
             TrainingProgress.EvaluationReport evalReport =
                     objectMapper
-                            .readerFor(
-                                    ToolDocs.nonNullClass(TrainingProgress.EvaluationReport.class))
+                            .readerFor(TrainingProgress.EvaluationReport.class)
                             .with(DeserializationFeature.FAIL_ON_MISSING_CREATOR_PROPERTIES)
                             .with(DeserializationFeature.FAIL_ON_NULL_CREATOR_PROPERTIES)
                             .readValue(reportPath.toFile());

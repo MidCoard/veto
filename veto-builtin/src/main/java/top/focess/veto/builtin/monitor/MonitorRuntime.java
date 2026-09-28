@@ -1,23 +1,25 @@
 package top.focess.veto.builtin.monitor;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+
+import org.checkerframework.checker.nullness.qual.NonNull;
+import org.checkerframework.framework.qual.DefaultQualifier;
+import org.checkerframework.framework.qual.TypeUseLocation;
+import org.jspecify.annotations.Nullable;
+import org.slf4j.LoggerFactory;
+
+import top.focess.veto.api.plugin.PluginContext;
+import top.focess.veto.api.plugin.PluginHost;
+import top.focess.veto.api.plugin.contract.AgentInbox;
+import top.focess.veto.api.plugin.storage.PluginStorage;
+import top.focess.veto.builtin.group.GroupObservations;
+
 import java.io.IOException;
 import java.time.Instant;
 import java.util.List;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
-import org.checkerframework.checker.nullness.qual.NonNull;
-import org.checkerframework.framework.qual.DefaultQualifier;
-import org.checkerframework.framework.qual.TypeUseLocation;
-import org.jspecify.annotations.Nullable;
-import org.slf4j.LoggerFactory;
-import top.focess.veto.api.agent.tool.ToolDocs;
-import top.focess.veto.api.plugin.PluginContext;
-import top.focess.veto.api.plugin.PluginHost;
-import top.focess.veto.api.plugin.contract.AgentInbox;
-import top.focess.veto.api.plugin.storage.PluginStorage;
-import top.focess.veto.builtin.group.GroupObservations;
 
 /** All monitor resources are created, restored and released by the builtin plugin. */
 @DefaultQualifier(
@@ -38,14 +40,14 @@ public final class MonitorRuntime implements AutoCloseable {
     public MonitorRuntime(PluginContext context) {
         this(
                 context,
-                context.service(ToolDocs.nonNullClass(GroupObservations.class)).orElse(List::of));
+                context.service(GroupObservations.class).orElse(List::of));
     }
 
     /** Creates the runtime with an explicit group observation source. */
     public MonitorRuntime(PluginContext context, GroupObservations groups) {
         host = context.service(PluginHost.class).orElse(null);
         repository =
-                context.service(ToolDocs.nonNullClass(PluginStorage.class))
+                context.service(PluginStorage.class)
                         .map(StoredMonitorRepository::new)
                         .orElse(null);
         service =
@@ -145,8 +147,7 @@ public final class MonitorRuntime implements AutoCloseable {
                         row -> {
                             try {
                                 return mapper.readValue(
-                                        row.getPayload(),
-                                        ToolDocs.nonNullClass(MonitorRecord.class));
+                                        row.getPayload(), MonitorRecord.class);
                             } catch (IOException error) {
                                 throw new IllegalStateException("Invalid stored monitor", error);
                             }

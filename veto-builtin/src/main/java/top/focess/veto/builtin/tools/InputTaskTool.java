@@ -1,8 +1,7 @@
 package top.focess.veto.builtin.tools;
 
-import java.nio.charset.StandardCharsets;
-import java.util.Arrays;
 import org.jspecify.annotations.NonNull;
+
 import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.tool.Doc;
 import top.focess.veto.api.agent.tool.ParamCategory;
@@ -11,7 +10,6 @@ import top.focess.veto.api.agent.tool.Required;
 import top.focess.veto.api.agent.tool.SecurityHint;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.agent.tool.ToolDoc;
-import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.ToolErrorCode;
 import top.focess.veto.api.agent.tool.ToolErrors;
 import top.focess.veto.api.agent.tool.ToolJson;
@@ -20,6 +18,9 @@ import top.focess.veto.api.agent.tool.ToolResultFormat;
 import top.focess.veto.api.agent.tool.ToolSecurity;
 import top.focess.veto.api.plugin.PluginHost;
 import top.focess.veto.builtin.process.TaskControlCapability;
+
+import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 
 /** Queues standard-input bytes to a background task owned by the calling agent. */
 @ToolSecurity(
@@ -36,7 +37,8 @@ import top.focess.veto.builtin.process.TaskControlCapability;
                 A queued result means accepted by the bounded input queue, not yet consumed by the \
                 process; later pipe failures appear in view_task `inputFailures`.""",
         whenToUse =
-                "Use it to answer an interactive prompt or send input to a process launched by run_task.",
+                "Use it to answer an interactive prompt or send input to a process launched by"
+                        + " run_task.",
         whenNotToUse =
                 """
                 Do not use it for a finished task, a task from another session or agent, or to start \
@@ -60,10 +62,12 @@ import top.focess.veto.builtin.process.TaskControlCapability;
                 to inspect bounded asynchronous inputFailures and stop_task if the process must be \
                 terminated.""",
         security =
-                "You can send input only to your own task in this session. Queued content is delivered to the process stdin verbatim.",
+                "You can send input only to your own task in this session. Queued content is"
+                        + " delivered to the process stdin verbatim.",
         examples = {
             "{\"taskId\":\"bg-3\",\"content\":\"yes\",\"appendNewline\":true,\"closeStdin\":false}",
-            "{\"taskId\":\"bg-3\",\"content\":\"partial input\",\"appendNewline\":false,\"closeStdin\":false}",
+            "{\"taskId\":\"bg-3\",\"content\":\"partial"
+                    + " input\",\"appendNewline\":false,\"closeStdin\":false}",
             "{\"taskId\":\"bg-3\",\"content\":\"quit\",\"appendNewline\":true,\"closeStdin\":true}",
             "{\"taskId\":\"bg-3\",\"content\":\"\",\"appendNewline\":false,\"closeStdin\":true}",
             "{\"taskId\":\"bg-7\",\"content\":\"yes\",\"appendNewline\":true,\"closeStdin\":false}"
@@ -105,7 +109,7 @@ public final class InputTaskTool implements PreparedTool<InputTaskTool.Args> {
 
     @Override
     public @NonNull Class<Args> getArgsClass() {
-        return ToolDocs.nonNullClass(Args.class);
+        return Args.class;
     }
 
     @Override

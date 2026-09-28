@@ -4,12 +4,14 @@ import com.sun.jna.Library;
 import com.sun.jna.Native;
 import com.sun.jna.Pointer;
 import com.sun.jna.Structure;
+
+import org.jspecify.annotations.NonNull;
+
+
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import org.jspecify.annotations.NonNull;
-import top.focess.veto.api.agent.tool.ToolDocs;
 
 /** Inner Linux stage that applies {@code no_new_privs} and seccomp before the target starts. */
 final class LinuxSandboxBootstrap {
@@ -76,7 +78,7 @@ final class LinuxSandboxBootstrap {
         program.filter = filters[0].getPointer();
         program.write();
 
-        LinuxLibC libc = Native.load("c", ToolDocs.nonNullClass(LinuxLibC.class));
+        LinuxLibC libc = Native.load("c", LinuxLibC.class);
         if (libc.prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) != 0) {
             throw new IllegalStateException(
                     "prctl(PR_SET_NO_NEW_PRIVS) failed (errno=" + Native.getLastError() + ")");

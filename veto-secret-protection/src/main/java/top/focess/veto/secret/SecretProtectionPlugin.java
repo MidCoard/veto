@@ -1,21 +1,15 @@
 package top.focess.veto.secret;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.util.List;
-import java.util.Set;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
+
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
+
 import top.focess.veto.api.agent.screening.Danger;
-import top.focess.veto.api.agent.tool.CapabilityTool;
+import top.focess.veto.api.agent.tool.NativeTool;
 import top.focess.veto.api.agent.tool.Doc;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.agent.tool.ToolDoc;
-import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.ToolResultFormat;
 import top.focess.veto.api.agent.tool.ToolSecurity;
 import top.focess.veto.api.credentials.CredentialImportAccess;
@@ -28,6 +22,14 @@ import top.focess.veto.api.plugin.contribution.*;
 import top.focess.veto.secret.detection.MdcSecretDetectionModel;
 import top.focess.veto.secret.detection.SlmSecretDetector;
 import top.focess.veto.secret.references.SecretCandidateStore;
+
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.util.List;
+import java.util.Set;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Self-contained provider using the same lifecycle and registration contract as installed plugins.
@@ -70,10 +72,6 @@ public final class SecretProtectionPlugin extends AbstractVetoPlugin {
                 });
     }
 
-    private static SecretCandidateStore.@NonNull Scope scope(TextProtection.@NonNull Scope value) {
-        return new SecretCandidateStore.Scope(value.ownerId(), value.sessionId(), value.agentId());
-    }
-
     @Override
     public @NonNull PluginIdentity identity() {
         return new PluginIdentity("top.focess.secret-protection", "1.0.100");
@@ -90,14 +88,14 @@ public final class SecretProtectionPlugin extends AbstractVetoPlugin {
     }
 
     @Override
-    @SuppressWarnings(
-            "nullness") // Checker Framework treats this cross-module class literal as nullable.
     protected @NonNull PluginContributions onInitialize(
             @NonNull PluginContext context, JsonValue.@NonNull ObjectValue configuration) {
         if (!configuration.values().isEmpty())
             throw new IllegalArgumentException("Unsupported configuration");
-        importer = context.service(CredentialImportAccess.class).orElse(importer);
-        var localModel = context.service(LocalModelCompletion.class).orElse(null);
+        importer =
+                context.service(CredentialImportAccess.class).orElse(importer);
+        var localModel =
+                context.service(LocalModelCompletion.class).orElse(null);
         var prompts = context.service(PromptRenderer.class).orElse(null);
         var detector =
                 new SlmSecretDetector(
@@ -112,38 +110,15 @@ public final class SecretProtectionPlugin extends AbstractVetoPlugin {
                                 "frontend",
                                 new FrontendContribution(frontendModule(), this::frontendAction)),
                         Contribution.of(
-                                StandardContributionPoints.INPUT_PROTECTION,
-                                "input",
-                                (scope, source, text) ->
-                                        candidates.capture(scope(scope), source, text).text()),
-                        Contribution.of(
-                                StandardContributionPoints.FILE_OBSERVATION,
-                                "observation",
-                                (scope, source, text) -> {
-                                    var output = new StringBuilder();
-                                    for (var segment :
-                                            candidates.referenceSegments(scope(scope), text))
-                                        output.append(
-                                                segment.reference()
-                                                        ? segment.text()
-                                                        : detector.mask(segment.text()));
-                                    return output.toString();
-                                }),
-                        Contribution.of(
-                                StandardContributionPoints.FILE_PROTECTION,
-                                "file",
-                                (scope, source, text) ->
-                                        candidates.captureFile(scope(scope), source, text).text()),
-                        Contribution.of(
                                 StandardContributionPoints.OBSERVATION,
                                 "observation-mask",
                                 (observation, cancellation) -> detector.mask(observation)),
                         Contribution.of(
                                 StandardContributionPoints.LISTENERS,
                                 "lifecycle",
-                                new SecretLifecycle(candidates)),
+                                new SecretLifecycle(candidates, detector)),
                         Contribution.of(
-                                StandardContributionPoints.NATIVE_TOOLS,
+                                StandardContributionPoints.TOOLS,
                                 "import_detected_credential",
                                 new ImportCredentialTool())));
     }
@@ -169,30 +144,37 @@ public final class SecretProtectionPlugin extends AbstractVetoPlugin {
                     the host to authorize the import, and writes the credential into the owner's \
                     encrypted vault exactly once. The plaintext secret never passes through the \
                     model or the tool arguments; only the opaque reference, target service, and a \
-                    human label are supplied.""",
+                    human label are supplied.\
+                    """,
             whenToUse =
                     """
                     Use it when the user has explicitly approved persisting a detected credential \
                     that was masked as a SECRET_REF during this session, so it can be reused later \
-                    without re-exposing the plaintext.""",
+                    without re-exposing the plaintext.\
+                    """,
             whenNotToUse =
                     """
                     Do not use it to store a secret the user pasted in plaintext, to import a \
                     reference the user has not approved, or as a general key-value store. Leave \
-                    unapproved candidates masked.""",
+                    unapproved candidates masked.\
+                    """,
             resultContract =
                     """
                     Success returns JSON with `credential_ref` (the stable vault handle), `service`, \
                     `label`, and `status` (`created`). Failures return a plaintext diagnostic \
-                    without echoing the secret value.""",
+                    without echoing the secret value.\
+                    """,
             errorsAndEdgeCases =
                     """
                     Import is idempotent per reference: re-importing the same SECRET_REF returns the \
                     existing vault handle rather than duplicating it. An unknown, expired, or \
                     cross-session reference is refused, and a missing import host surfaces as a \
-                    failure. Cancellation before the irreversible vault write aborts the import.""",
+                    failure. Cancellation before the irreversible vault write aborts the import.\
+                    """,
             security =
-                    "Crosses the host trust boundary and writes to the encrypted vault; every call requires explicit approval. Never accepts plaintext secret material, only an opaque session-scoped reference.",
+                    "Crosses the host trust boundary and writes to the encrypted vault; every call"
+                        + " requires explicit approval. Never accepts plaintext secret material,"
+                        + " only an opaque session-scoped reference.",
             examples = {
                 "{\"secret_ref\":\"SECRET_REF_1\",\"service\":\"github\",\"label\":\"ci-token\"}",
                 "{\"secret_ref\":\"SECRET_REF_2\",\"service\":\"aws\",\"label\":\"deploy-key\"}",
@@ -203,7 +185,7 @@ public final class SecretProtectionPlugin extends AbstractVetoPlugin {
                 "{\"credential_ref\":\"cred_01HXY\",\"service\":\"aws\",\"label\":\"deploy-key\",\"status\":\"created\"}",
                 "{\"credential_ref\":\"cred_01HXZ\",\"service\":\"github\",\"label\":\"webhook-secret\",\"status\":\"created\"}"
             })
-    final class ImportCredentialTool implements CapabilityTool<ImportCredentialArgs> {
+    final class ImportCredentialTool implements NativeTool<ImportCredentialArgs> {
         @Override
         public @NonNull ToolCapability getCapability() {
             return ToolCapability.PRIVILEGED;
@@ -216,7 +198,7 @@ public final class SecretProtectionPlugin extends AbstractVetoPlugin {
 
         @Override
         public @NonNull Class<ImportCredentialArgs> getArgsClass() {
-            return ToolDocs.nonNullClass(ImportCredentialArgs.class);
+            return ImportCredentialArgs.class;
         }
 
         @Override
@@ -322,10 +304,39 @@ public final class SecretProtectionPlugin extends AbstractVetoPlugin {
      */
     public static final class SecretLifecycle implements Listener {
         private final @NonNull SecretCandidateStore candidates;
+        private final @NonNull SlmSecretDetector detector;
 
         /** Creates the listener over the candidate store it scopes. */
-        public SecretLifecycle(@NonNull SecretCandidateStore candidates) {
+        public SecretLifecycle(
+                @NonNull SecretCandidateStore candidates, @NonNull SlmSecretDetector detector) {
             this.candidates = candidates;
+            this.detector = detector;
+        }
+
+        /** Protects text before the host commits it, preserving captured reference markers. */
+        @EventHandler
+        public void onTextCommit(@NonNull BeforeTextCommitEvent event) {
+            String owner = event.owner();
+            if (owner == null) throw new IllegalStateException("Text owner is required");
+            var scope =
+                    new SecretCandidateStore.Scope(owner, event.sessionId(), event.agentId());
+            switch (event.phase()) {
+                case INPUT ->
+                        event.setText(
+                                candidates.capture(scope, event.sourceId(), event.text()).text());
+                case FILE_CAPTURE ->
+                        event.setText(
+                                candidates.captureFile(scope, event.sourceId(), event.text()).text());
+                case FILE_OBSERVATION -> {
+                    var output = new StringBuilder();
+                    for (var segment : candidates.referenceSegments(scope, event.text()))
+                        output.append(
+                                segment.reference()
+                                        ? segment.text()
+                                        : detector.mask(segment.text()));
+                    event.setText(output.toString());
+                }
+            }
         }
 
         @EventHandler

@@ -3,14 +3,11 @@ package top.focess.veto.agent.loop;
 import static org.junit.jupiter.api.Assertions.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.nio.file.Path;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.concurrent.atomic.AtomicReference;
+
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+
 import top.focess.veto.agent.identity.AgentPersona;
 import top.focess.veto.agent.identity.SystemPromptResolver;
 import top.focess.veto.agent.tool.AgentToolDefinition;
@@ -20,11 +17,16 @@ import top.focess.veto.agent.workspace.PathMode;
 import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.tool.ToolCapability;
-import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.ToolPresentation;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.api.resources.CatalogueTree;
 import top.focess.veto.builtin.tools.LoadSkillTool;
+
+import java.nio.file.Path;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.atomic.AtomicReference;
 
 class ToolAvailabilityTest {
     @Test
@@ -35,8 +37,8 @@ class ToolAvailabilityTest {
                         "Skills",
                         ToolCapability.PLUGIN_LOCAL,
                         Danger.SAFE,
-                        ToolDocs.nonNullClass(LoadSkillTool.class),
-                        ToolDocs.nonNullClass(LoadSkillTool.Args.class),
+                        LoadSkillTool.class,
+                        LoadSkillTool.Args.class,
                         Map.of(),
                         null,
                         tree ->
@@ -78,8 +80,8 @@ class ToolAvailabilityTest {
                         "Test",
                         ToolCapability.PLUGIN_LOCAL,
                         Danger.SAFE,
-                        ToolDocs.nonNullClass(ToolAvailabilityTest.class),
-                        ToolDocs.nonNullClass(ToolAvailabilityTest.class),
+                        ToolAvailabilityTest.class,
+                        ToolAvailabilityTest.class,
                         Map.of(),
                         null,
                         tree -> {
@@ -92,8 +94,8 @@ class ToolAvailabilityTest {
                         "Test",
                         ToolCapability.PLUGIN_LOCAL,
                         Danger.SAFE,
-                        ToolDocs.nonNullClass(ToolAvailabilityTest.class),
-                        ToolDocs.nonNullClass(ToolAvailabilityTest.class),
+                        ToolAvailabilityTest.class,
+                        ToolAvailabilityTest.class,
                         Map.of());
         assertEquals(
                 List.of(ordinary),

@@ -1,17 +1,18 @@
 package top.focess.veto.builtin.group;
 
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Set;
 import org.jspecify.annotations.NonNull;
+
 import top.focess.veto.api.agent.tool.Doc;
 import top.focess.veto.api.agent.tool.ParamCategory;
 import top.focess.veto.api.agent.tool.SecurityHint;
 import top.focess.veto.api.agent.tool.ToolDoc;
-import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.ToolErrorCode;
 import top.focess.veto.api.agent.tool.ToolErrors;
 import top.focess.veto.api.agent.tool.ToolResultFormat;
+
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Set;
 
 /**
  * The Leader's node-authoring tools ({@code create_node} / {@code remove_node}). The Leader builds
@@ -32,7 +33,8 @@ public final class DagTools {
     @ToolDoc(
             resultFormats = {ToolResultFormat.PLAINTEXT},
             description =
-                    "Add a node to your group's execution plan - one discrete task with a required skillset.",
+                    "Add a node to your group's execution plan - one discrete task with a required"
+                            + " skillset.",
             behavior =
                     """
                     Adds one node to the execution plan. `dependsOn` may reference only existing, \
@@ -82,15 +84,22 @@ public final class DagTools {
                     """,
             security = "Only the group coordinator can change the task plan.",
             examples = {
-                "{\"nodeId\": \"node-1\", \"description\": \"Implement JWT login in UserService\", \"skillset\": \"coding\"}",
-                "{\"nodeId\": \"node-2\", \"description\": \"Test the login flow\", \"skillset\": \"testing\", \"dependsOn\": [\"node-1\"]}",
-                "{\"nodeId\": \"node-3\", \"description\": \"Apply the reviewer feedback to the parser\", \"skillset\": \"coding\", \"mateId\": \"9b2e8c1a-4d5f-4e7b-8c9d-0a1b2c3d4e5f\"}",
-                "{\"nodeId\": \"node-4\", \"description\": \"Audit the authentication flow independently\", \"skillset\": \"security-review\", \"newMate\": true}",
-                "{\"nodeId\": \"node-1\", \"description\": \"Rewrite the parser\", \"skillset\": \"coding\"}"
+                "{\"nodeId\": \"node-1\", \"description\": \"Implement JWT login in UserService\","
+                        + " \"skillset\": \"coding\"}",
+                "{\"nodeId\": \"node-2\", \"description\": \"Test the login flow\", \"skillset\":"
+                        + " \"testing\", \"dependsOn\": [\"node-1\"]}",
+                "{\"nodeId\": \"node-3\", \"description\": \"Apply the reviewer feedback to the"
+                        + " parser\", \"skillset\": \"coding\", \"mateId\":"
+                        + " \"9b2e8c1a-4d5f-4e7b-8c9d-0a1b2c3d4e5f\"}",
+                "{\"nodeId\": \"node-4\", \"description\": \"Audit the authentication flow"
+                        + " independently\", \"skillset\": \"security-review\", \"newMate\": true}",
+                "{\"nodeId\": \"node-1\", \"description\": \"Rewrite the parser\", \"skillset\":"
+                        + " \"coding\"}"
             },
             returnExamples = {
                 "Node created: node-1 (skillset: coding). It is eligible for dispatch.",
-                "Node created: node-2 (skillset: testing, depends on: node-1). It becomes eligible after its dependencies verify.",
+                "Node created: node-2 (skillset: testing, depends on: node-1). It becomes eligible"
+                        + " after its dependencies verify.",
                 "Node created: node-3 (skillset: coding). It is eligible for dispatch.",
                 "Node created: node-4 (skillset: security-review). It is eligible for dispatch.",
                 "Node not created: node-1 already exists. Choose a unique id."
@@ -116,23 +125,29 @@ public final class DagTools {
                         @NonNull String nodeId,
                 @SecurityHint(ParamCategory.GENERIC)
                         @Doc(
-                                "What the node does - concrete enough for a mate to execute without asking.")
+                                "What the node does - concrete enough for a mate to execute without"
+                                        + " asking.")
                         @NonNull String description,
                 @SecurityHint(ParamCategory.GENERIC)
                         @Doc(
-                                "Free-form scheduling label (e.g. 'coding', 'testing'); exact matches reuse a Mate, and unconfigured labels use the default Mate binding.")
+                                "Free-form scheduling label (e.g. 'coding', 'testing'); exact"
+                                        + " matches reuse a Mate, and unconfigured labels use the"
+                                        + " default Mate binding.")
                         @NonNull String skillset,
                 @SecurityHint(ParamCategory.GENERIC)
                         @Doc(
-                                "Ids of existing nodes that must verify before this one dispatches; omit for a root node.")
+                                "Ids of existing nodes that must verify before this one dispatches;"
+                                        + " omit for a root node.")
                         List<String> dependsOn,
                 @SecurityHint(ParamCategory.GENERIC)
                         @Doc(
-                                "Optional existing Mate id from inspect_group. Pins this task to that collaborator; omit for automatic assignment.")
+                                "Optional existing Mate id from inspect_group. Pins this task to"
+                                        + " that collaborator; omit for automatic assignment.")
                         String mateId,
                 @SecurityHint(ParamCategory.GENERIC)
                         @Doc(
-                                "Set true to create a distinct collaborator for this task, even if another Mate is idle. Cannot be combined with mateId.")
+                                "Set true to create a distinct collaborator for this task, even if"
+                                        + " another Mate is idle. Cannot be combined with mateId.")
                         Boolean newMate) {}
 
         @Override
@@ -142,7 +157,7 @@ public final class DagTools {
 
         @Override
         public @NonNull Class<Args> getArgsClass() {
-            return ToolDocs.nonNullClass(Args.class);
+            return Args.class;
         }
 
         @Override
@@ -157,7 +172,8 @@ public final class DagTools {
             if (capability.snapshot() == null)
                 return ToolErrors.failure(
                         ToolErrorCode.GROUP.NO_ACTIVE_GROUP,
-                        "Node not created: no active group in your context. create_node is a Leader tool inside a group.");
+                        "Node not created: no active group in your context. create_node is a Leader"
+                                + " tool inside a group.");
             String nodeId = args.nodeId().strip();
             String description = args.description().strip();
             String skillset = args.skillset().strip();
@@ -199,7 +215,8 @@ public final class DagTools {
     @ToolDoc(
             resultFormats = {ToolResultFormat.PLAINTEXT},
             description =
-                    "Retire a node from your group's plan - re-planning marks it stale rather than deleting it.",
+                    "Retire a node from your group's plan - re-planning marks it stale rather than"
+                            + " deleting it.",
             behavior =
                     """
                     Marks the node STALE and keeps it in the plan record for audit. New nodes cannot \
@@ -272,7 +289,7 @@ public final class DagTools {
 
         @Override
         public @NonNull Class<Args> getArgsClass() {
-            return ToolDocs.nonNullClass(Args.class);
+            return Args.class;
         }
 
         @Override
@@ -287,7 +304,8 @@ public final class DagTools {
             if (capability.snapshot() == null)
                 return ToolErrors.failure(
                         ToolErrorCode.GROUP.NO_ACTIVE_GROUP,
-                        "Node not removed: no active group in your context. remove_node is a Leader tool inside a group.");
+                        "Node not removed: no active group in your context. remove_node is a Leader"
+                                + " tool inside a group.");
             String nodeId = args.nodeId().strip();
             NodeEdit edit = capability.removeNode(nodeId);
             if (edit instanceof NodeEdit.Rejected r) {

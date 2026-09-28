@@ -9,8 +9,7 @@ import org.springframework.stereotype.Component;
 import top.focess.veto.api.agent.capability.WorkspaceFile;
 import top.focess.veto.api.agent.capability.WorkspaceReadCapability;
 import top.focess.veto.api.agent.tool.ToolCapability;
-import top.focess.veto.api.plugin.contract.StandardContributionPoints;
-import top.focess.veto.api.plugin.contract.TextProtection;
+import top.focess.veto.api.event.BeforeTextCommitEvent;
 import top.focess.veto.integration.plugins.SessionPlugins;
 
 /** File capture bound to the screened native file read and its owned session. */
@@ -49,11 +48,20 @@ public final class ProtectedWorkspaceReadCapabilityImpl implements WorkspaceRead
         if (owner == null || owner.isBlank() || session == null)
             throw new IllegalStateException(
                     "Protected file reading requires an active owned session");
-        if (plugins != null)
-            return plugins.protect(
-                    StandardContributionPoints.FILE_PROTECTION,
-                    new TextProtection.Scope(owner, session.toString(), context.agentId()),
-                    input);
+        if (plugins != null) {
+            var event =
+                    new BeforeTextCommitEvent(
+                            owner,
+                            session.toString(),
+                            context.agentId(),
+                            () -> Thread.currentThread().isInterrupted(),
+                            BeforeTextCommitEvent.Phase.FILE_CAPTURE,
+                            UUID.randomUUID().toString(),
+                            input);
+            plugins.dispatch(event);
+            if (event.isPrevent()) throw new IllegalStateException("File capture prevented");
+            return event.text();
+        }
         return input;
     }
 }

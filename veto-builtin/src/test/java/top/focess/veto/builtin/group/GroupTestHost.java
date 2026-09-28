@@ -2,13 +2,10 @@ package top.focess.veto.builtin.group;
 
 import static org.mockito.Mockito.*;
 
-import java.time.Duration;
-import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
 import org.jspecify.annotations.NonNull;
+
 import top.focess.veto.api.agent.AgentState;
 import top.focess.veto.api.agent.tool.ToolCapability;
-import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.llm.PromptRenderer;
 import top.focess.veto.api.plugin.PluginContext;
 import top.focess.veto.api.plugin.PluginHost;
@@ -17,11 +14,15 @@ import top.focess.veto.api.plugin.agent.AgentProfile;
 import top.focess.veto.api.plugin.contract.AgentConfiguration;
 import top.focess.veto.api.plugin.storage.PluginStorage;
 
+import java.time.Duration;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+
 /** The plugin uses only API host handles, with no core agent or persistence classes. */
 final class GroupTestHost implements AutoCloseable {
-    final @NonNull PluginStorage storage = mock(ToolDocs.nonNullClass(PluginStorage.class));
-    final @NonNull PluginHost host = mock(ToolDocs.nonNullClass(PluginHost.class));
-    final AgentHost.@NonNull Session agents = mock(ToolDocs.nonNullClass(AgentHost.Session.class));
+    final @NonNull PluginStorage storage = mock(PluginStorage.class);
+    final @NonNull PluginHost host = mock(PluginHost.class);
+    final AgentHost.@NonNull Session agents = mock(AgentHost.Session.class);
     final PluginStorage.@NonNull SessionScope scope =
             new PluginStorage.SessionScope("scope", "user", UUID.randomUUID().toString());
     final @NonNull Map<String, PluginStorage.Entry> rows = new ConcurrentHashMap<>();
@@ -33,7 +34,7 @@ final class GroupTestHost implements AutoCloseable {
         caller =
                 new PluginHost.Invocation(
                         "owner", scope.sessionId(), "leader", "request-one", "test-call");
-        var store = mock(ToolDocs.nonNullClass(PluginStorage.Store.class));
+        var store = mock(PluginStorage.Store.class);
         when(storage.session(any())).thenReturn(store);
         when(storage.scopes(any(), any(), anyInt()))
                 .thenReturn(new PluginStorage.Page<>(List.of(scope), null));
@@ -96,13 +97,12 @@ final class GroupTestHost implements AutoCloseable {
         when(agents.id()).thenReturn(scope.sessionId());
         when(agents.open(anyString(), anyString(), any()))
                 .thenAnswer(call -> child(required(call.getArgument(0))));
-        var context = mock(ToolDocs.nonNullClass(PluginContext.class));
-        when(context.service(ToolDocs.nonNullClass(PluginHost.class)))
-                .thenReturn(Optional.of(host));
-        when(context.service(ToolDocs.nonNullClass(PluginStorage.class)))
+        var context = mock(PluginContext.class);
+        when(context.service(PluginHost.class)).thenReturn(Optional.of(host));
+        when(context.service(PluginStorage.class))
                 .thenReturn(Optional.of(storage));
         PromptRenderer prompts = (name, data) -> name + " " + data;
-        when(context.service(ToolDocs.nonNullClass(PromptRenderer.class)))
+        when(context.service(PromptRenderer.class))
                 .thenReturn(Optional.of(prompts));
         runtime = new GroupRuntime(context);
         var tools =
@@ -138,10 +138,10 @@ final class GroupTestHost implements AutoCloseable {
     }
 
     static AgentHost.@NonNull Child child(@NonNull String id) throws InterruptedException {
-        var child = mock(ToolDocs.nonNullClass(AgentHost.Child.class));
+        var child = mock(AgentHost.Child.class);
         when(child.id()).thenReturn(id);
         when(child.state()).thenReturn(AgentState.IDLE);
-        when(child.awaitTermination(any(ToolDocs.nonNullClass(Duration.class)))).thenReturn(true);
+        when(child.awaitTermination(any(Duration.class))).thenReturn(true);
         return child;
     }
 

@@ -2,21 +2,12 @@ package top.focess.veto.agent.loop;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.stream.Collectors;
+
 import org.jspecify.annotations.NonNull;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
+
 import top.focess.veto.agent.HistoryProjection;
 import top.focess.veto.agent.TurnRecord;
 import top.focess.veto.agent.TurnType;
@@ -28,7 +19,6 @@ import top.focess.veto.agent.tool.LocalToolDefinition;
 import top.focess.veto.agent.tool.ToolPresentations;
 import top.focess.veto.agent.translation.CapabilityTranslator;
 import top.focess.veto.agent.workspace.Workspace;
-import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.ToolErrorCode;
 import top.focess.veto.api.agent.tool.ToolPrompt;
 import top.focess.veto.api.agent.tool.ToolResultFormat;
@@ -42,6 +32,18 @@ import top.focess.veto.api.llm.VetoRequest;
 import top.focess.veto.api.plugin.agent.AgentProfile;
 import top.focess.veto.api.plugin.contract.JsonValues;
 import top.focess.veto.llm.core.ToolResultPresenter;
+
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.stream.Collectors;
 
 /**
  * Assembles each outgoing LLM payload from the agent's turn history, persona, and resolved tool
@@ -484,7 +486,7 @@ public class PromptCompiler {
                                 .noneMatch(available -> available.name().equals(tool.name())))
                     continue;
                 ToolPrompt prompt =
-                        local.toolClass().getAnnotation(ToolDocs.nonNullClass(ToolPrompt.class));
+                        local.toolClass().getAnnotation(ToolPrompt.class);
                 if (prompt == null || !included.add(prompt.value())) continue;
                 var extensionData = new LinkedHashMap<>(data);
                 extensionData.put("extensionToolName", tool.name());

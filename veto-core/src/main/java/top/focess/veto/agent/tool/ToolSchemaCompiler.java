@@ -4,15 +4,9 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import java.lang.reflect.ParameterizedType;
-import java.lang.reflect.RecordComponent;
-import java.lang.reflect.Type;
-import java.util.Collection;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.regex.Pattern;
+
 import org.jspecify.annotations.NonNull;
+
 import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.tool.ArraySize;
 import top.focess.veto.api.agent.tool.CapabilityTool;
@@ -28,7 +22,16 @@ import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.ToolInputSchema;
 import top.focess.veto.api.agent.tool.ToolResultFormat;
 import top.focess.veto.api.agent.tool.ToolSecurity;
-import top.focess.veto.api.plugin.contract.Tool;
+import top.focess.veto.api.agent.tool.RemoteTool;
+
+import java.lang.reflect.ParameterizedType;
+import java.lang.reflect.RecordComponent;
+import java.lang.reflect.Type;
+import java.util.Collection;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.regex.Pattern;
 
 /**
  * Compiles annotated Java parameter records into tool definitions and JSON Schema.
@@ -69,7 +72,7 @@ public final class ToolSchemaCompiler {
     }
 
     static @NonNull ToolSecurity securityOf(@NonNull Class<?> toolClass) {
-        ToolSecurity security = toolClass.getAnnotation(ToolDocs.nonNullClass(ToolSecurity.class));
+        ToolSecurity security = toolClass.getAnnotation(ToolSecurity.class);
         if (security == null) {
             throw new IllegalArgumentException(
                     toolClass.getName() + " must be annotated with @ToolSecurity");
@@ -105,19 +108,19 @@ public final class ToolSchemaCompiler {
     }
 
     /**
-     * Compiles an out-of-process script plugin's {@link Tool} descriptor into a {@link
+     * Compiles an out-of-process script plugin's {@link RemoteTool} descriptor into a {@link
      * RemoteToolDefinition} that carries {@link Provenance}. A script tool has no Java record, so
      * it keeps the raw JSON Schema and the remote execution shape; the declared effect selects the
      * capability and danger (a PRIVILEGED script tool crosses the host trust boundary).
      */
     public static @NonNull RemoteToolDefinition compilePluginScript(
-            @NonNull Tool descriptor,
+            @NonNull RemoteTool descriptor,
             @NonNull String name,
             @NonNull JsonNode inputSchema,
             @NonNull String bindingId,
             @NonNull String pluginId,
             @NonNull String pluginVersion) {
-        boolean privileged = descriptor.effect() == Tool.Effect.PRIVILEGED;
+        boolean privileged = descriptor.effect() == RemoteTool.Effect.PRIVILEGED;
         return new RemoteToolDefinition(
                 name,
                 descriptor.description(),
@@ -142,7 +145,7 @@ public final class ToolSchemaCompiler {
             throw new IllegalArgumentException("Tool arguments must be a Java Record");
         }
         for (RecordComponent c : argsClass.getRecordComponents()) {
-            SecurityHint h = c.getAnnotation(ToolDocs.nonNullClass(SecurityHint.class));
+            SecurityHint h = c.getAnnotation(SecurityHint.class);
             hints.put(c.getName(), h != null ? h.value() : ParamCategory.GENERIC);
         }
         return hints;
@@ -155,7 +158,7 @@ public final class ToolSchemaCompiler {
      * {@link Required} because nullability annotations do not apply to primitives.
      */
     public static @NonNull JsonNode compileFromRecord(@NonNull Class<?> recordClass) {
-        var custom = recordClass.getAnnotation(ToolDocs.nonNullClass(ToolInputSchema.class));
+        var custom = recordClass.getAnnotation(ToolInputSchema.class);
         if (custom != null) {
             try {
                 return custom.value().getDeclaredConstructor().newInstance().schema();
@@ -194,12 +197,12 @@ public final class ToolSchemaCompiler {
                 paramNode.put("type", mapJavaTypeToSchemaType(type));
             }
 
-            Doc doc = component.getAnnotation(ToolDocs.nonNullClass(Doc.class));
+            Doc doc = component.getAnnotation(Doc.class);
             if (doc != null && !doc.value().isEmpty()) {
                 paramNode.put("description", doc.value());
             }
 
-            ArraySize size = component.getAnnotation(ToolDocs.nonNullClass(ArraySize.class));
+            ArraySize size = component.getAnnotation(ArraySize.class);
             if (size != null) {
                 if (!"array".equals(paramNode.path("type").asText())
                         || size.min() < 0
@@ -211,7 +214,7 @@ public final class ToolSchemaCompiler {
             }
 
             StringConstraint text =
-                    component.getAnnotation(ToolDocs.nonNullClass(StringConstraint.class));
+                    component.getAnnotation(StringConstraint.class);
             if (text != null) {
                 if (type != String.class
                         || text.minLength() < 0
@@ -236,7 +239,7 @@ public final class ToolSchemaCompiler {
                     component.isAnnotationPresent(NonNull.class)
                             || component.getAnnotatedType().isAnnotationPresent(NonNull.class);
             boolean explicitlyRequired =
-                    component.isAnnotationPresent(ToolDocs.nonNullClass(Required.class));
+                    component.isAnnotationPresent(Required.class);
             if (type.isPrimitive() && !explicitlyRequired) {
                 throw new IllegalArgumentException(
                         "Primitive tool parameter '"
@@ -265,7 +268,7 @@ public final class ToolSchemaCompiler {
     private static void validateConditionalRequirement(
             @NonNull Class<?> recordClass, @NonNull RecordComponent component) {
         RequiredWhen requiredWhen =
-                component.getAnnotation(ToolDocs.nonNullClass(RequiredWhen.class));
+                component.getAnnotation(RequiredWhen.class);
         if (requiredWhen == null) {
             return;
         }

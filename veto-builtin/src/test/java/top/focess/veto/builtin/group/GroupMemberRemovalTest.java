@@ -3,20 +3,21 @@ package top.focess.veto.builtin.group;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
+import org.jspecify.annotations.NonNull;
+import org.junit.jupiter.api.Test;
+
+import top.focess.veto.api.plugin.agent.AgentHost;
+
 import java.time.Duration;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
-import org.jspecify.annotations.NonNull;
-import org.junit.jupiter.api.Test;
-import top.focess.veto.api.agent.tool.ToolDocs;
-import top.focess.veto.api.plugin.agent.AgentHost;
 
 class GroupMemberRemovalTest {
     private final @NonNull Blackboard board = new Blackboard();
     private final @NonNull GroupRegistry registry = new GroupRegistry();
     private final @NonNull GroupOrchestrator orchestrator = new GroupOrchestrator(registry, board);
-    private final @NonNull GroupSpawner spawner = mock(ToolDocs.nonNullClass(GroupSpawner.class));
+    private final @NonNull GroupSpawner spawner = mock(GroupSpawner.class);
 
     private @NonNull Group group(DagNode.@NonNull NodeState state) {
         Group group =
@@ -67,16 +68,16 @@ class GroupMemberRemovalTest {
         Group group = group(DagNode.NodeState.VERIFIED);
         when(spawner.stopMateAndConfirm(group.groupId(), "mate")).thenReturn(false, true);
         assertInstanceOf(
-                ToolDocs.nonNullClass(NodeEdit.Rejected.class),
+                NodeEdit.Rejected.class,
                 orchestrator.removeMate(group.groupId(), "mate", spawner));
         assertTrue(
                 GroupTestHost.required(registry.get(group.groupId())).mates().containsKey("mate"));
         assertInstanceOf(
-                ToolDocs.nonNullClass(NodeEdit.Rejected.class),
+                NodeEdit.Rejected.class,
                 orchestrator.addNode(
                         group.groupId(), "next", "review", "review", Set.of(), "mate", false));
         assertInstanceOf(
-                ToolDocs.nonNullClass(NodeEdit.Applied.class),
+                NodeEdit.Applied.class,
                 orchestrator.addNode(
                         group.groupId(),
                         "sibling-work",
@@ -86,7 +87,7 @@ class GroupMemberRemovalTest {
                         "sibling",
                         false));
         assertInstanceOf(
-                ToolDocs.nonNullClass(NodeEdit.Applied.class),
+                NodeEdit.Applied.class,
                 orchestrator.removeMate(group.groupId(), "mate", spawner));
         Group updated = GroupTestHost.required(registry.get(group.groupId()));
         assertFalse(updated.mates().containsKey("mate"));
@@ -98,7 +99,7 @@ class GroupMemberRemovalTest {
     void unknownMemberDoesNotStopOtherMembers() {
         Group group = group(DagNode.NodeState.STALE);
         assertInstanceOf(
-                ToolDocs.nonNullClass(NodeEdit.Rejected.class),
+                NodeEdit.Rejected.class,
                 orchestrator.removeMate(group.groupId(), "unknown", spawner));
         verifyNoInteractions(spawner);
     }
@@ -106,25 +107,25 @@ class GroupMemberRemovalTest {
     @Test
     void realSpawnerWaitsForMemberConfirmationAndRetainsCompletedTask() throws Exception {
         Group group = group(DagNode.NodeState.VERIFIED);
-        AgentHost.Child agent = mock(ToolDocs.nonNullClass(AgentHost.Child.class));
-        when(agent.awaitTermination(any(ToolDocs.nonNullClass(Duration.class))))
+        AgentHost.Child agent = mock(AgentHost.Child.class);
+        when(agent.awaitTermination(any(Duration.class)))
                 .thenReturn(false, true);
         GroupSpawner runtime =
                 new GroupSpawner(registry, board, (g, id, name, responsibility) -> agent);
         runtime.restoreMates(group.withoutMate("sibling"));
         try {
             assertInstanceOf(
-                    ToolDocs.nonNullClass(NodeEdit.Rejected.class),
+                    NodeEdit.Rejected.class,
                     orchestrator.removeMate(group.groupId(), "mate", runtime));
             assertTrue(
                     GroupTestHost.required(registry.get(group.groupId()))
                             .mates()
                             .containsKey("mate"));
             assertInstanceOf(
-                    ToolDocs.nonNullClass(NodeEdit.Applied.class),
+                    NodeEdit.Applied.class,
                     orchestrator.removeMate(group.groupId(), "mate", runtime));
             verify(agent, times(1)).close();
-            verify(agent, times(2)).awaitTermination(any(ToolDocs.nonNullClass(Duration.class)));
+            verify(agent, times(2)).awaitTermination(any(Duration.class));
             assertEquals(group.dag(), GroupTestHost.required(registry.get(group.groupId())).dag());
         } finally {
             runtime.disband(group.groupId());
@@ -134,27 +135,27 @@ class GroupMemberRemovalTest {
     @Test
     void historySaveFailureCanRetryConfirmedRemoval() throws Exception {
         Group group = group(DagNode.NodeState.VERIFIED);
-        AgentHost.Child agent = mock(ToolDocs.nonNullClass(AgentHost.Child.class));
-        when(agent.awaitTermination(any(ToolDocs.nonNullClass(Duration.class)))).thenReturn(true);
+        AgentHost.Child agent = mock(AgentHost.Child.class);
+        when(agent.awaitTermination(any(Duration.class))).thenReturn(true);
         GroupSpawner runtime =
                 new GroupSpawner(registry, board, (g, id, name, responsibility) -> agent);
         runtime.restoreMates(group.withoutMate("sibling"));
-        GroupHistoryStore history = mock(ToolDocs.nonNullClass(GroupHistoryStore.class));
+        GroupHistoryStore history = mock(GroupHistoryStore.class);
         registry.attachHistory(history);
         doThrow(new IllegalStateException("save unavailable"))
                 .doNothing()
                 .when(history)
-                .save(any(ToolDocs.nonNullClass(Group.class)));
+                .save(any(Group.class));
         try {
             assertThrows(
-                    ToolDocs.nonNullClass(IllegalStateException.class),
+                    IllegalStateException.class,
                     () -> orchestrator.removeMate(group.groupId(), "mate", runtime));
             assertTrue(
                     GroupTestHost.required(registry.get(group.groupId()))
                             .mates()
                             .containsKey("mate"));
             assertInstanceOf(
-                    ToolDocs.nonNullClass(NodeEdit.Applied.class),
+                    NodeEdit.Applied.class,
                     orchestrator.removeMate(group.groupId(), "mate", runtime));
             assertFalse(
                     GroupTestHost.required(registry.get(group.groupId()))

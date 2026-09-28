@@ -1,11 +1,7 @@
 package top.focess.veto.builtin.tools;
 
-import java.util.HashSet;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Set;
 import org.jspecify.annotations.NonNull;
+
 import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.tool.AgentTool;
 import top.focess.veto.api.agent.tool.ArraySize;
@@ -13,7 +9,6 @@ import top.focess.veto.api.agent.tool.Doc;
 import top.focess.veto.api.agent.tool.NativeTool;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.agent.tool.ToolDoc;
-import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.ToolErrorCode;
 import top.focess.veto.api.agent.tool.ToolErrors;
 import top.focess.veto.api.agent.tool.ToolExecutionException;
@@ -26,11 +21,19 @@ import top.focess.veto.builtin.questions.Option;
 import top.focess.veto.builtin.questions.Question;
 import top.focess.veto.builtin.questions.QuestionRuntime;
 
+import java.util.HashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
+
 /** Pauses the calling agent for a batch of up to {@value #MAX_QUESTIONS} questions. */
 @ToolDoc(
         resultFormats = {ToolResultFormat.JSON},
         description =
-                "Ask the user for necessary information or a requested interview step, then wait for their answers. Follow the requested question count and pacing; use the answers to continue the task.",
+                "Ask the user for necessary information or a requested interview step, then wait"
+                    + " for their answers. Follow the requested question count and pacing; use the"
+                    + " answers to continue the task.",
         behavior =
                 """
                 Publishes one pending question batch to the session UI and pauses this agent call \
@@ -65,13 +68,51 @@ import top.focess.veto.builtin.questions.QuestionRuntime;
                 marker. Labels must be case-insensitively unique; `Other` is reserved. Follow field \
                 lengths and unique ids specified in the argument schema.""",
         security =
-                "Questions are shown to the user verbatim. A user answer does not replace any separate approval required to perform an operation.",
+                "Questions are shown to the user verbatim. A user answer does not replace any"
+                        + " separate approval required to perform an operation.",
         examples = {
-            "{\"questions\":[{\"header\":\"Target\",\"id\":\"target\",\"question\":\"Which environment should receive the requested deployment?\",\"options\":[{\"label\":\"Staging\",\"description\":\"Validate the release with internal testers.\"},{\"label\":\"Production\",\"description\":\"Release to users.\"}]}]}",
-            "{\"questions\":[{\"header\":\"Format\",\"id\":\"format\",\"question\":\"Which output format should the report use?\",\"options\":[{\"label\":\"Markdown\",\"description\":\"Readable in the terminal and easy to paste into documents.\"},{\"label\":\"JSON\",\"description\":\"Structured output for further tooling.\"},{\"label\":\"CSV\",\"description\":\"Tabular data for spreadsheets.\"}]}]}",
-            "{\"questions\":[{\"header\":\"Scope\",\"id\":\"scope\",\"question\":\"Should the cleanup cover only src/main or also src/test?\",\"options\":[{\"label\":\"main and test\",\"description\":\"Keeps both source sets consistent.\"},{\"label\":\"main only\",\"description\":\"Limits the change to production code.\"}]},{\"header\":\"Baseline\",\"id\":\"baseline\",\"question\":\"Which branch should the comparison use as its baseline?\",\"options\":[{\"label\":\"master\",\"description\":\"Compare against the mainline branch.\"},{\"label\":\"release\",\"description\":\"Compare against the current release branch.\"}]}]}",
-            "{\"questions\":[{\"header\":\"Verbosity\",\"id\":\"verbosity\",\"question\":\"Which logging level should the service use in production?\",\"options\":[{\"label\":\"WARN\",\"description\":\"Only warnings and errors; least noise.\"},{\"label\":\"INFO\",\"description\":\"Key lifecycle events plus warnings.\"},{\"label\":\"DEBUG\",\"description\":\"Detailed diagnostics; higher log volume.\"},{\"label\":\"TRACE\",\"description\":\"Finest-grained tracing; very high volume.\"},{\"label\":\"ERROR\",\"description\":\"Only hard failures.\"}]}]}",
-            "{\"questions\":[{\"header\":\"Target\",\"id\":\"target\",\"question\":\"Which environment should receive the deployment?\",\"options\":[{\"label\":\"Staging\",\"description\":\"Validate with internal testers first.\"},{\"label\":\"Production\",\"description\":\"Release to users.\"}]},{\"header\":\"Budget\",\"id\":\"target\",\"question\":\"What budget applies?\",\"options\":[{\"label\":\"Standard\",\"description\":\"Default spending limits.\"},{\"label\":\"Extended\",\"description\":\"Higher limits for this release.\"}]}]}"
+            "{\"questions\":[{\"header\":\"Target\",\"id\":\"target\",\"question\":\"Which"
+                + " environment should receive the requested"
+                + " deployment?\",\"options\":[{\"label\":\"Staging\",\"description\":\"Validate"
+                + " the release with internal"
+                + " testers.\"},{\"label\":\"Production\",\"description\":\"Release to"
+                + " users.\"}]}]}",
+            "{\"questions\":[{\"header\":\"Format\",\"id\":\"format\",\"question\":\"Which output"
+                + " format should the report"
+                + " use?\",\"options\":[{\"label\":\"Markdown\",\"description\":\"Readable in the"
+                + " terminal and easy to paste into"
+                + " documents.\"},{\"label\":\"JSON\",\"description\":\"Structured output for"
+                + " further tooling.\"},{\"label\":\"CSV\",\"description\":\"Tabular data for"
+                + " spreadsheets.\"}]}]}",
+            "{\"questions\":[{\"header\":\"Scope\",\"id\":\"scope\",\"question\":\"Should the"
+                + " cleanup cover only src/main or also src/test?\",\"options\":[{\"label\":\"main"
+                + " and test\",\"description\":\"Keeps both source sets"
+                + " consistent.\"},{\"label\":\"main only\",\"description\":\"Limits the change to"
+                + " production"
+                + " code.\"}]},{\"header\":\"Baseline\",\"id\":\"baseline\",\"question\":\"Which"
+                + " branch should the comparison use as its"
+                + " baseline?\",\"options\":[{\"label\":\"master\",\"description\":\"Compare"
+                + " against the mainline"
+                + " branch.\"},{\"label\":\"release\",\"description\":\"Compare against the current"
+                + " release branch.\"}]}]}",
+            "{\"questions\":[{\"header\":\"Verbosity\",\"id\":\"verbosity\",\"question\":\"Which"
+                + " logging level should the service use in"
+                + " production?\",\"options\":[{\"label\":\"WARN\",\"description\":\"Only warnings"
+                + " and errors; least noise.\"},{\"label\":\"INFO\",\"description\":\"Key lifecycle"
+                + " events plus warnings.\"},{\"label\":\"DEBUG\",\"description\":\"Detailed"
+                + " diagnostics; higher log"
+                + " volume.\"},{\"label\":\"TRACE\",\"description\":\"Finest-grained tracing; very"
+                + " high volume.\"},{\"label\":\"ERROR\",\"description\":\"Only hard"
+                + " failures.\"}]}]}",
+            "{\"questions\":[{\"header\":\"Target\",\"id\":\"target\",\"question\":\"Which"
+                + " environment should receive the"
+                + " deployment?\",\"options\":[{\"label\":\"Staging\",\"description\":\"Validate"
+                + " with internal testers"
+                + " first.\"},{\"label\":\"Production\",\"description\":\"Release to"
+                + " users.\"}]},{\"header\":\"Budget\",\"id\":\"target\",\"question\":\"What budget"
+                + " applies?\",\"options\":[{\"label\":\"Standard\",\"description\":\"Default"
+                + " spending limits.\"},{\"label\":\"Extended\",\"description\":\"Higher limits for"
+                + " this release.\"}]}]}"
         },
         returnExamples = {
             "{\"answers\":{\"target\":\"Staging\"}}",
@@ -98,7 +139,10 @@ public final class AskUserTool
             @ArraySize(min = 1, max = MAX_QUESTIONS)
                     @NonNull
                     @Doc(
-                            "One to 10 questions shown together. Match the user's requested question count and pacing; keep sequentially requested questions in separate batches. Each object contains required `header`, `id`, `question`, and `options` fields.")
+                            "One to 10 questions shown together. Match the user's requested"
+                                + " question count and pacing; keep sequentially requested"
+                                + " questions in separate batches. Each object contains required"
+                                + " `header`, `id`, `question`, and `options` fields.")
                     List<@NonNull Question> questions) {}
 
     @Override
@@ -108,7 +152,7 @@ public final class AskUserTool
 
     @Override
     public @NonNull Class<Args> getArgsClass() {
-        return ToolDocs.nonNullClass(Args.class);
+        return Args.class;
     }
 
     @Override

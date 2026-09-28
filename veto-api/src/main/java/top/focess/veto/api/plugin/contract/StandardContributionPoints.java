@@ -1,16 +1,18 @@
 package top.focess.veto.api.plugin.contract;
 
-import java.util.HashSet;
-import java.util.List;
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.api.agent.tool.CapabilityTool;
-import top.focess.veto.api.agent.tool.ToolDocs;
+
+import top.focess.veto.api.agent.tool.RemoteTool;
 import top.focess.veto.api.event.Listener;
 import top.focess.veto.api.llm.LlmProvider;
 import top.focess.veto.api.plugin.contribution.ContributionCatalog;
 import top.focess.veto.api.plugin.contribution.ContributionId;
 import top.focess.veto.api.plugin.contribution.ContributionPoint;
+import top.focess.veto.api.plugin.contribution.ProtocolPointDefinition;
 import top.focess.veto.api.plugin.service.ServiceRegistration;
+
+import java.util.HashSet;
+import java.util.List;
 
 /**
  * Host-defined public registration points. The catalog itself knows none of these types, and
@@ -40,7 +42,7 @@ public final class StandardContributionPoints {
             new ContributionPoint<>(
                     new ContributionId("veto:llm-providers"),
                     1,
-                    ToolDocs.nonNullClass(LlmProvider.class),
+                    LlmProvider.class,
                     ContributionPoint.Cardinality.MULTIPLE);
 
     /** Named JSON service registrations. */
@@ -49,6 +51,14 @@ public final class StandardContributionPoints {
                     new ContributionId("veto:services"),
                     1,
                     ServiceRegistration.class,
+                    ContributionPoint.Cardinality.MULTIPLE);
+
+    /** Definitions of JSON contribution points supplied by plugins. */
+    public static final @NonNull ContributionPoint<ProtocolPointDefinition> CONTRIBUTIONS =
+            new ContributionPoint<>(
+                    new ContributionId("veto:contributions"),
+                    1,
+                    ProtocolPointDefinition.class,
                     ContributionPoint.Cardinality.MULTIPLE);
 
     /** Per-exchange model response policies. */
@@ -71,7 +81,7 @@ public final class StandardContributionPoints {
             new ContributionPoint<>(
                     new ContributionId("veto:listeners"),
                     1,
-                    ToolDocs.nonNullClass(Listener.class),
+                    Listener.class,
                     ContributionPoint.Cardinality.MULTIPLE);
 
     /** Trusted frontend modules and backend action handlers. */
@@ -82,47 +92,12 @@ public final class StandardContributionPoints {
                     FrontendContribution.class,
                     ContributionPoint.Cardinality.MULTIPLE);
 
-    /**
-     * Protection applied to the {@code view_file} observation before it is committed to history,
-     * masking plain segments while preserving SECRET_REF markers produced by {@link
-     * #FILE_PROTECTION}. The application site is carried by this point's identity; the contract is
-     * the shared {@link TextProtection} boundary.
-     */
-    public static final @NonNull ContributionPoint<TextProtection> FILE_OBSERVATION =
-            new ContributionPoint<>(
-                    new ContributionId("veto:file-observation"),
-                    1,
-                    TextProtection.class,
-                    ContributionPoint.Cardinality.MULTIPLE);
-
-    /**
-     * Protection applied to user input before it is recorded or sent to a model. Distinguished from
-     * the other {@link TextProtection} sites by this point's identity, not by a marker subtype.
-     */
-    public static final @NonNull ContributionPoint<TextProtection> INPUT_PROTECTION =
-            new ContributionPoint<>(
-                    new ContributionId("veto:input-protection"),
-                    1,
-                    TextProtection.class,
-                    ContributionPoint.Cardinality.MULTIPLE);
-
-    /**
-     * Protection applied while reading file content, capturing secrets as opaque references. Like
-     * the other {@link TextProtection} sites it is identified by this point, not by a marker type.
-     */
-    public static final @NonNull ContributionPoint<TextProtection> FILE_PROTECTION =
-            new ContributionPoint<>(
-                    new ContributionId("veto:file-protection"),
-                    1,
-                    TextProtection.class,
-                    ContributionPoint.Cardinality.MULTIPLE);
-
     /** Permanent-data deletion participants. */
     public static final @NonNull ContributionPoint<DataLifecycle> DATA_LIFECYCLE =
             new ContributionPoint<>(
                     new ContributionId("veto:data-lifecycle"),
                     1,
-                    ToolDocs.nonNullClass(DataLifecycle.class),
+                    DataLifecycle.class,
                     ContributionPoint.Cardinality.MULTIPLE);
 
     /**
@@ -134,36 +109,22 @@ public final class StandardContributionPoints {
         var categories = new HashSet<ContributionId>();
         for (var entry : catalog.entries(CATEGORIES)) categories.add(entry.id());
         for (var entry : catalog.entries(TOOLS)) {
-            if (!categories.containsAll(entry.implementation().categories()))
+            if (entry.implementation() instanceof RemoteTool tool
+                    && !categories.containsAll(tool.categories()))
                 throw new IllegalArgumentException("Unknown tool category");
         }
     }
 
-    /** Portable schema-authored JSON tools. */
-    public static final @NonNull ContributionPoint<Tool> TOOLS =
+    /**
+     * All plugin tools: record-authored {@code AgentTool}/{@code NativeTool} implementations and
+     * portable {@link RemoteTool} implementations share one registration group.
+     */
+    public static final @NonNull ContributionPoint<Object> TOOLS =
             new ContributionPoint<>(
                     new ContributionId("veto:tools"),
                     1,
-                    Tool.class,
+                    Object.class,
                     ContributionPoint.Cardinality.MULTIPLE);
-
-    /**
-     * Record-authored Java tools: NativeTool, AgentTool, or annotated CapabilityTool. The host uses
-     * the same registration and execution path as bundled tools. The point id is retained for
-     * existing Java plugins; it is not a tool kind.
-     */
-    public static final @NonNull ContributionPoint<CapabilityTool<?>> NATIVE_TOOLS =
-            nativeToolsPoint();
-
-    @SuppressWarnings("unchecked") // CapabilityTool.class is Class<CapabilityTool>, widened to <?>.
-    private static @NonNull ContributionPoint<CapabilityTool<?>> nativeToolsPoint() {
-        Class<CapabilityTool<?>> raw = (Class<CapabilityTool<?>>) (Class<?>) CapabilityTool.class;
-        return new ContributionPoint<>(
-                new ContributionId("veto:native-tools"),
-                1,
-                ToolDocs.nonNullClass(raw),
-                ContributionPoint.Cardinality.MULTIPLE);
-    }
 
     /** Tool presentation categories. */
     public static final @NonNull ContributionPoint<ToolCategory> CATEGORIES =
@@ -198,16 +159,13 @@ public final class StandardContributionPoints {
                     AGENT_CONFIGURATION,
                     AGENT_INBOX,
                     SERVICES,
+                    CONTRIBUTIONS,
                     LLM_PROVIDERS,
                     LISTENERS,
                     MODEL_RESPONSE,
                     FRONTEND,
-                    FILE_OBSERVATION,
-                    INPUT_PROTECTION,
-                    FILE_PROTECTION,
                     DATA_LIFECYCLE,
                     TOOLS,
-                    NATIVE_TOOLS,
                     CATEGORIES,
                     PROMPTS,
                     OBSERVATION);

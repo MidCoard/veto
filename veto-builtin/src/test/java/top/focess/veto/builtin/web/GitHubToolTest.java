@@ -3,18 +3,19 @@ package top.focess.veto.builtin.web;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
+import org.jspecify.annotations.NonNull;
+import org.junit.jupiter.api.Test;
+
+import top.focess.veto.api.agent.capability.NetworkEgressCapability;
+import top.focess.veto.api.agent.tool.ToolExecutionException;
+import top.focess.veto.api.credentials.ImportedCredentialLease;
+import top.focess.veto.builtin.tools.ReadGitHubRepositoryTool;
+
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.util.function.Consumer;
-import org.jspecify.annotations.NonNull;
-import org.junit.jupiter.api.Test;
-import top.focess.veto.api.agent.capability.NetworkEgressCapability;
-import top.focess.veto.api.agent.tool.ToolDocs;
-import top.focess.veto.api.agent.tool.ToolExecutionException;
-import top.focess.veto.api.credentials.ImportedCredentialLease;
-import top.focess.veto.builtin.tools.ReadGitHubRepositoryTool;
 
 class GitHubToolTest {
     @Test
@@ -64,17 +65,17 @@ class GitHubToolTest {
             when(response.statusCode()).thenReturn(302);
             var redirect =
                     assertThrows(
-                            ToolDocs.nonNullClass(ToolExecutionException.class),
+                            ToolExecutionException.class,
                             () -> tool.execute(args, capability));
             assertTrue(String.valueOf(redirect.getMessage()).contains("302"));
             when(response.statusCode()).thenReturn(200);
             when(response.body()).thenReturn(new byte[1_048_577]);
             assertThrows(
-                    ToolDocs.nonNullClass(ToolExecutionException.class),
+                    ToolExecutionException.class,
                     () -> tool.execute(args, capability));
             verify(client, times(3)).send(any(), any());
             assertThrows(
-                    ToolDocs.nonNullClass(ToolExecutionException.class),
+                    ToolExecutionException.class,
                     () ->
                             tool.execute(
                                     new ReadGitHubRepositoryTool.Args("ref", "../bad", "repo"),

@@ -22,11 +22,16 @@ extra["jlineVersion"] = "3.26.1"
 // JSpecify @NonNull opts individual contracts into non-nullness.
 subprojects {
     pluginManager.withPlugin("java") {
+        if (project.name == "veto-nullness-checker") return@withPlugin
         apply(plugin = "org.checkerframework")
 
         configure<CheckerFrameworkExtension> {
             version = "4.1.0"
-            checkers = listOf("org.checkerframework.checker.nullness.NullnessChecker")
+            checkers = listOf("top.focess.veto.checker.VetoNullnessChecker")
+        }
+
+        dependencies {
+            add("checkerFramework", project(":veto-nullness-checker"))
         }
 
         tasks.withType<JavaCompile>().configureEach {

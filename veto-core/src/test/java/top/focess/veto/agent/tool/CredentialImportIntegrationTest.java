@@ -4,33 +4,36 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.nio.file.Path;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
+
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.context.ApplicationContext;
+
 import top.focess.veto.agent.drift.ReadHistory;
 import top.focess.veto.agent.intercept.*;
 import top.focess.veto.agent.screening.*;
 import top.focess.veto.agent.workspace.*;
 import top.focess.veto.api.agent.tool.CapabilityTool;
-import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.credentials.CredentialImportAccess;
 import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.api.plugin.contract.PluginFailure;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
-import top.focess.veto.api.plugin.contract.TextProtection;
+import top.focess.veto.api.plugin.contract.FrontendContribution;
+import top.focess.veto.api.event.BeforeTextCommitEvent;
 import top.focess.veto.integration.plugins.HostResourceConfiguration;
 import top.focess.veto.integration.plugins.PluginHostServices;
 import top.focess.veto.integration.plugins.PluginManager;
 import top.focess.veto.integration.plugins.PluginTestSupport;
 import top.focess.veto.util.Nullness;
 import top.focess.veto.vault.KeysteadVault;
+
+import java.nio.file.Path;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 
 class CredentialImportIntegrationTest {
     private static final @NonNull String IMPORT_TOOL =
@@ -51,7 +54,7 @@ class CredentialImportIntegrationTest {
         var mapper = new ObjectMapper();
         var workspace = Workspace.single(directory, PathMode.REAL);
         try (var plugins = PluginTestSupport.manager(hostServices(vault))) {
-            var scope = new TextProtection.Scope("alice", session.toString(), "agent");
+            var scope = new FrontendContribution.Scope("alice", session.toString(), "agent");
             String reference = reference(plugins, scope);
             when(vault.createImportedCredential(
                             "alice", reference, "github", "Repository", "synthetic-token"))
@@ -79,10 +82,10 @@ class CredentialImportIntegrationTest {
                             "call");
             var screened =
                     assertInstanceOf(
-                            ToolDocs.nonNullClass(GatewayResult.Screened.class),
+                            GatewayResult.Screened.class,
                             gateway.screen(call, definition));
             assertInstanceOf(
-                    ToolDocs.nonNullClass(ApprovalDecision.Prompt.class),
+                    ApprovalDecision.Prompt.class,
                     new HitlRegistry().decide("agent", call, definition, screened));
             assertFalse(engine.execute(call, definition).success());
             verifyNoInteractions(vault);
@@ -140,12 +143,12 @@ class CredentialImportIntegrationTest {
     }
 
     private static @NonNull String reference(
-            @NonNull PluginManager plugins, TextProtection.@NonNull Scope scope)
+            @NonNull PluginManager plugins, FrontendContribution.@NonNull Scope scope)
             throws PluginFailure {
         String captured =
                 PluginTestSupport.protect(
                         plugins,
-                        StandardContributionPoints.INPUT_PROTECTION,
+                        BeforeTextCommitEvent.Phase.INPUT,
                         scope,
                         "source",
                         "password=synthetic-token");
@@ -156,7 +159,7 @@ class CredentialImportIntegrationTest {
 
     private static @NonNull ToolEngineImpl engineWith(
             @NonNull ObjectMapper mapper, @NonNull PluginManager plugins) {
-        var context = mock(ToolDocs.nonNullClass(ApplicationContext.class));
+        var context = mock(ApplicationContext.class);
         when(context.getBeansOfType(PluginManager.class)).thenReturn(Map.of("plugins", plugins));
         var engine = new ToolEngineImpl(mapper, List.of(), context);
         engine.afterSingletonsInstantiated();
@@ -176,11 +179,11 @@ class CredentialImportIntegrationTest {
         var session = UUID.randomUUID();
         @NonNull KeysteadVault vault = mock();
         var services = hostServices(vault);
-        var service = services.services().get(ToolDocs.nonNullClass(CredentialImportAccess.class));
+        var service = services.services().get(CredentialImportAccess.class);
         if (!(service instanceof CredentialImportAccess access))
             throw new AssertionError("Import host service missing");
         try (var plugins = PluginTestSupport.manager(services)) {
-            var scope = new TextProtection.Scope("alice", session.toString(), "agent");
+            var scope = new FrontendContribution.Scope("alice", session.toString(), "agent");
             String reference = reference(plugins, scope);
             var engine = engineWith(new ObjectMapper(), plugins);
             var definition = importTool(engine);
@@ -272,10 +275,10 @@ class CredentialImportIntegrationTest {
                     () -> access.authorize(reference, "github", "Repository"));
             for (var other :
                     List.of(
-                            new TextProtection.Scope("bob", session.toString(), "agent"),
-                            new TextProtection.Scope(
+                            new FrontendContribution.Scope("bob", session.toString(), "agent"),
+                            new FrontendContribution.Scope(
                                     "alice", UUID.randomUUID().toString(), "agent"),
-                            new TextProtection.Scope("alice", session.toString(), "mate"))) {
+                            new FrontendContribution.Scope("alice", session.toString(), "mate"))) {
                 installContext(
                         call,
                         definition,
@@ -302,15 +305,15 @@ class CredentialImportIntegrationTest {
             @NonNull String label)
             throws Exception {
         var entry =
-                plugins.catalog().entries(StandardContributionPoints.NATIVE_TOOLS).stream()
+                plugins.catalog().entries(StandardContributionPoints.TOOLS).stream()
                         .filter(
                                 value ->
-                                        value.implementation()
-                                                .getName()
-                                                .equals("import_detected_credential"))
+                                        value.implementation() instanceof CapabilityTool<?> tool
+                                                && tool.getName()
+                                                        .equals("import_detected_credential"))
                         .findFirst()
                         .orElseThrow();
-        CapabilityTool<?> tool = entry.implementation();
+        CapabilityTool<?> tool = (CapabilityTool<?>) entry.implementation();
         var mapper = new ObjectMapper();
         @NonNull Object args =
                 Nullness.requireNonNull(

@@ -2,16 +2,19 @@ package top.focess.veto.client.core;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import org.jspecify.annotations.NonNull;
+import org.junit.jupiter.api.Test;
+
+import top.focess.veto.contract.IpcClient;
+import top.focess.veto.contract.IpcFrame;
+import top.focess.veto.contract.IpcMeta;
+
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.CountDownLatch;
-import org.jspecify.annotations.NonNull;
-import org.junit.jupiter.api.Test;
-import top.focess.veto.contract.IpcClient;
-import top.focess.veto.contract.IpcFrame;
-import top.focess.veto.contract.IpcMeta;
 
 /**
  * Direct, deterministic tests of {@link ClientSession}'s protocol logic — one per cell of the
@@ -92,7 +95,8 @@ class ClientSessionTest {
 
         IpcFrame.ClientFrame f = requireFrame(s.submit("hello"));
 
-        IpcFrame.Request request = assertInstanceOf(nonNullClass(IpcFrame.Request.class), f);
+        IpcFrame.Request request =
+                assertInstanceOf(Objects.requireNonNull(IpcFrame.Request.class), f);
         assertEquals("hello", request.raw());
         assertEquals(ClientSession.State.RUNNING, s.state());
         assertTrue(v.events.contains("running"));
@@ -125,7 +129,7 @@ class ClientSessionTest {
 
         IpcFrame.ClientFrame f = requireFrame(s.submit("secret"));
 
-        IpcFrame.Input input = assertInstanceOf(nonNullClass(IpcFrame.Input.class), f);
+        IpcFrame.Input input = assertInstanceOf(Objects.requireNonNull(IpcFrame.Input.class), f);
         assertEquals("secret", input.raw());
         assertEquals(ClientSession.State.RUNNING, s.state());
         assertNull(s.promptView().activePrompt());
@@ -150,7 +154,8 @@ class ClientSessionTest {
         // The user's "reply" arrives after the prompt is gone — it is a new command, not an Input.
         IpcFrame.ClientFrame f = requireFrame(s.submit("not-a-password"));
 
-        IpcFrame.Request request = assertInstanceOf(nonNullClass(IpcFrame.Request.class), f);
+        IpcFrame.Request request =
+                assertInstanceOf(Objects.requireNonNull(IpcFrame.Request.class), f);
         assertEquals("not-a-password", request.raw());
         assertEquals(ClientSession.State.RUNNING, s.state());
     }
@@ -186,7 +191,7 @@ class ClientSessionTest {
         assertTrue(v.events.contains("prompt:HITL: run_command"));
 
         IpcFrame.ClientFrame f = requireFrame(s.submit("ACCEPT_COMMAND"));
-        IpcFrame.Input input = assertInstanceOf(nonNullClass(IpcFrame.Input.class), f);
+        IpcFrame.Input input = assertInstanceOf(Objects.requireNonNull(IpcFrame.Input.class), f);
         assertEquals("ACCEPT_COMMAND", input.raw());
         assertEquals(ClientSession.State.RUNNING, s.state());
         assertNull(s.promptView().activePrompt());
@@ -365,7 +370,8 @@ class ClientSessionTest {
         IpcFrame.ClientFrame f =
                 requireFrame(s.onFrame(new IpcFrame.Done(Map.of(IpcMeta.USERNAME, "alice"), null)));
 
-        IpcFrame.Request request = assertInstanceOf(nonNullClass(IpcFrame.Request.class), f);
+        IpcFrame.Request request =
+                assertInstanceOf(Objects.requireNonNull(IpcFrame.Request.class), f);
         assertEquals("second", request.raw());
         assertEquals(ClientSession.State.RUNNING, s.state());
         assertTrue(v.events.contains("meta:alice/0/null"));
@@ -435,7 +441,8 @@ class ClientSessionTest {
         v.events.clear();
         IpcFrame.ClientFrame f = requireFrame(s.onFrame(IpcFrame.Error.ofError("boom")));
 
-        IpcFrame.Request request = assertInstanceOf(nonNullClass(IpcFrame.Request.class), f);
+        IpcFrame.Request request =
+                assertInstanceOf(Objects.requireNonNull(IpcFrame.Request.class), f);
         assertEquals("second", request.raw());
         assertTrue(v.events.contains("error:Error: boom"));
     }
@@ -485,7 +492,8 @@ class ClientSessionTest {
         IpcFrame.ClientFrame f =
                 requireFrame(s.onFrame(new IpcFrame.Done(Map.of(IpcMeta.USERNAME, "alice"), null)));
 
-        IpcFrame.Request request = assertInstanceOf(nonNullClass(IpcFrame.Request.class), f);
+        IpcFrame.Request request =
+                assertInstanceOf(Objects.requireNonNull(IpcFrame.Request.class), f);
         assertEquals("second", request.raw());
         assertEquals(ClientSession.State.RUNNING, s.state());
         // The prompt the terminal frame resolved must be cleared ( PROMPTED × Done).
@@ -519,7 +527,8 @@ class ClientSessionTest {
 
         IpcFrame.ClientFrame f = requireFrame(s.onFrame(IpcFrame.Error.ofError("boom")));
 
-        IpcFrame.Request request = assertInstanceOf(nonNullClass(IpcFrame.Request.class), f);
+        IpcFrame.Request request =
+                assertInstanceOf(Objects.requireNonNull(IpcFrame.Request.class), f);
         assertEquals("second", request.raw());
         assertEquals(ClientSession.State.RUNNING, s.state());
         assertNull(s.promptView().activePrompt()); // cleared (PROMPTED × Error)
@@ -638,7 +647,7 @@ class ClientSessionTest {
         List<String> q = s.pendingQueue();
 
         assertEquals(List.of("b", "c"), q);
-        assertThrows(nonNullClass(UnsupportedOperationException.class), () -> q.add("d"));
+        assertThrows(Objects.requireNonNull(UnsupportedOperationException.class), () -> q.add("d"));
     }
 
     @Test
@@ -656,7 +665,8 @@ class ClientSessionTest {
         assertEquals("alice", view.username()); // username just set by the Done
         assertEquals(List.of("third"), view.pending()); // "second" dispatched, "third" remains
         assertThrows(
-                nonNullClass(UnsupportedOperationException.class), () -> view.pending().add("x"));
+                Objects.requireNonNull(UnsupportedOperationException.class),
+                () -> view.pending().add("x"));
     }
 
     @Test
@@ -718,12 +728,5 @@ class ClientSessionTest {
             throw new AssertionError("The veto payload should be exposed in the prompt view");
         }
         return payload;
-    }
-
-    private static <T extends @NonNull Object> @NonNull Class<T> nonNullClass(Class<T> type) {
-        if (type == null) {
-            throw new AssertionError("Expected a class token");
-        }
-        return type;
     }
 }

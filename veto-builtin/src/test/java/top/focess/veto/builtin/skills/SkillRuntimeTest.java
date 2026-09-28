@@ -3,13 +3,9 @@ package top.focess.veto.builtin.skills;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
-import top.focess.veto.api.agent.tool.ToolDocs;
+
 import top.focess.veto.api.plugin.PluginContext;
 import top.focess.veto.api.plugin.PluginHost;
 import top.focess.veto.api.plugin.PluginIdentity;
@@ -19,13 +15,24 @@ import top.focess.veto.api.resources.CatalogueAccess;
 import top.focess.veto.api.resources.CatalogueTree;
 import top.focess.veto.builtin.tools.LoadSkillTool;
 
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+
 class SkillRuntimeTest {
     @Test
     void parsesFrontmatterAndPreservesBodyHashCompatibility() {
         var parsed =
                 SkillRuntime.parse(
                                 "file",
-                                "---\nname: verify\ndescription: Verify safely\n---\n First\n---\nSecond ",
+                                "---\n"
+                                        + "name: verify\n"
+                                        + "description: Verify safely\n"
+                                        + "---\n"
+                                        + " First\n"
+                                        + "---\n"
+                                        + "Second ",
                                 "PROJECT")
                         .orElseThrow();
         assertEquals("verify", parsed.name());
@@ -165,11 +172,11 @@ class SkillRuntimeTest {
                                         "Plugin context is not bound to a lifecycle owner");
                             },
                             Map.of(
-                                    ToolDocs.nonNullClass(CatalogueAccess.class),
+                                    CatalogueAccess.class,
                                     resources,
-                                    ToolDocs.nonNullClass(PluginHost.class),
+                                    PluginHost.class,
                                     host,
-                                    ToolDocs.nonNullClass(PluginStorage.class),
+                                    PluginStorage.class,
                                     storage)),
                     new JsonValue.ObjectValue(Map.of()));
         }

@@ -3,17 +3,13 @@ package top.focess.veto.integration.plugins;
 import static org.mockito.Mockito.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
-import java.util.concurrent.Executors;
-import java.util.concurrent.atomic.AtomicBoolean;
+
 import org.checkerframework.framework.qual.DefaultQualifier;
 import org.checkerframework.framework.qual.TypeUseLocation;
 import org.jspecify.annotations.NonNull;
 import org.springframework.context.ApplicationContext;
 import org.springframework.test.util.ReflectionTestUtils;
+
 import top.focess.veto.agent.SessionAgentRegistry;
 import top.focess.veto.agent.VetoAgent;
 import top.focess.veto.agent.capability.CapabilityAccess;
@@ -36,6 +32,13 @@ import top.focess.veto.plugin.runtime.*;
 import top.focess.veto.sandbox.*;
 import top.focess.veto.util.Nullness;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicBoolean;
+
 /** Real process host and builtin tools with explicit test-only session membership. */
 @DefaultQualifier(
         value = NonNull.class,
@@ -52,7 +55,7 @@ public final class ProcessHostFixture implements AutoCloseable {
     public final UUID user = UUID.randomUUID();
     public final AtomicBoolean admitted = new AtomicBoolean(true);
     public final SessionAgentRegistry agents =
-            mock(ToolDocs.nonNullClass(SessionAgentRegistry.class));
+            mock(SessionAgentRegistry.class);
     public final PluginLifecycle plugin;
     public final ToolEngineImpl engine;
     public final ProcessHost host;
@@ -137,38 +140,38 @@ public final class ProcessHostFixture implements AutoCloseable {
                             () -> {},
                             plugin::state,
                             Map.of(
-                                    ToolDocs.nonNullClass(ProcessHost.class),
+                                    ProcessHost.class,
                                     host,
-                                    ToolDocs.nonNullClass(PluginHost.class),
+                                    PluginHost.class,
                                     effects));
-            feature = new ProcessRuntime(context, mock(ToolDocs.nonNullClass(TaskEvents.class)));
+            feature = new ProcessRuntime(context, mock(TaskEvents.class));
             plugin.initialize(context, new JsonValue.ObjectValue(Map.of()));
             plugin.start();
             List<Contribution<?>> entries = new ArrayList<>();
             entries.add(
                     Contribution.of(
-                            StandardContributionPoints.NATIVE_TOOLS,
+                            StandardContributionPoints.TOOLS,
                             "run_command",
                             new RunCommandTool(feature.execution("run_command"))));
             if (background) {
                 entries.add(
                         Contribution.of(
-                                StandardContributionPoints.NATIVE_TOOLS,
+                                StandardContributionPoints.TOOLS,
                                 "run_task",
                                 new RunTaskTool(feature.execution("run_task"))));
                 entries.add(
                         Contribution.of(
-                                StandardContributionPoints.NATIVE_TOOLS,
+                                StandardContributionPoints.TOOLS,
                                 "view_task",
                                 new ViewTaskTool(feature.control("view_task"))));
                 entries.add(
                         Contribution.of(
-                                StandardContributionPoints.NATIVE_TOOLS,
+                                StandardContributionPoints.TOOLS,
                                 "input_task",
                                 new InputTaskTool(feature.control("input_task"))));
                 entries.add(
                         Contribution.of(
-                                StandardContributionPoints.NATIVE_TOOLS,
+                                StandardContributionPoints.TOOLS,
                                 "stop_task",
                                 new StopTaskTool(feature.control("stop_task"))));
             }
@@ -195,8 +198,6 @@ public final class ProcessHostFixture implements AutoCloseable {
                             });
             @NonNull SessionPlugins selected = mock();
             when(selected.includes(anyString(), anyString())).thenAnswer(call -> admitted.get());
-            when(selected.protect(any(), any(), anyString()))
-                    .thenAnswer(call -> Nullness.requireNonNull(call.getArgument(2)));
             @NonNull ApplicationContext app = mock();
             when(app.getBeansOfType(PluginManager.class)).thenReturn(Map.of("plugins", manager));
             when(app.getBeansOfType(AgentTool.class)).thenReturn(Map.of());
@@ -235,11 +236,11 @@ public final class ProcessHostFixture implements AutoCloseable {
                 };
         return new PluginHostServices(
                 Map.of(
-                        ToolDocs.nonNullClass(PluginStorageFactory.class),
+                        PluginStorageFactory.class,
                         scopes,
-                        ToolDocs.nonNullClass(PluginProcessHostFactory.class),
+                        PluginProcessHostFactory.class,
                         new PluginProcessHosts(sandbox, scopes, new SessionAgentRegistry()),
-                        ToolDocs.nonNullClass(PluginHost.class),
+                        PluginHost.class,
                         effects));
     }
 

@@ -5,17 +5,19 @@ import static org.mockito.Mockito.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpServer;
+
+import org.jspecify.annotations.NonNull;
+import org.junit.jupiter.api.Test;
+
+import top.focess.veto.api.llm.*;
+import top.focess.veto.observability.AuditLogger;
+import top.focess.veto.plugin.runtime.*;
+
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
-import org.jspecify.annotations.NonNull;
-import org.junit.jupiter.api.Test;
-import top.focess.veto.api.agent.tool.ToolDocs;
-import top.focess.veto.api.llm.*;
-import top.focess.veto.observability.AuditLogger;
-import top.focess.veto.plugin.runtime.*;
 
 class PluginLlmProvidersTest {
     @Test
@@ -42,7 +44,7 @@ class PluginLlmProvidersTest {
         try {
             @NonNull AuditLogger audit = mock();
             var providers = new PluginLlmProviders(manager, new ObjectMapper(), audit);
-            for (var type : EnumSet.allOf(ToolDocs.nonNullClass(ProviderType.class)))
+            for (var type : EnumSet.allOf(ProviderType.class))
                 assertTrue(providers.require(type).supports(type));
             String url = "http://127.0.0.1:" + server.getAddress().getPort();
             var request =

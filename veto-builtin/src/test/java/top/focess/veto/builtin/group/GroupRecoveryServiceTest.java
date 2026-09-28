@@ -3,16 +3,17 @@ package top.focess.veto.builtin.group;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
+import org.jspecify.annotations.NonNull;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
+
+
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
-import org.jspecify.annotations.NonNull;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.ValueSource;
-import top.focess.veto.api.agent.tool.ToolDocs;
 
 /** The same recovery invariants now execute through the plugin activation contract. */
 class GroupRecoveryServiceTest {
@@ -75,7 +76,7 @@ class GroupRecoveryServiceTest {
             assertEquals(GroupState.RECOVERING, GroupTestHost.required(groups.get(id)).state());
             var orchestrator = new GroupOrchestrator(groups, new Blackboard());
             assertInstanceOf(
-                    ToolDocs.nonNullClass(NodeEdit.Rejected.class),
+                    NodeEdit.Rejected.class,
                     orchestrator.addNode(
                             id, "premature", "work", "review", Set.of(), "mate", false));
             var intent = GroupTestHost.required(fixture.runtime.configure(fixture.configuration));

@@ -5,11 +5,11 @@ import static org.mockito.Mockito.*;
 
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+
 import top.focess.command.CommandManager;
 import top.focess.command.CommandPermission;
 import top.focess.command.CommandResult;
 import top.focess.command.ExecutionResult;
-import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.llm.ProviderType;
 import top.focess.veto.command.commands.PatternCommand;
 import top.focess.veto.model.AgentPatternEntity;
@@ -28,15 +28,15 @@ class PatternCommandSystemPromptTest {
 
     @Test
     void createBindsToTierAndDoesNotStoreSystemPrompt() {
-        AgentPatternRepository repo = mock(ToolDocs.nonNullClass(AgentPatternRepository.class));
-        VetoCommandSender sender = mock(ToolDocs.nonNullClass(VetoCommandSender.class));
-        when(sender.hasPermission(any(ToolDocs.nonNullClass(CommandPermission.class))))
+        AgentPatternRepository repo = mock(AgentPatternRepository.class);
+        VetoCommandSender sender = mock(VetoCommandSender.class);
+        when(sender.hasPermission(any(CommandPermission.class)))
                 .thenReturn(true);
         when(sender.isLoggedIn()).thenReturn(true);
         when(sender.username()).thenReturn("alice");
         when(sender.requireUsername()).thenReturn("alice");
 
-        ModelTierRegistry tierRegistry = mock(ToolDocs.nonNullClass(ModelTierRegistry.class));
+        ModelTierRegistry tierRegistry = mock(ModelTierRegistry.class);
         when(tierRegistry.resolve("alice", ModelTier.TOP))
                 .thenReturn(
                         new ModelBinding(
@@ -51,7 +51,7 @@ class PatternCommandSystemPromptTest {
         manager.register(new PatternCommand(repo, tierRegistry));
 
         ArgumentCaptor<AgentPatternEntity> captor =
-                ArgumentCaptor.forClass(ToolDocs.nonNullClass(AgentPatternEntity.class));
+                ArgumentCaptor.forClass(AgentPatternEntity.class);
 
         ExecutionResult result = manager.dispatch(sender, "pattern create p1 TOP");
 
@@ -71,7 +71,7 @@ class PatternCommandSystemPromptTest {
         assertThrows(
                 NoSuchFieldException.class,
                 () ->
-                        ToolDocs.nonNullClass(AgentPatternEntity.class)
+                        AgentPatternEntity.class
                                 .getDeclaredField("systemPrompt"),
                 "AgentPatternEntity must not carry a systemPrompt field");
     }

@@ -1,13 +1,7 @@
 package top.focess.veto.builtin.workspace;
 
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.NoSuchFileException;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.List;
-import java.util.regex.Pattern;
 import org.jspecify.annotations.NonNull;
+
 import top.focess.veto.api.agent.capability.WorkspaceFile;
 import top.focess.veto.api.agent.capability.WorkspaceReadCapability;
 import top.focess.veto.api.agent.screening.Danger;
@@ -16,13 +10,20 @@ import top.focess.veto.api.agent.tool.ParamCategory;
 import top.focess.veto.api.agent.tool.SecurityHint;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.agent.tool.ToolDoc;
-import top.focess.veto.api.agent.tool.ToolDocs;
 import top.focess.veto.api.agent.tool.ToolErrorCode;
 import top.focess.veto.api.agent.tool.ToolErrors;
 import top.focess.veto.api.agent.tool.ToolJson;
 import top.focess.veto.api.agent.tool.ToolResultFormat;
 import top.focess.veto.api.agent.tool.ToolSecurity;
 import top.focess.veto.api.agent.tool.WorkspaceReadTool;
+
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.NoSuchFileException;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
+import java.util.regex.Pattern;
 
 /** Finds regular files through a call-scoped workspace-read capability. */
 @ToolSecurity(capability = ToolCapability.WORKSPACE_READ, defaultDanger = Danger.SAFE)
@@ -57,7 +58,8 @@ import top.focess.veto.api.agent.tool.WorkspaceReadTool;
                 entries that were not traversed. `**/*.java` also matches a Java file directly \
                 below the base.""",
         security =
-                "Protected paths, symbolic links, and reparse points are skipped without being opened; they are counted in `skippedEntries`.",
+                "Protected paths, symbolic links, and reparse points are skipped without being"
+                        + " opened; they are counted in `skippedEntries`.",
         examples = {
             "{\"absolutePath\":\"/abs/project\",\"pattern\":\"**/*.java\"}",
             "{\"absolutePath\":\"/abs/project\",\"pattern\":\"*.md\"}",
@@ -90,7 +92,7 @@ public final class FindFilesTool implements WorkspaceReadTool<FindFilesTool.Args
 
     @Override
     public @NonNull Class<Args> getArgsClass() {
-        return ToolDocs.nonNullClass(Args.class);
+        return Args.class;
     }
 
     @Override
