@@ -4,7 +4,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.HashMap;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 import top.focess.veto.api.llm.*;
@@ -52,10 +51,7 @@ public final class PluginLlmProviders {
                             return candidate == type;
                         }
 
-                        @SuppressWarnings(
-                                "NullableProblems") // WHY: no package @DefaultQualifier, so
-                        // NullnessChecker needs this @Nullable
-                        public @Nullable String defaultBaseUrl() {
+                        public String defaultBaseUrl() {
                             return implementation.defaultBaseUrl();
                         }
 
@@ -96,8 +92,5 @@ public final class PluginLlmProviders {
         return provider;
     }
 
-    @SuppressWarnings(
-            "NullableProblems") // WHY: no package @DefaultQualifier, so NullnessChecker needs these
-    // @Nullable components
-    private record Outcome(LlmClient.@Nullable RawCompletion result, @Nullable Exception failure) {}
+    private record Outcome(LlmClient.RawCompletion result, Exception failure) {}
 }

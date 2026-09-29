@@ -1,7 +1,6 @@
 package top.focess.veto.api.plugin;
 
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import top.focess.veto.api.agent.workflow.PluginAwait;
 import top.focess.veto.api.plugin.contract.JsonValue;
 
@@ -46,7 +45,7 @@ public interface PluginHost {
             @NonNull String owner,
             @NonNull String sessionId,
             @NonNull String agentId,
-            @Nullable String requestId,
+            String requestId,
             @NonNull String callId) {}
 
     /**

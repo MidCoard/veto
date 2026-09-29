@@ -9,9 +9,10 @@ import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
-import top.focess.veto.api.credentials.CredentialWriter;
+import top.focess.veto.api.credentials.VaultAccess;
 
 class SecretCandidateStoreTest {
     @Test
@@ -246,26 +247,45 @@ class SecretCandidateStoreTest {
             @NonNull String label,
             @NonNull String value) {}
 
-    private static final class InMemoryWriter implements CredentialWriter {
+    private static final class InMemoryWriter implements VaultAccess.Scope {
         private boolean unlocked = true;
         private boolean failNextWrite;
         private int unlockChecks;
         private final @NonNull List<StoredCredential> attempts = new ArrayList<>();
 
         @Override
-        public boolean isUnlocked(@NonNull String owner) {
-            unlockChecks++;
-            return unlocked && owner.equals("alice");
+        public @NonNull String owner() {
+            return "alice";
         }
 
         @Override
-        public @NonNull String createImportedCredential(
-                @NonNull String owner,
-                @NonNull String reference,
-                @NonNull String service,
-                @NonNull String label,
+        public @NonNull String sessionId() {
+            return "session";
+        }
+
+        @Override
+        public @NonNull String agentId() {
+            return "agent";
+        }
+
+        @Override
+        public boolean isUnlocked() {
+            unlockChecks++;
+            return unlocked;
+        }
+
+        @Override
+        public @NonNull String createSecureNote(
+                @NonNull String title,
+                @NonNull Map<@NonNull String, @NonNull String> attributes,
                 @NonNull String value) {
-            attempts.add(new StoredCredential(owner, reference, service, label, value));
+            attempts.add(
+                    new StoredCredential(
+                            "alice",
+                            attributes.getOrDefault("veto.import.id", ""),
+                            attributes.getOrDefault("veto.import.service", ""),
+                            attributes.getOrDefault("veto.import.label", ""),
+                            value));
             if (failNextWrite) {
                 failNextWrite = false;
                 throw new IllegalStateException(value);

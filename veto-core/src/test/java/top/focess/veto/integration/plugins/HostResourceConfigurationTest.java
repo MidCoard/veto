@@ -13,7 +13,7 @@ import java.util.concurrent.TimeUnit;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
-import top.focess.veto.api.credentials.CredentialImportAccess;
+import top.focess.veto.api.credentials.VaultAccess;
 import top.focess.veto.api.llm.LocalModelCompletion;
 import top.focess.veto.api.plugin.PluginContext;
 import top.focess.veto.api.plugin.PluginContributions;
@@ -42,7 +42,7 @@ class HostResourceConfigurationTest {
                 .run(
                         context -> {
                             var services = context.getBean(PluginHostServices.class).services();
-                            assertTrue(services.containsKey(CredentialImportAccess.class));
+                            assertTrue(services.containsKey(VaultAccess.class));
                             assertTrue(services.containsKey(PluginLocalModelFactory.class));
                         });
     }

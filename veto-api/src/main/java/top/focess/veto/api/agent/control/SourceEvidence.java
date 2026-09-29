@@ -2,7 +2,6 @@ package top.focess.veto.api.agent.control;
 
 import java.util.List;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import top.focess.veto.api.agent.workflow.ModelFlow;
 import top.focess.veto.api.llm.VetoResponse;
 
@@ -19,7 +18,7 @@ public interface SourceEvidence {
      * @param messageIndex explicit message index, or {@code null} for host resolution
      * @param quote exact quoted text
      */
-    record Selector(@Nullable Integer messageIndex, @NonNull String quote) {}
+    record Selector(Integer messageIndex, @NonNull String quote) {}
 
     /**
      * A citation declaration and its candidate source selectors.

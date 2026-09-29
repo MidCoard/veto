@@ -4,7 +4,6 @@ import java.util.HashSet;
 import java.util.Set;
 import java.util.function.Function;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -29,10 +28,7 @@ import top.focess.veto.vault.UserRegistry;
 public class PluginLifecycleEvents {
     private final @NonNull PluginManager manager;
 
-    @SuppressWarnings(
-            "NullableProblems") // WHY: lazily attached and no package @DefaultQualifier, so
-    // NullnessChecker needs this @Nullable
-    private @Nullable UserRegistry users;
+    private UserRegistry users;
 
     /** Attaches the user registry used to resolve permanent-deletion identities. */
     @Autowired

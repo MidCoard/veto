@@ -3,13 +3,12 @@ package top.focess.veto.secret;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.tool.Doc;
 import top.focess.veto.api.agent.tool.NativeTool;
@@ -17,7 +16,7 @@ import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.agent.tool.ToolDoc;
 import top.focess.veto.api.agent.tool.ToolResultFormat;
 import top.focess.veto.api.agent.tool.ToolSecurity;
-import top.focess.veto.api.credentials.CredentialImportAccess;
+import top.focess.veto.api.credentials.VaultAccess;
 import top.focess.veto.api.event.*;
 import top.focess.veto.api.llm.LocalModelCompletion;
 import top.focess.veto.api.llm.PromptRenderer;
@@ -36,10 +35,9 @@ public final class SecretProtectionPlugin extends VetoPlugin {
 
     private final @NonNull SecretCandidateStore candidates;
 
-    private final @NonNull CredentialImportAccess importer;
-    private final @NonNull PluginContributions contributions;
+    private final @NonNull VaultAccess vault;
 
-    private @Nullable ScheduledExecutorService expiry;
+    private ScheduledExecutorService expiry;
 
     /** Constructs the plugin with host-granted import access and its complete contributions. */
     public SecretProtectionPlugin(
@@ -47,11 +45,11 @@ public final class SecretProtectionPlugin extends VetoPlugin {
         if (!configuration.values().isEmpty())
             throw new IllegalArgumentException("Unsupported configuration");
         candidates = new SecretCandidateStore();
-        importer =
-                context.service(CredentialImportAccess.class)
+        vault =
+                context.service(VaultAccess.class)
                         .orElse(
-                                (reference, service, label) -> {
-                                    throw new IllegalStateException("Import host is unavailable");
+                                arguments -> {
+                                    throw new IllegalStateException("Vault access is unavailable");
                                 });
         var localModel = context.service(LocalModelCompletion.class).orElse(null);
         var prompts = context.service(PromptRenderer.class).orElse(null);
@@ -61,25 +59,19 @@ public final class SecretProtectionPlugin extends VetoPlugin {
                                 ? null
                                 : new MdcSecretDetectionModel(localModel, prompts));
         candidates.detector(detector);
-        contributions =
-                new PluginContributions(
-                        List.of(
-                                Contribution.of(
-                                        StandardContributionPoints.FRONTEND,
-                                        "frontend",
-                                        new SecretFrontend()),
-                                Contribution.of(
-                                        StandardContributionPoints.OBSERVATION,
-                                        "observation-mask",
-                                        new SecretObservation(detector)),
-                                Contribution.of(
-                                        StandardContributionPoints.LISTENERS,
-                                        "lifecycle",
-                                        new SecretLifecycle(candidates, detector)),
-                                Contribution.of(
-                                        StandardContributionPoints.TOOLS,
-                                        "import_detected_credential",
-                                        new ImportCredentialTool())));
+        context.register(StandardContributionPoints.FRONTEND, "frontend", new SecretFrontend());
+        context.register(
+                StandardContributionPoints.OBSERVATION,
+                "observation-mask",
+                new SecretObservation(detector));
+        context.register(
+                StandardContributionPoints.LISTENERS,
+                "lifecycle",
+                new SecretLifecycle(candidates, detector));
+        context.register(
+                StandardContributionPoints.TOOLS,
+                "import_detected_credential",
+                new ImportCredentialTool());
     }
 
     @Override
@@ -95,11 +87,6 @@ public final class SecretProtectionPlugin extends VetoPlugin {
     @Override
     public @NonNull Set<@NonNull String> historicalIds() {
         return Set.of("org.veto.secret-protection");
-    }
-
-    @Override
-    public @NonNull PluginContributions contributions() {
-        return contributions;
     }
 
     /**
@@ -119,8 +106,8 @@ public final class SecretProtectionPlugin extends VetoPlugin {
                             + " approval.",
             behavior =
                     """
-                    Resolves the referenced secret candidate captured earlier in this session, asks \
-                    the host to authorize the import, and writes the credential into the owner's \
+                    Resolves the referenced secret candidate captured earlier in this session, checks \
+                    the approved tool invocation, and writes the credential into the owner's \
                     encrypted vault exactly once. The plaintext secret never passes through the \
                     model or the tool arguments; only the opaque reference, target service, and a \
                     human label are supplied.\
@@ -147,7 +134,7 @@ public final class SecretProtectionPlugin extends VetoPlugin {
                     """
                     Import is idempotent per reference: re-importing the same SECRET_REF returns the \
                     existing vault handle rather than duplicating it. An unknown, expired, or \
-                    cross-session reference is refused, and a missing import host surfaces as a \
+                    cross-session reference is refused, and unavailable vault access surfaces as a \
                     failure. Cancellation before the irreversible vault write aborts the import.\
                     """,
             security =
@@ -260,7 +247,12 @@ public final class SecretProtectionPlugin extends VetoPlugin {
     }
 
     private @NonNull ImportCredentialResult importCredential(@NonNull ImportCredentialArgs args) {
-        var authorized = importer.authorize(args.secret_ref(), args.service(), args.label());
+        var authorized =
+                vault.open(
+                        Map.of(
+                                "secret_ref", args.secret_ref(),
+                                "service", args.service(),
+                                "label", args.label()));
         // Re-check after the (potentially blocking) host authorization so a caller that cancelled
         // while awaiting approval does not reach the irreversible vault write.
         if (Thread.currentThread().isInterrupted())
@@ -268,11 +260,11 @@ public final class SecretProtectionPlugin extends VetoPlugin {
         var receipt =
                 candidates.importOnce(
                         new SecretCandidateStore.Scope(
-                                authorized.ownerId(), authorized.sessionId(), authorized.agentId()),
+                                authorized.owner(), authorized.sessionId(), authorized.agentId()),
                         args.secret_ref(),
                         args.service(),
                         args.label(),
-                        authorized.writer());
+                        authorized);
         return new ImportCredentialResult(
                 receipt.credentialRef(), receipt.service(), receipt.label(), "created");
     }

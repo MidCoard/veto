@@ -16,7 +16,6 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.function.Supplier;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -154,7 +153,7 @@ public class ScopedPluginStorage implements PluginStorageFactory {
         }
 
         @SuppressWarnings("ConstantValue") // WHY: EntityManager.find returns null for a missing row
-        private synchronized @NonNull Scope issue(@NonNull String owner, @Nullable String session) {
+        private synchronized @NonNull Scope issue(@NonNull String owner, String session) {
             admitted();
             UserEntity user = database.find(UserEntity.class, owner);
             if (user == null) throw new SecurityException("User scope no longer exists");
@@ -244,8 +243,7 @@ public class ScopedPluginStorage implements PluginStorageFactory {
         }
 
         @Override
-        public @NonNull Page<@NonNull Scope> scopes(
-                @NonNull Kind kind, @Nullable String cursor, int limit) {
+        public @NonNull Page<@NonNull Scope> scopes(@NonNull Kind kind, String cursor, int limit) {
             if (kind == Kind.APPLICATION)
                 throw new IllegalArgumentException("Application scope is directly bound");
             return transaction(
@@ -322,12 +320,12 @@ public class ScopedPluginStorage implements PluginStorageFactory {
         }
 
         private final class BoundStore implements Store {
-            private final @Nullable Scope scope;
+            private final Scope scope;
             private final @NonNull String kind;
             private final @NonNull String identity;
             private final @NonNull String cursorBinding;
 
-            BoundStore(@Nullable Scope scope) {
+            BoundStore(Scope scope) {
                 this.scope = scope;
                 kind =
                         scope == null
@@ -373,7 +371,7 @@ public class ScopedPluginStorage implements PluginStorageFactory {
 
             @Override
             public @NonNull Page<@NonNull Entry> list(
-                    @NonNull String prefix, @Nullable String cursor, int limit) {
+                    @NonNull String prefix, String cursor, int limit) {
                 if (prefix.length() > 256)
                     throw new IllegalArgumentException("Prefix exceeds key limit");
                 return transaction(
@@ -411,7 +409,7 @@ public class ScopedPluginStorage implements PluginStorageFactory {
 
             @Override
             public @NonNull Entry put(
-                    @NonNull String key, @Nullable String expected, @NonNull Document document) {
+                    @NonNull String key, String expected, @NonNull Document document) {
                 ToolCallContextHolder.requireEffects();
                 key(key);
                 String payload = PluginJson.toNode(document.value()).toString();
@@ -543,7 +541,7 @@ public class ScopedPluginStorage implements PluginStorageFactory {
                 .encodeToString((binding + "\u0000" + key).getBytes(StandardCharsets.UTF_8));
     }
 
-    private static @NonNull String cursor(@NonNull String binding, @Nullable String cursor) {
+    private static @NonNull String cursor(@NonNull String binding, String cursor) {
         if (cursor == null) return "";
         String decoded = new String(Base64.getUrlDecoder().decode(cursor), StandardCharsets.UTF_8);
         String prefix = binding + "\u0000";

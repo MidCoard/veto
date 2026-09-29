@@ -12,7 +12,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import top.focess.veto.api.plugin.PluginContext;
 import top.focess.veto.api.plugin.PluginHost;
 import top.focess.veto.api.plugin.contract.JsonValue;
@@ -22,9 +21,9 @@ import top.focess.veto.api.resources.CatalogueTree;
 
 /** Builtin owns skill selection, discovery and durable integrity anchors. */
 public final class SkillRuntime implements AutoCloseable {
-    private final @Nullable CatalogueAccess resources;
-    private final @Nullable PluginStorage storage;
-    private final @Nullable PluginHost host;
+    private final CatalogueAccess resources;
+    private final PluginStorage storage;
+    private final PluginHost host;
     private final @NonNull String projectDirectory;
     private final @NonNull Map<String, Map<String, Skill>> catalogues = new ConcurrentHashMap<>();
     private volatile boolean closed;

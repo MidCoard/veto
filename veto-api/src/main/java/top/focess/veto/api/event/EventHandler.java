@@ -7,8 +7,8 @@ import java.lang.annotation.Target;
 
 /**
  * Marks a single-parameter method as an event handler. The handled event type is inferred from the
- * method's sole parameter, which must be a concrete {@link Event} subtype; the host rejects an
- * abstract or non-event parameter at registration.
+ * method's sole parameter, which must be an {@link Event} type. A handler for an abstract event
+ * supertype receives each host-dispatched concrete subtype.
  */
 @Target(ElementType.METHOD)
 @Retention(RetentionPolicy.RUNTIME)

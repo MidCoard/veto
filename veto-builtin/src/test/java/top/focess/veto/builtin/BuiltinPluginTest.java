@@ -27,7 +27,7 @@ class BuiltinPluginTest {
         var configuration = new JsonValue.ObjectValue(Map.of());
         var plugin = new BuiltinPlugin(context, configuration);
         try (plugin) {
-            var contributions = plugin.initialize(context, configuration);
+            var contributions = context.sealRegistrations();
             plugin.start();
             assertEquals(
                     List.of(

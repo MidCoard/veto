@@ -7,7 +7,6 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import top.focess.veto.api.agent.capability.NetworkEgressCapability;
 import top.focess.veto.api.agent.tool.ToolErrorCode;
 import top.focess.veto.api.agent.tool.ToolErrors;
@@ -36,7 +35,7 @@ public final class WebReader {
             @NonNull String objective, @NonNull NetworkEgressCapability network) {
         long started = System.nanoTime();
         try (var destination = network.openApprovedDestination("url")) {
-            var document = new AtomicReference<@Nullable WebReadSession>();
+            var document = new AtomicReference<WebReadSession>();
             var child =
                     host.get()
                             .isolate(

@@ -45,9 +45,7 @@ class InstalledPluginIntegrationTest {
             assertTrue(manager.isDeclined("sample.declined"));
             assertEquals(1, manager.disabled().size());
             assertTrue(manager.isDisabled("sample.disabled"));
-            assertEquals(
-                    "Installed service",
-                    manager.plugin("sample.installed").implementation().displayName());
+            assertEquals("Installed service", manager.plugin("sample.installed").displayName());
             var request = new JsonValue.StringValue("hello");
             assertEquals(
                     request,

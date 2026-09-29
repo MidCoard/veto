@@ -11,6 +11,7 @@ import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.Arrays;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -248,24 +249,30 @@ public class KeysteadVault {
 
     // ── flat key->string helpers (a credential is a SECURE_NOTE titled by its key) ──
 
-    /** Trusted import storage seam; the caller must already hold approval for this binding. */
-    public @NonNull String createImportedCredential(
+    /**
+     * Creates a secure note idempotently by exact title, attributes, and body.
+     *
+     * @param owner authenticated owner with an open vault
+     * @param title stable note title
+     * @param attributes metadata supplied by the caller
+     * @param value secret note body
+     * @return opaque vault handle
+     */
+    public @NonNull String createSecureNoteIfAbsent(
             @NonNull String owner,
-            @NonNull String importId,
-            @NonNull String service,
-            @NonNull String label,
+            @NonNull String title,
+            @NonNull Map<@NonNull String, @NonNull String> attributes,
             @NonNull String value) {
-        if (!importId.matches("s_[a-f0-9]{32}")
-                || !service.matches("[a-z][a-z0-9._-]{0,63}")
-                || label.isBlank()
-                || label.length() > 80
-                || !label.equals(label.trim())
-                || label.contains(value))
-            throw new IllegalArgumentException("Invalid credential import binding");
+        if (title.isBlank() || title.length() > 160 || attributes.size() > 16)
+            throw new IllegalArgumentException("Invalid secure note metadata");
+        for (var entry : attributes.entrySet())
+            if (entry.getKey().isBlank()
+                    || entry.getKey().length() > 80
+                    || entry.getValue().length() > 160)
+                throw new IllegalArgumentException("Invalid secure note metadata");
         VaultHandle handle = handles.get(owner);
         if (handle == null || handle.isClosed())
             throw new VaultLockedException("Credential owner vault is locked");
-        String title = "veto.import." + importId;
         char[] chars = value.toCharArray();
         try {
             synchronized (handle) {
@@ -275,31 +282,25 @@ public class KeysteadVault {
                                 .findFirst();
                 if (existing.isPresent()) {
                     SecretMetadata metadata = existing.get();
-                    var attributes = metadata.profile().attributes();
                     if (metadata.type() != SecretType.SECURE_NOTE
-                            || !importId.equals(attributes.get("veto.import.id"))
-                            || !service.equals(attributes.get("veto.import.service"))
-                            || !label.equals(attributes.get("veto.import.label")))
-                        throw new IllegalArgumentException(
-                                "Credential import binding does not match");
+                            || !attributes.equals(metadata.profile().attributes()))
+                        throw new IllegalArgumentException("Secure note binding does not match");
                     boolean[] same = {false};
                     handle.withSecureNote(
                             metadata.id(),
                             note -> note.withBody(body -> same[0] = Arrays.equals(chars, body)));
                     if (!same[0])
-                        throw new IllegalArgumentException(
-                                "Credential import binding does not match");
+                        throw new IllegalArgumentException("Secure note binding does not match");
                     return "cred_" + metadata.id().value();
                 }
                 try (SecretBuffer body = SecretBuffer.fromChars(chars)) {
                     SecretId id =
                             handle.saveSecureNote(
-                                    draft ->
-                                            draft.title(title)
-                                                    .attribute("veto.import.id", importId)
-                                                    .attribute("veto.import.service", service)
-                                                    .attribute("veto.import.label", label)
-                                                    .body(body));
+                                    draft -> {
+                                        draft.title(title);
+                                        attributes.forEach(draft::attribute);
+                                        draft.body(body);
+                                    });
                     return "cred_" + id.value();
                 }
             }

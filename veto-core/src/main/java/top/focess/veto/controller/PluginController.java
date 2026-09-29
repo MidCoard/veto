@@ -75,7 +75,7 @@ public class PluginController {
                                                     : null;
                                     return new PluginResponse(
                                             plugin.identity().id(),
-                                            plugin.implementation().displayName(),
+                                            plugin.displayName(),
                                             plugin.identity().version(),
                                             script == null ? null : script.digest(),
                                             plugin.state() == PluginState.ACTIVE

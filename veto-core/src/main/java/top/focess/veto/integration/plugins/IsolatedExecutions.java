@@ -16,7 +16,6 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BooleanSupplier;
 import java.util.stream.Collectors;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -67,7 +66,7 @@ import top.focess.veto.util.Nullness;
 @Component
 public final class IsolatedExecutions {
     private static final class Invocation {
-        private volatile @Nullable Child child;
+        private volatile Child child;
     }
 
     private static final @NonNull ConcurrentHashMap<@NonNull ToolCallContext, @NonNull Invocation>
@@ -86,7 +85,7 @@ public final class IsolatedExecutions {
     }
 
     /** Closes the isolated child, if any, that the given tool invocation opened. */
-    public static void finishInvocation(@Nullable ToolCallContext context) {
+    public static void finishInvocation(ToolCallContext context) {
         if (context == null) return;
         var invocation = INVOCATIONS.get(context);
         if (invocation != null) {
@@ -96,7 +95,7 @@ public final class IsolatedExecutions {
     }
 
     /** Finishes the invocation's isolated child, if any, and forgets its bookkeeping. */
-    public static void releaseInvocation(@Nullable ToolCallContext context) {
+    public static void releaseInvocation(ToolCallContext context) {
         try {
             finishInvocation(context);
         } finally {
@@ -323,7 +322,7 @@ public final class IsolatedExecutions {
                 .text();
     }
 
-    private @NonNull String json(@Nullable Object value) {
+    private @NonNull String json(Object value) {
         if (value == null) return "null";
         try {
             return mapper.writeValueAsString(value);
@@ -332,7 +331,7 @@ public final class IsolatedExecutions {
         }
     }
 
-    private static int bytes(@Nullable String text) {
+    private static int bytes(String text) {
         return text == null ? 0 : text.getBytes(StandardCharsets.UTF_8).length;
     }
 
@@ -368,7 +367,7 @@ public final class IsolatedExecutions {
         private @NonNull Runnable checkTools = () -> {};
         private volatile boolean closed;
         private volatile boolean completed;
-        private @Nullable HttpDestinationGrant destination;
+        private HttpDestinationGrant destination;
 
         private Scope(
                 @NonNull ToolCallContext parent,
@@ -481,7 +480,7 @@ public final class IsolatedExecutions {
         private final IsolatedAgent.@NonNull Tools tools;
         private final @NonNull VetoAgent agent;
         private final @NonNull AgentRunner runner;
-        private @Nullable RequestHandle request;
+        private RequestHandle request;
         private volatile boolean closed;
         private final @NonNull AtomicBoolean closeRequested = new AtomicBoolean();
         private final @NonNull AtomicLong terminationDeadline = new AtomicLong();

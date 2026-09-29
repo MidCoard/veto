@@ -43,7 +43,6 @@ import top.focess.veto.api.plugin.PluginDeclinedException;
 import top.focess.veto.api.plugin.PluginHost;
 import top.focess.veto.api.plugin.PluginIdentity;
 import top.focess.veto.api.plugin.PluginState;
-import top.focess.veto.api.plugin.VetoPlugin;
 import top.focess.veto.api.plugin.agent.AgentHost;
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.contract.PluginFailure;
@@ -166,10 +165,7 @@ public final class PluginManager implements AutoCloseable {
 
     private static final class ServiceAccess
             implements BiPredicate<@NonNull String, @NonNull String> {
-        @SuppressWarnings(
-                "NullableProblems") // WHY: bound lazily by Spring, so NullnessChecker needs this
-        // @Nullable
-        private @Nullable ObjectProvider<SessionPlugins> sessions;
+        private ObjectProvider<SessionPlugins> sessions;
 
         public boolean test(@NonNull String caller, @NonNull String provider) {
             var call = ToolCallContextHolder.get();
@@ -258,13 +254,13 @@ public final class PluginManager implements AutoCloseable {
     private final @NonNull String nodeCommand;
     private final boolean trustedCode;
     private final long timeoutMillis;
-    private @Nullable ObjectProvider<ToolEngineImpl> toolEngine;
-    private @Nullable ObjectProvider<PluginLlmProviders> llmProviders;
+    private ObjectProvider<ToolEngineImpl> toolEngine;
+    private ObjectProvider<PluginLlmProviders> llmProviders;
     private final @NonNull Set<String> installedIds = new HashSet<>();
     private final @NonNull Set<String> dataLifecycleOwners = ConcurrentHashMap.newKeySet();
     private final @NonNull Map<String, Integer> pendingDataCleanups = new HashMap<>();
-    private @Nullable ObjectProvider<SessionRepository> sessionRepository;
-    private @Nullable ObjectProvider<SessionInvalidations> sessionInvalidations;
+    private ObjectProvider<SessionRepository> sessionRepository;
+    private ObjectProvider<SessionInvalidations> sessionInvalidations;
 
     /** Attaches catalog consumers after their Spring initialization completes. */
     @Autowired
@@ -614,7 +610,7 @@ public final class PluginManager implements AutoCloseable {
                 || !installedIds.contains(id)
                 || (!isDisabled(id) && !isDeclined(id)))
             throw new IllegalArgumentException("Plugin is not an inactive installed package");
-        VetoPlugin implementation =
+        InstalledPlugin implementation =
                 new InstalledPluginLoader(
                                 Path.of(nodeCommand),
                                 Duration.ofMillis(timeoutMillis),

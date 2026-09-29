@@ -53,7 +53,7 @@ are the fail-safe net, not the primary path.
 
 All host contracts now come from veto-api; core never imports plugin classes.
 
-- `api.credentials.CredentialImportAccess` / `CredentialWriter` provide the vault-backed import gate. The returned writer is bound to one exact approved invocation and revalidates owner/session/Agent/reference/service/label before storage. Without this service, import fails at call time while detection remains available.
+- `api.credentials.VaultAccess` provides a generic encrypted-note handle bound to one approved privileged invocation. The host checks the current caller and exact approved arguments on open, then rechecks the invocation before each vault operation. This plugin alone interprets `secret_ref`, service, and label, verifies its candidate scope, and creates the note metadata. Without vault access, import fails at call time while detection remains available.
 - `api.llm.PromptRenderer` compiles the plugin's `prompts/secret-detection.mdc`. `MdcSecretDetectionModel` then submits compiled text and the plugin's `grammars/secret-detection.gbnf` through `api.llm.LocalModelCompletion`. The host binds purpose and lifecycle, enforces bounds/deadline and cancels local HTTP work. The plugin owns array parsing and deterministic fallback. Missing resources never trigger an inline-prompt fallback.
 - `secret.api.SecretDetectionModel` is an internal detector adapter for plugin tests and implementation, not a host service.
 

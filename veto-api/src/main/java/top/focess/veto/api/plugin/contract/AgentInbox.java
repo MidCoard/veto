@@ -4,7 +4,6 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 
 /** Plugin-owned inbox and completion policy; the host only executes admitted continuations. */
 public abstract class AgentInbox {
@@ -18,8 +17,7 @@ public abstract class AgentInbox {
      * @param agentId selected agent
      * @param requestId active durable request, or {@code null} when polling outside a request
      */
-    public record Scope(
-            @NonNull String sessionId, @NonNull String agentId, @Nullable String requestId) {}
+    public record Scope(@NonNull String sessionId, @NonNull String agentId, String requestId) {}
 
     /**
      * continuationId is an opaque plugin-local durable key; the host namespaces it. Null uses the
@@ -35,12 +33,12 @@ public abstract class AgentInbox {
      */
     public record Observation(
             @NonNull String id,
-            @Nullable String requestId,
+            String requestId,
             @NonNull String content,
             @NonNull Instant occurredAt,
             @NonNull String topic,
             @NonNull Map<String, Object> attributes,
-            @Nullable String continuationId) {
+            String continuationId) {
         /** Defensively copies the plugin-defined attributes. */
         public Observation {
             attributes = Map.copyOf(attributes);

@@ -11,7 +11,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.api.plugin.PluginContext;
 import top.focess.veto.api.plugin.PluginHost;
@@ -36,7 +35,7 @@ class BuiltinSearchProviderTest {
                         Map.of(PluginHost.class, mock(PluginHost.class)));
         var plugin = new BuiltinPlugin(context, configuration);
         try {
-            var contributions = plugin.initialize(context, configuration);
+            var contributions = context.sealRegistrations();
             assertEquals("top.focess.builtin", plugin.identity().id());
             var providers =
                     contributions.entries().stream()
@@ -80,7 +79,7 @@ class BuiltinSearchProviderTest {
 
     @Test
     void braveSendsConfiguredKeyAndParsesResults() throws Exception {
-        var key = new AtomicReference<@Nullable String>();
+        var key = new AtomicReference<String>();
         var server =
                 server(
                         """
@@ -104,7 +103,7 @@ class BuiltinSearchProviderTest {
     }
 
     private static @NonNull HttpServer server(
-            @NonNull String body, @NonNull AtomicReference<@Nullable String> key) throws Exception {
+            @NonNull String body, @NonNull AtomicReference<String> key) throws Exception {
         var server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext(
                 "/",

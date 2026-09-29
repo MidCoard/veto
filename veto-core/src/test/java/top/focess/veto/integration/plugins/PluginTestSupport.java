@@ -82,8 +82,7 @@ public final class PluginTestSupport {
         return configured;
     }
 
-    public static @NonNull PluginManager manager(@Nullable PluginHostServices services)
-            throws IOException {
+    public static @NonNull PluginManager manager(PluginHostServices services) throws IOException {
         return new PluginManager(
                 pluginPackages(),
                 "",
@@ -94,8 +93,7 @@ public final class PluginTestSupport {
     }
 
     /** Only configuration storage is provided; accidental child execution fails visibly. */
-    public static @NonNull PluginHostServices configurationServices(
-            @Nullable PluginHostServices services) {
+    public static @NonNull PluginHostServices configurationServices(PluginHostServices services) {
         Map<@NonNull Class<?>, @NonNull Object> merged = new HashMap<>();
         merged.put(PluginStorageFactory.class, new ConfigurationStorageFixture());
         merged.put(

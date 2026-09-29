@@ -9,7 +9,6 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.api.plugin.*;
 import top.focess.veto.api.plugin.PluginContext;
@@ -103,7 +102,7 @@ class PluginLifecycleStateTest {
     }
 
     private static final class Observer extends VetoPlugin {
-        private @Nullable PluginContext context;
+        private PluginContext context;
         private final @NonNull List<PluginState> callbacks = new ArrayList<>();
         private final boolean failStart;
 

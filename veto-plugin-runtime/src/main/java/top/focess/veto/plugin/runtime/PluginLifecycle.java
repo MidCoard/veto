@@ -27,7 +27,8 @@ import top.focess.veto.api.plugin.contract.PluginFailure;
  * what lets {@link #close()} block until every admitted call has drained.
  */
 public final class PluginLifecycle implements AutoCloseable {
-    private final @NonNull VetoPlugin plugin;
+    private VetoPlugin plugin;
+    private final InstalledPlugin installed;
     // Published for diagnostics and cooperative cancellation; never used to admit a call.
     private volatile @NonNull PluginState state = PluginState.NEW;
     private final @NonNull ExecutorService lifecycle;
@@ -143,31 +144,46 @@ public final class PluginLifecycle implements AutoCloseable {
     /** Wraps an implementation whose lifecycle transitions will run on the given executor. */
     public PluginLifecycle(@NonNull VetoPlugin plugin, @NonNull ExecutorService lifecycle) {
         this.plugin = plugin;
+        this.installed = null;
+        this.lifecycle = lifecycle;
+        this.admission = new InvocationAdmission(lock);
+    }
+
+    /** Wraps a discovered package; its real plugin is constructed with the bound context. */
+    public PluginLifecycle(@NonNull InstalledPlugin installed, @NonNull ExecutorService lifecycle) {
+        this.plugin = null;
+        this.installed = installed;
         this.lifecycle = lifecycle;
         this.admission = new InvocationAdmission(lock);
     }
 
     public @NonNull VetoPlugin implementation() {
-        return plugin;
+        VetoPlugin current = plugin;
+        if (current == null) throw new IllegalStateException("Plugin has not been constructed");
+        return current;
     }
 
     public @NonNull PluginIdentity identity() {
-        return plugin.identity();
+        InstalledPlugin descriptor = installed;
+        return descriptor == null ? implementation().identity() : descriptor.identity();
     }
 
     /** Returns entry metadata without requiring construction. */
     public @NonNull String displayName() {
-        return plugin.displayName();
+        InstalledPlugin descriptor = installed;
+        return descriptor == null ? implementation().displayName() : descriptor.displayName();
     }
 
-    /** Returns historical identities before or after construction. */
+    /** Returns historical identities after construction; none are available from a bare package. */
     public @NonNull Set<@NonNull String> historicalIds() {
-        return plugin.historicalIds();
+        VetoPlugin current = plugin;
+        return current == null ? Set.of() : current.historicalIds();
     }
 
     /** Returns a tool-name preference without requiring construction. */
-    public @Nullable String preferredToolName(@NonNull String localId) {
-        return plugin.preferredToolName(localId);
+    public String preferredToolName(@NonNull String localId) {
+        VetoPlugin current = plugin;
+        return current == null ? null : current.preferredToolName(localId);
     }
 
     public @NonNull PluginState state() {
@@ -207,7 +223,22 @@ public final class PluginLifecycle implements AutoCloseable {
                                                 this::fail,
                                                 this::state,
                                                 context.hostServices());
-                                var contributions = plugin.initialize(bound, configuration);
+                                InstalledPlugin descriptor = installed;
+                                if (descriptor != null)
+                                    plugin = descriptor.create(bound, configuration);
+                                VetoPlugin current = implementation();
+                                if (!identity().equals(current.identity()))
+                                    throw new PluginFailure(
+                                            PluginFailure.Code.INVALID_CONFIGURATION);
+                                if (current instanceof ScriptPlugin script)
+                                    script.bind(bound, configuration);
+                                var legacy = current.initialize(bound, configuration);
+                                var registered = bound.sealRegistrations();
+                                if (!legacy.entries().isEmpty() && !registered.entries().isEmpty())
+                                    throw new PluginFailure(
+                                            PluginFailure.Code.INVALID_CONFIGURATION);
+                                var contributions =
+                                        registered.entries().isEmpty() ? legacy : registered;
                                 state = PluginState.INITIALIZED;
                                 return contributions;
                             } catch (PluginDeclinedException declined) {
@@ -237,7 +268,7 @@ public final class PluginLifecycle implements AutoCloseable {
                             require(PluginState.INITIALIZED);
                             state = PluginState.STARTING;
                             try {
-                                plugin.start();
+                                implementation().start();
                                 state = PluginState.ACTIVE;
                                 active.complete(null);
                             } catch (Throwable failure) {
@@ -326,10 +357,13 @@ public final class PluginLifecycle implements AutoCloseable {
             }
         }
         stoppingResources.clear();
-        try {
-            plugin.stopping();
-        } catch (Throwable failure) {
-            state = PluginState.FAILED;
+        VetoPlugin current = plugin;
+        if (current != null) {
+            try {
+                current.stopping();
+            } catch (Throwable failure) {
+                state = PluginState.FAILED;
+            }
         }
         if (state == PluginState.FAILED) cleanup();
     }
@@ -340,10 +374,19 @@ public final class PluginLifecycle implements AutoCloseable {
         active.completeExceptionally(new IllegalStateException("Plugin stopped before activation"));
         stopWaits();
         try {
-            plugin.close();
+            VetoPlugin current = plugin;
+            if (current != null) current.close();
         } catch (Throwable failure) {
             state = PluginState.FAILED;
         } finally {
+            InstalledPlugin descriptor = installed;
+            if (descriptor != null) {
+                try {
+                    descriptor.close();
+                } catch (RuntimeException failure) {
+                    state = PluginState.FAILED;
+                }
+            }
             for (var release : resources.values()) {
                 try {
                     release.run();

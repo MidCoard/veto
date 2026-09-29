@@ -437,7 +437,7 @@ class ScopedPluginStorageTest {
         assertThrows(PluginStorage.Conflict.class, () -> store.delete("key", current.revision()));
     }
 
-    private boolean attempt(PluginStorage.@NonNull Store store, @Nullable String revision) {
+    private boolean attempt(PluginStorage.@NonNull Store store, String revision) {
         try {
             store.put("key", revision, VALUE);
             return true;

@@ -3,7 +3,6 @@ package top.focess.veto.api.plugin.agent;
 import java.util.Map;
 import java.util.Set;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import top.focess.veto.api.plugin.contract.JsonValue;
 
 /**
@@ -22,8 +21,8 @@ public record AgentProfile(
         @NonNull String description,
         @NonNull String label,
         @NonNull Set<String> tools,
-        @Nullable String tier,
-        @Nullable Prompt prompt,
+        String tier,
+        Prompt prompt,
         @NonNull Map<String, String> metadata) {
     /**
      * Reference to a host-resolved prompt resource and its interpolation data.

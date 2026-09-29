@@ -11,20 +11,19 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 
 /** Applies the standard HTTP proxy environment variables to Java's HTTP client. */
 public final class WebProxySelector extends ProxySelector {
 
-    private final @Nullable Proxy httpProxy;
-    private final @Nullable Proxy httpsProxy;
-    private final @Nullable Proxy allProxy;
+    private final Proxy httpProxy;
+    private final Proxy httpsProxy;
+    private final Proxy allProxy;
     private final @NonNull List<@NonNull String> noProxy;
 
     private WebProxySelector(
-            @Nullable Proxy httpProxy,
-            @Nullable Proxy httpsProxy,
-            @Nullable Proxy allProxy,
+            Proxy httpProxy,
+            Proxy httpsProxy,
+            Proxy allProxy,
             @NonNull List<@NonNull String> noProxy) {
         this.httpProxy = httpProxy;
         this.httpsProxy = httpsProxy;
@@ -33,11 +32,11 @@ public final class WebProxySelector extends ProxySelector {
     }
 
     /** Returns the environment selector, or null when no proxy variable is configured. */
-    public static @Nullable ProxySelector fromEnvironment() {
+    public static ProxySelector fromEnvironment() {
         return fromEnvironment(System.getenv());
     }
 
-    static @Nullable ProxySelector fromEnvironment(
+    static ProxySelector fromEnvironment(
             @NonNull Map<@NonNull String, @NonNull String> environment) {
         Proxy http = parseProxy(value(environment, "HTTP_PROXY"));
         Proxy https = parseProxy(value(environment, "HTTPS_PROXY"));
@@ -100,13 +99,13 @@ public final class WebProxySelector extends ProxySelector {
         return false;
     }
 
-    private static @Nullable String value(
+    private static String value(
             @NonNull Map<@NonNull String, @NonNull String> environment, @NonNull String name) {
         String value = environment.get(name);
         return value != null ? value : environment.get(name.toLowerCase(Locale.ROOT));
     }
 
-    private static @Nullable Proxy parseProxy(@Nullable String value) {
+    private static Proxy parseProxy(String value) {
         if (value == null || value.isBlank()) {
             return null;
         }
@@ -127,7 +126,7 @@ public final class WebProxySelector extends ProxySelector {
         }
     }
 
-    private static @NonNull List<@NonNull String> parseNoProxy(@Nullable String value) {
+    private static @NonNull List<@NonNull String> parseNoProxy(String value) {
         if (value == null || value.isBlank()) {
             return List.of();
         }

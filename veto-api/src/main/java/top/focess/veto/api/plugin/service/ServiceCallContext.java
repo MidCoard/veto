@@ -2,7 +2,6 @@ package top.focess.veto.api.plugin.service;
 
 import java.util.Objects;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import top.focess.veto.api.plugin.storage.PluginStorage;
 
 /**
@@ -19,9 +18,9 @@ import top.focess.veto.api.plugin.storage.PluginStorage;
 public record ServiceCallContext(
         @NonNull String callerId,
         @NonNull ServiceScope scope,
-        @Nullable String userId,
-        @Nullable String sessionId,
-        PluginStorage.@Nullable Scope storageScope) {
+        String userId,
+        String sessionId,
+        PluginStorage.Scope storageScope) {
     /** Checks that only facts valid for the declared scope are present. */
     public ServiceCallContext {
         Objects.requireNonNull(scope, "scope");

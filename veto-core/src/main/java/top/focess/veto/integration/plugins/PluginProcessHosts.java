@@ -12,7 +12,6 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.springframework.context.annotation.Bean;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.SessionAgentRegistry;
@@ -267,9 +266,7 @@ public final class PluginProcessHosts implements PluginProcessHostFactory {
         private volatile boolean stdinClosed;
         private volatile boolean timedOut;
 
-        @SuppressWarnings("NullableProblems") // WHY: scheduled in startDeadline(); no package
-        // @DefaultQualifier
-        private @Nullable ScheduledFuture<?> deadline;
+        private ScheduledFuture<?> deadline;
 
         private RunningProcess(
                 @NonNull Bound owner,

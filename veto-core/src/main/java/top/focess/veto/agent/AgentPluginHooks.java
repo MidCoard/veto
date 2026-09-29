@@ -31,7 +31,7 @@ import top.focess.veto.plugin.runtime.PluginJson;
  * Dispatches workflow events to selected plugin listeners and protects inputs at the host boundary.
  */
 final class AgentPluginHooks {
-    private final @Nullable String owner;
+    private final String owner;
     private final @NonNull String sessionId;
     private final @NonNull String agentId;
     private final @NonNull Cancellation cancellation;
@@ -42,7 +42,7 @@ final class AgentPluginHooks {
     private final @NonNull BooleanSupplier cancelled;
 
     AgentPluginHooks(
-            @Nullable String owner,
+            String owner,
             @NonNull String sessionId,
             @NonNull String agentId,
             @NonNull Cancellation cancellation,

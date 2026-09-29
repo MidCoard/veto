@@ -3,7 +3,6 @@ package top.focess.veto.plugin.runtime;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.io.IOException;
 import java.lang.reflect.Constructor;
-import java.lang.reflect.InvocationTargetException;
 import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
@@ -14,14 +13,10 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Set;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import top.focess.veto.api.plugin.PluginContext;
-import top.focess.veto.api.plugin.PluginContributions;
-import top.focess.veto.api.plugin.PluginDeclinedException;
 import top.focess.veto.api.plugin.PluginIdentity;
 import top.focess.veto.api.plugin.VetoPlugin;
 import top.focess.veto.api.plugin.contract.JsonValue;
-import top.focess.veto.api.plugin.contract.PluginFailure;
 
 /** Loads one manifest-based package per immediate subdirectory of an installation root. */
 public final class InstalledPluginLoader {
@@ -29,9 +24,9 @@ public final class InstalledPluginLoader {
     public record DisabledPackage(
             @NonNull String id, @NonNull String name, @NonNull String version) {}
 
-    /** Active plugin instances and disabled package metadata from one directory scan. */
+    /** Loadable package descriptors and disabled package metadata from one directory scan. */
     public record Discovery(
-            @NonNull List<VetoPlugin> plugins, @NonNull List<DisabledPackage> disabled) {}
+            @NonNull List<InstalledPlugin> plugins, @NonNull List<DisabledPackage> disabled) {}
 
     private final @NonNull Path node;
     private final @NonNull Duration timeout;
@@ -51,12 +46,12 @@ public final class InstalledPluginLoader {
     }
 
     /** Returns packages in directory-name order; an absent installation root is empty. */
-    public @NonNull List<VetoPlugin> load(@NonNull Path installationRoot) throws IOException {
+    public @NonNull List<InstalledPlugin> load(@NonNull Path installationRoot) throws IOException {
         return discover(installationRoot, Set.of()).plugins();
     }
 
     /** Loads only the installed package with the requested manifest identity. */
-    public @NonNull VetoPlugin loadById(@NonNull Path installationRoot, @NonNull String id)
+    public @NonNull InstalledPlugin loadById(@NonNull Path installationRoot, @NonNull String id)
             throws IOException {
         if (Files.isSymbolicLink(installationRoot) || !Files.isDirectory(installationRoot))
             throw new IOException("Plugin installation root is unavailable");
@@ -85,7 +80,7 @@ public final class InstalledPluginLoader {
             directories = children.sorted(Comparator.comparing(Path::toString)).toList();
         }
         if (directories.size() > 64) throw new IOException("Too many installed plugin packages");
-        List<VetoPlugin> loaded = new ArrayList<>();
+        List<InstalledPlugin> loaded = new ArrayList<>();
         List<DisabledPackage> disabled = new ArrayList<>();
         try {
             for (Path directory : directories) {
@@ -105,10 +100,10 @@ public final class InstalledPluginLoader {
             }
             return new Discovery(List.copyOf(loaded), List.copyOf(disabled));
         } catch (IOException | RuntimeException failure) {
-            for (VetoPlugin plugin : loaded.reversed()) {
+            for (InstalledPlugin plugin : loaded.reversed()) {
                 try {
                     plugin.close();
-                } catch (PluginFailure ignored) {
+                } catch (RuntimeException ignored) {
                     // The original package failure remains the startup diagnosis.
                 }
             }
@@ -123,8 +118,8 @@ public final class InstalledPluginLoader {
         return ScriptPlugin.parse(ScriptPlugin.readFile(manifestFile));
     }
 
-    private @NonNull VetoPlugin loadPackage(@NonNull Path directory, @NonNull JsonNode manifest)
-            throws IOException {
+    private @NonNull InstalledPlugin loadPackage(
+            @NonNull Path directory, @NonNull JsonNode manifest) throws IOException {
         String type = ScriptPlugin.text(manifest, "type");
         return switch (type) {
             case "java" -> loadJava(directory, manifest);
@@ -133,15 +128,15 @@ public final class InstalledPluginLoader {
         };
     }
 
-    private @NonNull VetoPlugin loadScript(@NonNull Path directory, @NonNull JsonNode manifest)
+    private @NonNull InstalledPlugin loadScript(@NonNull Path directory, @NonNull JsonNode manifest)
             throws IOException {
         scriptMode.requireAvailable(trustedCode);
         String name = ScriptPlugin.text(manifest, "name");
         if (name.isBlank() || name.length() > 128) throw new IOException("Invalid plugin name");
-        return new ScriptPluginLoader(node, timeout).load(directory);
+        return new InstalledPlugin(new ScriptPluginLoader(node, timeout).load(directory));
     }
 
-    private @NonNull VetoPlugin loadJava(@NonNull Path directory, @NonNull JsonNode manifest)
+    private @NonNull InstalledPlugin loadJava(@NonNull Path directory, @NonNull JsonNode manifest)
             throws IOException {
         PluginSchema.fields(
                 manifest,
@@ -180,7 +175,7 @@ public final class InstalledPluginLoader {
                     implementation
                             .asSubclass(VetoPlugin.class)
                             .getConstructor(PluginContext.class, JsonValue.ObjectValue.class);
-            return new LoadedJavaPlugin(constructor, identity, name, loader);
+            return new InstalledPlugin(identity, name, constructor, loader);
         } catch (ReflectiveOperationException | LinkageError | IOException failure) {
             loader.close();
             throw new IOException("Java plugin loading failed: " + id, failure);
@@ -192,97 +187,5 @@ public final class InstalledPluginLoader {
                 || !file.toString().endsWith(".jar"))
             throw new IOException("Plugin library must be a regular JAR file");
         return file.toUri().toURL();
-    }
-
-    private static final class LoadedJavaPlugin extends VetoPlugin {
-        private final @NonNull Constructor<? extends VetoPlugin> constructor;
-        private final @NonNull PluginIdentity identity;
-        private final @NonNull String displayName;
-        private final @NonNull PluginClassLoader loader;
-        private @Nullable VetoPlugin delegate;
-
-        private LoadedJavaPlugin(
-                @NonNull Constructor<? extends VetoPlugin> constructor,
-                @NonNull PluginIdentity identity,
-                @NonNull String displayName,
-                @NonNull PluginClassLoader loader) {
-            this.constructor = constructor;
-            this.identity = identity;
-            this.displayName = displayName;
-            this.loader = loader;
-        }
-
-        public @NonNull PluginIdentity identity() {
-            return identity;
-        }
-
-        public @NonNull String displayName() {
-            return displayName;
-        }
-
-        public @Nullable String preferredToolName(@NonNull String localId) {
-            VetoPlugin current = delegate;
-            return current == null ? null : current.preferredToolName(localId);
-        }
-
-        public @NonNull Set<@NonNull String> historicalIds() {
-            VetoPlugin current = delegate;
-            return current == null ? Set.of() : current.historicalIds();
-        }
-
-        public @NonNull PluginContributions contributions() {
-            VetoPlugin current = delegate;
-            if (current == null) throw new IllegalStateException("Plugin has not initialized");
-            return current.contributions();
-        }
-
-        public @NonNull PluginContributions initialize(
-                @NonNull PluginContext context, JsonValue.@NonNull ObjectValue configuration)
-                throws PluginFailure {
-            if (delegate != null) throw new PluginFailure(PluginFailure.Code.INTERNAL_FAILURE);
-            try {
-                VetoPlugin created = constructor.newInstance(context, configuration);
-                delegate = created;
-                if (!identity.equals(created.identity()))
-                    throw new PluginFailure(PluginFailure.Code.INVALID_CONFIGURATION);
-                return created.initialize(context, configuration);
-            } catch (InvocationTargetException failure) {
-                Throwable cause = failure.getCause();
-                if (cause instanceof PluginDeclinedException declined) throw declined;
-                if (cause instanceof PluginFailure declared) throw declared;
-                throw new PluginFailure(PluginFailure.Code.INTERNAL_FAILURE);
-            } catch (ReflectiveOperationException failure) {
-                throw new PluginFailure(PluginFailure.Code.INTERNAL_FAILURE);
-            }
-        }
-
-        public void start() throws PluginFailure {
-            created().start();
-        }
-
-        public void stopping() throws PluginFailure {
-            VetoPlugin current = delegate;
-            if (current != null) current.stopping();
-        }
-
-        public void close() throws PluginFailure {
-            try {
-                VetoPlugin current = delegate;
-                delegate = null;
-                if (current != null) current.close();
-            } finally {
-                try {
-                    loader.close();
-                } catch (IOException failure) {
-                    throw new PluginFailure(PluginFailure.Code.INTERNAL_FAILURE);
-                }
-            }
-        }
-
-        private @NonNull VetoPlugin created() throws PluginFailure {
-            VetoPlugin current = delegate;
-            if (current == null) throw new PluginFailure(PluginFailure.Code.INTERNAL_FAILURE);
-            return current;
-        }
     }
 }

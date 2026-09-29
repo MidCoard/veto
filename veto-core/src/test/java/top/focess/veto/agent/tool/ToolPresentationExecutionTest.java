@@ -9,7 +9,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.context.ApplicationContext;
@@ -29,7 +28,7 @@ class ToolPresentationExecutionTest {
         when(app.getBeansOfType(AgentTool.class)).thenReturn(Map.of("conditional", tool));
         var engine = new ToolEngineImpl(new ObjectMapper(), List.of(), app);
         engine.init();
-        @Nullable ToolDefinition definition = engine.resolveDefinition("conditional");
+        ToolDefinition definition = engine.resolveDefinition("conditional");
         if (definition == null) throw new AssertionError("Conditional tool was not registered");
         var call = new ToolCall("conditional", Map.of(), "call");
         var user = UUID.randomUUID();

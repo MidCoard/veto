@@ -15,7 +15,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.api.credentials.CredentialWriter;
+import top.focess.veto.api.credentials.VaultAccess;
 import top.focess.veto.secret.detection.SecretDetector;
 import top.focess.veto.secret.detection.SecretMasker;
 
@@ -324,7 +324,7 @@ public final class SecretCandidateStore {
             @NonNull String reference,
             @NonNull String service,
             @NonNull String label,
-            @NonNull CredentialWriter writer) {
+            VaultAccess.@NonNull Scope vault) {
         expire();
         Entry entry = entries.get(reference);
         if (closedOwners.contains(scope.owner())
@@ -338,7 +338,11 @@ public final class SecretCandidateStore {
                 || label.length() > 80
                 || !label.equals(label.trim()))
             throw new IllegalArgumentException("Invalid credential import binding");
-        if (!writer.isUnlocked(scope.owner()))
+        if (!scope.owner().equals(vault.owner())
+                || !scope.session().equals(vault.sessionId())
+                || !scope.agent().equals(vault.agentId()))
+            throw new SecurityException("Vault scope does not match the candidate");
+        if (!vault.isUnlocked())
             throw new IllegalStateException("Credential owner vault is locked");
         ImportReceipt previous = entry.imported;
         if (previous != null) {
@@ -348,12 +352,18 @@ public final class SecretCandidateStore {
         }
         String value = entry.value;
         if (value == null) throw new IllegalStateException("Secret reference is unavailable");
+        if (label.contains(value)) throw new IllegalArgumentException("Invalid credential label");
         ImportReceipt receipt;
         try {
             receipt =
                     new ImportReceipt(
-                            writer.createImportedCredential(
-                                    scope.owner(), reference, service, label, value),
+                            vault.createSecureNote(
+                                    "veto.import." + reference,
+                                    Map.of(
+                                            "veto.import.id", reference,
+                                            "veto.import.service", service,
+                                            "veto.import.label", label),
+                                    value),
                             service,
                             label);
         } catch (RuntimeException failure) {

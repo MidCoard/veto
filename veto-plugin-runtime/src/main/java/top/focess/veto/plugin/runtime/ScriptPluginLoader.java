@@ -13,14 +13,13 @@ import java.util.HexFormat;
 import java.util.List;
 import java.util.Set;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 
 /**
  * Validates and snapshots a package without executing it; lifecycle activation belongs to the host.
  */
 public final class ScriptPluginLoader implements PluginLoader<ScriptPlugin> {
     private final @NonNull Path node;
-    private final @Nullable ScriptHost host;
+    private final ScriptHost host;
     private final @NonNull Duration timeout;
 
     /** Creates a loader that gives each loaded plugin its own script host. */
@@ -29,8 +28,7 @@ public final class ScriptPluginLoader implements PluginLoader<ScriptPlugin> {
     }
 
     /** Creates a loader whose loaded plugins share the given script host. */
-    public ScriptPluginLoader(
-            @NonNull Path node, @NonNull Duration timeout, @Nullable ScriptHost host) {
+    public ScriptPluginLoader(@NonNull Path node, @NonNull Duration timeout, ScriptHost host) {
         this.host = host;
         this.node = node;
         this.timeout = timeout;

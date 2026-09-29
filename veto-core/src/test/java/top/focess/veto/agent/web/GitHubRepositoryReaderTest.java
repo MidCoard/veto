@@ -44,11 +44,13 @@ class GitHubRepositoryReaderTest {
         try (var plugins = PluginTestSupport.manager()) {
             vault.signup("alice", "test-password");
             String reference =
-                    vault.createImportedCredential(
+                    vault.createSecureNoteIfAbsent(
                             "alice",
-                            "s_0123456789abcdef0123456789abcdef",
-                            "github",
-                            "Repository",
+                            "veto.import.s_0123456789abcdef0123456789abcdef",
+                            Map.of(
+                                    "veto.import.id", "s_0123456789abcdef0123456789abcdef",
+                                    "veto.import.service", "github",
+                                    "veto.import.label", "Repository"),
                             token);
             when(response.statusCode()).thenReturn(200);
             when(response.body())

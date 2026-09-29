@@ -10,7 +10,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.api.plugin.PluginContext;
 import top.focess.veto.api.plugin.PluginHost;
@@ -25,9 +24,7 @@ class MemoryRuntimeTest {
     private final @NonNull UUID session = UUID.randomUUID();
 
     private @NonNull MemoryRuntime runtime(
-            @NonNull String owner,
-            @NonNull String profile,
-            @Nullable MemoryBackendFactory backend) {
+            @NonNull String owner, @NonNull String profile, MemoryBackendFactory backend) {
         return runtime(owner, UUID.randomUUID(), profile, backend);
     }
 
@@ -35,7 +32,7 @@ class MemoryRuntimeTest {
             @NonNull String owner,
             @NonNull UUID userIdentity,
             @NonNull String profile,
-            @Nullable MemoryBackendFactory backend) {
+            MemoryBackendFactory backend) {
         when(host.invocation(anyString()))
                 .thenAnswer(
                         call ->

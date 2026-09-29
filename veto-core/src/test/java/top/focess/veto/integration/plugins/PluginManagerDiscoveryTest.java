@@ -7,8 +7,7 @@ import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.api.agent.tool.CapabilityTool;
-import top.focess.veto.api.credentials.CredentialImportAccess;
-import top.focess.veto.api.credentials.CredentialWriter;
+import top.focess.veto.api.credentials.VaultAccess;
 import top.focess.veto.api.event.BeforeTextCommitEvent;
 import top.focess.veto.api.plugin.PluginState;
 import top.focess.veto.api.plugin.contract.FrontendContribution;
@@ -60,37 +59,47 @@ class PluginManagerDiscoveryTest {
                     assertThrows(
                             IllegalStateException.class,
                             () -> invokeImport(plugins, reference, "github", "Repository"));
-            assertEquals("Import host is unavailable", failure.getMessage());
+            assertEquals("Vault access is unavailable", failure.getMessage());
         }
     }
 
     @Test
     void importToolUsesTheHostGrantedAccess() throws Exception {
-        CredentialWriter writer =
-                new CredentialWriter() {
+        VaultAccess.Scope writer =
+                new VaultAccess.Scope() {
                     @Override
-                    public boolean isUnlocked(@NonNull String owner) {
+                    public @NonNull String owner() {
+                        return "owner";
+                    }
+
+                    @Override
+                    public @NonNull String sessionId() {
+                        return "session";
+                    }
+
+                    @Override
+                    public @NonNull String agentId() {
+                        return "agent";
+                    }
+
+                    @Override
+                    public boolean isUnlocked() {
                         return true;
                     }
 
                     @Override
-                    public @NonNull String createImportedCredential(
-                            @NonNull String owner,
-                            @NonNull String reference,
-                            @NonNull String service,
-                            @NonNull String label,
+                    public @NonNull String createSecureNote(
+                            @NonNull String title,
+                            @NonNull Map<@NonNull String, @NonNull String> attributes,
                             @NonNull String value) {
                         assertEquals("synthetic-token", value);
                         return "cred_test";
                     }
                 };
-        CredentialImportAccess access =
-                (reference, service, label) ->
-                        new CredentialImportAccess.Authorization(
-                                "owner", "session", "agent", writer);
+        VaultAccess access = arguments -> writer;
         try (var plugins =
                 PluginTestSupport.manager(
-                        new PluginHostServices(Map.of(CredentialImportAccess.class, access)))) {
+                        new PluginHostServices(Map.of(VaultAccess.class, access)))) {
             var scope = new FrontendContribution.Scope("owner", "session", "agent");
             String reference = capture(plugins, scope);
             String receipt = invokeImport(plugins, reference, "github", "Repository");

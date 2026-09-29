@@ -12,10 +12,22 @@ import java.util.Set;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import top.focess.veto.api.event.AfterModelEvent;
+import top.focess.veto.api.event.AfterToolEvent;
+import top.focess.veto.api.event.AgentTerminatedEvent;
+import top.focess.veto.api.event.BeforeInputEvent;
+import top.focess.veto.api.event.BeforeModelEvent;
+import top.focess.veto.api.event.BeforeObservationEvent;
+import top.focess.veto.api.event.BeforeTextCommitEvent;
+import top.focess.veto.api.event.BeforeToolEvent;
 import top.focess.veto.api.event.Cancellable;
 import top.focess.veto.api.event.Event;
 import top.focess.veto.api.event.EventHandler;
 import top.focess.veto.api.event.Listener;
+import top.focess.veto.api.event.OwnerClosedEvent;
+import top.focess.veto.api.event.OwnerOpenEvent;
+import top.focess.veto.api.event.ServiceDirectoryChangedEvent;
+import top.focess.veto.api.event.SessionClosedEvent;
 import top.focess.veto.api.event.WorkflowEvent;
 import top.focess.veto.api.plugin.contract.PluginFailure;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
@@ -30,12 +42,27 @@ import top.focess.veto.util.Nullness;
  * once, at registration, into an {@link EventInvoker}. Dispatch is then a plain interface call
  * backed by a method handle, with no per-invocation reflection, run synchronously on the calling
  * (workflow) thread. Handlers fire in {@link top.focess.veto.api.event.EventPriority} order,
- * registration order as the stable tiebreak, walking the event's supertype chain from most specific
- * to least. A handler is skipped once the chain is {@link Event#isPrevent() prevented} or, for a
- * {@link Cancellable} event, cancelled, according to its annotation flags; only plugins selected
- * for the session are invoked, each under its own admission.
+ * registration order as the stable tiebreak. The host expands inherited handlers into each known
+ * concrete event's list at table construction, most specific type first. A handler is skipped once
+ * the event is {@link Event#isPrevent() prevented} or, for a {@link Cancellable} event, cancelled,
+ * according to its annotation flags; only plugins selected for the session are invoked, each under
+ * its own admission.
  */
 public final class EventListenerRegistry {
+    private static final @NonNull List<Class<? extends Event>> HOST_EVENTS =
+            List.of(
+                    BeforeInputEvent.class,
+                    BeforeModelEvent.class,
+                    BeforeToolEvent.class,
+                    BeforeObservationEvent.class,
+                    BeforeTextCommitEvent.class,
+                    AfterModelEvent.class,
+                    AfterToolEvent.class,
+                    OwnerOpenEvent.class,
+                    OwnerClosedEvent.class,
+                    SessionClosedEvent.class,
+                    AgentTerminatedEvent.class,
+                    ServiceDirectoryChangedEvent.class);
     private static final @NonNull Logger log =
             LoggerFactory.getLogger("top.focess.veto.event.EventListenerRegistry");
 
@@ -82,10 +109,19 @@ public final class EventListenerRegistry {
             }
         }
         Map<Class<?>, List<RegisteredHandler>> frozen = new HashMap<>();
-        for (var group : grouped.entrySet()) {
-            List<RegisteredHandler> sorted = new ArrayList<>(group.getValue());
-            sorted.sort(Comparator.naturalOrder());
-            frozen.put(group.getKey(), List.copyOf(sorted));
+        for (Class<? extends Event> concrete : HOST_EVENTS) {
+            List<RegisteredHandler> dispatch = new ArrayList<>();
+            for (Class<?> type = concrete;
+                    type != null && Event.class.isAssignableFrom(type);
+                    type = type.getSuperclass()) {
+                List<RegisteredHandler> group = grouped.get(type);
+                if (group != null) {
+                    List<RegisteredHandler> sorted = new ArrayList<>(group);
+                    sorted.sort(Comparator.naturalOrder());
+                    dispatch.addAll(sorted);
+                }
+            }
+            frozen.put(concrete, List.copyOf(dispatch));
         }
         return new EventListenerRegistry(Map.copyOf(frozen), executor);
     }
@@ -131,32 +167,28 @@ public final class EventListenerRegistry {
             @NonNull Event event,
             @NonNull Set<String> selected,
             @NonNull FailureHandler onFailure) {
-        for (Class<?> type = event.getClass();
-                type != null && Event.class.isAssignableFrom(type);
-                type = type.getSuperclass()) {
-            List<RegisteredHandler> handlers = byEventType.get(type);
-            if (handlers == null) continue;
-            for (RegisteredHandler handler : handlers) {
-                if (event.isPrevent() && handler.notCallIfPrevented()) continue;
-                if (event instanceof Cancellable cancellable
-                        && cancellable.isCancelled()
-                        && handler.notCallIfCancelled()) continue;
-                if (!selected.contains(handler.namespace())) continue;
-                if (event instanceof WorkflowEvent workflow) {
-                    try {
-                        workflow.cancellation().checkCancelled();
-                    } catch (PluginFailure cancelled) {
-                        onFailure.onFailure(handler.namespace(), cancelled);
-                        continue;
-                    }
-                }
+        List<RegisteredHandler> handlers = byEventType.get(event.getClass());
+        if (handlers == null) throw new IllegalArgumentException("Unregistered event type");
+        for (RegisteredHandler handler : handlers) {
+            if (event.isPrevent() && handler.notCallIfPrevented()) continue;
+            if (event instanceof Cancellable cancellable
+                    && cancellable.isCancelled()
+                    && handler.notCallIfCancelled()) continue;
+            if (!selected.contains(handler.namespace())) continue;
+            if (event instanceof WorkflowEvent workflow) {
                 try {
-                    executor.admit(
-                            handler.namespace(),
-                            () -> handler.invoker().invoke(handler.listener(), event));
-                } catch (PluginFailure | RuntimeException failure) {
-                    onFailure.onFailure(handler.namespace(), failure);
+                    workflow.cancellation().checkCancelled();
+                } catch (PluginFailure cancelled) {
+                    onFailure.onFailure(handler.namespace(), cancelled);
+                    continue;
                 }
+            }
+            try {
+                executor.admit(
+                        handler.namespace(),
+                        () -> handler.invoker().invoke(handler.listener(), event));
+            } catch (PluginFailure | RuntimeException failure) {
+                onFailure.onFailure(handler.namespace(), failure);
             }
         }
     }

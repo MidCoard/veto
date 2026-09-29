@@ -1,9 +1,13 @@
 package top.focess.veto.api.plugin;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.Supplier;
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.api.plugin.contribution.Contribution;
+import top.focess.veto.api.plugin.contribution.ContributionPoint;
 import top.focess.veto.api.plugin.contribution.PluginContributionsDirectory;
 import top.focess.veto.api.plugin.service.PluginServices;
 import top.focess.veto.api.plugin.storage.PluginStorage;
@@ -12,20 +16,76 @@ import top.focess.veto.api.plugin.storage.PluginStorage;
  * Host metadata, a live read-only lifecycle view, a failure signal, and host-granted services. Host
  * services are host-granted authority; a plugin never earns them by registering a category or
  * contribution, and receives only what the host chooses to expose.
- *
- * @param identity stable identity of the plugin receiving this context
- * @param failureReporter host callback for an asynchronous fatal plugin failure
- * @param stateReader live lifecycle-state reader owned by the host
- * @param hostServices immutable exact-class map of host-granted Java capabilities
  */
-public record PluginContext(
-        @NonNull PluginIdentity identity,
-        @NonNull Runnable failureReporter,
-        @NonNull Supplier<@NonNull PluginState> stateReader,
-        @NonNull Map<@NonNull Class<?>, @NonNull Object> hostServices) {
-    /** Defensively copies the host capability map. */
-    public PluginContext {
-        hostServices = Map.copyOf(hostServices);
+public final class PluginContext {
+    private final @NonNull PluginIdentity identity;
+    private final @NonNull Runnable failureReporter;
+    private final @NonNull Supplier<@NonNull PluginState> stateReader;
+    private final @NonNull Map<@NonNull Class<?>, @NonNull Object> hostServices;
+    private final @NonNull List<@NonNull Contribution<?>> registrations = new ArrayList<>();
+    private boolean registrationsSealed;
+
+    /**
+     * Creates a context with an independent construction-time registration window.
+     *
+     * @param identity installed plugin identity
+     * @param failureReporter callback for asynchronous fatal failures
+     * @param stateReader current lifecycle state supplier
+     * @param hostServices exact-class host grants
+     */
+    public PluginContext(
+            @NonNull PluginIdentity identity,
+            @NonNull Runnable failureReporter,
+            @NonNull Supplier<@NonNull PluginState> stateReader,
+            @NonNull Map<@NonNull Class<?>, @NonNull Object> hostServices) {
+        this.identity = identity;
+        this.failureReporter = failureReporter;
+        this.stateReader = stateReader;
+        this.hostServices = Map.copyOf(hostServices);
+    }
+
+    /**
+     * Returns the stable identity granted to the constructing plugin.
+     *
+     * @return installed plugin identity
+     */
+    public @NonNull PluginIdentity identity() {
+        return identity;
+    }
+
+    /**
+     * Returns the exact-class host grants; registration never expands these grants.
+     *
+     * @return immutable host grants
+     */
+    public @NonNull Map<@NonNull Class<?>, @NonNull Object> hostServices() {
+        return hostServices;
+    }
+
+    /**
+     * Stages one complete aspect under a typed contribution point during plugin construction.
+     * Nothing becomes visible until the host validates and publishes the sealed batch.
+     *
+     * @param point the registration point and its aspect contract
+     * @param localId stable plugin-local identity for this aspect
+     * @param aspect the complete object to register
+     * @param <T> the point's aspect type
+     */
+    public synchronized <T> void register(
+            @NonNull ContributionPoint<T> point, @NonNull String localId, @NonNull T aspect) {
+        if (registrationsSealed) throw new IllegalStateException("Plugin registration is closed");
+        registrations.add(Contribution.of(point, localId, aspect));
+    }
+
+    /**
+     * Seals construction-time registrations for host validation and atomic publication.
+     *
+     * @return immutable staged registrations
+     */
+    public synchronized @NonNull PluginContributions sealRegistrations() {
+        if (registrationsSealed) throw new IllegalStateException("Plugin registration is closed");
+        registrationsSealed = true;
+        return new PluginContributions(List.copyOf(registrations));
     }
 
     /**

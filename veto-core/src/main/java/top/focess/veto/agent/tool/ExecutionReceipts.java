@@ -3,7 +3,6 @@ package top.focess.veto.agent.tool;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BooleanSupplier;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 
 /** Host-only, single-call receipts. They never enter history or cross an async context boundary. */
 public final class ExecutionReceipts {
@@ -32,7 +31,7 @@ public final class ExecutionReceipts {
      * Consumes the receipt published for the current context, returning its id only when the call
      * id matches and the receipt is still valid; otherwise {@code null}.
      */
-    public static @Nullable String consume(@NonNull String callId) {
+    public static String consume(@NonNull String callId) {
         var context = ToolCallContextHolder.get();
         if (context == null) return null;
         var receipt = PENDING.remove(context);
@@ -46,7 +45,7 @@ public final class ExecutionReceipts {
     /**
      * Drops any unconsumed receipt for the given context; a no-op when the context is {@code null}.
      */
-    public static void discard(@Nullable ToolCallContext context) {
+    public static void discard(ToolCallContext context) {
         if (context != null) PENDING.remove(context);
     }
 }

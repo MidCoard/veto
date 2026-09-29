@@ -2,28 +2,30 @@ package top.focess.veto.api.plugin;
 
 import java.util.Set;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.contract.PluginFailure;
 
 /**
  * Trusted installable plugin. Java package entries have a public constructor accepting {@link
- * PluginContext} and {@link JsonValue.ObjectValue}. The host reads {@link #contributions()} after
- * construction; start makes the instance ready. The host publishes only after successful start.
- * Close releases owned resources, and the host calls it after startup failure when an instance was
- * constructed. Host adapters sanitize unchecked failures so only {@link PluginFailure} codes are
- * public.
+ * PluginContext} and {@link JsonValue.ObjectValue}; that constructor registers each aspect through
+ * {@link PluginContext#register}. Start makes the instance ready, and the host publishes the
+ * validated registrations only after successful start. Close releases owned resources, including
+ * after startup failure when an instance was constructed. Host adapters sanitize unchecked failures
+ * so only {@link PluginFailure} codes are public.
  */
 public abstract class VetoPlugin implements AutoCloseable {
-    /** Creates the plugin before its contribution batch is read. */
+    /** Creates the plugin before its constructor registers aspects. */
     protected VetoPlugin() {}
 
     /**
-     * Returns this instance's complete contribution batch after construction.
+     * Older fixture-only contribution batch hook; installed Java plugins register through their
+     * constructor context instead.
      *
      * @return this instance's complete contribution batch after construction
      */
-    public abstract @NonNull PluginContributions contributions();
+    public @NonNull PluginContributions contributions() {
+        return new PluginContributions(java.util.List.of());
+    }
 
     /**
      * Returns the stable installed identity used for provenance, namespaces, and lifecycle
@@ -51,7 +53,7 @@ public abstract class VetoPlugin implements AutoCloseable {
      * @param localId local contribution ID without the plugin namespace
      * @return preferred public tool name, or null for the host fallback
      */
-    public @Nullable String preferredToolName(@NonNull String localId) {
+    public String preferredToolName(@NonNull String localId) {
         return null;
     }
 
@@ -69,9 +71,9 @@ public abstract class VetoPlugin implements AutoCloseable {
     }
 
     /**
-     * Host activation bridge. Constructor-bound Java plugins normally inherit this implementation,
-     * which returns {@link #contributions()}. Script-runtime adapters may override it to bind
-     * lifecycle callbacks. Named services are not discoverable until activation finishes.
+     * Older fixture-only activation bridge. Constructor-bound Java plugins register through their
+     * context; script adapters register during host binding. Named services are not discoverable
+     * until activation finishes.
      *
      * @param context host-granted services and lifecycle state for this instance
      * @param configuration immutable plugin configuration

@@ -7,7 +7,6 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import top.focess.veto.agent.tool.ToolCallContextHolder;
 import top.focess.veto.api.plugin.storage.PluginStorage;
 import top.focess.veto.plugin.runtime.PluginLifecycle;
@@ -64,7 +63,7 @@ public final class ConfigurationStorageFixture implements PluginStorageFactory {
         }
 
         public synchronized @NonNull Page<@NonNull Scope> scopes(
-                @NonNull Kind kind, @Nullable String cursor, int limit) {
+                @NonNull Kind kind, String cursor, int limit) {
             if (cursor != null) throw new IllegalArgumentException("Unknown cursor");
             return new Page<>(
                     kind == Kind.SESSION ? List.copyOf(scopes.values()) : List.of(), null);
@@ -73,10 +72,10 @@ public final class ConfigurationStorageFixture implements PluginStorageFactory {
         public synchronized @NonNull SessionScope currentSession() {
             var invocation = PluginInvocationScope.current();
             var call = ToolCallContextHolder.get();
-            @Nullable String owner =
+            String owner =
                     invocation == null ? (call == null ? null : call.owner()) : invocation.owner;
             var callSession = call == null ? null : call.sessionId();
-            @Nullable String session =
+            String session =
                     invocation == null
                             ? (callSession == null ? null : callSession.toString())
                             : invocation.session;
@@ -106,7 +105,7 @@ public final class ConfigurationStorageFixture implements PluginStorageFactory {
         }
 
         public synchronized PluginStorage.@NonNull Page<PluginStorage.@NonNull Entry> list(
-                @NonNull String prefix, @Nullable String cursor, int limit) {
+                @NonNull String prefix, String cursor, int limit) {
             if (cursor != null) throw new IllegalArgumentException("Unknown cursor");
             var found = rows.values().stream().filter(row -> row.key().startsWith(prefix)).toList();
             if (found.size() > limit)
@@ -115,9 +114,7 @@ public final class ConfigurationStorageFixture implements PluginStorageFactory {
         }
 
         public synchronized PluginStorage.@NonNull Entry put(
-                @NonNull String key,
-                @Nullable String revision,
-                PluginStorage.@NonNull Document document) {
+                @NonNull String key, String revision, PluginStorage.@NonNull Document document) {
             var old = rows.get(key);
             if (!Objects.equals(old == null ? null : old.revision(), revision))
                 throw new PluginStorage.Conflict();

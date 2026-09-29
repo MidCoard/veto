@@ -20,17 +20,7 @@ class LlmProvidersPluginTest {
                         () -> PluginState.NEW,
                         Map.of());
         try (var plugin = new LlmProvidersPlugin(context, configuration)) {
-            var contributions =
-                    plugin.initialize(
-                            new PluginContext(
-                                    plugin.identity(),
-                                    () -> {},
-                                    () -> {
-                                        throw new IllegalStateException(
-                                                "Plugin context is not bound to a lifecycle owner");
-                                    },
-                                    Map.of()),
-                            configuration);
+            var contributions = context.sealRegistrations();
             plugin.start();
             assertEquals(
                     Set.of("openai", "deepseek", "anthropic", "gemini"),

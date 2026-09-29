@@ -3,7 +3,6 @@ package top.focess.veto.agent.capability;
 import java.util.Set;
 import java.util.function.LongFunction;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import top.focess.veto.agent.tool.ExecutionReceipts;
 import top.focess.veto.agent.tool.ToolCallContext;
 import top.focess.veto.agent.tool.ToolCallContextHolder;
@@ -19,9 +18,9 @@ public final class HttpDestinationGrant implements ApprovedHttpDestination {
     private final @NonNull ToolCallContext parent;
     private final @NonNull Thread parentThread = Thread.currentThread();
     private volatile boolean closed;
-    private volatile IsolatedExecutions.@Nullable Scope child;
-    private volatile @Nullable String operation;
-    private volatile @Nullable HttpDocument cached;
+    private volatile IsolatedExecutions.Scope child;
+    private volatile String operation;
+    private volatile HttpDocument cached;
 
     HttpDestinationGrant(
             @NonNull LongFunction<@NonNull HttpDocument> fetch, @NonNull ToolCallContext parent) {

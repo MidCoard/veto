@@ -93,6 +93,24 @@ class PluginContractTest {
     }
 
     @Test
+    void contextStagesTypedRegistrationsOnlyDuringConstruction() {
+        var context =
+                new PluginContext(
+                        new PluginIdentity("top.focess.fixture", "1.0.0"),
+                        () -> {},
+                        () -> PluginState.NEW,
+                        Map.of());
+        var category = new ToolCategory("Text", "Text tools") {};
+        context.register(StandardContributionPoints.CATEGORIES, "text", category);
+        var batch = context.sealRegistrations();
+        assertEquals(List.of("text"), batch.entries().stream().map(Contribution::localId).toList());
+        assertTrue(category == batch.entries().getFirst().implementation());
+        assertThrows(
+                IllegalStateException.class,
+                () -> context.register(StandardContributionPoints.CATEGORIES, "later", category));
+    }
+
+    @Test
     void failuresExposeOnlyFixedCodesAndCancellationIsExplicit() {
         Cancellation cancelled = () -> true;
         var failure = assertThrows(PluginFailure.class, cancelled::checkCancelled);

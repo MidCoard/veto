@@ -28,20 +28,21 @@ class InstalledPluginLoaderTest {
                         Path.of(""), Duration.ofSeconds(5), false, ScriptExecutionMode.TRUSTED);
         var plugins = loader.load(root);
         assertEquals(1, plugins.size());
-        VetoPlugin plugin = plugins.getFirst();
+        InstalledPlugin installed = plugins.getFirst();
         PluginClassLoader pluginLoader;
         try {
-            assertEquals("sample.install", plugin.identity().id());
-            assertEquals("Installed Sample", plugin.displayName());
-            plugin.initialize(
-                    new PluginContext(plugin.identity(), () -> {}, () -> PluginState.NEW, Map.of()),
-                    new JsonValue.ObjectValue(Map.of()));
-            var delegate = plugin.getClass().getDeclaredField("delegate");
-            delegate.setAccessible(true);
-            var implementation = delegate.get(plugin);
-            if (implementation == null) throw new AssertionError("Missing plugin implementation");
-            assertNotSame(InstalledSamplePlugin.class, implementation.getClass());
-            ClassLoader candidate = implementation.getClass().getClassLoader();
+            assertEquals("sample.install", installed.identity().id());
+            assertEquals("Installed Sample", installed.displayName());
+            VetoPlugin plugin =
+                    installed.create(
+                            new PluginContext(
+                                    installed.identity(),
+                                    () -> {},
+                                    () -> PluginState.NEW,
+                                    Map.of()),
+                            new JsonValue.ObjectValue(Map.of()));
+            assertNotSame(InstalledSamplePlugin.class, plugin.getClass());
+            ClassLoader candidate = plugin.getClass().getClassLoader();
             if (!(candidate instanceof PluginClassLoader loaded))
                 throw new AssertionError("Missing plugin classloader");
             pluginLoader = loaded;
@@ -55,7 +56,7 @@ class InstalledPluginLoaderTest {
                                     false,
                                     pluginLoader));
         } finally {
-            plugin.close();
+            installed.close();
         }
         assertTrue(pluginLoader.isClosed());
     }

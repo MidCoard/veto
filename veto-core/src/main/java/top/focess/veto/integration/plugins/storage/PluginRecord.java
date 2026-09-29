@@ -10,7 +10,6 @@ import jakarta.persistence.UniqueConstraint;
 import org.hibernate.annotations.OnDelete;
 import org.hibernate.annotations.OnDeleteAction;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import top.focess.veto.model.SessionEntity;
 import top.focess.veto.vault.UserEntity;
 
@@ -48,12 +47,12 @@ public class PluginRecord {
     @ManyToOne
     @JoinColumn(name = "owner_username")
     @OnDelete(action = OnDeleteAction.CASCADE)
-    @Nullable UserEntity user;
+    UserEntity user;
 
     @ManyToOne
     @JoinColumn(name = "session_id")
     @OnDelete(action = OnDeleteAction.CASCADE)
-    @Nullable SessionEntity session;
+    SessionEntity session;
 
     /** JPA provider constructor. */
     protected PluginRecord() {}

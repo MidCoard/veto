@@ -2,7 +2,6 @@ package top.focess.veto.api.plugin.contract;
 
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import top.focess.veto.api.agent.control.SourceEvidence;
 import top.focess.veto.api.llm.VetoResponse;
 
@@ -33,8 +32,8 @@ public abstract class ModelResponsePolicy {
      */
     public record Result(
             @NonNull VetoResponse response,
-            SourceEvidence.@Nullable Receipt receipt,
-            @Nullable Correction correction) {}
+            SourceEvidence.Receipt receipt,
+            Correction correction) {}
 
     /** Mutable policy state scoped to one model exchange. */
     public interface Exchange {
@@ -53,7 +52,7 @@ public abstract class ModelResponsePolicy {
          * @param failures number of generic schema failures
          * @return retained result, or {@code null} when none should be used
          */
-        default @Nullable Result rejected(int failures) {
+        default Result rejected(int failures) {
             return null;
         }
     }

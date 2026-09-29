@@ -7,28 +7,21 @@ import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.llm.*;
 import top.focess.veto.api.plugin.*;
 import top.focess.veto.api.plugin.contract.*;
-import top.focess.veto.api.plugin.contribution.Contribution;
 
 /** Bundled provider transports, using only the public plugin API and vendor SDKs. */
 public final class LlmProvidersPlugin extends VetoPlugin {
     private final @NonNull LlmClientFactory clients;
-    private final @NonNull PluginContributions contributions;
 
     /** Constructs the provider contributions from the bound host services. */
     public LlmProvidersPlugin(
             @NonNull PluginContext context, JsonValue.@NonNull ObjectValue configuration) {
         clients = createFactory(context);
         new LlmClientRegistration(clients).registerBuilders();
-        contributions =
-                new PluginContributions(
-                        EnumSet.allOf(ProviderType.class).stream()
-                                .<Contribution<?>>map(
-                                        type ->
-                                                Contribution.of(
-                                                        StandardContributionPoints.LLM_PROVIDERS,
-                                                        type.name().toLowerCase(Locale.ROOT),
-                                                        new Provider(type, clients)))
-                                .toList());
+        for (ProviderType type : EnumSet.allOf(ProviderType.class))
+            context.register(
+                    StandardContributionPoints.LLM_PROVIDERS,
+                    type.name().toLowerCase(Locale.ROOT),
+                    new Provider(type, clients));
     }
 
     @Override
@@ -39,11 +32,6 @@ public final class LlmProvidersPlugin extends VetoPlugin {
     @Override
     public @NonNull String displayName() {
         return "LLM Providers";
-    }
-
-    @Override
-    public @NonNull PluginContributions contributions() {
-        return contributions;
     }
 
     private static @NonNull LlmClientFactory createFactory(@NonNull PluginContext context) {

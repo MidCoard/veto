@@ -10,8 +10,7 @@ import java.util.stream.Collectors;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.api.agent.tool.CapabilityTool;
-import top.focess.veto.api.credentials.CredentialImportAccess;
-import top.focess.veto.api.credentials.CredentialWriter;
+import top.focess.veto.api.credentials.VaultAccess;
 import top.focess.veto.api.event.BeforeTextCommitEvent;
 import top.focess.veto.api.event.Listener;
 import top.focess.veto.api.event.OwnerClosedEvent;
@@ -34,9 +33,8 @@ class SecretProtectionPluginTest {
             @NonNull Map<@NonNull Class<?>, @NonNull Object> services) {
         var identity = new PluginIdentity("top.focess.secret-protection", "1.0.100");
         var context = new PluginContext(identity, () -> {}, () -> PluginState.NEW, services);
-        return new SecretProtectionPlugin(context, new JsonValue.ObjectValue(Map.of()))
-                .contributions()
-                .entries();
+        new SecretProtectionPlugin(context, new JsonValue.ObjectValue(Map.of()));
+        return context.sealRegistrations().entries();
     }
 
     @Test
@@ -103,33 +101,43 @@ class SecretProtectionPluginTest {
         var failure =
                 assertThrows(
                         IllegalStateException.class, () -> invoke(tool, reference, "Repository"));
-        assertEquals("Import host is unavailable", failure.getMessage());
+        assertEquals("Vault access is unavailable", failure.getMessage());
     }
 
     @Test
-    void importToolUsesTheHostGrantedService() throws Exception {
-        CredentialWriter writer =
-                new CredentialWriter() {
+    void importToolUsesTheHostGrantedVault() throws Exception {
+        VaultAccess.Scope writer =
+                new VaultAccess.Scope() {
                     @Override
-                    public boolean isUnlocked(@NonNull String owner) {
+                    public @NonNull String owner() {
+                        return "owner";
+                    }
+
+                    @Override
+                    public @NonNull String sessionId() {
+                        return "session";
+                    }
+
+                    @Override
+                    public @NonNull String agentId() {
+                        return "agent";
+                    }
+
+                    @Override
+                    public boolean isUnlocked() {
                         return true;
                     }
 
                     @Override
-                    public @NonNull String createImportedCredential(
-                            @NonNull String owner,
-                            @NonNull String reference,
-                            @NonNull String service,
-                            @NonNull String label,
+                    public @NonNull String createSecureNote(
+                            @NonNull String title,
+                            @NonNull Map<@NonNull String, @NonNull String> attributes,
                             @NonNull String value) {
                         return "cred_test";
                     }
                 };
-        CredentialImportAccess access =
-                (reference, service, label) ->
-                        new CredentialImportAccess.Authorization(
-                                "owner", "session", "agent", writer);
-        var entries = initialize(Map.of(CredentialImportAccess.class, access));
+        VaultAccess access = arguments -> writer;
+        var entries = initialize(Map.of(VaultAccess.class, access));
         var lifecycle = contribution(entries, SecretProtectionPlugin.SecretLifecycle.class);
         String reference = reference(commit(lifecycle, SCOPE, "password=synthetic-token"));
         String receipt =

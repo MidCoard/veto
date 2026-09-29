@@ -10,7 +10,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiPredicate;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import top.focess.veto.api.plugin.PluginState;
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.contract.PluginFailure;
@@ -31,7 +30,7 @@ public final class PluginServiceRegistry {
     private record Entry(
             @NonNull PluginService service, @NonNull PluginLifecycle owner, long generation) {}
 
-    private record Outcome(@Nullable JsonValue value, @Nullable ServiceException failure) {}
+    private record Outcome(JsonValue value, ServiceException failure) {}
 
     private record CallbackEntry(@NonNull ServiceHandler handler, @NonNull PluginLifecycle owner) {}
 
@@ -116,7 +115,7 @@ public final class PluginServiceRegistry {
         return view(null);
     }
 
-    private @NonNull PluginServices view(@Nullable PluginLifecycle caller) {
+    private @NonNull PluginServices view(PluginLifecycle caller) {
         return new PluginServices() {
             // Owner handles are registered by bind() and closed by the host plugin lifecycle.
             @SuppressWarnings("resource")
@@ -287,7 +286,7 @@ public final class PluginServiceRegistry {
     // Owner handles are registered by bind() and closed by the host plugin lifecycle.
     @SuppressWarnings("resource")
     private static @NonNull JsonValue invokeService(
-            @Nullable PluginLifecycle caller,
+            PluginLifecycle caller,
             @NonNull Entry entry,
             @NonNull ServiceCallContext context,
             @NonNull JsonValue request)

@@ -2,7 +2,6 @@ package top.focess.veto.builtin.search;
 
 import java.util.List;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 
 /**
  * Filters for a search: optional domain allow/block lists and a result cap. A null list means "no
@@ -13,8 +12,8 @@ import org.jspecify.annotations.Nullable;
  * @param maxResults maximum returned hit count
  */
 public record SearchOptions(
-        @Nullable List<@NonNull String> allowedDomains,
-        @Nullable List<@NonNull String> blockedDomains,
+        List<@NonNull String> allowedDomains,
+        List<@NonNull String> blockedDomains,
         int maxResults) {
 
     /**

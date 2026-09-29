@@ -4,7 +4,6 @@ import jakarta.persistence.EntityManager;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -35,7 +34,7 @@ public class RetainedPluginData {
     public record Metadata(
             @NonNull String id,
             @NonNull String pluginId,
-            @Nullable String installedPluginId,
+            String installedPluginId,
             PluginStorage.@NonNull Kind kind,
             @NonNull String scopeId,
             @NonNull String key,
@@ -46,7 +45,7 @@ public class RetainedPluginData {
             @NonNull Interpretation interpretation) {}
 
     /** One bounded page ordered by durable record identity. */
-    public record Page(@NonNull List<@NonNull Metadata> entries, @Nullable String nextCursor) {
+    public record Page(@NonNull List<@NonNull Metadata> entries, String nextCursor) {
         public Page {
             entries = List.copyOf(entries);
         }
@@ -72,10 +71,7 @@ public class RetainedPluginData {
     /** Lists only metadata from one scope kind; application records require an administrator. */
     @Transactional(readOnly = true)
     public @NonNull Page list(
-            PluginStorage.@NonNull Kind kind,
-            @Nullable String pluginId,
-            @Nullable String after,
-            int limit) {
+            PluginStorage.@NonNull Kind kind, String pluginId, String after, int limit) {
         String owner = authorization.requireUser();
         if (kind == PluginStorage.Kind.APPLICATION) authorization.requireAdmin();
         if (limit < 1 || limit > 100)

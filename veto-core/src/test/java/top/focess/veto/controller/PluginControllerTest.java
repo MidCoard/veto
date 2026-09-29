@@ -44,7 +44,7 @@ class PluginControllerTest {
         when(lifecycle.identity()).thenReturn(identity);
         when(lifecycle.state()).thenReturn(PluginState.ACTIVE);
         when(lifecycle.implementation()).thenReturn(implementation);
-        when(implementation.displayName()).thenReturn("Example Tools");
+        when(lifecycle.displayName()).thenReturn("Example Tools");
         when(catalog.entries(StandardContributionPoints.TOOLS))
                 .thenReturn(List.of(portableEntry, nativeEntry));
         when(manager.toolName(portableEntry)).thenReturn("portable_alias");

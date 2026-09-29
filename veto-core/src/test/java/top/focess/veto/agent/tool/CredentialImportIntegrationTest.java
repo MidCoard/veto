@@ -18,7 +18,7 @@ import top.focess.veto.agent.intercept.*;
 import top.focess.veto.agent.screening.*;
 import top.focess.veto.agent.workspace.*;
 import top.focess.veto.api.agent.tool.CapabilityTool;
-import top.focess.veto.api.credentials.CredentialImportAccess;
+import top.focess.veto.api.credentials.VaultAccess;
 import top.focess.veto.api.event.BeforeTextCommitEvent;
 import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
@@ -53,8 +53,14 @@ class CredentialImportIntegrationTest {
         try (var plugins = PluginTestSupport.manager(hostServices(vault))) {
             var scope = new FrontendContribution.Scope("alice", session.toString(), "agent");
             String reference = reference(plugins, scope);
-            when(vault.createImportedCredential(
-                            "alice", reference, "github", "Repository", "synthetic-token"))
+            when(vault.createSecureNoteIfAbsent(
+                            "alice",
+                            "veto.import." + reference,
+                            Map.of(
+                                    "veto.import.id", reference,
+                                    "veto.import.service", "github",
+                                    "veto.import.label", "Repository"),
+                            "synthetic-token"))
                     .thenReturn("cred_test");
             var engine = engineWith(mapper, plugins);
             var definition = importTool(engine);
@@ -127,8 +133,14 @@ class CredentialImportIntegrationTest {
             assertEquals("created", mapper.readTree(result.content()).path("status").asText());
             assertTrue(engine.execute(call, definition).success());
             verify(vault, times(1))
-                    .createImportedCredential(
-                            "alice", reference, "github", "Repository", "synthetic-token");
+                    .createSecureNoteIfAbsent(
+                            "alice",
+                            "veto.import." + reference,
+                            Map.of(
+                                    "veto.import.id", reference,
+                                    "veto.import.service", "github",
+                                    "veto.import.label", "Repository"),
+                            "synthetic-token");
         }
     }
 
@@ -175,9 +187,9 @@ class CredentialImportIntegrationTest {
         var session = UUID.randomUUID();
         @NonNull KeysteadVault vault = mock();
         var services = hostServices(vault);
-        var service = services.services().get(CredentialImportAccess.class);
-        if (!(service instanceof CredentialImportAccess access))
-            throw new AssertionError("Import host service missing");
+        var service = services.services().get(VaultAccess.class);
+        if (!(service instanceof VaultAccess access))
+            throw new AssertionError("Vault host service missing");
         try (var plugins = PluginTestSupport.manager(services)) {
             var scope = new FrontendContribution.Scope("alice", session.toString(), "agent");
             String reference = reference(plugins, scope);
@@ -196,47 +208,24 @@ class CredentialImportIntegrationTest {
                                     "Repository"),
                             "call");
             assertThrows(
-                    SecurityException.class,
-                    () -> access.authorize(reference, "github", "Repository"));
+                    SecurityException.class, () -> open(access, reference, "github", "Repository"));
 
             installContext(call, definition, workspace, "alice", session, "agent");
-            var writer = access.authorize(reference, "github", "Repository").writer();
-            assertThrows(SecurityException.class, () -> writer.isUnlocked("bob"));
-            assertThrows(
-                    SecurityException.class,
-                    () ->
-                            writer.createImportedCredential(
-                                    "alice",
-                                    "other-reference",
-                                    "github",
-                                    "Repository",
-                                    "synthetic-token"));
-            assertThrows(
-                    SecurityException.class,
-                    () ->
-                            writer.createImportedCredential(
-                                    "alice",
-                                    reference,
-                                    "other-service",
-                                    "Repository",
-                                    "synthetic-token"));
-            assertThrows(
-                    SecurityException.class,
-                    () ->
-                            writer.createImportedCredential(
-                                    "alice", reference, "github", "Changed", "synthetic-token"));
+            var writer = open(access, reference, "github", "Repository");
+            assertEquals("alice", writer.owner());
+            assertEquals(session.toString(), writer.sessionId());
+            assertEquals("agent", writer.agentId());
             // Even identical approved arguments on a new invocation do not renew a retained writer.
             installContext(call, definition, workspace, "alice", session, "agent");
-            assertThrows(SecurityException.class, () -> writer.isUnlocked("alice"));
+            assertThrows(SecurityException.class, writer::isUnlocked);
+            assertThrows(
+                    SecurityException.class, () -> open(access, reference, "github", "Changed"));
             assertThrows(
                     SecurityException.class,
-                    () -> access.authorize(reference, "github", "Changed"));
+                    () -> open(access, reference, "other-service", "Repository"));
             assertThrows(
                     SecurityException.class,
-                    () -> access.authorize(reference, "other-service", "Repository"));
-            assertThrows(
-                    SecurityException.class,
-                    () -> access.authorize("other-reference", "github", "Repository"));
+                    () -> open(access, "other-reference", "github", "Repository"));
 
             for (var incompatibleCall :
                     List.of(
@@ -258,17 +247,15 @@ class CredentialImportIntegrationTest {
                 installContext(incompatibleCall, definition, workspace, "alice", session, "agent");
                 assertThrows(
                         SecurityException.class,
-                        () -> access.authorize(reference, "github", "Repository"));
+                        () -> open(access, reference, "github", "Repository"));
             }
 
             installContext(call, definition, workspace, null, session, "agent");
             assertThrows(
-                    SecurityException.class,
-                    () -> access.authorize(reference, "github", "Repository"));
+                    SecurityException.class, () -> open(access, reference, "github", "Repository"));
             installContext(call, definition, workspace, "alice", null, "agent");
             assertThrows(
-                    SecurityException.class,
-                    () -> access.authorize(reference, "github", "Repository"));
+                    SecurityException.class, () -> open(access, reference, "github", "Repository"));
             for (var other :
                     List.of(
                             new FrontendContribution.Scope("bob", session.toString(), "agent"),
@@ -291,6 +278,14 @@ class CredentialImportIntegrationTest {
                     "synthetic-token",
                     PluginTestSupport.reveal(plugins, scope, reference).orElseThrow());
         }
+    }
+
+    private static VaultAccess.@NonNull Scope open(
+            @NonNull VaultAccess access,
+            @NonNull String reference,
+            @NonNull String service,
+            @NonNull String label) {
+        return access.open(Map.of("secret_ref", reference, "service", service, "label", label));
     }
 
     @SuppressWarnings({"unchecked", "rawtypes"}) // The contributed handler is a CapabilityTool<?>.

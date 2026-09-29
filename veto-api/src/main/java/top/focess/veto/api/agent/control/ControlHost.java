@@ -4,7 +4,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 import java.util.List;
 import java.util.Set;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import top.focess.veto.api.agent.tool.ControlSubmission;
 import top.focess.veto.api.agent.workflow.ModelFlow;
 import top.focess.veto.api.llm.ToolDefinition;
@@ -23,9 +22,9 @@ public interface ControlHost {
      */
     record Tool(
             @NonNull ToolDefinition definition,
-            ControlSubmission.@Nullable Kind control,
-            @Nullable String pluginId,
-            @Nullable String localId) {}
+            ControlSubmission.Kind control,
+            String pluginId,
+            String localId) {}
 
     /**
      * Lists the tools available to the current control call.
@@ -64,5 +63,5 @@ public interface ControlHost {
      * @param message final response text
      * @param receipt host-issued evidence receipt, or {@code null}
      */
-    void finish(@NonNull String message, SourceEvidence.@Nullable Receipt receipt);
+    void finish(@NonNull String message, SourceEvidence.Receipt receipt);
 }

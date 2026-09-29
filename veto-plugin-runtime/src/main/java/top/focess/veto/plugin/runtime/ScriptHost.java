@@ -14,8 +14,8 @@ public final class ScriptHost implements AutoCloseable {
     private final long timeoutMillis;
     private final @NonNull ReentrantLock lock = new ReentrantLock();
     private final @NonNull Map<String, Runnable> registrations = new ConcurrentHashMap<>();
-    private volatile @Nullable Process process;
-    private @Nullable Path hostFile;
+    private volatile Process process;
+    private Path hostFile;
     private long sequence;
 
     /** Creates a host that will lazily launch the given Node binary with a per-call timeout. */

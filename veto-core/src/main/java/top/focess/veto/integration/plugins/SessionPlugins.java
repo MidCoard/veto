@@ -6,7 +6,6 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
 import top.focess.veto.agent.TurnType;
 import top.focess.veto.agent.tool.ToolDefinition;
@@ -53,10 +52,7 @@ public class SessionPlugins {
      * Resolves the requested ids (null selects every installed plugin) to pinned bindings;
      * duplicates and unknown or inactive plugins are rejected.
      */
-    @SuppressWarnings(
-            "NullableProblems") // WHY: no package @DefaultQualifier, so NullnessChecker needs this
-    // @Nullable for callers passing null
-    public @NonNull List<PluginBinding> selection(@Nullable List<String> requested) {
+    public @NonNull List<PluginBinding> selection(List<String> requested) {
         var available = manager.plugins();
         var ids =
                 requested == null
@@ -162,14 +158,11 @@ public class SessionPlugins {
      * Collects the single agent-configuration intent of the selected contributors; null when no
      * contributor applies, and conflicting intents fail.
      */
-    @SuppressWarnings(
-            "NullableProblems") // WHY: no package @DefaultQualifier, so NullnessChecker needs this
-    // @Nullable for callers passing null
-    public AgentConfiguration.@Nullable Intent configure(
+    public AgentConfiguration.Intent configure(
             @NonNull String owner,
             @NonNull String session,
             @NonNull String agent,
-            @Nullable String configurationOwner,
+            String configurationOwner,
             @NonNull AgentProfile base,
             @NonNull List<AgentConfiguration.Tool> tools,
             @NonNull String activeTask) {
@@ -247,7 +240,7 @@ public class SessionPlugins {
                                 }
                             }
 
-                            public ModelResponsePolicy.@Nullable Result rejected(int count) {
+                            public ModelResponsePolicy.Result rejected(int count) {
                                 try {
                                     return plugin.execute(
                                                     () ->

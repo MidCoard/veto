@@ -7,7 +7,7 @@ import org.jspecify.annotations.Nullable;
 public final class PluginInvocationScope implements AutoCloseable {
     private static final @NonNull ThreadLocal<@Nullable PluginInvocationScope> CURRENT =
             new ThreadLocal<>();
-    private final @Nullable PluginInvocationScope previous;
+    private final PluginInvocationScope previous;
     final @NonNull String owner;
     final @NonNull String session;
 
@@ -19,7 +19,7 @@ public final class PluginInvocationScope implements AutoCloseable {
         CURRENT.set(this);
     }
 
-    static @Nullable PluginInvocationScope current() {
+    static PluginInvocationScope current() {
         return CURRENT.get();
     }
 

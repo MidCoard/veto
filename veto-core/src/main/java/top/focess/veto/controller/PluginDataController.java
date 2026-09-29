@@ -1,7 +1,6 @@
 package top.focess.veto.controller;
 
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.springframework.http.CacheControl;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -27,8 +26,8 @@ public final class PluginDataController {
     @GetMapping("/records")
     public @NonNull ResponseEntity<RetainedPluginData.Page> list(
             @RequestParam PluginStorage.@NonNull Kind kind,
-            @RequestParam(required = false) @Nullable String pluginId,
-            @RequestParam(required = false) @Nullable String after,
+            @RequestParam(required = false) String pluginId,
+            @RequestParam(required = false) String after,
             @RequestParam(defaultValue = "50") int limit) {
         return ResponseEntity.ok()
                 .cacheControl(CacheControl.noStore())

@@ -9,7 +9,6 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.api.agent.control.ControlHost;
 import top.focess.veto.api.agent.tool.ToolDocs;
@@ -96,8 +95,8 @@ class PlanningPluginTest {
                     @Override
                     public void message(
                             @NonNull String text,
-                            ModelFlow.@Nullable Source source,
-                            @Nullable String modelCallId,
+                            ModelFlow.Source source,
+                            String modelCallId,
                             boolean forwarded) {
                         delivered.set(text);
                         assertEquals("generation-call", modelCallId);

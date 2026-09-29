@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
@@ -14,7 +15,7 @@ import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import top.focess.veto.api.credentials.CredentialWriter;
+import top.focess.veto.api.credentials.VaultAccess;
 import top.focess.veto.secret.references.SecretCandidateStore;
 
 /**
@@ -29,7 +30,8 @@ class KeysteadVaultTest {
         try {
             vault.signup("alice", "password");
             var ref =
-                    vault.createImportedCredential(
+                    importedNote(
+                            vault,
                             "alice",
                             "s_0123456789abcdef0123456789abcdef",
                             "custom-service.v2",
@@ -40,15 +42,19 @@ class KeysteadVaultTest {
                     ref,
                     "custom-service.v2",
                     value -> assertEquals("synthetic-token", new String(value)));
+            String invalidServiceRef =
+                    importedNote(
+                            vault,
+                            "alice",
+                            "s_1123456789abcdef0123456789abcdef",
+                            "https://bad",
+                            "Label",
+                            "token");
             assertThrows(
                     IllegalArgumentException.class,
                     () ->
-                            vault.createImportedCredential(
-                                    "alice",
-                                    "s_1123456789abcdef0123456789abcdef",
-                                    "https://bad",
-                                    "Label",
-                                    "token"));
+                            vault.withImportedCredential(
+                                    "alice", invalidServiceRef, "https://bad", value -> fail()));
             assertThrows(
                     IllegalArgumentException.class,
                     () ->
@@ -65,7 +71,8 @@ class KeysteadVaultTest {
         try {
             vault.signup("alice", "p@ssw0rd!");
             String reference =
-                    vault.createImportedCredential(
+                    importedNote(
+                            vault,
                             "alice",
                             "s_0123456789abcdef0123456789abcdef",
                             "github",
@@ -162,35 +169,50 @@ class KeysteadVaultTest {
             UserContext.set("alice");
             vault.saveNote("Repository", "existing-value");
             String reference =
-                    vault.createImportedCredential(
-                            "alice", importId, "github", "Repository", "synthetic-token");
+                    importedNote(
+                            vault, "alice", importId, "github", "Repository", "synthetic-token");
             assertEquals(
                     reference,
-                    vault.createImportedCredential(
-                            "alice", importId, "github", "Repository", "synthetic-token"));
+                    importedNote(
+                            vault, "alice", importId, "github", "Repository", "synthetic-token"));
             assertEquals(Optional.of("existing-value"), vault.readNoteBody("Repository"));
             assertEquals(2, vault.listTitles().size());
             assertThrows(
                     IllegalArgumentException.class,
                     () ->
-                            vault.createImportedCredential(
-                                    "alice", importId, "github", "Changed", "synthetic-token"));
+                            importedNote(
+                                    vault,
+                                    "alice",
+                                    importId,
+                                    "github",
+                                    "Changed",
+                                    "synthetic-token"));
             assertThrows(
                     IllegalArgumentException.class,
                     () ->
-                            vault.createImportedCredential(
-                                    "alice", importId, "github", "Repository", "different-token"));
+                            importedNote(
+                                    vault,
+                                    "alice",
+                                    importId,
+                                    "github",
+                                    "Repository",
+                                    "different-token"));
             assertThrows(
                     KeysteadVault.VaultLockedException.class,
                     () ->
-                            vault.createImportedCredential(
-                                    "bob", importId, "github", "Repository", "synthetic-token"));
+                            importedNote(
+                                    vault,
+                                    "bob",
+                                    importId,
+                                    "github",
+                                    "Repository",
+                                    "synthetic-token"));
             vault.logout("alice");
             vault.login("alice", "p@ssw0rd!");
             assertEquals(
                     reference,
-                    vault.createImportedCredential(
-                            "alice", importId, "github", "Repository", "synthetic-token"));
+                    importedNote(
+                            vault, "alice", importId, "github", "Repository", "synthetic-token"));
             assertEquals(2, vault.listTitles().size());
         } finally {
             vault.shutdown();
@@ -221,21 +243,51 @@ class KeysteadVaultTest {
         return new KeysteadVault(config);
     }
 
-    private static @NonNull CredentialWriter credentialWriter(@NonNull KeysteadVault vault) {
-        return new CredentialWriter() {
+    private static @NonNull String importedNote(
+            @NonNull KeysteadVault vault,
+            @NonNull String owner,
+            @NonNull String reference,
+            @NonNull String service,
+            @NonNull String label,
+            @NonNull String value) {
+        return vault.createSecureNoteIfAbsent(
+                owner,
+                "veto.import." + reference,
+                Map.of(
+                        "veto.import.id", reference,
+                        "veto.import.service", service,
+                        "veto.import.label", label),
+                value);
+    }
+
+    private static VaultAccess.@NonNull Scope credentialWriter(@NonNull KeysteadVault vault) {
+        return new VaultAccess.Scope() {
             @Override
-            public boolean isUnlocked(@NonNull String owner) {
-                return vault.isUnlocked(owner);
+            public @NonNull String owner() {
+                return "alice";
             }
 
             @Override
-            public @NonNull String createImportedCredential(
-                    @NonNull String owner,
-                    @NonNull String reference,
-                    @NonNull String service,
-                    @NonNull String label,
+            public @NonNull String sessionId() {
+                return "session";
+            }
+
+            @Override
+            public @NonNull String agentId() {
+                return "agent";
+            }
+
+            @Override
+            public boolean isUnlocked() {
+                return vault.isUnlocked("alice");
+            }
+
+            @Override
+            public @NonNull String createSecureNote(
+                    @NonNull String title,
+                    @NonNull Map<@NonNull String, @NonNull String> attributes,
                     @NonNull String value) {
-                return vault.createImportedCredential(owner, reference, service, label, value);
+                return vault.createSecureNoteIfAbsent("alice", title, attributes, value);
             }
         };
     }
@@ -253,7 +305,8 @@ class KeysteadVaultTest {
                         workers.submit(
                                 () -> {
                                     start.await();
-                                    return vault.createImportedCredential(
+                                    return importedNote(
+                                            vault,
                                             "alice",
                                             "s_0123456789abcdef0123456789abcdef",
                                             "github",

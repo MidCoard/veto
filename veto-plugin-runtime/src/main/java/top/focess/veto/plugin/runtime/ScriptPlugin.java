@@ -15,6 +15,7 @@ import java.util.Set;
 import org.checkerframework.checker.initialization.qual.UnderInitialization;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.agent.tool.RemoteTool;
+import top.focess.veto.api.agent.tool.Tool;
 import top.focess.veto.api.plugin.PluginContext;
 import top.focess.veto.api.plugin.PluginContributions;
 import top.focess.veto.api.plugin.PluginIdentity;
@@ -76,17 +77,14 @@ public final class ScriptPlugin extends VetoPlugin {
         this.contributions = buildContributions();
     }
 
-    @Override
-    public @NonNull PluginContributions initialize(
-            @NonNull PluginContext context, JsonValue.@NonNull ObjectValue configuration) {
+    void bind(@NonNull PluginContext context, JsonValue.@NonNull ObjectValue configuration) {
         failureReporter = context::reportFailure;
         PluginSchema.require(configuration.values().isEmpty());
-        return contributions;
-    }
-
-    @Override
-    public @NonNull PluginContributions contributions() {
-        return contributions;
+        for (var contribution : contributions.entries()) {
+            if (!(contribution.implementation() instanceof Tool tool))
+                throw new IllegalStateException("Script contribution is not a tool");
+            context.register(StandardContributionPoints.TOOLS, contribution.localId(), tool);
+        }
     }
 
     @SuppressWarnings(

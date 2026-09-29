@@ -6,7 +6,6 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
@@ -31,7 +30,7 @@ import top.focess.veto.vault.UserContext;
 /** Generic effects; feature interpretation and scheduling belong to their plugins. */
 @Configuration(proxyBeanMethods = false)
 public class PluginHostConfiguration {
-    private @Nullable DeltaBroker broker;
+    private DeltaBroker broker;
 
     /** Attaches the delta broker used to publish plugin events to sessions. */
     @Autowired
@@ -39,7 +38,7 @@ public class PluginHostConfiguration {
         this.broker = broker;
     }
 
-    private final @NonNull CompletableFuture<@Nullable Void> ready = new CompletableFuture<>();
+    private final @NonNull CompletableFuture<Void> ready = new CompletableFuture<>();
 
     /** Releases callbacks registered through {@code PluginHost.whenReady} once startup finished. */
     @EventListener(ApplicationReadyEvent.class)

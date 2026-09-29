@@ -8,7 +8,6 @@ import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -50,7 +49,7 @@ class ApplyObservationMiddlewareTest {
         };
     }
 
-    private @Nullable ExecutorService executor;
+    private ExecutorService executor;
 
     @AfterEach
     void stopExecutor() {

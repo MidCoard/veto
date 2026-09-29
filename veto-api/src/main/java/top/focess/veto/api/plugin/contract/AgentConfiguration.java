@@ -2,7 +2,6 @@ package top.focess.veto.api.plugin.contract;
 
 import java.util.List;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.plugin.agent.AgentHost;
 import top.focess.veto.api.plugin.agent.AgentProfile;
@@ -24,8 +23,8 @@ public abstract class AgentConfiguration {
     public record Tool(
             @NonNull String name,
             @NonNull ToolCapability capability,
-            @Nullable String pluginId,
-            @Nullable String localId) {
+            String pluginId,
+            String localId) {
         /**
          * Creates metadata for a host tool without plugin provenance.
          *
@@ -78,7 +77,7 @@ public abstract class AgentConfiguration {
      * @param profile requested profile, still subject to host authorization
      * @param transition optional transition metadata
      */
-    public record Intent(@NonNull AgentProfile profile, @Nullable Transition transition) {}
+    public record Intent(@NonNull AgentProfile profile, Transition transition) {}
 
     /**
      * Evaluates the effective profile for the current task.
@@ -86,5 +85,5 @@ public abstract class AgentConfiguration {
      * @param context immutable host-authorized configuration inputs
      * @return requested profile intent, or {@code null} to retain the host base configuration
      */
-    public abstract @Nullable Intent configure(@NonNull Context context);
+    public abstract Intent configure(@NonNull Context context);
 }

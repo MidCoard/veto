@@ -6,7 +6,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.service.ServiceException;
 
@@ -73,14 +72,14 @@ public final class SearchProtocol {
         }
     }
 
-    private static @NonNull JsonValue strings(@Nullable List<@NonNull String> values) {
+    private static @NonNull JsonValue strings(List<@NonNull String> values) {
         if (values == null) return JsonValue.NullValue.INSTANCE;
         List<@NonNull JsonValue> items = new ArrayList<>();
         for (var value : values) items.add(new JsonValue.StringValue(value));
         return new JsonValue.ArrayValue(items);
     }
 
-    private static @Nullable List<@NonNull String> strings(@Nullable JsonValue value) {
+    private static List<@NonNull String> strings(JsonValue value) {
         if (value == null || value instanceof JsonValue.NullValue) return null;
         if (!(value instanceof JsonValue.ArrayValue array))
             throw new IllegalArgumentException("Expected string array");
@@ -89,7 +88,7 @@ public final class SearchProtocol {
         return List.copyOf(result);
     }
 
-    private static @NonNull String text(@Nullable JsonValue value) {
+    private static @NonNull String text(JsonValue value) {
         if (value instanceof JsonValue.StringValue) return ((JsonValue.StringValue) value).value();
         throw new IllegalArgumentException("Expected string");
     }

@@ -15,7 +15,6 @@ import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -179,7 +178,7 @@ public class DuckDuckGoSearchProvider implements SearchProvider, AutoCloseable {
         return s.startsWith("www.") ? s.substring("www.".length()) : s;
     }
 
-    private static @Nullable String hostOf(@NonNull String url) {
+    private static String hostOf(@NonNull String url) {
         try {
             return URI.create(url).getHost();
         } catch (IllegalArgumentException e) {

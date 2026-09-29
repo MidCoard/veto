@@ -6,14 +6,12 @@ import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.agent.tool.CapabilityTool;
 import top.focess.veto.api.agent.tool.Tool;
 import top.focess.veto.api.plugin.PluginContext;
-import top.focess.veto.api.plugin.PluginContributions;
 import top.focess.veto.api.plugin.PluginHost;
 import top.focess.veto.api.plugin.PluginIdentity;
 import top.focess.veto.api.plugin.VetoPlugin;
 import top.focess.veto.api.plugin.agent.AgentHost;
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
-import top.focess.veto.api.plugin.contribution.Contribution;
 import top.focess.veto.builtin.group.*;
 import top.focess.veto.builtin.memory.MemoryRuntime;
 import top.focess.veto.builtin.memory.MemoryTools;
@@ -51,7 +49,6 @@ public final class BuiltinPlugin extends VetoPlugin {
     private final @NonNull MemoryRuntime memory;
     private final @NonNull SkillRuntime skills;
     private final @NonNull BraveSearchProvider brave;
-    private final @NonNull PluginContributions contributions;
 
     /** Constructs all builtin-owned features using the host-bound context. */
     public BuiltinPlugin(
@@ -132,78 +129,45 @@ public final class BuiltinPlugin extends VetoPlugin {
                             new ReplaceFileContentTool(),
                             new MovePathTool(),
                             new DeletePathTool());
-            List<Contribution<?>> entries = new ArrayList<>();
-            entries.add(
-                    Contribution.of(
-                            StandardContributionPoints.DATA_LIFECYCLE, "memory-data", memory));
+            context.register(StandardContributionPoints.DATA_LIFECYCLE, "memory-data", memory);
             for (var tool : tools) {
                 if (tool instanceof CapabilityTool<?> local)
-                    entries.add(
-                            Contribution.of(
-                                    StandardContributionPoints.TOOLS, local.getName(), tool));
+                    context.register(StandardContributionPoints.TOOLS, local.getName(), tool);
             }
-            entries.add(
-                    Contribution.of(
-                            StandardContributionPoints.MODEL_RESPONSE,
-                            "responses",
-                            new CitationResponsePolicy()));
-            entries.add(
-                    Contribution.of(
-                            StandardContributionPoints.SERVICES,
-                            "search",
-                            new SearchHub(context.services(), List.of(duckduckgo, brave))));
-            entries.add(
-                    Contribution.of(
-                            StandardContributionPoints.AGENT_INBOX,
-                            "monitor-work",
-                            monitors.work()));
-            entries.add(
-                    Contribution.of(
-                            StandardContributionPoints.LISTENERS,
-                            "monitor-lifecycle",
-                            monitors.listener()));
-            entries.add(
-                    Contribution.of(
-                            StandardContributionPoints.FRONTEND,
-                            "monitors",
-                            new MonitorFrontend(monitors.service())));
-            entries.add(
-                    Contribution.of(
-                            StandardContributionPoints.AGENT_CONFIGURATION,
-                            "group-configuration",
-                            groups));
-            entries.add(
-                    Contribution.of(
-                            StandardContributionPoints.LISTENERS,
-                            "group-lifecycle",
-                            groups.listener()));
-            entries.add(
-                    Contribution.of(
-                            StandardContributionPoints.FRONTEND,
-                            "groups",
-                            new GroupFrontend(groups)));
-            entries.add(
-                    Contribution.of(
-                            StandardContributionPoints.LISTENERS,
-                            "questions-lifecycle",
-                            questions));
-            entries.add(
-                    Contribution.of(
-                            StandardContributionPoints.FRONTEND,
-                            "questions",
-                            new QuestionsFrontend(questions)));
-            entries.add(
-                    Contribution.of(
-                            StandardContributionPoints.FRONTEND, "tools", new ToolsFrontend()));
-            entries.add(
-                    Contribution.of(
-                            StandardContributionPoints.LISTENERS, "tasks-lifecycle", processes));
-            entries.add(
-                    Contribution.of(
-                            StandardContributionPoints.FRONTEND,
-                            "tasks",
-                            new TasksFrontend(processes.tasks())));
-            contributions = new PluginContributions(entries);
+            context.register(
+                    StandardContributionPoints.MODEL_RESPONSE,
+                    "responses",
+                    new CitationResponsePolicy());
+            context.register(
+                    StandardContributionPoints.SERVICES,
+                    "search",
+                    new SearchHub(context.services(), List.of(duckduckgo, brave)));
+            context.register(
+                    StandardContributionPoints.AGENT_INBOX, "monitor-work", monitors.work());
+            context.register(
+                    StandardContributionPoints.LISTENERS, "monitor-lifecycle", monitors.listener());
+            context.register(
+                    StandardContributionPoints.FRONTEND,
+                    "monitors",
+                    new MonitorFrontend(monitors.service()));
+            context.register(
+                    StandardContributionPoints.AGENT_CONFIGURATION, "group-configuration", groups);
+            context.register(
+                    StandardContributionPoints.LISTENERS, "group-lifecycle", groups.listener());
+            context.register(
+                    StandardContributionPoints.FRONTEND, "groups", new GroupFrontend(groups));
+            context.register(
+                    StandardContributionPoints.LISTENERS, "questions-lifecycle", questions);
+            context.register(
+                    StandardContributionPoints.FRONTEND,
+                    "questions",
+                    new QuestionsFrontend(questions));
+            context.register(StandardContributionPoints.FRONTEND, "tools", new ToolsFrontend());
+            context.register(StandardContributionPoints.LISTENERS, "tasks-lifecycle", processes);
+            context.register(
+                    StandardContributionPoints.FRONTEND,
+                    "tasks",
+                    new TasksFrontend(processes.tasks()));
         } catch (RuntimeException failure) {
             try {
                 closeAll(cleanup.reversed());
@@ -227,11 +191,6 @@ public final class BuiltinPlugin extends VetoPlugin {
     @Override
     public @NonNull String preferredToolName(@NonNull String localId) {
         return localId;
-    }
-
-    @Override
-    public @NonNull PluginContributions contributions() {
-        return contributions;
     }
 
     @Override

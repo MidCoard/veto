@@ -16,7 +16,6 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import top.focess.veto.api.agent.tool.ToolPreparation;
@@ -137,7 +136,7 @@ class ProcessToolsTest {
         final PluginHost.@NonNull Invocation invocation =
                 new PluginHost.Invocation(
                         "owner", UUID.randomUUID().toString(), "agent", "original-request", "call");
-        @Nullable ToolPreparation preparation;
+        ToolPreparation preparation;
 
         public @NonNull Invocation invocation(@NonNull String tool) {
             return invocation;

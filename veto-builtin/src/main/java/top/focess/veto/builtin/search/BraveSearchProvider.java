@@ -12,7 +12,6 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 
 /**
  * Brave Search API provider — higher-quality results than the keyless default, but requires an API
@@ -26,10 +25,10 @@ public class BraveSearchProvider implements SearchProvider, AutoCloseable {
     private final @NonNull HttpClient httpClient;
     private final @NonNull String endpoint;
     private final @NonNull ObjectMapper mapper = new ObjectMapper();
-    private final @Nullable String apiKey;
+    private final String apiKey;
 
     /** Creates the provider authenticating with the given Brave API key. */
-    public BraveSearchProvider(@Nullable String apiKey) {
+    public BraveSearchProvider(String apiKey) {
         this(
                 apiKey,
                 HttpClient.newBuilder()
@@ -39,8 +38,7 @@ public class BraveSearchProvider implements SearchProvider, AutoCloseable {
                 ENDPOINT);
     }
 
-    BraveSearchProvider(
-            @Nullable String apiKey, @NonNull HttpClient httpClient, @NonNull String endpoint) {
+    BraveSearchProvider(String apiKey, @NonNull HttpClient httpClient, @NonNull String endpoint) {
         this.apiKey = apiKey;
         this.httpClient = httpClient;
         this.endpoint = endpoint;
