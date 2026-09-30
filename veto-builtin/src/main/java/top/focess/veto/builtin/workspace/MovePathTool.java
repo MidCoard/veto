@@ -22,43 +22,50 @@ import top.focess.veto.api.agent.tool.WorkspaceWriteTool;
 @ToolSecurity(capability = ToolCapability.WORKSPACE_WRITE, defaultDanger = Danger.ELEVATED)
 @ToolDoc(
         resultFormats = {ToolResultFormat.JSON},
-        description = "Move or rename one authorized file, link, or directory without overwriting.",
+        description =
+                """
+                Move or rename one authorized file, link, or directory without overwriting.\
+                """,
         behavior =
                 """
-                Moves the source to an existing destination parent without overwriting. A \
-                cross-filesystem move fails instead of copying and deleting the source. Directory \
-                preflight does not follow links, snapshots entry identities, and is bounded to \
-                50000 entries or 10 seconds.""",
+                Moves the source to an existing destination parent without overwriting. A cross-filesystem \
+                move fails instead of copying and deleting the source. Directory preflight does not follow \
+                links, snapshots entry identities, and is bounded to 50000 entries or 10 seconds.\
+                """,
         whenToUse =
                 """
-                Use it to rename or relocate one exact file, symbolic link, or directory tree. \
-                Discover an uncertain source first with find_files or list_dir.""",
-        whenNotToUse = "Do not use it to copy content or replace an existing destination.",
+                Use it to rename or relocate one exact file, symbolic link, or directory tree. Discover an \
+                uncertain source first with find_files or list_dir.\
+                """,
+        whenNotToUse =
+                """
+                Do not use it to copy content or replace an existing destination.\
+                """,
         resultContract =
                 """
-                Success returns JSON with `status`, the two requested paths as `source` and \
-                `destination`, and `kind` (`file`, `directory`, or `symbolic_link`). In \
-                detailed-result mode, failures use SOURCE_NOT_FOUND \
-                (`Source path not found: <sourceAbsolutePath>`), ALREADY_EXISTS \
-                (`Destination already exists: <destinationAbsolutePath>`), INVALID_DESTINATION \
-                (`Invalid destination: a directory cannot be moved inside itself.` or \
-                `Invalid destination: the destination parent is not an existing directory.`), \
-                CROSS_FILESYSTEM_MOVE \
-                (`Cross-filesystem move: source and destination are on different filesystems.`), \
-                TREE_CHANGED (`Tree changed: ...`), UNSAFE_LINK \
-                (`Unsafe link: symbolic links and reparse points cannot be followed.`), or \
-                IO_ERROR (`I/O error: cannot move <sourceAbsolutePath> to its destination.`); \
-                failure content is actionable plaintext in every mode.""",
+                Success returns JSON with `status`, the two requested paths as `source` and `destination`, \
+                and `kind` (`file`, `directory`, or `symbolic_link`). In detailed-result mode, failures use \
+                SOURCE_NOT_FOUND (`Source path not found: <sourceAbsolutePath>`), ALREADY_EXISTS \
+                (`Destination already exists: <destinationAbsolutePath>`), INVALID_DESTINATION (`Invalid \
+                destination: a directory cannot be moved inside itself.` or `Invalid destination: the \
+                destination parent is not an existing directory.`), CROSS_FILESYSTEM_MOVE (`Cross-filesystem \
+                move: source and destination are on different filesystems.`), TREE_CHANGED (`Tree changed: \
+                ...`), UNSAFE_LINK (`Unsafe link: symbolic links and reparse points cannot be followed.`), or \
+                IO_ERROR (`I/O error: cannot move <sourceAbsolutePath> to its destination.`); failure content \
+                is actionable plaintext in every mode.\
+                """,
         errorsAndEdgeCases =
                 """
-                The destination parent must already exist. A destination created concurrently is \
-                not overwritten. Symbolic links are moved as links. Protected descendants reject a \
-                directory move before mutation. If an entry changes after preflight, the move stops \
-                with TREE_CHANGED before mutation.""",
+                The destination parent must already exist. A destination created concurrently is not \
+                overwritten. Symbolic links are moved as links. Protected descendants reject a directory move \
+                before mutation. If an entry changes after preflight, the move stops with TREE_CHANGED before \
+                mutation.\
+                """,
         security =
-                "An existing destination is never overwritten, and a cross-filesystem move fails"
-                        + " rather than falling back to copy-and-delete, so the source is never lost"
-                        + " mid-move.",
+                """
+                An existing destination is never overwritten, and a cross-filesystem move fails rather than \
+                falling back to copy-and-delete, so the source is never lost mid-move.\
+                """,
         examples = {
             "{\"sourceAbsolutePath\":\"/abs/project/old.txt\",\"destinationAbsolutePath\":\"/abs/project/new.txt\"}",
             "{\"sourceAbsolutePath\":\"/abs/project/downloads/report.pdf\",\"destinationAbsolutePath\":\"/abs/project/reports/report.pdf\"}",

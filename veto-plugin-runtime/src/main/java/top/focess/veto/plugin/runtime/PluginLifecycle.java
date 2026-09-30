@@ -1,5 +1,8 @@
 package top.focess.veto.plugin.runtime;
 
+import java.util.ArrayDeque;
+import java.util.Deque;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -8,12 +11,16 @@ import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.function.Consumer;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import top.focess.veto.api.agent.workflow.PluginAwait;
 import top.focess.veto.api.plugin.*;
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.contract.PluginFailure;
+import top.focess.veto.api.plugin.contract.StandardContributionPoints;
+import top.focess.veto.api.plugin.contribution.Contribution;
+import top.focess.veto.api.plugin.contribution.ContributionPoint;
 
 /**
  * Host-owned, single-threaded plugin lifecycle: atomic admission state, resource ownership, and
@@ -43,6 +50,19 @@ public final class PluginLifecycle implements AutoCloseable {
     private final @NonNull Map<PluginAwait, PluginAwait> waits = new ConcurrentHashMap<>();
 
     private final @NonNull Map<Object, Runnable> resources = new ConcurrentHashMap<>();
+    private final @NonNull Deque<@NonNull AutoCloseable> contributedResources = new ArrayDeque<>();
+
+    /** Accepts a lifecycle contribution during construction or while the plugin is active. */
+    public void registerResource(@NonNull AutoCloseable resource) {
+        synchronized (lock) {
+            if (state == PluginState.STOPPING
+                    || state == PluginState.CLOSED
+                    || state == PluginState.FAILED
+                    || state == PluginState.DECLINED)
+                throw new IllegalStateException("Plugin resource registration is closed");
+            contributedResources.addFirst(resource);
+        }
+    }
 
     private final @NonNull Map<Object, Runnable> stoppingResources = new ConcurrentHashMap<>();
 
@@ -217,12 +237,14 @@ public final class PluginLifecycle implements AutoCloseable {
                                 if (!identity().equals(context.identity()))
                                     throw new PluginFailure(
                                             PluginFailure.Code.INVALID_CONFIGURATION);
+                                var handlers = boundHandlers(context);
                                 var bound =
                                         new PluginContext(
                                                 context.identity(),
                                                 this::fail,
                                                 this::state,
-                                                context.hostServices());
+                                                context.hostServices(),
+                                                handlers);
                                 InstalledPlugin descriptor = installed;
                                 if (descriptor != null)
                                     plugin = descriptor.create(bound, configuration);
@@ -233,14 +255,8 @@ public final class PluginLifecycle implements AutoCloseable {
                                 if (current instanceof ScriptPlugin script)
                                     script.bind(bound, configuration);
                                 var legacy = current.initialize(bound, configuration);
-                                var registered = bound.sealRegistrations();
-                                if (!legacy.entries().isEmpty() && !registered.entries().isEmpty())
-                                    throw new PluginFailure(
-                                            PluginFailure.Code.INVALID_CONFIGURATION);
-                                var contributions =
-                                        registered.entries().isEmpty() ? legacy : registered;
                                 state = PluginState.INITIALIZED;
-                                return contributions;
+                                return legacy;
                             } catch (PluginDeclinedException declined) {
                                 state = PluginState.STOPPING;
                                 signalStopping();
@@ -257,6 +273,28 @@ public final class PluginLifecycle implements AutoCloseable {
                                 throw safe(failure);
                             }
                         }));
+    }
+
+    private @NonNull Map<@NonNull ContributionPoint<?>, @NonNull Consumer<@NonNull Contribution<?>>>
+            boundHandlers(@NonNull PluginContext context) {
+        Map<ContributionPoint<?>, Consumer<Contribution<?>>> handlers =
+                new HashMap<ContributionPoint<?>, Consumer<Contribution<?>>>(context.handlers()) {
+                    @Override
+                    public Consumer<Contribution<?>> get(Object point) {
+                        if (point == null) return null;
+                        if (StandardContributionPoints.RESOURCES.equals(point))
+                            return super.get(point);
+                        return context.handlers().get(point);
+                    }
+                };
+        handlers.put(
+                StandardContributionPoints.RESOURCES,
+                contribution -> {
+                    if (!(contribution.implementation() instanceof AutoCloseable resource))
+                        throw new IllegalArgumentException("Resource contribution required");
+                    registerResource(resource);
+                });
+        return handlers;
     }
 
     /** Transitions an initialized plugin to ACTIVE on the control executor. */
@@ -379,6 +417,13 @@ public final class PluginLifecycle implements AutoCloseable {
         } catch (Throwable failure) {
             state = PluginState.FAILED;
         } finally {
+            while (!contributedResources.isEmpty()) {
+                try {
+                    contributedResources.removeFirst().close();
+                } catch (Exception failure) {
+                    state = PluginState.FAILED;
+                }
+            }
             InstalledPlugin descriptor = installed;
             if (descriptor != null) {
                 try {

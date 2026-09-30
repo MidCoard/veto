@@ -25,7 +25,9 @@ public final class ToolsFrontend extends FrontendContribution {
 
     @Override
     public @NonNull JsonValue handle(
-            @NonNull Scope scope, @NonNull String action, JsonValue.@NonNull ObjectValue arguments)
+            @NonNull ActionContext scope,
+            @NonNull String action,
+            JsonValue.@NonNull ObjectValue arguments)
             throws PluginFailure {
         throw new IllegalArgumentException("Tools presentation has no actions");
     }

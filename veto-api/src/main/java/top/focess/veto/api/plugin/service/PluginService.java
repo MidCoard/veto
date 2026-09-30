@@ -1,5 +1,7 @@
 package top.focess.veto.api.plugin.service;
 
+import top.focess.veto.api.plugin.PluginScope;
+
 import java.util.Objects;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.plugin.contract.JsonValue;
@@ -13,7 +15,7 @@ import top.focess.veto.api.plugin.contract.JsonValue;
 public abstract class PluginService {
     private final @NonNull String name;
     private final int version;
-    private final @NonNull ServiceScope scope;
+    private final @NonNull PluginScope scope;
 
     /**
      * Creates a service with a stable protocol identity and required caller scope.
@@ -23,7 +25,7 @@ public abstract class PluginService {
      * @param scope required caller scope
      * @throws IllegalArgumentException when the name or version is invalid
      */
-    protected PluginService(@NonNull String name, int version, @NonNull ServiceScope scope) {
+    protected PluginService(@NonNull String name, int version, @NonNull PluginScope scope) {
         if (name.isBlank() || name.length() > 128 || version < 1)
             throw new IllegalArgumentException("Invalid service name or version");
         this.name = name;
@@ -54,7 +56,7 @@ public abstract class PluginService {
      *
      * @return caller scope validated by the host on each invocation
      */
-    public final @NonNull ServiceScope scope() {
+    public final @NonNull PluginScope scope() {
         return scope;
     }
 

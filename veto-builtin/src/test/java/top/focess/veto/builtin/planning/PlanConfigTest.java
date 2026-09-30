@@ -42,7 +42,7 @@ class PlanConfigTest {
     void submittedLoopEnforcesPluginLimitWithoutHostStepPolicy(int limit) throws Exception {
         var mapper = new ObjectMapper();
         var tool = new SubmitPlanTool(configured(Integer.toString(limit)));
-        @NonNull ControlHost capability = mock();
+        var capability = mock(ControlHost.class);
         when(capability.tools()).thenReturn(List.of());
         var args =
                 mapper.readValue(

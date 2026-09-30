@@ -175,7 +175,8 @@ class SkillRuntimeTest {
                                     PluginHost.class,
                                     host,
                                     PluginStorage.class,
-                                    storage)),
+                                    storage),
+                            Map.of()),
                     new JsonValue.ObjectValue(Map.of()));
         }
     }

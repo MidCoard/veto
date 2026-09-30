@@ -23,7 +23,7 @@ import top.focess.veto.api.plugin.contract.PluginFailure;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
 import top.focess.veto.api.plugin.contribution.ContributionPoint;
 import top.focess.veto.api.plugin.storage.PluginStorage;
-import top.focess.veto.integration.plugins.storage.PluginInvocationScope;
+import top.focess.veto.integration.plugins.storage.PluginInvocationContext;
 import top.focess.veto.model.SessionRepository;
 import top.focess.veto.plugin.runtime.*;
 import top.focess.veto.session.SessionHistoryLoader;
@@ -81,7 +81,7 @@ public class SessionPlugins {
 
     /**
      * Returns the session's pinned bindings, migrating legacy sessions from their earliest recorded
-     * manifest; fails when an installed plugin no longer matches the pinned revision.
+     * manifest. Missing or changed plugins remain pinned as opaque history.
      */
     public @NonNull List<PluginBinding> bindings(@NonNull String sessionId) {
         var session =
@@ -138,19 +138,6 @@ public class SessionPlugins {
             session.setPluginBindings(bindings);
             sessions.saveAndFlush(session);
         }
-        for (var binding : bindings) {
-            PluginLifecycle installed;
-            try {
-                installed = manager.plugin(binding.id());
-            } catch (IllegalArgumentException missing) {
-                installed = null;
-            }
-            if (installed != null
-                    && (!binding.version().equals(installed.identity().version())
-                            || !binding.revision().equals(binding(installed).revision())))
-                throw new IllegalStateException(
-                        "Session requires the pinned plugin revision: " + binding.id());
-        }
         return bindings;
     }
 
@@ -180,7 +167,7 @@ public class SessionPlugins {
             var host = manager.hostService(namespace, AgentHost.class);
             if (storage == null || host == null)
                 throw new IllegalStateException("Agent configuration services unavailable");
-            var invocation = new PluginInvocationScope(owner, session);
+            var invocation = new PluginInvocationContext(owner, session);
             try {
                 var scope = storage.currentSession();
                 var context =
@@ -310,7 +297,63 @@ public class SessionPlugins {
 
     private @NonNull Set<String> selectedIds(@NonNull String sessionId) {
         return bindings(sessionId).stream()
+                .filter(this::available)
                 .map(binding -> manager.canonicalId(binding.id()))
                 .collect(Collectors.toSet());
+    }
+
+    /** Whether the exact selected plugin revision can serve this session now. */
+    public boolean available(@NonNull PluginBinding selected) {
+        return availability(selected) == BoundPluginAvailability.AVAILABLE;
+    }
+
+    /** Explains why an exact pinned plugin can or cannot serve the session now. */
+    public @NonNull BoundPluginAvailability availability(@NonNull PluginBinding selected) {
+        if (manager.isDisabled(selected.id())) return BoundPluginAvailability.DISABLED;
+        if (manager.isDeclined(selected.id())) return BoundPluginAvailability.DECLINED;
+        try {
+            var installed = manager.plugin(selected.id());
+            if (installed.state() != PluginState.ACTIVE) return BoundPluginAvailability.INACTIVE;
+            if (!selected.version().equals(installed.identity().version())
+                    || !selected.revision().equals(binding(installed).revision()))
+                return BoundPluginAvailability.REVISION_MISMATCH;
+            return BoundPluginAvailability.AVAILABLE;
+        } catch (IllegalArgumentException missing) {
+            return BoundPluginAvailability.ABSENT;
+        }
+    }
+
+    /** Current resolution of a preserved session plugin pin. */
+    public enum BoundPluginAvailability {
+        AVAILABLE,
+        ABSENT,
+        DISABLED,
+        DECLINED,
+        REVISION_MISMATCH,
+        INACTIVE
+    }
+
+    /** Preserved session pin and whether its exact plugin revision is currently usable. */
+    public record BoundPluginStatus(
+            @NonNull String id,
+            @NonNull String version,
+            @NonNull String revision,
+            boolean available,
+            @NonNull BoundPluginAvailability availability) {}
+
+    /** Reports unavailable pins without mutating or locking the session. */
+    public @NonNull List<BoundPluginStatus> status(@NonNull String sessionId) {
+        return bindings(sessionId).stream()
+                .map(
+                        binding -> {
+                            var availability = availability(binding);
+                            return new BoundPluginStatus(
+                                    binding.id(),
+                                    binding.version(),
+                                    binding.revision(),
+                                    availability == BoundPluginAvailability.AVAILABLE,
+                                    availability);
+                        })
+                .toList();
     }
 }

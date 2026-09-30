@@ -11,7 +11,8 @@ import org.junit.jupiter.api.Test;
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.service.PluginServices;
 import top.focess.veto.api.plugin.service.ServiceCallContext;
-import top.focess.veto.api.plugin.service.ServiceScope;
+import top.focess.veto.api.plugin.PluginScope;
+import top.focess.veto.api.plugin.Scope;
 
 class SearchHubTest {
     @Test
@@ -28,7 +29,8 @@ class SearchHubTest {
                                                 "Example", "https://example.org", "hit"))));
         var hub = new SearchHub(services, List.of());
         var caller =
-                new ServiceCallContext("example.provider", ServiceScope.GLOBAL, null, null, null);
+                new ServiceCallContext(
+                        "example.provider", PluginScope.APPLICATION, new Scope.GlobalScope(), null);
         hub.invoke(
                 caller,
                 new JsonValue.ObjectValue(

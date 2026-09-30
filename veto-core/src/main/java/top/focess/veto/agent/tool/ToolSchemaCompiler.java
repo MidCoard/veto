@@ -39,6 +39,13 @@ import top.focess.veto.api.agent.tool.ToolSecurity;
  * {@link NativeToolDefinition} instances.
  */
 public final class ToolSchemaCompiler {
+    private static final @NonNull ClassValue<@NonNull JsonNode> COMPILED_SCHEMAS =
+            new ClassValue<>() {
+                @Override
+                protected @NonNull JsonNode computeValue(@NonNull Class<?> type) {
+                    return compileRecordUncached(type);
+                }
+            };
 
     private static final @NonNull ObjectMapper MAPPER = new ObjectMapper();
 
@@ -155,6 +162,15 @@ public final class ToolSchemaCompiler {
      * {@link Required} because nullability annotations do not apply to primitives.
      */
     public static @NonNull JsonNode compileFromRecord(@NonNull Class<?> recordClass) {
+        return COMPILED_SCHEMAS.get(recordClass).deepCopy();
+    }
+
+    /** Returns the cached schema to host validators that only read it. */
+    static @NonNull JsonNode compiledSchema(@NonNull Class<?> recordClass) {
+        return COMPILED_SCHEMAS.get(recordClass);
+    }
+
+    private static @NonNull JsonNode compileRecordUncached(@NonNull Class<?> recordClass) {
         var custom = recordClass.getAnnotation(ToolInputSchema.class);
         if (custom != null) {
             try {
@@ -223,6 +239,8 @@ public final class ToolSchemaCompiler {
                 }
                 if (!text.pattern().isEmpty()) {
                     paramNode.put("pattern", Pattern.compile(text.pattern()).pattern());
+                } else if (text.rejectBlank()) {
+                    paramNode.put("pattern", "\\S");
                 }
             }
 

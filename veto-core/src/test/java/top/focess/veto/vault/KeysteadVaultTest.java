@@ -16,6 +16,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import top.focess.veto.api.credentials.VaultAccess;
+import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.secret.references.SecretCandidateStore;
 
 /**
@@ -125,7 +126,7 @@ class KeysteadVaultTest {
         var vault = newVault(tempDir);
         var store = new SecretCandidateStore();
         var writer = credentialWriter(vault);
-        var scope = new SecretCandidateStore.Scope("alice", "session", "agent");
+        var scope = new Scope.AgentScope("alice", "session", "agent");
         try {
             vault.signup("alice", "p@ssw0rd!");
             String reference =
@@ -145,7 +146,7 @@ class KeysteadVaultTest {
             assertEquals(
                     "[SECRET_REF:" + reference + "]",
                     store.capture(scope, "repeat", "synthetic-token").text());
-            var other = new SecretCandidateStore.Scope("alice", "session", "mate");
+            var other = new Scope.AgentScope("alice", "session", "mate");
             assertThrows(
                     IllegalStateException.class,
                     () -> store.importOnce(other, reference, "github", "Repository", writer));
@@ -260,21 +261,11 @@ class KeysteadVaultTest {
                 value);
     }
 
-    private static VaultAccess.@NonNull Scope credentialWriter(@NonNull KeysteadVault vault) {
-        return new VaultAccess.Scope() {
+    private static VaultAccess.@NonNull Handle credentialWriter(@NonNull KeysteadVault vault) {
+        return new VaultAccess.Handle() {
             @Override
-            public @NonNull String owner() {
-                return "alice";
-            }
-
-            @Override
-            public @NonNull String sessionId() {
-                return "session";
-            }
-
-            @Override
-            public @NonNull String agentId() {
-                return "agent";
+            public Scope.@NonNull AgentScope scope() {
+                return new Scope.AgentScope("alice", "session", "agent");
             }
 
             @Override

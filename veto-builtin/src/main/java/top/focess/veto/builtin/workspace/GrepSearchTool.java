@@ -30,73 +30,70 @@ import top.focess.veto.api.agent.tool.WorkspaceReadTool;
 @ToolSecurity(capability = ToolCapability.WORKSPACE_READ, defaultDanger = Danger.SAFE)
 @ToolDoc(
         resultFormats = {ToolResultFormat.PLAINTEXT},
-        description = "Search for exact pattern matches inside files.",
+        description =
+                """
+                Search for exact pattern matches inside files.\
+                """,
         behavior =
                 """
-                    Walks `absolutePath` recursively and reports each UTF-8 line that contains `query` as a \
-                    substring. When `caseInsensitive` is true, casing in \
-                    either the query or line is ignored. `includes`, when given, restricts the search to files whose \
-                    root-relative path or basename matches one of the glob filters.
-
-                    Files that cannot be opened or decoded completely as UTF-8 are skipped without aborting the whole \
-                    search. Symbolic links and Windows reparse points are never followed. Every descendant is checked \
-                    against the authorized root and protected paths before it is opened. At most 10000 files, 2000 \
-                    matches, and 1000000 output characters are processed, with a maximum traversal time of 10 seconds; \
-                    a truncation marker means the result is incomplete.
-                    """,
+                Walks `absolutePath` recursively and reports each UTF-8 line that contains `query` as a \
+                substring. When `caseInsensitive` is true, casing in either the query or line is ignored. \
+                `includes`, when given, restricts the search to files whose root-relative path or basename \
+                matches one of the glob filters. Files that cannot be opened or decoded completely as UTF-8 \
+                are skipped without aborting the whole search. Symbolic links and Windows reparse points are \
+                never followed. Every descendant is checked against the authorized root and protected paths \
+                before it is opened. At most 10000 files, 2000 matches, and 1000000 output characters are \
+                processed, with a maximum traversal time of 10 seconds; a truncation marker means the result \
+                is incomplete.\
+                """,
         whenToUse =
                 """
-                    Use `grep_search` to locate occurrences of an exact text pattern across a tree of files - finding \
-                    where a symbol is referenced, tracking down a `TODO`/`FIXME` marker, finding a definition, or \
-                    enumerating call sites before a refactor. Prefer it over `view_file` when you do not yet know which \
-                    file holds the text; grep identifies the file and line, then `view_file` reads surrounding context.
-                    """,
+                Use `grep_search` to locate occurrences of an exact text pattern across a tree of files - \
+                finding where a symbol is referenced, tracking down a `TODO`/`FIXME` marker, finding a \
+                definition, or enumerating call sites before a refactor. Prefer it over `view_file` when you \
+                do not yet know which file holds the text; grep identifies the file and line, then \
+                `view_file` reads surrounding context.\
+                """,
         whenNotToUse =
                 """
-                    - Do not use `grep_search` to read a file whose path you already know - use `view_file`.
-                    - Do not use it to list a directory - use `list_dir`.
-                    - The match is an exact substring only. There is no regex, alternation, or anchoring.
-                    """,
+                - Do not use `grep_search` to read a file whose path you already know - use `view_file`. - Do \
+                not use it to list a directory - use `list_dir`. - The match is an exact substring only. \
+                There is no regex, alternation, or anchoring.\
+                """,
         resultContract =
                 """
-                    - Success: one match per line as `<file>:<lineNumber>: <line text>` (1-indexed). No hits returns \
-                    `(no matches)`; bounded results end with `[truncated: ...]`.
-                    - Missing path (failure, PATH_NOT_FOUND): `Path not found: <absolutePath>`.
-                    - Empty query (failure, INVALID_ARGUMENTS): `Invalid arguments: query must not be empty.`
-                    - Invalid include glob (failure, INVALID_ARGUMENTS): \
-                    `Invalid arguments: includes contains an invalid glob.`
-                    - Search failure (failure, IO_ERROR): `I/O error: cannot search <absolutePath>.`
-                    - A symbolic-link or reparse-point root fails with UNSAFE_LINK \
-                    (`Unsafe link: the search path is a symbolic link or reparse point.`); a \
-                    protected root is refused with PATH_PROTECTED.
-                    """,
+                - Success: one match per line as `<file>:<lineNumber>: <line text>` (1-indexed). No hits \
+                returns `(no matches)`; bounded results end with `[truncated: ...]`. - Missing path (failure, \
+                PATH_NOT_FOUND): `Path not found: <absolutePath>`. - Empty query (failure, \
+                INVALID_ARGUMENTS): `Invalid arguments: query must not be empty.` - Invalid include glob \
+                (failure, INVALID_ARGUMENTS): `Invalid arguments: includes contains an invalid glob.` - \
+                Search failure (failure, IO_ERROR): `I/O error: cannot search <absolutePath>.` - A \
+                symbolic-link or reparse-point root fails with UNSAFE_LINK (`Unsafe link: the search path is \
+                a symbolic link or reparse point.`); a protected root is refused with PATH_PROTECTED.\
+                """,
         errorsAndEdgeCases =
                 """
-                    - `absolutePath` may name one regular file or a directory tree.
-                    - Very large trees are truncated; narrow with `includes` or a tighter `absolutePath`.
-                    - Unreadable, changing, linked, protected, and non-UTF-8 files are skipped.
-                    - `caseInsensitive` and `includes` are optional; omit them for a case-sensitive search of all files.
-                    """,
+                - `absolutePath` may name one regular file or a directory tree. - Very large trees are \
+                truncated; narrow with `includes` or a tighter `absolutePath`. - Unreadable, changing, \
+                linked, protected, and non-UTF-8 files are skipped. - `caseInsensitive` and `includes` are \
+                optional; omit them for a case-sensitive search of all files.\
+                """,
         security =
-                "Symbolic links are never followed and protected files are never opened. Matched"
-                        + " lines are returned verbatim, including any sensitive file content.",
+                """
+                Symbolic links are never followed and protected files are never opened. Matched lines are \
+                returned verbatim, including any sensitive file content.\
+                """,
         examples = {
             "{\"absolutePath\": \"/abs/project/src\", \"query\": \"TODO\"}",
-            "{\"absolutePath\": \"/abs/project/src\", \"query\": \"todo\", \"caseInsensitive\":"
-                    + " true}",
-            "{\"absolutePath\": \"/abs/project/src\", \"query\": \"public class \", \"includes\":"
-                    + " [\"*.java\"]}",
+            "{\"absolutePath\": \"/abs/project/src\", \"query\": \"todo\", \"caseInsensitive\": true}",
+            "{\"absolutePath\": \"/abs/project/src\", \"query\": \"public class \", \"includes\": [\"*.java\"]}",
             "{\"absolutePath\": \"/abs/project/config/app.yml\", \"query\": \"password\"}",
-            "{\"absolutePath\": \"/abs/project/src\", \"query\": \"alpha\", \"includes\":"
-                    + " [\"[broken\"]}"
+            "{\"absolutePath\": \"/abs/project/src\", \"query\": \"alpha\", \"includes\": [\"[broken\"]}"
         },
         returnExamples = {
-            "/abs/project/src/Main.java:12: // TODO: refactor\n"
-                    + "/abs/project/src/util/Helper.java:30: // TODO(jess): cleanup",
-            "/abs/project/src/Main.java:12: // TODO: refactor\n"
-                    + "/abs/project/src/notes.md:3: - todo: write docs",
-            "/abs/project/src/Main.java:3: public class Main {\n"
-                    + "/abs/project/src/util/Helper.java:7: public class Helper {",
+            "/abs/project/src/Main.java:12: // TODO: refactor\n/abs/project/src/util/Helper.java:30: // TODO(jess): cleanup",
+            "/abs/project/src/Main.java:12: // TODO: refactor\n/abs/project/src/notes.md:3: - todo: write docs",
+            "/abs/project/src/Main.java:3: public class Main {\n/abs/project/src/util/Helper.java:7: public class Helper {",
             "/abs/project/config/app.yml:7: password: ${DB_PASSWORD}",
             "Invalid arguments: includes contains an invalid glob."
         })

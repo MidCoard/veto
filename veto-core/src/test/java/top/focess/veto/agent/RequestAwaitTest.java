@@ -6,7 +6,6 @@ import static org.mockito.Mockito.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.atomic.AtomicInteger;
-import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.agent.tool.ToolCallContext;
 import top.focess.veto.agent.tool.ToolCallContextHolder;
@@ -15,7 +14,7 @@ import top.focess.veto.api.agent.workflow.PluginAwait;
 class RequestAwaitTest {
     @Test
     void unsuccessfulToolCallDiscardsItsUnacceptedWait() {
-        @NonNull ToolCallContext context = mock();
+        ToolCallContext context = mock(ToolCallContext.class);
         when(context.requestId()).thenReturn("request");
         var signal = new CompletableFuture<Boolean>();
         ToolCallContextHolder.set(context);

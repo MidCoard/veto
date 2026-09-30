@@ -11,7 +11,7 @@ import org.jspecify.annotations.NonNull;
  *
  * <p>The host compiles these into the tool's JSON Schema and enforces them against every call
  * before the tool body runs, so a tool must not re-check them. Implement only constraints the
- * schema cannot express, such as cross-field uniqueness or a reserved value.
+ * schema cannot express without inspecting sibling values or collection entries.
  */
 @Target(ElementType.RECORD_COMPONENT)
 @Retention(RetentionPolicy.RUNTIME)
@@ -36,4 +36,25 @@ public @interface StringConstraint {
      * @return regular expression required of the value, or empty when unconstrained
      */
     @NonNull String pattern() default "";
+
+    /**
+     * Whether whitespace-only values are rejected after decoding.
+     *
+     * @return whether blank strings are invalid
+     */
+    boolean rejectBlank() default false;
+
+    /**
+     * Literal values that are not accepted after surrounding whitespace is stripped.
+     *
+     * @return reserved string values
+     */
+    @NonNull String @NonNull [] forbidden() default {};
+
+    /**
+     * Whether forbidden values are compared without regard to case.
+     *
+     * @return whether case is ignored for forbidden values
+     */
+    boolean forbiddenIgnoreCase() default false;
 }

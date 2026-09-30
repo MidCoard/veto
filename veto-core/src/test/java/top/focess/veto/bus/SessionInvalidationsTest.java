@@ -6,7 +6,6 @@ import static org.mockito.Mockito.*;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
-import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import top.focess.veto.model.AgentInstanceRepository;
@@ -17,7 +16,7 @@ class SessionInvalidationsTest {
         DeltaBroker broker = new DeltaBroker();
         List<DeltaFrame> frames = new CopyOnWriteArrayList<>();
         broker.subscribeAll(frames::add);
-        @NonNull AgentInstanceRepository agents = mock();
+        AgentInstanceRepository agents = mock(AgentInstanceRepository.class);
         SessionInvalidations service = new SessionInvalidations(broker, agents);
         try {
             TransactionSynchronizationManager.initSynchronization();

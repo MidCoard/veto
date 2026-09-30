@@ -71,11 +71,11 @@ class PluginAgentHostsTest {
             throws Exception {
         try (var fixture = new Fixture()) {
             var mapper = new ObjectMapper();
-            @NonNull ModelTierRegistry models = mock();
+            ModelTierRegistry models = mock(ModelTierRegistry.class);
             when(models.resolve("owner", ModelTier.LOW))
                     .thenReturn(new ModelBinding(ProviderType.DEEPSEEK, "reader", "key", 0, 2048));
             when(fixture.storage.currentSession()).thenReturn(fixture.scope);
-            @NonNull VetoAgent parent = mock();
+            VetoAgent parent = mock(VetoAgent.class);
             when(parent.id()).thenReturn(fixture.parent);
             when(parent.state()).thenReturn(AgentState.RUNNING);
             fixture.registry.register(UUID.fromString(fixture.session.getId()), parent);
@@ -231,14 +231,14 @@ class PluginAgentHostsTest {
         final @NonNull SessionEntity session = new SessionEntity("owner", "test");
         final @NonNull String parent = UUID.randomUUID().toString();
         final @NonNull String childId = UUID.randomUUID().toString();
-        final @NonNull PluginStorage storage = mock();
-        final @NonNull PluginStorageFactory scopes = mock();
-        final @NonNull SessionRepository sessions = mock();
-        final @NonNull AgentInstanceRepository identities = mock();
+        final @NonNull PluginStorage storage = mock(PluginStorage.class);
+        final @NonNull PluginStorageFactory scopes = mock(PluginStorageFactory.class);
+        final @NonNull SessionRepository sessions = mock(SessionRepository.class);
+        final @NonNull AgentInstanceRepository identities = mock(AgentInstanceRepository.class);
         final @NonNull SessionAgentRegistry registry = new SessionAgentRegistry();
-        final @NonNull KeysteadVault vault = mock();
-        final @NonNull AgentService service = mock();
-        final @NonNull VetoAgent agent = mock();
+        final @NonNull KeysteadVault vault = mock(KeysteadVault.class);
+        final @NonNull AgentService service = mock(AgentService.class);
+        final @NonNull VetoAgent agent = mock(VetoAgent.class);
         final @NonNull AgentEntity row;
         final PluginStorage.@NonNull SessionScope scope;
         final @NonNull AgentHost host;
@@ -247,7 +247,7 @@ class PluginAgentHostsTest {
                 new AgentProfile("member", "work", "worker", Set.of(), null, null, Map.of());
 
         Fixture() throws Exception {
-            @NonNull VetoPlugin implementation = mock();
+            VetoPlugin implementation = mock(VetoPlugin.class);
             var identity = new PluginIdentity("test.plugin", "1.0.0");
             when(implementation.identity()).thenReturn(identity);
             when(implementation.initialize(any(), any()))
@@ -261,6 +261,7 @@ class PluginAgentHostsTest {
                                 throw new IllegalStateException(
                                         "Plugin context is not bound to a lifecycle owner");
                             },
+                            Map.of(),
                             Map.of()),
                     new JsonValue.ObjectValue(Map.of()));
             plugin.start();
@@ -343,7 +344,7 @@ class PluginAgentHostsTest {
             fixture.open();
             fixture.registry.stop(fixture.childId);
             clearInvocations(fixture.agent);
-            @NonNull VetoAgent replacement = mock();
+            VetoAgent replacement = mock(VetoAgent.class);
             when(replacement.id()).thenReturn(fixture.childId);
             when(replacement.state()).thenReturn(AgentState.IDLE);
             fixture.registry.register(UUID.fromString(fixture.session.getId()), replacement);
@@ -371,7 +372,7 @@ class PluginAgentHostsTest {
     void pluginCannotCompleteHostFuturesAndCancellationDoesNotFabricateSettlement()
             throws Exception {
         try (var fixture = new Fixture()) {
-            @NonNull RequestHandle handle = mock();
+            RequestHandle handle = mock(RequestHandle.class);
             CompletableFuture<AgentResult> result = new CompletableFuture<>();
             CompletableFuture<Boolean> settled = new CompletableFuture<>();
             when(handle.requestId()).thenReturn("request");

@@ -254,7 +254,7 @@ class AgentRunnerTest {
                         FixtureLoopTool.class,
                         FixtureLoopTool.Args.class,
                         ToolCapability.LOOP_CONTROL);
-        @NonNull ToolEngine engine = Mockito.mock();
+        ToolEngine engine = Mockito.mock(ToolEngine.class);
         Mockito.when(engine.getActiveTools(Mockito.any())).thenReturn(List.of(think, finish));
         Mockito.when(engine.resolveDefinition("fixture_loop")).thenReturn(think);
         Mockito.when(engine.resolveDefinition("finish")).thenReturn(finish);
@@ -482,7 +482,7 @@ class AgentRunnerTest {
                             null,
                             0,
                             ToolResultPresentationMode.BASIC);
-            var scope = new FrontendContribution.Scope("alice", session, agentId);
+            var scope = new FrontendContribution.ActionContext("alice", session, agentId);
             agent.submit("Inspect password=synthetic-token");
             assertTrue(agent.await(EPISODE_TIMEOUT).success());
             var userTurn =
@@ -597,17 +597,17 @@ class AgentRunnerTest {
                             called.countDown();
                             return new VetoResponse(null, null, "Notification handled");
                         });
-        @NonNull KeysteadVault vault = Mockito.mock();
+        KeysteadVault vault = Mockito.mock(KeysteadVault.class);
         runtime.attachExecutionVault(vault);
         var registry =
                 (SessionAgentRegistry)
                         Nullness.requireNonNull(
                                 ReflectionTestUtils.getField(runtime, "sessionAgents"));
-        @NonNull SessionRepository sessions = Mockito.mock();
-        @NonNull AgentInstanceRepository agents = Mockito.mock();
-        @NonNull AgentPatternRepository patterns = Mockito.mock();
-        @NonNull SessionHistoryLoader history = Mockito.mock();
-        @NonNull ModelTierRegistry tiers = Mockito.mock();
+        SessionRepository sessions = Mockito.mock(SessionRepository.class);
+        AgentInstanceRepository agents = Mockito.mock(AgentInstanceRepository.class);
+        AgentPatternRepository patterns = Mockito.mock(AgentPatternRepository.class);
+        SessionHistoryLoader history = Mockito.mock(SessionHistoryLoader.class);
+        ModelTierRegistry tiers = Mockito.mock(ModelTierRegistry.class);
         var session = new SessionEntity("alice", "duplicate-name");
         var identity =
                 new AgentEntity(
@@ -638,7 +638,7 @@ class AgentRunnerTest {
                         new ModelBinding(ProviderType.DEEPSEEK, "model", "key", 0.7, 4096, null));
         var sessionService =
                 new SessionService(sessions, agents, patterns, runtime, history, tiers);
-        @NonNull MonitorRepository repository = Mockito.mock();
+        MonitorRepository repository = Mockito.mock(MonitorRepository.class);
         var groups = new GroupRegistry();
         var monitors =
                 new MonitorService(
@@ -646,7 +646,7 @@ class AgentRunnerTest {
                         new ObjectMapper().findAndRegisterModules(),
                         groups(groups),
                         host(sessionService, registry, vault));
-        @NonNull SessionPlugins selected = Mockito.mock();
+        SessionPlugins selected = Mockito.mock(SessionPlugins.class);
         Mockito.when(selected.workSource(Mockito.anyString())).thenReturn(work(monitors));
         runtime.attachSessionPlugins(selected);
         var due = Instant.now().plusSeconds(10);
@@ -680,7 +680,7 @@ class AgentRunnerTest {
     }
 
     private static @NonNull ToolEngine questionEngine(@NonNull QuestionRuntime questions) {
-        @NonNull ApplicationContext spring = Mockito.mock();
+        ApplicationContext spring = Mockito.mock(ApplicationContext.class);
         var tool = new AskUserTool(questions);
         Mockito.when(spring.getBeansOfType(AgentTool.class)).thenReturn(Map.of("askUser", tool));
         var engine = new ToolEngineImpl(new ObjectMapper(), List.of(), spring);
@@ -734,7 +734,7 @@ class AgentRunnerTest {
                         questionEngine(questions),
                         new HitlRegistry());
         if (action.equals("HISTORY_FAIL")) {
-            @NonNull TurnLogService turns = Mockito.mock();
+            TurnLogService turns = Mockito.mock(TurnLogService.class);
             Mockito.doThrow(new IllegalStateException("Answer log unavailable"))
                     .when(turns)
                     .logRequired(Mockito.any(), Mockito.any(), Mockito.any(), Mockito.anyString());
@@ -808,7 +808,7 @@ class AgentRunnerTest {
                                 "D:/IdeaProjects/veto/work/tmp/unfinished-group",
                                 0,
                                 ToolResultPresentationMode.BASIC);
-        @NonNull MonitorService monitor = Mockito.mock();
+        MonitorService monitor = Mockito.mock(MonitorService.class);
         agent.attachWorkSource(work(monitor));
         try {
             assertEquals(AgentState.WAITING, agent.state());
@@ -856,7 +856,7 @@ class AgentRunnerTest {
                                 List.of(event))
                         .withActivation(event.id(), ActivationState.APPENDED);
         var mapper = new ObjectMapper().findAndRegisterModules();
-        @NonNull MonitorRepository repository = Mockito.mock();
+        MonitorRepository repository = Mockito.mock(MonitorRepository.class);
         Mockito.when(repository.findAll())
                 .thenReturn(
                         List.of(
@@ -1017,7 +1017,7 @@ class AgentRunnerTest {
                             requestId,
                             "dispatch");
             var acknowledged = new CountDownLatch(1);
-            @NonNull MonitorService monitors = Mockito.mock();
+            MonitorService monitors = Mockito.mock(MonitorService.class);
             Mockito.when(monitors.pending(agentId, session.toString()))
                     .thenAnswer(
                             invocation ->
@@ -1063,7 +1063,7 @@ class AgentRunnerTest {
                             calls.incrementAndGet();
                             return new VetoResponse(null, null, "unexpected");
                         });
-        @NonNull RequestContinuationStore store = Mockito.mock();
+        RequestContinuationStore store = Mockito.mock(RequestContinuationStore.class);
         Mockito.doThrow(new IllegalStateException("Checkpoint unavailable"))
                 .when(store)
                 .save(
@@ -1074,7 +1074,7 @@ class AgentRunnerTest {
                         Mockito.anyLong(),
                         Mockito.anyLong());
         service.attachContinuationStore(store);
-        @NonNull TurnRecordRepository records = Mockito.mock();
+        TurnRecordRepository records = Mockito.mock(TurnRecordRepository.class);
         var logged = new ArrayList<String>();
         Mockito.when(records.save(Mockito.any()))
                 .thenAnswer(
@@ -1117,7 +1117,7 @@ class AgentRunnerTest {
                         1L);
         UUID session = UUID.randomUUID();
         String agentId = UUID.randomUUID().toString();
-        @NonNull RequestContinuationStore store = Mockito.mock();
+        RequestContinuationStore store = Mockito.mock(RequestContinuationStore.class);
         Mockito.when(store.load(session, agentId, "monitor:timer-event"))
                 .thenReturn(
                         Optional.of(
@@ -1142,7 +1142,7 @@ class AgentRunnerTest {
             var event =
                     new MonitorRecord.Event(
                             "timer-event", "timer", "TIME_ONCE", "Timer fired", Instant.now());
-            @NonNull MonitorService monitors = Mockito.mock();
+            MonitorService monitors = Mockito.mock(MonitorService.class);
             var acknowledged = new CountDownLatch(1);
             Mockito.when(monitors.pending(agentId, session.toString()))
                     .thenAnswer(
@@ -1389,7 +1389,7 @@ class AgentRunnerTest {
         UUID session = UUID.randomUUID();
         String agentId = UUID.randomUUID().toString();
         String oldRequest = "cancelled-request";
-        @NonNull RequestContinuationStore store = Mockito.mock();
+        RequestContinuationStore store = Mockito.mock(RequestContinuationStore.class);
         Mockito.when(store.load(session, agentId, oldRequest))
                 .thenReturn(
                         Optional.of(
@@ -1430,7 +1430,7 @@ class AgentRunnerTest {
                             Instant.now(),
                             oldRequest,
                             "process-instance");
-            @NonNull MonitorService monitors = Mockito.mock();
+            MonitorService monitors = Mockito.mock(MonitorService.class);
             CountDownLatch cancelled = new CountDownLatch(1);
             Mockito.when(monitors.pending(agentId, session.toString()))
                     .thenAnswer(
@@ -1540,7 +1540,7 @@ class AgentRunnerTest {
                             Instant.now(),
                             requestIdentity(agent),
                             "instance");
-            @NonNull MonitorService monitors = Mockito.mock();
+            MonitorService monitors = Mockito.mock(MonitorService.class);
             CountDownLatch observationCancelled = new CountDownLatch(1);
             Mockito.when(monitors.pending(Mockito.eq(agent.id()), Mockito.anyString()))
                     .thenAnswer(
@@ -1913,7 +1913,7 @@ class AgentRunnerTest {
         try {
             service.submit("direct-monitor", "Initial task", binding("System"), EPISODE_TIMEOUT);
             var agent = requireAgent(service.agent("direct-monitor"));
-            @NonNull MonitorService monitors = Mockito.mock();
+            MonitorService monitors = Mockito.mock(MonitorService.class);
             var event =
                     new MonitorRecord.Event("done", "group", kind, "Group finished", Instant.now());
             Mockito.when(monitors.pending(agent.id(), agent.sessionId().toString()))
@@ -1973,7 +1973,7 @@ class AgentRunnerTest {
                         FixtureLoopTool.class,
                         FixtureLoopTool.Args.class,
                         ToolCapability.LOOP_CONTROL);
-        @NonNull ToolEngine engine = Mockito.mock();
+        ToolEngine engine = Mockito.mock(ToolEngine.class);
         Mockito.when(engine.getActiveTools(Mockito.any())).thenReturn(List.of(definition));
         Mockito.when(engine.resolveDefinition("fixture_loop")).thenReturn(definition);
         var service =
@@ -2042,7 +2042,7 @@ class AgentRunnerTest {
             while (agent.state() != AgentState.WAITING && System.nanoTime() < deadline)
                 Thread.sleep(10);
             assertEquals(AgentState.WAITING, agent.state());
-            @NonNull MonitorService monitors = Mockito.mock();
+            MonitorService monitors = Mockito.mock(MonitorService.class);
             Mockito.when(monitors.pending(agent.id(), agent.sessionId().toString()))
                     .thenReturn(
                             List.of(
@@ -2146,7 +2146,7 @@ class AgentRunnerTest {
                         });
         service.submit("monitor-wake", "Initial task", binding("System"), EPISODE_TIMEOUT);
         var agent = requireAgent(service.agent("monitor-wake"));
-        @NonNull MonitorService monitors = Mockito.mock();
+        MonitorService monitors = Mockito.mock(MonitorService.class);
         var event =
                 new MonitorRecord.Event(
                         "wake",
@@ -2208,7 +2208,7 @@ class AgentRunnerTest {
                         1L);
         service.submit("monitor-budget", "Initial task", binding("System"), EPISODE_TIMEOUT);
         var agent = requireAgent(service.agent("monitor-budget"));
-        @NonNull MonitorService monitors = Mockito.mock();
+        MonitorService monitors = Mockito.mock(MonitorService.class);
         var event =
                 new MonitorRecord.Event(
                         "result",
@@ -2290,7 +2290,7 @@ class AgentRunnerTest {
                             "dispatch-new");
             List<MonitorRecord.@NonNull Event> pending =
                     new CopyOnWriteArrayList<>(List.of(old, other));
-            @NonNull MonitorService monitors = Mockito.mock();
+            MonitorService monitors = Mockito.mock(MonitorService.class);
             Mockito.when(monitors.pending(agent.id(), agent.sessionId().toString()))
                     .thenAnswer(call -> List.copyOf(pending));
             Mockito.doAnswer(
@@ -2361,7 +2361,7 @@ class AgentRunnerTest {
                             requestIdentity(agent),
                             "dispatch");
             var pending = new AtomicBoolean(true);
-            @NonNull MonitorService monitors = Mockito.mock();
+            MonitorService monitors = Mockito.mock(MonitorService.class);
             Mockito.when(monitors.pending(agent.id(), agent.sessionId().toString()))
                     .thenAnswer(call -> pending.get() ? List.of(event) : List.of());
             Mockito.doAnswer(
@@ -2415,7 +2415,7 @@ class AgentRunnerTest {
                             Instant.now(),
                             originalId,
                             "dispatch");
-            @NonNull MonitorService monitors = Mockito.mock();
+            MonitorService monitors = Mockito.mock(MonitorService.class);
             Mockito.when(monitors.pending(agent.id(), agent.sessionId().toString()))
                     .thenReturn(List.of(event));
             var appended = new CountDownLatch(1);
@@ -2442,7 +2442,7 @@ class AgentRunnerTest {
     private static @NonNull AgentService serviceWithCitationPolicy(
             @NonNull String agentKey, @NonNull UniformLLMCaller caller) {
         var service = serviceWith(caller);
-        @NonNull SessionPlugins selected = Mockito.mock();
+        SessionPlugins selected = Mockito.mock(SessionPlugins.class);
         Mockito.when(selected.responsePolicies(Mockito.anyString()))
                 .thenAnswer(call -> List.of(new CitationResponsePolicy().open()));
         Mockito.when(selected.tools(Mockito.anyString(), Mockito.any()))
@@ -2506,7 +2506,7 @@ class AgentRunnerTest {
         UUID session = UUID.randomUUID();
         String oldRequest = UUID.randomUUID().toString();
         String agentId = UUID.randomUUID().toString();
-        @NonNull RequestContinuationStore store = Mockito.mock();
+        RequestContinuationStore store = Mockito.mock(RequestContinuationStore.class);
         var calls = new AtomicInteger();
         var service =
                 serviceWith(
@@ -2563,7 +2563,8 @@ class AgentRunnerTest {
 
     @Test
     void repeatedBreakerContinuePersistsCumulativeBudgetBeforeEachModelCall() throws Exception {
-        @NonNull RequestContinuationRepository repository = Mockito.mock();
+        RequestContinuationRepository repository =
+                Mockito.mock(RequestContinuationRepository.class);
         Map<String, RequestContinuationEntity> durable = new ConcurrentHashMap<>();
         Mockito.when(repository.findById(Mockito.anyString()))
                 .thenAnswer(
@@ -2705,7 +2706,7 @@ class AgentRunnerTest {
     @ValueSource(booleans = {true, false})
     void malformedLocalArgumentsRejectTheWholeBatchBeforeApproval(boolean recover)
             throws Exception {
-        @NonNull ToolEngine engine = Mockito.mock();
+        ToolEngine engine = Mockito.mock(ToolEngine.class);
         var definition =
                 new NativeToolDefinition(
                         "run_task",

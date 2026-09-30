@@ -1,13 +1,15 @@
 package top.focess.veto.integration.plugins;
 
-import java.util.LinkedHashMap;
-import java.util.Map;
-import java.util.Set;
 import org.jspecify.annotations.NonNull;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
+
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.plugin.runtime.*;
+
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.Set;
 
 /** Operator configuration passed only to the plugin with the matching identity. */
 @Component
@@ -15,12 +17,12 @@ import top.focess.veto.plugin.runtime.*;
 public final class PluginConfigurations {
     private @NonNull Set<String> disabled = Set.of();
 
-    /** Operator-owned IDs omitted from activation during startup package scanning. */
+    /** Startup defaults, overridden by administrator choices saved in the database. */
     public @NonNull Set<String> getDisabled() {
         return disabled;
     }
 
-    /** Configures the installed package IDs to leave inactive at startup. */
+    /** Configures default inactive IDs when no database choice exists. */
     public void setDisabled(@NonNull Set<String> disabled) {
         this.disabled = Set.copyOf(disabled);
     }

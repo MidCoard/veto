@@ -11,6 +11,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import org.jspecify.annotations.NonNull;
 
 /**
@@ -71,8 +72,11 @@ public class BraveSearchProvider implements SearchProvider, AutoCloseable {
                         .header("X-Subscription-Token", apiKey)
                         .GET()
                         .build();
-        HttpResponse<@NonNull String> response =
-                httpClient.<@NonNull String>send(request, HttpResponse.BodyHandlers.ofString());
+        var response =
+                Objects.requireNonNull(
+                        httpClient.<@NonNull String>send(
+                                request, HttpResponse.BodyHandlers.ofString()),
+                        "HttpClient.send returned null");
         if (response.statusCode() != 200) {
             throw new IllegalStateException("Brave search failed: HTTP " + response.statusCode());
         }

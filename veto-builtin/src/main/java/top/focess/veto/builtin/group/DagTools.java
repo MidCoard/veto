@@ -31,73 +31,65 @@ public final class DagTools {
     @ToolDoc(
             resultFormats = {ToolResultFormat.PLAINTEXT},
             description =
-                    "Add a node to your group's execution plan - one discrete task with a required"
-                            + " skillset.",
+                    """
+                    Add a node to your group's execution plan - one discrete task with a required skillset.\
+                    """,
             behavior =
                     """
-                    Adds one node to the execution plan. `dependsOn` may reference only existing, \
-                    live nodes - the plan stays acyclic by construction. The node starts PENDING. \
-                    On an orchestration tick after its dependencies complete, the engine may \
-                    reuse a Mate whose skillset label is exactly equal, or provision one and then \
-                    dispatch the node. Skillsets are free-form scheduling labels; an unconfigured \
-                    label uses the deployer's default Mate binding. Each plan \
-                    mutation is validated atomically before it takes effect. Set `mateId` to an \
-                    existing Mate id from `inspect_group` to assign that specific collaborator; \
-                    it waits if that Mate is busy and never substitutes another Mate. Without it, \
-                    skillset selects any matching available Mate. Set `newMate` to true when the \
-                    task requires a different, independent collaborator; this creates a new member \
-                    even if an existing Mate has the same skillset. Do not combine it with `mateId`. Direct dependency reports are \
-                    included in the dispatched task; the Mate does not receive other agents' histories.
+                    Adds one node to the execution plan. `dependsOn` may reference only existing, live nodes - \
+                    the plan stays acyclic by construction. The node starts PENDING. On an orchestration tick \
+                    after its dependencies complete, the engine may reuse a Mate whose skillset label is exactly \
+                    equal, or provision one and then dispatch the node. Skillsets are free-form scheduling \
+                    labels; an unconfigured label uses the deployer's default Mate binding. Each plan mutation is \
+                    validated atomically before it takes effect. Set `mateId` to an existing Mate id from \
+                    `inspect_group` to assign that specific collaborator; it waits if that Mate is busy and never \
+                    substitutes another Mate. Without it, skillset selects any matching available Mate. Set \
+                    `newMate` to true when the task requires a different, independent collaborator; this creates \
+                    a new member even if an existing Mate has the same skillset. Do not combine it with `mateId`. \
+                    Direct dependency reports are included in the dispatched task; the Mate does not receive \
+                    other agents' histories.\
                     """,
             whenToUse =
                     """
-                    Use `create_node` to build your plan node by node: one call per discrete \
-                    task. Create dependencies before the nodes that need them - you author the \
-                    plan from its foundations up. Also use it to extend the plan while the group \
-                    is running or after its previous tasks have completed. When the user names a \
-                    previous collaborator, resolve its actual Mate id from the earlier node and set `mateId`.
+                    Use `create_node` to build your plan node by node: one call per discrete task. Create \
+                    dependencies before the nodes that need them - you author the plan from its foundations up. \
+                    Also use it to extend the plan while the group is running or after its previous tasks have \
+                    completed. When the user names a previous collaborator, resolve its actual Mate id from the \
+                    earlier node and set `mateId`.\
                     """,
             whenNotToUse =
                     """
-                    - Do not create a node before you have investigated enough to describe it \
-                    concretely - vague nodes make vague work.
-                    - Do not create nodes for work that needs no mate; synthesis is your job, \
-                    not a node.
-                    - Do not depend on a node that does not exist yet; create it first.
+                    - Do not create a node before you have investigated enough to describe it concretely - vague \
+                    nodes make vague work. - Do not create nodes for work that needs no mate; synthesis is your \
+                    job, not a node. - Do not depend on a node that does not exist yet; create it first.\
                     """,
             resultContract =
                     """
-                    On success - one prose line per created node:
-                      Node created: node-1 (skillset: coding). It is eligible for dispatch.
-                    Failures, all `Node not created: <reason and what to do next>`: no active \
-                    group (failure, NO_ACTIVE_GROUP); plan change rejected (failure, REQUEST_REJECTED).
+                    On success - one prose line per created node: Node created: node-1 (skillset: coding). It is \
+                    eligible for dispatch. Failures, all `Node not created: <reason and what to do next>`: no \
+                    active group (failure, NO_ACTIVE_GROUP); plan change rejected (failure, REQUEST_REJECTED).\
                     """,
             errorsAndEdgeCases =
                     """
-                    - Duplicate `nodeId` (failure, REQUEST_REJECTED) -> choose a unique id.
-                    - `dependsOn` referencing an unknown or retired (stale) node (failure, \
-                    REQUEST_REJECTED) -> the failure names the id; create dependencies first.
-                    - Blank `nodeId`, `description`, or `skillset` (failure, REQUEST_REJECTED).
-                    - No active group in your context (failure, NO_ACTIVE_GROUP).
+                    - Duplicate `nodeId` (failure, REQUEST_REJECTED) -> choose a unique id. - `dependsOn` \
+                    referencing an unknown or retired (stale) node (failure, REQUEST_REJECTED) -> the failure \
+                    names the id; create dependencies first. - Blank `nodeId`, `description`, or `skillset` \
+                    (failure, REQUEST_REJECTED). - No active group in your context (failure, NO_ACTIVE_GROUP).\
                     """,
-            security = "Only the group coordinator can change the task plan.",
+            security =
+                    """
+                    Only the group coordinator can change the task plan.\
+                    """,
             examples = {
-                "{\"nodeId\": \"node-1\", \"description\": \"Implement JWT login in UserService\","
-                        + " \"skillset\": \"coding\"}",
-                "{\"nodeId\": \"node-2\", \"description\": \"Test the login flow\", \"skillset\":"
-                        + " \"testing\", \"dependsOn\": [\"node-1\"]}",
-                "{\"nodeId\": \"node-3\", \"description\": \"Apply the reviewer feedback to the"
-                        + " parser\", \"skillset\": \"coding\", \"mateId\":"
-                        + " \"9b2e8c1a-4d5f-4e7b-8c9d-0a1b2c3d4e5f\"}",
-                "{\"nodeId\": \"node-4\", \"description\": \"Audit the authentication flow"
-                        + " independently\", \"skillset\": \"security-review\", \"newMate\": true}",
-                "{\"nodeId\": \"node-1\", \"description\": \"Rewrite the parser\", \"skillset\":"
-                        + " \"coding\"}"
+                "{\"nodeId\": \"node-1\", \"description\": \"Implement JWT login in UserService\", \"skillset\": \"coding\"}",
+                "{\"nodeId\": \"node-2\", \"description\": \"Test the login flow\", \"skillset\": \"testing\", \"dependsOn\": [\"node-1\"]}",
+                "{\"nodeId\": \"node-3\", \"description\": \"Apply the reviewer feedback to the parser\", \"skillset\": \"coding\", \"mateId\": \"9b2e8c1a-4d5f-4e7b-8c9d-0a1b2c3d4e5f\"}",
+                "{\"nodeId\": \"node-4\", \"description\": \"Audit the authentication flow independently\", \"skillset\": \"security-review\", \"newMate\": true}",
+                "{\"nodeId\": \"node-1\", \"description\": \"Rewrite the parser\", \"skillset\": \"coding\"}"
             },
             returnExamples = {
                 "Node created: node-1 (skillset: coding). It is eligible for dispatch.",
-                "Node created: node-2 (skillset: testing, depends on: node-1). It becomes eligible"
-                        + " after its dependencies verify.",
+                "Node created: node-2 (skillset: testing, depends on: node-1). It becomes eligible after its dependencies verify.",
                 "Node created: node-3 (skillset: coding). It is eligible for dispatch.",
                 "Node created: node-4 (skillset: security-review). It is eligible for dispatch.",
                 "Node not created: node-1 already exists. Choose a unique id."
@@ -213,44 +205,45 @@ public final class DagTools {
     @ToolDoc(
             resultFormats = {ToolResultFormat.PLAINTEXT},
             description =
-                    "Retire a node from your group's plan - re-planning marks it stale rather than"
-                            + " deleting it.",
+                    """
+                    Retire a node from your group's plan - re-planning marks it stale rather than deleting it.\
+                    """,
             behavior =
                     """
-                    Marks the node STALE and keeps it in the plan record for audit. New nodes cannot \
-                    depend on it, and live dependents must be removed or re-planned first. This call \
-                    refuses running nodes so execution cannot disappear from the plan. Wait for \
-                    their result before retiring them. Recorded assignments remain available.
+                    Marks the node STALE and keeps it in the plan record for audit. New nodes cannot depend on \
+                    it, and live dependents must be removed or re-planned first. This call refuses running nodes \
+                    so execution cannot disappear from the plan. Wait for their result before retiring them. \
+                    Recorded assignments remain available.\
                     """,
             whenToUse =
                     """
-                    Use `remove_node` when re-planning makes a node obsolete - a strategic \
-                    pivot, a task that turned out unnecessary, or a failed node you are replacing \
-                    with a different approach.
+                    Use `remove_node` when re-planning makes a node obsolete - a strategic pivot, a task that \
+                    turned out unnecessary, or a failed node you are replacing with a different approach.\
                     """,
             whenNotToUse =
                     """
-                    - Do not remove a COMPLETED node; completed work is checkpointed and stays.
-                    - Do not remove a node others still depend on; re-plan or remove the \
-                    dependents first (the error names them).
-                    - Read a failed node's report before deciding how to replace it; failures are \
-                    retained for the Leader to assess rather than automatically retried forever.
+                    - Do not remove a COMPLETED node; completed work is checkpointed and stays. - Do not remove a \
+                    node others still depend on; re-plan or remove the dependents first (the error names them). - \
+                    Read a failed node's report before deciding how to replace it; failures are retained for the \
+                    Leader to assess rather than automatically retried forever.\
                     """,
             resultContract =
                     """
-                    On success:
-                      Node removed: node-2 (marked stale).
-                    Failures, all `Node not removed: <reason and what to do next>`: no active \
-                    group (failure, NO_ACTIVE_GROUP); removal refused (failure, REQUEST_REJECTED).
+                    On success: Node removed: node-2 (marked stale). Failures, all `Node not removed: <reason and \
+                    what to do next>`: no active group (failure, NO_ACTIVE_GROUP); removal refused (failure, \
+                    REQUEST_REJECTED).\
                     """,
             errorsAndEdgeCases =
                     """
-                    - Unknown `nodeId` (failure, REQUEST_REJECTED): `Node not removed: node not found: <id>`.
-                    - Live dependents exist -> refused, naming the dependents.
-                    - Already stale or COMPLETED -> not removed; completed work remains checkpointed.
-                    - RUNNING -> refused; removing a node is not cancellation.
+                    - Unknown `nodeId` (failure, REQUEST_REJECTED): `Node not removed: node not found: <id>`. - \
+                    Live dependents exist -> refused, naming the dependents. - Already stale or COMPLETED -> not \
+                    removed; completed work remains checkpointed. - RUNNING -> refused; removing a node is not \
+                    cancellation.\
                     """,
-            security = "Only the group coordinator can remove task nodes.",
+            security =
+                    """
+                    Only the group coordinator can remove task nodes.\
+                    """,
             examples = {
                 "{\"nodeId\": \"node-2\"}",
                 "{\"nodeId\": \"node-4\"}",

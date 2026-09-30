@@ -160,7 +160,7 @@ public final class PluginTestSupport {
     public static @NonNull String protect(
             @NonNull PluginManager manager,
             BeforeTextCommitEvent.@NonNull Phase phase,
-            FrontendContribution.@NonNull Scope scope,
+            FrontendContribution.@NonNull ActionContext scope,
             @NonNull String sourceId,
             @NonNull String text)
             throws PluginFailure {
@@ -186,7 +186,7 @@ public final class PluginTestSupport {
     /** Reveals a reference through the plugin's frontend "show" action; empty when unavailable. */
     public static @NonNull Optional<String> reveal(
             @NonNull PluginManager manager,
-            FrontendContribution.@NonNull Scope scope,
+            FrontendContribution.@NonNull ActionContext scope,
             @NonNull String reference)
             throws PluginFailure {
         var entry =
@@ -206,7 +206,7 @@ public final class PluginTestSupport {
                                         entry.implementation()
                                                 .handler()
                                                 .handle(
-                                                        new FrontendContribution.Scope(
+                                                        new FrontendContribution.ActionContext(
                                                                 scope.ownerId(),
                                                                 scope.sessionId(),
                                                                 scope.agentId()),

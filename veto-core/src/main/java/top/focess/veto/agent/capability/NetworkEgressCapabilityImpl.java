@@ -14,6 +14,7 @@ import java.net.http.HttpTimeoutException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Arrays;
+import java.util.Objects;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
@@ -61,7 +62,7 @@ public final class NetworkEgressCapabilityImpl implements NetworkEgressCapabilit
                     "Web reading fetch timeout-seconds and max-chars must both be positive");
         }
         this.allowPrivateAddresses = allowPrivateAddresses;
-        HttpClient.Builder builder =
+        HttpClient.@NonNull Builder builder =
                 HttpClient.newBuilder()
                         .connectTimeout(Duration.ofSeconds(Math.min(timeoutSeconds, 15)))
                         .followRedirects(HttpClient.Redirect.NEVER);
@@ -117,8 +118,10 @@ public final class NetworkEgressCapabilityImpl implements NetworkEgressCapabilit
                                 .header("Accept", "text/html, application/json, text/plain, */*")
                                 .GET()
                                 .build();
-                HttpResponse<InputStream> response =
-                        httpClient.send(request, HttpResponse.BodyHandlers.ofInputStream());
+                var response =
+                        Objects.requireNonNull(
+                                httpClient.send(request, HttpResponse.BodyHandlers.ofInputStream()),
+                                "HttpClient.send returned null");
                 int status = response.statusCode();
                 if (isRedirect(status)) {
                     closeBody(response);

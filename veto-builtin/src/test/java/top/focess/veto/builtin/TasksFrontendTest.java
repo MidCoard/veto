@@ -25,7 +25,7 @@ class TasksFrontendTest {
         var info = tasks.start();
         var invocation = process.invocation();
         var scope =
-                new FrontendContribution.Scope(
+                new FrontendContribution.ActionContext(
                         invocation.owner(), invocation.sessionId(), invocation.agentId());
         var contribution = new TasksFrontend(tasks);
         var handler = contribution.handler();
@@ -39,11 +39,11 @@ class TasksFrontendTest {
         try {
             for (var wrong :
                     List.of(
-                            new FrontendContribution.Scope(
+                            new FrontendContribution.ActionContext(
                                     "other", scope.sessionId(), scope.agentId()),
-                            new FrontendContribution.Scope(
+                            new FrontendContribution.ActionContext(
                                     scope.ownerId(), UUID.randomUUID().toString(), scope.agentId()),
-                            new FrontendContribution.Scope(
+                            new FrontendContribution.ActionContext(
                                     scope.ownerId(), scope.sessionId(), "other"))) {
                 var list =
                         object(handler.handle(wrong, "list", new JsonValue.ObjectValue(Map.of())));
@@ -68,7 +68,7 @@ class TasksFrontendTest {
             assertTrue(process.isAlive());
             var stopped = object(handler.handle(scope, "stopOrRemove", args));
             assertEquals(new JsonValue.StringValue("stopped"), stopped.values().get("status"));
-            tasks.awaitExit(BackgroundTasks.Scope.from(invocation), info.taskId());
+            tasks.awaitExit(BackgroundTasks.Owner.from(invocation), info.taskId());
             var pageArgs = new HashMap<String, JsonValue>(args.values());
             pageArgs.put("limit", new JsonValue.NumberValue(BigDecimal.valueOf(3)));
             var page = object(handler.handle(scope, "output", new JsonValue.ObjectValue(pageArgs)));

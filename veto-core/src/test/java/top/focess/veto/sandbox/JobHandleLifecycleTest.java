@@ -42,7 +42,7 @@ class JobHandleLifecycleTest {
             Process process =
                     new ProcessBuilder(prepared.command()).directory(workspace.toFile()).start();
             prepared.awaitReady(process);
-            @NonNull AutoCloseable handle = substrate.attachRequired(process, profile);
+            AutoCloseable handle = substrate.attachRequired(process, profile);
             prepared.release();
             assertEquals(0, process.waitFor());
             assertDoesNotThrow(handle::close, "Closing the handle should not throw");

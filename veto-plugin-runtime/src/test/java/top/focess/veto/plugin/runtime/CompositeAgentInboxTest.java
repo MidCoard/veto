@@ -33,20 +33,22 @@ class CompositeAgentInboxTest {
                         "local-episode");
         AgentInbox source =
                 new AgentInbox() {
-                    public @NonNull List<Observation> pending(@NonNull Scope scope) {
+                    public @NonNull List<Observation> pending(@NonNull InboxContext scope) {
                         return List.of(observation);
                     }
 
-                    public void started(@NonNull Scope scope, @NonNull Observation value) {
+                    public void started(@NonNull InboxContext scope, @NonNull Observation value) {
                         calls.add("started:" + value.id());
                     }
 
                     public void completed(
-                            @NonNull Scope scope, @NonNull Observation value, boolean success) {
+                            @NonNull InboxContext scope,
+                            @NonNull Observation value,
+                            boolean success) {
                         calls.add("completed:" + value.id() + ":" + success);
                     }
 
-                    public void cancelled(@NonNull Scope scope, @NonNull Observation value) {
+                    public void cancelled(@NonNull InboxContext scope, @NonNull Observation value) {
                         calls.add("cancelled:" + value.id());
                     }
                 };
@@ -76,6 +78,7 @@ class CompositeAgentInboxTest {
                                     throw new IllegalStateException(
                                             "Plugin context is not bound to a lifecycle owner");
                                 },
+                                Map.of(),
                                 Map.of()),
                         new JsonValue.ObjectValue(Map.of()));
                 managed.start();
@@ -91,7 +94,7 @@ class CompositeAgentInboxTest {
                                                         "example.reminders:work",
                                                         managed,
                                                         source)));
-                var scope = new AgentInbox.Scope("session", "agent", null);
+                var scope = new AgentInbox.InboxContext("session", "agent", null);
                 var value = composite.pending(scope).getFirst();
                 assertEquals("example.reminders:work/local-id", value.id());
                 assertEquals("vendor.reminder", value.topic());

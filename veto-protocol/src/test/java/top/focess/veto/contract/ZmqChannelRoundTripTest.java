@@ -22,7 +22,7 @@ class ZmqChannelRoundTripTest {
 
     @BeforeEach
     void setUp() {
-        @NonNull ZContext newContext = new ZContext();
+        ZContext newContext = new ZContext();
         ctx = newContext;
         router = ZmqChannel.Server.bindRouter(newContext, ADDR);
         dealer = ZmqChannel.Client.connectDealer(newContext, ADDR, UUID.randomUUID().toString());
@@ -64,8 +64,8 @@ class ZmqChannelRoundTripTest {
                         + "/pattern use <name> — Activate a pattern";
 
         // 1. DEALER sends Hello so the ROUTER learns its identity.
-        ZmqChannel.@NonNull Client activeDealer = dealer();
-        ZmqChannel.@NonNull Server activeRouter = router();
+        ZmqChannel.Client activeDealer = dealer();
+        ZmqChannel.Server activeRouter = router();
         String userDir = System.getProperty("user.dir");
         if (userDir == null) {
             throw new AssertionError("user.dir system property is unavailable");

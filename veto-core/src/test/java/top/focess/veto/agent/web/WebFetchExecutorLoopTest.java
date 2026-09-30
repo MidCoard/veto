@@ -516,7 +516,6 @@ class WebFetchExecutorLoopTest {
     private @NonNull WebFetchTool tool(
             @NonNull UniformLLMCaller caller, int rounds, int timeout, int maxInputTokens) {
         var network = mock(NetworkEgressCapabilityImpl.class);
-
         when(access.fetch())
                 .thenReturn(
                         new HttpDocument(

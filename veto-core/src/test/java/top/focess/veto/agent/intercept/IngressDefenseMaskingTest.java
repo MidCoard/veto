@@ -49,7 +49,7 @@ class IngressDefenseMaskingTest {
 
     @Test
     void protectedFileReferencesSurviveMaskingOnlyWithinTheirLiveScope() throws Exception {
-        var scope = new FrontendContribution.Scope("owner", "session", "agent");
+        var scope = new FrontendContribution.ActionContext("owner", "session", "agent");
         String captured =
                 PluginTestSupport.protect(
                         plugins,
@@ -89,7 +89,8 @@ class IngressDefenseMaskingTest {
                         PluginTestSupport.protect(
                                 plugins,
                                 BeforeTextCommitEvent.Phase.FILE_OBSERVATION,
-                                new FrontendContribution.Scope("owner", "session", "other-agent"),
+                                new FrontendContribution.ActionContext(
+                                        "owner", "session", "other-agent"),
                                 "file",
                                 fileResult.content()));
         new PluginLifecycleEvents(plugins).ownerClosed("owner");

@@ -147,7 +147,7 @@ class SourceReceiptTest {
         var context =
                 new ToolCallContext(
                         "agent", user, "owner", session, ToolResultPresentationMode.BASIC, permit);
-        @NonNull ToolEngine engine = mock();
+        ToolEngine engine = mock(ToolEngine.class);
         var control =
                 new ModelControl(
                         context,

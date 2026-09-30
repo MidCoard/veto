@@ -12,7 +12,7 @@ import top.focess.veto.vault.KeysteadVault;
 
 class FsControllerTest {
     private static @NonNull FsController authenticated() {
-        @NonNull KeysteadVault vault = mock();
+        KeysteadVault vault = mock(KeysteadVault.class);
         when(vault.currentUser()).thenReturn("test-user");
         return new FsController(vault);
     }
@@ -34,7 +34,7 @@ class FsControllerTest {
 
     @Test
     void requiresAuthenticationBeforeCreating(@TempDir @NonNull Path directory) {
-        @NonNull KeysteadVault vault = mock();
+        KeysteadVault vault = mock(KeysteadVault.class);
         var response =
                 new FsController(vault)
                         .createDirectory(

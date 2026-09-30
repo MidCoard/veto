@@ -1,5 +1,7 @@
 package top.focess.veto.integration.plugins.storage;
 
+import top.focess.veto.api.plugin.PluginScope;
+
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
@@ -96,8 +98,8 @@ class ScopedPluginStorageTest {
     }
 
     private @NonNull PluginLifecycle plugin(@NonNull String id) {
-        @NonNull PluginLifecycle result = mock();
-        @NonNull VetoPlugin implementation = mock();
+        PluginLifecycle result = mock(PluginLifecycle.class);
+        VetoPlugin implementation = mock(VetoPlugin.class);
         when(result.identity()).thenReturn(new PluginIdentity(id, "1.0.0"));
         when(result.implementation()).thenReturn(implementation);
         when(implementation.historicalIds()).thenReturn(Set.of());
@@ -111,7 +113,7 @@ class ScopedPluginStorageTest {
     }
 
     private PluginStorage.@NonNull SessionScope scope(@NonNull PluginStorage storage) {
-        var invocation = new PluginInvocationScope("owner", session);
+        var invocation = new PluginInvocationContext("owner", session);
         try {
             return storage.currentSession();
         } finally {
@@ -140,7 +142,7 @@ class ScopedPluginStorageTest {
             var userPage =
                     required(
                             transactions.execute(
-                                    status -> data.list(PluginStorage.Kind.USER, null, null, 1)));
+                                    status -> data.list(PluginScope.USER, null, null, 1)));
             assertEquals(1, userPage.entries().size());
             var userRecord = userPage.entries().getFirst();
             assertEquals("one", userRecord.pluginId());
@@ -157,27 +159,18 @@ class ScopedPluginStorageTest {
                     required(
                                     transactions.execute(
                                             status ->
-                                                    data.list(
-                                                            PluginStorage.Kind.SESSION,
-                                                            null,
-                                                            null,
-                                                            10)))
+                                                    data.list(PluginScope.SESSION, null, null, 10)))
                             .entries()
                             .size());
             assertThrows(
                     ResponseStatusException.class,
-                    () -> data.list(PluginStorage.Kind.APPLICATION, null, null, 10));
+                    () -> data.list(PluginScope.APPLICATION, null, null, 10));
 
             UserContext.set("intruder");
             assertTrue(
                     required(
                                     transactions.execute(
-                                            status ->
-                                                    data.list(
-                                                            PluginStorage.Kind.USER,
-                                                            null,
-                                                            null,
-                                                            10)))
+                                            status -> data.list(PluginScope.USER, null, null, 10)))
                             .entries()
                             .isEmpty());
             var denied =
@@ -190,12 +183,7 @@ class ScopedPluginStorageTest {
             var application =
                     required(
                             transactions.execute(
-                                    status ->
-                                            data.list(
-                                                    PluginStorage.Kind.APPLICATION,
-                                                    null,
-                                                    null,
-                                                    10)));
+                                    status -> data.list(PluginScope.APPLICATION, null, null, 10)));
             assertEquals(1, application.entries().size());
             assertEquals(
                     "\"payload\"",
@@ -255,7 +243,7 @@ class ScopedPluginStorageTest {
                     }
 
                     public @NonNull JsonValue handle(
-                            @NonNull Scope scope,
+                            @NonNull ActionContext scope,
                             @NonNull String action,
                             JsonValue.@NonNull ObjectValue arguments)
                             throws PluginFailure {
@@ -278,9 +266,9 @@ class ScopedPluginStorageTest {
                                                 "panel",
                                                 frontend)))
                         .freeze();
-        @NonNull SessionRepository sessions = mock();
-        @NonNull SessionPlugins selected = mock();
-        @NonNull PluginManager plugins = mock();
+        SessionRepository sessions = mock(SessionRepository.class);
+        SessionPlugins selected = mock(SessionPlugins.class);
+        PluginManager plugins = mock(PluginManager.class);
         var row = database.find(SessionEntity.class, session);
         when(sessions.findFirstByNameAndOwnerOrderByLastActiveAtDesc("test", "owner"))
                 .thenReturn(Optional.of(Nullness.requireNonNull(row)));
@@ -295,7 +283,7 @@ class ScopedPluginStorageTest {
                             if (operation == null) throw new AssertionError("Missing operation");
                             return operation.run();
                         });
-        @NonNull SessionAgentRegistry agents = mock();
+        SessionAgentRegistry agents = mock(SessionAgentRegistry.class);
         when(agents.records(UUID.fromString(session)))
                 .thenReturn(
                         List.of(
@@ -321,14 +309,14 @@ class ScopedPluginStorageTest {
                         selected,
                         plugins,
                         agents);
-        var outer = new PluginInvocationScope("owner", "outer");
+        var outer = new PluginInvocationContext("owner", "outer");
         UserContext.set("owner");
         try {
             controller.act(
                     "test",
                     new PluginFrontendController.ActionRequest(
                             "one:panel", "agent", "save", new ObjectMapper().createObjectNode()));
-            assertSame(outer, Nullness.requireNonNull(PluginInvocationScope.current()));
+            assertSame(outer, Nullness.requireNonNull(PluginInvocationContext.current()));
             assertThrows(
                     ResponseStatusException.class,
                     () ->
@@ -339,7 +327,7 @@ class ScopedPluginStorageTest {
                                             "agent",
                                             "fail",
                                             new ObjectMapper().createObjectNode())));
-            assertSame(outer, Nullness.requireNonNull(PluginInvocationScope.current()));
+            assertSame(outer, Nullness.requireNonNull(PluginInvocationContext.current()));
         } finally {
             outer.close();
             UserContext.clear();
@@ -384,7 +372,7 @@ class ScopedPluginStorageTest {
                         first.session(
                                 new PluginStorage.SessionScope(
                                         authorized.token(), "forged", session)));
-        assertEquals(1, first.scopes(PluginStorage.Kind.SESSION, null, 50).entries().size());
+        assertEquals(1, first.scopes(PluginScope.SESSION, null, 50).entries().size());
         assertTrue(a.list("same", null, 50).entries().size() == 1);
     }
 
@@ -474,7 +462,7 @@ class ScopedPluginStorageTest {
                 });
         when(plugin.state()).thenReturn(PluginState.ACTIVE);
         assertThrows(SecurityException.class, () -> store.put("late", null, VALUE));
-        assertTrue(first.scopes(PluginStorage.Kind.SESSION, null, 50).entries().isEmpty());
+        assertTrue(first.scopes(PluginScope.SESSION, null, 50).entries().isEmpty());
     }
 
     @Test

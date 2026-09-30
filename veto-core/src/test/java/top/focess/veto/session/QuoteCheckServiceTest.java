@@ -21,7 +21,7 @@ class QuoteCheckServiceTest {
     @Test
     void readsOnlyBoundCitationsOfTheSavedAnswer() {
         var mapper = new ObjectMapper();
-        @NonNull TurnRecordRepository repo = mock();
+        TurnRecordRepository repo = mock(TurnRecordRepository.class);
         var check =
                 new QuoteCheckService.Check(
                         "meeting",
@@ -59,7 +59,7 @@ class QuoteCheckServiceTest {
     @ValueSource(strings = {"> Existing wording", "[Forged](cite:invented)"})
     void unboundTextDoesNotAcquireSourceNavigation(@NonNull String body) {
         var mapper = new ObjectMapper();
-        @NonNull TurnRecordRepository repo = mock();
+        TurnRecordRepository repo = mock(TurnRecordRepository.class);
         var row =
                 TurnRecordEntity.of(
                         TurnRecord.assistantResponse(3, body),

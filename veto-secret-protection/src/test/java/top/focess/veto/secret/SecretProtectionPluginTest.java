@@ -2,6 +2,7 @@ package top.focess.veto.secret;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -19,22 +20,35 @@ import top.focess.veto.api.event.SessionClosedEvent;
 import top.focess.veto.api.plugin.PluginContext;
 import top.focess.veto.api.plugin.PluginIdentity;
 import top.focess.veto.api.plugin.PluginState;
+import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.api.plugin.contract.FrontendContribution;
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.contract.ObservationMiddleware;
+import top.focess.veto.api.plugin.contract.StandardContributionPoints;
 import top.focess.veto.api.plugin.contribution.Contribution;
 
 /** The plugin is self-contained: typed points and host-service import. */
 class SecretProtectionPluginTest {
-    private static final FrontendContribution.@NonNull Scope SCOPE =
-            new FrontendContribution.Scope("owner", "session", "agent");
+    private static final FrontendContribution.@NonNull ActionContext SCOPE =
+            new FrontendContribution.ActionContext("owner", "session", "agent");
 
     private static @NonNull List<Contribution<?>> initialize(
             @NonNull Map<@NonNull Class<?>, @NonNull Object> services) {
         var identity = new PluginIdentity("top.focess.secret-protection", "1.0.100");
-        var context = new PluginContext(identity, () -> {}, () -> PluginState.NEW, services);
+        var entries = new ArrayList<@NonNull Contribution<?>>();
+        var context =
+                new PluginContext(
+                        identity,
+                        () -> {},
+                        () -> PluginState.NEW,
+                        services,
+                        Map.of(
+                                StandardContributionPoints.FRONTEND, entries::add,
+                                StandardContributionPoints.OBSERVATION, entries::add,
+                                StandardContributionPoints.LISTENERS, entries::add,
+                                StandardContributionPoints.TOOLS, entries::add));
         new SecretProtectionPlugin(context, new JsonValue.ObjectValue(Map.of()));
-        return context.sealRegistrations().entries();
+        return List.copyOf(entries);
     }
 
     @Test
@@ -106,21 +120,11 @@ class SecretProtectionPluginTest {
 
     @Test
     void importToolUsesTheHostGrantedVault() throws Exception {
-        VaultAccess.Scope writer =
-                new VaultAccess.Scope() {
+        VaultAccess.Handle writer =
+                new VaultAccess.Handle() {
                     @Override
-                    public @NonNull String owner() {
-                        return "owner";
-                    }
-
-                    @Override
-                    public @NonNull String sessionId() {
-                        return "session";
-                    }
-
-                    @Override
-                    public @NonNull String agentId() {
-                        return "agent";
+                    public Scope.@NonNull AgentScope scope() {
+                        return new Scope.AgentScope("owner", "session", "agent");
                     }
 
                     @Override
@@ -155,7 +159,7 @@ class SecretProtectionPluginTest {
 
     private static @NonNull String commit(
             SecretProtectionPlugin.@NonNull SecretLifecycle lifecycle,
-            FrontendContribution.@NonNull Scope scope,
+            FrontendContribution.@NonNull ActionContext scope,
             @NonNull String text) {
         var event =
                 new BeforeTextCommitEvent(

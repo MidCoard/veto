@@ -8,7 +8,6 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.util.concurrent.CompletableFuture;
-import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentMatchers;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -16,9 +15,9 @@ import org.springframework.test.util.ReflectionTestUtils;
 class LocalModelTransportTest {
     @Test
     void cancellingLocalCompletionCancelsThePendingHttpRequest() {
-        @NonNull SlmConfiguration config = mock();
-        @NonNull GBNFGrammarEngine grammars = mock();
-        @NonNull HttpClient http = mock();
+        SlmConfiguration config = mock(SlmConfiguration.class);
+        GBNFGrammarEngine grammars = mock(GBNFGrammarEngine.class);
+        HttpClient http = mock(HttpClient.class);
         var pending = new CompletableFuture<HttpResponse<String>>();
         when(http.sendAsync(
                         any(HttpRequest.class),

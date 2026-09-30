@@ -26,6 +26,7 @@ import top.focess.veto.api.plugin.PluginIdentity;
 import top.focess.veto.api.plugin.PluginState;
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.contract.PluginFailure;
+import top.focess.veto.api.plugin.contract.StandardContributionPoints;
 
 class ScriptPluginTest {
     private static final @NonNull ObjectMapper JSON = new ObjectMapper();
@@ -37,7 +38,8 @@ class ScriptPluginTest {
                 () -> {
                     throw new IllegalStateException("Plugin context has no lifecycle owner");
                 },
-                Map.of());
+                Map.of(),
+                Map.of(StandardContributionPoints.TOOLS, contribution -> {}));
     }
 
     private static @NonNull Path node() {

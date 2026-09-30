@@ -74,20 +74,20 @@ public final class MonitorRuntime implements AutoCloseable {
     /** Returns the monitor view of the host agent-work-source contract. */
     public @NonNull AgentInbox work() {
         return new AgentInbox() {
-            public @NonNull List<@NonNull Observation> pending(@NonNull Scope scope) {
+            public @NonNull List<@NonNull Observation> pending(@NonNull InboxContext scope) {
                 return ready ? service.pending(scope) : List.of();
             }
 
-            public void started(@NonNull Scope scope, @NonNull Observation value) {
+            public void started(@NonNull InboxContext scope, @NonNull Observation value) {
                 service.started(scope, value);
             }
 
             public void completed(
-                    @NonNull Scope scope, @NonNull Observation value, boolean success) {
+                    @NonNull InboxContext scope, @NonNull Observation value, boolean success) {
                 service.completed(scope, value, success);
             }
 
-            public void cancelled(@NonNull Scope scope, @NonNull Observation value) {
+            public void cancelled(@NonNull InboxContext scope, @NonNull Observation value) {
                 service.cancelled(scope, value);
             }
         };

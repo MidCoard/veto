@@ -18,4 +18,12 @@ public interface UniformLLMCaller {
      * @throws LlmException if the call fails permanently (auth, capability) or exhausts retries.
      */
     @NonNull VetoResponse call(@NonNull VetoRequest request);
+
+    /**
+     * Executes a request for a persisted session. Implementations that resolve plugin-provided
+     * transports use the session id to enforce its exact plugin revision pin.
+     */
+    default @NonNull VetoResponse call(@NonNull VetoRequest request, @NonNull String sessionId) {
+        return call(request);
+    }
 }

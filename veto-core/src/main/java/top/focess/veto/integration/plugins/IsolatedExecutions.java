@@ -71,7 +71,7 @@ public final class IsolatedExecutions {
 
     private static final @NonNull ConcurrentHashMap<@NonNull ToolCallContext, @NonNull Invocation>
             INVOCATIONS = new ConcurrentHashMap<>();
-    private static final @NonNull ConcurrentHashMap<@NonNull String, @NonNull Scope>
+    private static final @NonNull ConcurrentHashMap<@NonNull String, @NonNull Execution>
             PRIVATE_CONTEXTS = new ConcurrentHashMap<>();
 
     /**
@@ -166,7 +166,7 @@ public final class IsolatedExecutions {
         if (spec.terminal().reservedCalls() >= limits.calls())
             throw new IllegalArgumentException("No nonterminal call budget");
         var scope =
-                new Scope(
+                new Execution(
                         parent,
                         Thread.currentThread(),
                         admitted,
@@ -249,7 +249,7 @@ public final class IsolatedExecutions {
                                         request.nativeToolsEnabled(),
                                         request.responseContract());
                         try {
-                            return caller.call(bounded);
+                            return caller.call(bounded, session.toString());
                         } finally {
                             for (var usage : LlmSystemUsage.snapshot()) {
                                 scope.input.addAndGet(usage.promptTokens());
@@ -350,7 +350,7 @@ public final class IsolatedExecutions {
     }
 
     /** Host-issued contract context; API-only plugins cannot construct it. */
-    public static final class Scope implements IsolatedAgent.Runtime {
+    public static final class Execution implements IsolatedAgent.Runtime {
         private final @NonNull ToolCallContext parent;
         private final @NonNull Thread parentThread;
         private final @NonNull BooleanSupplier admitted;
@@ -369,7 +369,7 @@ public final class IsolatedExecutions {
         private volatile boolean completed;
         private HttpDestinationGrant destination;
 
-        private Scope(
+        private Execution(
                 @NonNull ToolCallContext parent,
                 @NonNull Thread parentThread,
                 @NonNull BooleanSupplier admitted,
@@ -476,7 +476,7 @@ public final class IsolatedExecutions {
 
     /** A live isolated child agent; owned by the opening parent invocation and closed with it. */
     public static final class Child implements IsolatedAgent {
-        private final @NonNull Scope scope;
+        private final @NonNull Execution scope;
         private final IsolatedAgent.@NonNull Tools tools;
         private final @NonNull VetoAgent agent;
         private final @NonNull AgentRunner runner;
@@ -493,7 +493,7 @@ public final class IsolatedExecutions {
         }
 
         private Child(
-                @NonNull Scope scope,
+                @NonNull Execution scope,
                 IsolatedAgent.@NonNull Tools tools,
                 @NonNull VetoAgent agent,
                 @NonNull AgentRunner runner) {
@@ -525,7 +525,7 @@ public final class IsolatedExecutions {
                                             }));
         }
 
-        public @NonNull Scope scope() {
+        public @NonNull Execution scope() {
             return scope;
         }
 

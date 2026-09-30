@@ -2,22 +2,23 @@ package top.focess.veto.integration.plugins;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import org.jspecify.annotations.NonNull;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+import top.focess.veto.api.plugin.PluginState;
+import top.focess.veto.api.plugin.contract.JsonValue;
+import top.focess.veto.api.plugin.contract.StandardContributionPoints;
+import top.focess.veto.api.plugin.contribution.ContributionId;
+import top.focess.veto.api.plugin.contribution.ContributionPoint;
+import top.focess.veto.plugin.runtime.PluginClassLoader;
+
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Set;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
 import java.util.jar.JarEntry;
 import java.util.jar.JarOutputStream;
-import org.jspecify.annotations.NonNull;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
-import top.focess.veto.api.plugin.PluginState;
-import top.focess.veto.api.plugin.contract.JsonValue;
-import top.focess.veto.api.plugin.contract.StandardContributionPoints;
-import top.focess.veto.api.plugin.service.ServiceException;
-import top.focess.veto.plugin.runtime.PluginClassLoader;
 
 class InstalledPluginIntegrationTest {
     @Test
@@ -54,7 +55,106 @@ class InstalledPluginIntegrationTest {
     }
 
     @Test
-    void liveDisableRevokesOldHandleAndEnableLoadsNewClassloader(@TempDir @NonNull Path root)
+    void administratorChoiceTakesEffectOnlyAfterRestart(@TempDir @NonNull Path root)
+            throws Exception {
+        writePackage(Files.createDirectory(root.resolve("service-provider")));
+        var choices = new PluginActivationStore();
+        var configuration = new PluginConfigurations();
+        configuration.setDisabled(Set.of("sample.installed"));
+        try (var first =
+                new PluginManager(
+                        root.toString(),
+                        "",
+                        false,
+                        5000,
+                        PluginTestSupport.providerOf(PluginTestSupport.configurationServices(null)),
+                        configuration,
+                        choices)) {
+            assertTrue(first.isDisabled("sample.installed"));
+            first.setEnabledOnNextStart("sample.installed", true);
+            assertTrue(first.isDisabled("sample.installed"));
+            assertTrue(first.desiredEnabled("sample.installed"));
+        }
+        try (var second =
+                new PluginManager(
+                        root.toString(),
+                        "",
+                        false,
+                        5000,
+                        PluginTestSupport.providerOf(PluginTestSupport.configurationServices(null)),
+                        configuration,
+                        choices)) {
+            assertEquals(PluginState.ACTIVE, second.plugin("sample.installed").state());
+            var service = second.services().find("sample:echo", 1).orElseThrow();
+            second.setEnabledOnNextStart("sample.installed", false);
+            assertFalse(second.desiredEnabled("sample.installed"));
+            assertEquals(PluginState.ACTIVE, second.plugin("sample.installed").state());
+            assertEquals(
+                    new JsonValue.StringValue("running"),
+                    service.invoke(new JsonValue.StringValue("running")));
+        }
+        try (var third =
+                new PluginManager(
+                        root.toString(),
+                        "",
+                        false,
+                        5000,
+                        PluginTestSupport.providerOf(PluginTestSupport.configurationServices(null)),
+                        new PluginConfigurations(),
+                        choices)) {
+            assertTrue(third.isDisabled("sample.installed"));
+            third.setEnabledOnNextStart("sample.installed", true);
+            assertTrue(third.isDisabled("sample.installed"));
+        }
+        try (var fourth =
+                new PluginManager(
+                        root.toString(),
+                        "",
+                        false,
+                        5000,
+                        PluginTestSupport.providerOf(PluginTestSupport.configurationServices(null)),
+                        new PluginConfigurations(),
+                        choices)) {
+            assertEquals(PluginState.ACTIVE, fourth.plugin("sample.installed").state());
+        }
+    }
+
+    @Test
+    void earlierPluginRegistersAtStartThroughLaterPluginsPoint(@TempDir @NonNull Path root)
+            throws Exception {
+        writePointPackage(
+                Files.createDirectory(root.resolve("a-consumer")),
+                "sample.consumer",
+                "InstalledPointConsumerPlugin");
+        writePointPackage(
+                Files.createDirectory(root.resolve("z-point")),
+                "sample.point",
+                "InstalledPointPlugin");
+        var point =
+                new ContributionPoint<>(
+                        new ContributionId("sample.point:shared"),
+                        1,
+                        JsonValue.ObjectValue.class,
+                        ContributionPoint.Cardinality.MULTIPLE);
+        try (var manager =
+                new PluginManager(
+                        root.toString(),
+                        "",
+                        false,
+                        5000,
+                        PluginTestSupport.providerOf(PluginTestSupport.configurationServices(null)),
+                        new PluginConfigurations())) {
+            var entries = manager.catalog().entries(point);
+            assertEquals(1, entries.size());
+            assertEquals("sample.consumer", entries.getFirst().source().namespace());
+            manager.setEnabledOnNextStart("sample.point", false);
+            assertFalse(manager.desiredEnabled("sample.point"));
+            assertEquals(1, manager.catalog().entries(point).size());
+        }
+    }
+
+    @Test
+    void pendingActivationDoesNotChangePublishedPlugin(@TempDir @NonNull Path root)
             throws Exception {
         writePackage(Files.createDirectory(root.resolve("service-provider")));
         try (var manager =
@@ -65,80 +165,69 @@ class InstalledPluginIntegrationTest {
                         5000,
                         PluginTestSupport.providerOf(PluginTestSupport.configurationServices(null)),
                         new PluginConfigurations())) {
-            var first = manager.services().find("sample:echo", 1).orElseThrow();
-            ClassLoader firstLoader =
-                    manager.catalog()
-                            .entries(StandardContributionPoints.SERVICES)
-                            .getFirst()
-                            .implementation()
-                            .getClass()
-                            .getClassLoader();
-            if (!(firstLoader instanceof PluginClassLoader oldLoader))
-                throw new AssertionError("Service did not load in its plugin classloader");
-            manager.disable("sample.installed");
-            assertTrue(oldLoader.isClosed());
-            assertTrue(manager.isDisabled("sample.installed"));
-            assertTrue(manager.services().find("sample:echo", 1).isEmpty());
-            assertThrows(
-                    ServiceException.class, () -> first.invoke(new JsonValue.StringValue("old")));
-            manager.enable("sample.installed");
+            manager.setEnabledOnNextStart("sample.installed", false);
+            assertEquals(PluginState.ACTIVE, manager.plugin("sample.installed").state());
             assertFalse(manager.isDisabled("sample.installed"));
-            ClassLoader newLoader =
-                    manager.catalog()
-                            .entries(StandardContributionPoints.SERVICES)
-                            .getFirst()
-                            .implementation()
-                            .getClass()
-                            .getClassLoader();
-            if (newLoader == null) throw new AssertionError("Replacement loader is unavailable");
-            assertNotSame(oldLoader, newLoader);
-            assertEquals(
-                    new JsonValue.StringValue("new"),
-                    manager.services()
-                            .find("sample:echo", 1)
-                            .orElseThrow()
-                            .invoke(new JsonValue.StringValue("new")));
+            assertFalse(manager.desiredEnabled("sample.installed"));
+            assertTrue(manager.services().find("sample:echo", 1).isPresent());
         }
     }
 
     @Test
-    void disableDrainsPendingDataCleanupBeforeClosingLoader(@TempDir @NonNull Path root)
+    void activePluginCanRegisterServiceAndPendingDisableKeepsIt(@TempDir @NonNull Path root)
             throws Exception {
         writePackage(Files.createDirectory(root.resolve("service-provider")));
         try (var manager =
-                        new PluginManager(
-                                root.toString(),
-                                "",
-                                false,
-                                5000,
-                                PluginTestSupport.providerOf(
-                                        PluginTestSupport.configurationServices(null)),
-                                new PluginConfigurations());
-                var worker = Executors.newSingleThreadExecutor()) {
-            ClassLoader loader =
+                new PluginManager(
+                        root.toString(),
+                        "",
+                        false,
+                        5000,
+                        PluginTestSupport.providerOf(PluginTestSupport.configurationServices(null)),
+                        new PluginConfigurations())) {
+            assertTrue(manager.services().find("sample:late", 1).isEmpty());
+            var request = new JsonValue.StringValue("register");
+            assertEquals(
+                    request,
+                    manager.services().find("sample:echo", 1).orElseThrow().invoke(request));
+            assertEquals(
+                    new JsonValue.StringValue("late"),
+                    manager.services()
+                            .find("sample:late", 1)
+                            .orElseThrow()
+                            .invoke(new JsonValue.StringValue("late")));
+            manager.setEnabledOnNextStart("sample.installed", false);
+            assertTrue(manager.services().find("sample:late", 1).isPresent());
+        }
+    }
+
+    @Test
+    void desiredDisableDoesNotCloseRunningLoader(@TempDir @NonNull Path root) throws Exception {
+        writePackage(Files.createDirectory(root.resolve("service-provider")));
+        PluginClassLoader loader;
+        try (var manager =
+                new PluginManager(
+                        root.toString(),
+                        "",
+                        false,
+                        5000,
+                        PluginTestSupport.providerOf(PluginTestSupport.configurationServices(null)),
+                        new PluginConfigurations())) {
+            ClassLoader candidate =
                     manager.catalog()
                             .entries(StandardContributionPoints.SERVICES)
                             .getFirst()
                             .implementation()
                             .getClass()
                             .getClassLoader();
-            if (!(loader instanceof PluginClassLoader pluginLoader))
+            if (!(candidate instanceof PluginClassLoader pluginLoader))
                 throw new AssertionError("Service did not load in its plugin classloader");
-            manager.beginDataCleanup("sample.installed");
-            var closing = worker.submit(() -> manager.disable("sample.installed"));
-            try {
-                for (int attempt = 0;
-                        attempt < 100 && !manager.isDisabled("sample.installed");
-                        attempt++) Thread.sleep(10);
-                assertTrue(manager.isDisabled("sample.installed"));
-                assertFalse(closing.isDone());
-                assertFalse(pluginLoader.isClosed());
-            } finally {
-                manager.endDataCleanup("sample.installed");
-            }
-            closing.get(20, TimeUnit.SECONDS);
-            assertTrue(pluginLoader.isClosed());
+            loader = pluginLoader;
+            manager.setEnabledOnNextStart("sample.installed", false);
+            assertFalse(loader.isClosed());
+            assertEquals(PluginState.ACTIVE, manager.plugin("sample.installed").state());
         }
+        assertTrue(loader.isClosed());
     }
 
     private void writePackage(@NonNull Path directory) throws IOException {
@@ -156,6 +245,17 @@ class InstalledPluginIntegrationTest {
                 }
                 """);
         writeJar(directory, "InstalledServicePlugin.class");
+    }
+
+    private void writePointPackage(
+            @NonNull Path directory, @NonNull String id, @NonNull String entry) throws IOException {
+        Files.writeString(
+                directory.resolve("plugin.json"),
+                """
+                {"schemaVersion":1,"id":"%s","name":"%s","version":"1.0.0","type":"java","entryPoint":"top.focess.veto.integration.plugins.%s","artifact":"plugin.jar"}
+                """
+                        .formatted(id, id, entry));
+        writeJar(directory, entry + ".class");
     }
 
     private void writeDecliningPackage(@NonNull Path directory) throws IOException {
@@ -195,7 +295,10 @@ class InstalledPluginIntegrationTest {
         try (var jar =
                 new JarOutputStream(Files.newOutputStream(directory.resolve("plugin.jar")))) {
             for (String entry :
-                    java.util.List.of(resource, resource.replace(".class", "$1.class"))) {
+                    java.util.List.of(
+                            resource,
+                            resource.replace(".class", "$1.class"),
+                            resource.replace(".class", "$1$1.class"))) {
                 try (var stream = getClass().getResourceAsStream(entry)) {
                     if (stream == null) {
                         if (entry.equals(resource))

@@ -33,7 +33,7 @@ class BackgroundTasksTest {
         var host = new Host(process);
         var tasks = new BackgroundTasks(() -> host);
         var info = tasks.start();
-        var scope = BackgroundTasks.Scope.from(process.invocation());
+        var scope = BackgroundTasks.Owner.from(process.invocation());
         process.refuseClose = true;
         assertThrows(
                 IllegalStateException.class,
@@ -56,9 +56,9 @@ class BackgroundTasksTest {
                     throw new IllegalStateException("offline");
                 });
         var info = tasks.start();
-        var scope = BackgroundTasks.Scope.from(process.invocation());
+        var scope = BackgroundTasks.Owner.from(process.invocation());
         assertTrue(
-                tasks.list(new BackgroundTasks.Scope("other", scope.session(), scope.agent()))
+                tasks.list(new BackgroundTasks.Owner("other", scope.session(), scope.agent()))
                         .isEmpty());
         assertThrows(
                 IllegalArgumentException.class,
@@ -76,7 +76,7 @@ class BackgroundTasksTest {
         var host = new Host(process);
         var tasks = new BackgroundTasks(() -> host);
         var info = tasks.start();
-        var scope = BackgroundTasks.Scope.from(process.invocation());
+        var scope = BackgroundTasks.Owner.from(process.invocation());
         try {
             assertTrue(tasks.queueInput(scope, info.taskId()).queued());
             assertTrue(host.wrote.await(2, TimeUnit.SECONDS));
@@ -98,7 +98,7 @@ class BackgroundTasksTest {
         var process = new Running(lines.toString());
         var tasks = new BackgroundTasks(() -> new Host(process));
         var info = tasks.start();
-        var scope = BackgroundTasks.Scope.from(process.invocation());
+        var scope = BackgroundTasks.Owner.from(process.invocation());
         process.close();
         tasks.awaitExit(scope, info.taskId());
         var all = new StringBuilder();
@@ -122,7 +122,7 @@ class BackgroundTasksTest {
         var process = new Running("");
         var tasks = new BackgroundTasks(() -> new Host(process));
         var info = tasks.start();
-        var scope = BackgroundTasks.Scope.from(process.invocation());
+        var scope = BackgroundTasks.Owner.from(process.invocation());
         var wait = new FutureTask<>(() -> tasks.awaitExit(scope, info.taskId()));
         Thread thread = Thread.startVirtualThread(wait);
         try {
@@ -161,7 +161,7 @@ class BackgroundTasksTest {
         tasks.start();
         tasks.start();
         var remaining = tasks.start();
-        var scope = BackgroundTasks.Scope.from(first.invocation());
+        var scope = BackgroundTasks.Owner.from(first.invocation());
         tasks.onAgentTerminated(scope.owner(), scope.session(), scope.agent());
         assertFalse(first.isAlive());
         assertFalse(second.isAlive());
@@ -170,7 +170,7 @@ class BackgroundTasksTest {
         assertEquals(
                 List.of(BackgroundTasks.ExitCause.SHUTDOWN, BackgroundTasks.ExitCause.SHUTDOWN),
                 causes);
-        var otherScope = BackgroundTasks.Scope.from(other.invocation());
+        var otherScope = BackgroundTasks.Owner.from(other.invocation());
         tasks.stop(otherScope, remaining.taskId(), BackgroundTasks.ExitCause.USER_STOP);
         assertEquals(BackgroundTasks.ExitCause.USER_STOP, causes.getLast());
         tasks.close();

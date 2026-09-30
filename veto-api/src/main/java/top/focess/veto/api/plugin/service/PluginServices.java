@@ -1,5 +1,7 @@
 package top.focess.veto.api.plugin.service;
 
+import top.focess.veto.api.plugin.PluginScope;
+
 import java.util.List;
 import java.util.Optional;
 import org.jspecify.annotations.NonNull;
@@ -29,7 +31,7 @@ public interface PluginServices {
             @NonNull String name,
             int version,
             @NonNull String providerId,
-            @NonNull ServiceScope scope) {}
+            @NonNull PluginScope scope) {}
 
     /** Revocable handle pinned to one exact provider registration. */
     interface Handle {

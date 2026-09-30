@@ -20,7 +20,8 @@ import top.focess.veto.api.plugin.service.PluginServices;
 import top.focess.veto.api.plugin.service.ServiceCallContext;
 import top.focess.veto.api.plugin.service.ServiceException;
 import top.focess.veto.api.plugin.service.ServiceHandler;
-import top.focess.veto.api.plugin.service.ServiceScope;
+import top.focess.veto.api.plugin.PluginScope;
+import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.api.plugin.storage.PluginStorage;
 
 /** Atomically bound service directory; implementation objects never escape to consumers. */
@@ -47,7 +48,7 @@ public final class PluginServiceRegistry {
         @NonNull ServiceCallContext resolve(
                 @NonNull String callerId,
                 @NonNull String providerId,
-                @NonNull ServiceScope required,
+                @NonNull PluginScope required,
                 PluginStorage.@NonNull Scope scope)
                 throws ServiceException;
     }
@@ -169,7 +170,7 @@ public final class PluginServiceRegistry {
                                         || current.generation() != generation
                                         || !visible(current))
                                     throw new ServiceException(ServiceException.Code.UNAVAILABLE);
-                                if (current.service().scope() != ServiceScope.GLOBAL)
+                                if (current.service().scope() != PluginScope.APPLICATION)
                                     throw new ServiceException(
                                             ServiceException.Code.INVALID_REQUEST);
                                 return invokeService(
@@ -177,9 +178,8 @@ public final class PluginServiceRegistry {
                                         current,
                                         new ServiceCallContext(
                                                 caller == null ? "" : caller.identity().id(),
-                                                ServiceScope.GLOBAL,
-                                                null,
-                                                null,
+                                                PluginScope.APPLICATION,
+                                                new Scope.GlobalScope(),
                                                 null),
                                         request);
                             }
@@ -192,7 +192,7 @@ public final class PluginServiceRegistry {
                                         || current.generation() != generation
                                         || !visible(current)
                                         || caller == null
-                                        || current.service().scope() == ServiceScope.GLOBAL)
+                                        || current.service().scope() == PluginScope.APPLICATION)
                                     throw new ServiceException(ServiceException.Code.UNAVAILABLE);
                                 ServiceCallContext context =
                                         scopeResolver.resolve(

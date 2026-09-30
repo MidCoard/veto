@@ -69,8 +69,8 @@ public final class ProcessHostFixture implements AutoCloseable {
                         public void close() {}
                     };
             plugin = new PluginLifecycle(implementation, lifecycle);
-            @NonNull PluginStorage storage = mock();
-            @NonNull PluginStorageFactory scopes = mock();
+            PluginStorage storage = mock(PluginStorage.class);
+            PluginStorageFactory scopes = mock(PluginStorageFactory.class);
             var scope = new PluginStorage.SessionScope("issued", owner, session.toString());
             when(storage.currentSession())
                     .thenAnswer(
@@ -88,7 +88,7 @@ public final class ProcessHostFixture implements AutoCloseable {
                                 if (!admitted.get()) throw new SecurityException("Scope revoked");
                                 return owner;
                             });
-            @NonNull VetoAgent live = mock();
+            VetoAgent live = mock(VetoAgent.class);
             when(live.id()).thenReturn(agent);
             when(agents.agents(session))
                     .thenReturn(List.of(new SessionAgentRegistry.Entry(session, null, null, live)));
@@ -124,7 +124,8 @@ public final class ProcessHostFixture implements AutoCloseable {
                             plugin.identity(),
                             () -> {},
                             plugin::state,
-                            Map.of(ProcessHost.class, host, PluginHost.class, effects));
+                            Map.of(ProcessHost.class, host, PluginHost.class, effects),
+                            Map.of());
             feature = new ProcessRuntime(context, mock(TaskEvents.class));
             plugin.initialize(context, new JsonValue.ObjectValue(Map.of()));
             plugin.start();
@@ -166,7 +167,7 @@ public final class ProcessHostFixture implements AutoCloseable {
                                             ContributionSource.Origin.PLUGIN),
                                     entries)
                             .freeze();
-            @NonNull PluginManager manager = mock();
+            PluginManager manager = mock(PluginManager.class);
             when(manager.catalog()).thenReturn(catalog);
             when(manager.plugins()).thenReturn(List.of(plugin));
             when(manager.plugin(plugin.identity().id())).thenReturn(plugin);
@@ -177,9 +178,9 @@ public final class ProcessHostFixture implements AutoCloseable {
                                 if (id == null) throw new AssertionError();
                                 return id.substring(id.indexOf(':') + 1);
                             });
-            @NonNull SessionPlugins selected = mock();
+            SessionPlugins selected = mock(SessionPlugins.class);
             when(selected.includes(anyString(), anyString())).thenAnswer(call -> admitted.get());
-            @NonNull ApplicationContext app = mock();
+            ApplicationContext app = mock(ApplicationContext.class);
             when(app.getBeansOfType(PluginManager.class)).thenReturn(Map.of("plugins", manager));
             when(app.getBeansOfType(AgentTool.class)).thenReturn(Map.of());
             engine = new ToolEngineImpl(new ObjectMapper(), extra, app);

@@ -10,7 +10,7 @@ import org.junit.jupiter.api.Test;
 import top.focess.veto.builtin.planning.ActionsProgramParser;
 import top.focess.veto.builtin.planning.GenerateAction;
 import top.focess.veto.builtin.planning.ProgramValidator;
-import top.focess.veto.builtin.planning.Scope;
+import top.focess.veto.builtin.planning.PlanVariables;
 
 class ActionsProgramParserTest {
     private static final @NonNull ObjectMapper MAPPER = new ObjectMapper();
@@ -52,7 +52,7 @@ class ActionsProgramParserTest {
     @Test
     void namedInputsRemainAvailableWithoutPromptPlaceholders() throws Exception {
         var generate = generate("");
-        var scope = new Scope(MAPPER);
+        var scope = new PlanVariables(MAPPER);
         var facts = Map.of("releaseDay", "Friday", "owners", List.of("Lin"));
         scope.put("source", facts);
         assertEquals("Summarize the supplied source.", generate.resolvePrompt(scope));

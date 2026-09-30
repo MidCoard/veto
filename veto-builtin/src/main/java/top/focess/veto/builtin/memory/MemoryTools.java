@@ -76,43 +76,43 @@ public final class MemoryTools {
     @ToolDoc(
             resultFormats = {ToolResultFormat.PLAINTEXT},
             description =
-                    "Search the current session's captured memory and the user's cross-session"
-                            + " insights together.",
+                    """
+                    Search the current session's captured memory and the user's cross-session insights together.\
+                    """,
             behavior =
                     """
-                    Embeds `query`, searches both the current session and the user's cross-session \
-                    insights, combines the matches, and returns the 5 highest-scoring results above \
-                    the 0.5 similarity threshold. `query` is capped at 4000 characters. Every result \
-                    identifies its tier and source and includes a content snippet of at most 240 \
-                    characters.
+                    Embeds `query`, searches both the current session and the user's cross-session insights, \
+                    combines the matches, and returns the 5 highest-scoring results above the 0.5 similarity \
+                    threshold. `query` is capped at 4000 characters. Every result identifies its tier and source \
+                    and includes a content snippet of at most 240 characters.\
                     """,
             whenToUse =
                     """
-                    Use `recall_memory` when relevant information is no longer in the active context: \
-                    earlier decisions or observations from this session, or reusable knowledge saved \
-                    from previous sessions.
+                    Use `recall_memory` when relevant information is no longer in the active context: earlier \
+                    decisions or observations from this session, or reusable knowledge saved from previous \
+                    sessions.\
                     """,
             whenNotToUse =
                     """
-                    - Do not use it when the information is still in your active context - just \
-                    reference it directly.
-                    - Do not use it as a substitute for `view_file` or `grep_search` for finding code.
+                    - Do not use it when the information is still in your active context - just reference it \
+                    directly. - Do not use it as a substitute for `view_file` or `grep_search` for finding code.\
                     """,
             resultContract =
                     """
-                    Plain text beginning `<count> memories:`, followed by bullet entries containing \
-                    tier, id, score, source, and a content snippet. No match returns \
-                    `no matching memories`. Missing session context (failure, NO_SESSION_CONTEXT): \
-                    `No session context: memories were not recalled.`
+                    Plain text beginning `<count> memories:`, followed by bullet entries containing tier, id, \
+                    score, source, and a content snippet. No match returns `no matching memories`. Missing \
+                    session context (failure, NO_SESSION_CONTEXT): `No session context: memories were not \
+                    recalled.`\
                     """,
             errorsAndEdgeCases =
                     """
-                    An unknown query or empty memory stores can legitimately yield zero matches. \
-                    Refine the query before retrying; never invent absent memories.
+                    An unknown query or empty memory stores can legitimately yield zero matches. Refine the query \
+                    before retrying; never invent absent memories.\
                     """,
             security =
-                    "Session results belong to the current session; all results belong to the"
-                            + " current user.",
+                    """
+                    Session results belong to the current session; all results belong to the current user.\
+                    """,
             examples = {
                 "{\"query\": \"UserService authentication\"}",
                 "{\"query\": \"build configuration\"}",
@@ -120,21 +120,9 @@ public final class MemoryTools {
                 "{\"query\": \"deployment rollback procedure\"}"
             },
             returnExamples = {
-                "2 memories:\n"
-                        + "- [CROSS_SESSION] id=123e4567-e89b-12d3-a456-426614174000 score=0.880"
-                        + " src=INSIGHT {}\n"
-                        + "  Prefer constructor injection over field injection...\n"
-                        + "- [SESSION] id=123e4567-e89b-12d3-a456-426614174001 score=0.820"
-                        + " src=turn_range {from=12, to=12}\n"
-                        + "  UserService.authenticate validates the JWT expiry and...",
-                "1 memories:\n"
-                        + "- [CROSS_SESSION] id=123e4567-e89b-12d3-a456-426614174002 score=0.910"
-                        + " src=INSIGHT {}\n"
-                        + "  This project uses Gradle 8.5 with Kotlin DSL...",
-                "1 memories:\n"
-                        + "- [CROSS_SESSION] id=ffde62f9-716f-41e4-bcec-8d63fbf8ed7c score=0.900"
-                        + " src=stored {raw=insight_origin {origin=write_memory}}\n"
-                        + "  test placeholder\n",
+                "2 memories:\n- [CROSS_SESSION] id=123e4567-e89b-12d3-a456-426614174000 score=0.880 src=INSIGHT {}\n  Prefer constructor injection over field injection...\n- [SESSION] id=123e4567-e89b-12d3-a456-426614174001 score=0.820 src=turn_range {from=12, to=12}\n  UserService.authenticate validates the JWT expiry and...",
+                "1 memories:\n- [CROSS_SESSION] id=123e4567-e89b-12d3-a456-426614174002 score=0.910 src=INSIGHT {}\n  This project uses Gradle 8.5 with Kotlin DSL...",
+                "1 memories:\n- [CROSS_SESSION] id=ffde62f9-716f-41e4-bcec-8d63fbf8ed7c score=0.900 src=stored {raw=insight_origin {origin=write_memory}}\n  test placeholder\n",
                 "no matching memories"
             })
     public static final class RecallMemory extends MemoryReadTool<RecallMemory.Args> {
@@ -189,68 +177,61 @@ public final class MemoryTools {
     @ToolDoc(
             resultFormats = {ToolResultFormat.PLAINTEXT},
             description =
-                    "Write durable cross-session memory, or promote a Session-LTM memory to"
-                            + " cross-session visibility.",
+                    """
+                    Write durable cross-session memory, or promote a Session-LTM memory to cross-session \
+                    visibility.\
+                    """,
             behavior =
                     """
-                    Set `mode` to `WRITE` to store `content` as new durable Cross-Session memory, tagged \
-                    with a UUID `projectId` when provided. Set `mode` to `PROMOTE` and provide only \
-                    `promoteMemoryId` to replace an existing Session-LTM memory with a new \
-                    Cross-Session memory. Non-blank fields from the other mode are rejected. A \
-                    successful promotion invalidates the old id and returns the replacement id.
+                    Set `mode` to `WRITE` to store `content` as new durable Cross-Session memory, tagged with a \
+                    UUID `projectId` when provided. Set `mode` to `PROMOTE` and provide only `promoteMemoryId` to \
+                    replace an existing Session-LTM memory with a new Cross-Session memory. Non-blank fields from \
+                    the other mode are rejected. A successful promotion invalidates the old id and returns the \
+                    replacement id.\
                     """,
             whenToUse =
                     """
-                    Use `write_memory` when the user requests future recall or verified durable knowledge clearly benefits future sessions - \
-                    project conventions, recurring patterns, architectural decisions, or lessons \
-                    learned. Also use it to promote a Session LTM memory to Cross-Session LTM when \
-                    its value extends beyond this session.
+                    Use `write_memory` when the user requests future recall or verified durable knowledge clearly \
+                    benefits future sessions - project conventions, recurring patterns, architectural decisions, \
+                    or lessons learned. Also use it to promote a Session LTM memory to Cross-Session LTM when its \
+                    value extends beyond this session.\
                     """,
             whenNotToUse =
                     """
                     - Do not use `write_memory` for transient context that only matters this session - \
-                    Conversation history already retains task context. Answering or citing existing context needs no memory write.
-                    - Do not use it to record verbatim file contents - reference the file path instead.
-                    - Do not write trivial or obvious facts; insights should be non-obvious, reusable \
-                    knowledge.
+                    Conversation history already retains task context. Answering or citing existing context needs \
+                    no memory write. - Do not use it to record verbatim file contents - reference the file path \
+                    instead. - Do not write trivial or obvious facts; insights should be non-obvious, reusable \
+                    knowledge.\
                     """,
             resultContract =
                     """
-                    - Direct-write success: \
-                    `memory written: <memory UUID>`.
-                    - Promotion success: `promoted: <new memory UUID>`.
-                    - Promotion failure (failure, NOT_FOUND): \
-                    `Memory not found: the memory does not exist or is not owned; not promoted.`
-                    - Write failures: too-large content (failure, TOO_LARGE): \
-                    `Memory too large: the content exceeds 64000 characters; memory not written.`; \
-                    invalid project id (failure, INVALID_ARGUMENTS): \
-                    `Invalid arguments: projectId must be a UUID; memory not written.`
-                    - Mode-field mismatch (failure, INVALID_ARGUMENTS): \
-                    `Invalid arguments: PROMOTE accepts only promoteMemoryId; memory not promoted.` \
-                    or `Invalid arguments: WRITE does not accept promoteMemoryId; memory not written.`
+                    - Direct-write success: `memory written: <memory UUID>`. - Promotion success: `promoted: <new \
+                    memory UUID>`. - Promotion failure (failure, NOT_FOUND): `Memory not found: the memory does \
+                    not exist or is not owned; not promoted.` - Write failures: too-large content (failure, \
+                    TOO_LARGE): `Memory too large: the content exceeds 64000 characters; memory not written.`; \
+                    invalid project id (failure, INVALID_ARGUMENTS): `Invalid arguments: projectId must be a \
+                    UUID; memory not written.` - Mode-field mismatch (failure, INVALID_ARGUMENTS): `Invalid \
+                    arguments: PROMOTE accepts only promoteMemoryId; memory not promoted.` or `Invalid arguments: \
+                    WRITE does not accept promoteMemoryId; memory not written.`\
                     """,
             errorsAndEdgeCases =
                     """
                     `WRITE` accepts content plus an optional project id; `PROMOTE` accepts only a memory id. \
                     Correct a mode/field mismatch before retrying. Ownership and absence deliberately share a \
                     promotion failure so tenant isolation leaks nothing. Never store secrets or verbatim file \
-                    contents in durable memory.
+                    contents in durable memory.\
                     """,
             security =
-                    "Content is stored as supplied and persists across sessions. Never include"
-                            + " secrets.",
+                    """
+                    Content is stored as supplied and persists across sessions. Never include secrets.\
+                    """,
             examples = {
-                "{\"mode\": \"WRITE\", \"content\": \"topic: evidence-demo\\n"
-                        + "The quick brown fox jumps over the lazy dog\"}",
-                "{\"mode\": \"WRITE\", \"content\": \"Decision: audit records are append-only;"
-                        + " corrections are written as new compensating entries, never edits.\"}",
-                "{\"mode\": \"WRITE\", \"content\": \"Prefer constructor injection\","
-                        + " \"projectId\": \"123e4567-e89b-12d3-a456-426614174000\"}",
-                "{\"mode\": \"PROMOTE\", \"promoteMemoryId\":"
-                        + " \"123e4567-e89b-12d3-a456-426614174000\"}",
-                "{\"mode\": \"PROMOTE\", \"promoteMemoryId\":"
-                        + " \"123e4567-e89b-12d3-a456-426614174000\", \"content\": \"Replacement"
-                        + " content that PROMOTE rejects\"}"
+                "{\"mode\": \"WRITE\", \"content\": \"topic: evidence-demo\\nThe quick brown fox jumps over the lazy dog\"}",
+                "{\"mode\": \"WRITE\", \"content\": \"Decision: audit records are append-only; corrections are written as new compensating entries, never edits.\"}",
+                "{\"mode\": \"WRITE\", \"content\": \"Prefer constructor injection\", \"projectId\": \"123e4567-e89b-12d3-a456-426614174000\"}",
+                "{\"mode\": \"PROMOTE\", \"promoteMemoryId\": \"123e4567-e89b-12d3-a456-426614174000\"}",
+                "{\"mode\": \"PROMOTE\", \"promoteMemoryId\": \"123e4567-e89b-12d3-a456-426614174000\", \"content\": \"Replacement content that PROMOTE rejects\"}"
             },
             returnExamples = {
                 "memory written: af7730d5-47ab-4e63-b61c-3fda7777b5a0",
@@ -372,37 +353,40 @@ public final class MemoryTools {
     /** {@code forget_memory} — explicitly drop a memory. */
     @ToolDoc(
             resultFormats = {ToolResultFormat.PLAINTEXT},
-            description = "Explicitly drop a memory from the agent's long-term store.",
+            description =
+                    """
+                    Explicitly drop a memory from the agent's long-term store.\
+                    """,
             behavior =
                     """
-                    Permanently deletes the memory identified by `memoryId` from the store. It cannot \
-                    be recovered through this tool.
+                    Permanently deletes the memory identified by `memoryId` from the store. It cannot be \
+                    recovered through this tool.\
                     """,
             whenToUse =
                     """
-                    Use `forget_memory` when a previously captured memory or insight is wrong, outdated, or \
-                    no longer relevant - correcting stale knowledge before it misleads future reasoning.
+                    Use `forget_memory` when a previously captured memory or insight is wrong, outdated, or no \
+                    longer relevant - correcting stale knowledge before it misleads future reasoning.\
                     """,
             whenNotToUse =
                     """
-                    - Do not use `forget_memory` to clear session context - that is automatic.
-                    - Do not use it speculatively; only forget what you know is wrong.
-                    - Do not forget memories you have not verified are incorrect.
+                    - Do not use `forget_memory` to clear session context - that is automatic. - Do not use it \
+                    speculatively; only forget what you know is wrong. - Do not forget memories you have not \
+                    verified are incorrect.\
                     """,
             resultContract =
                     """
-                    - Success -> `forgotten: <memoryId>`.
-                    - Invalid, unknown, or cross-user id (failure, NOT_FOUND): \
-                    `Memory not found: the memory does not exist or is not owned; nothing forgotten.`
+                    - Success -> `forgotten: <memoryId>`. - Invalid, unknown, or cross-user id (failure, \
+                    NOT_FOUND): `Memory not found: the memory does not exist or is not owned; nothing forgotten.`\
                     """,
             errorsAndEdgeCases =
                     """
                     Use an id returned by `recall_memory` or `write_memory`. Ownership and absence deliberately \
-                    share the contract's failure body so tenant isolation reveals nothing.
+                    share the contract's failure body so tenant isolation reveals nothing.\
                     """,
             security =
-                    "Deletion is permanent. Remove only a memory you have verified should be"
-                            + " removed.",
+                    """
+                    Deletion is permanent. Remove only a memory you have verified should be removed.\
+                    """,
             examples = {
                 "{\"memoryId\": \"af7730d5-47ab-4e63-b61c-3fda7777b5a0\"}",
                 "{\"memoryId\": \"123e4567-e89b-12d3-a456-426614174001\"}",

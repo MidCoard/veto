@@ -2,6 +2,7 @@ package top.focess.veto.integration.plugins;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
 
 import java.time.Duration;
@@ -95,7 +96,7 @@ class ZeroPluginBootTest {
         String primaryId = UUID.randomUUID().toString();
         session.setPrimaryAgentId(primaryId);
         sessions.saveAndFlush(session);
-        when(model.call(any()))
+        when(model.call(any(), anyString()))
                 .thenReturn(new VetoResponse(null, null, "Core workflow completed", null));
         var agent =
                 agents.getOrCreateAgent(

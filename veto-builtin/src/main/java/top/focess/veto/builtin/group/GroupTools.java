@@ -34,37 +34,43 @@ public final class GroupTools {
     /** {@code create_group} - spawn a delegation. The calling agent transforms into the Leader. */
     @ToolDoc(
             resultFormats = {ToolResultFormat.PLAINTEXT},
-            description = "Request delegation for a task.",
+            description =
+                    """
+                    Request delegation for a task.\
+                    """,
             behavior =
-                    "Starts real collaboration using the supplied brief. Participants and work are"
-                            + " arranged in the next stage.",
-            whenToUse = "Use when the task meets the Delegation Rules in the system message.",
+                    """
+                    Starts real collaboration using the supplied brief. Participants and work are arranged in the \
+                    next stage.\
+                    """,
+            whenToUse =
+                    """
+                    Use when the task meets the Delegation Rules in the system message.\
+                    """,
             whenNotToUse =
-                    "Unless the user explicitly requests collaborators, prefer direct execution for"
-                            + " small or tightly coupled work.",
+                    """
+                    Unless the user explicitly requests collaborators, prefer direct execution for small or \
+                    tightly coupled work.\
+                    """,
             resultContract =
                     """
-                    Success returns empty text. Failures:
-                    - Blank brief (failure, INVALID_ARGUMENTS): `Group not created: blank brief. \
-                    Pass a real description of the work.`
-                    - No session (failure, NO_SESSION_CONTEXT): `Group not created: no authenticated \
-                    session owner is available.`
+                    Success returns empty text. Failures: - Blank brief (failure, INVALID_ARGUMENTS): `Group not \
+                    created: blank brief. Pass a real description of the work.` - No session (failure, \
+                    NO_SESSION_CONTEXT): `Group not created: no authenticated session owner is available.`\
                     """,
             errorsAndEdgeCases =
                     """
-                    A blank brief and a missing authenticated session owner are the only creation \
-                    failures; both leave the group uncreated.
+                    A blank brief and a missing authenticated session owner are the only creation failures; both \
+                    leave the group uncreated.\
                     """,
             security =
-                    "Delegation remains within the user's authorized task and workspace"
-                            + " boundaries.",
+                    """
+                    Delegation remains within the user's authorized task and workspace boundaries.\
+                    """,
             examples = {
-                "{\"task\": \"Review the persistence implementation and its callers, and verify the"
-                        + " affected modules\"}",
-                "{\"task\": \"Migrate the billing module from JPA to jOOQ; deliver the converted"
-                        + " repositories and passing integration tests\"}",
-                "{\"task\": \"Compare the three shortlisted message queues for the notification"
-                        + " service and recommend one with a rationale\"}",
+                "{\"task\": \"Review the persistence implementation and its callers, and verify the affected modules\"}",
+                "{\"task\": \"Migrate the billing module from JPA to jOOQ; deliver the converted repositories and passing integration tests\"}",
+                "{\"task\": \"Compare the three shortlisted message queues for the notification service and recommend one with a rationale\"}",
                 "{\"task\": \"   \"}"
             },
             returnExamples = {
@@ -131,39 +137,41 @@ public final class GroupTools {
     /** {@code disband_group} - tear down the active group and return the agent to STANDALONE. */
     @ToolDoc(
             resultFormats = {ToolResultFormat.PLAINTEXT},
-            description = "Tear down your active group and return to single-agent autonomous mode.",
+            description =
+                    """
+                    Tear down your active group and return to single-agent autonomous mode.\
+                    """,
             behavior =
                     """
-                    Ends your current group and stops its Mates, then returns you to the standalone \
-                    role with the standalone tools and model binding. The continuation includes the \
-                    delegated outcome and any available compaction summary. Group state is unavailable \
-                    after a backend restart.
+                    Ends your current group and stops its Mates, then returns you to the standalone role with the \
+                    standalone tools and model binding. The continuation includes the delegated outcome and any \
+                    available compaction summary. Group state is unavailable after a backend restart.\
                     """,
             whenToUse =
                     """
-                    Use `disband_group` only when the user explicitly requests that the group be \
-                    disbanded or asks to return to single-agent operation.
+                    Use `disband_group` only when the user explicitly requests that the group be disbanded or \
+                    asks to return to single-agent operation.\
                     """,
             whenNotToUse =
                     """
-                    - Prefer waiting for Mate status when practical; disbanding stops any remaining Mates.
-                    - Do not disband merely because all DAG nodes are COMPLETED. Answer the user \
-                      as Leader and retain the group for follow-up work.
+                    - Prefer waiting for Mate status when practical; disbanding stops any remaining Mates. - Do \
+                    not disband merely because all DAG nodes are COMPLETED. Answer the user as Leader and retain \
+                    the group for follow-up work.\
                     """,
             resultContract =
                     """
-                    On success - empty; you continue in standalone operation with the outcome brief.
-                    Failure (failure, NO_ACTIVE_GROUP): `Group not disbanded: no active group in \
-                    your context. disband_group is a Leader tool inside a group.`
+                    On success - empty; you continue in standalone operation with the outcome brief. Failure \
+                    (failure, NO_ACTIVE_GROUP): `Group not disbanded: no active group in your context. \
+                    disband_group is a Leader tool inside a group.`\
                     """,
             errorsAndEdgeCases =
                     """
-                    Mates still RUNNING -> the disband proceeds and their in-flight work may be lost. \
-                    Calling without an active group fails (failure, NO_ACTIVE_GROUP).
+                    Mates still RUNNING -> the disband proceeds and their in-flight work may be lost. Calling \
+                    without an active group fails (failure, NO_ACTIVE_GROUP).\
                     """,
             security =
                     """
-                    Operate only on your current group; respect requests to stop ongoing work.
+                    Operate only on your current group; respect requests to stop ongoing work.\
                     """,
             examples = {"{}"},
             returnExamples = {""})
@@ -224,42 +232,45 @@ public final class GroupTools {
     /** {@code inspect_group} - read DAG state and new Mate reports, optionally waiting briefly. */
     @ToolDoc(
             resultFormats = {ToolResultFormat.PLAINTEXT},
-            description = "Inspect your active group's DAG state and Mate reports.",
+            description =
+                    """
+                    Inspect your active group's DAG state and Mate reports.\
+                    """,
             behavior =
                     """
-                    Returns the current group state, every DAG node, and Blackboard messages addressed \
-                    to the Leader whose sequence is greater than `sinceSeq`. `waitSeconds` performs a \
-                    bounded wait for a new Mate message or a group state change, avoiding tight polling. \
-                    The final line contains `nextSinceSeq`; pass that value on the next call.
+                    Returns the current group state, every DAG node, and Blackboard messages addressed to the \
+                    Leader whose sequence is greater than `sinceSeq`. `waitSeconds` performs a bounded wait for a \
+                    new Mate message or a group state change, avoiding tight polling. The final line contains \
+                    `nextSinceSeq`; pass that value on the next call.\
                     """,
             whenToUse =
                     """
-                    Use `inspect_group` for an on-demand state or report lookup, \
-                    read failure reports, and gather completed reports before answering the user.
+                    Use `inspect_group` for an on-demand state or report lookup, read failure reports, and gather \
+                    completed reports before answering the user.\
                     """,
             whenNotToUse =
                     """
-                    - Do not use it to wait for outcomes; Monitor observations deliver those automatically.
-                    - Do not inspect a newly created empty group instead of creating its members.
-                    - Do not use it outside a Leader context.
+                    - Do not use it to wait for outcomes; Monitor observations deliver those automatically. - Do \
+                    not inspect a newly created empty group instead of creating its members. - Do not use it \
+                    outside a Leader context.\
                     """,
             resultContract =
                     """
-                    On success - a plaintext snapshot with group state, node lines, zero or more new \
-                    message lines, and `nextSinceSeq: <number>`.
-                    Failures, all `Group not inspected: <reason and what to do next>`: \
-                    no active group (failure, NO_ACTIVE_GROUP); negative `sinceSeq` (failure, \
-                    INVALID_ARGUMENTS); interrupted wait (failure, TOOL_INTERRUPTED); group record \
-                    disappeared mid-wait (failure, RECORD_GONE).
+                    On success - a plaintext snapshot with group state, node lines, zero or more new message \
+                    lines, and `nextSinceSeq: <number>`. Failures, all `Group not inspected: <reason and what to \
+                    do next>`: no active group (failure, NO_ACTIVE_GROUP); negative `sinceSeq` (failure, \
+                    INVALID_ARGUMENTS); interrupted wait (failure, TOOL_INTERRUPTED); group record disappeared \
+                    mid-wait (failure, RECORD_GONE).\
                     """,
             errorsAndEdgeCases =
                     """
-                    `sinceSeq` must be non-negative. `waitSeconds` is clamped to 0..30. A completed group \
-                    remains available for inspection and new tasks. Completion does not require disbanding.
+                    `sinceSeq` must be non-negative. `waitSeconds` is clamped to 0..30. A completed group remains \
+                    available for inspection and new tasks. Completion does not require disbanding.\
                     """,
             security =
                     """
-                    Inspect only your current group. Use returned state and reports as evidence; do not infer completion from elapsed time.
+                    Inspect only your current group. Use returned state and reports as evidence; do not infer \
+                    completion from elapsed time.\
                     """,
             examples = {
                 "{}",
@@ -269,64 +280,10 @@ public final class GroupTools {
                 "{\"sinceSeq\": -1}"
             },
             returnExamples = {
-                "Group state: ACTIVE\n"
-                        + "A completed task means the assigned mate returned a report; it does not"
-                        + " imply independent verification.\n"
-                        + "Mates:\n"
-                        + "- 3f8a2c10-9b2e-4c1d-8e5f-2a6b7c8d9e0f: review backend session isolation\n"
-                        + "Tasks:\n"
-                        + "- node-1 [RUNNING] mate=3f8a2c10-9b2e-4c1d-8e5f-2a6b7c8d9e0f skillset=coding"
-                        + " dependsOn=[]\n"
-                        + "Implement JWT login in UserService\n"
-                        + "Messages are historical observations; task state above is authoritative.\n"
-                        + "New mate messages:\n"
-                        + "- seq=2 sender=3f8a2c10-9b2e-4c1d-8e5f-2a6b7c8d9e0f type=FEEDBACK\n"
-                        + "dispatch=(uncorrelated) currentDispatch=false\n"
-                        + "payload=node-1:feedback:started review\n"
-                        + "nextSinceSeq: 3",
-                "Group state: ACTIVE\n"
-                        + "A completed task means the assigned mate returned a report; it does not"
-                        + " imply independent verification.\n"
-                        + "Mates:\n"
-                        + "- 3f8a2c10-9b2e-4c1d-8e5f-2a6b7c8d9e0f: review backend session isolation\n"
-                        + "Tasks:\n"
-                        + "- node-1 [RUNNING] mate=3f8a2c10-9b2e-4c1d-8e5f-2a6b7c8d9e0f skillset=coding"
-                        + " dependsOn=[]\n"
-                        + "Implement JWT login in UserService\n"
-                        + "Messages are historical observations; task state above is authoritative.\n"
-                        + "New mate messages:\n"
-                        + "- (none)\n"
-                        + "nextSinceSeq: 4",
-                "Group state: ACTIVE\n"
-                        + "A completed task means the assigned mate returned a report; it does not"
-                        + " imply independent verification.\n"
-                        + "Mates:\n"
-                        + "- 3f8a2c10-9b2e-4c1d-8e5f-2a6b7c8d9e0f: review backend session isolation\n"
-                        + "Tasks:\n"
-                        + "- node-1 [COMPLETED] mate=3f8a2c10-9b2e-4c1d-8e5f-2a6b7c8d9e0f"
-                        + " skillset=coding dependsOn=[]\n"
-                        + "Implement JWT login in UserService\n"
-                        + "Messages are historical observations; task state above is authoritative.\n"
-                        + "New mate messages:\n"
-                        + "- seq=6 sender=3f8a2c10-9b2e-4c1d-8e5f-2a6b7c8d9e0f type=ACCEPT\n"
-                        + "dispatch=node-1-dispatch-3 currentDispatch=true\n"
-                        + "payload=node-1: login implemented; session isolation verified\n"
-                        + "nextSinceSeq: 6",
-                "Group state: ACTIVE\n"
-                        + "A completed task means the assigned mate returned a report; it does not"
-                        + " imply independent verification.\n"
-                        + "Mates:\n"
-                        + "- 3f8a2c10-9b2e-4c1d-8e5f-2a6b7c8d9e0f: review backend session isolation\n"
-                        + "Tasks:\n"
-                        + "- node-1 [RUNNING] mate=3f8a2c10-9b2e-4c1d-8e5f-2a6b7c8d9e0f skillset=coding"
-                        + " dependsOn=[]\n"
-                        + "Implement JWT login in UserService\n"
-                        + "Messages are historical observations; task state above is authoritative.\n"
-                        + "New mate messages:\n"
-                        + "- seq=5 sender=3f8a2c10-9b2e-4c1d-8e5f-2a6b7c8d9e0f type=FEEDBACK\n"
-                        + "dispatch=(uncorrelated) currentDispatch=false\n"
-                        + "payload=node-1:feedback:test failed\n"
-                        + "nextSinceSeq: 5",
+                "Group state: ACTIVE\nA completed task means the assigned mate returned a report; it does not imply independent verification.\nMates:\n- 3f8a2c10-9b2e-4c1d-8e5f-2a6b7c8d9e0f: review backend session isolation\nTasks:\n- node-1 [RUNNING] mate=3f8a2c10-9b2e-4c1d-8e5f-2a6b7c8d9e0f skillset=coding dependsOn=[]\nImplement JWT login in UserService\nMessages are historical observations; task state above is authoritative.\nNew mate messages:\n- seq=2 sender=3f8a2c10-9b2e-4c1d-8e5f-2a6b7c8d9e0f type=FEEDBACK\ndispatch=(uncorrelated) currentDispatch=false\npayload=node-1:feedback:started review\nnextSinceSeq: 3",
+                "Group state: ACTIVE\nA completed task means the assigned mate returned a report; it does not imply independent verification.\nMates:\n- 3f8a2c10-9b2e-4c1d-8e5f-2a6b7c8d9e0f: review backend session isolation\nTasks:\n- node-1 [RUNNING] mate=3f8a2c10-9b2e-4c1d-8e5f-2a6b7c8d9e0f skillset=coding dependsOn=[]\nImplement JWT login in UserService\nMessages are historical observations; task state above is authoritative.\nNew mate messages:\n- (none)\nnextSinceSeq: 4",
+                "Group state: ACTIVE\nA completed task means the assigned mate returned a report; it does not imply independent verification.\nMates:\n- 3f8a2c10-9b2e-4c1d-8e5f-2a6b7c8d9e0f: review backend session isolation\nTasks:\n- node-1 [COMPLETED] mate=3f8a2c10-9b2e-4c1d-8e5f-2a6b7c8d9e0f skillset=coding dependsOn=[]\nImplement JWT login in UserService\nMessages are historical observations; task state above is authoritative.\nNew mate messages:\n- seq=6 sender=3f8a2c10-9b2e-4c1d-8e5f-2a6b7c8d9e0f type=ACCEPT\ndispatch=node-1-dispatch-3 currentDispatch=true\npayload=node-1: login implemented; session isolation verified\nnextSinceSeq: 6",
+                "Group state: ACTIVE\nA completed task means the assigned mate returned a report; it does not imply independent verification.\nMates:\n- 3f8a2c10-9b2e-4c1d-8e5f-2a6b7c8d9e0f: review backend session isolation\nTasks:\n- node-1 [RUNNING] mate=3f8a2c10-9b2e-4c1d-8e5f-2a6b7c8d9e0f skillset=coding dependsOn=[]\nImplement JWT login in UserService\nMessages are historical observations; task state above is authoritative.\nNew mate messages:\n- seq=5 sender=3f8a2c10-9b2e-4c1d-8e5f-2a6b7c8d9e0f type=FEEDBACK\ndispatch=(uncorrelated) currentDispatch=false\npayload=node-1:feedback:test failed\nnextSinceSeq: 5",
                 "Group not inspected: sinceSeq must be non-negative."
             })
     public static final class InspectGroup extends GroupControlTool<InspectGroup.Args> {
@@ -408,46 +365,52 @@ public final class GroupTools {
     /** {@code post_message} - record a Leader note in the group's blackboard. */
     @ToolDoc(
             resultFormats = {ToolResultFormat.PLAINTEXT},
-            description = "Record a Leader note in the group's Blackboard.",
+            description =
+                    """
+                    Record a Leader note in the group's Blackboard.\
+                    """,
             behavior =
-                    "Records a note for the Leader. Does not deliver instructions to Mates or"
-                            + " execute work.",
+                    """
+                    Records a note for the Leader. Does not deliver instructions to Mates or execute work.\
+                    """,
             whenToUse =
-                    "Record a short status, feedback, artifact reference or log reference for your"
-                            + " own coordination.",
+                    """
+                    Record a short status, feedback, artifact reference or log reference for your own \
+                    coordination.\
+                    """,
             whenNotToUse =
-                    "For Mate work, use create_task with mateId. TASK_DISPATCH and ACCEPT are"
-                            + " reserved for task execution and completion.",
+                    """
+                    For Mate work, use create_task with mateId. TASK_DISPATCH and ACCEPT are reserved for task \
+                    execution and completion.\
+                    """,
             resultContract =
                     """
-                    On success: `posted`. On failure: `Not posted: <reason>` with code \
-                    `NO_ACTIVE_GROUP` (no active group), `NOT_ACTIVE` (disbanded group), or \
-                    `INVALID_ARGUMENTS` (non-LEADER receiver, reserved type, blank payload, or a \
-                    payload over 4096 characters).
+                    On success: `posted`. On failure: `Not posted: <reason>` with code `NO_ACTIVE_GROUP` (no \
+                    active group), `NOT_ACTIVE` (disbanded group), or `INVALID_ARGUMENTS` (non-LEADER receiver, \
+                    reserved type, blank payload, or a payload over 4096 characters).\
                     """,
             errorsAndEdgeCases =
-                    "Only receiver LEADER is accepted. Disbanded groups, blank payloads and"
-                            + " payloads over 4096 characters are rejected.",
-            security = "Notes cannot create tasks or mark work completed.",
+                    """
+                    Only receiver LEADER is accepted. Disbanded groups, blank payloads and payloads over 4096 \
+                    characters are rejected.\
+                    """,
+            security =
+                    """
+                    Notes cannot create tasks or mark work completed.\
+                    """,
             examples = {
-                "{\"type\":\"STATUS\",\"payload\":\"Review the failed node before scheduling"
-                        + " replacement work.\"}",
-                "{\"type\":\"ARTIFACT_REF\",\"payload\":\"Draft report:"
-                        + " reports/drift-analysis.md\"}",
-                "{\"type\":\"LOG_REF\",\"payload\":\"Failed node output:"
-                        + " logs/build-2026-09-19.log\"}",
-                "{\"type\":\"FEEDBACK\",\"receiver\":\"LEADER\",\"payload\":\"The retry fix"
-                        + " addressed the race; re-run the soak test before closing.\"}",
-                "{\"type\":\"STATUS\",\"receiver\":\"3f8a2c10-9b2e-4c1d-8e5f-2a6b7c8d9e0f\",\"payload\":\"Direct"
-                        + " the billing review at the retry logic.\"}"
+                "{\"type\":\"STATUS\",\"payload\":\"Review the failed node before scheduling replacement work.\"}",
+                "{\"type\":\"ARTIFACT_REF\",\"payload\":\"Draft report: reports/drift-analysis.md\"}",
+                "{\"type\":\"LOG_REF\",\"payload\":\"Failed node output: logs/build-2026-09-19.log\"}",
+                "{\"type\":\"FEEDBACK\",\"receiver\":\"LEADER\",\"payload\":\"The retry fix addressed the race; re-run the soak test before closing.\"}",
+                "{\"type\":\"STATUS\",\"receiver\":\"3f8a2c10-9b2e-4c1d-8e5f-2a6b7c8d9e0f\",\"payload\":\"Direct the billing review at the retry logic.\"}"
             },
             returnExamples = {
                 "posted",
                 "posted",
                 "posted",
                 "posted",
-                "Not posted: use create_task with mateId for tracked Mate work. post_message only"
-                        + " records Leader notes."
+                "Not posted: use create_task with mateId for tracked Mate work. post_message only records Leader notes."
             })
     public static final class PostMessage extends GroupControlTool<PostMessage.Args> {
 

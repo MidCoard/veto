@@ -6,7 +6,6 @@ import static org.mockito.Mockito.*;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import top.focess.veto.agent.AgentProfiles;
@@ -46,9 +45,9 @@ class PromptBindingTest {
 
     @Test
     void restSubmissionKeepsTheActivatedTierOptions() {
-        @NonNull SessionService sessions = mock();
-        @NonNull AgentService agents = mock();
-        @NonNull KeysteadVault vault = mock();
+        SessionService sessions = mock(SessionService.class);
+        AgentService agents = mock(AgentService.class);
+        KeysteadVault vault = mock(KeysteadVault.class);
         when(vault.currentUser()).thenReturn("owner");
         when(sessions.activateForRest("session", "owner"))
                 .thenReturn(
@@ -71,10 +70,10 @@ class PromptBindingTest {
 
     @Test
     void terminalSubmissionKeepsTheResolvedTierOptions() throws Exception {
-        @NonNull SessionService sessions = mock();
-        @NonNull AgentService agents = mock();
-        @NonNull KeysteadVault vault = mock();
-        @NonNull VetoCommandSender sender = mock();
+        SessionService sessions = mock(SessionService.class);
+        AgentService agents = mock(AgentService.class);
+        KeysteadVault vault = mock(KeysteadVault.class);
+        VetoCommandSender sender = mock(VetoCommandSender.class);
         when(vault.currentUserOrOnlyUnlocked()).thenReturn("owner");
         when(sessions.resolveLlmConfig("terminal")).thenReturn(Optional.of(config));
         when(sessions.activeSession("terminal")).thenReturn(Optional.of("session-id"));
@@ -99,7 +98,7 @@ class PromptBindingTest {
 
     @Test
     void leaderKeepsConfiguredWindowAndOutputReservation() {
-        @NonNull ModelTierRegistry tiers = mock();
+        ModelTierRegistry tiers = mock(ModelTierRegistry.class);
         when(tiers.resolve("owner", ModelTier.TOP)).thenReturn(model);
         var leader =
                 AgentProfiles.resolve(

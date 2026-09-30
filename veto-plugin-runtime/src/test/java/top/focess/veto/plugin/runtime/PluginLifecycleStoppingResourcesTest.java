@@ -166,6 +166,7 @@ class PluginLifecycleStoppingResourcesTest {
                             throw new IllegalStateException(
                                     "Plugin context is not bound to a lifecycle owner");
                         },
+                        Map.of(),
                         Map.of()),
                 new JsonValue.ObjectValue(Map.of()));
         managed.start();

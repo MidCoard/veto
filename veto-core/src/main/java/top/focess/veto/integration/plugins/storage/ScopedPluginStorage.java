@@ -1,8 +1,33 @@
 package top.focess.veto.integration.plugins.storage;
 
+import top.focess.veto.api.plugin.PluginScope;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
+
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceException;
+
+import org.jspecify.annotations.NonNull;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Bean;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.stereotype.Component;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
+
+import top.focess.veto.agent.tool.ToolCallContextHolder;
+import top.focess.veto.api.plugin.PluginState;
+import top.focess.veto.api.plugin.contract.JsonValues;
+import top.focess.veto.api.plugin.storage.PluginStorage;
+import top.focess.veto.integration.plugins.PluginHostServices;
+import top.focess.veto.model.SessionEntity;
+import top.focess.veto.plugin.runtime.PluginJson;
+import top.focess.veto.plugin.runtime.PluginLifecycle;
+import top.focess.veto.plugin.runtime.ScriptPlugin;
+import top.focess.veto.util.Nullness;
+import top.focess.veto.vault.UserContext;
+import top.focess.veto.vault.UserEntity;
+
 import java.nio.charset.StandardCharsets;
 import java.sql.SQLException;
 import java.util.ArrayList;
@@ -15,24 +40,6 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Supplier;
-import org.jspecify.annotations.NonNull;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.context.annotation.Bean;
-import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.stereotype.Component;
-import org.springframework.transaction.PlatformTransactionManager;
-import org.springframework.transaction.support.TransactionTemplate;
-import top.focess.veto.agent.tool.ToolCallContextHolder;
-import top.focess.veto.api.plugin.PluginState;
-import top.focess.veto.api.plugin.contract.JsonValues;
-import top.focess.veto.api.plugin.storage.PluginStorage;
-import top.focess.veto.integration.plugins.PluginHostServices;
-import top.focess.veto.model.SessionEntity;
-import top.focess.veto.plugin.runtime.PluginJson;
-import top.focess.veto.plugin.runtime.PluginLifecycle;
-import top.focess.veto.util.Nullness;
-import top.focess.veto.vault.UserContext;
-import top.focess.veto.vault.UserEntity;
 
 /** Scoped CAS records share the host transaction and referential deletion boundary. */
 @Component
@@ -182,8 +189,18 @@ public class ScopedPluginStorage implements PluginStorageFactory {
             if (session == null || !session.getOwner().equals(owner))
                 throw new SecurityException("Session scope no longer exists");
             var bindings = session.getPluginBindings();
+            String revision =
+                    plugin.implementation() instanceof ScriptPlugin script
+                            ? script.digest()
+                            : plugin.identity().version();
             if (bindings == null
-                    || bindings.stream().noneMatch(binding -> selectionIds.contains(binding.id())))
+                    || bindings.stream()
+                            .noneMatch(
+                                    binding ->
+                                            selectionIds.contains(binding.id())
+                                                    && binding.version()
+                                                            .equals(plugin.identity().version())
+                                                    && binding.revision().equals(revision)))
                 throw new SecurityException("Plugin is not selected for this session");
             return session;
         }
@@ -206,7 +223,7 @@ public class ScopedPluginStorage implements PluginStorageFactory {
         @SuppressWarnings(
                 "resource") // WHY: the invocation scope is owned by its opener, closed elsewhere
         public @NonNull SessionScope currentSession() {
-            var callback = PluginInvocationScope.current();
+            var callback = PluginInvocationContext.current();
             if (callback != null)
                 return transaction(() -> (SessionScope) issue(callback.owner, callback.session));
             var call = ToolCallContextHolder.get();
@@ -243,15 +260,16 @@ public class ScopedPluginStorage implements PluginStorageFactory {
         }
 
         @Override
-        public @NonNull Page<@NonNull Scope> scopes(@NonNull Kind kind, String cursor, int limit) {
-            if (kind == Kind.APPLICATION)
-                throw new IllegalArgumentException("Application scope is directly bound");
+        public @NonNull Page<@NonNull Scope> scopes(
+                @NonNull PluginScope kind, String cursor, int limit) {
+            if (kind == PluginScope.APPLICATION || kind == PluginScope.AGENT)
+                throw new IllegalArgumentException("Only user and session scopes can be listed");
             return transaction(
                     () -> {
                         admitted();
                         int pageSize = limit(limit);
                         String after = cursor(namespace + ":" + kind, cursor);
-                        if (kind == Kind.SESSION) {
+                        if (kind == PluginScope.SESSION) {
                             var sessions =
                                     database.createQuery(
                                                     "select s from SessionEntity s where s.id >"

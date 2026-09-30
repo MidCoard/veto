@@ -1,10 +1,7 @@
 package top.focess.veto.builtin.tools;
 
-import java.util.HashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
-import java.util.Set;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.tool.AgentTool;
@@ -13,14 +10,13 @@ import top.focess.veto.api.agent.tool.Doc;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.agent.tool.ToolDoc;
 import top.focess.veto.api.agent.tool.ToolErrorCode;
-import top.focess.veto.api.agent.tool.ToolErrors;
 import top.focess.veto.api.agent.tool.ToolExecutionException;
 import top.focess.veto.api.agent.tool.ToolJson;
 import top.focess.veto.api.agent.tool.ToolResultFormat;
 import top.focess.veto.api.agent.tool.ToolResultStatus;
 import top.focess.veto.api.agent.tool.ToolSecurity;
+import top.focess.veto.api.agent.tool.UniqueBy;
 import top.focess.veto.builtin.questions.AnswerBatch;
-import top.focess.veto.builtin.questions.Option;
 import top.focess.veto.builtin.questions.Question;
 import top.focess.veto.builtin.questions.QuestionRuntime;
 
@@ -28,95 +24,61 @@ import top.focess.veto.builtin.questions.QuestionRuntime;
 @ToolDoc(
         resultFormats = {ToolResultFormat.JSON},
         description =
-                "Ask the user for necessary information or a requested interview step, then wait"
-                        + " for their answers. Follow the requested question count and pacing; use the"
-                        + " answers to continue the task.",
+                """
+                Ask the user for necessary information or a requested interview step, then wait for their \
+                answers. Follow the requested question count and pacing; use the answers to continue the \
+                task.\
+                """,
         behavior =
                 """
-                Publishes one pending question batch to the session UI and pauses this agent call \
-                until the user answers or cancels. The UI adds a free-form Other choice; every \
-                answer is returned under its stable question id. Pending batches are in-memory and \
-                are cancelled by a backend restart.""",
+                Publishes one pending question batch to the session UI and pauses this agent call until the \
+                user answers or cancels. The UI adds a free-form Other choice; every answer is returned under \
+                its stable question id. Pending batches are in-memory and are cancelled by a backend restart.\
+                """,
         whenToUse =
                 """
-                Use it when a missing user choice materially changes the result and cannot be \
-                inferred safely, or when the user explicitly requests an interview or guided \
-                choice. Batch independent questions when useful; wait for earlier answers before \
-                asking dependent questions.""",
+                Use it when a missing user choice materially changes the result and cannot be inferred \
+                safely, or when the user explicitly requests an interview or guided choice. Batch independent \
+                questions when useful; wait for earlier answers before asking dependent questions.\
+                """,
         whenNotToUse =
                 """
-                Do not use it for permission approval, status updates, facts discoverable with \
-                tools, or unsolicited optional preferences that do not block useful progress. \
-                Preferences are relevant when learning them is the user's requested task.""",
+                Do not use it for permission approval, status updates, facts discoverable with tools, or \
+                unsolicited optional preferences that do not block useful progress. Preferences are relevant \
+                when learning them is the user's requested task.\
+                """,
         resultContract =
                 """
-                Returns JSON `{"answers":{"question_id":"selected or entered value"}}`. Invalid \
-                questions that violate declared field bounds fail with INVALID_ARGUMENTS before \
-                execution. Cross-field question errors fail with INVALID_QUESTIONS and `Invalid \
-                questions: <detail>`; \
-                cancellation reports USER_CANCELLED \
-                (`Cancelled: the user cancelled the question batch.`), and an interrupted wait \
-                reports TOOL_INTERRUPTED \
-                (`Interrupted: the wait for user answers was interrupted.`). Failure details are \
-                plaintext.""",
+                Returns JSON `{"answers":{"question_id":"selected or entered value"}}`. Invalid questions \
+                fail with INVALID_ARGUMENTS and a field-specific detail before execution; cancellation \
+                reports USER_CANCELLED (`Cancelled: the user cancelled the question batch.`), and an \
+                interrupted wait reports TOOL_INTERRUPTED (`Interrupted: the wait for user answers was \
+                interrupted.`). Failure details are plaintext.\
+                """,
         errorsAndEdgeCases =
                 """
-                Use 2-5 exclusive options. Put the recommended option first; the UI adds its \
-                marker. Labels must be case-insensitively unique; `Other` is reserved. Follow field \
-                lengths and unique ids specified in the argument schema.""",
+                Use 2-5 exclusive options. Put the recommended option first; the UI adds its marker. Labels \
+                must be case-insensitively unique; `Other` is reserved. Follow field lengths and unique ids \
+                specified in the argument schema.\
+                """,
         security =
-                "Questions are shown to the user verbatim. A user answer does not replace any"
-                        + " separate approval required to perform an operation.",
+                """
+                Questions are shown to the user verbatim. A user answer does not replace any separate \
+                approval required to perform an operation.\
+                """,
         examples = {
-            "{\"questions\":[{\"header\":\"Target\",\"id\":\"target\",\"question\":\"Which"
-                    + " environment should receive the requested"
-                    + " deployment?\",\"options\":[{\"label\":\"Staging\",\"description\":\"Validate"
-                    + " the release with internal"
-                    + " testers.\"},{\"label\":\"Production\",\"description\":\"Release to"
-                    + " users.\"}]}]}",
-            "{\"questions\":[{\"header\":\"Format\",\"id\":\"format\",\"question\":\"Which output"
-                    + " format should the report"
-                    + " use?\",\"options\":[{\"label\":\"Markdown\",\"description\":\"Readable in the"
-                    + " terminal and easy to paste into"
-                    + " documents.\"},{\"label\":\"JSON\",\"description\":\"Structured output for"
-                    + " further tooling.\"},{\"label\":\"CSV\",\"description\":\"Tabular data for"
-                    + " spreadsheets.\"}]}]}",
-            "{\"questions\":[{\"header\":\"Scope\",\"id\":\"scope\",\"question\":\"Should the"
-                    + " cleanup cover only src/main or also src/test?\",\"options\":[{\"label\":\"main"
-                    + " and test\",\"description\":\"Keeps both source sets"
-                    + " consistent.\"},{\"label\":\"main only\",\"description\":\"Limits the change to"
-                    + " production"
-                    + " code.\"}]},{\"header\":\"Baseline\",\"id\":\"baseline\",\"question\":\"Which"
-                    + " branch should the comparison use as its"
-                    + " baseline?\",\"options\":[{\"label\":\"master\",\"description\":\"Compare"
-                    + " against the mainline"
-                    + " branch.\"},{\"label\":\"release\",\"description\":\"Compare against the current"
-                    + " release branch.\"}]}]}",
-            "{\"questions\":[{\"header\":\"Verbosity\",\"id\":\"verbosity\",\"question\":\"Which"
-                    + " logging level should the service use in"
-                    + " production?\",\"options\":[{\"label\":\"WARN\",\"description\":\"Only warnings"
-                    + " and errors; least noise.\"},{\"label\":\"INFO\",\"description\":\"Key lifecycle"
-                    + " events plus warnings.\"},{\"label\":\"DEBUG\",\"description\":\"Detailed"
-                    + " diagnostics; higher log"
-                    + " volume.\"},{\"label\":\"TRACE\",\"description\":\"Finest-grained tracing; very"
-                    + " high volume.\"},{\"label\":\"ERROR\",\"description\":\"Only hard"
-                    + " failures.\"}]}]}",
-            "{\"questions\":[{\"header\":\"Target\",\"id\":\"target\",\"question\":\"Which"
-                    + " environment should receive the"
-                    + " deployment?\",\"options\":[{\"label\":\"Staging\",\"description\":\"Validate"
-                    + " with internal testers"
-                    + " first.\"},{\"label\":\"Production\",\"description\":\"Release to"
-                    + " users.\"}]},{\"header\":\"Budget\",\"id\":\"target\",\"question\":\"What budget"
-                    + " applies?\",\"options\":[{\"label\":\"Standard\",\"description\":\"Default"
-                    + " spending limits.\"},{\"label\":\"Extended\",\"description\":\"Higher limits for"
-                    + " this release.\"}]}]}"
+            "{\"questions\":[{\"header\":\"Target\",\"id\":\"target\",\"question\":\"Which environment should receive the requested deployment?\",\"options\":[{\"label\":\"Staging\",\"description\":\"Validate the release with internal testers.\"},{\"label\":\"Production\",\"description\":\"Release to users.\"}]}]}",
+            "{\"questions\":[{\"header\":\"Format\",\"id\":\"format\",\"question\":\"Which output format should the report use?\",\"options\":[{\"label\":\"Markdown\",\"description\":\"Readable in the terminal and easy to paste into documents.\"},{\"label\":\"JSON\",\"description\":\"Structured output for further tooling.\"},{\"label\":\"CSV\",\"description\":\"Tabular data for spreadsheets.\"}]}]}",
+            "{\"questions\":[{\"header\":\"Scope\",\"id\":\"scope\",\"question\":\"Should the cleanup cover only src/main or also src/test?\",\"options\":[{\"label\":\"main and test\",\"description\":\"Keeps both source sets consistent.\"},{\"label\":\"main only\",\"description\":\"Limits the change to production code.\"}]},{\"header\":\"Baseline\",\"id\":\"baseline\",\"question\":\"Which branch should the comparison use as its baseline?\",\"options\":[{\"label\":\"master\",\"description\":\"Compare against the mainline branch.\"},{\"label\":\"release\",\"description\":\"Compare against the current release branch.\"}]}]}",
+            "{\"questions\":[{\"header\":\"Verbosity\",\"id\":\"verbosity\",\"question\":\"Which logging level should the service use in production?\",\"options\":[{\"label\":\"WARN\",\"description\":\"Only warnings and errors; least noise.\"},{\"label\":\"INFO\",\"description\":\"Key lifecycle events plus warnings.\"},{\"label\":\"DEBUG\",\"description\":\"Detailed diagnostics; higher log volume.\"},{\"label\":\"TRACE\",\"description\":\"Finest-grained tracing; very high volume.\"},{\"label\":\"ERROR\",\"description\":\"Only hard failures.\"}]}]}",
+            "{\"questions\":[{\"header\":\"Target\",\"id\":\"target\",\"question\":\"Which environment should receive the deployment?\",\"options\":[{\"label\":\"Staging\",\"description\":\"Validate with internal testers first.\"},{\"label\":\"Production\",\"description\":\"Release to users.\"}]},{\"header\":\"Budget\",\"id\":\"target\",\"question\":\"What budget applies?\",\"options\":[{\"label\":\"Standard\",\"description\":\"Default spending limits.\"},{\"label\":\"Extended\",\"description\":\"Higher limits for this release.\"}]}]}"
         },
         returnExamples = {
             "{\"answers\":{\"target\":\"Staging\"}}",
             "{\"answers\":{\"format\":\"Markdown\"}}",
             "{\"answers\":{\"scope\":\"main and test\",\"baseline\":\"master\"}}",
             "{\"answers\":{\"verbosity\":\"NOTICE\"}}",
-            "Invalid questions: question ids must be unique snake_case identifiers."
+            "Invalid arguments for ask_user: parameter 'questions' contains duplicate 'id' values."
         })
 @ToolSecurity(capability = ToolCapability.USER_INTERACTION, defaultDanger = Danger.SAFE)
 public final class AskUserTool extends AgentTool<AskUserTool.Args> {
@@ -133,6 +95,7 @@ public final class AskUserTool extends AgentTool<AskUserTool.Args> {
     /** Model-facing arguments of {@code ask_user}. */
     public record Args(
             @ArraySize(min = 1, max = MAX_QUESTIONS)
+                    @UniqueBy(field = "id")
                     @NonNull
                     @Doc(
                             "One to 10 questions shown together. Match the user's requested"
@@ -158,8 +121,6 @@ public final class AskUserTool extends AgentTool<AskUserTool.Args> {
 
     @Override
     public @NonNull String execute(@NonNull Args args) throws Exception {
-        validate(args.questions());
-
         AnswerBatch answer;
         try {
             answer = runtime.ask(args.questions());
@@ -179,43 +140,6 @@ public final class AskUserTool extends AgentTool<AskUserTool.Args> {
                     "Cancelled: the user cancelled the question batch.");
         }
         return ToolJson.object(new Result(answer.answers()));
-    }
-
-    // Declarative bounds (@ArraySize, @StringConstraint) are enforced against the compiled schema
-    // by the host before execute(); only cross-field semantics that annotations cannot express
-    // remain here.
-    private static void validate(@NonNull List<@NonNull Question> questions) {
-        Set<String> ids = new HashSet<>();
-        for (Question question : questions) {
-            if (question.header().isBlank()) {
-                ToolErrors.failure(
-                        ToolErrorCode.VALIDATION.INVALID_QUESTIONS,
-                        "Invalid questions: each question header must not be blank.");
-            }
-            if (!ids.add(question.id())) {
-                ToolErrors.failure(
-                        ToolErrorCode.VALIDATION.INVALID_QUESTIONS,
-                        "Invalid questions: question ids must be unique snake_case identifiers.");
-            }
-            if (question.question().isBlank()) {
-                ToolErrors.failure(
-                        ToolErrorCode.VALIDATION.INVALID_QUESTIONS,
-                        "Invalid questions: each question prompt must not be blank.");
-            }
-            Set<String> labels = new HashSet<>();
-            for (Option option : question.options()) {
-                String normalizedLabel = option.label().strip().toLowerCase(Locale.ROOT);
-                if (option.label().isBlank()
-                        || "other".equals(normalizedLabel)
-                        || option.description().isBlank()
-                        || !labels.add(normalizedLabel)) {
-                    ToolErrors.failure(
-                            ToolErrorCode.VALIDATION.INVALID_QUESTIONS,
-                            "Invalid questions: option labels must be distinct and not `Other`;"
-                                    + " descriptions must not be blank.");
-                }
-            }
-        }
     }
 
     /** JSON result payload of {@code ask_user}: answers keyed by question id. */

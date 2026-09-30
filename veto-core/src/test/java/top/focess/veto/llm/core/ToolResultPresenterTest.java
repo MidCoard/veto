@@ -25,7 +25,7 @@ class ToolResultPresenterTest {
 
     @Test
     void basicPreservesSuccessAndFailureContentExactly() {
-        @NonNull ToolResultPresenter presenter = new ToolResultPresenter(mapper);
+        ToolResultPresenter presenter = new ToolResultPresenter(mapper);
 
         assertThat(presenter.present(success(), ToolResultPresentationMode.BASIC))
                 .isEqualTo("{\"answer\":42}");
@@ -35,9 +35,9 @@ class ToolResultPresenterTest {
 
     @Test
     void detailedAddsMachineReadableFieldsWithoutChangingNestedContent() throws Exception {
-        @NonNull ToolResultPresenter presenter = new ToolResultPresenter(mapper);
+        ToolResultPresenter presenter = new ToolResultPresenter(mapper);
 
-        @NonNull JsonNode success =
+        JsonNode success =
                 Objects.requireNonNull(
                         mapper.readTree(
                                 presenter.present(success(), ToolResultPresentationMode.DETAILED)));
@@ -46,7 +46,7 @@ class ToolResultPresenterTest {
         assertThat(success.path("content").asText()).isEqualTo("{\"answer\":42}");
         assertThat(success.get("errorCode").isNull()).isTrue();
 
-        @NonNull JsonNode failure =
+        JsonNode failure =
                 Objects.requireNonNull(
                         mapper.readTree(
                                 presenter.present(failure(), ToolResultPresentationMode.DETAILED)));

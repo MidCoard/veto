@@ -5,7 +5,6 @@ import static org.mockito.Mockito.*;
 
 import java.util.Optional;
 import java.util.UUID;
-import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.agent.AgentService;
 import top.focess.veto.agent.ProtectedInputException;
@@ -19,9 +18,9 @@ import top.focess.veto.vault.KeysteadVault;
 class PromptControllerTest {
     @Test
     void rejectedProtectedInputDoesNotReceiveAnAcceptedAcknowledgement() {
-        @NonNull SessionService sessions = mock();
-        @NonNull AgentService agents = mock();
-        @NonNull KeysteadVault vault = mock();
+        SessionService sessions = mock(SessionService.class);
+        AgentService agents = mock(AgentService.class);
+        KeysteadVault vault = mock(KeysteadVault.class);
         when(vault.currentUser()).thenReturn("owner");
         when(sessions.activateForRest("session", "owner"))
                 .thenReturn(

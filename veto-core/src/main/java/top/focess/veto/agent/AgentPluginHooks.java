@@ -106,7 +106,7 @@ final class AgentPluginHooks {
         dispatch(before);
         if (before.isPrevent())
             throw new IllegalStateException("Model call prevented by plugin listener");
-        VetoResponse response = caller.call(request);
+        VetoResponse response = caller.call(request, sessionId);
         checkCancellation();
         var after =
                 new AfterModelEvent(

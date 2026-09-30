@@ -11,6 +11,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
@@ -48,7 +49,7 @@ public class DuckDuckGoSearchProvider implements SearchProvider, AutoCloseable {
     }
 
     private static @NonNull HttpClient createHttpClient() {
-        HttpClient.Builder builder =
+        HttpClient.@NonNull Builder builder =
                 HttpClient.newBuilder()
                         .connectTimeout(Duration.ofSeconds(15))
                         .followRedirects(HttpClient.Redirect.NORMAL);
@@ -74,8 +75,11 @@ public class DuckDuckGoSearchProvider implements SearchProvider, AutoCloseable {
                         .header("Accept", "text/html")
                         .GET()
                         .build();
-        HttpResponse<@NonNull String> response =
-                httpClient.<@NonNull String>send(request, HttpResponse.BodyHandlers.ofString());
+        var response =
+                Objects.requireNonNull(
+                        httpClient.<@NonNull String>send(
+                                request, HttpResponse.BodyHandlers.ofString()),
+                        "HttpClient.send returned null");
         if (response.statusCode() != 200) {
             log.warn("DuckDuckGo search returned HTTP {}", response.statusCode());
             throw new IllegalStateException(

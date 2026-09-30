@@ -168,7 +168,7 @@ class HitlHistoryTest {
 
     @Test
     void failedDecisionWriteDoesNotReleasePendingCall() {
-        @NonNull HitlHistory unavailable = mock();
+        HitlHistory unavailable = mock(HitlHistory.class);
         HitlRegistry registry = new HitlRegistry();
         registry.attachHistory(unavailable);
         UUID session = UUID.randomUUID();

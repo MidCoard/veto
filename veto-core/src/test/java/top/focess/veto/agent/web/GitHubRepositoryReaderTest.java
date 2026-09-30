@@ -33,13 +33,14 @@ import top.focess.veto.vault.*;
 
 class GitHubRepositoryReaderTest {
     @Test
+    @SuppressWarnings("unchecked") // Mockito's class-token overload cannot retain byte[].
     void approvedBindingUsesFixedDestinationAndFiltersCredentialEcho(@TempDir @NonNull Path root)
             throws Exception {
         var configuration = new CredentialVaultConfiguration();
         configuration.setVaultHome(root.toString());
         var vault = new KeysteadVault(configuration);
-        @NonNull HttpClient client = mock();
-        @NonNull HttpResponse<byte[]> response = mock();
+        HttpClient client = mock(HttpClient.class);
+        HttpResponse<byte[]> response = (HttpResponse<byte[]>) mock(HttpResponse.class);
         String token = "synthetic-token";
         try (var plugins = PluginTestSupport.manager()) {
             vault.signup("alice", "test-password");
@@ -74,7 +75,7 @@ class GitHubRepositoryReaderTest {
                                                 .orElseThrow());
                                 return response;
                             });
-            @NonNull SessionRepository sessions = mock();
+            SessionRepository sessions = mock(SessionRepository.class);
             var row = new SessionEntity("alice", "test");
             when(sessions.findById(row.getId())).thenReturn(Optional.of(row));
             var leases =

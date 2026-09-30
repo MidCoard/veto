@@ -136,14 +136,35 @@ class ToolEngineImplTest {
     private record JsonAgentArgs(@NonNull String output) {}
 
     @ToolDoc(
-            description = "Returns JSON for boundary tests.",
+            description =
+                    """
+                    Returns JSON for boundary tests.\
+                    """,
             resultFormats = {ToolResultFormat.JSON},
-            behavior = "Returns the supplied output.",
-            whenToUse = "Use in JSON boundary tests.",
-            whenNotToUse = "Do not use outside tests.",
-            resultContract = "One JSON value.",
-            errorsAndEdgeCases = "Malformed output is rejected by the engine.",
-            security = "Test-only agent tool.",
+            behavior =
+                    """
+                    Returns the supplied output.\
+                    """,
+            whenToUse =
+                    """
+                    Use in JSON boundary tests.\
+                    """,
+            whenNotToUse =
+                    """
+                    Do not use outside tests.\
+                    """,
+            resultContract =
+                    """
+                    One JSON value.\
+                    """,
+            errorsAndEdgeCases =
+                    """
+                    Malformed output is rejected by the engine.\
+                    """,
+            security =
+                    """
+                    Test-only agent tool.\
+                    """,
             examples = {"{\"output\":\"{}\"}", "{\"output\":\"[]\"}", "{\"output\":\"42\"}"},
             returnExamples = {"{}", "[]", "42"})
     private static class JsonAgentTool extends AgentTool<JsonAgentArgs> {
@@ -373,14 +394,35 @@ class ToolEngineImplTest {
     }
 
     @ToolDoc(
-            description = "Fails for protocol testing.",
+            description =
+                    """
+                    Fails for protocol testing.\
+                    """,
             resultFormats = {ToolResultFormat.PLAINTEXT},
-            behavior = "Always reports the requested protocol failure.",
-            whenToUse = "Use in protocol failure tests.",
-            whenNotToUse = "Do not use outside tests.",
-            resultContract = "Plain text.",
-            errorsAndEdgeCases = "The supplied reason is returned as a failure.",
-            security = "Test-only agent tool.",
+            behavior =
+                    """
+                    Always reports the requested protocol failure.\
+                    """,
+            whenToUse =
+                    """
+                    Use in protocol failure tests.\
+                    """,
+            whenNotToUse =
+                    """
+                    Do not use outside tests.\
+                    """,
+            resultContract =
+                    """
+                    Plain text.\
+                    """,
+            errorsAndEdgeCases =
+                    """
+                    The supplied reason is returned as a failure.\
+                    """,
+            security =
+                    """
+                    Test-only agent tool.\
+                    """,
             examples = {
                 "{\"reason\":\"bad input\"}",
                 "{\"reason\":\"missing field\"}",

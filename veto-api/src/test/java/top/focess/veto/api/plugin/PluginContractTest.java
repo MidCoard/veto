@@ -93,21 +93,63 @@ class PluginContractTest {
     }
 
     @Test
-    void contextStagesTypedRegistrationsOnlyDuringConstruction() {
+    void contextForwardsRegistrationsDuringAndAfterConstruction() {
+        var received = new ArrayList<Contribution<?>>();
         var context =
                 new PluginContext(
                         new PluginIdentity("top.focess.fixture", "1.0.0"),
                         () -> {},
                         () -> PluginState.NEW,
-                        Map.of());
+                        Map.of(),
+                        Map.of(StandardContributionPoints.CATEGORIES, received::add));
         var category = new ToolCategory("Text", "Text tools") {};
         context.register(StandardContributionPoints.CATEGORIES, "text", category);
-        var batch = context.sealRegistrations();
-        assertEquals(List.of("text"), batch.entries().stream().map(Contribution::localId).toList());
-        assertTrue(category == batch.entries().getFirst().implementation());
+        assertEquals(List.of("text"), received.stream().map(Contribution::localId).toList());
+        assertTrue(category == received.getFirst().implementation());
+        context.register(StandardContributionPoints.CATEGORIES, "later", category);
+        assertEquals(
+                List.of("text", "later"), received.stream().map(Contribution::localId).toList());
+    }
+
+    @Test
+    void rejectedRegistrationIsNotPublished() {
+        var accepted = new ArrayList<Contribution<?>>();
+        var context =
+                new PluginContext(
+                        new PluginIdentity("top.focess.fixture", "1.0.0"),
+                        () -> {},
+                        () -> PluginState.NEW,
+                        Map.of(),
+                        Map.of(
+                                StandardContributionPoints.CATEGORIES,
+                                contribution -> {
+                                    accepted.add(contribution);
+                                    throw new IllegalArgumentException("Rejected by point");
+                                }));
         assertThrows(
-                IllegalStateException.class,
-                () -> context.register(StandardContributionPoints.CATEGORIES, "later", category));
+                IllegalArgumentException.class,
+                () ->
+                        context.register(
+                                StandardContributionPoints.CATEGORIES,
+                                "text",
+                                new ToolCategory("Text", "Text tools") {}));
+        assertEquals(1, accepted.size());
+    }
+
+    @Test
+    void resourceContributionsUseTheirExactPointHandler() {
+        var received = new ArrayList<Contribution<?>>();
+        var context =
+                new PluginContext(
+                        new PluginIdentity("top.focess.fixture", "1.0.0"),
+                        () -> {},
+                        () -> PluginState.NEW,
+                        Map.of(),
+                        Map.of(StandardContributionPoints.RESOURCES, received::add));
+        context.register(StandardContributionPoints.RESOURCES, "first", () -> {});
+        context.register(StandardContributionPoints.RESOURCES, "second", () -> {});
+        assertEquals(
+                List.of("first", "second"), received.stream().map(Contribution::localId).toList());
     }
 
     @Test

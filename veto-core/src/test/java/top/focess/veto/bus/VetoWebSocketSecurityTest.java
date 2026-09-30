@@ -36,7 +36,7 @@ class VetoWebSocketSecurityTest {
         SessionManager sessionManager = new SessionManager();
         String token = sessionManager.createSession("alice");
         VetoWebSocketAuthInterceptor interceptor = new VetoWebSocketAuthInterceptor(sessionManager);
-        @NonNull ServerHttpRequest validRequest = request("ws://localhost/ws?token=" + token);
+        ServerHttpRequest validRequest = request("ws://localhost/ws?token=" + token);
         ServerHttpResponse validResponse = mock(ServerHttpResponse.class);
         Map<String, Object> attributes = new HashMap<>();
 
@@ -65,8 +65,8 @@ class VetoWebSocketSecurityTest {
         SessionRepository sessions = mock(SessionRepository.class);
         VetoWebSocketHandler handler =
                 new VetoWebSocketHandler(new ObjectMapper(), mock(VetoGateway.class), sessions);
-        @NonNull WebSocketSession alice = socket("alice-socket", "alice");
-        @NonNull WebSocketSession bob = socket("bob-socket", "bob");
+        WebSocketSession alice = socket("alice-socket", "alice");
+        WebSocketSession bob = socket("bob-socket", "bob");
         handler.afterConnectionEstablished(alice);
         handler.afterConnectionEstablished(bob);
         clearInvocations(alice, bob);

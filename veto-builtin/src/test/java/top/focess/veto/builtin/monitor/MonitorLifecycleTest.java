@@ -45,7 +45,8 @@ class MonitorLifecycleTest {
                             throw new IllegalStateException(
                                     "Plugin context is not bound to a lifecycle owner");
                         },
-                        Map.of(PluginHost.class, host, PluginStorage.class, storage)));
+                        Map.of(PluginHost.class, host, PluginStorage.class, storage),
+                        Map.of()));
     }
 
     @Test
@@ -107,7 +108,8 @@ class MonitorLifecycleTest {
                                     "Review",
                                     Instant.now().plusSeconds(60));
             var frontend = new MonitorFrontend(runtime.service());
-            var scope = new FrontendContribution.Scope("owner", "session", "different-agent");
+            var scope =
+                    new FrontendContribution.ActionContext("owner", "session", "different-agent");
             var args = new JsonValue.ObjectValue(Map.of("id", new JsonValue.StringValue(row.id())));
             for (String operation : new String[] {"pause", "resume", "cancel"}) {
                 assertEquals(
@@ -120,14 +122,16 @@ class MonitorLifecycleTest {
                     PluginFailure.class,
                     () ->
                             frontend.handle(
-                                    new FrontendContribution.Scope("foreign", "session", "agent"),
+                                    new FrontendContribution.ActionContext(
+                                            "foreign", "session", "agent"),
                                     "pause",
                                     args));
             assertThrows(
                     PluginFailure.class,
                     () ->
                             frontend.handle(
-                                    new FrontendContribution.Scope("owner", "foreign", "agent"),
+                                    new FrontendContribution.ActionContext(
+                                            "owner", "foreign", "agent"),
                                     "pause",
                                     args));
             assertTrue(frontend.module().contains("registerInspector"));
@@ -160,7 +164,8 @@ class MonitorLifecycleTest {
                     PluginFailure.class,
                     () ->
                             frontend.handle(
-                                    new FrontendContribution.Scope("owner", "session", "agent"),
+                                    new FrontendContribution.ActionContext(
+                                            "owner", "session", "agent"),
                                     "pause",
                                     new JsonValue.ObjectValue(
                                             Map.of("id", new JsonValue.StringValue("group")))));

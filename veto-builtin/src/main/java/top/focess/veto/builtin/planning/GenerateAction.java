@@ -6,8 +6,8 @@ import org.jspecify.annotations.NonNull;
 
 /**
  * A model-invoked content action. The only action that calls the model — invoked within the same
- * shared conversation, with bound inputs resolved from the {@link Scope}. {@code thought} is a
- * legacy per-action recording preference, not a provider thinking-mode switch; {@code
+ * shared conversation, with bound inputs resolved from the {@link PlanVariables}. {@code thought}
+ * is a legacy per-action recording preference, not a provider thinking-mode switch; {@code
  * modelTier}/{@code temperature} are frozen at IR-authoring time.
  */
 public record GenerateAction(
@@ -59,7 +59,7 @@ public record GenerateAction(
     }
 
     @Override
-    public @NonNull Map<String, @NonNull Object> resolveInputs(@NonNull Scope scope) {
+    public @NonNull Map<String, @NonNull Object> resolveInputs(@NonNull PlanVariables scope) {
         Map<String, Object> resolved = new HashMap<>();
         for (var entry : inputs.entrySet()) {
             resolved.put(entry.getKey(), scope.resolveValue(entry.getValue()));
@@ -71,8 +71,8 @@ public record GenerateAction(
      * Resolves optional {@code $var} substitutions in the prompt. Resolved inputs are also supplied
      * separately to the invocation, so an input need not appear as a prompt placeholder.
      */
-    public @NonNull String resolvePrompt(@NonNull Scope scope) {
-        Scope local = scope.child();
+    public @NonNull String resolvePrompt(@NonNull PlanVariables scope) {
+        PlanVariables local = scope.child();
         resolveInputs(scope).forEach(local::put);
         return local.resolveVars(prompt);
     }

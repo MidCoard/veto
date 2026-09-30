@@ -1,5 +1,7 @@
 package top.focess.veto.integration.plugins.storage;
 
+import top.focess.veto.api.plugin.PluginScope;
+
 import jakarta.persistence.EntityManager;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
@@ -35,7 +37,7 @@ public class RetainedPluginData {
             @NonNull String id,
             @NonNull String pluginId,
             String installedPluginId,
-            PluginStorage.@NonNull Kind kind,
+            @NonNull PluginScope kind,
             @NonNull String scopeId,
             @NonNull String key,
             @NonNull String revision,
@@ -70,10 +72,12 @@ public class RetainedPluginData {
 
     /** Lists only metadata from one scope kind; application records require an administrator. */
     @Transactional(readOnly = true)
-    public @NonNull Page list(
-            PluginStorage.@NonNull Kind kind, String pluginId, String after, int limit) {
+    public @NonNull Page list(@NonNull PluginScope kind, String pluginId, String after, int limit) {
         String owner = authorization.requireUser();
-        if (kind == PluginStorage.Kind.APPLICATION) authorization.requireAdmin();
+        if (kind == PluginScope.AGENT)
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST, "Agent-scoped storage is not available");
+        if (kind == PluginScope.APPLICATION) authorization.requireAdmin();
         if (limit < 1 || limit > 100)
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Limit must be 1 to 100");
         String query =
@@ -86,7 +90,7 @@ public class RetainedPluginData {
                         .setParameter("kind", kind.name())
                         .setParameter("after", after == null ? "" : after)
                         .setMaxResults(limit + 1);
-        if (kind != PluginStorage.Kind.APPLICATION) selection.setParameter("owner", owner);
+        if (kind != PluginScope.APPLICATION) selection.setParameter("owner", owner);
         if (pluginId != null) selection.setParameter("plugin", pluginId);
         List<PluginRecord> rows = selection.getResultList();
         int count = Math.min(limit, rows.size());
@@ -102,13 +106,13 @@ public class RetainedPluginData {
         String owner = authorization.requireUser();
         PluginRecord row = database.find(PluginRecord.class, id);
         if (row == null) throw notFound();
-        PluginStorage.Kind kind;
+        PluginScope kind;
         try {
-            kind = PluginStorage.Kind.valueOf(row.kind);
+            kind = PluginScope.valueOf(row.kind);
         } catch (IllegalArgumentException invalid) {
             throw notFound();
         }
-        if (kind == PluginStorage.Kind.APPLICATION) {
+        if (kind == PluginScope.APPLICATION) {
             try {
                 authorization.requireAdmin();
             } catch (ResponseStatusException denied) {
@@ -116,25 +120,26 @@ public class RetainedPluginData {
             }
         } else if (row.user == null
                 || !owner.equals(row.user.getUsername())
-                || (kind == PluginStorage.Kind.SESSION
+                || (kind == PluginScope.SESSION
                         && (row.session == null || !owner.equals(row.session.getOwner())))) {
             throw notFound();
         }
         return new Export(metadata(row), row.payload);
     }
 
-    private static @NonNull String ownerClause(PluginStorage.@NonNull Kind kind) {
+    private static @NonNull String ownerClause(@NonNull PluginScope kind) {
         return switch (kind) {
             case APPLICATION -> "";
             case USER -> " and r.user.username = :owner";
             case SESSION -> " and r.user.username = :owner and r.session.owner = :owner";
+            case AGENT -> throw new IllegalArgumentException("Agent-scoped storage is unavailable");
         };
     }
 
     // Checker treats a nested enum valueOf result as nullable under the package default.
     @SuppressWarnings("ConstantValue")
     private @NonNull Metadata metadata(@NonNull PluginRecord row) {
-        PluginStorage.Kind kind = PluginStorage.Kind.valueOf(row.kind);
+        PluginScope kind = PluginScope.valueOf(row.kind);
         if (kind == null) throw new IllegalStateException("Unknown plugin record kind");
         PluginLifecycle installed;
         try {

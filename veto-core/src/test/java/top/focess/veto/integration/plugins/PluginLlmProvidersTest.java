@@ -9,10 +9,13 @@ import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.atomic.AtomicReference;
-import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.api.llm.*;
+import top.focess.veto.api.llm.exceptions.ModelCapabilityException;
+import top.focess.veto.api.plugin.PluginBinding;
+import top.focess.veto.api.plugin.contract.StandardContributionPoints;
 import top.focess.veto.observability.AuditLogger;
 import top.focess.veto.plugin.runtime.*;
 
@@ -39,8 +42,10 @@ class PluginLlmProvidersTest {
         server.start();
         var manager = PluginTestSupport.manager();
         try {
-            @NonNull AuditLogger audit = mock();
-            var providers = new PluginLlmProviders(manager, new ObjectMapper(), audit);
+            var audit = Objects.requireNonNull(mock(AuditLogger.class), "Mockito returned null");
+            var selections =
+                    Objects.requireNonNull(mock(SessionPlugins.class), "Mockito returned null");
+            var providers = new PluginLlmProviders(manager, new ObjectMapper(), audit, selections);
             for (var type : EnumSet.allOf(ProviderType.class))
                 assertTrue(providers.require(type).supports(type));
             String url = "http://127.0.0.1:" + server.getAddress().getPort();
@@ -77,6 +82,53 @@ class PluginLlmProvidersTest {
         } finally {
             manager.close();
             server.stop(0);
+        }
+    }
+
+    @Test
+    void sessionProviderRequiresExactPinnedPluginRevision() throws Exception {
+        var manager = PluginTestSupport.manager();
+        try {
+            var selections =
+                    Objects.requireNonNull(mock(SessionPlugins.class), "Mockito returned null");
+            var source =
+                    manager.catalog()
+                            .entries(StandardContributionPoints.LLM_PROVIDERS)
+                            .get(0)
+                            .source();
+            var runtime = manager.plugin(source.namespace());
+            var exact =
+                    new PluginBinding(
+                            runtime.identity().id(),
+                            runtime.identity().version(),
+                            runtime.identity().version());
+            var providers =
+                    new PluginLlmProviders(
+                            manager, new ObjectMapper(), mock(AuditLogger.class), selections);
+
+            when(selections.bindings("session-1")).thenReturn(List.of(exact));
+            assertNotNull(providers.require(ProviderType.OPENAI, "session-1"));
+
+            when(selections.bindings("session-1"))
+                    .thenReturn(
+                            List.of(
+                                    new PluginBinding(
+                                            exact.id(), exact.version(), "different-revision")));
+            var mismatch =
+                    assertThrows(
+                            ModelCapabilityException.class,
+                            () -> providers.require(ProviderType.OPENAI, "session-1"));
+            assertTrue(mismatch.getMessage().contains("different-revision"));
+            assertTrue(mismatch.getMessage().contains("Restore the pinned plugin revision"));
+
+            when(selections.bindings("session-1")).thenReturn(List.of());
+            var absent =
+                    assertThrows(
+                            ModelCapabilityException.class,
+                            () -> providers.require(ProviderType.OPENAI, "session-1"));
+            assertTrue(absent.getMessage().contains("not selected for this session"));
+        } finally {
+            manager.close();
         }
     }
 }

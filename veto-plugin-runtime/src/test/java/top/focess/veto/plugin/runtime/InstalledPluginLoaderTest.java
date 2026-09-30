@@ -39,6 +39,7 @@ class InstalledPluginLoaderTest {
                                     installed.identity(),
                                     () -> {},
                                     () -> PluginState.NEW,
+                                    Map.of(),
                                     Map.of()),
                             new JsonValue.ObjectValue(Map.of()));
             assertNotSame(InstalledSamplePlugin.class, plugin.getClass());

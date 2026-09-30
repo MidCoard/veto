@@ -4,10 +4,10 @@ import java.util.List;
 import org.jspecify.annotations.NonNull;
 
 /**
- * A programmatic check over {@link Scope} vars. Executed by CheckEvaluator deterministically with
- * <b>zero LLM calls</b> (except {@link Llm}, which is one model call — a signal that the task
- * wasn't actually predictable). {@code CURRENT_STEPS} is a readable var auto-incremented by the
- * loop.
+ * A programmatic check over {@link PlanVariables} vars. Executed by CheckEvaluator
+ * deterministically with <b>zero LLM calls</b> (except {@link Llm}, which is one model call — a
+ * signal that the task wasn't actually predictable). {@code CURRENT_STEPS} is a readable var
+ * auto-incremented by the loop.
  */
 public sealed interface Check
         permits Check.Equals,

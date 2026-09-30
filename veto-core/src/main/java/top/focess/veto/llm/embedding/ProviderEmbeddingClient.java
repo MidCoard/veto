@@ -8,6 +8,7 @@ import java.net.http.HttpRequest;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.TimeUnit;
 import org.jspecify.annotations.NonNull;
@@ -164,7 +165,10 @@ public final class ProviderEmbeddingClient implements TextEmbedding {
     private @NonNull JsonNode read(@NonNull HttpRequest request) throws Exception {
         var pending = HTTP.sendAsync(request, ignored -> new BoundedEmbeddingBody());
         try {
-            var response = pending.get(timeout.toMillis(), TimeUnit.MILLISECONDS);
+            var response =
+                    Objects.requireNonNull(
+                            pending.get(timeout.toMillis(), TimeUnit.MILLISECONDS),
+                            "HttpClient.sendAsync returned null response");
             if (response.statusCode() != 200)
                 throw new IllegalStateException(
                         "Embedding provider returned HTTP " + response.statusCode());

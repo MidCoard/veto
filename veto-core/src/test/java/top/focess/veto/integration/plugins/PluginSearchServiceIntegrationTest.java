@@ -203,7 +203,8 @@ class PluginSearchServiceIntegrationTest {
                                 PluginHost.class,
                                 host,
                                 PluginServices.class,
-                                registry.forPlugin(fixture.runtime)));
+                                registry.forPlugin(fixture.runtime)),
+                        Map.of());
         return new SearchServiceClient(
                 context,
                 new JsonValue.ObjectValue(

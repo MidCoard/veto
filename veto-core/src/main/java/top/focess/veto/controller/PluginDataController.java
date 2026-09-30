@@ -1,5 +1,7 @@
 package top.focess.veto.controller;
 
+import top.focess.veto.api.plugin.PluginScope;
+
 import org.jspecify.annotations.NonNull;
 import org.springframework.http.CacheControl;
 import org.springframework.http.ResponseEntity;
@@ -25,7 +27,7 @@ public final class PluginDataController {
     /** Pages metadata only; no raw payload is included in a listing. */
     @GetMapping("/records")
     public @NonNull ResponseEntity<RetainedPluginData.Page> list(
-            @RequestParam PluginStorage.@NonNull Kind kind,
+            @RequestParam @NonNull PluginScope kind,
             @RequestParam(required = false) String pluginId,
             @RequestParam(required = false) String after,
             @RequestParam(defaultValue = "50") int limit) {

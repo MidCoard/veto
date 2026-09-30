@@ -383,6 +383,7 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
             @NonNull ToolCall call, RegisteredTool.@NonNull Plugin registration) {
         RemoteToolDefinition definition = registration.definition();
         requirePermit(call, definition);
+        requirePluginProvenance(definition, registration.runtime());
         var selection = sessionPlugins;
         if (selection != null) {
             var context = ToolCallContextHolder.get();
@@ -434,6 +435,7 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
         LocalToolDefinition definition = registration.definition();
         var runtime = registration.runtime();
         if (runtime != null) {
+            requirePluginProvenance(definition, runtime);
             if (runtime.state() != PluginState.ACTIVE)
                 throw new SecurityException("Plugin is not active for this session");
             var selection = sessionPlugins;
@@ -485,6 +487,16 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
             return executeWorkspaceWrite(write, jsonArgs);
         T args = mapper.treeToValue(jsonArgs, tool.getArgsClass());
         return tool.execute(Nullness.requireNonNull(args, "Tool arguments deserialized to null"));
+    }
+
+    private static void requirePluginProvenance(
+            @NonNull ToolDefinition definition, @NonNull PluginLifecycle runtime) {
+        var provenance = definition.provenance();
+        if (provenance == null
+                || !provenance.pluginId().equals(runtime.identity().id())
+                || !provenance.pluginVersion().equals(runtime.identity().version())
+                || !provenance.bindingId().equals(runtime.bindingId()))
+            throw new SecurityException("Tool contribution does not match its plugin runtime");
     }
 
     private <T, C extends @NonNull Capability> @NonNull String executeHosted(

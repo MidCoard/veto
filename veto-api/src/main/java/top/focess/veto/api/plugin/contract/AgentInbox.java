@@ -17,7 +17,8 @@ public abstract class AgentInbox {
      * @param agentId selected agent
      * @param requestId active durable request, or {@code null} when polling outside a request
      */
-    public record Scope(@NonNull String sessionId, @NonNull String agentId, String requestId) {}
+    public record InboxContext(
+            @NonNull String sessionId, @NonNull String agentId, String requestId) {}
 
     /**
      * continuationId is an opaque plugin-local durable key; the host namespaces it. Null uses the
@@ -51,7 +52,7 @@ public abstract class AgentInbox {
      * @param scope host-selected inbox scope
      * @return immutable pending observations
      */
-    public abstract @NonNull List<Observation> pending(@NonNull Scope scope);
+    public abstract @NonNull List<Observation> pending(@NonNull InboxContext scope);
 
     /**
      * Records that the host admitted and began the observation.
@@ -59,7 +60,7 @@ public abstract class AgentInbox {
      * @param scope host-selected inbox scope
      * @param observation admitted observation
      */
-    public abstract void started(@NonNull Scope scope, @NonNull Observation observation);
+    public abstract void started(@NonNull InboxContext scope, @NonNull Observation observation);
 
     /**
      * Records terminal completion with the actual host success outcome.
@@ -69,7 +70,7 @@ public abstract class AgentInbox {
      * @param success actual host execution outcome
      */
     public abstract void completed(
-            @NonNull Scope scope, @NonNull Observation observation, boolean success);
+            @NonNull InboxContext scope, @NonNull Observation observation, boolean success);
 
     /**
      * Records cancellation before terminal completion.
@@ -77,5 +78,5 @@ public abstract class AgentInbox {
      * @param scope host-selected inbox scope
      * @param observation cancelled observation
      */
-    public abstract void cancelled(@NonNull Scope scope, @NonNull Observation observation);
+    public abstract void cancelled(@NonNull InboxContext scope, @NonNull Observation observation);
 }

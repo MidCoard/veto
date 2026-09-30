@@ -25,7 +25,7 @@ public record ToolAction(
     }
 
     @Override
-    public @NonNull Map<String, @NonNull Object> resolveInputs(@NonNull Scope scope) {
+    public @NonNull Map<String, @NonNull Object> resolveInputs(@NonNull PlanVariables scope) {
         Map<String, Object> resolved = new HashMap<>();
         for (var entry : inputs.entrySet()) {
             resolved.put(entry.getKey(), scope.resolveValue(entry.getValue()));

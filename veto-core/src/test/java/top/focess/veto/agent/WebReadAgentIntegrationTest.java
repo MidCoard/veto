@@ -138,7 +138,7 @@ class WebReadAgentIntegrationTest {
                 .thenReturn(
                         new ModelBinding(
                                 ProviderType.DEEPSEEK, "isolated-reader", "reader-key", 0, 2048));
-        @NonNull TurnRecordRepository turnRepository = mock();
+        TurnRecordRepository turnRepository = mock(TurnRecordRepository.class);
         var reader =
                 ReaderTestHarness.create(
                         mapper,
@@ -433,7 +433,7 @@ class WebReadAgentIntegrationTest {
         var models = mock(ModelTierRegistry.class);
         when(models.resolve("test-owner", ModelTier.LOW))
                 .thenReturn(new ModelBinding(ProviderType.DEEPSEEK, "reader", "key", 0, 2048));
-        @NonNull TurnRecordRepository turnRepository = mock();
+        TurnRecordRepository turnRepository = mock(TurnRecordRepository.class);
         var reader =
                 ReaderTestHarness.create(
                         mapper,
@@ -448,7 +448,6 @@ class WebReadAgentIntegrationTest {
                         2048,
                         () -> {});
         var access = mock(ApprovedHttpDestination.class);
-
         doAnswer(
                         invocation -> {
                             accessClosed.countDown();
@@ -484,7 +483,7 @@ class WebReadAgentIntegrationTest {
         AgentService service = service(engine, parentCaller, mapper, hitl);
         ReflectionTestUtils.setField(service, "sessionAgents", registry);
         AtomicInteger persistedCancellations = new AtomicInteger();
-        @NonNull TurnLogService parentLog = mock();
+        TurnLogService parentLog = mock(TurnLogService.class);
         doAnswer(
                         invocation -> {
                             TurnRecord turn = invocation.getArgument(0);

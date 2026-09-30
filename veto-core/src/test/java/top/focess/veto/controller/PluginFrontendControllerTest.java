@@ -4,13 +4,11 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
-import java.util.List;
-import java.util.Optional;
-import java.util.UUID;
-import org.jspecify.annotations.NonNull;
+
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
+
 import top.focess.veto.agent.SessionAgentRegistry;
 import top.focess.veto.integration.plugins.PluginManager;
 import top.focess.veto.integration.plugins.SessionPlugins;
@@ -18,17 +16,21 @@ import top.focess.veto.model.SessionEntity;
 import top.focess.veto.model.SessionRepository;
 import top.focess.veto.vault.UserContext;
 
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+
 class PluginFrontendControllerTest {
     @Test
     void agentIdsOutsideTheAuthenticatedSessionAreIndistinguishableFromMissingIds() {
-        @NonNull SessionRepository sessions = mock();
-        @NonNull SessionPlugins selected = mock();
-        @NonNull PluginManager plugins = mock();
-        @NonNull SessionAgentRegistry agents = mock();
+        SessionRepository sessions = mock(SessionRepository.class);
+        SessionPlugins selected = mock(SessionPlugins.class);
+        PluginManager plugins = mock(PluginManager.class);
+        SessionAgentRegistry agents = mock(SessionAgentRegistry.class);
         var session = new SessionEntity("owner", "private", "D:/workspace");
         when(sessions.findFirstByNameAndOwnerOrderByLastActiveAtDesc("private", "owner"))
                 .thenReturn(Optional.of(session));
-        when(selected.bindings(session.getId())).thenReturn(List.of());
+        when(selected.status(session.getId())).thenReturn(List.of());
         when(agents.records(UUID.fromString(session.getId())))
                 .thenReturn(
                         List.of(
@@ -70,9 +72,9 @@ class PluginFrontendControllerTest {
     @Test
     void anonymousRequestsCannotReadModulesOrInvokeActions() {
         UserContext.clear();
-        @NonNull SessionRepository sessions = mock();
-        @NonNull SessionPlugins selected = mock();
-        @NonNull PluginManager plugins = mock();
+        SessionRepository sessions = mock(SessionRepository.class);
+        SessionPlugins selected = mock(SessionPlugins.class);
+        PluginManager plugins = mock(PluginManager.class);
         var controller =
                 new PluginFrontendController(
                         new RequestAuthorization(user -> false),
@@ -102,9 +104,9 @@ class PluginFrontendControllerTest {
 
     @Test
     void foreignSessionsCannotReadModulesOrInvokeActions() {
-        @NonNull SessionRepository sessions = mock();
-        @NonNull SessionPlugins selected = mock();
-        @NonNull PluginManager plugins = mock();
+        SessionRepository sessions = mock(SessionRepository.class);
+        SessionPlugins selected = mock(SessionPlugins.class);
+        PluginManager plugins = mock(PluginManager.class);
         when(sessions.findFirstByNameAndOwnerOrderByLastActiveAtDesc("private", "other"))
                 .thenReturn(Optional.empty());
         var controller =

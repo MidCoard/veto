@@ -4,12 +4,12 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
-import top.focess.veto.builtin.planning.Scope;
+import top.focess.veto.builtin.planning.PlanVariables;
 
-class ScopeResultTest {
+class PlanVariablesTest {
     @Test
     void runtimeBookkeepingRemainsAvailableToChecksButIsNotPublished() {
-        Scope scope = new Scope(new ObjectMapper());
+        PlanVariables scope = new PlanVariables(new ObjectMapper());
         scope.put("CURRENT_STEPS", 3);
         scope.put("step_ok:read", true);
         scope.put("answer", "Ready for review.");
@@ -22,7 +22,7 @@ class ScopeResultTest {
 
     @Test
     void bookkeepingOnlyScopeProducesNoVisibleResult() {
-        Scope scope = new Scope(new ObjectMapper());
+        PlanVariables scope = new PlanVariables(new ObjectMapper());
         scope.put("CURRENT_STEPS", 1);
         scope.put("step_ok:read", false);
 
@@ -31,7 +31,7 @@ class ScopeResultTest {
 
     @Test
     void similarlyNamedUserBindingsArePreserved() {
-        Scope scope = new Scope(new ObjectMapper());
+        PlanVariables scope = new PlanVariables(new ObjectMapper());
         scope.put("CURRENT_STEPS_summary", "Three steps");
         scope.put("step_ok_summary", "Complete");
 
@@ -41,7 +41,7 @@ class ScopeResultTest {
 
     @Test
     void userBindingsHaveDeterministicOrderRegardlessOfInsertionAndBookkeeping() {
-        Scope scope = new Scope(new ObjectMapper());
+        PlanVariables scope = new PlanVariables(new ObjectMapper());
         scope.put("zeta", "First inserted");
         scope.put("CURRENT_STEPS", 2);
         scope.put("alpha", "Second inserted");
@@ -54,7 +54,7 @@ class ScopeResultTest {
         scope.put("step_ok:generate", true);
         assertEquals(expected, scope.synthesize());
 
-        Scope reversed = new Scope(new ObjectMapper());
+        PlanVariables reversed = new PlanVariables(new ObjectMapper());
         reversed.put("alpha", "Second inserted");
         reversed.put("zeta", "Updated first binding");
         assertEquals(expected, reversed.synthesize());
@@ -62,14 +62,14 @@ class ScopeResultTest {
 
     @Test
     void unavailableFailureOutputsAreOmittedFromVisibleResult() {
-        Scope scope = new Scope(new ObjectMapper());
-        scope.put("unavailable", Scope.UNDEFINED);
+        PlanVariables scope = new PlanVariables(new ObjectMapper());
+        scope.put("unavailable", PlanVariables.UNDEFINED);
         scope.put("CURRENT_STEPS", 4);
         scope.put("step_ok:read", false);
 
         assertEquals("", scope.synthesize());
         scope.put("answer", "The source could not be read.");
         assertEquals("answer=The source could not be read.", scope.synthesize());
-        assertEquals(Scope.UNDEFINED, scope.get("unavailable"));
+        assertEquals(PlanVariables.UNDEFINED, scope.get("unavailable"));
     }
 }

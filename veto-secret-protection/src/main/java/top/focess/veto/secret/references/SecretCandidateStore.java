@@ -16,6 +16,7 @@ import java.util.UUID;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.credentials.VaultAccess;
+import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.secret.detection.SecretDetector;
 import top.focess.veto.secret.detection.SecretMasker;
 
@@ -26,9 +27,6 @@ public final class SecretCandidateStore {
     private final @NonNull Set<String> closedOwners = new HashSet<>();
     private final @NonNull Set<SessionKey> retiredSessions = new HashSet<>();
     private static final @NonNull Pattern REFERENCE = Pattern.compile("\\[SECRET_REF:([^]]+)]");
-
-    /** Owner/session/agent identity that bounds a captured secret candidate. */
-    public record Scope(@NonNull String owner, @NonNull String session, @NonNull String agent) {}
 
     /** Lifecycle state of a captured candidate. */
     public enum State {
@@ -56,14 +54,14 @@ public final class SecretCandidateStore {
             @NonNull String credentialRef, @NonNull String service, @NonNull String label) {}
 
     private static final class Entry {
-        private final @NonNull Scope scope;
+        private final Scope.@NonNull AgentScope scope;
         private @NonNull Descriptor descriptor;
         private String value;
         private ImportReceipt imported;
         private final int bytes;
 
         private Entry(
-                @NonNull Scope scope,
+                Scope.@NonNull AgentScope scope,
                 @NonNull Descriptor descriptor,
                 @NonNull String value,
                 int bytes) {
@@ -159,18 +157,18 @@ public final class SecretCandidateStore {
      *     unresolvable, or candidate capacity is exceeded
      */
     public synchronized @NonNull Capture capture(
-            @NonNull Scope scope, @NonNull String sourceId, @NonNull String input) {
+            Scope.@NonNull AgentScope scope, @NonNull String sourceId, @NonNull String input) {
         return capture(scope, sourceId, input, false);
     }
 
     /** Capture before rendering source lines while preserving CR, LF, and CRLF boundaries. */
     public synchronized @NonNull Capture captureFile(
-            @NonNull Scope scope, @NonNull String sourceId, @NonNull String input) {
+            Scope.@NonNull AgentScope scope, @NonNull String sourceId, @NonNull String input) {
         return capture(scope, sourceId, input, true);
     }
 
     private @NonNull Capture capture(
-            @NonNull Scope scope,
+            Scope.@NonNull AgentScope scope,
             @NonNull String sourceId,
             @NonNull String input,
             boolean preserveLines) {
@@ -277,7 +275,7 @@ public final class SecretCandidateStore {
 
     /** Snapshot validated references; callers may mask plain segments without holding this lock. */
     public synchronized @NonNull List<ReferenceSegment> referenceSegments(
-            @NonNull Scope scope, @NonNull String input) {
+            Scope.@NonNull AgentScope scope, @NonNull String input) {
         expire();
         List<ReferenceSegment> segments = new ArrayList<>();
         var matcher = REFERENCE.matcher(input);
@@ -298,7 +296,7 @@ public final class SecretCandidateStore {
 
     /** Returns the descriptor for a reference within the scope, or empty if unknown or expired. */
     public synchronized @NonNull Optional<Descriptor> describe(
-            @NonNull Scope scope, @NonNull String reference) {
+            Scope.@NonNull AgentScope scope, @NonNull String reference) {
         expire();
         Entry entry = entries.get(reference);
         return entry == null || !entry.scope.equals(scope)
@@ -308,7 +306,7 @@ public final class SecretCandidateStore {
 
     /** Owner-authorized browser access; no tool or model adapter exposes this operation. */
     public synchronized @NonNull Optional<String> reveal(
-            @NonNull Scope scope, @NonNull String reference) {
+            Scope.@NonNull AgentScope scope, @NonNull String reference) {
         expire();
         Entry entry = entries.get(reference);
         if (closedOwners.contains(scope.owner())
@@ -320,11 +318,11 @@ public final class SecretCandidateStore {
 
     /** Storage transition only. The trusted caller must validate the execution permit first. */
     public synchronized @NonNull ImportReceipt importOnce(
-            @NonNull Scope scope,
+            Scope.@NonNull AgentScope scope,
             @NonNull String reference,
             @NonNull String service,
             @NonNull String label,
-            VaultAccess.@NonNull Scope vault) {
+            VaultAccess.@NonNull Handle vault) {
         expire();
         Entry entry = entries.get(reference);
         if (closedOwners.contains(scope.owner())
@@ -338,9 +336,10 @@ public final class SecretCandidateStore {
                 || label.length() > 80
                 || !label.equals(label.trim()))
             throw new IllegalArgumentException("Invalid credential import binding");
-        if (!scope.owner().equals(vault.owner())
-                || !scope.session().equals(vault.sessionId())
-                || !scope.agent().equals(vault.agentId()))
+        var vaultScope = vault.scope();
+        if (!scope.owner().equals(vaultScope.owner())
+                || !scope.session().equals(vaultScope.session())
+                || !scope.agent().equals(vaultScope.agent()))
             throw new SecurityException("Vault scope does not match the candidate");
         if (!vault.isUnlocked())
             throw new IllegalStateException("Credential owner vault is locked");
@@ -398,7 +397,7 @@ public final class SecretCandidateStore {
      * Discards the captured values of one owner/session/agent scope; does not block future
      * captures.
      */
-    public synchronized void discardAgent(@NonNull Scope scope) {
+    public synchronized void discardAgent(Scope.@NonNull AgentScope scope) {
         entries.values().stream()
                 .filter(entry -> entry.scope.equals(scope))
                 .forEach(entry -> entry.discard(State.DISCARDED));

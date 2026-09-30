@@ -4,12 +4,10 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static top.focess.veto.builtin.questions.QuestionTestSupport.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -87,40 +85,6 @@ class AskUserToolTest {
         } finally {
             executor.shutdownNow();
         }
-    }
-
-    @Test
-    void rejectsInvalidQuestionsBeforeRegistering() {
-        var valid = question("question_0");
-        assertInvalid(List.of(valid, valid));
-        assertInvalid(List.of(new Question(" ", valid.id(), valid.question(), valid.options())));
-        assertInvalid(List.of(new Question(valid.header(), valid.id(), " ", valid.options())));
-        assertInvalid(
-                List.of(
-                        new Question(
-                                valid.header(),
-                                valid.id(),
-                                valid.question(),
-                                List.of(
-                                        new Option("Other", "Reserved choice"),
-                                        valid.options().getLast()))));
-        assertInvalid(
-                List.of(
-                        new Question(
-                                valid.header(),
-                                valid.id(),
-                                valid.question(),
-                                List.of(
-                                        valid.options().getFirst(),
-                                        new Option(" second ", "Duplicate"),
-                                        new Option("SECOND", "Duplicate")))));
-        assertInvalid(
-                List.of(
-                        new Question(
-                                valid.header(),
-                                valid.id(),
-                                valid.question(),
-                                List.of(valid.options().getFirst(), new Option("Second", " ")))));
     }
 
     @Test
@@ -209,19 +173,6 @@ class AskUserToolTest {
         } finally {
             executor.shutdownNow();
         }
-    }
-
-    private void assertInvalid(@NonNull List<Question> questions) {
-        assertTimeoutPreemptively(
-                Duration.ofSeconds(2),
-                () -> {
-                    var error =
-                            assertThrows(
-                                    ToolExecutionException.class,
-                                    () -> tool.execute(new AskUserTool.Args(questions)));
-                    assertEquals(ToolErrorCode.VALIDATION.INVALID_QUESTIONS, error.errorCode());
-                    assertTrue(registry.pendingFor(scope("test-agent")).isEmpty());
-                });
     }
 
     private @NonNull String awaitPending() throws InterruptedException {

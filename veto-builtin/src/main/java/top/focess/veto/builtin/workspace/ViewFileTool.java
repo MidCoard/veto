@@ -26,51 +26,54 @@ import top.focess.veto.api.agent.tool.WorkspaceReadTool;
 @ToolSecurity(capability = ToolCapability.WORKSPACE_READ, defaultDanger = Danger.SAFE)
 @ToolDoc(
         resultFormats = {ToolResultFormat.PLAINTEXT},
-        description = "Read lines of a text file from the local filesystem.",
+        description =
+                """
+                Read lines of a text file from the local filesystem.\
+                """,
         behavior =
                 """
                 Read UTF-8, replacing detected secrets with session references before selecting lines. \
-                startLine/endLine are inclusive, 1-indexed; omitted bounds mean first/last line. \
-                Bounds clamp to the file; reversed or out-of-file ranges are empty. \
-                The whole input must fit 16 MiB (16,777,216 bytes), even for a line range. \
-                Output stops at 5000 lines or 1000000 characters with \
-                `[truncated; request a narrower line range]`.""",
+                startLine/endLine are inclusive, 1-indexed; omitted bounds mean first/last line. Bounds clamp \
+                to the file; reversed or out-of-file ranges are empty. The whole input must fit 16 MiB \
+                (16,777,216 bytes), even for a line range. Output stops at 5000 lines or 1000000 characters \
+                with `[truncated; request a narrower line range]`.\
+                """,
         whenToUse =
-                "Inspect text or read current source before editing; numbered lines support"
-                        + " replace_file_content.",
+                """
+                Inspect text or read current source before editing; numbered lines support \
+                replace_file_content.\
+                """,
         whenNotToUse =
-                "Use grep_search for cross-file patterns and list_dir for discovery. UTF-8 text"
-                        + " only; read-only.",
+                """
+                Use grep_search for cross-file patterns and list_dir for discovery. UTF-8 text only; \
+                read-only.\
+                """,
         resultContract =
                 """
-                    - Success: one output line per source line as \
-                    `<lineNumber>: <line text>` (1-indexed). An empty range yields no lines.
-                    - Supplied `absolutePath` does not exist or is not a regular file (failure): \
-                    `Not a regular file: <absolutePath>`.
-                    - Oversized file (failure): \
-                    `File too large: the file exceeds 16 MiB (16,777,216 bytes); request a smaller artifact.`
-                    - Invalid `absolutePath` syntax (failure): `Invalid path: <absolutePath>`.
-                    - Invalid UTF-8 (failure): `Invalid UTF-8: <absolutePath>`.
-                    - Protected content cannot be processed (failure): \
-                    `Protected content unavailable: the file content could not be processed; retry or adjust \
-                    credential settings.`
-                    - Read failure (failure): `I/O error: cannot read file <absolutePath>.`
-                    """,
+                - Success: one output line per source line as `<lineNumber>: <line text>` (1-indexed). An \
+                empty range yields no lines. - Supplied `absolutePath` does not exist or is not a regular \
+                file (failure): `Not a regular file: <absolutePath>`. - Oversized file (failure): `File too \
+                large: the file exceeds 16 MiB (16,777,216 bytes); request a smaller artifact.` - Invalid \
+                `absolutePath` syntax (failure): `Invalid path: <absolutePath>`. - Invalid UTF-8 (failure): \
+                `Invalid UTF-8: <absolutePath>`. - Protected content cannot be processed (failure): \
+                `Protected content unavailable: the file content could not be processed; retry or adjust \
+                credential settings.` - Read failure (failure): `I/O error: cannot read file <absolutePath>.`\
+                """,
         errorsAndEdgeCases =
                 """
-                    - After a path rejection, do not retry a similar guess. Return to the last successful \
-                    parent listing and reconstruct the absolute path from observed file names.
-                    - `startLine` greater than the file length -> no output (range clamped to empty).
-                    - `endLine` less than `startLine` -> no output.
-                    - Directories, device files, and sockets are rejected as "not a regular file".
-                    - A symbolic-link or reparse-point target fails with UNSAFE_LINK (`Unsafe link: \
-                    symbolic links and reparse points cannot be followed.`); a file that changed after \
-                    authorization fails with TREE_CHANGED (`Tree changed: ...`); a protected target is \
-                    refused with PATH_PROTECTED.
-                    """,
+                - After a path rejection, do not retry a similar guess. Return to the last successful parent \
+                listing and reconstruct the absolute path from observed file names. - `startLine` greater \
+                than the file length -> no output (range clamped to empty). - `endLine` less than `startLine` \
+                -> no output. - Directories, device files, and sockets are rejected as "not a regular file". \
+                - A symbolic-link or reparse-point target fails with UNSAFE_LINK (`Unsafe link: symbolic \
+                links and reparse points cannot be followed.`); a file that changed after authorization fails \
+                with TREE_CHANGED (`Tree changed: ...`); a protected target is refused with PATH_PROTECTED.\
+                """,
         security =
-                "Detected secrets are replaced with session references before lines are returned,"
-                        + " so file secrets do not enter the conversation.",
+                """
+                Detected secrets are replaced with session references before lines are returned, so file \
+                secrets do not enter the conversation.\
+                """,
         examples = {
             "{\"absolutePath\": \"/abs/src/Main.java\"}",
             "{\"absolutePath\": \"/abs/src/Main.java\", \"startLine\": 10, \"endLine\": 20}",
@@ -80,9 +83,7 @@ import top.focess.veto.api.agent.tool.WorkspaceReadTool;
         },
         returnExamples = {
             "1: package com.example;\n2: \n3: public class Main {",
-            "10:     public static void main(String[] args) {\n"
-                    + "11:         System.out.println(\"hi\");\n"
-                    + "12:     }",
+            "10:     public static void main(String[] args) {\n11:         System.out.println(\"hi\");\n12:     }",
             "100: }\n101: ",
             "1: server:\n2:   port: 8443\n3:   host: 0.0.0.0",
             "Not a regular file: /abs/project/missing-file.txt"

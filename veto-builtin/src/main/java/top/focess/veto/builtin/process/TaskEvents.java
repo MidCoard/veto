@@ -17,12 +17,12 @@ import top.focess.veto.api.plugin.PluginHost;
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.builtin.process.BackgroundTasks.Change;
 import top.focess.veto.builtin.process.BackgroundTasks.ExitCause;
-import top.focess.veto.builtin.process.BackgroundTasks.Scope;
+import top.focess.veto.builtin.process.BackgroundTasks.Owner;
 
 /** Builtin owns process-to-monitor interpretation, retries and frontend invalidation. */
 public final class TaskEvents implements BackgroundTasks.Listener, AutoCloseable {
     private record Pending(
-            @NonNull Scope scope, @NonNull TaskInfo task, @NonNull ExitCause cause) {}
+            @NonNull Owner scope, @NonNull TaskInfo task, @NonNull ExitCause cause) {}
 
     private final @NonNull PluginHost host;
     private final @NonNull ProcessObserver observer;
@@ -31,7 +31,7 @@ public final class TaskEvents implements BackgroundTasks.Listener, AutoCloseable
     private boolean closed;
     private final @NonNull Set<String> closedOwners = new HashSet<>();
     private final @NonNull Set<String> closedSessions = new HashSet<>();
-    private final @NonNull Map<UUID, Scope> instances = new LinkedHashMap<>();
+    private final @NonNull Map<UUID, Owner> instances = new LinkedHashMap<>();
     private final @NonNull Set<UUID> closedInstances = new HashSet<>();
 
     /** Drops pending notifications for a closed owner. */
@@ -51,7 +51,7 @@ public final class TaskEvents implements BackgroundTasks.Listener, AutoCloseable
     }
 
     /** Marks the scope instances closed and drops its pending notifications. */
-    public synchronized void agentClosed(@NonNull Scope scope) {
+    public synchronized void agentClosed(@NonNull Owner scope) {
         instances.forEach(
                 (id, owned) -> {
                     if (owned.equals(scope)) closedInstances.add(id);
@@ -59,7 +59,7 @@ public final class TaskEvents implements BackgroundTasks.Listener, AutoCloseable
         pending.values().removeIf(value -> value.scope().equals(scope));
     }
 
-    private boolean revoked(@NonNull Scope scope) {
+    private boolean revoked(@NonNull Owner scope) {
         return closedOwners.contains(scope.owner())
                 || closedSessions.contains(scope.owner() + ":" + scope.session());
     }
@@ -82,7 +82,7 @@ public final class TaskEvents implements BackgroundTasks.Listener, AutoCloseable
 
     @Override
     public synchronized void changed(
-            @NonNull Scope scope,
+            @NonNull Owner scope,
             @NonNull TaskInfo info,
             @NonNull ExitCause cause,
             @NonNull Change change) {

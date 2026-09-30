@@ -1,5 +1,7 @@
 package top.focess.veto.builtin.monitor;
 
+import top.focess.veto.api.plugin.PluginScope;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -32,7 +34,7 @@ public final class StoredMonitorRepository implements MonitorRepository {
         sessions.clear();
         String cursor = null;
         do {
-            var page = storage.scopes(PluginStorage.Kind.SESSION, cursor, 100);
+            var page = storage.scopes(PluginScope.SESSION, cursor, 100);
             for (var scope : page.entries())
                 if (scope instanceof SessionScope session)
                     sessions.put(session.sessionId(), storage.session(session));

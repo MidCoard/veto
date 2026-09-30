@@ -13,6 +13,7 @@ import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.api.credentials.VaultAccess;
+import top.focess.veto.api.plugin.Scope;
 
 class SecretCandidateStoreTest {
     @Test
@@ -67,8 +68,8 @@ class SecretCandidateStoreTest {
                 () -> store.importOnce(scope, reference, "github", "Repository", writer));
     }
 
-    private final SecretCandidateStore.@NonNull Scope scope =
-            new SecretCandidateStore.Scope("alice", "session", "agent");
+    private final Scope.@NonNull AgentScope scope =
+            new Scope.AgentScope("alice", "session", "agent");
 
     @Test
     void stableReferencesReplaceKnownValuesWithoutPublishingRawSecrets() {
@@ -101,10 +102,10 @@ class SecretCandidateStoreTest {
                         .getFirst()
                         .reference();
         for (var other :
-                new SecretCandidateStore.Scope[] {
-                    new SecretCandidateStore.Scope("bob", "session", "agent"),
-                    new SecretCandidateStore.Scope("alice", "other", "agent"),
-                    new SecretCandidateStore.Scope("alice", "session", "mate")
+                new Scope.AgentScope[] {
+                    new Scope.AgentScope("bob", "session", "agent"),
+                    new Scope.AgentScope("alice", "other", "agent"),
+                    new Scope.AgentScope("alice", "session", "mate")
                 }) {
             assertTrue(store.describe(other, reference).isEmpty());
             assertNotEquals(
@@ -189,9 +190,9 @@ class SecretCandidateStoreTest {
         var writer = new InMemoryWriter();
         for (var other :
                 List.of(
-                        new SecretCandidateStore.Scope("bob", "session", "agent"),
-                        new SecretCandidateStore.Scope("alice", "other", "agent"),
-                        new SecretCandidateStore.Scope("alice", "session", "mate"))) {
+                        new Scope.AgentScope("bob", "session", "agent"),
+                        new Scope.AgentScope("alice", "other", "agent"),
+                        new Scope.AgentScope("alice", "session", "mate"))) {
             assertThrows(
                     IllegalStateException.class,
                     () -> store.importOnce(other, reference, "github", "Repository", writer));
@@ -247,25 +248,15 @@ class SecretCandidateStoreTest {
             @NonNull String label,
             @NonNull String value) {}
 
-    private static final class InMemoryWriter implements VaultAccess.Scope {
+    private static final class InMemoryWriter implements VaultAccess.Handle {
         private boolean unlocked = true;
         private boolean failNextWrite;
         private int unlockChecks;
         private final @NonNull List<StoredCredential> attempts = new ArrayList<>();
 
         @Override
-        public @NonNull String owner() {
-            return "alice";
-        }
-
-        @Override
-        public @NonNull String sessionId() {
-            return "session";
-        }
-
-        @Override
-        public @NonNull String agentId() {
-            return "agent";
+        public Scope.@NonNull AgentScope scope() {
+            return new Scope.AgentScope("alice", "session", "agent");
         }
 
         @Override

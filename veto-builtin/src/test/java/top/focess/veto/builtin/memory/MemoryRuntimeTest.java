@@ -56,7 +56,8 @@ class MemoryRuntimeTest {
                             throw new IllegalStateException(
                                     "Plugin context is not bound to a lifecycle owner");
                         },
-                        services),
+                        services,
+                        Map.of()),
                 new JsonValue.ObjectValue(
                         Map.of("memory-store", new JsonValue.StringValue(profile))));
     }

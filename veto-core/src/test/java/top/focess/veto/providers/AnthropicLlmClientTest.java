@@ -100,7 +100,7 @@ class AnthropicLlmClientTest {
         var finished = text("Finished");
         when(response.content()).thenReturn(List.of(finished));
         when(sdk.messages().create(any(MessageCreateParams.class))).thenReturn(response);
-        @NonNull ToolDefinition tool = mock();
+        ToolDefinition tool = mock(ToolDefinition.class);
         when(tool.name()).thenReturn("view_file");
         when(tool.description()).thenReturn("Read a file");
         when(tool.inputSchema())
@@ -171,7 +171,7 @@ class AnthropicLlmClientTest {
         var finished = text("{\"message\":\"Finished\"}");
         when(response.content()).thenReturn(List.of(finished));
         when(sdk.messages().create(any(MessageCreateParams.class))).thenReturn(response);
-        @NonNull ToolDefinition tool = mock();
+        ToolDefinition tool = mock(ToolDefinition.class);
         when(tool.name()).thenReturn("view_file");
         when(tool.description()).thenReturn("Read a file");
         when(tool.inputSchema()).thenReturn(Map.of("type", "object"));
@@ -248,7 +248,7 @@ class AnthropicLlmClientTest {
         var sdk = mock(AnthropicClient.class, RETURNS_DEEP_STUBS);
         var response = mock(Message.class, RETURNS_DEEP_STUBS);
         when(sdk.messages().create(any(MessageCreateParams.class))).thenReturn(response);
-        @NonNull ToolDefinition tool = mock();
+        ToolDefinition tool = mock(ToolDefinition.class);
         when(tool.name()).thenReturn("list_dir");
         when(tool.description()).thenReturn("List a directory");
         when(tool.inputSchema())
@@ -333,7 +333,7 @@ class AnthropicLlmClientTest {
 
     @Test
     void recoveryObservationDoesNotReplaceSuccessfulToolResult() {
-        @NonNull AnthropicClient sdk = mock();
+        AnthropicClient sdk = mock(AnthropicClient.class);
         var request =
                 new VetoRequest(
                         "system",
@@ -375,7 +375,7 @@ class AnthropicLlmClientTest {
 
     @Test
     void actualMessageParamsUseCitationMessageBoundaries() {
-        @NonNull AnthropicClient sdk = mock();
+        AnthropicClient sdk = mock(AnthropicClient.class);
         var request =
                 new VetoRequest(
                         "system",

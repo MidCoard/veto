@@ -9,6 +9,7 @@ import org.springframework.context.annotation.Configuration;
 import top.focess.veto.agent.capability.CapabilityAccess;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.credentials.VaultAccess;
+import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.vault.KeysteadVault;
 import top.focess.veto.veto.LlamaCppBridge;
 
@@ -42,7 +43,7 @@ public class HostResourceConfiguration {
                     || session == null
                     || !invocation.executionPermit().call().args().equals(arguments))
                 throw denied();
-            return new VaultAccess.Scope() {
+            return new VaultAccess.Handle() {
                 private void check() {
                     var current = CapabilityAccess.require(ToolCapability.PRIVILEGED);
                     if (Thread.currentThread().isInterrupted()
@@ -52,19 +53,9 @@ public class HostResourceConfiguration {
                             || !invocation.agentId().equals(current.agentId())) throw denied();
                 }
 
-                public @NonNull String owner() {
+                public Scope.@NonNull AgentScope scope() {
                     check();
-                    return owner;
-                }
-
-                public @NonNull String sessionId() {
-                    check();
-                    return session.toString();
-                }
-
-                public @NonNull String agentId() {
-                    check();
-                    return invocation.agentId();
+                    return new Scope.AgentScope(owner, session.toString(), invocation.agentId());
                 }
 
                 public boolean isUnlocked() {

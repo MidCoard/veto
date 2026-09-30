@@ -27,45 +27,51 @@ import top.focess.veto.builtin.process.TaskControlCapability;
         requiresSemanticScreening = true)
 @ToolDoc(
         resultFormats = {ToolResultFormat.JSON},
-        description = "Queue text to the standard input of a running background task.",
+        description =
+                """
+                Queue text to the standard input of a running background task.\
+                """,
         behavior =
                 """
-                Encodes content as UTF-8, optionally appends one newline, queues it in order, and \
-                optionally closes stdin after those bytes. The byte count includes the optional `\\n`. \
-                A queued result means accepted by the bounded input queue, not yet consumed by the \
-                process; later pipe failures appear in view_task `inputFailures`.""",
+                Encodes content as UTF-8, optionally appends one newline, queues it in order, and optionally \
+                closes stdin after those bytes. The byte count includes the optional `\\n`. A queued result \
+                means accepted by the bounded input queue, not yet consumed by the process; later pipe \
+                failures appear in view_task `inputFailures`.\
+                """,
         whenToUse =
-                "Use it to answer an interactive prompt or send input to a process launched by"
-                        + " run_task.",
+                """
+                Use it to answer an interactive prompt or send input to a process launched by run_task.\
+                """,
         whenNotToUse =
                 """
-                Do not use it for a finished task, a task from another session or agent, or to start \
-                a new process. Do not send credentials unless the user explicitly supplied and \
-                authorized them for this process.""",
+                Do not use it for a finished task, a task from another session or agent, or to start a new \
+                process. Do not send credentials unless the user explicitly supplied and authorized them for \
+                this process.\
+                """,
         resultContract =
                 """
-                Success returns JSON with `status`, `taskId`, `bytes`, `newline`, and `closeQueued`. \
-                `bytes` is the queued UTF-8 byte count including an appended newline. In \
-                detailed-result mode, failures use TASK_NOT_FOUND (`Task not found: <taskId>`), \
-                TASK_NOT_RUNNING (`Task not running: <taskId>`), STDIN_CLOSED \
-                (`Stdin closed: <taskId>`), EMPTY_INPUT \
-                (`Empty input: no content, newline, or stdin close was requested.`), FILE_TOO_LARGE \
-                (`Input too large: content exceeds 65536 bytes.`), or INPUT_QUEUE_FULL \
-                (`Input queue full: the task input queue exceeds 262144 bytes.`); failure content is \
-                actionable plaintext in every mode.""",
+                Success returns JSON with `status`, `taskId`, `bytes`, `newline`, and `closeQueued`. `bytes` \
+                is the queued UTF-8 byte count including an appended newline. In detailed-result mode, \
+                failures use TASK_NOT_FOUND (`Task not found: <taskId>`), TASK_NOT_RUNNING (`Task not \
+                running: <taskId>`), STDIN_CLOSED (`Stdin closed: <taskId>`), EMPTY_INPUT (`Empty input: no \
+                content, newline, or stdin close was requested.`), FILE_TOO_LARGE (`Input too large: content \
+                exceeds 65536 bytes.`), or INPUT_QUEUE_FULL (`Input queue full: the task input queue exceeds \
+                262144 bytes.`); failure content is actionable plaintext in every mode.\
+                """,
         errorsAndEdgeCases =
                 """
-                Each call is limited to 64 KiB and each task to 256 KiB of queued input. Empty \
-                content is valid only when a newline is appended or stdin is closed. Use view_task \
-                to inspect bounded asynchronous inputFailures and stop_task if the process must be \
-                terminated.""",
+                Each call is limited to 64 KiB and each task to 256 KiB of queued input. Empty content is \
+                valid only when a newline is appended or stdin is closed. Use view_task to inspect bounded \
+                asynchronous inputFailures and stop_task if the process must be terminated.\
+                """,
         security =
-                "You can send input only to your own task in this session. Queued content is"
-                        + " delivered to the process stdin verbatim.",
+                """
+                You can send input only to your own task in this session. Queued content is delivered to the \
+                process stdin verbatim.\
+                """,
         examples = {
             "{\"taskId\":\"bg-3\",\"content\":\"yes\",\"appendNewline\":true,\"closeStdin\":false}",
-            "{\"taskId\":\"bg-3\",\"content\":\"partial"
-                    + " input\",\"appendNewline\":false,\"closeStdin\":false}",
+            "{\"taskId\":\"bg-3\",\"content\":\"partial input\",\"appendNewline\":false,\"closeStdin\":false}",
             "{\"taskId\":\"bg-3\",\"content\":\"quit\",\"appendNewline\":true,\"closeStdin\":true}",
             "{\"taskId\":\"bg-3\",\"content\":\"\",\"appendNewline\":false,\"closeStdin\":true}",
             "{\"taskId\":\"bg-7\",\"content\":\"yes\",\"appendNewline\":true,\"closeStdin\":false}"

@@ -27,48 +27,49 @@ import top.focess.veto.builtin.process.TaskInfo;
 @ToolDoc(
         resultFormats = {ToolResultFormat.JSON},
         description =
-                "Inspect a background task launched by run_task (status + recent output), or list"
-                        + " every task you own when taskId is omitted.",
+                """
+                Inspect a background task launched by run_task (status + recent output), or list every task \
+                you own when taskId is omitted.\
+                """,
         behavior =
                 """
-                With `taskId`: returns that task's status (alive / exitCode / pid / uptime / \
-                command / cwd), the last 50 lines of its merged stdout+stderr, and up to 20 \
-                recent asynchronous stdin write diagnostics in `inputFailures`. \
-                Without `taskId`: returns a short list of every task you own (taskId, command, \
-                alive, exitCode). Read-only - it never changes a task.
+                With `taskId`: returns that task's status (alive / exitCode / pid / uptime / command / cwd), \
+                the last 50 lines of its merged stdout+stderr, and up to 20 recent asynchronous stdin write \
+                diagnostics in `inputFailures`. Without `taskId`: returns a short list of every task you own \
+                (taskId, command, alive, exitCode). Read-only - it never changes a task.\
                 """,
         whenToUse =
                 """
-                Set `waitForExit=true` with `taskId` when the assigned task needs the final result: \
-                one cancellable call waits for exit and drained output, keeping the assignment open. \
-                Leave it false for an immediate progress check or long-lived server inspection. \
-                Without `taskId`, list your tasks. After an exit notification, read the result once \
-                if needed; the notification does not contain output. Do not poll to pass time.
+                Set `waitForExit=true` with `taskId` when the assigned task needs the final result: one \
+                cancellable call waits for exit and drained output, keeping the assignment open. Leave it \
+                false for an immediate progress check or long-lived server inspection. Without `taskId`, list \
+                your tasks. After an exit notification, read the result once if needed; the notification does \
+                not contain output. Do not poll to pass time.\
                 """,
         whenNotToUse =
                 """
-                - Do not use it for commands whose result you need inline - that is `run_command`.
-                - Do not poll it in a tight loop; the task's end is pushed to you on your next turn.
+                - Do not use it for commands whose result you need inline - that is `run_command`. - Do not \
+                poll it in a tight loop; the task's end is pushed to you on your next turn.\
                 """,
         resultContract =
                 """
-                - Single-task success: `taskId`, `alive`, optional `exitCode`, \
-                `pid`, `startedAt`, `uptimeSeconds`, `command`, `cwd`, `recentOutput`, and \
-                `outputCapture` (merged-stream limitation), and `inputFailures`.
-                - List success: `count` and `tasks`; each task contains only `taskId`, \
-                `command`, `alive`, and optional `exitCode`.
-                - Unknown task (failure, TASK_NOT_FOUND): \
-                `Task not found: <taskId>`.
-                - `waitForExit` without `taskId` (failure, INVALID_ARGUMENTS): \
-                `Invalid arguments: waitForExit requires taskId.`
+                - Single-task success: `taskId`, `alive`, optional `exitCode`, `pid`, `startedAt`, \
+                `uptimeSeconds`, `command`, `cwd`, `recentOutput`, and `outputCapture` (merged-stream \
+                limitation), and `inputFailures`. - List success: `count` and `tasks`; each task contains \
+                only `taskId`, `command`, `alive`, and optional `exitCode`. - Unknown task (failure, \
+                TASK_NOT_FOUND): `Task not found: <taskId>`. - `waitForExit` without `taskId` (failure, \
+                INVALID_ARGUMENTS): `Invalid arguments: waitForExit requires taskId.`\
                 """,
         errorsAndEdgeCases =
                 """
-                - A task that already exited stays queryable (its final status + output).
-                - At most the latest 5000 lines are retained, and an unterminated line is capped \
-                at 65536 bytes; older or excess output cannot be recovered through this tool.
+                - A task that already exited stays queryable (its final status + output). - At most the \
+                latest 5000 lines are retained, and an unterminated line is capped at 65536 bytes; older or \
+                excess output cannot be recovered through this tool.\
                 """,
-        security = "You can view only your own tasks.",
+        security =
+                """
+                You can view only your own tasks.\
+                """,
         examples = {
             "{}",
             "{\"taskId\": \"bg-3\"}",
@@ -76,20 +77,9 @@ import top.focess.veto.builtin.process.TaskInfo;
             "{\"taskId\": \"bg-99\"}"
         },
         returnExamples = {
-            "{\"count\": 1, \"tasks\": [{\"taskId\": \"bg-3\", \"command\": \"npm run dev\","
-                    + " \"alive\": true}]}",
-            "{\"taskId\": \"bg-3\", \"command\": \"npm run dev\", \"alive\": true, \"pid\": 12345,"
-                    + " \"startedAt\": \"2026-01-01T00:00:00Z\", \"uptimeSeconds\": 42, \"cwd\":"
-                    + " \"/abs/project\", \"recentOutput\": \"VITE ready in 300 ms\","
-                    + " \"outputCapture\": \"recentOutput merges stdout and stderr without stream"
-                    + " labels. Report it as combined output; it cannot establish that either stream"
-                    + " was empty.\", \"inputFailures\": []}",
-            "{\"taskId\": \"bg-3\", \"command\": \"npm run dev\", \"alive\": false, \"exitCode\":"
-                    + " 0, \"pid\": 12345, \"startedAt\": \"2026-01-01T00:00:00Z\", \"uptimeSeconds\":"
-                    + " 184, \"cwd\": \"/abs/project\", \"recentOutput\": \"Server stopped.\","
-                    + " \"outputCapture\": \"recentOutput merges stdout and stderr without stream"
-                    + " labels. Report it as combined output; it cannot establish that either stream"
-                    + " was empty.\", \"inputFailures\": []}",
+            "{\"count\": 1, \"tasks\": [{\"taskId\": \"bg-3\", \"command\": \"npm run dev\", \"alive\": true}]}",
+            "{\"taskId\": \"bg-3\", \"command\": \"npm run dev\", \"alive\": true, \"pid\": 12345, \"startedAt\": \"2026-01-01T00:00:00Z\", \"uptimeSeconds\": 42, \"cwd\": \"/abs/project\", \"recentOutput\": \"VITE ready in 300 ms\", \"outputCapture\": \"recentOutput merges stdout and stderr without stream labels. Report it as combined output; it cannot establish that either stream was empty.\", \"inputFailures\": []}",
+            "{\"taskId\": \"bg-3\", \"command\": \"npm run dev\", \"alive\": false, \"exitCode\": 0, \"pid\": 12345, \"startedAt\": \"2026-01-01T00:00:00Z\", \"uptimeSeconds\": 184, \"cwd\": \"/abs/project\", \"recentOutput\": \"Server stopped.\", \"outputCapture\": \"recentOutput merges stdout and stderr without stream labels. Report it as combined output; it cannot establish that either stream was empty.\", \"inputFailures\": []}",
             "Task not found: bg-99"
         })
 public final class ViewTaskTool extends NativeTool<ViewTaskTool.Args> {

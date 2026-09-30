@@ -20,6 +20,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
@@ -195,7 +196,7 @@ public final class McpJsonRpcClient {
                         .build();
         AtomicReference<@Nullable InputStream> activeBody = new AtomicReference<>();
         try {
-            HttpRequest.Builder requestBuilder =
+            HttpRequest.@NonNull Builder requestBuilder =
                     HttpRequest.newBuilder(endpoint)
                             .timeout(Duration.ofMillis(timeoutMs))
                             .header("Content-Type", "application/json")
@@ -206,8 +207,11 @@ public final class McpJsonRpcClient {
                     requestBuilder.POST(HttpRequest.BodyPublishers.ofString(body)).build();
             return withDeadline(
                     () -> {
-                        HttpResponse<InputStream> response =
-                                client.send(request, HttpResponse.BodyHandlers.ofInputStream());
+                        var response =
+                                Objects.requireNonNull(
+                                        client.send(
+                                                request, HttpResponse.BodyHandlers.ofInputStream()),
+                                        "HttpClient.send returned null");
                         try (InputStream stream = new BufferedInputStream(response.body())) {
                             activeBody.set(stream);
                             if (response.statusCode() != 200)

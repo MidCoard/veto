@@ -7,21 +7,37 @@ import com.sun.net.httpserver.HttpServer;
 import java.net.InetSocketAddress;
 import java.net.http.HttpClient;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.api.plugin.PluginContext;
+import top.focess.veto.api.plugin.PluginContributions;
 import top.focess.veto.api.plugin.PluginHost;
 import top.focess.veto.api.plugin.PluginIdentity;
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
+import top.focess.veto.api.plugin.contribution.Contribution;
+import top.focess.veto.api.plugin.contribution.ContributionPoint;
 import top.focess.veto.builtin.BuiltinPlugin;
 
 class BuiltinSearchProviderTest {
     @Test
     void pluginLoadsAndContributesWithOnlyApiAndLibraryDependencies() throws Exception {
+        var registrations = new ArrayList<@NonNull Contribution<?>>();
+        Map<@NonNull ContributionPoint<?>, @NonNull Consumer<@NonNull Contribution<?>>> handlers =
+                new HashMap<>();
+        for (var point : StandardContributionPoints.ALL)
+            handlers.put(
+                    point,
+                    contribution -> {
+                        if (!contribution.point().equals(StandardContributionPoints.RESOURCES))
+                            registrations.add(contribution);
+                    });
         var configuration =
                 new JsonValue.ObjectValue(
                         Map.of("brave-api-key", new JsonValue.StringValue("synthetic")));
@@ -32,10 +48,11 @@ class BuiltinSearchProviderTest {
                         () -> {
                             throw new IllegalStateException("Plugin context is not bound");
                         },
-                        Map.of(PluginHost.class, mock(PluginHost.class)));
+                        Map.of(PluginHost.class, mock(PluginHost.class)),
+                        handlers);
         var plugin = new BuiltinPlugin(context, configuration);
         try {
-            var contributions = context.sealRegistrations();
+            var contributions = new PluginContributions(registrations);
             assertEquals("top.focess.builtin", plugin.identity().id());
             var providers =
                     contributions.entries().stream()

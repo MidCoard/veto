@@ -1,6 +1,5 @@
 package top.focess.veto.builtin;
 
-import java.util.ArrayList;
 import java.util.List;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.agent.tool.CapabilityTool;
@@ -53,129 +52,111 @@ public final class BuiltinPlugin extends VetoPlugin {
     /** Constructs all builtin-owned features using the host-bound context. */
     public BuiltinPlugin(
             @NonNull PluginContext context, JsonValue.@NonNull ObjectValue configuration) {
-        List<Runnable> cleanup = new ArrayList<>();
-        try {
-            host = context.host();
-            github = new ReadGitHubRepositoryTool();
-            cleanup.add(github::close);
-            duckduckgo = new DuckDuckGoSearchProvider();
-            cleanup.add(duckduckgo::close);
-            questions = new QuestionRuntime(host);
-            cleanup.add(questions::close);
-            groups = new GroupRuntime(context, configuration);
-            cleanup.add(groups::close);
-            groups.awaitHostReady();
-            monitors = new MonitorRuntime(context, groups);
-            cleanup.add(monitors::close);
-            taskEvents = new TaskEvents(host, monitors.service());
-            cleanup.add(taskEvents::close);
-            processes = new ProcessRuntime(context, taskEvents);
-            cleanup.add(() -> processes.tasks().close());
-            memory = new MemoryRuntime(context, configuration);
-            skills = new SkillRuntime(context, configuration);
-            cleanup.add(skills::close);
-            var key = configuration.values().get("brave-api-key");
-            brave =
-                    new BraveSearchProvider(
-                            key instanceof JsonValue.StringValue value ? value.value() : "");
-            cleanup.add(brave::close);
-            var groupOperations = groups.operations();
-            var operations = monitors.operations();
-            List<Tool> tools =
-                    List.of(
-                            new GroupTools.CreateGroup(groups.delegation()),
-                            new RunCommandTool(processes.execution("run_command")),
-                            new RunTaskTool(processes.execution("run_task")),
-                            new ViewTaskTool(processes.control("view_task")),
-                            new InputTaskTool(processes.control("input_task")),
-                            new StopTaskTool(processes.control("stop_task")),
-                            new LoadSkillTool(skills),
-                            new AskUserTool(questions),
-                            github,
-                            new WebSearchTool(new SearchServiceClient(context, configuration)),
-                            new WebFetchTool(
-                                    new WebReader(
-                                            () ->
-                                                    context.service(AgentHost.class)
-                                                            .orElseThrow(
-                                                                    () ->
-                                                                            new IllegalStateException(
-                                                                                    "Isolated execution unavailable")),
-                                            new ReaderConfig(configuration.values()))),
-                            new GroupTools.DisbandGroup(groupOperations),
-                            new GroupTools.InspectGroup(groupOperations),
-                            new GroupTools.PostMessage(groupOperations),
-                            new DagTools.RemoveNode(groupOperations),
-                            new CollaborationTools.CreateMate(groupOperations),
-                            new CollaborationTools.CreateTask(
-                                    groupOperations, monitors::awaitGroup),
-                            new CollaborationTools.CancelTask(groupOperations),
-                            new CollaborationTools.RemoveMate(groupOperations),
-                            new MemoryTools.RecallMemory(memory.reader()),
-                            new MemoryTools.WriteMemory(memory.writer("write_memory")),
-                            new MemoryTools.ForgetMemory(memory.writer("forget_memory")),
-                            new MonitorTools.CreateMonitor(operations),
-                            new MonitorTools.InspectMonitor(operations),
-                            new MonitorTools.PauseMonitor(operations),
-                            new MonitorTools.ResumeMonitor(operations),
-                            new MonitorTools.CancelMonitor(operations),
-                            new SubmitPlanTool(PlanConfig.from(configuration)),
-                            new AnswerWithCitationsTool(),
-                            new ViewFileTool(),
-                            new ListDirTool(),
-                            new FindFilesTool(),
-                            new GrepSearchTool(),
-                            new WriteToFileTool(),
-                            new ReplaceFileContentTool(),
-                            new MovePathTool(),
-                            new DeletePathTool());
-            context.register(StandardContributionPoints.DATA_LIFECYCLE, "memory-data", memory);
-            for (var tool : tools) {
-                if (tool instanceof CapabilityTool<?> local)
-                    context.register(StandardContributionPoints.TOOLS, local.getName(), tool);
-            }
-            context.register(
-                    StandardContributionPoints.MODEL_RESPONSE,
-                    "responses",
-                    new CitationResponsePolicy());
-            context.register(
-                    StandardContributionPoints.SERVICES,
-                    "search",
-                    new SearchHub(context.services(), List.of(duckduckgo, brave)));
-            context.register(
-                    StandardContributionPoints.AGENT_INBOX, "monitor-work", monitors.work());
-            context.register(
-                    StandardContributionPoints.LISTENERS, "monitor-lifecycle", monitors.listener());
-            context.register(
-                    StandardContributionPoints.FRONTEND,
-                    "monitors",
-                    new MonitorFrontend(monitors.service()));
-            context.register(
-                    StandardContributionPoints.AGENT_CONFIGURATION, "group-configuration", groups);
-            context.register(
-                    StandardContributionPoints.LISTENERS, "group-lifecycle", groups.listener());
-            context.register(
-                    StandardContributionPoints.FRONTEND, "groups", new GroupFrontend(groups));
-            context.register(
-                    StandardContributionPoints.LISTENERS, "questions-lifecycle", questions);
-            context.register(
-                    StandardContributionPoints.FRONTEND,
-                    "questions",
-                    new QuestionsFrontend(questions));
-            context.register(StandardContributionPoints.FRONTEND, "tools", new ToolsFrontend());
-            context.register(StandardContributionPoints.LISTENERS, "tasks-lifecycle", processes);
-            context.register(
-                    StandardContributionPoints.FRONTEND,
-                    "tasks",
-                    new TasksFrontend(processes.tasks()));
-        } catch (RuntimeException failure) {
-            try {
-                closeAll(cleanup.reversed());
-            } catch (RuntimeException closeFailure) {
-                failure.addSuppressed(closeFailure);
-            }
-            throw failure;
+        host = context.host();
+        github = new ReadGitHubRepositoryTool();
+        context.register(StandardContributionPoints.RESOURCES, "github", github);
+        duckduckgo = new DuckDuckGoSearchProvider();
+        context.register(StandardContributionPoints.RESOURCES, "duckduckgo", duckduckgo);
+        questions = new QuestionRuntime(host);
+        context.register(StandardContributionPoints.RESOURCES, "questions", questions);
+        groups = new GroupRuntime(context, configuration);
+        context.register(StandardContributionPoints.RESOURCES, "groups", groups);
+        groups.awaitHostReady();
+        monitors = new MonitorRuntime(context, groups);
+        context.register(StandardContributionPoints.RESOURCES, "monitors", monitors);
+        taskEvents = new TaskEvents(host, monitors.service());
+        context.register(StandardContributionPoints.RESOURCES, "task-events", taskEvents);
+        processes = new ProcessRuntime(context, taskEvents);
+        context.register(StandardContributionPoints.RESOURCES, "tasks", processes.tasks());
+        memory = new MemoryRuntime(context, configuration);
+        skills = new SkillRuntime(context, configuration);
+        context.register(StandardContributionPoints.RESOURCES, "skills", skills);
+        var key = configuration.values().get("brave-api-key");
+        brave =
+                new BraveSearchProvider(
+                        key instanceof JsonValue.StringValue(String value) ? value : "");
+        context.register(StandardContributionPoints.RESOURCES, "brave", brave);
+        var groupOperations = groups.operations();
+        var operations = monitors.operations();
+        List<Tool> tools =
+                List.of(
+                        new GroupTools.CreateGroup(groups.delegation()),
+                        new RunCommandTool(processes.execution("run_command")),
+                        new RunTaskTool(processes.execution("run_task")),
+                        new ViewTaskTool(processes.control("view_task")),
+                        new InputTaskTool(processes.control("input_task")),
+                        new StopTaskTool(processes.control("stop_task")),
+                        new LoadSkillTool(skills),
+                        new AskUserTool(questions),
+                        github,
+                        new WebSearchTool(new SearchServiceClient(context, configuration)),
+                        new WebFetchTool(
+                                new WebReader(
+                                        () ->
+                                                context.service(AgentHost.class)
+                                                        .orElseThrow(
+                                                                () ->
+                                                                        new IllegalStateException(
+                                                                                "Isolated execution unavailable")),
+                                        new ReaderConfig(configuration.values()))),
+                        new GroupTools.DisbandGroup(groupOperations),
+                        new GroupTools.InspectGroup(groupOperations),
+                        new GroupTools.PostMessage(groupOperations),
+                        new DagTools.RemoveNode(groupOperations),
+                        new CollaborationTools.CreateMate(groupOperations),
+                        new CollaborationTools.CreateTask(groupOperations, monitors::awaitGroup),
+                        new CollaborationTools.CancelTask(groupOperations),
+                        new CollaborationTools.RemoveMate(groupOperations),
+                        new MemoryTools.RecallMemory(memory.reader()),
+                        new MemoryTools.WriteMemory(memory.writer("write_memory")),
+                        new MemoryTools.ForgetMemory(memory.writer("forget_memory")),
+                        new MonitorTools.CreateMonitor(operations),
+                        new MonitorTools.InspectMonitor(operations),
+                        new MonitorTools.PauseMonitor(operations),
+                        new MonitorTools.ResumeMonitor(operations),
+                        new MonitorTools.CancelMonitor(operations),
+                        new SubmitPlanTool(PlanConfig.from(configuration)),
+                        new AnswerWithCitationsTool(),
+                        new ViewFileTool(),
+                        new ListDirTool(),
+                        new FindFilesTool(),
+                        new GrepSearchTool(),
+                        new WriteToFileTool(),
+                        new ReplaceFileContentTool(),
+                        new MovePathTool(),
+                        new DeletePathTool());
+        context.register(StandardContributionPoints.DATA_LIFECYCLE, "memory-data", memory);
+        for (var tool : tools) {
+            if (tool instanceof CapabilityTool<?> local)
+                context.register(StandardContributionPoints.TOOLS, local.getName(), tool);
         }
+        context.register(
+                StandardContributionPoints.MODEL_RESPONSE,
+                "responses",
+                new CitationResponsePolicy());
+        context.register(
+                StandardContributionPoints.SERVICES,
+                "search",
+                new SearchHub(context.services(), List.of(duckduckgo, brave)));
+        context.register(StandardContributionPoints.AGENT_INBOX, "monitor-work", monitors.work());
+        context.register(
+                StandardContributionPoints.LISTENERS, "monitor-lifecycle", monitors.listener());
+        context.register(
+                StandardContributionPoints.FRONTEND,
+                "monitors",
+                new MonitorFrontend(monitors.service()));
+        context.register(
+                StandardContributionPoints.AGENT_CONFIGURATION, "group-configuration", groups);
+        context.register(
+                StandardContributionPoints.LISTENERS, "group-lifecycle", groups.listener());
+        context.register(StandardContributionPoints.FRONTEND, "groups", new GroupFrontend(groups));
+        context.register(StandardContributionPoints.LISTENERS, "questions-lifecycle", questions);
+        context.register(
+                StandardContributionPoints.FRONTEND, "questions", new QuestionsFrontend(questions));
+        context.register(StandardContributionPoints.FRONTEND, "tools", new ToolsFrontend());
+        context.register(StandardContributionPoints.LISTENERS, "tasks-lifecycle", processes);
+        context.register(
+                StandardContributionPoints.FRONTEND, "tasks", new TasksFrontend(processes.tasks()));
     }
 
     @Override
@@ -211,19 +192,7 @@ public final class BuiltinPlugin extends VetoPlugin {
     }
 
     @Override
-    public void close() {
-        RuntimeException failure = null;
-        failure = closeOne(failure, () -> processes.tasks().close());
-        failure = closeOne(failure, skills::close);
-        failure = closeOne(failure, taskEvents::close);
-        failure = closeOne(failure, questions::close);
-        failure = closeOne(failure, monitors::close);
-        failure = closeOne(failure, groups::close);
-        failure = closeOne(failure, brave::close);
-        failure = closeOne(failure, github::close);
-        failure = closeOne(failure, duckduckgo::close);
-        if (failure != null) throw failure;
-    }
+    public void close() {}
 
     private static RuntimeException closeOne(RuntimeException failure, @NonNull Runnable closer) {
         try {
@@ -233,18 +202,5 @@ public final class BuiltinPlugin extends VetoPlugin {
             failure.addSuppressed(error);
         }
         return failure;
-    }
-
-    private static void closeAll(@NonNull List<Runnable> closers) {
-        RuntimeException failure = null;
-        for (Runnable closer : closers) {
-            try {
-                closer.run();
-            } catch (RuntimeException error) {
-                if (failure == null) failure = error;
-                else failure.addSuppressed(error);
-            }
-        }
-        if (failure != null) throw failure;
     }
 }

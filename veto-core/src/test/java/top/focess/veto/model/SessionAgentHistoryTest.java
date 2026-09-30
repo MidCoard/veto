@@ -134,13 +134,13 @@ class SessionAgentHistoryTest {
                                 "model",
                                 "key"));
         var registry = new SessionAgentRegistry(repository, turns);
-        @NonNull VetoAgent parent = mock();
+        VetoAgent parent = mock(VetoAgent.class);
         when(parent.id()).thenReturn(primary.getId());
         when(parent.persona()).thenReturn(new AgentPersona(primary.getId(), "Main", "", Set.of()));
         when(parent.state()).thenReturn(AgentState.IDLE);
         registry.register(session, parent);
         var persona = new AgentPersona("private-child", "Private", "", Set.of());
-        @NonNull AgentRunner runner = mock();
+        AgentRunner runner = mock(AgentRunner.class);
         when(runner.sessionId()).thenReturn(session);
         when(runner.personaView()).thenReturn(persona);
         when(runner.state()).thenReturn(AgentState.IDLE);
@@ -193,7 +193,7 @@ class SessionAgentHistoryTest {
         assertFalse(registry.records(sessionId).getFirst().live());
 
         AgentPersona parentPersona = new AgentPersona(primary.getId(), "Main", "", Set.of());
-        @NonNull VetoAgent parent = mock();
+        VetoAgent parent = mock(VetoAgent.class);
         when(parent.id()).thenReturn(primary.getId());
         when(parent.name()).thenReturn("Main");
         when(parent.persona()).thenReturn(parentPersona);
@@ -204,7 +204,7 @@ class SessionAgentHistoryTest {
         assertEquals("My assistant", registry.records(sessionId).getFirst().name());
 
         AgentPersona reader = new AgentPersona("reader", "Web reader", "", Set.of());
-        @NonNull AgentRunner runner = mock();
+        AgentRunner runner = mock(AgentRunner.class);
         when(runner.sessionId()).thenReturn(sessionId);
         when(runner.personaView()).thenReturn(reader);
         when(runner.state()).thenReturn(AgentState.IDLE);

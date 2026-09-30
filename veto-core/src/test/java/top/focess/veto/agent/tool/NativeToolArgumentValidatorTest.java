@@ -4,16 +4,106 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.HashSet;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
+import top.focess.veto.api.agent.tool.InputSchemaSource;
+import top.focess.veto.api.agent.tool.RequiredWhen;
 import top.focess.veto.api.agent.tool.ToolExecutionException;
+import top.focess.veto.api.agent.tool.ToolInputSchema;
 import top.focess.veto.builtin.planning.PlanPreflight;
 import top.focess.veto.builtin.planning.SubmitPlanTool;
 
 class NativeToolArgumentValidatorTest {
     private final @NonNull ObjectMapper mapper = new ObjectMapper();
+
+    private record NestedChoice(
+            @NonNull String mode, @RequiredWhen(field = "mode", values = "full") String detail) {}
+
+    private record NestedCollections(@NonNull List<@NonNull List<@NonNull NestedChoice>> groups) {}
+
+    @ToolInputSchema(CountingSchema.class)
+    private record Counted(@NonNull String value) {}
+
+    public static final class CountingSchema implements InputSchemaSource {
+        private static final AtomicInteger compilations = new AtomicInteger();
+
+        @Override
+        public @NonNull JsonNode schema() {
+            compilations.incrementAndGet();
+            var schema = new ObjectMapper().createObjectNode();
+            schema.put("type", "object");
+            schema.putObject("properties").putObject("value").put("type", "string");
+            schema.putArray("required").add("value");
+            schema.put("additionalProperties", false);
+            return schema;
+        }
+    }
+
+    @Test
+    void nestedCollectionAnnotationsValidateWithoutCallTimeReflection() throws Exception {
+        var valid =
+                mapper.readTree(
+                        """
+                {"groups":[[{"mode":"brief"},{"mode":"full","detail":"done"}]]}
+                """);
+        assertDoesNotThrow(
+                () ->
+                        NativeToolArgumentValidator.validate(
+                                "nested", valid, NestedCollections.class));
+        var missing =
+                mapper.readTree(
+                        """
+                {"groups":[[{"mode":"full"}]]}
+                """);
+        var error =
+                assertThrows(
+                        ToolExecutionException.class,
+                        () ->
+                                NativeToolArgumentValidator.validate(
+                                        "nested", missing, NestedCollections.class));
+        assertTrue(error.getMessage().contains("groups[0][0].detail"));
+        var nullElement =
+                mapper.readTree(
+                        """
+                {"groups":[[null]]}
+                """);
+        var nullError =
+                assertThrows(
+                        ToolExecutionException.class,
+                        () ->
+                                NativeToolArgumentValidator.validate(
+                                        "nested", nullElement, NestedCollections.class));
+        assertTrue(nullError.getMessage().contains("groups[0][0]"));
+    }
+
+    @Test
+    void annotatedContractIsCompiledOncePerArgumentClass() throws Exception {
+        int before = CountingSchema.compilations.get();
+        var arguments =
+                mapper.readTree(
+                        """
+                {"value":"ok"}
+                """);
+        NativeToolArgumentValidator.validate("counted", arguments, Counted.class);
+        NativeToolArgumentValidator.validate("counted", arguments, Counted.class);
+        assertEquals(before + 1, CountingSchema.compilations.get());
+    }
+
+    @Test
+    void publicSchemaCopiesCannotChangeTheCachedValidationContract() throws Exception {
+        var exposed = (ObjectNode) ToolSchemaCompiler.compileFromRecord(NestedCollections.class);
+        exposed.remove("properties");
+        var valid = mapper.readTree("""
+                {"groups":[[{"mode":"brief"}]]}
+                """);
+        assertDoesNotThrow(
+                () -> NativeToolArgumentValidator.validate("nested", valid, NestedCollections.class));
+        assertTrue(ToolSchemaCompiler.compileFromRecord(NestedCollections.class).has("properties"));
+    }
 
     @Test
     void constraintDiagnosticsPreserveTheFieldWithoutEchoingRejectedValues() throws Exception {

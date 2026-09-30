@@ -1,22 +1,5 @@
 package top.focess.veto.integration.plugins;
 
-import java.io.IOException;
-import java.nio.file.Path;
-import java.time.Duration;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
-import java.util.ServiceConfigurationError;
-import java.util.Set;
-import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.function.BiPredicate;
-import java.util.stream.Collectors;
 import org.checkerframework.checker.initialization.qual.UnknownInitialization;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
@@ -24,6 +7,7 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
+
 import top.focess.veto.agent.loop.PromptCompiler;
 import top.focess.veto.agent.tool.ToolCallContextHolder;
 import top.focess.veto.agent.tool.ToolEngineImpl;
@@ -44,9 +28,11 @@ import top.focess.veto.api.plugin.PluginHost;
 import top.focess.veto.api.plugin.PluginIdentity;
 import top.focess.veto.api.plugin.PluginState;
 import top.focess.veto.api.plugin.agent.AgentHost;
+import top.focess.veto.api.plugin.contract.FrontendContribution;
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.contract.PluginFailure;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
+import top.focess.veto.api.plugin.contribution.Contribution;
 import top.focess.veto.api.plugin.contribution.ContributionCatalog;
 import top.focess.veto.api.plugin.contribution.ContributionEntry;
 import top.focess.veto.api.plugin.contribution.ContributionPoint;
@@ -56,7 +42,8 @@ import top.focess.veto.api.plugin.contribution.ProtocolPointDefinition;
 import top.focess.veto.api.plugin.service.PluginServices;
 import top.focess.veto.api.plugin.service.ServiceCallContext;
 import top.focess.veto.api.plugin.service.ServiceException;
-import top.focess.veto.api.plugin.service.ServiceScope;
+import top.focess.veto.api.plugin.PluginScope;
+import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.api.plugin.storage.PluginStorage;
 import top.focess.veto.api.process.ProcessHost;
 import top.focess.veto.api.resources.CatalogueAccess;
@@ -66,6 +53,26 @@ import top.focess.veto.event.PluginExecutor;
 import top.focess.veto.integration.plugins.storage.PluginStorageFactory;
 import top.focess.veto.model.SessionRepository;
 import top.focess.veto.plugin.runtime.*;
+
+import java.io.IOException;
+import java.nio.file.Path;
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.ServiceConfigurationError;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.function.BiPredicate;
+import java.util.function.Consumer;
+import java.util.stream.Collectors;
 
 /**
  * Installed-package lifecycle and live catalog. Broken packages fail activation without replacing
@@ -88,12 +95,12 @@ public final class PluginManager implements AutoCloseable {
     @SuppressWarnings(
             "methodref.receiver.bound") // Registry callbacks run after manager construction.
     private final @NonNull PluginServiceRegistry serviceRegistry =
-            new PluginServiceRegistry(serviceAccess, this::resolveServiceScope);
+            new PluginServiceRegistry(serviceAccess, this::resolvePluginScope);
 
-    private @NonNull ServiceCallContext resolveServiceScope(
+    private @NonNull ServiceCallContext resolvePluginScope(
             @NonNull String callerId,
             @NonNull String providerId,
-            @NonNull ServiceScope required,
+            @NonNull PluginScope required,
             PluginStorage.@NonNull Scope scope)
             throws ServiceException {
         Object bound = grantedServices.getOrDefault(callerId, Map.of()).get(PluginStorage.class);
@@ -104,11 +111,12 @@ public final class PluginManager implements AutoCloseable {
                 || !(factory instanceof PluginStorageFactory storageFactory))
             throw new ServiceException(ServiceException.Code.UNAVAILABLE);
         try {
-            if (required == ServiceScope.USER && scope instanceof PluginStorage.UserScope user) {
+            if (required == PluginScope.USER && scope instanceof PluginStorage.UserScope user) {
                 var issued = storageFactory.transferUser(storage, user, providerStorage);
-                return new ServiceCallContext(callerId, required, issued.userId(), null, issued);
+                return new ServiceCallContext(
+                        callerId, required, new Scope.UserScope(issued.userId()), issued);
             }
-            if (required == ServiceScope.SESSION
+            if (required == PluginScope.SESSION
                     && scope instanceof PluginStorage.SessionScope session) {
                 var available = serviceAccess.sessions;
                 if (available == null
@@ -117,7 +125,10 @@ public final class PluginManager implements AutoCloseable {
                     throw new ServiceException(ServiceException.Code.UNAVAILABLE);
                 var issued = storageFactory.transferSession(storage, session, providerStorage);
                 return new ServiceCallContext(
-                        callerId, required, issued.userId(), issued.sessionId(), issued);
+                        callerId,
+                        required,
+                        new Scope.SessionScope(issued.userId(), issued.sessionId()),
+                        issued);
             }
         } catch (RuntimeException failure) {
             throw new ServiceException(ServiceException.Code.UNAVAILABLE);
@@ -237,7 +248,8 @@ public final class PluginManager implements AutoCloseable {
     private volatile @NonNull List<DeclinedPlugin> declined;
     private volatile @NonNull List<InstalledPluginLoader.DisabledPackage> disabled;
     private volatile @NonNull Map<String, String> aliases;
-    private volatile @NonNull List<Registration> registrations;
+    private volatile @NonNull List<Registration> registrations = List.of();
+    private volatile boolean ready;
     private volatile @NonNull ContributionCatalog catalog = emptyCatalog();
 
     private static @NonNull ContributionCatalog emptyCatalog() {
@@ -250,6 +262,7 @@ public final class PluginManager implements AutoCloseable {
     private final @NonNull Map<@NonNull String, @NonNull String> toolNames;
     private final @NonNull Map<Class<?>, Object> baseServices;
     private final @NonNull PluginConfigurations configurations;
+    private final @NonNull PluginActivationStore activationStore;
     private final @NonNull String pluginDirectory;
     private final @NonNull String nodeCommand;
     private final boolean trustedCode;
@@ -258,6 +271,8 @@ public final class PluginManager implements AutoCloseable {
     private ObjectProvider<PluginLlmProviders> llmProviders;
     private final @NonNull Set<String> installedIds = new HashSet<>();
     private final @NonNull Set<String> dataLifecycleOwners = ConcurrentHashMap.newKeySet();
+    private final @NonNull Map<ContributionPoint<?>, PointDefinition> definedPoints =
+            new ConcurrentHashMap<>();
     private final @NonNull Map<String, Integer> pendingDataCleanups = new HashMap<>();
     private ObjectProvider<SessionRepository> sessionRepository;
     private ObjectProvider<SessionInvalidations> sessionInvalidations;
@@ -271,9 +286,41 @@ public final class PluginManager implements AutoCloseable {
         llmProviders = providers;
     }
 
-    /** A started plugin paired with the contributions it declared at initialization. */
+    /** A plugin paired with host-owned registrations grouped by contribution point. */
     public record Registration(
-            @NonNull PluginLifecycle plugin, @NonNull PluginContributions contributions) {}
+            @NonNull PluginLifecycle plugin, @NonNull PointRegistrations points) {
+        public @NonNull PluginContributions contributions() {
+            return new PluginContributions(points.entries());
+        }
+    }
+
+    /** Mutable only through the plugin's point handler; publication reads an immutable snapshot. */
+    public static final class PointRegistrations {
+        private final @NonNull
+                Map<
+                        @NonNull ContributionPoint<?>,
+                        @NonNull Map<@NonNull String, @NonNull Contribution<?>>>
+                entries = new LinkedHashMap<>();
+
+        private void add(@NonNull Contribution<?> contribution) {
+            String id = contribution.localId();
+            if (entries.values().stream().anyMatch(group -> group.containsKey(id)))
+                throw new IllegalArgumentException("Duplicate contribution identity");
+            entries.computeIfAbsent(contribution.point(), ignored -> new LinkedHashMap<>())
+                    .put(id, contribution);
+        }
+
+        private void remove(@NonNull Contribution<?> contribution) {
+            var group = entries.get(contribution.point());
+            if (group != null) group.remove(contribution.localId());
+        }
+
+        private @NonNull List<@NonNull Contribution<?>> entries() {
+            var result = new ArrayList<Contribution<?>>();
+            entries.values().forEach(group -> result.addAll(group.values()));
+            return List.copyOf(result);
+        }
+    }
 
     /** Host-owned metadata for an installed plugin that deliberately declined initialization. */
     public record DeclinedPlugin(
@@ -281,6 +328,20 @@ public final class PluginManager implements AutoCloseable {
             @NonNull String name,
             @NonNull String version,
             PluginDeclinedException.@NonNull Reason reason) {}
+
+    private record PointDefinition(
+            @NonNull String owner, @NonNull ProtocolPointDefinition definition) {}
+
+    private @NonNull Map<ContributionPoint<?>, PointDefinition> withdrawDefinitions(
+            @UnknownInitialization PluginManager this, @NonNull String owner) {
+        Map<ContributionPoint<?>, PointDefinition> removed = new HashMap<>();
+        definedPoints.forEach(
+                (point, definition) -> {
+                    if (definition.owner().equals(owner) && definedPoints.remove(point, definition))
+                        removed.put(point, definition);
+                });
+        return removed;
+    }
 
     /**
      * Discovers installed Java and script plugins, binds per-plugin host services, validates all
@@ -291,7 +352,6 @@ public final class PluginManager implements AutoCloseable {
     // WHY: staged PluginLifecycle handles are owned by this manager and closed in close(), and the
     // historical-ID null guards stay because third-party plugins can break the @NonNull contract.
     @SuppressWarnings({"resource", "ConstantValue"})
-    @Autowired
     public PluginManager(
             @Value("${veto.plugins.directory:plugins}") @NonNull String pluginDirectory,
             @Value("${veto.plugins.node-command:}") @NonNull String nodeCommand,
@@ -300,8 +360,29 @@ public final class PluginManager implements AutoCloseable {
             @NonNull ObjectProvider<PluginHostServices> hostServices,
             @NonNull PluginConfigurations configurations)
             throws IOException {
+        this(
+                pluginDirectory,
+                nodeCommand,
+                trustedCode,
+                timeoutMillis,
+                hostServices,
+                configurations,
+                new PluginActivationStore());
+    }
+
+    @Autowired
+    public PluginManager(
+            @Value("${veto.plugins.directory:plugins}") @NonNull String pluginDirectory,
+            @Value("${veto.plugins.node-command:}") @NonNull String nodeCommand,
+            @Value("${veto.plugins.trusted-code:false}") boolean trustedCode,
+            @Value("${veto.plugins.timeout-ms:5000}") long timeoutMillis,
+            @NonNull ObjectProvider<PluginHostServices> hostServices,
+            @NonNull PluginConfigurations configurations,
+            @NonNull PluginActivationStore activationStore)
+            throws IOException {
         this.configurations = configurations;
         this.pluginDirectory = pluginDirectory;
+        this.activationStore = activationStore;
         this.nodeCommand = nodeCommand;
         this.trustedCode = trustedCode;
         this.timeoutMillis = timeoutMillis;
@@ -322,7 +403,9 @@ public final class PluginManager implements AutoCloseable {
                                         Duration.ofMillis(timeoutMillis),
                                         trustedCode,
                                         configurations.getScriptMode())
-                                .discover(Path.of(pluginDirectory), configurations.getDisabled());
+                                .discover(
+                                        Path.of(pluginDirectory),
+                                        activationStore.disabledIds(configurations.getDisabled()));
                 disabledPackages.addAll(installed.disabled());
                 for (var plugin : installed.plugins()) {
                     installedIds.add(plugin.identity().id());
@@ -346,6 +429,7 @@ public final class PluginManager implements AutoCloseable {
                 try {
                     registered.add(initializePlugin(plugin, services, configurations, toolNames));
                 } catch (PluginDeclinedException declinedReason) {
+                    withdrawDefinitions(plugin.identity().id());
                     grantedServices.remove(plugin.identity().id());
                     declinedPlugins.add(
                             new DeclinedPlugin(
@@ -376,6 +460,9 @@ public final class PluginManager implements AutoCloseable {
             catalog = validatedCatalog;
             plugins = List.copyOf(staged);
             for (var plugin : staged) plugin.start();
+            validatedCatalog = buildCatalog(registered);
+            serviceRegistry.bind(validatedCatalog, staged);
+            catalog = validatedCatalog;
             declined = List.copyOf(declinedPlugins);
             disabled = List.copyOf(disabledPackages);
             registrations = List.copyOf(registered);
@@ -391,7 +478,9 @@ public final class PluginManager implements AutoCloseable {
                     admitted.stream()
                             .map(plugin -> plugin.identity().id())
                             .collect(Collectors.toSet()));
+            ready = true;
         } catch (Exception | ServiceConfigurationError e) {
+            definedPoints.clear();
             for (var plugin : staged.reversed()) {
                 serviceRegistry.revoke(plugin.identity().id());
                 plugin.close();
@@ -459,8 +548,9 @@ public final class PluginManager implements AutoCloseable {
         grantedServices.put(plugin.identity().id(), Map.copyOf(pluginServices));
         pluginServices.put(PluginServices.class, serviceRegistry.forPlugin(plugin));
         pluginServices.put(PluginContributionsDirectory.class, contributionsFor(plugin));
-        return new Registration(
-                plugin,
+        var points = new PointRegistrations();
+        var handlers = contributionHandlers(plugin, points);
+        PluginContributions legacy =
                 plugin.initialize(
                         new PluginContext(
                                 plugin.identity(),
@@ -469,8 +559,158 @@ public final class PluginManager implements AutoCloseable {
                                     throw new IllegalStateException(
                                             "Plugin context is not bound to a lifecycle owner");
                                 },
-                                pluginServices),
-                        settings.forPlugin(plugin.identity().id())));
+                                pluginServices,
+                                handlers),
+                        settings.forPlugin(plugin.identity().id()));
+        for (var contribution : legacy.entries()) {
+            Consumer<Contribution<?>> handler = handlers.get(contribution.point());
+            if (handler == null)
+                throw new IllegalArgumentException("Unrecognized contribution point");
+            handler.accept(contribution);
+        }
+        return new Registration(plugin, points);
+    }
+
+    private @NonNull Map<@NonNull ContributionPoint<?>, @NonNull Consumer<@NonNull Contribution<?>>>
+            contributionHandlers(
+                    @UnknownInitialization PluginManager this,
+                    @NonNull PluginLifecycle plugin,
+                    @NonNull PointRegistrations points) {
+        Map<ContributionPoint<?>, Consumer<Contribution<?>>> handlers = new HashMap<>();
+        for (ContributionPoint<?> point : StandardContributionPoints.ALL) {
+            if (point.equals(StandardContributionPoints.RESOURCES)) {
+                handlers.put(
+                        point,
+                        contribution -> {
+                            if (!(contribution.implementation() instanceof AutoCloseable resource))
+                                throw new IllegalArgumentException(
+                                        "Resource contribution required");
+                            plugin.registerResource(resource);
+                        });
+            } else if (point.equals(StandardContributionPoints.CONTRIBUTIONS)) {
+                handlers.put(
+                        point,
+                        contribution -> {
+                            if (!(contribution.implementation()
+                                    instanceof ProtocolPointDefinition definition))
+                                throw new IllegalArgumentException(
+                                        "Contribution point definition required");
+                            if (!definition.id().value().startsWith(plugin.identity().id() + ":"))
+                                throw new IllegalArgumentException(
+                                        "Contribution point owner mismatch");
+                            var schema = PluginJson.toNode(definition.entrySchema());
+                            PluginSchema.check(schema);
+                            var definedPoint = definition.point();
+                            if (handlers.containsKey(definedPoint)
+                                    || definedPoints.putIfAbsent(
+                                                    definedPoint,
+                                                    new PointDefinition(
+                                                            plugin.identity().id(), definition))
+                                            != null)
+                                throw new IllegalArgumentException("Duplicate contribution point");
+                            try {
+                                registerContribution(plugin, points, contribution);
+                            } catch (RuntimeException failure) {
+                                definedPoints.remove(definedPoint);
+                                throw failure;
+                            }
+                        });
+            } else if (point.equals(StandardContributionPoints.TOOLS)) {
+                handlers.put(
+                        point,
+                        contribution -> {
+                            validateTool(contribution.implementation());
+                            registerContribution(plugin, points, contribution);
+                        });
+            } else if (point.equals(StandardContributionPoints.FRONTEND)) {
+                handlers.put(
+                        point,
+                        contribution -> {
+                            validateFrontend(contribution.implementation());
+                            registerContribution(plugin, points, contribution);
+                        });
+            } else {
+                handlers.put(
+                        point, contribution -> registerContribution(plugin, points, contribution));
+            }
+        }
+        return new HashMap<ContributionPoint<?>, Consumer<Contribution<?>>>(handlers) {
+            @Override
+            public Consumer<Contribution<?>> get(Object key) {
+                if (key == null) return null;
+                Consumer<Contribution<?>> standard = handlers.get(key);
+                if (standard != null) return standard;
+                if (!(key instanceof ContributionPoint<?> point)) return null;
+                PointDefinition registered = definedPoints.get(point);
+                if (registered == null) return null;
+                return entry -> {
+                    if (definedPoints.get(point) != registered)
+                        throw new IllegalStateException("Contribution point is inactive");
+                    if (!(entry.implementation() instanceof JsonValue.ObjectValue value))
+                        throw new IllegalArgumentException("JSON contribution required");
+                    PluginSchema.validate(
+                            PluginJson.toNode(registered.definition().entrySchema()),
+                            PluginJson.toNode(value));
+                    registerContribution(plugin, points, entry);
+                };
+            }
+        };
+    }
+
+    // WHY: ready becomes true only after constructor publication initializes all host views.
+    @SuppressWarnings("method.invocation")
+    private void registerContribution(
+            @UnknownInitialization PluginManager this,
+            @NonNull PluginLifecycle plugin,
+            @NonNull PointRegistrations points,
+            @NonNull Contribution<?> contribution) {
+        PluginState state = plugin.state();
+        if (state == PluginState.STOPPING
+                || state == PluginState.CLOSED
+                || state == PluginState.FAILED
+                || state == PluginState.DECLINED)
+            throw new IllegalStateException("Plugin registration is closed");
+        if (state != PluginState.ACTIVE || !ready) {
+            points.add(contribution);
+            return;
+        }
+        synchronized (this) {
+            points.add(contribution);
+            var currentRegistrations = registrations;
+            var currentPlugins = plugins;
+            var currentDisabled = disabled;
+            var currentDeclined = declined;
+            if (currentRegistrations == null
+                    || currentPlugins == null
+                    || currentDisabled == null
+                    || currentDeclined == null
+                    || currentRegistrations.stream().noneMatch(entry -> entry.plugin() == plugin))
+                return;
+            try {
+                publish(currentPlugins, currentRegistrations, currentDisabled, currentDeclined);
+            } catch (RuntimeException failure) {
+                points.remove(contribution);
+                throw failure;
+            }
+        }
+    }
+
+    private static void validateTool(Object aspect) {
+        if (aspect instanceof RemoteTool portable) {
+            PluginSchema.check(PluginJson.toNode(portable.inputSchema()));
+            PluginSchema.check(PluginJson.toNode(portable.outputSchema()));
+        } else if (aspect instanceof CapabilityTool<?> local
+                && (local instanceof AgentTool<?> || local instanceof NativeTool<?>)) {
+            ToolSchemaCompiler.compileFromRecord(local.getArgsClass());
+        } else throw new IllegalArgumentException("Unsupported plugin tool");
+    }
+
+    private static void validateFrontend(Object aspect) {
+        if (!(aspect instanceof FrontendContribution frontend))
+            throw new IllegalArgumentException("Missing plugin frontend");
+        String module = frontend.module();
+        if (module.isBlank() || module.length() > 1048576)
+            throw new IllegalArgumentException("Invalid frontend module size");
     }
 
     private static @NonNull ContributionCatalog buildCatalog(
@@ -568,109 +808,17 @@ public final class PluginManager implements AutoCloseable {
         notifyAll();
     }
 
-    /** Withdraws one installed package without changing persisted records or session bindings. */
-    public synchronized void disable(@NonNull String id) {
+    /** Saves an installed package's desired state without altering this backend's runtime. */
+    public synchronized void setEnabledOnNextStart(@NonNull String id, boolean enabled) {
         String canonical = canonicalId(id);
         if (!installedIds.contains(canonical))
-            throw new IllegalArgumentException("Plugin is not an installed package");
-        var target = plugin(canonical);
-        List<PluginLifecycle> nextPlugins =
-                plugins.stream().filter(plugin -> plugin != target).toList();
-        List<Registration> nextRegistrations =
-                registrations.stream()
-                        .filter(registration -> registration.plugin() != target)
-                        .toList();
-        var metadata =
-                new InstalledPluginLoader.DisabledPackage(
-                        canonical, target.displayName(), target.identity().version());
-        List<InstalledPluginLoader.DisabledPackage> nextDisabled = new ArrayList<>(disabled);
-        nextDisabled.add(metadata);
-        publish(nextPlugins, nextRegistrations, List.copyOf(nextDisabled), declined);
-        serviceRegistry.revoke(canonical);
-        invalidateSessions(canonical);
-        boolean interrupted = false;
-        while (pendingDataCleanups.getOrDefault(canonical, 0) > 0) {
-            try {
-                wait();
-            } catch (InterruptedException signal) {
-                interrupted = true;
-            }
-        }
-        try {
-            target.close();
-        } finally {
-            grantedServices.remove(canonical);
-            if (interrupted) Thread.currentThread().interrupt();
-        }
+            throw new IllegalArgumentException("Plugin is not installed");
+        activationStore.setEnabled(canonical, enabled);
     }
 
-    /** Loads and activates a previously disabled installed package in this backend process. */
-    public synchronized void enable(@NonNull String id) throws IOException {
-        if (pluginDirectory.isBlank()
-                || !installedIds.contains(id)
-                || (!isDisabled(id) && !isDeclined(id)))
-            throw new IllegalArgumentException("Plugin is not an inactive installed package");
-        InstalledPlugin implementation =
-                new InstalledPluginLoader(
-                                Path.of(nodeCommand),
-                                Duration.ofMillis(timeoutMillis),
-                                trustedCode,
-                                configurations.getScriptMode())
-                        .loadById(Path.of(pluginDirectory), id);
-        PluginLifecycle runtime = new PluginLifecycle(implementation, lifecycle);
-        try {
-            Registration registration =
-                    initializePlugin(runtime, baseServices, configurations, toolNames);
-            Map<String, String> nextAliases = new HashMap<>(aliases);
-            for (String alias : runtime.historicalIds()) {
-                String validated = new PluginIdentity(alias, "0.0.0").id();
-                if (installedIds.contains(validated)
-                        || (nextAliases.containsKey(validated)
-                                && !id.equals(nextAliases.get(validated))))
-                    throw new IllegalArgumentException("Duplicate plugin identity or alias");
-                nextAliases.put(validated, id);
-            }
-            List<PluginLifecycle> nextPlugins = new ArrayList<>(plugins);
-            nextPlugins.add(runtime);
-            List<Registration> nextRegistrations = new ArrayList<>(registrations);
-            nextRegistrations.add(registration);
-            List<InstalledPluginLoader.DisabledPackage> nextDisabled =
-                    disabled.stream().filter(packageInfo -> !packageInfo.id().equals(id)).toList();
-            List<DeclinedPlugin> nextDeclined =
-                    declined.stream().filter(plugin -> !plugin.id().equals(id)).toList();
-            // Validate the whole catalog before activating or publishing the new runtime.
-            buildCatalog(nextRegistrations);
-            runtime.start();
-            publish(
-                    List.copyOf(nextPlugins),
-                    List.copyOf(nextRegistrations),
-                    nextDisabled,
-                    nextDeclined);
-            aliases = Map.copyOf(nextAliases);
-            for (var entry : registration.contributions().entries())
-                if (entry.point() == StandardContributionPoints.DATA_LIFECYCLE)
-                    dataLifecycleOwners.add(id);
-            invalidateSessions(id);
-        } catch (PluginDeclinedException declinedReason) {
-            grantedServices.remove(id);
-            List<InstalledPluginLoader.DisabledPackage> nextDisabled =
-                    disabled.stream().filter(packageInfo -> !packageInfo.id().equals(id)).toList();
-            List<DeclinedPlugin> nextDeclined =
-                    new ArrayList<>(
-                            declined.stream().filter(plugin -> !plugin.id().equals(id)).toList());
-            nextDeclined.add(
-                    new DeclinedPlugin(
-                            id,
-                            implementation.displayName(),
-                            implementation.identity().version(),
-                            declinedReason.reason()));
-            disabled = nextDisabled;
-            declined = List.copyOf(nextDeclined);
-        } catch (Exception failure) {
-            grantedServices.remove(id);
-            runtime.close();
-            throw new IOException("Plugin enable failed", failure);
-        }
+    /** Desired activation state for the next backend start; current instances are unchanged. */
+    public boolean desiredEnabled(@NonNull String id) {
+        return activationStore.desiredEnabled(canonicalId(id), configurations.getDisabled());
     }
 
     private void publish(
@@ -744,7 +892,7 @@ public final class PluginManager implements AutoCloseable {
         return declined;
     }
 
-    /** Installed packages whose entry classes were not loaded by operator choice. */
+    /** Installed packages left inactive by a persisted operator choice or startup default. */
     public @NonNull List<InstalledPluginLoader.DisabledPackage> disabled() {
         return disabled;
     }
@@ -754,7 +902,7 @@ public final class PluginManager implements AutoCloseable {
         return declined.stream().anyMatch(plugin -> plugin.id().equals(canonicalId(id)));
     }
 
-    /** Whether a package is installed but disabled before class loading. */
+    /** Whether an installed package is disabled and has no active entry instance. */
     public boolean isDisabled(@NonNull String id) {
         return disabled.stream().anyMatch(plugin -> plugin.id().equals(canonicalId(id)));
     }
@@ -896,6 +1044,7 @@ public final class PluginManager implements AutoCloseable {
                 plugin.close();
             }
         } finally {
+            definedPoints.clear();
             lifecycle.shutdown();
         }
     }

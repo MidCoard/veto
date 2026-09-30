@@ -29,9 +29,10 @@ public sealed interface Action
     @NonNull String label();
 
     /**
-     * Resolves {@code $var|literal} input bindings against the {@link Scope} into concrete args.
+     * Resolves {@code $var|literal} input bindings against the {@link PlanVariables} into concrete
+     * args.
      */
-    default @NonNull Map<String, Object> resolveInputs(@NonNull Scope scope) {
+    default @NonNull Map<String, Object> resolveInputs(@NonNull PlanVariables scope) {
         return Map.of();
     }
 }

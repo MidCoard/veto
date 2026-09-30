@@ -16,7 +16,8 @@ import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.service.PluginServices;
 import top.focess.veto.api.plugin.service.ServiceCallContext;
 import top.focess.veto.api.plugin.service.ServiceException;
-import top.focess.veto.api.plugin.service.ServiceScope;
+import top.focess.veto.api.plugin.PluginScope;
+import top.focess.veto.api.plugin.Scope;
 
 class SearchServiceClientTest {
     @Test
@@ -51,7 +52,10 @@ class SearchServiceClientTest {
                             if (request == null) throw new AssertionError("Missing request");
                             return registration.invoke(
                                     new ServiceCallContext(
-                                            "test.consumer", ServiceScope.GLOBAL, null, null, null),
+                                            "test.consumer",
+                                            PluginScope.APPLICATION,
+                                            new Scope.GlobalScope(),
+                                            null),
                                     request);
                         });
         var context = context(host, services);
@@ -119,6 +123,7 @@ class SearchServiceClientTest {
                 },
                 Map.of(
                         PluginHost.class, host,
-                        PluginServices.class, services));
+                        PluginServices.class, services),
+                Map.of());
     }
 }

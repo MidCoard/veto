@@ -102,45 +102,46 @@ public final class SecretProtectionPlugin extends VetoPlugin {
     @ToolDoc(
             resultFormats = {ToolResultFormat.JSON},
             description =
-                    "Import a session-registered SECRET_REF into the owner's encrypted vault after"
-                            + " approval.",
+                    """
+                    Import a session-registered SECRET_REF into the owner's encrypted vault after approval.\
+                    """,
             behavior =
                     """
-                    Resolves the referenced secret candidate captured earlier in this session, checks \
-                    the approved tool invocation, and writes the credential into the owner's \
-                    encrypted vault exactly once. The plaintext secret never passes through the \
-                    model or the tool arguments; only the opaque reference, target service, and a \
-                    human label are supplied.\
+                    Resolves the referenced secret candidate captured earlier in this session, checks the \
+                    approved tool invocation, and writes the credential into the owner's encrypted vault exactly \
+                    once. The plaintext secret never passes through the model or the tool arguments; only the \
+                    opaque reference, target service, and a human label are supplied.\
                     """,
             whenToUse =
                     """
-                    Use it when the user has explicitly approved persisting a detected credential \
-                    that was masked as a SECRET_REF during this session, so it can be reused later \
-                    without re-exposing the plaintext.\
+                    Use it when the user has explicitly approved persisting a detected credential that was masked \
+                    as a SECRET_REF during this session, so it can be reused later without re-exposing the \
+                    plaintext.\
                     """,
             whenNotToUse =
                     """
-                    Do not use it to store a secret the user pasted in plaintext, to import a \
-                    reference the user has not approved, or as a general key-value store. Leave \
-                    unapproved candidates masked.\
+                    Do not use it to store a secret the user pasted in plaintext, to import a reference the user \
+                    has not approved, or as a general key-value store. Leave unapproved candidates masked.\
                     """,
             resultContract =
                     """
-                    Success returns JSON with `credential_ref` (the stable vault handle), `service`, \
-                    `label`, and `status` (`created`). Failures return a plaintext diagnostic \
-                    without echoing the secret value.\
+                    Success returns JSON with `credential_ref` (the stable vault handle), `service`, `label`, and \
+                    `status` (`created`). Failures return a plaintext diagnostic without echoing the secret \
+                    value.\
                     """,
             errorsAndEdgeCases =
                     """
-                    Import is idempotent per reference: re-importing the same SECRET_REF returns the \
-                    existing vault handle rather than duplicating it. An unknown, expired, or \
-                    cross-session reference is refused, and unavailable vault access surfaces as a \
-                    failure. Cancellation before the irreversible vault write aborts the import.\
+                    Import is idempotent per reference: re-importing the same SECRET_REF returns the existing \
+                    vault handle rather than duplicating it. An unknown, expired, or cross-session reference is \
+                    refused, and unavailable vault access surfaces as a failure. Cancellation before the \
+                    irreversible vault write aborts the import.\
                     """,
             security =
-                    "Crosses the host trust boundary and writes to the encrypted vault; every call"
-                            + " requires explicit approval. Never accepts plaintext secret material,"
-                            + " only an opaque session-scoped reference.",
+                    """
+                    Crosses the host trust boundary and writes to the encrypted vault; every call requires \
+                    explicit approval. Never accepts plaintext secret material, only an opaque session-scoped \
+                    reference.\
+                    """,
             examples = {
                 "{\"secret_ref\":\"SECRET_REF_1\",\"service\":\"github\",\"label\":\"ci-token\"}",
                 "{\"secret_ref\":\"SECRET_REF_2\",\"service\":\"aws\",\"label\":\"deploy-key\"}",
@@ -196,7 +197,7 @@ public final class SecretProtectionPlugin extends VetoPlugin {
 
         @Override
         public @NonNull JsonValue handle(
-                @NonNull Scope scope,
+                @NonNull ActionContext scope,
                 @NonNull String action,
                 JsonValue.@NonNull ObjectValue arguments)
                 throws PluginFailure {
@@ -230,7 +231,7 @@ public final class SecretProtectionPlugin extends VetoPlugin {
     }
 
     private @NonNull JsonValue frontendAction(
-            FrontendContribution.@NonNull Scope scope,
+            FrontendContribution.@NonNull ActionContext scope,
             @NonNull String action,
             JsonValue.@NonNull ObjectValue arguments)
             throws PluginFailure {
@@ -239,7 +240,7 @@ public final class SecretProtectionPlugin extends VetoPlugin {
             throw new PluginFailure(PluginFailure.Code.INVALID_ARGUMENTS);
         return candidates
                 .reveal(
-                        new SecretCandidateStore.Scope(
+                        new Scope.AgentScope(
                                 scope.ownerId(), scope.sessionId(), scope.agentId()),
                         ref.value())
                 .<JsonValue>map(JsonValue.StringValue::new)
@@ -259,7 +260,7 @@ public final class SecretProtectionPlugin extends VetoPlugin {
             throw new IllegalStateException("Credential import cancelled");
         var receipt =
                 candidates.importOnce(
-                        new SecretCandidateStore.Scope(
+                        new Scope.AgentScope(
                                 authorized.owner(), authorized.sessionId(), authorized.agentId()),
                         args.secret_ref(),
                         args.service(),
@@ -319,7 +320,7 @@ public final class SecretProtectionPlugin extends VetoPlugin {
         public void onTextCommit(@NonNull BeforeTextCommitEvent event) {
             String owner = event.owner();
             if (owner == null) throw new IllegalStateException("Text owner is required");
-            var scope = new SecretCandidateStore.Scope(owner, event.sessionId(), event.agentId());
+            var scope = new Scope.AgentScope(owner, event.sessionId(), event.agentId());
             switch (event.phase()) {
                 case INPUT ->
                         event.setText(
@@ -359,7 +360,7 @@ public final class SecretProtectionPlugin extends VetoPlugin {
         @EventHandler
         public void onAgentTerminated(@NonNull AgentTerminatedEvent event) {
             candidates.discardAgent(
-                    new SecretCandidateStore.Scope(
+                    new Scope.AgentScope(
                             event.owner(), event.sessionId(), event.agentId()));
         }
     }

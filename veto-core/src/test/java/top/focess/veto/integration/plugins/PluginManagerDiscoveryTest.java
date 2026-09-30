@@ -10,6 +10,7 @@ import top.focess.veto.api.agent.tool.CapabilityTool;
 import top.focess.veto.api.credentials.VaultAccess;
 import top.focess.veto.api.event.BeforeTextCommitEvent;
 import top.focess.veto.api.plugin.PluginState;
+import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.api.plugin.contract.FrontendContribution;
 import top.focess.veto.api.plugin.contract.PluginFailure;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
@@ -53,7 +54,7 @@ class PluginManagerDiscoveryTest {
     @Test
     void importToolFailsWithoutHostGrantedAccess() throws Exception {
         try (var plugins = PluginTestSupport.manager()) {
-            var scope = new FrontendContribution.Scope("owner", "session", "agent");
+            var scope = new FrontendContribution.ActionContext("owner", "session", "agent");
             String reference = capture(plugins, scope);
             var failure =
                     assertThrows(
@@ -65,21 +66,11 @@ class PluginManagerDiscoveryTest {
 
     @Test
     void importToolUsesTheHostGrantedAccess() throws Exception {
-        VaultAccess.Scope writer =
-                new VaultAccess.Scope() {
+        VaultAccess.Handle writer =
+                new VaultAccess.Handle() {
                     @Override
-                    public @NonNull String owner() {
-                        return "owner";
-                    }
-
-                    @Override
-                    public @NonNull String sessionId() {
-                        return "session";
-                    }
-
-                    @Override
-                    public @NonNull String agentId() {
-                        return "agent";
+                    public Scope.@NonNull AgentScope scope() {
+                        return new Scope.AgentScope("owner", "session", "agent");
                     }
 
                     @Override
@@ -100,7 +91,7 @@ class PluginManagerDiscoveryTest {
         try (var plugins =
                 PluginTestSupport.manager(
                         new PluginHostServices(Map.of(VaultAccess.class, access)))) {
-            var scope = new FrontendContribution.Scope("owner", "session", "agent");
+            var scope = new FrontendContribution.ActionContext("owner", "session", "agent");
             String reference = capture(plugins, scope);
             String receipt = invokeImport(plugins, reference, "github", "Repository");
             assertEquals(
@@ -113,7 +104,7 @@ class PluginManagerDiscoveryTest {
     void lifecycleEventsReachThePluginThroughTheDispatcher() throws Exception {
         try (var plugins = PluginTestSupport.manager()) {
             var events = new PluginLifecycleEvents(plugins);
-            var scope = new FrontendContribution.Scope("owner", "session", "agent");
+            var scope = new FrontendContribution.ActionContext("owner", "session", "agent");
             String reference = capture(plugins, scope);
             events.agentTerminated("owner", "session", "agent");
             assertTrue(PluginTestSupport.reveal(plugins, scope, reference).isEmpty());
@@ -121,7 +112,8 @@ class PluginManagerDiscoveryTest {
             events.sessionClosed("owner", "session");
             assertTrue(PluginTestSupport.reveal(plugins, scope, reference).isEmpty());
             assertThrows(IllegalStateException.class, () -> capture(plugins, scope));
-            var otherSession = new FrontendContribution.Scope("owner", "other-session", "agent");
+            var otherSession =
+                    new FrontendContribution.ActionContext("owner", "other-session", "agent");
             capture(plugins, otherSession);
             events.ownerClosed("owner");
             assertThrows(IllegalStateException.class, () -> capture(plugins, otherSession));
@@ -140,7 +132,7 @@ class PluginManagerDiscoveryTest {
     }
 
     private static @NonNull String capture(
-            @NonNull PluginManager plugins, FrontendContribution.@NonNull Scope scope)
+            @NonNull PluginManager plugins, FrontendContribution.@NonNull ActionContext scope)
             throws PluginFailure {
         String captured =
                 PluginTestSupport.protect(
@@ -172,7 +164,7 @@ class PluginManagerDiscoveryTest {
                         .orElseThrow();
         CapabilityTool<?> tool = (CapabilityTool<?>) entry.implementation();
         var mapper = new ObjectMapper();
-        @NonNull Object args =
+        Object args =
                 Nullness.requireNonNull(
                         mapper.treeToValue(
                                 mapper.valueToTree(

@@ -6,6 +6,7 @@ import java.util.Map;
 import java.util.Optional;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
+import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.secret.api.SecretDetectionModel;
 import top.focess.veto.secret.references.SecretCandidateStore;
 
@@ -81,7 +82,7 @@ class SensitiveDataMaskingTest {
     @Test
     void captureExcludesMaskOnlyCategories() {
         var store = new SecretCandidateStore();
-        var scope = new SecretCandidateStore.Scope("owner", "session", "agent");
+        var scope = new Scope.AgentScope("owner", "session", "agent");
         var captured =
                 store.capture(
                         scope,

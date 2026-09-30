@@ -111,7 +111,7 @@ final class AgentEvents {
                     // is about to run. Carries the authoritative turnNumber + callId so a client
                     // can
                     // apply it incrementally and pair the later result without refetching history.
-                    DeltaFrame.Builder b =
+                    DeltaFrame.@NonNull Builder b =
                             DeltaFrame.builder()
                                     .sessionId(session.get())
                                     .kind(DeltaFrame.Kind.TOOL_CALL)
@@ -131,7 +131,7 @@ final class AgentEvents {
                 Object callId = numbered.payload().get("call_id");
                 if (content instanceof @NonNull String body) {
                     results.emit(new ToolResultEvent(body, Boolean.TRUE.equals(success)));
-                    DeltaFrame.Builder b =
+                    DeltaFrame.@NonNull Builder b =
                             DeltaFrame.builder()
                                     .sessionId(session.get())
                                     .kind(DeltaFrame.Kind.TOOL_RESULT)
@@ -185,7 +185,7 @@ final class AgentEvents {
         // Domain event: a veto is parked and waiting for the user's decision. Subscribers (the web
         // UI, the terminal adapter) render a prompt from this instead of polling; the user's reply
         // still goes through the authenticated resolve path.
-        DeltaFrame.Builder frame =
+        DeltaFrame.@NonNull Builder frame =
                 DeltaFrame.builder()
                         .sessionId(session.get())
                         .kind(DeltaFrame.Kind.VETO_REQUIRED)

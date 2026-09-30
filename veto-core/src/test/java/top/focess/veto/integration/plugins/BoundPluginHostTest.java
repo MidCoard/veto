@@ -1,5 +1,7 @@
 package top.focess.veto.integration.plugins;
 
+import top.focess.veto.api.plugin.PluginScope;
+
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
@@ -10,7 +12,6 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
-import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 import top.focess.veto.agent.intercept.ToolExecutionPermit;
@@ -42,7 +43,7 @@ class BoundPluginHostTest {
                                         PluginTestSupport.providerOf(null));
                 var delegate = (PluginHost) services.services().get(PluginHost.class);
                 if (delegate == null) throw new AssertionError("Missing host");
-                when(fixture.storage.scopes(PluginStorage.Kind.SESSION, null, 200))
+                when(fixture.storage.scopes(PluginScope.SESSION, null, 200))
                         .thenReturn(new PluginStorage.Page<>(List.of(fixture.scope), null));
                 var host =
                         new BoundPluginHost(
@@ -128,8 +129,8 @@ class BoundPluginHostTest {
     @Test
     void effectsRequireSelectedSessionAndCurrentOwnerEvenForCachedScope() throws Exception {
         try (var fixture = new PluginAgentHostsTest.Fixture()) {
-            @NonNull PluginHost delegate = mock();
-            when(fixture.storage.scopes(PluginStorage.Kind.SESSION, null, 200))
+            PluginHost delegate = mock(PluginHost.class);
+            when(fixture.storage.scopes(PluginScope.SESSION, null, 200))
                     .thenReturn(new PluginStorage.Page<>(List.of(fixture.scope), null));
             var host =
                     new BoundPluginHost(delegate, fixture.plugin, fixture.storage, fixture.scopes);
@@ -198,7 +199,7 @@ class BoundPluginHostTest {
             if (delegate == null) throw new AssertionError("Missing host delegate");
             var host =
                     new BoundPluginHost(delegate, fixture.plugin, fixture.storage, fixture.scopes);
-            @NonNull Runnable callback = mock();
+            Runnable callback = mock(Runnable.class);
             host.whenReady(callback);
             fixture.plugin.close();
             configuration.ready();

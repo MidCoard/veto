@@ -12,7 +12,7 @@ import top.focess.veto.api.plugin.contract.StandardContributionPoints;
 import top.focess.veto.api.plugin.contribution.Contribution;
 import top.focess.veto.api.plugin.service.PluginService;
 import top.focess.veto.api.plugin.service.ServiceCallContext;
-import top.focess.veto.api.plugin.service.ServiceScope;
+import top.focess.veto.api.plugin.PluginScope;
 
 /** Compilation fixture for the provider documented in veto-api/README.md. */
 public final class TextProviderPlugin extends VetoPlugin {
@@ -25,7 +25,7 @@ public final class TextProviderPlugin extends VetoPlugin {
 
     public @NonNull PluginContributions contributions() {
         var service =
-                new PluginService("example:text", 1, ServiceScope.GLOBAL) {
+                new PluginService("example:text", 1, PluginScope.APPLICATION) {
                     @Override
                     public @NonNull JsonValue invoke(
                             @NonNull ServiceCallContext caller, @NonNull JsonValue request) {

@@ -6,7 +6,7 @@ import top.focess.veto.api.agent.tool.*;
 
 /** A single multiple-choice question posed to the user. */
 public record Question(
-        @StringConstraint(minLength = 1, maxLength = 12)
+        @StringConstraint(minLength = 1, maxLength = 12, rejectBlank = true)
                 @NonNull
                 @Doc("Short UI heading, 1-12 Unicode characters.")
                 String header,
@@ -14,11 +14,12 @@ public record Question(
                 @NonNull
                 @Doc("Unique snake_case key used in the returned answers object.")
                 String id,
-        @StringConstraint(minLength = 1, maxLength = 300)
+        @StringConstraint(minLength = 1, maxLength = 300, rejectBlank = true)
                 @NonNull
                 @Doc("One-sentence prompt, 1-300 Unicode characters.")
                 String question,
         @ArraySize(min = 2, max = 5)
+                @UniqueBy(field = "label", ignoreCase = true, strip = true)
                 @NonNull
                 @Doc(
                         "Two to five mutually exclusive choices. Put the recommended choice first; the application adds the recommendation marker. Do not add it to labels.")

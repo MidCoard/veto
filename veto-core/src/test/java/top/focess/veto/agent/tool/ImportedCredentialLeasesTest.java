@@ -8,7 +8,6 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
-import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.agent.capability.ImportedCredentialLeases;
 import top.focess.veto.agent.intercept.ToolExecutionPermit;
@@ -24,8 +23,8 @@ import top.focess.veto.vault.KeysteadVault;
 class ImportedCredentialLeasesTest {
     @Test
     void leaseIsExactInvocationConfinedWipedAndRevoked() {
-        @NonNull KeysteadVault vault = mock();
-        @NonNull SessionRepository sessions = mock();
+        KeysteadVault vault = mock(KeysteadVault.class);
+        SessionRepository sessions = mock(SessionRepository.class);
         var row = new SessionEntity("alice", "test");
         var id = UUID.fromString(row.getId());
         when(sessions.findById(row.getId())).thenReturn(Optional.of(row));

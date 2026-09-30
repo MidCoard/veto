@@ -16,11 +16,11 @@ import top.focess.veto.integration.plugins.PluginTestSupport;
 class AuthLifecycleManagerTest {
     @Test
     void logoutClosesCaptureEvenWhenDetachAndVaultCloseFail() throws Exception {
-        @NonNull KeysteadVault vault = mock();
-        @NonNull PromptHandler prompts = mock();
+        KeysteadVault vault = mock(KeysteadVault.class);
+        PromptHandler prompts = mock(PromptHandler.class);
         try (var plugins = PluginTestSupport.manager()) {
-            var scope = new FrontendContribution.Scope("alice", "session", "agent");
-            var other = new FrontendContribution.Scope("bob", "session", "agent");
+            var scope = new FrontendContribution.ActionContext("alice", "session", "agent");
+            var other = new FrontendContribution.ActionContext("bob", "session", "agent");
             String reference = capture(plugins, scope, "password=alpha");
             String otherReference = capture(plugins, other, "password=beta");
             var lifecycle = new AuthLifecycleManager(vault, prompts);
@@ -40,10 +40,10 @@ class AuthLifecycleManagerTest {
 
     @Test
     void onlySuccessfulLoginReopensCaptureWithoutRestoringOldReferences() throws Exception {
-        @NonNull KeysteadVault vault = mock();
-        @NonNull PromptHandler prompts = mock();
+        KeysteadVault vault = mock(KeysteadVault.class);
+        PromptHandler prompts = mock(PromptHandler.class);
         try (var plugins = PluginTestSupport.manager()) {
-            var scope = new FrontendContribution.Scope("alice", "session", "agent");
+            var scope = new FrontendContribution.ActionContext("alice", "session", "agent");
             String old = capture(plugins, scope, "password=alpha");
             var lifecycle = new AuthLifecycleManager(vault, prompts);
             lifecycle.attachLifecycleEvents(new PluginLifecycleEvents(plugins));
@@ -63,7 +63,7 @@ class AuthLifecycleManagerTest {
 
     private static @NonNull String capture(
             @NonNull PluginManager plugins,
-            FrontendContribution.@NonNull Scope scope,
+            FrontendContribution.@NonNull ActionContext scope,
             @NonNull String text)
             throws PluginFailure {
         String captured =

@@ -58,6 +58,15 @@ public class DefaultUniformLLMCaller implements UniformLLMCaller {
 
     @Override
     public @NonNull VetoResponse call(@NonNull VetoRequest request) {
+        return callInternal(request, null);
+    }
+
+    @Override
+    public @NonNull VetoResponse call(@NonNull VetoRequest request, @NonNull String sessionId) {
+        return callInternal(request, sessionId);
+    }
+
+    private @NonNull VetoResponse callInternal(@NonNull VetoRequest request, String sessionId) {
         LLMProviderStrategy provider =
                 strategies.stream()
                         .filter(value -> value.supports(request.providerType()))
@@ -67,7 +76,10 @@ public class DefaultUniformLLMCaller implements UniformLLMCaller {
             if (plugins == null)
                 throw new ModelCapabilityException(
                         "No provider registered for type: " + request.providerType());
-            provider = plugins.require(request.providerType());
+            provider =
+                    sessionId == null
+                            ? plugins.require(request.providerType())
+                            : plugins.require(request.providerType(), sessionId);
         }
         EgressEndpoint endpoint =
                 egress.resolve(

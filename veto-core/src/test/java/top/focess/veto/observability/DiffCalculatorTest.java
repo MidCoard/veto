@@ -18,7 +18,7 @@ class DiffCalculatorTest {
 
     @Test
     void testIdenticalStrings() {
-        @NonNull String text = "line1\nline2\nline3";
+        String text = "line1\nline2\nline3";
         DiffCalculator.@NonNull DiffResult result = diffCalculator.computeDiff(text, text);
         assertEquals(0, result.totalChanges());
         assertFalse(result.hasChanges());
@@ -26,8 +26,8 @@ class DiffCalculatorTest {
 
     @Test
     void testDifferentStrings() {
-        @NonNull String original = "line1\nline2\nline3";
-        @NonNull String redacted = "line1\nline2 [REDACTED]\nline3";
+        String original = "line1\nline2\nline3";
+        String redacted = "line1\nline2 [REDACTED]\nline3";
 
         DiffCalculator.@NonNull DiffResult result = diffCalculator.computeDiff(original, redacted);
         assertTrue(result.hasChanges());
@@ -36,8 +36,8 @@ class DiffCalculatorTest {
 
     @Test
     void testLineCountDifference() {
-        @NonNull String original = "a\nb\nc";
-        @NonNull String redacted = "a\nx\ny\nz";
+        String original = "a\nb\nc";
+        String redacted = "a\nx\ny\nz";
 
         DiffCalculator.@NonNull DiffResult result = diffCalculator.computeDiff(original, redacted);
         assertTrue(result.hasChanges());
@@ -47,11 +47,11 @@ class DiffCalculatorTest {
 
     @Test
     void testSummaryReport() {
-        @NonNull String original = "line1\nline2\nline3";
-        @NonNull String redacted = "line1\nCHANGED\nline3";
+        String original = "line1\nline2\nline3";
+        String redacted = "line1\nCHANGED\nline3";
 
         DiffCalculator.@NonNull DiffResult result = diffCalculator.computeDiff(original, redacted);
-        @NonNull String report = diffCalculator.generateSummaryReport(result);
+        String report = diffCalculator.generateSummaryReport(result);
         assertNotNull(report);
         assertTrue(report.contains("Veto Redaction Diff Report"));
         assertTrue(report.contains("L2"));

@@ -44,26 +44,28 @@ public final class MonitorTestSupport {
 
     public static @NonNull AgentInbox work(@NonNull MonitorService service) {
         if (mockingDetails(service).isMock()) {
-            doCallRealMethod().when(service).pending(any(AgentInbox.Scope.class));
+            doCallRealMethod().when(service).pending(any(AgentInbox.InboxContext.class));
             doCallRealMethod().when(service).started(any(), any());
             doCallRealMethod().when(service).completed(any(), any(), anyBoolean());
             doCallRealMethod().when(service).cancelled(any(), any());
         }
         return new AgentInbox() {
-            public @NonNull List<Observation> pending(@NonNull Scope scope) {
+            public @NonNull List<Observation> pending(@NonNull InboxContext scope) {
                 return service.pending(scope);
             }
 
-            public void started(@NonNull Scope scope, @NonNull Observation observation) {
+            public void started(@NonNull InboxContext scope, @NonNull Observation observation) {
                 service.started(scope, observation);
             }
 
             public void completed(
-                    @NonNull Scope scope, @NonNull Observation observation, boolean success) {
+                    @NonNull InboxContext scope,
+                    @NonNull Observation observation,
+                    boolean success) {
                 service.completed(scope, observation, success);
             }
 
-            public void cancelled(@NonNull Scope scope, @NonNull Observation observation) {
+            public void cancelled(@NonNull InboxContext scope, @NonNull Observation observation) {
                 service.cancelled(scope, observation);
             }
         };
@@ -77,7 +79,7 @@ public final class MonitorTestSupport {
         factory.addBean("sessions", sessions);
         factory.addBean("agents", agents);
         factory.addBean("vault", vault);
-        @NonNull SessionInvalidations invalidations = mock();
+        SessionInvalidations invalidations = mock(SessionInvalidations.class);
         factory.addBean("invalidations", invalidations);
         return (PluginHost)
                 Nullness.requireNonNull(

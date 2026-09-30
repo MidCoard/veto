@@ -14,6 +14,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.LoggerFactory;
@@ -118,8 +119,10 @@ final class DeepSeekLlmClient extends LlmClient {
                             .POST(HttpRequest.BodyPublishers.ofString(json))
                             .build();
 
-            HttpResponse<String> httpResponse =
-                    HTTP.send(httpRequest, HttpResponse.BodyHandlers.ofString());
+            var httpResponse =
+                    Objects.requireNonNull(
+                            HTTP.send(httpRequest, HttpResponse.BodyHandlers.ofString()),
+                            "HttpClient.send returned null");
 
             if (httpResponse.statusCode() != 200) {
                 throw new ModelCapabilityException(

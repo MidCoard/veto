@@ -42,11 +42,11 @@ import top.focess.veto.vault.UserRegistry;
 class SessionServiceTest {
     @Test
     void monitorActivationUsesExactIdentityAndRejectsMissingRecoveryEvidence() {
-        @NonNull SessionRepository sessions = mock();
-        @NonNull AgentInstanceRepository agents = mock();
-        @NonNull AgentPatternRepository patterns = mock();
-        @NonNull AgentService runtime = mock();
-        @NonNull SessionHistoryLoader history = mock();
+        SessionRepository sessions = mock(SessionRepository.class);
+        AgentInstanceRepository agents = mock(AgentInstanceRepository.class);
+        AgentPatternRepository patterns = mock(AgentPatternRepository.class);
+        AgentService runtime = mock(AgentService.class);
+        SessionHistoryLoader history = mock(SessionHistoryLoader.class);
         var session = new SessionEntity("alice", "duplicate-name");
         var primary =
                 new AgentEntity(
@@ -132,7 +132,6 @@ class SessionServiceTest {
         AgentPatternRepository patterns = mock(AgentPatternRepository.class);
         AgentService agentService = mock(AgentService.class);
         SessionHistoryLoader loader = mock(SessionHistoryLoader.class);
-
         AgentPatternEntity pattern =
                 new AgentPatternEntity(
                         "coder", "DEEPSEEK", "deepseek-v4", "pattern-coder", "alice");
@@ -158,7 +157,6 @@ class SessionServiceTest {
         AgentPatternRepository patterns = mock(AgentPatternRepository.class);
         AgentService agentService = mock(AgentService.class);
         SessionHistoryLoader loader = mock(SessionHistoryLoader.class);
-
         AgentPatternEntity pattern =
                 new AgentPatternEntity(
                         "coder", "DEEPSEEK", "deepseek-v4", "pattern-coder", "alice");
@@ -189,7 +187,6 @@ class SessionServiceTest {
         AgentPatternRepository patterns = mock(AgentPatternRepository.class);
         AgentService agentService = mock(AgentService.class);
         SessionHistoryLoader loader = mock(SessionHistoryLoader.class);
-
         AgentPatternEntity pattern =
                 new AgentPatternEntity(
                         "coder", "DEEPSEEK", "deepseek-v4", "pattern-coder", "alice");
@@ -218,7 +215,6 @@ class SessionServiceTest {
         AgentPatternRepository patterns = mock(AgentPatternRepository.class);
         AgentService agentService = mock(AgentService.class);
         SessionHistoryLoader loader = mock(SessionHistoryLoader.class);
-
         SessionEntity session = new SessionEntity("alice", "coder");
         AgentEntity agent =
                 new AgentEntity(
@@ -262,7 +258,6 @@ class SessionServiceTest {
         AgentPatternRepository patterns = mock(AgentPatternRepository.class);
         AgentService agentService = mock(AgentService.class);
         SessionHistoryLoader loader = mock(SessionHistoryLoader.class);
-
         SessionEntity session = new SessionEntity("alice", "coder");
         AgentEntity agent =
                 new AgentEntity(
@@ -298,7 +293,6 @@ class SessionServiceTest {
         AgentPatternRepository patterns = mock(AgentPatternRepository.class);
         AgentService agentService = mock(AgentService.class);
         SessionHistoryLoader loader = mock(SessionHistoryLoader.class);
-
         SessionEntity session = new SessionEntity("alice", "coder");
         AgentEntity agent =
                 new AgentEntity(
@@ -339,7 +333,6 @@ class SessionServiceTest {
         AgentPatternRepository patterns = mock(AgentPatternRepository.class);
         AgentService agentService = mock(AgentService.class);
         SessionHistoryLoader loader = mock(SessionHistoryLoader.class);
-
         SessionEntity session = new SessionEntity("alice", "coder");
         AgentEntity agent =
                 new AgentEntity(
@@ -377,7 +370,6 @@ class SessionServiceTest {
         AgentPatternRepository patterns = mock(AgentPatternRepository.class);
         AgentService agentService = mock(AgentService.class);
         SessionHistoryLoader loader = mock(SessionHistoryLoader.class);
-
         when(sessions.findByOwner("alice")).thenReturn(List.of());
 
         SessionService service =
@@ -407,7 +399,6 @@ class SessionServiceTest {
         AgentPatternRepository patterns = mock(AgentPatternRepository.class);
         AgentService agentService = mock(AgentService.class);
         SessionHistoryLoader loader = mock(SessionHistoryLoader.class);
-
         SessionEntity session = new SessionEntity("alice", "coder");
         AgentEntity agent =
                 new AgentEntity(
@@ -436,7 +427,7 @@ class SessionServiceTest {
         assertTrue(service.activeSession("term-1").isPresent());
 
         boolean removed;
-        var scope = new FrontendContribution.Scope("alice", session.getId(), agent.getId());
+        var scope = new FrontendContribution.ActionContext("alice", session.getId(), agent.getId());
         try (var plugins = PluginTestSupport.manager()) {
             var lifecycle = new PluginLifecycleEvents(plugins);
             var users = mock(UserRegistry.class);
@@ -511,7 +502,6 @@ class SessionServiceTest {
         AgentPatternRepository patterns = mock(AgentPatternRepository.class);
         AgentService agentService = mock(AgentService.class);
         SessionHistoryLoader loader = mock(SessionHistoryLoader.class);
-
         SessionEntity session =
                 new SessionEntity(
                         "alice",
@@ -651,10 +641,9 @@ class SessionServiceTest {
         AgentPatternRepository patterns = mock(AgentPatternRepository.class);
         AgentService agentService = mock(AgentService.class);
         SessionHistoryLoader loader = mock(SessionHistoryLoader.class);
-
-        @NonNull String projectA = fakeDir("veto-test-ws-A");
-        @NonNull String projectB = fakeDir("veto-test-ws-B");
-        @NonNull String projectASub = fakeDir("veto-test-ws-A/sub");
+        String projectA = fakeDir("veto-test-ws-A");
+        String projectB = fakeDir("veto-test-ws-B");
+        String projectASub = fakeDir("veto-test-ws-A/sub");
 
         SessionEntity inA = new SessionEntity("alice", "alpha", projectA);
         SessionEntity inB = new SessionEntity("alice", "beta", projectB);
@@ -693,7 +682,6 @@ class SessionServiceTest {
         AgentPatternRepository patterns = mock(AgentPatternRepository.class);
         AgentService agentService = mock(AgentService.class);
         SessionHistoryLoader loader = mock(SessionHistoryLoader.class);
-
         SessionEntity a = new SessionEntity("alice", "alpha", fakeDir("ws-A"));
         SessionEntity b = new SessionEntity("alice", "beta", fakeDir("ws-B"));
         when(sessions.findByOwner("alice")).thenReturn(List.of(a, b));
@@ -712,9 +700,8 @@ class SessionServiceTest {
         AgentPatternRepository patterns = mock(AgentPatternRepository.class);
         AgentService agentService = mock(AgentService.class);
         SessionHistoryLoader loader = mock(SessionHistoryLoader.class);
-
-        @NonNull String projectA = fakeDir("veto-test-ws-A");
-        @NonNull String projectB = fakeDir("veto-test-ws-B");
+        String projectA = fakeDir("veto-test-ws-A");
+        String projectB = fakeDir("veto-test-ws-B");
         SessionEntity session = new SessionEntity("alice", "alpha", projectA);
         when(sessions.findByOwner("alice")).thenReturn(List.of(session));
         when(sessions.findFirstByNameAndOwnerOrderByLastActiveAtDesc("alpha", "alice"))
@@ -747,9 +734,8 @@ class SessionServiceTest {
         AgentPatternRepository patterns = mock(AgentPatternRepository.class);
         AgentService agentService = mock(AgentService.class);
         SessionHistoryLoader loader = mock(SessionHistoryLoader.class);
-
-        @NonNull String projectA = fakeDir("veto-test-ws-A");
-        @NonNull String projectASub = fakeDir("veto-test-ws-A/inner");
+        String projectA = fakeDir("veto-test-ws-A");
+        String projectASub = fakeDir("veto-test-ws-A/inner");
         SessionEntity session = new SessionEntity("alice", "alpha", projectA);
         AgentEntity agent =
                 new AgentEntity(
@@ -787,9 +773,8 @@ class SessionServiceTest {
         AgentPatternRepository patterns = mock(AgentPatternRepository.class);
         AgentService agentService = mock(AgentService.class);
         SessionHistoryLoader loader = mock(SessionHistoryLoader.class);
-
-        @NonNull String projectA = fakeDir("veto-test-ws-A");
-        @NonNull String projectB = fakeDir("veto-test-ws-B");
+        String projectA = fakeDir("veto-test-ws-A");
+        String projectB = fakeDir("veto-test-ws-B");
         // The user's only session is in projectA; the terminal just opened in projectB.
         // (The session is the most-recent overall — the case where a naive
         // findFirstByOwnerOrderByLastActiveAtDesc would silently resume into it.)
@@ -821,8 +806,7 @@ class SessionServiceTest {
         AgentPatternRepository patterns = mock(AgentPatternRepository.class);
         AgentService agentService = mock(AgentService.class);
         SessionHistoryLoader loader = mock(SessionHistoryLoader.class);
-
-        @NonNull String projectA = fakeDir("veto-test-ws-A");
+        String projectA = fakeDir("veto-test-ws-A");
         // Two sessions in projectA; the newer one is alpha, the older one is zulu.
         SessionEntity older = new SessionEntity("alice", "zulu", projectA);
         try {
@@ -881,9 +865,8 @@ class SessionServiceTest {
         AgentPatternRepository patterns = mock(AgentPatternRepository.class);
         AgentService agentService = mock(AgentService.class);
         SessionHistoryLoader loader = mock(SessionHistoryLoader.class);
-
-        @NonNull String projectA = fakeDir("ws-A");
-        @NonNull String projectB = fakeDir("ws-B");
+        String projectA = fakeDir("ws-A");
+        String projectB = fakeDir("ws-B");
         AgentPatternEntity pattern =
                 new AgentPatternEntity(
                         "coder", "DEEPSEEK", "deepseek-v4", "pattern-coder", "alice");
@@ -927,8 +910,7 @@ class SessionServiceTest {
         AgentPatternRepository patterns = mock(AgentPatternRepository.class);
         AgentService agentService = mock(AgentService.class);
         SessionHistoryLoader loader = mock(SessionHistoryLoader.class);
-
-        @NonNull String projectA = fakeDir("ws-A");
+        String projectA = fakeDir("ws-A");
         AgentPatternEntity pattern =
                 new AgentPatternEntity(
                         "coder", "DEEPSEEK", "deepseek-v4", "pattern-coder", "alice");
@@ -960,8 +942,7 @@ class SessionServiceTest {
         AgentPatternRepository patterns = mock(AgentPatternRepository.class);
         AgentService agentService = mock(AgentService.class);
         SessionHistoryLoader loader = mock(SessionHistoryLoader.class);
-
-        @NonNull String projectA = fakeDir("ws-A");
+        String projectA = fakeDir("ws-A");
         AgentPatternEntity pattern =
                 new AgentPatternEntity(
                         "coder", "DEEPSEEK", "deepseek-v4", "pattern-coder", "alice");
@@ -997,8 +978,7 @@ class SessionServiceTest {
         AgentPatternRepository patterns = mock(AgentPatternRepository.class);
         AgentService agentService = mock(AgentService.class);
         SessionHistoryLoader loader = mock(SessionHistoryLoader.class);
-
-        @NonNull String projectA = fakeDir("ws-A");
+        String projectA = fakeDir("ws-A");
         // Two "ds" sessions for alice: one legacy (NULL = matches any cwd), one explicitly bound
         // to projectA. A terminal in projectA should activate the explicit one, not the legacy.
         SessionEntity legacy = new SessionEntity("alice", "ds", null);
@@ -1044,9 +1024,8 @@ class SessionServiceTest {
         AgentPatternRepository patterns = mock(AgentPatternRepository.class);
         AgentService agentService = mock(AgentService.class);
         SessionHistoryLoader loader = mock(SessionHistoryLoader.class);
-
-        @NonNull String projectA = fakeDir("ws-A");
-        @NonNull String projectB = fakeDir("ws-B");
+        String projectA = fakeDir("ws-A");
+        String projectB = fakeDir("ws-B");
         // Two "ds" sessions for alice in different workspaces: the REST caller has no workspace
         // context to disambiguate with, so both are removed.
         SessionEntity inA = new SessionEntity("alice", "ds", projectA);

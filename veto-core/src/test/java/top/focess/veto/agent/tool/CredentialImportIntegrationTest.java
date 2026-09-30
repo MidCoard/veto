@@ -46,12 +46,13 @@ class CredentialImportIntegrationTest {
             throws Exception {
         var session = UUID.randomUUID();
         var user = UUID.randomUUID();
-        @NonNull KeysteadVault vault = mock();
+        KeysteadVault vault = mock(KeysteadVault.class);
         when(vault.isUnlocked("alice")).thenReturn(true);
         var mapper = new ObjectMapper();
         var workspace = Workspace.single(directory, PathMode.REAL);
         try (var plugins = PluginTestSupport.manager(hostServices(vault))) {
-            var scope = new FrontendContribution.Scope("alice", session.toString(), "agent");
+            var scope =
+                    new FrontendContribution.ActionContext("alice", session.toString(), "agent");
             String reference = reference(plugins, scope);
             when(vault.createSecureNoteIfAbsent(
                             "alice",
@@ -151,7 +152,7 @@ class CredentialImportIntegrationTest {
     }
 
     private static @NonNull String reference(
-            @NonNull PluginManager plugins, FrontendContribution.@NonNull Scope scope)
+            @NonNull PluginManager plugins, FrontendContribution.@NonNull ActionContext scope)
             throws PluginFailure {
         String captured =
                 PluginTestSupport.protect(
@@ -185,13 +186,14 @@ class CredentialImportIntegrationTest {
     void importAccessChecksTheExactOperationAndScopeBeforeInvokingStorage(
             @TempDir @NonNull Path directory) throws Exception {
         var session = UUID.randomUUID();
-        @NonNull KeysteadVault vault = mock();
+        KeysteadVault vault = mock(KeysteadVault.class);
         var services = hostServices(vault);
         var service = services.services().get(VaultAccess.class);
         if (!(service instanceof VaultAccess access))
             throw new AssertionError("Vault host service missing");
         try (var plugins = PluginTestSupport.manager(services)) {
-            var scope = new FrontendContribution.Scope("alice", session.toString(), "agent");
+            var scope =
+                    new FrontendContribution.ActionContext("alice", session.toString(), "agent");
             String reference = reference(plugins, scope);
             var engine = engineWith(new ObjectMapper(), plugins);
             var definition = importTool(engine);
@@ -258,10 +260,12 @@ class CredentialImportIntegrationTest {
                     SecurityException.class, () -> open(access, reference, "github", "Repository"));
             for (var other :
                     List.of(
-                            new FrontendContribution.Scope("bob", session.toString(), "agent"),
-                            new FrontendContribution.Scope(
+                            new FrontendContribution.ActionContext(
+                                    "bob", session.toString(), "agent"),
+                            new FrontendContribution.ActionContext(
                                     "alice", UUID.randomUUID().toString(), "agent"),
-                            new FrontendContribution.Scope("alice", session.toString(), "mate"))) {
+                            new FrontendContribution.ActionContext(
+                                    "alice", session.toString(), "mate"))) {
                 installContext(
                         call,
                         definition,
@@ -280,7 +284,7 @@ class CredentialImportIntegrationTest {
         }
     }
 
-    private static VaultAccess.@NonNull Scope open(
+    private static VaultAccess.@NonNull Handle open(
             @NonNull VaultAccess access,
             @NonNull String reference,
             @NonNull String service,
@@ -306,7 +310,7 @@ class CredentialImportIntegrationTest {
                         .orElseThrow();
         CapabilityTool<?> tool = (CapabilityTool<?>) entry.implementation();
         var mapper = new ObjectMapper();
-        @NonNull Object args =
+        Object args =
                 Nullness.requireNonNull(
                         mapper.treeToValue(
                                 mapper.valueToTree(

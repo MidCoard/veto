@@ -57,6 +57,7 @@ public final class InstalledPluginLoader {
             throw new IOException("Plugin installation root is unavailable");
         try (var children = Files.list(installationRoot)) {
             for (Path directory : children.sorted().toList()) {
+                if (isActivationState(directory)) continue;
                 if (Files.isSymbolicLink(directory) || !Files.isDirectory(directory))
                     throw new IOException(
                             "Plugin installation root contains a non-directory entry");
@@ -77,7 +78,10 @@ public final class InstalledPluginLoader {
             throw new IOException("Plugin installation root must be a directory");
         List<Path> directories;
         try (var children = Files.list(installationRoot)) {
-            directories = children.sorted(Comparator.comparing(Path::toString)).toList();
+            directories =
+                    children.filter(path -> !isActivationState(path))
+                            .sorted(Comparator.comparing(Path::toString))
+                            .toList();
         }
         if (directories.size() > 64) throw new IOException("Too many installed plugin packages");
         List<InstalledPlugin> loaded = new ArrayList<>();
@@ -109,6 +113,15 @@ public final class InstalledPluginLoader {
             }
             throw failure;
         }
+    }
+
+    private static boolean isActivationState(@NonNull Path path) {
+        Path fileName = path.getFileName();
+        if (fileName == null) return false;
+        String name = fileName.toString();
+        return Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)
+                && (name.equals(".plugin-activation")
+                        || (name.startsWith(".plugin-activation-") && name.endsWith(".tmp")));
     }
 
     private static @NonNull JsonNode readManifest(@NonNull Path directory) throws IOException {

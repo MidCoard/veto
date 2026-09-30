@@ -15,7 +15,7 @@ import top.focess.veto.api.event.AgentTerminatedEvent;
 import top.focess.veto.api.event.OwnerClosedEvent;
 import top.focess.veto.api.event.SessionClosedEvent;
 import top.focess.veto.api.plugin.PluginHost;
-import top.focess.veto.api.plugin.contract.FrontendContribution.Scope;
+import top.focess.veto.api.plugin.contract.FrontendContribution.ActionContext;
 
 class QuestionLifecycleTest {
     @Test
@@ -25,15 +25,15 @@ class QuestionLifecycleTest {
         var pending = runtime.register(original, List.of());
         for (var scope :
                 List.of(
-                        new Scope("other", "session", "agent"),
-                        new Scope("owner", "other", "agent"),
-                        new Scope("owner", "session", "other"))) {
+                        new ActionContext("other", "session", "agent"),
+                        new ActionContext("owner", "other", "agent"),
+                        new ActionContext("owner", "session", "other"))) {
             assertTrue(runtime.pendingFor(scope).isEmpty());
             assertFalse(runtime.answer(scope, "call", Map.of()));
             assertFalse(runtime.cancel(scope, "call"));
         }
         assertFalse(pending.isDone());
-        assertTrue(runtime.cancel(new Scope("owner", "session", "agent"), "call"));
+        assertTrue(runtime.cancel(new ActionContext("owner", "session", "agent"), "call"));
     }
 
     @ParameterizedTest
@@ -90,7 +90,7 @@ class QuestionLifecycleTest {
 
     @Test
     void registrationAndExceptionalCleanupInvalidateButRejectedAnswersDoNot() {
-        @NonNull PluginHost host = mock();
+        var host = mock(PluginHost.class);
         var runtime = new QuestionRuntime(host);
         var pending = runtime.register(QuestionTestSupport.invocation("agent", "call"), List.of());
         verify(host).invalidate("session", "interactions");

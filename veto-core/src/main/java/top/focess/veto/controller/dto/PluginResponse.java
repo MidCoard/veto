@@ -1,9 +1,12 @@
 package top.focess.veto.controller.dto;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
-import java.util.*;
+
 import org.jspecify.annotations.*;
+
 import top.focess.veto.api.plugin.PluginState;
+
+import java.util.*;
 
 /** Payload describing an installed plugin's identity, state, hooks, and tools. */
 @JsonInclude(JsonInclude.Include.NON_NULL)
@@ -16,5 +19,6 @@ public record PluginResponse(
         @NonNull List<String> hooks,
         @NonNull List<String> tools,
         @NonNull PluginState state,
-        String declineReason)
+        String declineReason,
+        boolean enabledOnNextStart)
         implements RestResponse {}

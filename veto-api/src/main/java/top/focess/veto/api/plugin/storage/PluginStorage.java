@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.Optional;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.plugin.contract.JsonValue;
+import top.focess.veto.api.plugin.PluginScope;
 
 /**
  * Durable namespace bound to the current plugin identity.
@@ -16,16 +17,6 @@ import top.focess.veto.api.plugin.contract.JsonValue;
  * part of this API guarantee.
  */
 public interface PluginStorage {
-    /** Durable scope kinds supported by plugin storage. */
-    enum Kind {
-        /** Data shared by all authorized users and sessions of this plugin installation. */
-        APPLICATION,
-        /** Data bound to one host-issued user scope. */
-        USER,
-        /** Data bound to one host-issued session scope. */
-        SESSION
-    }
-
     /** Host-issued opaque authorization scope. */
     sealed interface Scope permits UserScope, SessionScope {
         /**
@@ -177,7 +168,7 @@ public interface PluginStorage {
      * @param limit maximum requested scopes
      * @return a page of host-authorized scopes
      */
-    @NonNull Page<@NonNull Scope> scopes(@NonNull Kind kind, String cursor, int limit);
+    @NonNull Page<@NonNull Scope> scopes(@NonNull PluginScope kind, String cursor, int limit);
 
     /**
      * Returns the session scope for the active authenticated invocation.

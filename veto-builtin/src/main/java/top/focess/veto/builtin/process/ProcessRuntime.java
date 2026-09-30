@@ -18,7 +18,7 @@ import top.focess.veto.api.process.ChainMode;
 import top.focess.veto.api.process.Command;
 import top.focess.veto.api.process.CommandResult;
 import top.focess.veto.api.process.ProcessHost;
-import top.focess.veto.builtin.process.BackgroundTasks.Scope;
+import top.focess.veto.builtin.process.BackgroundTasks.Owner;
 
 /** Builtin policy and views around host-authorized process effects. */
 public final class ProcessRuntime extends Listener {
@@ -43,7 +43,7 @@ public final class ProcessRuntime extends Listener {
 
     @EventHandler
     public void onAgentTerminated(@NonNull AgentTerminatedEvent event) {
-        events.agentClosed(new Scope(event.owner(), event.sessionId(), event.agentId()));
+        events.agentClosed(new Owner(event.owner(), event.sessionId(), event.agentId()));
         tasks.onAgentTerminated(event.owner(), event.sessionId(), event.agentId());
     }
 
@@ -69,8 +69,8 @@ public final class ProcessRuntime extends Listener {
                 .orElseThrow(() -> new IllegalStateException("Process host unavailable"));
     }
 
-    private @NonNull Scope scope(@NonNull String tool) {
-        return Scope.from(
+    private @NonNull Owner scope(@NonNull String tool) {
+        return Owner.from(
                 context.service(PluginHost.class)
                         .orElseThrow(() -> new IllegalStateException("Plugin host unavailable"))
                         .invocation(tool));
@@ -160,7 +160,7 @@ public final class ProcessRuntime extends Listener {
                 if (bytes.length == 0 && !closeStdin)
                     throw new IllegalArgumentException("Input is empty");
                 var target =
-                        tasks.target(Scope.from(invocation), id)
+                        tasks.target(Owner.from(invocation), id)
                                 .orElseThrow(() -> new IllegalArgumentException("Task not found"));
                 if (!target.info().alive() || !target.stdinAvailable())
                     throw new IllegalArgumentException("Task stdin unavailable");

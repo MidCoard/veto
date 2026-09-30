@@ -7,13 +7,12 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
-import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 
 class RequestContinuationStoreTest {
     @Test
     void checkpointScopeAndSessionDeletionKeepOtherRecipientsSeparate() {
-        @NonNull RequestContinuationRepository repository = mock();
+        RequestContinuationRepository repository = mock(RequestContinuationRepository.class);
         Map<String, RequestContinuationEntity> rows = new HashMap<>();
         when(repository.saveAndFlush(any()))
                 .thenAnswer(

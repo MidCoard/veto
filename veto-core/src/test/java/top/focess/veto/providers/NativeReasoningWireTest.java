@@ -153,7 +153,7 @@ class NativeReasoningWireTest {
                                     MAPPER,
                                     ProviderTestPrompts.PROMPTS);
                 };
-        @NonNull AuditLogger audit = mock();
+        AuditLogger audit = mock(AuditLogger.class);
         var provider =
                 new AbstractLlmProvider(MAPPER, audit) {
                     @Override

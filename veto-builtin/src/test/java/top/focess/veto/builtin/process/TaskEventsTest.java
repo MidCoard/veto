@@ -53,7 +53,7 @@ class TaskEventsTest {
                             observations.add(owner + ":" + task.alive() + ":" + cause);
                         });
         var session = UUID.randomUUID();
-        var scope = new BackgroundTasks.Scope("spawn-owner", session.toString(), "agent");
+        var scope = new BackgroundTasks.Owner("spawn-owner", session.toString(), "agent");
         var instance = UUID.randomUUID();
         var started = Instant.now();
         var live =
@@ -130,7 +130,7 @@ class TaskEventsTest {
                             received.add(task);
                         });
         var session = UUID.randomUUID();
-        var scope = new BackgroundTasks.Scope("owner", session.toString(), "agent");
+        var scope = new BackgroundTasks.Owner("owner", session.toString(), "agent");
         var exited =
                 new TaskInfo(
                         "bg-1",
@@ -158,7 +158,7 @@ class TaskEventsTest {
 
     @Test
     void persistedMonitorExitKeepsOriginalRequestAndInstanceAcrossRetry() throws Exception {
-        @NonNull MonitorRepository repository = mock();
+        var repository = mock(MonitorRepository.class);
         var available = new AtomicBoolean(false);
         when(repository.save(any()))
                 .thenAnswer(
@@ -184,7 +184,7 @@ class TaskEventsTest {
         var events = new TaskEvents(host, monitor);
         var session = UUID.randomUUID();
         var instance = UUID.randomUUID();
-        var scope = new BackgroundTasks.Scope("owner", session.toString(), "agent");
+        var scope = new BackgroundTasks.Owner("owner", session.toString(), "agent");
         var now = Instant.now();
         var live =
                 new TaskInfo(

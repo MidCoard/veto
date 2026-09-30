@@ -41,7 +41,7 @@ class SeqCorrelatorTest {
                 new IpcFrame.CompleteResult(
                         List.of(new IpcFrame.Completion("/x", null, null)), seq);
         c.deliver(result);
-        IpcFrame.@NonNull SeqResponse got = requireResponse(c.await(seq, 1, TimeUnit.SECONDS));
+        IpcFrame.SeqResponse got = requireResponse(c.await(seq, 1, TimeUnit.SECONDS));
         assertSame(result, got);
     }
 

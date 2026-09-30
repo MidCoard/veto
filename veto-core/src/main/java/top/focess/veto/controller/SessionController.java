@@ -1,14 +1,13 @@
 package top.focess.veto.controller;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.UUID;
 import org.jspecify.annotations.NonNull;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
+
 import top.focess.veto.agent.RecordTokenCounter;
 import top.focess.veto.agent.RecordUsage;
 import top.focess.veto.agent.SessionAgentRegistry;
@@ -17,12 +16,17 @@ import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.contract.IpcFrame;
 import top.focess.veto.controller.dto.*;
 import top.focess.veto.i18n.Msg;
+import top.focess.veto.integration.plugins.SessionPlugins;
 import top.focess.veto.model.SessionEntity;
 import top.focess.veto.session.SessionHistoryLoader;
 import top.focess.veto.session.SessionRecordService;
 import top.focess.veto.session.SessionService;
 import top.focess.veto.session.SessionService.SessionConfig;
 import top.focess.veto.vault.KeysteadVault;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
 
 /**
  * REST facade over {@link SessionService} for remote UIs (veto-ui).
@@ -43,6 +47,13 @@ public class SessionController {
     private final @NonNull SessionHistoryLoader historyLoader;
     private final @NonNull SessionRecordService recordService;
     private final @NonNull SessionAgentRegistry agentRegistry;
+    private SessionPlugins sessionPlugins;
+
+    /** Binds plugin availability reporting after session services are constructed. */
+    @Autowired
+    public void bindSessionPlugins(@NonNull SessionPlugins plugins) {
+        sessionPlugins = plugins;
+    }
 
     /** Creates the controller with session, vault, history, record, and agent-registry services. */
     public SessionController(
@@ -184,6 +195,16 @@ public class SessionController {
             @PathVariable @NonNull String name) {
         SessionConfig cfg = requireOwnedSession(name);
         return agentRegistry.records(UUID.fromString(cfg.sessionId()));
+    }
+
+    /** Shows preserved plugin pins, including packages missing after a backend restart. */
+    @GetMapping("/{name}/plugins")
+    public @NonNull List<SessionPlugins.BoundPluginStatus> plugins(
+            @PathVariable @NonNull String name) {
+        SessionConfig cfg = requireOwnedSession(name);
+        var selected = sessionPlugins;
+        if (selected == null) throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE);
+        return selected.status(cfg.sessionId());
     }
 
     private @NonNull SessionConfig requireOwnedSession(@NonNull String name) {

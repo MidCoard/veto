@@ -7,24 +7,61 @@ import com.fasterxml.jackson.databind.node.TextNode;
 import java.lang.reflect.AnnotatedArrayType;
 import java.lang.reflect.AnnotatedParameterizedType;
 import java.lang.reflect.AnnotatedType;
+import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.RecordComponent;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.agent.tool.RequiredWhen;
+import top.focess.veto.api.agent.tool.StringConstraint;
 import top.focess.veto.api.agent.tool.ToolErrorCode;
 import top.focess.veto.api.agent.tool.ToolExecutionException;
 import top.focess.veto.api.agent.tool.ToolInputSchema;
 import top.focess.veto.api.agent.tool.ToolResultFormat;
 import top.focess.veto.api.agent.tool.ToolResultStatus;
+import top.focess.veto.api.agent.tool.UniqueBy;
 
 /** Validates native-tool arguments against the same record schema advertised to the model. */
 public final class NativeToolArgumentValidator {
+
+    private static final @NonNull ClassValue<@NonNull CompiledArguments> COMPILED =
+            new ClassValue<>() {
+                @Override
+                protected @NonNull CompiledArguments computeValue(@NonNull Class<?> type) {
+                    return new CompiledArguments(
+                            ToolSchemaCompiler.compiledSchema(type),
+                            recordRules(type),
+                            !type.isAnnotationPresent(ToolInputSchema.class));
+                }
+            };
+
+    private record CompiledArguments(
+            @NonNull JsonNode schema,
+            @NonNull List<@NonNull FieldRule> fields,
+            boolean javaNulls) {}
+
+    private record FieldRule(
+            @NonNull String name,
+            @NonNull ValueRule value,
+            RequiredRule required,
+            StringRule string,
+            UniqueRule unique) {}
+
+    private record StringRule(
+            boolean rejectBlank, @NonNull List<@NonNull String> forbidden, boolean ignoreCase) {}
+
+    private record UniqueRule(@NonNull String field, boolean ignoreCase, boolean strip) {}
+
+    private record RequiredRule(
+            @NonNull String field, @NonNull List<@NonNull String> values, boolean rejectBlank) {}
+
+    private record ValueRule(boolean nonNull, List<@NonNull FieldRule> fields, ValueRule element) {}
 
     private NativeToolArgumentValidator() {}
 
@@ -45,16 +82,11 @@ public final class NativeToolArgumentValidator {
             @NonNull JsonNode arguments,
             @NonNull Class<?> argsClass,
             @NonNull Set<String> deferredPaths) {
-        JsonNode schema = ToolSchemaCompiler.compileFromRecord(argsClass);
+        var compiled = COMPILED.get(argsClass);
+        JsonNode schema = compiled.schema();
         List<String> issues = new ArrayList<>();
-        validateNode(
-                arguments,
-                schema,
-                "",
-                issues,
-                !argsClass.isAnnotationPresent(ToolInputSchema.class),
-                deferredPaths);
-        validateConditionalRequirements(arguments, argsClass, "", issues);
+        validateNode(arguments, schema, "", issues, compiled.javaNulls(), deferredPaths);
+        validateRecordRules(arguments, compiled.fields(), "", issues);
         throwIfInvalid(toolName, schema, issues);
     }
 
@@ -150,33 +182,97 @@ public final class NativeToolArgumentValidator {
         }
     }
 
-    private static void validateConditionalRequirements(
+    private static @NonNull List<@NonNull FieldRule> recordRules(@NonNull Class<?> recordClass) {
+        if (!recordClass.isRecord()) return List.of();
+        List<FieldRule> fields = new ArrayList<>();
+        for (RecordComponent component : recordClass.getRecordComponents()) {
+            RequiredWhen conditional = component.getAnnotation(RequiredWhen.class);
+            RequiredRule required =
+                    conditional == null
+                            ? null
+                            : new RequiredRule(
+                                    conditional.field(),
+                                    List.of(conditional.values()),
+                                    conditional.rejectBlank());
+            StringConstraint text = component.getAnnotation(StringConstraint.class);
+            StringRule string =
+                    text == null
+                            ? null
+                            : new StringRule(
+                                    text.rejectBlank(),
+                                    List.of(text.forbidden()),
+                                    text.forbiddenIgnoreCase());
+            UniqueBy uniqueBy = component.getAnnotation(UniqueBy.class);
+            UniqueRule unique =
+                    uniqueBy == null
+                            ? null
+                            : new UniqueRule(
+                                    uniqueBy.field(), uniqueBy.ignoreCase(), uniqueBy.strip());
+            if (unique != null) {
+                if (!(component.getGenericType() instanceof ParameterizedType collection)
+                        || !(collection.getRawType() instanceof Class<?> raw)
+                        || !java.util.Collection.class.isAssignableFrom(raw)
+                        || !(collection.getActualTypeArguments()[0] instanceof Class<?> element)
+                        || !element.isRecord())
+                    throw new IllegalArgumentException(
+                            "@UniqueBy requires a collection of records: " + component.getName());
+                boolean found = false;
+                for (RecordComponent member : element.getRecordComponents())
+                    if (member.getName().equals(unique.field()) && member.getType() == String.class)
+                        found = true;
+                if (!found)
+                    throw new IllegalArgumentException(
+                            "@UniqueBy requires a string field '" + unique.field() + "'");
+            }
+            fields.add(
+                    new FieldRule(
+                            component.getName(),
+                            valueRule(component.getAnnotatedType()),
+                            required,
+                            string,
+                            unique));
+        }
+        return List.copyOf(fields);
+    }
+
+    private static @NonNull ValueRule valueRule(@NonNull AnnotatedType type) {
+        List<FieldRule> fields = null;
+        ValueRule element = null;
+        if (type.getType() instanceof Class<?> concrete && concrete.isRecord()) {
+            fields = recordRules(concrete);
+        } else if (type instanceof AnnotatedArrayType array) {
+            element = valueRule(array.getAnnotatedGenericComponentType());
+        } else if (type instanceof AnnotatedParameterizedType parameterized
+                && type.getType() instanceof ParameterizedType generic
+                && generic.getRawType() instanceof Class<?> raw
+                && java.util.Collection.class.isAssignableFrom(raw)) {
+            element = valueRule(parameterized.getAnnotatedActualTypeArguments()[0]);
+        }
+        return new ValueRule(type.isAnnotationPresent(NonNull.class), fields, element);
+    }
+
+    private static void validateRecordRules(
             @NonNull JsonNode arguments,
-            @NonNull Class<?> argsClass,
+            @NonNull List<@NonNull FieldRule> fields,
             @NonNull String path,
             @NonNull List<String> issues) {
-        if (!arguments.isObject()) {
-            return;
-        }
-        for (RecordComponent component : argsClass.getRecordComponents()) {
-            JsonNode nestedValue = arguments.get(component.getName());
+        if (!arguments.isObject()) return;
+        for (FieldRule field : fields) {
+            JsonNode nestedValue = arguments.get(field.name());
             if (nestedValue != null) {
                 validateAnnotatedValue(
-                        nestedValue,
-                        component.getAnnotatedType(),
-                        childPath(path, component.getName()),
-                        issues);
+                        nestedValue, field.value(), childPath(path, field.name()), issues);
+                validateStringRule(
+                        nestedValue, field.string(), childPath(path, field.name()), issues);
+                validateUniqueRule(
+                        nestedValue, field.unique(), childPath(path, field.name()), issues);
             }
-            RequiredWhen requiredWhen = component.getAnnotation(RequiredWhen.class);
-            if (requiredWhen == null) {
-                continue;
-            }
+            RequiredRule requiredWhen = field.required();
+            if (requiredWhen == null) continue;
             JsonNode discriminator = arguments.get(requiredWhen.field());
-            if (!matchesAny(discriminator, requiredWhen.values())) {
-                continue;
-            }
-            JsonNode value = arguments.get(component.getName());
-            String componentPath = childPath(path, component.getName());
+            if (!matchesAny(discriminator, requiredWhen.values())) continue;
+            JsonNode value = arguments.get(field.name());
+            String componentPath = childPath(path, field.name());
             String condition =
                     " when '"
                             + childPath(path, requiredWhen.field())
@@ -193,35 +289,71 @@ public final class NativeToolArgumentValidator {
         }
     }
 
-    private static void validateAnnotatedValue(
+    private static void validateStringRule(
             @NonNull JsonNode value,
-            @NonNull AnnotatedType type,
+            StringRule rule,
             @NonNull String path,
             @NonNull List<String> issues) {
-        if (value.isNull()) {
-            if (type.isAnnotationPresent(NonNull.class)) {
-                issues.add("parameter '" + path + "' must not be null");
-            }
-            return;
-        }
-        if (type.getType() instanceof Class<?> recordClass && recordClass.isRecord()) {
-            validateConditionalRequirements(value, recordClass, path, issues);
-        } else if (value.isArray()) {
-            AnnotatedType elementType = null;
-            if (type instanceof AnnotatedArrayType array) {
-                elementType = array.getAnnotatedGenericComponentType();
-            } else if (type instanceof AnnotatedParameterizedType collection) {
-                elementType = collection.getAnnotatedActualTypeArguments()[0];
-            }
-            if (elementType != null) {
-                for (int i = 0; i < value.size(); i++) {
-                    validateAnnotatedValue(value.get(i), elementType, path + "[" + i + "]", issues);
-                }
+        if (rule == null || !value.isTextual()) return;
+        String text = value.asText();
+        if (rule.rejectBlank() && text.isBlank())
+            issues.add("parameter '" + path + "' must not be blank");
+        for (String forbidden : rule.forbidden()) {
+            String candidate = text.strip();
+            if (rule.ignoreCase()
+                    ? forbidden.equalsIgnoreCase(candidate)
+                    : forbidden.equals(candidate)) {
+                issues.add("parameter '" + path + "' uses a reserved value");
+                break;
             }
         }
     }
 
-    private static boolean matchesAny(JsonNode actual, String @NonNull [] expectedValues) {
+    private static void validateUniqueRule(
+            @NonNull JsonNode value,
+            UniqueRule rule,
+            @NonNull String path,
+            @NonNull List<String> issues) {
+        if (rule == null || !value.isArray()) return;
+        Set<String> seen = new LinkedHashSet<>();
+        for (int index = 0; index < value.size(); index++) {
+            JsonNode entry = value.path(index);
+            JsonNode key = entry.path(rule.field());
+            if (!key.isTextual()) continue;
+            String normalized = key.asText();
+            if (rule.strip()) normalized = normalized.strip();
+            if (rule.ignoreCase()) normalized = normalized.toLowerCase(Locale.ROOT);
+            if (!seen.add(normalized))
+                issues.add(
+                        "parameter '"
+                                + path
+                                + "' contains duplicate '"
+                                + rule.field()
+                                + "' values");
+        }
+    }
+
+    private static void validateAnnotatedValue(
+            @NonNull JsonNode value,
+            @NonNull ValueRule rule,
+            @NonNull String path,
+            @NonNull List<String> issues) {
+        if (value.isNull()) {
+            if (rule.nonNull()) {
+                issues.add("parameter '" + path + "' must not be null");
+            }
+            return;
+        }
+        if (rule.fields() != null && value.isObject()) {
+            validateRecordRules(value, rule.fields(), path, issues);
+        } else if (rule.element() != null && value.isArray()) {
+            for (int i = 0; i < value.size(); i++)
+                validateAnnotatedValue(value.get(i), rule.element(), path + "[" + i + "]", issues);
+        }
+    }
+
+    private static boolean matchesAny(
+            JsonNode actual, @NonNull List<@NonNull String> expectedValues) {
         if (actual == null || actual.isNull() || !actual.isValueNode()) {
             return false;
         }

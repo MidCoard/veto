@@ -18,9 +18,10 @@ import top.focess.veto.builtin.tools.ReadGitHubRepositoryTool;
 class GitHubToolTest {
     @Test
     void boundedFixedRequestFiltersDecodedCredentialAndClosesLease() throws Exception {
-        @NonNull HttpClient client = mock();
-        @NonNull HttpResponse<byte[]> response = mock();
-        @NonNull NetworkEgressCapability capability = mock();
+        var client = mock(HttpClient.class);
+        @SuppressWarnings("unchecked")
+        HttpResponse<byte[]> response = mock(HttpResponse.class);
+        var capability = mock(NetworkEgressCapability.class);
         boolean[] closed = {false};
         when(capability.openImportedCredential("credentialRef", "github"))
                 .thenReturn(

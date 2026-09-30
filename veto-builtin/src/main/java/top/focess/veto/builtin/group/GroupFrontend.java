@@ -41,7 +41,7 @@ public final class GroupFrontend extends FrontendContribution {
      */
     @SuppressWarnings("RedundantTypeArguments")
     public @NonNull JsonValue handle(
-            FrontendContribution.@NonNull Scope scope,
+            FrontendContribution.@NonNull ActionContext scope,
             @NonNull String action,
             JsonValue.@NonNull ObjectValue args)
             throws PluginFailure {

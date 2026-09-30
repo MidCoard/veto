@@ -11,6 +11,7 @@ import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.Objects;
 import java.util.concurrent.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -197,8 +198,11 @@ public class LlamaCppBridge {
                                         .POST(HttpRequest.BodyPublishers.ofString(requestBody))
                                         .build();
 
-                        HttpResponse<String> response =
-                                httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+                        var response =
+                                Objects.requireNonNull(
+                                        httpClient.send(
+                                                request, HttpResponse.BodyHandlers.ofString()),
+                                        "HttpClient.send returned null");
 
                         if (response.statusCode() == 200) {
                             return extractContentFromResponse(response.body());
@@ -367,8 +371,10 @@ public class LlamaCppBridge {
                             .timeout(Duration.ofMillis(500))
                             .GET()
                             .build();
-            HttpResponse<Void> response =
-                    httpClient.send(request, HttpResponse.BodyHandlers.discarding());
+            var response =
+                    Objects.requireNonNull(
+                            httpClient.send(request, HttpResponse.BodyHandlers.discarding()),
+                            "HttpClient.send returned null");
             if (response.statusCode() == 200) {
                 readiness.complete(null);
             }

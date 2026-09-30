@@ -17,7 +17,7 @@ import top.focess.veto.builtin.planning.Check;
 import top.focess.veto.builtin.planning.ConditionalGotoAction;
 import top.focess.veto.builtin.planning.GenerateAction;
 import top.focess.veto.builtin.planning.ProgramValidator;
-import top.focess.veto.builtin.planning.Scope;
+import top.focess.veto.builtin.planning.PlanVariables;
 import top.focess.veto.builtin.planning.StopAction;
 import top.focess.veto.util.Nullness;
 
@@ -117,7 +117,7 @@ class ProgramValidatorTest {
         assertDoesNotThrow(() -> ProgramValidator.validateInputs(program));
         var stop = (StopAction) program.actions().getLast();
         assertEquals("answer", stop.resultBinding());
-        Scope scope = new Scope(mapper);
+        PlanVariables scope = new PlanVariables(mapper);
         scope.put("answer", "Hello.");
         assertEquals(
                 "Hello.", scope.opt(Nullness.requireNonNull(stop.resultBinding())).orElseThrow());

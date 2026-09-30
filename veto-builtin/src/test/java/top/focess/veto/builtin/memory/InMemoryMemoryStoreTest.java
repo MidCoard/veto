@@ -30,10 +30,8 @@ class InMemoryMemoryStoreTest {
 
     @Test
     void addAndSearch() {
-        @NonNull MemoryId id =
-                store.add(buildMemory("the quick brown fox", MemoryTier.CROSS_SESSION));
-        @NonNull List<ScoredMemory> results =
-                store.search(MemoryQuery.crossSession("quick fox", alice));
+        var id = store.add(buildMemory("the quick brown fox", MemoryTier.CROSS_SESSION));
+        var results = store.search(MemoryQuery.crossSession("quick fox", alice));
         assertEquals(1, results.size());
         assertEquals(id, requireValue(results.get(0), "expected search result").memory().id());
     }
@@ -41,10 +39,8 @@ class InMemoryMemoryStoreTest {
     @Test
     void tenantIsolation() {
         store.add(buildMemory("alice's private insight", MemoryTier.CROSS_SESSION));
-        @NonNull List<ScoredMemory> aliceResults =
-                store.search(MemoryQuery.crossSession("alice insight", alice));
-        @NonNull List<ScoredMemory> bobResults =
-                store.search(MemoryQuery.crossSession("alice insight", bob));
+        var aliceResults = store.search(MemoryQuery.crossSession("alice insight", alice));
+        var bobResults = store.search(MemoryQuery.crossSession("alice insight", bob));
         assertEquals(1, aliceResults.size());
         assertEquals(0, bobResults.size(), "Bob must not see Alice's memories");
     }
@@ -53,7 +49,7 @@ class InMemoryMemoryStoreTest {
     void scoreFloorFiltersLowSimilarity() {
         store.add(
                 buildMemory("completely different text about gardening", MemoryTier.CROSS_SESSION));
-        @NonNull List<ScoredMemory> results =
+        var results =
                 store.search(
                         new MemoryQuery(
                                 "fox jumping over dog",
@@ -71,7 +67,7 @@ class InMemoryMemoryStoreTest {
         for (int i = 0; i < 10; i++) {
             store.add(buildMemory("fox " + i, MemoryTier.CROSS_SESSION));
         }
-        @NonNull List<ScoredMemory> results =
+        var results =
                 store.search(
                         new MemoryQuery(
                                 "fox",
@@ -86,14 +82,13 @@ class InMemoryMemoryStoreTest {
 
     @Test
     void promoteStripsSessionId() {
-        @NonNull MemoryId id =
-                store.add(buildMemory("a session-private insight", MemoryTier.SESSION));
+        var id = store.add(buildMemory("a session-private insight", MemoryTier.SESSION));
         MemoryId promotedId = store.promote(id, alice);
         assertTrue(promotedId != null);
         assertEquals(1, store.size(), "After promote, exactly one memory remains");
         // Verify the surviving memory is CROSS_SESSION tier with sessionId stripped.
         for (Memory candidate : requireSnapshot(store.snapshot()).values()) {
-            @NonNull Memory m = requireValue(candidate, "snapshot must not contain null memory");
+            var m = requireValue(candidate, "snapshot must not contain null memory");
             assertEquals(MemoryTier.CROSS_SESSION, m.tier());
             assertNull(m.sessionId());
         }
@@ -101,7 +96,7 @@ class InMemoryMemoryStoreTest {
 
     @Test
     void forgetRemovesMemory() {
-        @NonNull MemoryId id = store.add(buildMemory("to be forgotten", MemoryTier.CROSS_SESSION));
+        var id = store.add(buildMemory("to be forgotten", MemoryTier.CROSS_SESSION));
         assertEquals(1, store.size());
         assertTrue(store.forget(id, alice));
         assertEquals(0, store.size());
@@ -109,7 +104,7 @@ class InMemoryMemoryStoreTest {
 
     @Test
     void anotherUserCannotPromoteMemory() {
-        @NonNull MemoryId id = store.add(buildMemory("alice session insight", MemoryTier.SESSION));
+        var id = store.add(buildMemory("alice session insight", MemoryTier.SESSION));
 
         assertNull(store.promote(id, bob));
         Memory memory = requireSnapshot(store.snapshot()).get(id);
@@ -122,8 +117,7 @@ class InMemoryMemoryStoreTest {
 
     @Test
     void anotherUserCannotForgetMemory() {
-        @NonNull MemoryId id =
-                store.add(buildMemory("alice private insight", MemoryTier.CROSS_SESSION));
+        var id = store.add(buildMemory("alice private insight", MemoryTier.CROSS_SESSION));
 
         assertFalse(store.forget(id, bob));
         assertEquals(1, store.size());
@@ -133,7 +127,7 @@ class InMemoryMemoryStoreTest {
     @Test
     void identicalTextsScoreHigh() {
         store.add(buildMemory("foo bar baz", MemoryTier.CROSS_SESSION));
-        @NonNull List<ScoredMemory> results =
+        var results =
                 store.search(
                         new MemoryQuery(
                                 "foo bar baz",

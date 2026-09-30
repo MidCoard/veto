@@ -24,7 +24,9 @@ public abstract class FrontendContribution {
      * @throws PluginFailure when the action cannot be completed
      */
     public abstract @NonNull JsonValue handle(
-            @NonNull Scope scope, @NonNull String action, JsonValue.@NonNull ObjectValue arguments)
+            @NonNull ActionContext scope,
+            @NonNull String action,
+            JsonValue.@NonNull ObjectValue arguments)
             throws PluginFailure;
 
     /**
@@ -43,7 +45,7 @@ public abstract class FrontendContribution {
      * @param sessionId selected session identity
      * @param agentId calling agent identity
      */
-    public record Scope(
+    public record ActionContext(
             @NonNull String ownerId, @NonNull String sessionId, @NonNull String agentId) {}
 
     /** Functional action callback used by host action dispatch. */
@@ -59,7 +61,7 @@ public abstract class FrontendContribution {
          * @throws PluginFailure when the action cannot be completed
          */
         @NonNull JsonValue handle(
-                @NonNull Scope scope,
+                @NonNull ActionContext scope,
                 @NonNull String action,
                 JsonValue.@NonNull ObjectValue arguments)
                 throws PluginFailure;

@@ -46,7 +46,12 @@ public interface PluginHost {
             @NonNull String sessionId,
             @NonNull String agentId,
             String requestId,
-            @NonNull String callId) {}
+            @NonNull String callId) {
+        /** Returns the authenticated owner, session, and agent as one scope. */
+        public Scope.@NonNull AgentScope scope() {
+            return new Scope.AgentScope(owner, sessionId, agentId);
+        }
+    }
 
     /**
      * Returns host-derived invocation facts for a live authorized call of {@code tool}; claimed
@@ -66,6 +71,11 @@ public interface PluginHost {
      */
     void wake(@NonNull String owner, @NonNull String sessionId, @NonNull String agentId);
 
+    /** Wakes an agent identified by one scope value; host admission is still checked. */
+    default void wake(Scope.@NonNull AgentScope scope) {
+        wake(scope.owner(), scope.session(), scope.agent());
+    }
+
     /**
      * Publishes plugin facts only to an authorized, currently selected session.
      *
@@ -80,6 +90,14 @@ public interface PluginHost {
         throw new IllegalStateException("Plugin event publication is unavailable");
     }
 
+    /** Publishes to the session identified by one scope value. */
+    default void publish(
+            Scope.@NonNull SessionScope scope,
+            @NonNull String topic,
+            JsonValue.@NonNull ObjectValue facts) {
+        publish(scope.session(), topic, facts);
+    }
+
     /**
      * Invalidates a plugin-owned resource for an authorized session.
      *
@@ -87,4 +105,9 @@ public interface PluginHost {
      * @param resource plugin-defined resource identifier
      */
     void invalidate(@NonNull String sessionId, @NonNull String resource);
+
+    /** Invalidates a resource in the session identified by one scope value. */
+    default void invalidate(Scope.@NonNull SessionScope scope, @NonNull String resource) {
+        invalidate(scope.session(), resource);
+    }
 }

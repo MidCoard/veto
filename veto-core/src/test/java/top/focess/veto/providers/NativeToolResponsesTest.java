@@ -282,7 +282,7 @@ class NativeToolResponsesTest {
     @Test
     void trustedAdapterStateIsAttachedAfterParsingWithoutChangingArguments() {
         var state = new NativeToolState("GEMINI", 1, "test", "batch", "signed", 0);
-        @NonNull AuditLogger logger = mock();
+        AuditLogger logger = mock(AuditLogger.class);
         var provider =
                 new AbstractLlmProvider(mapper, logger) {
                     @Override

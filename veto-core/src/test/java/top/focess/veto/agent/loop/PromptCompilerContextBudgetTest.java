@@ -131,7 +131,7 @@ class PromptCompilerContextBudgetTest {
 
     @Test
     void isolatedReaderReservesModelOutputAndKeepsItsConfiguredCeiling() {
-        @NonNull CapabilityTranslator translator = mock();
+        CapabilityTranslator translator = mock(CapabilityTranslator.class);
         var compiler = PromptCompiler.isolated(translator, mapper, "Reader rules", 20000);
         var messages =
                 List.of(ChatMessage.system("Reader rules"), ChatMessage.user("读取".repeat(400)));

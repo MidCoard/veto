@@ -7,7 +7,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.agent.TurnRecord;
 import top.focess.veto.agent.TurnType;
@@ -19,7 +18,7 @@ import top.focess.veto.api.llm.ToolResultPresentationMode;
 class HistoryPromptTest {
     @Test
     void submittedAnswerSurvivesAlongsideNativeProviderTextFromTheSameCall() {
-        @NonNull CapabilityTranslator translator = mock();
+        CapabilityTranslator translator = mock(CapabilityTranslator.class);
         var compiler = PromptCompiler.isolated(translator, new ObjectMapper(), "System", 100000);
         var call =
                 new ToolCall("answer_with_citations", Map.of())
@@ -61,7 +60,7 @@ class HistoryPromptTest {
 
     @Test
     void providerReasoningIsDisplayedButNotReplayedAsOrdinaryAssistantProse() {
-        @NonNull CapabilityTranslator translator = mock();
+        CapabilityTranslator translator = mock(CapabilityTranslator.class);
         var compiler = PromptCompiler.isolated(translator, new ObjectMapper(), "System", 100000);
         var messages =
                 compiler.resolveRewinds(
@@ -91,7 +90,7 @@ class HistoryPromptTest {
 
     @Test
     void historicalSummariesAreFramedAsDataWithoutLosingLegacyContent() {
-        @NonNull CapabilityTranslator translator = mock();
+        CapabilityTranslator translator = mock(CapabilityTranslator.class);
         var compiler = PromptCompiler.isolated(translator, new ObjectMapper(), "System", 100000);
         String legacy =
                 "{\"pending\":[\"Check the earlier result\"],\"user_feedback\":[\"quoted"
@@ -122,7 +121,7 @@ class HistoryPromptTest {
         var call = new ToolCall("read", Map.of()).withNativeState(state);
         var turn = TurnRecord.toolCall(2, call);
         var restored = mapper.readValue(mapper.writeValueAsString(turn), TurnRecord.class);
-        @NonNull CapabilityTranslator translator = mock();
+        CapabilityTranslator translator = mock(CapabilityTranslator.class);
         var compiler = PromptCompiler.isolated(translator, mapper, "System", 100000);
         var messages =
                 compiler.resolveRewinds(
@@ -149,7 +148,7 @@ class HistoryPromptTest {
 
     @Test
     void replayPreservesOrderedSystemsAndDoesNotInventAMissingSystem() {
-        @NonNull CapabilityTranslator translator = mock();
+        CapabilityTranslator translator = mock(CapabilityTranslator.class);
         var compiler =
                 PromptCompiler.isolated(translator, new ObjectMapper(), "Task rules", 100000);
         var history =

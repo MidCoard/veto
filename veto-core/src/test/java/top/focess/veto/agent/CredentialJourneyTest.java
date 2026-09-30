@@ -54,6 +54,7 @@ class CredentialJourneyTest {
 
     @ParameterizedTest
     @CsvSource({"false,true", "true,true", "false,false", "true,false"})
+    @SuppressWarnings("unchecked") // Mockito's class-token overload cannot retain byte[].
     void fileImportAndAuthenticatedReadKeepSecretsOutOfModelAndHistory(
             boolean usePlan, boolean approveUse, @TempDir @NonNull Path directory)
             throws Exception {
@@ -89,8 +90,8 @@ class CredentialJourneyTest {
                                                         PluginTestSupport.providerOf(null)))),
                         pluginConfiguration);
         var sessionPlugins = PluginTestSupport.sessionPlugins(plugins);
-        @NonNull HttpClient client = mock();
-        @NonNull HttpResponse<byte[]> response = mock();
+        HttpClient client = mock(HttpClient.class);
+        HttpResponse<byte[]> response = (HttpResponse<byte[]>) mock(HttpResponse.class);
         when(response.statusCode()).thenReturn(200);
         when(response.body())
                 .thenReturn(
@@ -112,7 +113,7 @@ class CredentialJourneyTest {
                             return response;
                         });
         var network = new NetworkEgressCapabilityImpl(15, 1000000, false);
-        @NonNull SessionRepository credentialSessions = mock();
+        SessionRepository credentialSessions = mock(SessionRepository.class);
         network.attachCredentials(
                 new ImportedCredentialLeases(
                         vault,

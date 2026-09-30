@@ -3,8 +3,8 @@ package top.focess.veto.builtin.planning;
 import org.jspecify.annotations.NonNull;
 
 /**
- * Branch on a programmatic {@link Check} over {@link Scope} vars ( {@code conditional_goto}). Zero
- * model calls.
+ * Branch on a programmatic {@link Check} over {@link PlanVariables} vars ( {@code
+ * conditional_goto}). Zero model calls.
  */
 public record ConditionalGotoAction(
         @NonNull String id,

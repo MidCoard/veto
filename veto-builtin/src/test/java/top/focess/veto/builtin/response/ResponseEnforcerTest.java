@@ -7,7 +7,6 @@ import static org.mockito.Mockito.*;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.api.agent.control.ControlHost;
 import top.focess.veto.api.agent.tool.ToolExecutionException;
@@ -89,7 +88,7 @@ class ResponseEnforcerTest {
 
     @Test
     void malformedAnswerIsRejectedBeforeAmbiguousSourcesAreInspected() {
-        @NonNull ControlHost host = mock();
+        var host = mock(ControlHost.class);
         var tool = new AnswerWithCitationsTool(host);
         var args =
                 new AnswerWithCitationsTool.Args(

@@ -32,7 +32,7 @@ public interface PlanExecution {
 
     @NonNull ModelFlow accepted(@NonNull ActionsProgram program);
 
-    @NonNull Scope scope();
+    @NonNull PlanVariables scope();
 
     boolean active();
 

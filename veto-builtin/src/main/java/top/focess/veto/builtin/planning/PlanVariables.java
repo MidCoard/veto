@@ -16,30 +16,30 @@ import top.focess.veto.api.agent.tool.ToolResult;
 import top.focess.veto.api.llm.VetoResponse;
 
 /**
- * The engine-internal Scope — a derived projection of action outputs, auto-populated by the harness
- * . The model never reads/writes the Scope directly (it reads prior results from the conversation);
- * the engine consumes it for programmatic checks, transitions, and escape.
+ * The engine-internal PlanVariables — a derived projection of action outputs, auto-populated by the
+ * harness . The model never reads/writes the PlanVariables directly (it reads prior results from
+ * the conversation); the engine consumes it for programmatic checks, transitions, and escape.
  *
  * <p>Lexically scoped: program-global by default; a child scope reads through to its parent.
  * Missing keys are values, not errors — reading an unset slot returns the {@link #UNDEFINED}
  * sentinel so {@code empty:}/{@code equals: undefined} checks branch on it.
  */
-public class Scope {
+public class PlanVariables {
 
     /** Sentinel for unset slots — a value, not an error (checks branch on it). */
     public static final @NonNull Object UNDEFINED = new Object();
 
     private final @NonNull Map<String, Object> bindings = new LinkedHashMap<>();
-    private final Scope parent;
+    private final PlanVariables parent;
     private final @NonNull ObjectMapper objectMapper;
 
     /** Creates a root scope. */
-    public Scope(@NonNull ObjectMapper objectMapper) {
+    public PlanVariables(@NonNull ObjectMapper objectMapper) {
         this(objectMapper, null);
     }
 
     /** Creates a scope reading through to the given parent. */
-    public Scope(@NonNull ObjectMapper objectMapper, Scope parent) {
+    public PlanVariables(@NonNull ObjectMapper objectMapper, PlanVariables parent) {
         this.objectMapper = objectMapper;
         this.parent = parent;
     }
@@ -72,8 +72,8 @@ public class Scope {
     }
 
     /** Creates a nested scope that reads through to this one. */
-    public @NonNull Scope child() {
-        return new Scope(objectMapper, this);
+    public @NonNull PlanVariables child() {
+        return new PlanVariables(objectMapper, this);
     }
 
     /**

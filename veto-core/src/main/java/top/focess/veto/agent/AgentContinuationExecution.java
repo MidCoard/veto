@@ -267,9 +267,9 @@ final class AgentContinuationExecution {
         return selected == null ? null : selected.workSource(runtime.sessionId.toString());
     }
 
-    AgentInbox.@NonNull Scope scope() {
+    AgentInbox.@NonNull InboxContext scope() {
         RequestHandle handle = runtime.control.request();
-        return new AgentInbox.Scope(
+        return new AgentInbox.InboxContext(
                 runtime.sessionId.toString(),
                 runtime.agentId,
                 handle == null ? null : handle.episode.id());

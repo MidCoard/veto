@@ -20,7 +20,7 @@ public enum PluginState {
      * Initialization intentionally declined; cleanup completed without publishing contributions.
      */
     DECLINED,
-    /** Operator disabled the installed package before its entry class was loaded. */
+    /** Operator disabled the installed package; re-enable constructs a fresh entry instance. */
     DISABLED,
     /** A lifecycle callback failed; the host still attempts cleanup. */
     FAILED

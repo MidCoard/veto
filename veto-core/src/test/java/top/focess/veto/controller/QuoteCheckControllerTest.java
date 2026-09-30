@@ -4,7 +4,6 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 import java.util.Optional;
-import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
@@ -15,9 +14,9 @@ import top.focess.veto.vault.KeysteadVault;
 class QuoteCheckControllerTest {
     @Test
     void doesNotSearchWithoutAuthenticationOrSessionOwnership() {
-        @NonNull SessionService sessions = mock();
-        @NonNull KeysteadVault vault = mock();
-        @NonNull QuoteCheckService quotes = mock();
+        SessionService sessions = mock(SessionService.class);
+        KeysteadVault vault = mock(KeysteadVault.class);
+        QuoteCheckService quotes = mock(QuoteCheckService.class);
         var controller = new QuoteCheckController(sessions, vault, quotes);
         try {
             var body = new QuoteCheckController.Request("> quote");

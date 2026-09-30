@@ -15,10 +15,13 @@ import top.focess.veto.api.llm.VetoResponse;
 /** One accepted program, its bindings and provenance. Uses the runner's normal tool/model path. */
 public final class PlanProgram implements PlanExecution {
     private record GeneratedCitation(
-            @NonNull Scope scope, @NonNull String message, Source bound, String modelCallId) {}
+            @NonNull PlanVariables scope,
+            @NonNull String message,
+            Source bound,
+            String modelCallId) {}
 
     private final @NonNull ObjectMapper objectMapper;
-    private @NonNull Scope scope;
+    private @NonNull PlanVariables scope;
     private ActionsProgram activeProgram;
     private int programCounter;
     private int currentSteps;
@@ -44,7 +47,7 @@ public final class PlanProgram implements PlanExecution {
         this.answerTool = answerTool;
         maxPlanSteps = configuration.maxSteps();
         objectMapper = mapper;
-        scope = new Scope(mapper);
+        scope = new PlanVariables(mapper);
     }
 
     @Override
@@ -115,7 +118,7 @@ public final class PlanProgram implements PlanExecution {
     }
 
     /** Returns the current binding scope. */
-    public @NonNull Scope scope() {
+    public @NonNull PlanVariables scope() {
         return scope;
     }
 
@@ -128,7 +131,7 @@ public final class PlanProgram implements PlanExecution {
         activeProgram = null;
         programCounter = 0;
         currentSteps = 0;
-        scope = new Scope(objectMapper);
+        scope = new PlanVariables(objectMapper);
         planSources.clear();
         generatedCitations.clear();
         programModelCallId = null;
@@ -140,14 +143,14 @@ public final class PlanProgram implements PlanExecution {
         runtime.escaped(
                 "Plan mode exited: "
                         + reason
-                        + ". Scope preserved with "
+                        + ". PlanVariables preserved with "
                         + scope.size()
                         + " bindings.");
     }
 
     /** Installs a freshly accepted program, clearing prior scope and provenance. */
     public void install(@NonNull ActionsProgram program, String modelCallId) {
-        scope = new Scope(objectMapper);
+        scope = new PlanVariables(objectMapper);
         generatedCitations.clear();
         planSources.clear();
         activeProgram = program;

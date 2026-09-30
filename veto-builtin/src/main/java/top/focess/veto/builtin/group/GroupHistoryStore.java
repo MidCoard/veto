@@ -1,5 +1,7 @@
 package top.focess.veto.builtin.group;
 
+import top.focess.veto.api.plugin.PluginScope;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
@@ -43,7 +45,7 @@ public final class GroupHistoryStore {
         if (cached != null) return storage.session(cached);
         String cursor = null;
         do {
-            var page = storage.scopes(PluginStorage.Kind.SESSION, cursor, 200);
+            var page = storage.scopes(PluginScope.SESSION, cursor, 200);
             for (var scope : page.entries())
                 if (scope instanceof PluginStorage.SessionScope session
                         && session.sessionId().equals(id)) {

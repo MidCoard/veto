@@ -1,9 +1,9 @@
 package top.focess.veto.api.plugin;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.util.Collections;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.plugin.contribution.Contribution;
@@ -22,26 +22,32 @@ public final class PluginContext {
     private final @NonNull Runnable failureReporter;
     private final @NonNull Supplier<@NonNull PluginState> stateReader;
     private final @NonNull Map<@NonNull Class<?>, @NonNull Object> hostServices;
-    private final @NonNull List<@NonNull Contribution<?>> registrations = new ArrayList<>();
-    private boolean registrationsSealed;
+    private final @NonNull
+            Map<@NonNull ContributionPoint<?>, @NonNull Consumer<@NonNull Contribution<?>>>
+            handlers;
 
     /**
-     * Creates a context with an independent construction-time registration window.
+     * Creates a context with explicit handlers for the contribution points this host accepts.
      *
      * @param identity installed plugin identity
      * @param failureReporter callback for asynchronous fatal failures
      * @param stateReader current lifecycle state supplier
      * @param hostServices exact-class host grants
+     * @param handlers live host-owned exact-point registration view; the host may add points at
+     *     runtime, and each dispatch still belongs to this plugin
      */
     public PluginContext(
             @NonNull PluginIdentity identity,
             @NonNull Runnable failureReporter,
             @NonNull Supplier<@NonNull PluginState> stateReader,
-            @NonNull Map<@NonNull Class<?>, @NonNull Object> hostServices) {
+            @NonNull Map<@NonNull Class<?>, @NonNull Object> hostServices,
+            @NonNull Map<@NonNull ContributionPoint<?>, @NonNull Consumer<@NonNull Contribution<?>>>
+                    handlers) {
         this.identity = identity;
         this.failureReporter = failureReporter;
         this.stateReader = stateReader;
         this.hostServices = Map.copyOf(hostServices);
+        this.handlers = Collections.unmodifiableMap(handlers);
     }
 
     /**
@@ -63,29 +69,30 @@ public final class PluginContext {
     }
 
     /**
-     * Stages one complete aspect under a typed contribution point during plugin construction.
-     * Nothing becomes visible until the host validates and publishes the sealed batch.
+     * Delivers one complete aspect to the handler for its exact contribution point. The handler
+     * owns validation, publication, and lifecycle; this context stores no contribution objects.
      *
      * @param point the registration point and its aspect contract
      * @param localId stable plugin-local identity for this aspect
      * @param aspect the complete object to register
      * @param <T> the point's aspect type
      */
-    public synchronized <T> void register(
+    public <T> void register(
             @NonNull ContributionPoint<T> point, @NonNull String localId, @NonNull T aspect) {
-        if (registrationsSealed) throw new IllegalStateException("Plugin registration is closed");
-        registrations.add(Contribution.of(point, localId, aspect));
+        Contribution<T> contribution = Contribution.of(point, localId, aspect);
+        Consumer<Contribution<?>> handler = handlers.get(point);
+        if (handler == null) throw new IllegalArgumentException("Unrecognized contribution point");
+        handler.accept(contribution);
     }
 
     /**
-     * Seals construction-time registrations for host validation and atomic publication.
+     * Returns the live exact-point handler view to preserve registration across lifecycle binding.
      *
-     * @return immutable staged registrations
+     * @return read-only live view of the host-owned handler map
      */
-    public synchronized @NonNull PluginContributions sealRegistrations() {
-        if (registrationsSealed) throw new IllegalStateException("Plugin registration is closed");
-        registrationsSealed = true;
-        return new PluginContributions(List.copyOf(registrations));
+    public @NonNull Map<@NonNull ContributionPoint<?>, @NonNull Consumer<@NonNull Contribution<?>>>
+            handlers() {
+        return handlers;
     }
 
     /**
@@ -158,7 +165,12 @@ public final class PluginContext {
                 .orElseThrow(() -> new IllegalStateException("Plugin storage unavailable"));
     }
 
-    /** Signals an asynchronous fatal plugin failure to the lifecycle owner. */
+    /**
+     * Reports an asynchronous fatal failure to the lifecycle owner. The owner marks this plugin
+     * failed and releases its resources on its control executor. Script plugins use this when the
+     * worker exits unexpectedly or violates its result contract. Ordinary tool errors must be
+     * returned as tool failures instead of calling this method.
+     */
     public void reportFailure() {
         failureReporter.run();
     }

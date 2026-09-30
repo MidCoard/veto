@@ -224,11 +224,11 @@ class VetoApplicationTests {
     @Test
     void restEndpointVetoStatus() {
         String url = "http://localhost:" + port + "/api/veto/status";
-        @NonNull ResponseEntity<Map<String, Object>> response =
+        ResponseEntity<Map<String, Object>> response =
                 restTemplate.exchange(url, HttpMethod.GET, null, MAP_RESPONSE);
 
         assertEquals(HttpStatus.OK, response.getStatusCode(), "Status endpoint should return 200");
-        @NonNull Map<String, Object> body = requireBody(response);
+        Map<String, Object> body = requireBody(response);
         assertEquals("ok", requireMapValue(body, "status"));
         requireMapValue(body, "totalVetoes");
         requireMapValue(body, "enabled");
@@ -243,11 +243,11 @@ class VetoApplicationTests {
         HttpEntity<Map<String, Object>> request =
                 new HttpEntity<>(Map.of("payload", "Test IP: 10.0.0.55 for processing"), headers);
 
-        @NonNull ResponseEntity<Map<String, Object>> response =
+        ResponseEntity<Map<String, Object>> response =
                 restTemplate.exchange(url, HttpMethod.POST, request, MAP_RESPONSE);
 
         assertEquals(HttpStatus.OK, response.getStatusCode(), "Process endpoint should return 200");
-        @NonNull Map<String, Object> body = requireBody(response);
+        Map<String, Object> body = requireBody(response);
         assertTrue(body.containsKey("decision"));
         assertTrue(body.containsKey("processedPayload"));
     }
@@ -260,7 +260,7 @@ class VetoApplicationTests {
         headers.setContentType(MediaType.APPLICATION_JSON);
         HttpEntity<Map<String, Object>> request = new HttpEntity<>(Map.of("payload", ""), headers);
 
-        @NonNull ResponseEntity<Map<String, Object>> response =
+        ResponseEntity<Map<String, Object>> response =
                 restTemplate.exchange(url, HttpMethod.POST, request, MAP_RESPONSE);
 
         assertEquals(
@@ -354,7 +354,7 @@ class VetoApplicationTests {
             throws IOException, InterruptedException {
         String origin = "http://localhost:5173";
         String url = "http://localhost:" + port + "/api/auth/status";
-        @NonNull HttpRequest request =
+        HttpRequest request =
                 HttpRequest.newBuilder(URI.create(url))
                         .method("OPTIONS", HttpRequest.BodyPublishers.noBody())
                         .header("Origin", origin)
@@ -364,7 +364,7 @@ class VetoApplicationTests {
                                 "X-Veto-Session-Token, Content-Type, Accept-Language")
                         .build();
 
-        @NonNull HttpResponse<String> response =
+        HttpResponse<String> response =
                 HttpClient.newHttpClient().send(request, HttpResponse.BodyHandlers.ofString());
 
         assertEquals(HttpStatus.OK.value(), response.statusCode());
@@ -412,20 +412,20 @@ class VetoApplicationTests {
                                 Map.of("key", "value")),
                         headers);
 
-        @NonNull ResponseEntity<Map<String, Object>> createResponse =
+        ResponseEntity<Map<String, Object>> createResponse =
                 restTemplate.exchange(createUrl, HttpMethod.POST, createRequest, MAP_RESPONSE);
         assertEquals(HttpStatus.OK, createResponse.getStatusCode());
-        @NonNull Map<String, Object> createBody = requireBody(createResponse);
+        Map<String, Object> createBody = requireBody(createResponse);
         String taskId = requireStringMapValue(createBody, "id");
 
         String getUrl = "http://localhost:" + port + "/api/tasks/" + taskId;
-        @NonNull ResponseEntity<Map<String, Object>> getResponse =
+        ResponseEntity<Map<String, Object>> getResponse =
                 restTemplate.exchange(getUrl, HttpMethod.GET, authenticated, MAP_RESPONSE);
         assertEquals(HttpStatus.OK, getResponse.getStatusCode());
-        @NonNull Map<String, Object> getBody = requireBody(getResponse);
+        Map<String, Object> getBody = requireBody(getResponse);
         assertEquals(taskId, requireMapValue(getBody, "id"));
 
-        @NonNull ResponseEntity<Map<String, Object>> listResponse =
+        ResponseEntity<Map<String, Object>> listResponse =
                 restTemplate.exchange(createUrl, HttpMethod.GET, authenticated, MAP_RESPONSE);
         assertEquals(HttpStatus.OK, listResponse.getStatusCode());
 
@@ -460,11 +460,11 @@ class VetoApplicationTests {
                                         getUrl, HttpMethod.GET, authenticated, MAP_RESPONSE)),
                         "taskType"));
 
-        @NonNull ResponseEntity<Map<String, Object>> deleteResponse =
+        ResponseEntity<Map<String, Object>> deleteResponse =
                 restTemplate.exchange(getUrl, HttpMethod.DELETE, authenticated, MAP_RESPONSE);
         assertEquals(HttpStatus.OK, deleteResponse.getStatusCode());
 
-        @NonNull ResponseEntity<Map<String, Object>> notFoundResponse =
+        ResponseEntity<Map<String, Object>> notFoundResponse =
                 restTemplate.exchange(
                         "http://localhost:" + port + "/api/tasks/nonexistent",
                         HttpMethod.GET,

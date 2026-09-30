@@ -18,7 +18,7 @@ public final class HttpDestinationGrant implements ApprovedHttpDestination {
     private final @NonNull ToolCallContext parent;
     private final @NonNull Thread parentThread = Thread.currentThread();
     private volatile boolean closed;
-    private volatile IsolatedExecutions.Scope child;
+    private volatile IsolatedExecutions.Execution child;
     private volatile String operation;
     private volatile HttpDocument cached;
 
@@ -40,7 +40,7 @@ public final class HttpDestinationGrant implements ApprovedHttpDestination {
             IsolatedAgent.@NonNull Runtime runtime, @NonNull String operation) {
         parent();
         if (child != null
-                || !(runtime instanceof IsolatedExecutions.Scope scope)
+                || !(runtime instanceof IsolatedExecutions.Execution scope)
                 || !parent.equals(scope.parent()))
             throw new SecurityException(
                     "Destination cannot be rebound or transferred to this child");

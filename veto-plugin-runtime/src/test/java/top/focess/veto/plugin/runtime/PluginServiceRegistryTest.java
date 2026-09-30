@@ -1,5 +1,7 @@
 package top.focess.veto.plugin.runtime;
 
+import top.focess.veto.api.plugin.PluginScope;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 import java.util.List;
@@ -19,13 +21,16 @@ class PluginServiceRegistryTest {
     private static @NonNull PluginService service(
             @NonNull String name, int version, @NonNull ServiceHandler handler) {
         return service(
-                name, version, ServiceScope.GLOBAL, (caller, request) -> handler.invoke(request));
+                name,
+                version,
+                PluginScope.APPLICATION,
+                (caller, request) -> handler.invoke(request));
     }
 
     private static @NonNull PluginService service(
             @NonNull String name,
             int version,
-            @NonNull ServiceScope scope,
+            @NonNull PluginScope scope,
             @NonNull ScopedServiceHandler handler) {
         return new PluginService(name, version, scope) {
             @Override
@@ -67,7 +72,7 @@ class PluginServiceRegistryTest {
     void userServiceRequiresAValidatedCallerScope() throws Exception {
         try (var pair = new Pair()) {
             var handle = pair.consumer.context.services().find("demo:user", 1).orElseThrow();
-            assertEquals(ServiceScope.USER, handle.descriptor().scope());
+            assertEquals(PluginScope.USER, handle.descriptor().scope());
             assertEquals(
                     ServiceException.Code.INVALID_REQUEST,
                     assertThrows(
@@ -95,7 +100,7 @@ class PluginServiceRegistryTest {
     void sessionServiceRejectsUserAndExpiredSessionScopes() throws Exception {
         try (var pair = new Pair()) {
             var handle = pair.consumer.context.services().find("demo:session", 1).orElseThrow();
-            assertEquals(ServiceScope.SESSION, handle.descriptor().scope());
+            assertEquals(PluginScope.SESSION, handle.descriptor().scope());
             assertEquals(
                     ServiceException.Code.UNAVAILABLE,
                     assertThrows(
@@ -197,6 +202,7 @@ class PluginServiceRegistryTest {
                             throw new IllegalStateException(
                                     "Plugin context is not bound to a lifecycle owner");
                         },
+                        Map.of(),
                         Map.of());
 
         TestPlugin(@NonNull String id) {
@@ -238,7 +244,7 @@ class PluginServiceRegistryTest {
                                         service(
                                                 "demo:user",
                                                 1,
-                                                ServiceScope.USER,
+                                                PluginScope.USER,
                                                 (call, request) -> {
                                                     String owner = call.userId();
                                                     if (owner == null)
@@ -251,7 +257,7 @@ class PluginServiceRegistryTest {
                                         service(
                                                 "demo:session",
                                                 1,
-                                                ServiceScope.SESSION,
+                                                PluginScope.SESSION,
                                                 (call, request) -> {
                                                     String session = call.sessionId();
                                                     if (session == null)
@@ -287,17 +293,17 @@ class PluginServiceRegistryTest {
                         (caller, provider, required, scope) -> {
                             if (!scope.token().equals("valid"))
                                 throw new ServiceException(ServiceException.Code.UNAVAILABLE);
-                            if (required == ServiceScope.USER
+                            if (required == PluginScope.USER
                                     && scope instanceof PluginStorage.UserScope user)
                                 return new ServiceCallContext(
-                                        caller, required, user.userId(), null, user);
-                            if (required == ServiceScope.SESSION
+                                        caller, required, new Scope.UserScope(user.userId()), user);
+                            if (required == PluginScope.SESSION
                                     && scope instanceof PluginStorage.SessionScope session)
                                 return new ServiceCallContext(
                                         caller,
                                         required,
-                                        session.userId(),
-                                        session.sessionId(),
+                                        new Scope.SessionScope(
+                                                session.userId(), session.sessionId()),
                                         session);
                             throw new ServiceException(ServiceException.Code.UNAVAILABLE);
                         });
@@ -321,7 +327,8 @@ class PluginServiceRegistryTest {
                                                     "Plugin context is not bound to a lifecycle"
                                                             + " owner");
                                         },
-                                        Map.of(PluginServices.class, registry.forPlugin(runtime))),
+                                        Map.of(PluginServices.class, registry.forPlugin(runtime)),
+                                        Map.of()),
                                 new JsonValue.ObjectValue(Map.of()));
                 builder.stage(
                         new ContributionSource(

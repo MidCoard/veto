@@ -17,7 +17,7 @@ import top.focess.veto.builtin.planning.ConditionalGotoAction;
 import top.focess.veto.builtin.planning.GenerateAction;
 import top.focess.veto.builtin.planning.GotoAction;
 import top.focess.veto.builtin.planning.ProgramValidator;
-import top.focess.veto.builtin.planning.Scope;
+import top.focess.veto.builtin.planning.PlanVariables;
 import top.focess.veto.builtin.planning.StopAction;
 import top.focess.veto.builtin.planning.ToolAction;
 import top.focess.veto.util.Nullness;
@@ -25,7 +25,7 @@ import top.focess.veto.util.Nullness;
 class PlanBindingsTest {
     @Test
     void statusBindingsUseTheDocumentedValuesForBranching() {
-        Scope scope = new Scope(new ObjectMapper());
+        PlanVariables scope = new PlanVariables(new ObjectMapper());
         for (ToolResultStatus status :
                 List.of(
                         ToolResultStatus.SUCCESS,
@@ -55,7 +55,7 @@ class PlanBindingsTest {
     @Test
     void typedInputsAliasesAndOutputsPreserveData() throws Exception {
         ObjectMapper mapper = new ObjectMapper();
-        Scope scope = new Scope(mapper);
+        PlanVariables scope = new PlanVariables(mapper);
         scope.put("arg", "two words");
         var program =
                 ActionsProgramParser.parse(
@@ -104,7 +104,7 @@ class PlanBindingsTest {
                         "check", "Check", new Check.Numeric("CURRENT_STEPS", "lt", "4"), 0, 1);
         assertDoesNotThrow(
                 () -> ProgramValidator.validate(new ActionsProgram(List.of(condition, stop))));
-        Scope scope = new Scope(new ObjectMapper());
+        PlanVariables scope = new PlanVariables(new ObjectMapper());
         assertTrue(CheckEvaluator.evaluate(condition.check(), scope, 3));
         assertFalse(CheckEvaluator.evaluate(condition.check(), scope, 4));
         assertThrows(
@@ -127,7 +127,7 @@ class PlanBindingsTest {
         assertThrows(
                 ProgramValidator.InvalidProgramException.class,
                 () -> ActionsProgramParser.parse(input));
-        Scope scope = new Scope(mapper);
+        PlanVariables scope = new PlanVariables(mapper);
         assertThrows(
                 IllegalArgumentException.class,
                 () -> scope.bindTool(Map.of("x", "absent"), ToolResult.success("t", "id", "{}")));

@@ -23,7 +23,7 @@ import top.focess.veto.builtin.tools.StopTaskTool;
 class ToolContractValidatorTest {
     @Test
     void acceptsTypedUserInteractionAgentTool() {
-        @NonNull QuestionRuntime runtime = org.mockito.Mockito.mock(QuestionRuntime.class);
+        QuestionRuntime runtime = org.mockito.Mockito.mock(QuestionRuntime.class);
         var tool = new AskUserTool(runtime);
         assertDoesNotThrow(
                 () ->
@@ -64,13 +64,34 @@ class ToolContractValidatorTest {
 
     @ToolSecurity(capability = ToolCapability.PROCESS_EXECUTION, defaultDanger = Danger.SAFE)
     @ToolDoc(
-            description = "Invalid mixed process authority fixture.",
-            behavior = "Returns a marker.",
-            whenToUse = "Contract validation tests.",
-            whenNotToUse = "Production execution.",
-            resultContract = "Returns a marker.",
-            errorsAndEdgeCases = "None.",
-            security = "Deliberately combines process input and a host path.",
+            description =
+                    """
+                    Invalid mixed process authority fixture.\
+                    """,
+            behavior =
+                    """
+                    Returns a marker.\
+                    """,
+            whenToUse =
+                    """
+                    Contract validation tests.\
+                    """,
+            whenNotToUse =
+                    """
+                    Production execution.\
+                    """,
+            resultContract =
+                    """
+                    Returns a marker.\
+                    """,
+            errorsAndEdgeCases =
+                    """
+                    None.\
+                    """,
+            security =
+                    """
+                    Deliberately combines process input and a host path.\
+                    """,
             resultFormats = ToolResultFormat.PLAINTEXT,
             examples = {
                 "{\"input\":\"yes\",\"path\":\"/tmp/one\"}",

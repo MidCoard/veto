@@ -27,37 +27,47 @@ import top.focess.veto.api.agent.tool.WorkspaceReadTool;
 @ToolSecurity(capability = ToolCapability.WORKSPACE_READ, defaultDanger = Danger.SAFE)
 @ToolDoc(
         resultFormats = {ToolResultFormat.JSON},
-        description = "Find regular files below an authorized directory using a portable glob.",
+        description =
+                """
+                Find regular files below an authorized directory using a portable glob.\
+                """,
         behavior =
                 """
-                Searches recursively without following symbolic links or directory reparse points. \
-                The pattern uses `/` separators and supports `*`, `**`, and `?`. Matches are \
-                relative `/`-separated paths, sorted lexicographically; an empty `matches` array is \
-                a successful search with no matches. Returns at most 5000 matching file paths.""",
-        whenToUse = "Use it when you know a filename or portable glob but not its exact path.",
+                Searches recursively without following symbolic links or directory reparse points. The \
+                pattern uses `/` separators and supports `*`, `**`, and `?`. Matches are relative \
+                `/`-separated paths, sorted lexicographically; an empty `matches` array is a successful \
+                search with no matches. Returns at most 5000 matching file paths.\
+                """,
+        whenToUse =
+                """
+                Use it when you know a filename or portable glob but not its exact path.\
+                """,
         whenNotToUse =
                 """
-                Do not use it to search file contents; use grep_search. Do not use it when the \
-                exact path is already known.""",
+                Do not use it to search file contents; use grep_search. Do not use it when the exact path is \
+                already known.\
+                """,
         resultContract =
                 """
-                Returns JSON with `base`, `pattern`, `matches`, `truncated`, `truncationReason`, \
-                and `skippedEntries`. `truncationReason` is null or RESULT_LIMIT, VISIT_LIMIT, \
-                TIME_LIMIT, or OUTPUT_LIMIT. In detailed-result mode, failures use NOT_A_DIRECTORY \
-                (`Not a directory: <absolutePath>`), INVALID_ARGUMENTS \
-                (`Invalid arguments: pattern must be non-blank and use '/' separators.`), or \
-                IO_ERROR (`I/O error: cannot search directory <absolutePath>.`); protected roots \
-                are refused with PATH_PROTECTED. Failure content is actionable plaintext in every \
-                result mode.""",
+                Returns JSON with `base`, `pattern`, `matches`, `truncated`, `truncationReason`, and \
+                `skippedEntries`. `truncationReason` is null or RESULT_LIMIT, VISIT_LIMIT, TIME_LIMIT, or \
+                OUTPUT_LIMIT. In detailed-result mode, failures use NOT_A_DIRECTORY (`Not a directory: \
+                <absolutePath>`), INVALID_ARGUMENTS (`Invalid arguments: pattern must be non-blank and use \
+                '/' separators.`), or IO_ERROR (`I/O error: cannot search directory <absolutePath>.`); \
+                protected roots are refused with PATH_PROTECTED. Failure content is actionable plaintext in \
+                every result mode.\
+                """,
         errorsAndEdgeCases =
                 """
                 Traversal also stops at 50000 visited entries, 1 MiB encoded output, or 10 seconds. \
-                `skippedEntries` counts unreadable, protected, symbolic-link, and reparse-point \
-                entries that were not traversed. `**/*.java` also matches a Java file directly \
-                below the base.""",
+                `skippedEntries` counts unreadable, protected, symbolic-link, and reparse-point entries that \
+                were not traversed. `**/*.java` also matches a Java file directly below the base.\
+                """,
         security =
-                "Protected paths, symbolic links, and reparse points are skipped without being"
-                        + " opened; they are counted in `skippedEntries`.",
+                """
+                Protected paths, symbolic links, and reparse points are skipped without being opened; they \
+                are counted in `skippedEntries`.\
+                """,
         examples = {
             "{\"absolutePath\":\"/abs/project\",\"pattern\":\"**/*.java\"}",
             "{\"absolutePath\":\"/abs/project\",\"pattern\":\"*.md\"}",

@@ -48,13 +48,34 @@ class ToolPresentationExecutionTest {
     }
 
     @ToolDoc(
-            description = "Conditional",
-            behavior = "Conditional",
-            whenToUse = "When available",
-            whenNotToUse = "When hidden",
-            resultContract = "ok",
-            errorsAndEdgeCases = "Hidden",
-            security = "No effects",
+            description =
+                    """
+                    Conditional\
+                    """,
+            behavior =
+                    """
+                    Conditional\
+                    """,
+            whenToUse =
+                    """
+                    When available\
+                    """,
+            whenNotToUse =
+                    """
+                    When hidden\
+                    """,
+            resultContract =
+                    """
+                    ok\
+                    """,
+            errorsAndEdgeCases =
+                    """
+                    Hidden\
+                    """,
+            security =
+                    """
+                    No effects\
+                    """,
             resultFormats = ToolResultFormat.PLAINTEXT,
             examples = "{}",
             returnExamples = "ok")

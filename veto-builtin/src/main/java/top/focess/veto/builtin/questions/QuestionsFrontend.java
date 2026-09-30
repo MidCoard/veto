@@ -33,7 +33,7 @@ public final class QuestionsFrontend extends FrontendContribution {
 
     /** Answers frontend actions ({@code list}, {@code answer}, {@code cancel}). */
     public @NonNull JsonValue handle(
-            FrontendContribution.@NonNull Scope scope,
+            FrontendContribution.@NonNull ActionContext scope,
             @NonNull String action,
             JsonValue.@NonNull ObjectValue args)
             throws PluginFailure {

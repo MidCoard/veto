@@ -18,6 +18,7 @@ import top.focess.veto.api.plugin.PluginState;
 import top.focess.veto.api.plugin.VetoPlugin;
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.contract.PluginFailure;
+import top.focess.veto.api.plugin.contract.StandardContributionPoints;
 
 class PluginLifecycleStateTest {
     @Test
@@ -34,6 +35,7 @@ class PluginLifecycleStateTest {
                                 throw new IllegalStateException(
                                         "Plugin context is not bound to a lifecycle owner");
                             },
+                            Map.of(),
                             Map.of()),
                     new JsonValue.ObjectValue(Map.of()));
             managed.start();
@@ -87,6 +89,7 @@ class PluginLifecycleStateTest {
                                     throw new IllegalStateException(
                                             "Plugin context is not bound to a lifecycle owner");
                                 },
+                                Map.of(),
                                 Map.of()),
                         new JsonValue.ObjectValue(Map.of()));
                 managed.start();
@@ -104,6 +107,7 @@ class PluginLifecycleStateTest {
     private static final class Observer extends VetoPlugin {
         private PluginContext context;
         private final @NonNull List<PluginState> callbacks = new ArrayList<>();
+        private final @NonNull List<String> releases = new ArrayList<>();
         private final boolean failStart;
 
         Observer(boolean failStart) {
@@ -124,6 +128,14 @@ class PluginLifecycleStateTest {
                 @NonNull PluginContext context, JsonValue.@NonNull ObjectValue configuration) {
             this.context = context;
             callbacks.add(context.state());
+            if (failStart) {
+                context.register(
+                        StandardContributionPoints.RESOURCES, "first", () -> releases.add("first"));
+                context.register(
+                        StandardContributionPoints.RESOURCES,
+                        "second",
+                        () -> releases.add("second"));
+            }
             return contributions();
         }
 
@@ -157,6 +169,7 @@ class PluginLifecycleStateTest {
                                     throw new IllegalStateException(
                                             "Plugin context is not bound to a lifecycle owner");
                                 },
+                                Map.of(),
                                 Map.of()),
                         new JsonValue.ObjectValue(Map.of()));
                 var context = observer.context();
@@ -192,6 +205,7 @@ class PluginLifecycleStateTest {
                                     throw new IllegalStateException(
                                             "Plugin context is not bound to a lifecycle owner");
                                 },
+                                Map.of(),
                                 Map.of()),
                         new JsonValue.ObjectValue(Map.of()));
                 assertThrows(PluginFailure.class, managed::start);
@@ -200,6 +214,7 @@ class PluginLifecycleStateTest {
                 assertEquals(
                         List.of(PluginState.INITIALIZING, PluginState.STARTING, PluginState.FAILED),
                         observer.callbacks);
+                assertEquals(List.of("second", "first"), observer.releases);
             } finally {
                 managed.close();
             }

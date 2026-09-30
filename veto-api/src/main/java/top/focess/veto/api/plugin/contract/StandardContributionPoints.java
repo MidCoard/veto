@@ -101,6 +101,18 @@ public final class StandardContributionPoints {
                     ContributionPoint.Cardinality.MULTIPLE);
 
     /**
+     * Plugin-owned resources closed after admitted work drains, including failed construction.
+     * These lifecycle registrations are consumed immediately and are never published in the
+     * discoverable contribution catalog.
+     */
+    public static final @NonNull ContributionPoint<AutoCloseable> RESOURCES =
+            new ContributionPoint<>(
+                    new ContributionId("veto:resources"),
+                    1,
+                    AutoCloseable.class,
+                    ContributionPoint.Cardinality.MULTIPLE);
+
+    /**
      * Validates that every tool category refers to a registered category.
      *
      * @param catalog completed contribution catalog to validate
@@ -165,6 +177,7 @@ public final class StandardContributionPoints {
                     MODEL_RESPONSE,
                     FRONTEND,
                     DATA_LIFECYCLE,
+                    RESOURCES,
                     TOOLS,
                     CATEGORIES,
                     PROMPTS,

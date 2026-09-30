@@ -54,7 +54,7 @@ class ConstrainedSubprocessSubstrateTimeoutTest {
     @Test
     void runawayProcessIsKilledAtTheCap(@TempDir @NonNull Path root) {
         long start = System.nanoTime();
-        @NonNull CommandResult result =
+        CommandResult result =
                 run(root, List.of(sleeper()), ChainMode.STOP_ON_FAILURE, Duration.ofSeconds(2));
         long elapsedMs = Duration.ofNanos(System.nanoTime() - start).toMillis();
 
@@ -69,7 +69,7 @@ class ConstrainedSubprocessSubstrateTimeoutTest {
 
     @Test
     void fastCommandStillReturnsItsOutput(@TempDir @NonNull Path root) {
-        @NonNull CommandResult result =
+        CommandResult result =
                 run(
                         root,
                         List.of(echoer("hello")),
@@ -86,7 +86,7 @@ class ConstrainedSubprocessSubstrateTimeoutTest {
         // The sleeper eats the whole 2s budget; the echo that follows must be cut off by the
         // shared deadline instead of getting its own 2s window.
         long start = System.nanoTime();
-        @NonNull CommandResult result =
+        CommandResult result =
                 run(
                         root,
                         List.of(sleeper(), echoer("late")),
@@ -106,7 +106,7 @@ class ConstrainedSubprocessSubstrateTimeoutTest {
 
     @Test
     void zeroTimeoutMeansNoCapButStillDrains(@TempDir @NonNull Path root) {
-        @NonNull CommandResult result =
+        CommandResult result =
                 run(root, List.of(echoer("unbounded")), ChainMode.STOP_ON_FAILURE, Duration.ZERO);
 
         assertEquals(0, result.exitCode());
@@ -122,7 +122,7 @@ class ConstrainedSubprocessSubstrateTimeoutTest {
     @Test
     void bareNameResolvesAndCodepageOutputDecodes(@TempDir @NonNull Path root) {
         Assumptions.assumeTrue(WINDOWS, "Windows-specific behavior");
-        @NonNull CommandResult result =
+        CommandResult result =
                 run(
                         root,
                         List.of(new Command("cmd", List.of("/c", "echo 中文输出"))),

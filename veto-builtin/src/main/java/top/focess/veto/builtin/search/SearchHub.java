@@ -12,7 +12,7 @@ import top.focess.veto.api.plugin.service.PluginService;
 import top.focess.veto.api.plugin.service.PluginServices;
 import top.focess.veto.api.plugin.service.ServiceCallContext;
 import top.focess.veto.api.plugin.service.ServiceException;
-import top.focess.veto.api.plugin.service.ServiceScope;
+import top.focess.veto.api.plugin.PluginScope;
 
 /** Builtin-owned search service; external providers are revocable opaque JSON callbacks. */
 public final class SearchHub extends PluginService {
@@ -26,7 +26,7 @@ public final class SearchHub extends PluginService {
     /** Creates a service with its built-in providers. */
     public SearchHub(
             @NonNull PluginServices services, @NonNull List<@NonNull SearchProvider> providers) {
-        super(SearchProtocol.NAME, 1, ServiceScope.GLOBAL);
+        super(SearchProtocol.NAME, 1, PluginScope.APPLICATION);
         this.services = services;
         Map<@NonNull String, @NonNull SearchProvider> installed = new HashMap<>();
         for (var provider : providers)

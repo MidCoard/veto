@@ -49,7 +49,7 @@ class HostResourceConfigurationTest {
 
     @Test
     void localCompletionUsesLiteralGrammarAndRevokesAfterPluginClose() throws Exception {
-        @NonNull LlamaCppBridge bridge = mock();
+        LlamaCppBridge bridge = mock(LlamaCppBridge.class);
         when(bridge.isAvailable()).thenReturn(true);
         when(bridge.inferWithGrammar("compiled MDC", "array grammar"))
                 .thenReturn(CompletableFuture.completedFuture("[\"token\"]"));
@@ -72,7 +72,7 @@ class HostResourceConfigurationTest {
 
     @Test
     void pluginStopCancelsAnAdmittedPendingCompletion() throws Exception {
-        @NonNull LlamaCppBridge bridge = mock();
+        LlamaCppBridge bridge = mock(LlamaCppBridge.class);
         when(bridge.isAvailable()).thenReturn(true);
         var pending = new CompletableFuture<String>();
         var started = new CountDownLatch(1);
@@ -100,7 +100,7 @@ class HostResourceConfigurationTest {
 
     @Test
     void deadlineAndInterruptionCancelWithoutInventingModelOutput() throws Exception {
-        @NonNull LlamaCppBridge bridge = mock();
+        LlamaCppBridge bridge = mock(LlamaCppBridge.class);
         when(bridge.isAvailable()).thenReturn(true);
         var pending = new CompletableFuture<String>();
         when(bridge.inferWithGrammar(anyString(), anyString())).thenReturn(pending);
@@ -122,7 +122,7 @@ class HostResourceConfigurationTest {
 
     @Test
     void oversizedInputAndUnavailableModelsDoNotInvokeTransport() throws Exception {
-        @NonNull LlamaCppBridge bridge = mock();
+        LlamaCppBridge bridge = mock(LlamaCppBridge.class);
         try (var lifecycle = Executors.newSingleThreadExecutor();
                 var plugin = active(lifecycle)) {
             var port = new BoundLocalModelCompletion(plugin, bridge);
@@ -173,6 +173,7 @@ class HostResourceConfigurationTest {
                             throw new IllegalStateException(
                                     "Plugin context is not bound to a lifecycle owner");
                         },
+                        Map.of(),
                         Map.of()),
                 new JsonValue.ObjectValue(Map.of()));
         plugin.start();

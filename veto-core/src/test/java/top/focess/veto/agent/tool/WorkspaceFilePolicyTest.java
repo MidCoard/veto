@@ -65,7 +65,7 @@ class WorkspaceFilePolicyTest {
                     key,
                     PluginTestSupport.reveal(
                                     plugins,
-                                    new FrontendContribution.Scope(
+                                    new FrontendContribution.ActionContext(
                                             "owner", SESSION.toString(), "agent"),
                                     reference)
                             .orElseThrow());

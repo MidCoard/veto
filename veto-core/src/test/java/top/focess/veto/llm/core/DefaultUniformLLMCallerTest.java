@@ -23,7 +23,7 @@ import top.focess.veto.llm.provider.LLMProviderStrategy;
 class DefaultUniformLLMCallerTest {
     @Test
     void plainTextIsAcceptedWithoutCorrectionOrRetry() {
-        @NonNull LLMProviderStrategy provider = mock();
+        LLMProviderStrategy provider = mock(LLMProviderStrategy.class);
         when(provider.supports(ProviderType.DEEPSEEK)).thenReturn(true);
         when(provider.execute(any())).thenReturn(new VetoResponse(null, null, "Answer"));
         var caller = new DefaultUniformLLMCaller(List.of(provider), egressReturning("secret"));

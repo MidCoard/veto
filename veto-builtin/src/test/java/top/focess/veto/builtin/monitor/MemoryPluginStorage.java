@@ -9,6 +9,7 @@ import java.util.Optional;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.plugin.storage.PluginStorage;
+import top.focess.veto.api.plugin.PluginScope;
 
 /** API-only host fixture; host authorization and durable transactions are tested by core. */
 final class MemoryPluginStorage implements PluginStorage {
@@ -30,7 +31,8 @@ final class MemoryPluginStorage implements PluginStorage {
     }
 
     @Override
-    public @NonNull Page<@NonNull Scope> scopes(@NonNull Kind kind, String cursor, int limit) {
+    public @NonNull Page<@NonNull Scope> scopes(
+            @NonNull PluginScope kind, String cursor, int limit) {
         return new Page<>(
                 List.of(
                         new SessionScope("s", "u", "session"),

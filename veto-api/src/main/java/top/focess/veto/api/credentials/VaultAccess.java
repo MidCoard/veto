@@ -2,6 +2,7 @@ package top.focess.veto.api.credentials;
 
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.api.plugin.Scope;
 
 /** Host-granted access to an owner's encrypted vault for a currently admitted tool invocation. */
 public interface VaultAccess {
@@ -11,30 +12,17 @@ public interface VaultAccess {
      * @param arguments arguments this plugin received for the approved call
      * @return a handle that rechecks the same invocation before each operation
      */
-    @NonNull Scope open(@NonNull Map<@NonNull String, ?> arguments);
+    @NonNull Handle open(@NonNull Map<@NonNull String, ?> arguments);
 
     /** An invocation-bound vault handle, never an authorization token for a later call. */
-    interface Scope {
+    interface Handle {
         /**
-         * Returns the authenticated owner bound to this invocation.
+         * Returns the host-attributed identity of this invocation after rechecking admission.
+         * The returned identity is not a transferable vault authorization.
          *
-         * @return authenticated owner of this invocation
+         * @return authenticated owner, session, and agent
          */
-        @NonNull String owner();
-
-        /**
-         * Returns the selected session bound to this invocation.
-         *
-         * @return selected session of this invocation
-         */
-        @NonNull String sessionId();
-
-        /**
-         * Returns the executing agent bound to this invocation.
-         *
-         * @return executing agent of this invocation
-         */
-        @NonNull String agentId();
+        Scope.@NonNull AgentScope scope();
 
         /**
          * Reports whether this owner's vault currently accepts writes.

@@ -45,8 +45,8 @@ class GatewayPlanValidationTest {
                         GatewayPlanValidationTest.class,
                         Args.class,
                         Map.of());
-        @NonNull ControlHost host = mock();
-        @NonNull ToolDefinition advertised = mock();
+        ControlHost host = mock(ControlHost.class);
+        ToolDefinition advertised = mock(ToolDefinition.class);
         when(advertised.name()).thenReturn("fixture");
         when(host.tools()).thenReturn(List.of(new ControlHost.Tool(advertised, null, null, null)));
         doAnswer(

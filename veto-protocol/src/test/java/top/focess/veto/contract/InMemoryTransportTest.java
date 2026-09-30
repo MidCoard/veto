@@ -89,7 +89,7 @@ class InMemoryTransportTest {
 
     @Test
     void completeReturnsCandidates() {
-        IpcFrame.@NonNull CompleteResult result =
+        IpcFrame.CompleteResult result =
                 requireValue(
                         conn.complete("/log", 2, TimeUnit.SECONDS),
                         "complete result should not be null");
@@ -100,7 +100,7 @@ class InMemoryTransportTest {
 
     @Test
     void hintReturnsPlaceholder() {
-        IpcFrame.@NonNull HintResult result =
+        IpcFrame.HintResult result =
                 requireValue(
                         conn.hint("/login ", 2, TimeUnit.SECONDS),
                         "hint result should not be null");
@@ -112,14 +112,14 @@ class InMemoryTransportTest {
     void streamingRequestDeliversDeltaThenDone() throws InterruptedException {
         conn.send(new IpcFrame.Request("do something"));
         // The responder emits Delta, Delta, Done. Receive them in order from the incoming queue.
-        IpcFrame.@NonNull ServerFrame f1 =
+        IpcFrame.ServerFrame f1 =
                 requireValue(
                         conn.receive(2, TimeUnit.SECONDS), "first server frame should not be null");
-        IpcFrame.@NonNull ServerFrame f2 =
+        IpcFrame.ServerFrame f2 =
                 requireValue(
                         conn.receive(2, TimeUnit.SECONDS),
                         "second server frame should not be null");
-        IpcFrame.@NonNull ServerFrame f3 =
+        IpcFrame.ServerFrame f3 =
                 requireValue(
                         conn.receive(2, TimeUnit.SECONDS), "third server frame should not be null");
         assertInstanceOf(Objects.requireNonNull(IpcFrame.Delta.class), f1);
@@ -136,7 +136,7 @@ class InMemoryTransportTest {
         conn.close();
         assertTrue(conn.isClosed());
         // Drain what was sent; the Bye must have been flushed by the IO loop's final drain.
-        @NonNull List<IpcFrame.@NonNull ClientFrame> sent = new ArrayList<>();
+        List<IpcFrame.@NonNull ClientFrame> sent = new ArrayList<>();
         transport.sent.drainTo(sent);
         assertTrue(
                 sent.stream().anyMatch(f -> f instanceof IpcFrame.Bye),

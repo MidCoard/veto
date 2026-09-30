@@ -36,13 +36,34 @@ import top.focess.veto.api.llm.ToolResultPresentationMode;
 class NetworkWebReadCapabilityTest {
     @ToolSecurity(capability = ToolCapability.NETWORK_EGRESS, defaultDanger = Danger.SAFE)
     @ToolDoc(
-            description = "HTTP grant authorization probe",
-            behavior = "Returns a probe marker after host authorization.",
-            whenToUse = "Testing approved HTTP destination capture.",
-            whenNotToUse = "Reading remote content.",
-            resultContract = "Returns the plain text probe marker.",
-            errorsAndEdgeCases = "Host authorization rejects unapproved destinations.",
-            security = "Only the URL annotated argument grants destination authority.",
+            description =
+                    """
+                    HTTP grant authorization probe\
+                    """,
+            behavior =
+                    """
+                    Returns a probe marker after host authorization.\
+                    """,
+            whenToUse =
+                    """
+                    Testing approved HTTP destination capture.\
+                    """,
+            whenNotToUse =
+                    """
+                    Reading remote content.\
+                    """,
+            resultContract =
+                    """
+                    Returns the plain text probe marker.\
+                    """,
+            errorsAndEdgeCases =
+                    """
+                    Host authorization rejects unapproved destinations.\
+                    """,
+            security =
+                    """
+                    Only the URL annotated argument grants destination authority.\
+                    """,
             resultFormats = ToolResultFormat.PLAINTEXT,
             examples = {
                 "{\"url\":\"https://example.com\",\"otherUrl\":\"unused\"}",

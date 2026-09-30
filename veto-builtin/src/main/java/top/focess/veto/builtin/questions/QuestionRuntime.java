@@ -14,7 +14,7 @@ import top.focess.veto.api.event.Listener;
 import top.focess.veto.api.event.OwnerClosedEvent;
 import top.focess.veto.api.event.SessionClosedEvent;
 import top.focess.veto.api.plugin.PluginHost;
-import top.focess.veto.api.plugin.contract.FrontendContribution.Scope;
+import top.focess.veto.api.plugin.contract.FrontendContribution.ActionContext;
 
 /** Plugin-owned, in-memory rendezvous. Only the host supplies invocation identities. */
 public final class QuestionRuntime extends Listener implements AutoCloseable {
@@ -46,7 +46,8 @@ public final class QuestionRuntime extends Listener implements AutoCloseable {
     public synchronized @NonNull CompletableFuture<AnswerBatch> register(
             PluginHost.@NonNull Invocation invocation, @NonNull List<Question> questions) {
         if (closed) throw new IllegalStateException("Question runtime closed");
-        var scope = new Scope(invocation.owner(), invocation.sessionId(), invocation.agentId());
+        var scope =
+                new ActionContext(invocation.owner(), invocation.sessionId(), invocation.agentId());
         var key = new Key(scope, invocation.callId());
         var future = new CompletableFuture<AnswerBatch>();
         var snapshot =
@@ -80,7 +81,7 @@ public final class QuestionRuntime extends Listener implements AutoCloseable {
     }
 
     /** Returns the pending batches for the scope, ordered by call id. */
-    public @NonNull List<PendingQuestionBatch> pendingFor(@NonNull Scope scope) {
+    public @NonNull List<PendingQuestionBatch> pendingFor(@NonNull ActionContext scope) {
         return pending.values().stream()
                 .filter(value -> value.key().scope().equals(scope))
                 .sorted(Comparator.comparing(value -> value.key().callId()))
@@ -90,7 +91,7 @@ public final class QuestionRuntime extends Listener implements AutoCloseable {
 
     /** Completes a pending batch with validated answers; returns whether it settled. */
     public boolean answer(
-            @NonNull Scope scope,
+            @NonNull ActionContext scope,
             @NonNull String callId,
             @NonNull Map<@NonNull String, @NonNull String> answers) {
         var value = pending.get(new Key(scope, callId));
@@ -105,7 +106,7 @@ public final class QuestionRuntime extends Listener implements AutoCloseable {
     }
 
     /** Completes a pending batch as cancelled; returns whether it settled. */
-    public boolean cancel(@NonNull Scope scope, @NonNull String callId) {
+    public boolean cancel(@NonNull ActionContext scope, @NonNull String callId) {
         var value = pending.get(new Key(scope, callId));
         return value != null && value.future().complete(new AnswerBatch(Map.of(), true));
     }
@@ -125,11 +126,11 @@ public final class QuestionRuntime extends Listener implements AutoCloseable {
 
     @EventHandler
     public void onAgentTerminated(@NonNull AgentTerminatedEvent event) {
-        var target = new Scope(event.owner(), event.sessionId(), event.agentId());
+        var target = new ActionContext(event.owner(), event.sessionId(), event.agentId());
         cancelWhere(target::equals);
     }
 
-    private synchronized void cancelWhere(@NonNull Predicate<Scope> matches) {
+    private synchronized void cancelWhere(@NonNull Predicate<ActionContext> matches) {
         for (var value : List.copyOf(pending.values())) {
             if (matches.test(value.key().scope()))
                 value.future().complete(new AnswerBatch(Map.of(), true));
@@ -142,7 +143,7 @@ public final class QuestionRuntime extends Listener implements AutoCloseable {
         cancelWhere(scope -> true);
     }
 
-    private void invalidate(@NonNull Scope scope) {
+    private void invalidate(@NonNull ActionContext scope) {
         try {
             host.invalidate(scope.sessionId(), "interactions");
         } catch (IllegalStateException | SecurityException ignored) {
@@ -150,7 +151,7 @@ public final class QuestionRuntime extends Listener implements AutoCloseable {
         }
     }
 
-    private record Key(@NonNull Scope scope, @NonNull String callId) {}
+    private record Key(@NonNull ActionContext scope, @NonNull String callId) {}
 
     private record Pending(
             @NonNull Key key,

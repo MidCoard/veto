@@ -65,7 +65,7 @@ public final class CompositeAgentInbox extends AgentInbox {
     }
 
     @Override
-    public @NonNull List<@NonNull Observation> pending(@NonNull Scope scope) {
+    public @NonNull List<@NonNull Observation> pending(@NonNull InboxContext scope) {
         return entries.get().stream()
                 .flatMap(
                         entry ->
@@ -103,17 +103,18 @@ public final class CompositeAgentInbox extends AgentInbox {
     }
 
     @Override
-    public void started(@NonNull Scope scope, @NonNull Observation value) {
+    public void started(@NonNull InboxContext scope, @NonNull Observation value) {
         notify(value, (source, raw) -> source.started(scope, raw));
     }
 
     @Override
-    public void completed(@NonNull Scope scope, @NonNull Observation value, boolean success) {
+    public void completed(
+            @NonNull InboxContext scope, @NonNull Observation value, boolean success) {
         notify(value, (source, raw) -> source.completed(scope, raw, success));
     }
 
     @Override
-    public void cancelled(@NonNull Scope scope, @NonNull Observation value) {
+    public void cancelled(@NonNull InboxContext scope, @NonNull Observation value) {
         notify(value, (source, raw) -> source.cancelled(scope, raw));
     }
 }

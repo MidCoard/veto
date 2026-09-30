@@ -90,6 +90,56 @@ class BuiltinToolSchemaValidationTest {
     }
 
     @Test
+    void askUserRejectsNestedBlankReservedAndDuplicateValuesFromAnnotations() {
+        var valid = question("Scope", "scope", "Choose scope");
+        assertRejected("ask_user", new AskUserTool.Args(List.of(valid, valid)), ASK_USER_ARGS);
+        assertRejected(
+                "ask_user",
+                new AskUserTool.Args(List.of(question(" ", "scope", "Choose scope"))),
+                ASK_USER_ARGS);
+        assertRejected(
+                "ask_user",
+                new AskUserTool.Args(List.of(question("Scope", "scope", " "))),
+                ASK_USER_ARGS);
+        assertRejected(
+                "ask_user",
+                new AskUserTool.Args(
+                        List.of(
+                                new Question(
+                                        "Scope",
+                                        "scope",
+                                        "Choose scope",
+                                        List.of(
+                                                new Option(" Other ", "Reserved"),
+                                                new Option("Second", "Choice"))))),
+                ASK_USER_ARGS);
+        assertRejected(
+                "ask_user",
+                new AskUserTool.Args(
+                        List.of(
+                                new Question(
+                                        "Scope",
+                                        "scope",
+                                        "Choose scope",
+                                        List.of(
+                                                new Option(" second ", "Choice"),
+                                                new Option("SECOND", "Duplicate"))))),
+                ASK_USER_ARGS);
+        assertRejected(
+                "ask_user",
+                new AskUserTool.Args(
+                        List.of(
+                                new Question(
+                                        "Scope",
+                                        "scope",
+                                        "Choose scope",
+                                        List.of(
+                                                new Option("First", " "),
+                                                new Option("Second", "Choice"))))),
+                ASK_USER_ARGS);
+    }
+
+    @Test
     void answerWithCitationsRejectsAnEmptyCitationArray() {
         assertRejected(
                 "answer_with_citations",

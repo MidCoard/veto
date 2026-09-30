@@ -1,5 +1,7 @@
 package top.focess.veto.integration.plugins.storage;
 
+import top.focess.veto.api.plugin.PluginScope;
+
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -63,14 +65,14 @@ public final class ConfigurationStorageFixture implements PluginStorageFactory {
         }
 
         public synchronized @NonNull Page<@NonNull Scope> scopes(
-                @NonNull Kind kind, String cursor, int limit) {
+                @NonNull PluginScope kind, String cursor, int limit) {
             if (cursor != null) throw new IllegalArgumentException("Unknown cursor");
             return new Page<>(
-                    kind == Kind.SESSION ? List.copyOf(scopes.values()) : List.of(), null);
+                    kind == PluginScope.SESSION ? List.copyOf(scopes.values()) : List.of(), null);
         }
 
         public synchronized @NonNull SessionScope currentSession() {
-            var invocation = PluginInvocationScope.current();
+            var invocation = PluginInvocationContext.current();
             var call = ToolCallContextHolder.get();
             String owner =
                     invocation == null ? (call == null ? null : call.owner()) : invocation.owner;

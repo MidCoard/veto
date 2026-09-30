@@ -24,7 +24,7 @@ class PlanningPluginTest {
     @Test
     void submittedPlanRunsUsingOnlyHostCallbacks() throws Exception {
         var submitted = new AtomicReference<ModelFlow>();
-        @NonNull ControlHost capability = mock();
+        var capability = mock(ControlHost.class);
         when(capability.tools()).thenReturn(List.of());
         doAnswer(
                         call -> {

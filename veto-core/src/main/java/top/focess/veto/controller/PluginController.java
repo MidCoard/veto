@@ -1,9 +1,7 @@
 package top.focess.veto.controller;
 
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
 import org.jspecify.annotations.NonNull;
+import org.springframework.dao.DataAccessException;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -11,11 +9,15 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
+
 import top.focess.veto.api.plugin.PluginState;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
 import top.focess.veto.controller.dto.*;
 import top.focess.veto.integration.plugins.PluginManager;
 import top.focess.veto.plugin.runtime.ScriptPlugin;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Installed package catalog; selection belongs to session creation. Never exposes paths, script
@@ -34,28 +36,31 @@ public class PluginController {
         this.authorization = authorization;
     }
 
-    /** Withdraws one installed package immediately, preserving its stored data and session pins. */
+    /** Saves the desired disabled state for the next backend start. */
     @PostMapping("/{id}/disable")
     public void disable(@PathVariable @NonNull String id) {
         authorization.requireAdmin();
         try {
-            plugins.disable(id);
+            plugins.setEnabledOnNextStart(id, false);
         } catch (IllegalArgumentException unavailable) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Plugin is not active");
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Plugin is not installed");
+        } catch (DataAccessException failure) {
+            throw new ResponseStatusException(
+                    HttpStatus.SERVICE_UNAVAILABLE, "Plugin state could not be saved");
         }
     }
 
-    /** Reloads and activates one installed package without restarting the backend. */
+    /** Saves the desired enabled state for the next backend start. */
     @PostMapping("/{id}/enable")
     public void enable(@PathVariable @NonNull String id) {
         authorization.requireAdmin();
         try {
-            plugins.enable(id);
+            plugins.setEnabledOnNextStart(id, true);
         } catch (IllegalArgumentException unavailable) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Plugin is not disabled");
-        } catch (IOException failure) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Plugin is not installed");
+        } catch (DataAccessException failure) {
             throw new ResponseStatusException(
-                    HttpStatus.SERVICE_UNAVAILABLE, "Plugin could not start");
+                    HttpStatus.SERVICE_UNAVAILABLE, "Plugin state could not be saved");
         }
     }
 
@@ -109,7 +114,8 @@ public class PluginController {
                                                     .sorted()
                                                     .toList(),
                                             plugin.state(),
-                                            null);
+                                            null,
+                                            plugins.desiredEnabled(plugin.identity().id()));
                                 })
                         .toList();
         var result = new ArrayList<>(active);
@@ -124,7 +130,8 @@ public class PluginController {
                             List.of(),
                             List.of(),
                             PluginState.DECLINED,
-                            plugin.reason().name()));
+                            plugin.reason().name(),
+                            plugins.desiredEnabled(plugin.id())));
         for (var plugin : plugins.disabled())
             result.add(
                     new PluginResponse(
@@ -136,7 +143,8 @@ public class PluginController {
                             List.of(),
                             List.of(),
                             PluginState.DISABLED,
-                            null));
+                            null,
+                            plugins.desiredEnabled(plugin.id())));
         return List.copyOf(result);
     }
 }

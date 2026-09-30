@@ -7,7 +7,6 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.agent.SessionAgentRegistry;
 import top.focess.veto.agent.VetoAgent;
@@ -19,8 +18,8 @@ import top.focess.veto.vault.UserContext;
 class PluginHostWakeTest {
     @Test
     void waitsForTheOwnerAndRestoresCallerContextOnFailureAndSuccess() {
-        @NonNull SessionService sessions = mock();
-        @NonNull KeysteadVault vault = mock();
+        SessionService sessions = mock(SessionService.class);
+        KeysteadVault vault = mock(KeysteadVault.class);
         var registry = new SessionAgentRegistry();
         var activator = MonitorTestSupport.host(sessions, registry, vault);
         UUID session = UUID.randomUUID();
@@ -55,7 +54,7 @@ class PluginHostWakeTest {
                     IllegalStateException.class,
                     () -> activator.wake(record.owner(), record.sessionId(), record.agentId()));
             assertEquals("bob", UserContext.get());
-            @NonNull VetoAgent agent = mock();
+            VetoAgent agent = mock(VetoAgent.class);
             when(agent.id()).thenReturn("agent");
             doAnswer(
                             invocation -> {

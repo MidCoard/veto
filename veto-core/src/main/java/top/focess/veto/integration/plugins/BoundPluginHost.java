@@ -1,5 +1,7 @@
 package top.focess.veto.integration.plugins;
 
+import top.focess.veto.api.plugin.PluginScope;
+
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
@@ -49,7 +51,7 @@ final class BoundPluginHost implements PluginHost {
         if (scope == null) {
             String cursor = null;
             do {
-                var page = storage.scopes(PluginStorage.Kind.SESSION, cursor, 200);
+                var page = storage.scopes(PluginScope.SESSION, cursor, 200);
                 for (var entry : page.entries())
                     if (entry instanceof PluginStorage.SessionScope value
                             && value.sessionId().equals(session)) {

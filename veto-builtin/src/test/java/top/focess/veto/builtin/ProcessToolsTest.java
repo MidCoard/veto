@@ -49,7 +49,8 @@ class ProcessToolsTest {
                                     throw new IllegalStateException(
                                             "Plugin context is not bound to a lifecycle owner");
                                 },
-                                Map.of(PluginHost.class, host, ProcessHost.class, host)),
+                                Map.of(PluginHost.class, host, ProcessHost.class, host),
+                                Map.of()),
                         mock(TaskEvents.class));
         var run = new RunTaskTool(runtime.execution("run_task"));
         var view = new ViewTaskTool(runtime.control("view_task"));
@@ -94,7 +95,7 @@ class ProcessToolsTest {
             assertEquals(
                     "original-request",
                     runtime.tasks()
-                            .status(BackgroundTasks.Scope.from(host.invocation), id)
+                            .status(BackgroundTasks.Owner.from(host.invocation), id)
                             .orElseThrow()
                             .requestId());
             assertEquals(

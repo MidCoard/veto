@@ -22,7 +22,7 @@ import top.focess.veto.api.event.AgentTerminatedEvent;
 import top.focess.veto.api.event.SessionClosedEvent;
 import top.focess.veto.api.plugin.PluginHost;
 import top.focess.veto.api.plugin.contract.AgentInbox.Observation;
-import top.focess.veto.api.plugin.contract.AgentInbox.Scope;
+import top.focess.veto.api.plugin.contract.AgentInbox.InboxContext;
 import top.focess.veto.builtin.group.DagNode;
 import top.focess.veto.builtin.group.GroupObservations;
 import top.focess.veto.builtin.group.GroupState;
@@ -576,7 +576,7 @@ public class MonitorService implements ProcessObserver {
         }
     }
 
-    public @NonNull List<Observation> pending(@NonNull Scope scope) {
+    public @NonNull List<Observation> pending(@NonNull InboxContext scope) {
         return pending(scope.agentId(), scope.sessionId()).stream()
                 .map(
                         event ->
@@ -616,18 +616,19 @@ public class MonitorService implements ProcessObserver {
                 dispatch == null || dispatch.equals("") ? null : (String) dispatch);
     }
 
-    public void started(@NonNull Scope scope, @NonNull Observation observation) {
+    public void started(@NonNull InboxContext scope, @NonNull Observation observation) {
         Event event = event(observation);
         acknowledge(scope.agentId(), event);
         activationStarted(scope.agentId(), event);
         refreshForeground();
     }
 
-    public void completed(@NonNull Scope scope, @NonNull Observation observation, boolean success) {
+    public void completed(
+            @NonNull InboxContext scope, @NonNull Observation observation, boolean success) {
         activationCompleted(scope.agentId(), event(observation), success);
     }
 
-    public void cancelled(@NonNull Scope scope, @NonNull Observation observation) {
+    public void cancelled(@NonNull InboxContext scope, @NonNull Observation observation) {
         activationCancelled(scope.agentId(), scope.sessionId(), event(observation));
     }
 

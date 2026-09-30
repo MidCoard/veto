@@ -2,11 +2,11 @@ package top.focess.veto.builtin.questions;
 
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.plugin.PluginHost;
-import top.focess.veto.api.plugin.contract.FrontendContribution.Scope;
+import top.focess.veto.api.plugin.contract.FrontendContribution.ActionContext;
 
 final class QuestionTestSupport {
-    static @NonNull Scope scope(@NonNull String agent) {
-        return new Scope("owner", "session", agent);
+    static @NonNull ActionContext scope(@NonNull String agent) {
+        return new ActionContext("owner", "session", agent);
     }
 
     static PluginHost.@NonNull Invocation invocation(@NonNull String agent, @NonNull String call) {

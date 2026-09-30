@@ -4,14 +4,20 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 import static top.focess.veto.util.Nullness.requireNonNull;
 
+import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.Executors;
+import java.util.function.Consumer;
+import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.api.agent.workflow.ModelFlow;
 import top.focess.veto.api.plugin.PluginContext;
 import top.focess.veto.api.plugin.PluginHost;
 import top.focess.veto.api.plugin.PluginIdentity;
 import top.focess.veto.api.plugin.contract.JsonValue;
+import top.focess.veto.api.plugin.contract.StandardContributionPoints;
+import top.focess.veto.api.plugin.contribution.Contribution;
+import top.focess.veto.api.plugin.contribution.ContributionPoint;
 import top.focess.veto.builtin.BuiltinPlugin;
 import top.focess.veto.plugin.runtime.*;
 
@@ -25,6 +31,7 @@ class PluginLifecycleFlowTest {
                         () -> {
                             throw new IllegalStateException("No lifecycle owner");
                         },
+                        Map.of(),
                         Map.of());
         assertThrows(
                 IllegalStateException.class,
@@ -34,6 +41,10 @@ class PluginLifecycleFlowTest {
     @Test
     void unloadingTheSubmittingPluginRejectsDeferredSteps() throws Exception {
         try (var executor = Executors.newSingleThreadExecutor()) {
+            Map<@NonNull ContributionPoint<?>, @NonNull Consumer<@NonNull Contribution<?>>>
+                    handlers = new HashMap<>();
+            for (var point : StandardContributionPoints.ALL)
+                handlers.put(point, contribution -> {});
             var context =
                     new PluginContext(
                             new PluginIdentity("top.focess.builtin", "1.0.100"),
@@ -42,7 +53,8 @@ class PluginLifecycleFlowTest {
                                 throw new IllegalStateException(
                                         "Plugin context is not bound to a lifecycle owner");
                             },
-                            Map.of(PluginHost.class, mock(requireNonNull(PluginHost.class))));
+                            Map.of(PluginHost.class, mock(requireNonNull(PluginHost.class))),
+                            handlers);
             var configuration = new JsonValue.ObjectValue(Map.of());
             var managed = new PluginLifecycle(new BuiltinPlugin(context, configuration), executor);
             managed.initialize(context, configuration);
