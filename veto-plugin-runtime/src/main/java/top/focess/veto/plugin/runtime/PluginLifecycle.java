@@ -272,7 +272,7 @@ public final class PluginLifecycle implements AutoCloseable {
                             } catch (PluginDeclinedException declined) {
                                 state = PluginState.STOPPING;
                                 signalStopping();
-                                cleanup();
+                                cleanup(null);
                                 if (state == PluginState.FAILED) {
                                     closed.complete(null);
                                     throw new PluginFailure(PluginFailure.Code.INTERNAL_FAILURE);
@@ -382,7 +382,7 @@ public final class PluginLifecycle implements AutoCloseable {
         }
         // Failure aborts owned resources to unblock outstanding I/O; graceful close drains first.
         signalStopping();
-        cleanup();
+        cleanup(null);
         finishClose();
     }
 
@@ -391,7 +391,7 @@ public final class PluginLifecycle implements AutoCloseable {
             if (admission.activeCalls() != 0
                     || (state != PluginState.STOPPING && state != PluginState.FAILED)) return;
         }
-        cleanup();
+        cleanup(null);
         if (state != PluginState.FAILED) state = PluginState.CLOSED;
         closed.complete(null);
     }
@@ -420,10 +420,6 @@ public final class PluginLifecycle implements AutoCloseable {
             }
         }
         if (state == PluginState.FAILED) cleanup(fatal);
-    }
-
-    private void cleanup() {
-        cleanup(null);
     }
 
     private void cleanup(Error fatal) {

@@ -218,7 +218,10 @@ public final class GroupTools {
             }
             // Summarize the group's outcome for the reverse-transform brief (verified nodes' \
             // results), then tear the group down.
-            String brief = buildDisbandBrief(group, capability);
+            String brief =
+                    capability.prompt(
+                            "group-disband-brief",
+                            Map.of("group", GroupPromptInputs.snapshot(group)));
             capability.disband(brief);
             // Request the reverse transform: the runner rewinds, restores the STANDALONE persona +
             // binding, and re-injects the outcome brief so the agent continues autonomously.
@@ -494,12 +497,6 @@ public final class GroupTools {
             capability.post(receiver, args.type(), payload);
             return "posted";
         }
-    }
-
-    private static @NonNull String buildDisbandBrief(
-            GroupSnapshot g, @NonNull GroupControlCapability capability) {
-        return capability.prompt(
-                "group-disband-brief", Map.of("group", GroupPromptInputs.snapshot(g)));
     }
 
     private record Observation(

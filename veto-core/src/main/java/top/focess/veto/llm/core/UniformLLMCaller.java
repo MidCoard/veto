@@ -11,19 +11,26 @@ import top.focess.veto.api.llm.exceptions.LlmException;
  */
 public interface UniformLLMCaller {
     /**
-     * Executes a request against the appropriate provider.
+     * Executes a request without persisted-session context by delegating to {@link
+     * #call(VetoRequest, String)} with a null session id.
      *
      * @param request the standardized LLM request
      * @return the normalized response from the LLM
      * @throws LlmException if the call fails permanently (auth, capability) or exhausts retries.
      */
-    @NonNull VetoResponse call(@NonNull VetoRequest request);
+    default @NonNull VetoResponse call(@NonNull VetoRequest request) {
+        return call(request, null);
+    }
 
     /**
-     * Executes a request for a persisted session. Implementations that resolve plugin-provided
-     * transports use the session id to enforce its exact plugin revision pin.
+     * Executes a request with optional persisted-session context. Implementations that resolve
+     * plugin-provided transports use a supplied session id to enforce its exact plugin revision
+     * pin. A null session id selects the same no-session path as {@link #call(VetoRequest)}.
+     *
+     * @param request the standardized LLM request
+     * @param sessionId the persisted session id, or null when there is no session context
+     * @return the normalized response from the LLM
+     * @throws LlmException if the call fails permanently or exhausts retries
      */
-    default @NonNull VetoResponse call(@NonNull VetoRequest request, @NonNull String sessionId) {
-        return call(request);
-    }
+    @NonNull VetoResponse call(@NonNull VetoRequest request, String sessionId);
 }

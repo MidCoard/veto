@@ -27,7 +27,7 @@ import top.focess.veto.agent.loop.PromptCompiler;
 import top.focess.veto.agent.tool.*;
 import top.focess.veto.agent.tool.builtin.*;
 import top.focess.veto.agent.tool.builtin.FixtureLoopTool;
-import top.focess.veto.agent.translation.DefaultCapabilityTranslator;
+import top.focess.veto.agent.translation.VetoCapabilityTranslator;
 import top.focess.veto.agent.workspace.*;
 import top.focess.veto.api.agent.ToolCallEvent;
 import top.focess.veto.api.agent.tool.AgentTool;
@@ -72,7 +72,7 @@ class PlanExecutionTest {
         AtomicInteger calls = new AtomicInteger();
         var service =
                 service(
-                        request -> {
+                        (request, modelSessionId) -> {
                             calls.incrementAndGet();
                             assertTrue(
                                     request.tools().stream()
@@ -124,7 +124,7 @@ class PlanExecutionTest {
         AtomicInteger calls = new AtomicInteger();
         var service =
                 service(
-                        request -> {
+                        (request, modelSessionId) -> {
                             assertTrue(
                                     request.messages().stream()
                                             .noneMatch(m -> m.content().contains(secret)));
@@ -193,7 +193,7 @@ class PlanExecutionTest {
         AtomicInteger calls = new AtomicInteger();
         var service =
                 service(
-                        request -> {
+                        (request, modelSessionId) -> {
                             int index = calls.getAndIncrement();
                             var observations =
                                     request.messages().stream()
@@ -283,7 +283,7 @@ class PlanExecutionTest {
         var calls = new AtomicInteger();
         var service =
                 service(
-                        request -> {
+                        (request, modelSessionId) -> {
                             if (calls.incrementAndGet() == 1)
                                 return actions(
                                         """
@@ -340,7 +340,7 @@ class PlanExecutionTest {
         var calls = new AtomicInteger();
         var service =
                 service(
-                        request -> {
+                        (request, modelSessionId) -> {
                             int attempt = calls.getAndIncrement();
                             var definition =
                                     request.tools().stream()
@@ -415,7 +415,7 @@ class PlanExecutionTest {
         var calls = new AtomicInteger();
         var service =
                 service(
-                        request -> {
+                        (request, modelSessionId) -> {
                             if (calls.getAndIncrement() == 0)
                                 return new VetoResponse(
                                         null,
@@ -472,7 +472,7 @@ class PlanExecutionTest {
         AtomicInteger calls = new AtomicInteger();
         var service =
                 service(
-                        request ->
+                        (request, modelSessionId) ->
                                 calls.getAndIncrement() == 0
                                         ? actions(program)
                                         : message("Plan rejected; no file read."),
@@ -518,7 +518,7 @@ class PlanExecutionTest {
         var calls = new AtomicInteger();
         var service =
                 service(
-                        request -> {
+                        (request, modelSessionId) -> {
                             int attempt = calls.getAndIncrement();
                             if (attempt == 0)
                                 return actions(
@@ -623,7 +623,7 @@ class PlanExecutionTest {
         ReflectionTestUtils.invokeMethod(engine, "init");
         PromptCompiler compiler =
                 new PromptCompiler(
-                        new DefaultCapabilityTranslator(mapper),
+                        new VetoCapabilityTranslator(),
                         new SystemPromptResolver(),
                         mapper,
                         "FULL_ACCESS");
@@ -724,7 +724,7 @@ class PlanExecutionTest {
         AtomicInteger calls = new AtomicInteger();
         var caller =
                 (UniformLLMCaller)
-                        request -> {
+                        (request, modelSessionId) -> {
                             int index = calls.getAndIncrement();
                             if (index == 0) return actions(program);
                             assertTrue(request.userPrompt().contains("Migration guide"));
@@ -812,7 +812,7 @@ class PlanExecutionTest {
         AtomicInteger approvals = new AtomicInteger();
         var service =
                 service(
-                        request -> {
+                        (request, modelSessionId) -> {
                             calls.incrementAndGet();
                             return actions(program);
                         },
@@ -862,7 +862,7 @@ class PlanExecutionTest {
         AtomicInteger calls = new AtomicInteger();
         var service =
                 service(
-                        request -> {
+                        (request, modelSessionId) -> {
                             calls.incrementAndGet();
                             return actions(program);
                         },
@@ -889,7 +889,7 @@ class PlanExecutionTest {
         AtomicInteger calls = new AtomicInteger();
         var result =
                 service(
-                                request -> {
+                                (request, modelSessionId) -> {
                                     calls.incrementAndGet();
                                     return actions(program);
                                 },
@@ -911,7 +911,7 @@ class PlanExecutionTest {
         AtomicInteger budget = new AtomicInteger();
         var service =
                 service(
-                        request -> {
+                        (request, modelSessionId) -> {
                             var active = serviceRef.get();
                             if (active == null) throw new AssertionError("Missing service");
                             var agent = active.agent("read-plan");
@@ -984,7 +984,7 @@ class PlanExecutionTest {
         AtomicInteger calls = new AtomicInteger();
         var service =
                 service(
-                        request -> {
+                        (request, modelSessionId) -> {
                             int index = calls.getAndIncrement();
                             if (index == 1) return actions(program);
                             if (index == 2 || index == 3) {
@@ -1056,7 +1056,7 @@ class PlanExecutionTest {
         AtomicInteger calls = new AtomicInteger();
         var result =
                 service(
-                                request -> {
+                                (request, modelSessionId) -> {
                                     int index = calls.getAndIncrement();
                                     if (index == 0) return actions(program);
                                     assertFalse(request.userPrompt().contains("$error"));
@@ -1096,7 +1096,7 @@ class PlanExecutionTest {
         List<VetoRequest> planRequests = new ArrayList<>();
         var plan =
                 service(
-                        request -> {
+                        (request, modelSessionId) -> {
                             planRequests.add(request);
                             if (planRequests.size() == 1) return actions(program);
                             assertTrue(request.userPrompt().contains("release=stable"));
@@ -1108,7 +1108,7 @@ class PlanExecutionTest {
         List<VetoRequest> ordinaryRequests = new ArrayList<>();
         var ordinary =
                 service(
-                        request -> {
+                        (request, modelSessionId) -> {
                             ordinaryRequests.add(request);
                             if (ordinaryRequests.size() == 1)
                                 return new VetoResponse(
@@ -1235,7 +1235,7 @@ class PlanExecutionTest {
         List<ToolCallEvent> toolCalls = new ArrayList<>();
         var service =
                 service(
-                        request -> {
+                        (request, modelSessionId) -> {
                             calls.incrementAndGet();
                             assertTrue(
                                     request.tools().stream()
@@ -1276,7 +1276,7 @@ class PlanExecutionTest {
         var calls = new AtomicInteger();
         var service =
                 service(
-                        request -> {
+                        (request, modelSessionId) -> {
                             if (calls.getAndIncrement() == 0)
                                 return actions(
                                         """
@@ -1328,7 +1328,7 @@ class PlanExecutionTest {
         AtomicInteger calls = new AtomicInteger();
         var service =
                 service(
-                        request -> {
+                        (request, modelSessionId) -> {
                             int index = calls.getAndIncrement();
                             if (index == 0)
                                 return actions(
@@ -1396,7 +1396,7 @@ class PlanExecutionTest {
         AtomicInteger calls = new AtomicInteger();
         var service =
                 service(
-                        request -> {
+                        (request, modelSessionId) -> {
                             if (calls.getAndIncrement() == 0)
                                 return actions(
                                         """

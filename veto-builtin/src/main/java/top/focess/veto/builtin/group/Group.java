@@ -58,7 +58,8 @@ public record Group(
                 dag,
                 null,
                 null,
-                ToolResultPresentationMode.BASIC);
+                ToolResultPresentationMode.BASIC,
+                null);
     }
 
     /**
@@ -83,7 +84,8 @@ public record Group(
                 dag,
                 owner,
                 null,
-                ToolResultPresentationMode.BASIC);
+                ToolResultPresentationMode.BASIC,
+                null);
     }
 
     /** Creates an ACTIVE group with the given tool-result presentation mode. */
@@ -103,7 +105,8 @@ public record Group(
                 dag,
                 owner,
                 null,
-                toolResultPresentation);
+                toolResultPresentation,
+                null);
     }
 
     /** Creates an ACTIVE group bound to the given agent session handles. */

@@ -34,7 +34,7 @@ class CompactionRuntimeTest {
         ObjectMapper mapper = new ObjectMapper();
         var runner =
                 runner(
-                        request -> {
+                        (request, modelSessionId) -> {
                             calls.incrementAndGet();
                             var data =
                                     new LinkedHashMap<String, Object>(
@@ -91,7 +91,7 @@ class CompactionRuntimeTest {
         AtomicInteger calls = new AtomicInteger();
         var runner =
                 runner(
-                        request -> {
+                        (request, modelSessionId) -> {
                             calls.incrementAndGet();
                             return new VetoResponse(
                                     null,
@@ -158,7 +158,7 @@ class CompactionRuntimeTest {
         AtomicInteger calls = new AtomicInteger();
         var runner =
                 runner(
-                        request -> {
+                        (request, modelSessionId) -> {
                             if (calls.incrementAndGet() == 1)
                                 return new VetoResponse(
                                         null,
@@ -198,7 +198,7 @@ class CompactionRuntimeTest {
         AtomicInteger calls = new AtomicInteger();
         var runner =
                 runner(
-                        request -> {
+                        (request, modelSessionId) -> {
                             calls.incrementAndGet();
                             return new VetoResponse(null, null, "{}");
                         });

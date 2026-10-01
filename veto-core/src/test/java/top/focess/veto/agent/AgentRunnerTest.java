@@ -41,7 +41,7 @@ import top.focess.veto.agent.tool.ToolCallContextHolder;
 import top.focess.veto.agent.tool.ToolEngine;
 import top.focess.veto.agent.tool.ToolEngineImpl;
 import top.focess.veto.agent.tool.builtin.FixtureLoopTool;
-import top.focess.veto.agent.translation.DefaultCapabilityTranslator;
+import top.focess.veto.agent.translation.VetoCapabilityTranslator;
 import top.focess.veto.api.agent.AgentResult;
 import top.focess.veto.api.agent.AgentState;
 import top.focess.veto.api.agent.screening.Danger;
@@ -142,7 +142,7 @@ class AgentRunnerTest {
                 };
         var service =
                 serviceWith(
-                        request -> {
+                        (request, modelSessionId) -> {
                             requests.add(request);
                             return new VetoResponse(null, null, "original answer");
                         });
@@ -195,7 +195,7 @@ class AgentRunnerTest {
                 };
         var service =
                 serviceWith(
-                        request -> {
+                        (request, modelSessionId) -> {
                             calls.incrementAndGet();
                             return new VetoResponse(null, null, "unreachable");
                         });
@@ -272,7 +272,7 @@ class AgentRunnerTest {
         List<VetoRequest> requests = new CopyOnWriteArrayList<>();
         var service =
                 serviceWith(
-                        request -> {
+                        (request, modelSessionId) -> {
                             requests.add(request);
                             if (repair && limit != 4 && requests.size() == 1)
                                 return new VetoResponse(null, null, null);
@@ -367,7 +367,7 @@ class AgentRunnerTest {
         var attempts = new AtomicInteger();
         var service =
                 serviceWith(
-                        request -> {
+                        (request, modelSessionId) -> {
                             LlmSystemUsage.set(100, 7);
                             int attempt = attempts.incrementAndGet();
                             if (attempt == 1) throw new ModelSchemaException("synthetic retry");
@@ -432,7 +432,7 @@ class AgentRunnerTest {
     void ordinaryProviderFailureRetainsItsDiagnosticObservation() throws Exception {
         var service =
                 serviceWith(
-                        request -> {
+                        (request, modelSessionId) -> {
                             throw new LlmException("provider unavailable", false);
                         });
         try {
@@ -462,7 +462,7 @@ class AgentRunnerTest {
         List<VetoRequest> requests = new CopyOnWriteArrayList<>();
         AgentService service =
                 serviceWith(
-                        request -> {
+                        (request, modelSessionId) -> {
                             requests.add(request);
                             return new VetoResponse("Processed the safe context.", null, "Done.");
                         });
@@ -539,7 +539,7 @@ class AgentRunnerTest {
         AtomicInteger calls = new AtomicInteger();
         AgentService service =
                 serviceWith(
-                        request -> {
+                        (request, modelSessionId) -> {
                             calls.incrementAndGet();
                             return new VetoResponse("Safe.", null, "Done.");
                         });
@@ -589,7 +589,7 @@ class AgentRunnerTest {
         CountDownLatch called = new CountDownLatch(1);
         var runtime =
                 serviceWith(
-                        request -> {
+                        (request, modelSessionId) -> {
                             assertEquals("alice", UserContext.get());
                             assertTrue(
                                     request.messages().toString().contains("Earlier conversation"));
@@ -724,7 +724,7 @@ class AgentRunnerTest {
         AtomicInteger calls = new AtomicInteger();
         var service =
                 serviceWith(
-                        request -> {
+                        (request, modelSessionId) -> {
                             if (calls.getAndIncrement() == 0)
                                 return new VetoResponse(
                                         "Need a format", List.of(questionCall()), null);
@@ -789,7 +789,7 @@ class AgentRunnerTest {
         List<VetoRequest> requests = new CopyOnWriteArrayList<>();
         var service =
                 serviceWith(
-                        request -> {
+                        (request, modelSessionId) -> {
                             requests.add(request);
                             called.countDown();
                             return new VetoResponse(null, null, "Handled");
@@ -869,7 +869,7 @@ class AgentRunnerTest {
         var calls = new AtomicInteger();
         var service =
                 serviceWith(
-                        request -> {
+                        (request, modelSessionId) -> {
                             calls.incrementAndGet();
                             entered.countDown();
                             try {
@@ -963,7 +963,7 @@ class AgentRunnerTest {
         var store = new RequestContinuationStore(repository);
         List<VetoRequest> requests = new CopyOnWriteArrayList<>();
         UniformLLMCaller caller =
-                request -> {
+                (request, modelSessionId) -> {
                     assertFalse(
                             durable.isEmpty(), "Budget must be saved before provider execution");
                     requests.add(request);
@@ -1059,7 +1059,7 @@ class AgentRunnerTest {
         AtomicInteger calls = new AtomicInteger();
         var service =
                 serviceWith(
-                        request -> {
+                        (request, modelSessionId) -> {
                             calls.incrementAndGet();
                             return new VetoResponse(null, null, "unexpected");
                         });
@@ -1110,7 +1110,7 @@ class AgentRunnerTest {
         AtomicInteger calls = new AtomicInteger();
         var service =
                 serviceWith(
-                        request -> {
+                        (request, modelSessionId) -> {
                             calls.incrementAndGet();
                             return new VetoResponse(null, null, "unexpected");
                         },
@@ -1178,7 +1178,7 @@ class AgentRunnerTest {
         List<VetoRequest> requests = new CopyOnWriteArrayList<>();
         var service =
                 serviceWith(
-                        request -> {
+                        (request, modelSessionId) -> {
                             requests.add(request);
                             return new VetoResponse(null, null, "done");
                         });
@@ -1257,7 +1257,7 @@ class AgentRunnerTest {
         AtomicInteger calls = new AtomicInteger();
         var service =
                 serviceWith(
-                        request -> {
+                        (request, modelSessionId) -> {
                             if (calls.incrementAndGet() == 2) {
                                 entered.countDown();
                                 try {
@@ -1298,7 +1298,8 @@ class AgentRunnerTest {
 
     @Test
     void callbackFailureDoesNotStrandFollowingRequest() throws Exception {
-        var service = serviceWith(request -> new VetoResponse(null, null, "done"));
+        var service =
+                serviceWith((request, modelSessionId) -> new VetoResponse(null, null, "done"));
         try {
             service.submit("callback-throw", "Warm up", binding("System"), EPISODE_TIMEOUT);
             var agent = requireAgent(service.agent("callback-throw"));
@@ -1324,7 +1325,7 @@ class AgentRunnerTest {
         AtomicInteger calls = new AtomicInteger();
         var service =
                 serviceWith(
-                        request -> {
+                        (request, modelSessionId) -> {
                             if (calls.incrementAndGet() == 2) {
                                 entered.countDown();
                                 try {
@@ -1358,7 +1359,8 @@ class AgentRunnerTest {
     void completedResultDoesNotConfirmTaskExitWhileCallbackStillRuns() throws Exception {
         CountDownLatch entered = new CountDownLatch(1);
         CountDownLatch release = new CountDownLatch(1);
-        var service = serviceWith(request -> new VetoResponse(null, null, "done"));
+        var service =
+                serviceWith((request, modelSessionId) -> new VetoResponse(null, null, "done"));
         try {
             service.submit("callback-exit", "Warm up", binding("System"), EPISODE_TIMEOUT);
             var agent = requireAgent(service.agent("callback-exit"));
@@ -1389,7 +1391,7 @@ class AgentRunnerTest {
         AtomicInteger calls = new AtomicInteger();
         var service =
                 serviceWith(
-                        request -> {
+                        (request, modelSessionId) -> {
                             calls.incrementAndGet();
                             return new VetoResponse(null, null, "New task done");
                         });
@@ -1480,7 +1482,7 @@ class AgentRunnerTest {
         AtomicInteger calls = new AtomicInteger();
         var service =
                 serviceWith(
-                        request -> {
+                        (request, modelSessionId) -> {
                             if (calls.incrementAndGet() == 1) {
                                 entered.countDown();
                                 boolean released = false;
@@ -1582,7 +1584,7 @@ class AgentRunnerTest {
         CountDownLatch entered = new CountDownLatch(1);
         var service =
                 serviceWith(
-                        request -> {
+                        (request, modelSessionId) -> {
                             entered.countDown();
                             try {
                                 new CountDownLatch(1).await();
@@ -1615,7 +1617,8 @@ class AgentRunnerTest {
 
     @Test
     void successiveUserRequestsHaveDistinctDurableIdentities() throws Exception {
-        var service = serviceWith(request -> new VetoResponse(null, null, "done"));
+        var service =
+                serviceWith((request, modelSessionId) -> new VetoResponse(null, null, "done"));
         try {
             service.submit("request-ids", "First task", binding("System"), EPISODE_TIMEOUT);
             service.submit("request-ids", "Second task", binding("System"), EPISODE_TIMEOUT);
@@ -1640,7 +1643,7 @@ class AgentRunnerTest {
         var service =
                 serviceWithCitationPolicy(
                         "citation-after-schema",
-                        request -> {
+                        (request, modelSessionId) -> {
                             int call = calls.incrementAndGet();
                             if (call <= 2) throw new ModelSchemaException("Invalid JSON shape");
                             return new VetoResponse(
@@ -1671,7 +1674,7 @@ class AgentRunnerTest {
         var service =
                 serviceWithCitationPolicy(
                         "citation-candidate",
-                        request -> {
+                        (request, modelSessionId) -> {
                             if (calls.incrementAndGet() > 1)
                                 throw new ModelSchemaException("Invalid correction");
                             return new VetoResponse(
@@ -1709,7 +1712,7 @@ class AgentRunnerTest {
         var service =
                 serviceWithCitationPolicy(
                         "citation-unresolved",
-                        request -> {
+                        (request, modelSessionId) -> {
                             calls.incrementAndGet();
                             return new VetoResponse(
                                     null,
@@ -1753,7 +1756,7 @@ class AgentRunnerTest {
         var service =
                 serviceWithCitationPolicy(
                         "citation-correction",
-                        request -> {
+                        (request, modelSessionId) -> {
                             boolean first = calls.incrementAndGet() == 1;
                             return new VetoResponse(
                                     null,
@@ -1794,7 +1797,7 @@ class AgentRunnerTest {
         var service =
                 serviceWithCitationPolicy(
                         "citation-retry",
-                        request -> {
+                        (request, modelSessionId) -> {
                             if (calls.incrementAndGet() == 1)
                                 throw new ModelSchemaException("try again");
                             if (calls.get() == 3)
@@ -1846,7 +1849,7 @@ class AgentRunnerTest {
     void linkageFailureCompletesTheEpisode() throws Exception {
         var service =
                 serviceWith(
-                        request -> {
+                        (request, modelSessionId) -> {
                             throw new NoClassDefFoundError("ToolErrors");
                         });
         var result =
@@ -1861,7 +1864,7 @@ class AgentRunnerTest {
         List<VetoRequest> seen = new CopyOnWriteArrayList<>();
         var service =
                 serviceWith(
-                        request -> {
+                        (request, modelSessionId) -> {
                             seen.add(request);
                             if (seen.size() == 2) {
                                 var agent = active.get();
@@ -1905,7 +1908,7 @@ class AgentRunnerTest {
         var eventPending = new AtomicBoolean(false);
         var service =
                 serviceWith(
-                        request -> {
+                        (request, modelSessionId) -> {
                             int call = calls.incrementAndGet();
                             if (call == 2) {
                                 parked.countDown();
@@ -1980,7 +1983,7 @@ class AgentRunnerTest {
         var pending = new AtomicBoolean();
         var service =
                 serviceWith(
-                        modelRequest -> {
+                        (modelRequest, modelSessionId) -> {
                             int call = calls.incrementAndGet();
                             if (call == 2) {
                                 initialEntered.countDown();
@@ -2095,7 +2098,7 @@ class AgentRunnerTest {
         Mockito.when(engine.resolveDefinition("fixture_loop")).thenReturn(definition);
         var service =
                 serviceWith(
-                        request -> {
+                        (request, modelSessionId) -> {
                             if (calls.incrementAndGet() == 1)
                                 return new VetoResponse(null, null, "initialized");
                             entered.countDown();
@@ -2137,7 +2140,7 @@ class AgentRunnerTest {
         var signal = new CompletableFuture<Boolean>();
         var service =
                 serviceWith(
-                        request -> {
+                        (request, modelSessionId) -> {
                             if (calls.incrementAndGet() == 2) {
                                 entered.countDown();
                                 try {
@@ -2195,7 +2198,7 @@ class AgentRunnerTest {
         var calls = new AtomicInteger();
         var service =
                 serviceWith(
-                        request -> {
+                        (request, modelSessionId) -> {
                             int call = calls.incrementAndGet();
                             try {
                                 if (call == 1) {
@@ -2256,7 +2259,7 @@ class AgentRunnerTest {
         var resumed = new CountDownLatch(1);
         var service =
                 serviceWith(
-                        request -> {
+                        (request, modelSessionId) -> {
                             seen.add(request);
                             if (seen.size() > 1) resumed.countDown();
                             return new VetoResponse(null, null, "Done");
@@ -2318,7 +2321,7 @@ class AgentRunnerTest {
         var calls = new AtomicInteger();
         var service =
                 serviceWith(
-                        request -> {
+                        (request, modelSessionId) -> {
                             calls.incrementAndGet();
                             return new VetoResponse(null, null, "Done");
                         },
@@ -2376,7 +2379,7 @@ class AgentRunnerTest {
         var resumed = new CountDownLatch(1);
         var service =
                 serviceWith(
-                        request -> {
+                        (request, modelSessionId) -> {
                             seen.add(request);
                             if (seen.size() == 3) resumed.countDown();
                             return new VetoResponse(null, null, "done");
@@ -2448,7 +2451,7 @@ class AgentRunnerTest {
         var releaseUser = new CountDownLatch(1);
         var service =
                 serviceWith(
-                        request -> {
+                        (request, modelSessionId) -> {
                             int call = calls.incrementAndGet();
                             try {
                                 if (call == 2) {
@@ -2510,7 +2513,7 @@ class AgentRunnerTest {
         var calls = new AtomicInteger();
         var service =
                 serviceWith(
-                        request -> {
+                        (request, modelSessionId) -> {
                             if (calls.incrementAndGet() == 1)
                                 throw new ModelSchemaException("Retry once");
                             return new VetoResponse(null, null, "done");
@@ -2595,7 +2598,7 @@ class AgentRunnerTest {
         ObjectMapper mapper = new ObjectMapper();
         PromptCompiler compiler =
                 new PromptCompiler(
-                        new DefaultCapabilityTranslator(mapper),
+                        new VetoCapabilityTranslator(),
                         new SystemPromptResolver(),
                         mapper,
                         "FULL_ACCESS");
@@ -2627,7 +2630,7 @@ class AgentRunnerTest {
         var calls = new AtomicInteger();
         var service =
                 serviceWith(
-                        request -> {
+                        (request, modelSessionId) -> {
                             calls.incrementAndGet();
                             return new VetoResponse(null, null, "done");
                         },
@@ -2698,7 +2701,7 @@ class AgentRunnerTest {
         var calls = new AtomicInteger();
         var service =
                 serviceWith(
-                        request -> {
+                        (request, modelSessionId) -> {
                             int current = calls.incrementAndGet();
                             assertEquals(
                                     1,
@@ -2760,7 +2763,7 @@ class AgentRunnerTest {
         List<VetoRequest> seenRequests = new CopyOnWriteArrayList<>();
         AtomicInteger calls = new AtomicInteger();
         UniformLLMCaller caller =
-                request -> {
+                (request, modelSessionId) -> {
                     seenRequests.add(request);
                     if (calls.getAndIncrement() == 0) {
                         return new VetoResponse(
@@ -2840,7 +2843,7 @@ class AgentRunnerTest {
         AtomicInteger attempts = new AtomicInteger();
         var service =
                 serviceWith(
-                        request -> {
+                        (request, modelSessionId) -> {
                             int attempt = attempts.incrementAndGet();
                             if (attempt > 1) {
                                 String guidance = request.messages().getLast().content();
@@ -2903,7 +2906,7 @@ class AgentRunnerTest {
         var calls = new java.util.concurrent.atomic.AtomicInteger();
         var service =
                 serviceWith(
-                        request -> {
+                        (request, modelSessionId) -> {
                             if (calls.incrementAndGet() <= 4)
                                 throw new ModelSchemaException("Malformed JSON");
                             assertTrue(
@@ -2932,7 +2935,7 @@ class AgentRunnerTest {
     void providerSchemaFailureUsesTheSameEphemeralRetryPath() throws Exception {
         List<VetoRequest> requests = new CopyOnWriteArrayList<>();
         UniformLLMCaller caller =
-                request -> {
+                (request, modelSessionId) -> {
                     requests.add(request);
                     if (requests.size() == 1)
                         throw new ModelSchemaException("Malformed guide JSON");
@@ -2970,7 +2973,7 @@ class AgentRunnerTest {
         // response (no tool calls).
         List<VetoRequest> seenRequests = new CopyOnWriteArrayList<>();
         UniformLLMCaller caller =
-                request -> {
+                (request, modelSessionId) -> {
                     seenRequests.add(request);
                     if (seenRequests.size() == 1) {
                         return new VetoResponse(null, null, null);
@@ -3027,7 +3030,7 @@ class AgentRunnerTest {
     void stoppingTurnWithoutMessageMapsToMessageDescription() throws Exception {
         List<VetoRequest> seenRequests = new CopyOnWriteArrayList<>();
         UniformLLMCaller caller =
-                request -> {
+                (request, modelSessionId) -> {
                     seenRequests.add(request);
                     if (seenRequests.size() == 1) {
                         // thought present + stopping (no calls) + message missing → Rule 3 throws
@@ -3064,7 +3067,8 @@ class AgentRunnerTest {
     @Test
     void thoughtStreamsToThoughtSinkBeforeMessage() throws Exception {
         UniformLLMCaller caller =
-                request -> new VetoResponse("I should answer directly.", null, "The answer is 4.");
+                (request, modelSessionId) ->
+                        new VetoResponse("I should answer directly.", null, "The answer is 4.");
 
         AgentService service = serviceWith(caller);
         List<String> thoughts = new CopyOnWriteArrayList<>();

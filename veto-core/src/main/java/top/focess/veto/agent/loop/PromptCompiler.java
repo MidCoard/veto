@@ -509,11 +509,6 @@ public class PromptCompiler {
     }
 
     private @NonNull List<ChatMessage> fitIsolatedBudget(
-            @NonNull List<ChatMessage> conversation, @NonNull List<ToolDefinition> tools) {
-        return fitIsolatedBudget(conversation, tools, maxInputTokens);
-    }
-
-    private @NonNull List<ChatMessage> fitIsolatedBudget(
             @NonNull List<ChatMessage> conversation,
             @NonNull List<ToolDefinition> tools,
             long budget) {

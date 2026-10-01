@@ -15,7 +15,7 @@ import top.focess.veto.agent.identity.SystemPromptResolver;
 import top.focess.veto.agent.intercept.HitlRegistry;
 import top.focess.veto.agent.intercept.IngressDefense;
 import top.focess.veto.agent.loop.PromptCompiler;
-import top.focess.veto.agent.translation.DefaultCapabilityTranslator;
+import top.focess.veto.agent.translation.VetoCapabilityTranslator;
 import top.focess.veto.api.llm.LlmBinding;
 import top.focess.veto.api.llm.LlmOptions;
 import top.focess.veto.api.llm.ProviderType;
@@ -38,7 +38,7 @@ class AgentServiceHistorySeedTest {
         // The caller is never invoked: getOrCreateAgent creates + binds + seeds but does not
         // submit.
         UniformLLMCaller caller =
-                request -> {
+                (request, modelSessionId) -> {
                     throw new AssertionError("LLM call not expected");
                 };
         AgentService service = serviceWith(caller);
@@ -61,7 +61,7 @@ class AgentServiceHistorySeedTest {
     @Test
     void getOrCreateWithEmptyHistoryDoesNotSeed() {
         UniformLLMCaller caller =
-                request -> {
+                (request, modelSessionId) -> {
                     throw new AssertionError("LLM call not expected");
                 };
         AgentService service = serviceWith(caller);
@@ -77,7 +77,7 @@ class AgentServiceHistorySeedTest {
     @Test
     void seedHistoryAdvancesTurnNumberPastReplayedTurns() {
         UniformLLMCaller caller =
-                request -> {
+                (request, modelSessionId) -> {
                     throw new AssertionError("LLM call not expected");
                 };
         AgentService service = serviceWith(caller);
@@ -106,7 +106,8 @@ class AgentServiceHistorySeedTest {
         UUID sessionId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
         LlmBinding binding = binding();
-        UniformLLMCaller finishingCaller = request -> new VetoResponse("done", null, "done");
+        UniformLLMCaller finishingCaller =
+                (request, modelSessionId) -> new VetoResponse("done", null, "done");
 
         AgentService beforeRestart = serviceWith(finishingCaller);
         Agent first =
@@ -126,7 +127,7 @@ class AgentServiceHistorySeedTest {
         AtomicReference<VetoRequest> resumedRequest = new AtomicReference<>();
         AgentService afterRestart =
                 serviceWith(
-                        request -> {
+                        (request, modelSessionId) -> {
                             resumedRequest.set(request);
                             return new VetoResponse("done", null, "done");
                         });
@@ -168,7 +169,7 @@ class AgentServiceHistorySeedTest {
         ObjectMapper mapper = new ObjectMapper();
         PromptCompiler compiler =
                 new PromptCompiler(
-                        new DefaultCapabilityTranslator(mapper),
+                        new VetoCapabilityTranslator(),
                         new SystemPromptResolver(),
                         mapper,
                         "FULL_ACCESS");

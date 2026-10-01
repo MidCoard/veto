@@ -73,6 +73,7 @@ public record NativeToolDefinition(
                 toolClass,
                 argsClass,
                 paramHints,
+                null,
                 null);
     }
 }

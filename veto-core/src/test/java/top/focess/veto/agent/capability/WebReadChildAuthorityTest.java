@@ -29,7 +29,7 @@ import top.focess.veto.agent.intercept.ToolExecutionPermit;
 import top.focess.veto.agent.tool.CapabilityTestCalls;
 import top.focess.veto.agent.tool.ToolCallContext;
 import top.focess.veto.agent.tool.ToolCallContextHolder;
-import top.focess.veto.agent.translation.DefaultCapabilityTranslator;
+import top.focess.veto.agent.translation.VetoCapabilityTranslator;
 import top.focess.veto.agent.web.ReaderTestHarness;
 import top.focess.veto.api.agent.AgentState;
 import top.focess.veto.api.agent.tool.NativeTool;
@@ -82,7 +82,7 @@ class WebReadChildAuthorityTest {
             ObjectMapper mapper = new ObjectMapper();
             AtomicInteger modelCalls = new AtomicInteger();
             UniformLLMCaller caller =
-                    request -> {
+                    (request, modelSessionId) -> {
                         assertNull(
                                 ToolCallContextHolder.get(),
                                 "Model dispatch must have no tool execution permit");
@@ -133,7 +133,7 @@ class WebReadChildAuthorityTest {
                             mapper,
                             caller,
                             models,
-                            new DefaultCapabilityTranslator(mapper),
+                            new VetoCapabilityTranslator(),
                             registry,
                             new TurnLogService(null, mapper),
                             6,
@@ -239,11 +239,11 @@ class WebReadChildAuthorityTest {
         var executions =
                 new IsolatedExecutions(
                         mapper,
-                        request -> {
+                        (request, modelSessionId) -> {
                             throw new AssertionError("No model requested");
                         },
                         models,
-                        new DefaultCapabilityTranslator(mapper),
+                        new VetoCapabilityTranslator(),
                         registry,
                         new TurnLogService(null, mapper),
                         new IngressDefense(),
@@ -352,11 +352,11 @@ class WebReadChildAuthorityTest {
         var executions =
                 new IsolatedExecutions(
                         mapper,
-                        request -> {
+                        (request, modelSessionId) -> {
                             throw new AssertionError();
                         },
                         models,
-                        new DefaultCapabilityTranslator(mapper),
+                        new VetoCapabilityTranslator(),
                         new SessionAgentRegistry(),
                         new TurnLogService(null, mapper),
                         new IngressDefense(),
@@ -446,11 +446,11 @@ class WebReadChildAuthorityTest {
         var executions =
                 new IsolatedExecutions(
                         mapper,
-                        request -> {
+                        (request, modelSessionId) -> {
                             throw new AssertionError("No model dispatch");
                         },
                         models,
-                        new DefaultCapabilityTranslator(mapper),
+                        new VetoCapabilityTranslator(),
                         registry,
                         new TurnLogService(null, mapper),
                         new IngressDefense(),

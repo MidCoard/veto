@@ -191,14 +191,6 @@ final class WindowsAppContainerLauncher {
         return value != 0 && value != -1L;
     }
 
-    private static WinNT.@NonNull HANDLE requireHandle(
-            WinNT.HANDLE handle, @NonNull String operation) {
-        if (handle == null || !validHandle(handle)) {
-            throw new IllegalStateException(operation + " returned an invalid handle");
-        }
-        return handle;
-    }
-
     private static char @NonNull [] nullTerminated(@NonNull String value) {
         return (value + '\0').toCharArray();
     }

@@ -26,7 +26,7 @@ import top.focess.veto.agent.loop.PromptCompiler;
 import top.focess.veto.agent.tool.*;
 import top.focess.veto.agent.tool.ToolDefinition;
 import top.focess.veto.agent.tool.builtin.*;
-import top.focess.veto.agent.translation.DefaultCapabilityTranslator;
+import top.focess.veto.agent.translation.VetoCapabilityTranslator;
 import top.focess.veto.agent.web.*;
 import top.focess.veto.agent.workspace.*;
 import top.focess.veto.api.agent.tool.ToolResult;
@@ -151,7 +151,7 @@ class CredentialJourneyTest {
         engine.afterSingletonsInstantiated();
         var compiler =
                 new PromptCompiler(
-                        new DefaultCapabilityTranslator(mapper),
+                        new VetoCapabilityTranslator(),
                         new SystemPromptResolver(),
                         mapper,
                         "FULL_ACCESS");
@@ -160,7 +160,7 @@ class CredentialJourneyTest {
         AtomicInteger calls = new AtomicInteger();
         var importedReferences = new ArrayList<String>();
         UniformLLMCaller caller =
-                request -> {
+                (request, modelSessionId) -> {
                     String observed =
                             request.messages().stream()
                                     .map(m -> m.content())

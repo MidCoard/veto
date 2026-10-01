@@ -30,17 +30,16 @@ class NativeToolResponsesTest {
     void predicateContractRejectsExplanationsAndToolsAtTheProviderBoundary() {
         var request = request().withResponseContract(ResponseContract.predicate());
         for (String valid : List.of("true", "false", " true\n"))
-            assertEquals(valid, NativeToolResponses.normalize(mapper, request, valid, List.of()));
+            assertEquals(valid, NativeToolResponses.normalize(request, valid, List.of()));
         for (String invalid :
                 List.of("True", "true because the task is done", "{\"result\":true}", ""))
             assertThrows(
                     ModelSchemaException.class,
-                    () -> NativeToolResponses.normalize(mapper, request, invalid, List.of()));
+                    () -> NativeToolResponses.normalize(request, invalid, List.of()));
         assertThrows(
                 ModelSchemaException.class,
                 () ->
                         NativeToolResponses.normalize(
-                                mapper,
                                 request,
                                 "true",
                                 List.of(
@@ -52,18 +51,17 @@ class NativeToolResponsesTest {
     void mandatoryCompletionCannotEndWithTextOrMultipleCalls() {
         var request = request().withResponseContract(ResponseContract.completion("read", false));
         var call = new NativeToolResponses.Call("read", mapper.createObjectNode(), "id");
-        assertEquals("", NativeToolResponses.normalize(mapper, request, "", List.of(call)));
+        assertEquals("", NativeToolResponses.normalize(request, "", List.of(call)));
         assertThrows(
                 ModelSchemaException.class,
-                () -> NativeToolResponses.normalize(mapper, request, "Finished", List.of()));
+                () -> NativeToolResponses.normalize(request, "Finished", List.of()));
         assertThrows(
                 ModelSchemaException.class,
-                () -> NativeToolResponses.normalize(mapper, request, "Progress", List.of(call)));
+                () -> NativeToolResponses.normalize(request, "Progress", List.of(call)));
         assertThrows(
                 ModelSchemaException.class,
                 () ->
                         NativeToolResponses.normalize(
-                                mapper,
                                 request,
                                 "",
                                 List.of(
@@ -73,7 +71,7 @@ class NativeToolResponsesTest {
         var finalOnly = request.withResponseContract(ResponseContract.completion("finish", true));
         assertThrows(
                 ModelSchemaException.class,
-                () -> NativeToolResponses.normalize(mapper, finalOnly, "", List.of(call)));
+                () -> NativeToolResponses.normalize(finalOnly, "", List.of(call)));
     }
 
     @Test
@@ -81,13 +79,11 @@ class NativeToolResponsesTest {
         var request = request(List.of()).withResponseContract(ResponseContract.generation());
         assertEquals(
                 "{\"summary\":\"done\"}",
-                NativeToolResponses.normalize(
-                        mapper, request, "{\"summary\":\"done\"}", List.of()));
+                NativeToolResponses.normalize(request, "{\"summary\":\"done\"}", List.of()));
         assertThrows(
                 ModelSchemaException.class,
                 () ->
                         NativeToolResponses.normalize(
-                                mapper,
                                 request,
                                 "",
                                 List.of(
@@ -111,21 +107,18 @@ class NativeToolResponsesTest {
         var call =
                 new NativeToolResponses.Call(
                         "answer_with_citations", mapper.createObjectNode(), "id");
-        assertEquals("", NativeToolResponses.normalize(mapper, request, "", List.of(call)));
+        assertEquals("", NativeToolResponses.normalize(request, "", List.of(call)));
         for (String text : List.of("", "Plain answer", "{\"summary\":\"done\"}"))
             assertThrows(
                     ModelSchemaException.class,
-                    () -> NativeToolResponses.normalize(mapper, request, text, List.of()));
+                    () -> NativeToolResponses.normalize(request, text, List.of()));
+        assertThrows(
+                ModelSchemaException.class,
+                () -> NativeToolResponses.normalize(request, "Accompanying text", List.of(call)));
         assertThrows(
                 ModelSchemaException.class,
                 () ->
                         NativeToolResponses.normalize(
-                                mapper, request, "Accompanying text", List.of(call)));
-        assertThrows(
-                ModelSchemaException.class,
-                () ->
-                        NativeToolResponses.normalize(
-                                mapper,
                                 request,
                                 "",
                                 List.of(
@@ -165,7 +158,6 @@ class NativeToolResponsesTest {
         assertDoesNotThrow(
                 () ->
                         NativeToolResponses.normalize(
-                                mapper,
                                 request(),
                                 explanation,
                                 List.of(
@@ -174,7 +166,6 @@ class NativeToolResponsesTest {
         assertEquals(
                 "{\"calls\":[]}",
                 NativeToolResponses.normalize(
-                        mapper,
                         request(),
                         "{\"calls\":[]}",
                         List.of(
@@ -260,7 +251,6 @@ class NativeToolResponsesTest {
                 ModelSchemaException.class,
                 () ->
                         NativeToolResponses.normalize(
-                                mapper,
                                 request(),
                                 "",
                                 List.of(new NativeToolResponses.Call("unknown", args, "a"))));
@@ -268,7 +258,6 @@ class NativeToolResponsesTest {
                 ModelSchemaException.class,
                 () ->
                         NativeToolResponses.normalize(
-                                mapper,
                                 request(),
                                 "",
                                 List.of(

@@ -29,15 +29,10 @@ final class NativeToolResponses {
     }
 
     static @NonNull String prompt(@NonNull PromptRenderer prompts, @NonNull VetoRequest request) {
-        return prompt(prompts, "provider-native", request);
-    }
-
-    static @NonNull String prompt(
-            @NonNull PromptRenderer prompts, @NonNull String entry, @NonNull VetoRequest request) {
         var data =
                 new LinkedHashMap<String, Object>(request.responseContract().promptData(request));
         data.put("system", request.systemPrompt());
-        return prompts.compile(entry, data);
+        return prompts.compile("provider-native", data);
     }
 
     static @NonNull JsonNode arguments(@NonNull ObjectMapper mapper, @NonNull String value) {
@@ -52,12 +47,6 @@ final class NativeToolResponses {
         } catch (Exception e) {
             throw new ModelSchemaException("Native tool arguments must be a valid JSON object");
         }
-    }
-
-    static void validateNativeChannel(
-            @NonNull ObjectMapper mapper, @NonNull VetoRequest request, @NonNull String text) {
-        if (!enabled(request))
-            throw new ModelSchemaException("This turn does not permit native tool calls");
     }
 
     /** Native calls are adapter-owned data, never deserialized from the model's JSON text. */
@@ -79,14 +68,12 @@ final class NativeToolResponses {
     }
 
     static @NonNull String normalize(
-            @NonNull ObjectMapper mapper,
-            @NonNull VetoRequest request,
-            @NonNull String text,
-            @NonNull List<Call> nativeCalls) {
+            @NonNull VetoRequest request, @NonNull String text, @NonNull List<Call> nativeCalls) {
         request.responseContract()
                 .validate(request, text, nativeCalls.stream().map(Call::name).toList());
         if (nativeCalls.isEmpty()) return text;
-        validateNativeChannel(mapper, request, text);
+        if (!enabled(request))
+            throw new ModelSchemaException("This turn does not permit native tool calls");
         var ids = new HashSet<String>();
         for (var call : nativeCalls) {
             if (request.tools().stream().noneMatch(tool -> tool.name().equals(call.name())))

@@ -149,14 +149,21 @@ public class SessionService {
     }
 
     /**
-     * Creates a session + its primary agent from a pattern, named after the pattern. Does NOT
-     * auto-activate. Equivalent to {@code createSession(owner, patternName, null,
+     * Creates a session + its primary agent from a pattern, with an auto-generated unique name.
+     * Does NOT auto-activate. Equivalent to {@code createSession(owner, patternName, null,
      * System.getProperty("user.dir"))} - the session's workspace defaults to the JVM working dir.
      */
     @Transactional
     public @NonNull SessionEntity createSession(
             @NonNull String owner, @NonNull String patternName) {
-        return createSession(owner, patternName, null, System.getProperty("user.dir"));
+        return createSession(
+                owner,
+                patternName,
+                null,
+                System.getProperty("user.dir"),
+                0,
+                ToolResultPresentationMode.BASIC,
+                null);
     }
 
     /**
@@ -165,12 +172,20 @@ public class SessionService {
      *
      * @param owner the session owner
      * @param patternName the pattern to instantiate the primary agent from
-     * @param sessionName the desired session name; null/empty defaults to {@code patternName}
+     * @param sessionName the desired session name; null/empty generates a workspace-unique name
+     *     prefixed by the pattern name
      */
     @Transactional
     public @NonNull SessionEntity createSession(
             @NonNull String owner, @NonNull String patternName, String sessionName) {
-        return createSession(owner, patternName, sessionName, System.getProperty("user.dir"));
+        return createSession(
+                owner,
+                patternName,
+                sessionName,
+                System.getProperty("user.dir"),
+                0,
+                ToolResultPresentationMode.BASIC,
+                null);
     }
 
     /**
@@ -194,7 +209,13 @@ public class SessionService {
             String sessionName,
             @NonNull String workspaceRoots) {
         return createSession(
-                owner, patternName, sessionName, workspaceRoots, ToolResultPresentationMode.BASIC);
+                owner,
+                patternName,
+                sessionName,
+                workspaceRoots,
+                0,
+                ToolResultPresentationMode.BASIC,
+                null);
     }
 
     /** Creates a session with an explicit tool-result presentation mode; the root index is 0. */
@@ -206,10 +227,13 @@ public class SessionService {
             @NonNull String workspaceRoots,
             @NonNull ToolResultPresentationMode toolResultPresentation) {
         return createSession(
-                owner, patternName, sessionName, workspaceRoots, 0, toolResultPresentation);
+                owner, patternName, sessionName, workspaceRoots, 0, toolResultPresentation, null);
     }
 
-    /** Creates a session with an explicit current workspace-root index; no plugins are bound. */
+    /**
+     * Creates a session with an explicit current workspace-root index and the default installed
+     * plugin selection.
+     */
     @Transactional
     public @NonNull SessionEntity createSession(
             @NonNull String owner,

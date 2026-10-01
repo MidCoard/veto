@@ -128,7 +128,8 @@ public record ChatMessage(
                 reasoningContent,
                 toolSuccess,
                 sourceTurns,
-                List.of());
+                List.of(),
+                null);
     }
 
     /**
@@ -170,7 +171,17 @@ public record ChatMessage(
             String toolArgs,
             String reasoningContent,
             Boolean toolSuccess) {
-        this(role, content, callId, toolName, toolArgs, reasoningContent, toolSuccess, List.of());
+        this(
+                role,
+                content,
+                callId,
+                toolName,
+                toolArgs,
+                reasoningContent,
+                toolSuccess,
+                List.of(),
+                List.of(),
+                null);
     }
 
     /**

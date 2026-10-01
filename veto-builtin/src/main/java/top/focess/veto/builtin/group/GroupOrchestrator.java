@@ -157,7 +157,7 @@ public class GroupOrchestrator {
             @NonNull String description,
             @NonNull String skillset,
             @NonNull Set<String> dependsOn) {
-        return addNode(groupId, nodeId, description, skillset, dependsOn, null);
+        return addNode(groupId, nodeId, description, skillset, dependsOn, null, false, null);
     }
 
     /** Adds a node pinned to {@code mateId} when given; see the base {@link #addNode} contract. */
@@ -168,7 +168,7 @@ public class GroupOrchestrator {
             @NonNull String skillset,
             @NonNull Set<String> dependsOn,
             String mateId) {
-        return addNode(groupId, nodeId, description, skillset, dependsOn, mateId, false);
+        return addNode(groupId, nodeId, description, skillset, dependsOn, mateId, false, null);
     }
 
     /** Adds a node; {@code newMate} forces a fresh collaborator instead of reusing one. */

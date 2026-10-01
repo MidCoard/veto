@@ -4,6 +4,7 @@ import com.anthropic.client.AnthropicClient;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.genai.Client;
 import com.openai.client.OpenAIClient;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.llm.LlmClient;
@@ -22,8 +23,12 @@ import top.focess.veto.api.llm.PromptRenderer;
  */
 public class LlmClientFactory implements AutoCloseable {
 
-    private final @NonNull ConcurrentHashMap<Class<?>, ConcurrentHashMap<String, Object>> caches =
-            new ConcurrentHashMap<>();
+    // Exact keys stay private and are never logged; Optional distinguishes absent endpoints.
+    private final @NonNull
+            ConcurrentHashMap<
+                    Class<?>,
+                    ConcurrentHashMap<Optional<String>, ConcurrentHashMap<String, Object>>>
+            caches = new ConcurrentHashMap<>();
 
     private final @NonNull ConcurrentHashMap<Class<?>, ClientBuilder<?>> builders =
             new ConcurrentHashMap<>();
@@ -94,8 +99,8 @@ public class LlmClientFactory implements AutoCloseable {
     @SuppressWarnings({"unchecked", "ConstantValue"})
     public <T> @NonNull T get(
             @NonNull Class<T> clientType, String baseUrl, @NonNull String apiKey) {
-        ConcurrentHashMap<String, Object> cache = caches.get(clientType);
-        if (cache == null) {
+        var endpoints = caches.get(clientType);
+        if (endpoints == null) {
             throw new IllegalStateException(
                     "No builder registered for client type: " + clientType.getName());
         }
@@ -104,8 +109,10 @@ public class LlmClientFactory implements AutoCloseable {
             throw new IllegalStateException(
                     "No builder registered for client type: " + clientType.getName());
         }
-        String key = cacheKey(baseUrl, apiKey);
-        T client = (T) cache.computeIfAbsent(key, k -> builder.build(baseUrl, apiKey));
+        var cache =
+                endpoints.computeIfAbsent(
+                        Optional.ofNullable(baseUrl), k -> new ConcurrentHashMap<>());
+        T client = (T) cache.computeIfAbsent(apiKey, k -> builder.build(baseUrl, apiKey));
         if (client == null) throw new IllegalStateException("Client cache returned null");
         return client;
     }
@@ -163,23 +170,20 @@ public class LlmClientFactory implements AutoCloseable {
     @Override
     public void close() {
         Exception failure = null;
-        for (var cache : caches.values())
-            for (var value : cache.values()) {
-                if (value instanceof AutoCloseable client)
-                    try {
-                        client.close();
-                    } catch (Exception error) {
-                        if (error instanceof InterruptedException)
-                            Thread.currentThread().interrupt();
-                        if (failure == null) failure = error;
-                        else failure.addSuppressed(error);
-                    }
-            }
+        for (var endpoints : caches.values())
+            for (var cache : endpoints.values())
+                for (var value : cache.values()) {
+                    if (value instanceof AutoCloseable client)
+                        try {
+                            client.close();
+                        } catch (Exception error) {
+                            if (error instanceof InterruptedException)
+                                Thread.currentThread().interrupt();
+                            if (failure == null) failure = error;
+                            else failure.addSuppressed(error);
+                        }
+                }
         caches.clear();
         if (failure != null) throw new IllegalStateException("SDK client cleanup failed", failure);
-    }
-
-    private static @NonNull String cacheKey(String baseUrl, @NonNull String apiKey) {
-        return baseUrl + "|" + Integer.toHexString(apiKey.hashCode());
     }
 }

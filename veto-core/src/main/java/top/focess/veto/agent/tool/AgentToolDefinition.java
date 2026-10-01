@@ -74,7 +74,16 @@ public record AgentToolDefinition(
             @NonNull Class<?> toolClass,
             @NonNull Class<?> argsClass,
             @NonNull Map<@NonNull String, @NonNull ParamCategory> paramHints) {
-        this(name, description, capability, defaultDanger, toolClass, argsClass, paramHints, null);
+        this(
+                name,
+                description,
+                capability,
+                defaultDanger,
+                toolClass,
+                argsClass,
+                paramHints,
+                null,
+                null);
     }
 
     /** Factory with an explicit name and effect capability supplied by the handler bean. */

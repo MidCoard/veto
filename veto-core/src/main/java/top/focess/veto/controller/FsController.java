@@ -63,7 +63,7 @@ public class FsController {
                 String text = root.toString();
                 roots.add(new DirectoryEntryResponse(text, text));
             }
-            return ResponseEntity.ok(body(null, null, roots));
+            return ResponseEntity.ok(new DirectoryListingResponse(null, null, roots));
         }
         Path dir;
         try {
@@ -101,7 +101,8 @@ public class FsController {
         }
         Path parent = dir.getParent();
         return ResponseEntity.ok(
-                body(dir.toString(), parent != null ? parent.toString() : null, entries));
+                new DirectoryListingResponse(
+                        dir.toString(), parent != null ? parent.toString() : null, entries));
     }
 
     /** Directory to create: the existing {@code parent} path and the new child {@code name}. */
@@ -154,11 +155,6 @@ public class FsController {
             return ResponseEntity.badRequest()
                     .body(new ErrorResponse(Msg.get("error.fs.cannotCreate", name)));
         }
-    }
-
-    private static @NonNull DirectoryListingResponse body(
-            String path, String parent, @NonNull List<DirectoryEntryResponse> entries) {
-        return new DirectoryListingResponse(path, parent, entries);
     }
 
     private static @NonNull String fileName(@NonNull Path path) {

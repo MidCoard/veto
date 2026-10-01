@@ -71,7 +71,7 @@ final class AnthropicLlmClient extends LlmClient {
                 MessageCreateParams.builder()
                         .model(Model.of(request.modelName()))
                         .maxTokens(request.options().maxTokensOrDefault())
-                        .system(responsePrompt(request));
+                        .system(NativeToolResponses.prompt(prompts, request));
         Double temperature = request.options().temperature();
         var thinking = ModelReasoning.anthropic(request);
         if (!thinking.isEmpty())
@@ -83,7 +83,10 @@ final class AnthropicLlmClient extends LlmClient {
         if (!request.tools().isEmpty()) {
             builder.putAdditionalBodyProperty(
                     "tool_choice",
-                    JsonValue.from(Map.of("type", permitsNativeCalls(request) ? "auto" : "none")));
+                    JsonValue.from(
+                            Map.of(
+                                    "type",
+                                    NativeToolResponses.enabled(request) ? "auto" : "none")));
         }
         // Retain tool contracts and native history while choosing the response channel.
         var strictPolicy = new AnthropicStrictToolPolicy();
@@ -156,7 +159,6 @@ final class AnthropicLlmClient extends LlmClient {
                             + "); no calls were executed");
         String rawInput =
                 NativeToolResponses.normalize(
-                        objectMapper,
                         request,
                         text,
                         toolUses.stream()
@@ -215,14 +217,6 @@ final class AnthropicLlmClient extends LlmClient {
                             ObjectMappers.jsonMapper().writeValueAsString(segment),
                             result.size()));
         return result;
-    }
-
-    private @NonNull String responsePrompt(@NonNull VetoRequest request) {
-        return NativeToolResponses.prompt(prompts, "provider-native", request);
-    }
-
-    private boolean permitsNativeCalls(@NonNull VetoRequest request) {
-        return request.nativeToolsEnabled() && !request.tools().isEmpty();
     }
 
     private static Tool.InputSchema.@NonNull Properties toolProperties(
@@ -348,14 +342,13 @@ final class AnthropicLlmClient extends LlmClient {
                 }
                 groupBlocks.addAll(blocks);
             }
-            out.add(buildParam(groupRole, groupBlocks));
+            out.add(
+                    MessageParam.builder()
+                            .role(groupRole)
+                            .contentOfBlockParams(groupBlocks)
+                            .build());
         }
         return out;
-    }
-
-    private static @NonNull MessageParam buildParam(
-            MessageParam.@NonNull Role role, @NonNull List<ContentBlockParam> blocks) {
-        return MessageParam.builder().role(role).contentOfBlockParams(blocks).build();
     }
 
     /**

@@ -376,7 +376,7 @@ public final class IpcClient implements AutoCloseable {
      * @throws InterruptedException if the calling thread is interrupted
      */
     public IpcFrame.ServerFrame receive() throws InterruptedException {
-        return incomingQueue.poll(DEFAULT_RECEIVE_TIMEOUT_S, TimeUnit.SECONDS);
+        return receive(DEFAULT_RECEIVE_TIMEOUT_S, TimeUnit.SECONDS);
     }
 
     /**

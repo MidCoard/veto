@@ -105,13 +105,9 @@ public class LocalSlmScreeningProvider implements SlmScreeningProvider {
     }
 
     private static @NonNull String safe(String value) {
-        return safe(value, 200);
-    }
-
-    private static @NonNull String safe(String value, int maxLength) {
         if (value == null) {
             return "";
         }
-        return value.length() > maxLength ? value.substring(0, maxLength) + "..." : value;
+        return value.length() > 200 ? value.substring(0, 200) + "..." : value;
     }
 }

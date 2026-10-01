@@ -137,10 +137,7 @@ final class OpenAiLlmClient extends LlmClient {
         }
         String content =
                 NativeToolResponses.normalize(
-                        objectMapper,
-                        request,
-                        message.content().orElse(message.refusal().orElse("")),
-                        calls);
+                        request, message.content().orElse(message.refusal().orElse("")), calls);
         if (content.isBlank() && calls.isEmpty())
             throw new ModelCapabilityException(providerName + " returned empty content");
 

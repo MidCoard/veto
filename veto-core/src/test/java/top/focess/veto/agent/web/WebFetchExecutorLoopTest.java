@@ -29,7 +29,7 @@ import top.focess.veto.agent.capability.DestinationTestGrants;
 import top.focess.veto.agent.capability.NetworkEgressCapabilityImpl;
 import top.focess.veto.agent.tool.CapabilityTestCalls;
 import top.focess.veto.agent.tool.ToolCallContextHolder;
-import top.focess.veto.agent.translation.DefaultCapabilityTranslator;
+import top.focess.veto.agent.translation.VetoCapabilityTranslator;
 import top.focess.veto.api.agent.AgentState;
 import top.focess.veto.api.agent.tool.ToolErrorCode;
 import top.focess.veto.api.agent.tool.ToolExecutionException;
@@ -432,7 +432,7 @@ class WebFetchExecutorLoopTest {
     void modelFailureIsAnErrorNotANegativeResearchFinding() {
         WebFetchTool tool =
                 tool(
-                        request -> {
+                        (request, modelSessionId) -> {
                             throw new IllegalStateException("provider secret must not escape");
                         },
                         4,
@@ -511,7 +511,7 @@ class WebFetchExecutorLoopTest {
             @NonNull CountDownLatch interrupted,
             @NonNull AtomicReference<Thread> worker,
             @NonNull CountDownLatch entered) {
-        return request -> {
+        return (request, modelSessionId) -> {
             assertEquals("test-owner", UserContext.get());
             worker.set(Thread.currentThread());
             entered.countDown();
@@ -528,7 +528,7 @@ class WebFetchExecutorLoopTest {
 
     private @NonNull UniformLLMCaller script(@NonNull List<@NonNull VetoResponse> turns) {
         AtomicInteger index = new AtomicInteger();
-        return request -> {
+        return (request, modelSessionId) -> {
             assertEquals("test-owner", UserContext.get());
             requests.add(request);
             return turns.get(index.getAndIncrement());
@@ -566,7 +566,7 @@ class WebFetchExecutorLoopTest {
                         mapper,
                         caller,
                         models,
-                        new DefaultCapabilityTranslator(mapper),
+                        new VetoCapabilityTranslator(),
                         registry,
                         turnLog,
                         rounds,

@@ -171,7 +171,7 @@ public class MateAgent {
 
     private void poll() {
         try {
-            String key = lastSeenSeqKey();
+            String key = "self";
             long seen = lastSeenSeqByReceiver.getOrDefault(key, 0L);
             List<BlackboardMessage> newMessages = newMessagesSince(seen);
             for (BlackboardMessage m : newMessages) {
@@ -286,26 +286,6 @@ public class MateAgent {
                         nodeId + ":feedback:" + (reason == null ? "unknown" : reason),
                         0,
                         dispatchId));
-    }
-
-    private void postTerminalStatus(
-            @NonNull String nodeId, @NonNull String reason, String dispatchId) {
-        blackboard.post(
-                new BlackboardMessage(
-                        UUID.randomUUID().toString(),
-                        groupId,
-                        mateId,
-                        "LEADER",
-                        BlackboardMessage.MessageType.STATUS,
-                        "terminal:" + nodeId + ":" + reason,
-                        0,
-                        dispatchId));
-    }
-
-    private static @NonNull String lastSeenSeqKey() {
-        // Single Mate per MateAgent instance; the key is just the bare Mate id. (Per-group
-        // dedupe is implicit because we only ever read this group's Blackboard.)
-        return "self";
     }
 
     /** The Mate's current agent state. */

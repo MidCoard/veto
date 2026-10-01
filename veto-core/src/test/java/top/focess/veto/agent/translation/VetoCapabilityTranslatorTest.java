@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
+import top.focess.veto.agent.AgentLoopDefaultsConfiguration;
 import top.focess.veto.agent.tool.AgentToolDefinition;
 import top.focess.veto.agent.tool.NativeToolDefinition;
 import top.focess.veto.agent.tool.ToolSchemaCompiler;
@@ -134,7 +135,8 @@ class VetoCapabilityTranslatorTest {
                         .toList());
         assertEquals(
                 flat,
-                new DefaultCapabilityTranslator(new ObjectMapper())
+                new AgentLoopDefaultsConfiguration()
+                        .defaultCapabilityTranslator()
                         .translateTools(List.of(tool, plan, answer)),
                 "Reduced contexts must emit the same contextual native contracts");
     }

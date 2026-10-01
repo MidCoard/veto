@@ -243,7 +243,7 @@ public final class SessionAgentRegistry {
             @NonNull String parentCallId,
             @NonNull AgentPersona persona,
             @NonNull AgentRunner runner) {
-        return startChild(sessionId, parentAgentId, parentCallId, persona, runner, false);
+        return startChild(sessionId, parentAgentId, parentCallId, persona, runner, false, false);
     }
 
     /** Starts a spawned child, marking whether it may present prompts directly to the user. */

@@ -4,8 +4,10 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
+import java.util.ArrayList;
 import java.util.List;
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.api.llm.LlmOptions;
 import top.focess.veto.api.llm.ProviderType;
@@ -16,6 +18,7 @@ import top.focess.veto.api.llm.VetoResponse;
 import top.focess.veto.api.llm.exceptions.LlmException;
 import top.focess.veto.api.llm.exceptions.LlmRateLimitException;
 import top.focess.veto.api.llm.exceptions.ModelCapabilityException;
+import top.focess.veto.integration.plugins.PluginLlmProviders;
 import top.focess.veto.llm.egress.EgressEndpoint;
 import top.focess.veto.llm.egress.LlmEgress;
 import top.focess.veto.llm.provider.LLMProviderStrategy;
@@ -29,6 +32,53 @@ class DefaultUniformLLMCallerTest {
         var caller = new DefaultUniformLLMCaller(List.of(provider), egressReturning("secret"));
         assertEquals("Answer", caller.call(request(ProviderType.DEEPSEEK)).message());
         verify(provider, times(1)).execute(any());
+    }
+
+    @Test
+    void singleArgumentDefaultForwardsNullAndCanonicalCallPreservesSession() {
+        var requests = new ArrayList<@NonNull VetoRequest>();
+        var sessions = new ArrayList<@Nullable String>();
+        var expected = new VetoResponse(null, null, "Answer");
+        UniformLLMCaller caller =
+                (request, sessionId) -> {
+                    requests.add(request);
+                    sessions.add(sessionId);
+                    return expected;
+                };
+        var request = request(ProviderType.OPENAI);
+
+        assertSame(expected, caller.call(request));
+        assertSame(expected, caller.call(request, null));
+        assertSame(expected, caller.call(request, "session-1"));
+
+        assertEquals(3, requests.size());
+        assertTrue(requests.stream().allMatch(observed -> observed == request));
+        assertEquals(3, sessions.size());
+        assertNull(sessions.get(0));
+        assertNull(sessions.get(1));
+        assertEquals("session-1", sessions.get(2));
+    }
+
+    @Test
+    void optionalSessionSelectsUnscopedOrExactSessionProvider() {
+        var provider = mock(LLMProviderStrategy.class);
+        var plugins = mock(PluginLlmProviders.class);
+        var expected = new VetoResponse(null, null, "Answer");
+        when(provider.execute(any())).thenReturn(expected);
+        when(plugins.require(ProviderType.OPENAI)).thenReturn(provider);
+        when(plugins.require(ProviderType.OPENAI, "session-1")).thenReturn(provider);
+        var implementation = new DefaultUniformLLMCaller(List.of(), egressReturning("secret"));
+        implementation.attachPluginProviders(plugins);
+        UniformLLMCaller caller = implementation;
+        var request = request(ProviderType.OPENAI);
+
+        assertSame(expected, caller.call(request));
+        assertSame(expected, caller.call(request, null));
+        assertSame(expected, caller.call(request, "session-1"));
+
+        verify(plugins, times(2)).require(ProviderType.OPENAI);
+        verify(plugins).require(ProviderType.OPENAI, "session-1");
+        verifyNoMoreInteractions(plugins);
     }
 
     private @NonNull VetoRequest request(@NonNull ProviderType type) {

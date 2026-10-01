@@ -163,11 +163,6 @@ public class HeuristicLeader {
         return group;
     }
 
-    private int countRetries(@NonNull DagNode n) {
-        // Use the persisted retryCount field on the node.
-        return n.retryCount();
-    }
-
     /**
      * Re-plan after a Strategic Pivot: nodes that are STALE get unassigned and put back to PENDING;
      * the engine will re-dispatch them via {@link #assignMates(Group)}.

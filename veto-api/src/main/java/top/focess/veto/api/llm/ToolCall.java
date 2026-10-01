@@ -85,7 +85,7 @@ public record ToolCall(
      * @param args decoded JSON arguments
      */
     public ToolCall(@NonNull String toolName, @NonNull Map<@NonNull String, Object> args) {
-        this(toolName, args, null);
+        this(toolName, args, null, null);
     }
 
     /**

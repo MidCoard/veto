@@ -31,7 +31,7 @@ import top.focess.veto.agent.tool.ToolCallContextHolder;
 import top.focess.veto.agent.tool.ToolDefinition;
 import top.focess.veto.agent.tool.ToolEngine;
 import top.focess.veto.agent.tool.ToolInvocationFixture;
-import top.focess.veto.agent.translation.DefaultCapabilityTranslator;
+import top.focess.veto.agent.translation.VetoCapabilityTranslator;
 import top.focess.veto.api.agent.AgentResult;
 import top.focess.veto.api.agent.AgentState;
 import top.focess.veto.api.agent.screening.Danger;
@@ -72,7 +72,7 @@ class AgentEndToEndTest {
         ObjectMapper mapper = new ObjectMapper();
         PromptCompiler compiler =
                 new PromptCompiler(
-                        new DefaultCapabilityTranslator(mapper),
+                        new VetoCapabilityTranslator(),
                         new SystemPromptResolver(),
                         mapper,
                         "FULL_ACCESS");
@@ -104,7 +104,7 @@ class AgentEndToEndTest {
     private static @NonNull UniformLLMCaller scripted(
             @NonNull VetoResponse @NonNull ... responses) {
         ArrayDeque<VetoResponse> queue = new ArrayDeque<>(List.of(responses));
-        return request -> {
+        return (request, modelSessionId) -> {
             VetoResponse r = queue.poll();
             if (r == null) {
                 throw new IllegalStateException("scripted caller exhausted");
@@ -123,7 +123,7 @@ class AgentEndToEndTest {
     private static @NonNull UniformLLMCaller scriptedWithCompactor(
             @NonNull VetoResponse @NonNull ... mainResponses) {
         ArrayDeque<VetoResponse> queue = new ArrayDeque<>(List.of(mainResponses));
-        return request -> {
+        return (request, modelSessionId) -> {
             if (request.messages().stream()
                     .flatMap(message -> message.promptSources().stream())
                     .anyMatch(source -> source.source().equals("runtime-compaction.mdc"))) {
@@ -145,7 +145,7 @@ class AgentEndToEndTest {
         ObjectMapper mapper = new ObjectMapper();
         PromptCompiler compiler =
                 new PromptCompiler(
-                        new DefaultCapabilityTranslator(mapper),
+                        new VetoCapabilityTranslator(),
                         new SystemPromptResolver(),
                         mapper,
                         "FULL_ACCESS");

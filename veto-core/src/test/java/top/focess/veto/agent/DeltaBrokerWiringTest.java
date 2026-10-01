@@ -14,7 +14,7 @@ import top.focess.veto.agent.identity.SystemPromptResolver;
 import top.focess.veto.agent.intercept.HitlRegistry;
 import top.focess.veto.agent.intercept.IngressDefense;
 import top.focess.veto.agent.loop.PromptCompiler;
-import top.focess.veto.agent.translation.DefaultCapabilityTranslator;
+import top.focess.veto.agent.translation.VetoCapabilityTranslator;
 import top.focess.veto.api.agent.AgentResult;
 import top.focess.veto.api.llm.LlmBinding;
 import top.focess.veto.api.llm.LlmOptions;
@@ -39,7 +39,7 @@ class DeltaBrokerWiringTest {
         ObjectMapper mapper = new ObjectMapper();
         PromptCompiler compiler =
                 new PromptCompiler(
-                        new DefaultCapabilityTranslator(mapper),
+                        new VetoCapabilityTranslator(),
                         new SystemPromptResolver(),
                         mapper,
                         "FULL_ACCESS");
@@ -69,7 +69,7 @@ class DeltaBrokerWiringTest {
     private static @NonNull UniformLLMCaller scripted(
             @NonNull VetoResponse @NonNull ... responses) {
         var queue = new ArrayDeque<>(List.of(responses));
-        return request -> {
+        return (request, modelSessionId) -> {
             VetoResponse r = queue.poll();
             if (r == null) {
                 throw new IllegalStateException("scripted caller exhausted");

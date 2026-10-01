@@ -10,7 +10,6 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import top.focess.veto.agent.TurnRecord;
-import top.focess.veto.agent.TurnType;
 import top.focess.veto.bus.DeltaBroker;
 import top.focess.veto.bus.DeltaFrame;
 
@@ -113,8 +112,8 @@ public class TurnLogService {
     }
 
     /**
-     * Persist one turn to the raw-turn log. No-op for non-loggable turn types and when disabled.
-     * Best-effort — a DB failure never breaks the loop.
+     * Persist every turn type to the raw-turn log, including compiler directives needed for replay.
+     * No-op when disabled. Best-effort — a DB failure never breaks the loop.
      */
     public void log(
             @NonNull TurnRecord turn,
@@ -122,9 +121,6 @@ public class TurnLogService {
             @NonNull UUID userId,
             String agentId) {
         if (!enabled) {
-            return;
-        }
-        if (!isLoggable(turn.type())) {
             return;
         }
         if (turnRecordRepository == null) {
@@ -150,15 +146,5 @@ public class TurnLogService {
         }
         turnRecordRepository.save(TurnRecordEntity.of(turn, sessionId, userId, agentId, mapper));
         notifyChanged(sessionId, turn.turnNumber());
-    }
-
-    /**
-     * Every turn type is loggable, including the compiler directives (REWIND, AGENT_INIT,
-     * COMPACTION_SUMMARY): they are part of the durable raw history the loader replays, and
-     * dropping them on persist would corrupt the compiled view on resume (a rewound session would
-     * replay its pre-rewind turns; a transformed Leader would lose its AGENT_INIT anchor).
-     */
-    private static boolean isLoggable(@NonNull TurnType type) {
-        return true;
     }
 }

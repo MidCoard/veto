@@ -128,9 +128,7 @@ final class GeminiLlmClient extends LlmClient {
             }
         }
         if (!segments.isEmpty()) segments.getLast().addAll(pending);
-        String normalized =
-                NativeToolResponses.normalize(
-                        objectMapper, request, String.join("\n", text), calls);
+        String normalized = NativeToolResponses.normalize(request, String.join("\n", text), calls);
         if (normalized.isBlank() && calls.isEmpty())
             throw new ModelCapabilityException("Gemini returned neither text nor functions");
         var states = new ArrayList<NativeToolState>();

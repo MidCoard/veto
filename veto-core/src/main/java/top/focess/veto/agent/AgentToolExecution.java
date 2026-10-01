@@ -199,7 +199,7 @@ final class AgentToolExecution {
                         if (screened == null)
                             throw new IllegalStateException("Missing screened invocation");
                         toolBoundary.register(screened, offered, Danger.CRITICAL, null);
-                        emitVetoRequired(
+                        output.emitVetoRequired(
                                 call,
                                 new ApprovalDecision.Prompt(
                                         VetoScenario.GENERIC, offered, Danger.CRITICAL, null),
@@ -224,7 +224,7 @@ final class AgentToolExecution {
                         if (screened == null)
                             throw new IllegalStateException("Missing screened invocation");
                         toolBoundary.register(screened, offered, p.danger(), p.relevance());
-                        emitVetoRequired(call, p, offered);
+                        output.emitVetoRequired(call, p, offered);
                         InterceptResolution resolution = awaitResolution(callId, invocation);
 
                         if (resolution.option() == VetoOption.DECLINE_AND_CONTINUE) {
@@ -576,7 +576,7 @@ final class AgentToolExecution {
         List<VetoOption> offered = p.options();
         String callId = call.callId();
         toolBoundary.register(screened, offered, p.danger(), p.relevance());
-        emitVetoRequired(call, p, offered);
+        output.emitVetoRequired(call, p, offered);
         InterceptResolution resolution = awaitResolution(callId, invocation);
         lifecycle.transitionTo(AgentState.WAITING);
         if (resolution.isRefusal()) {
@@ -589,12 +589,5 @@ final class AgentToolExecution {
             return null;
         }
         return call;
-    }
-
-    private void emitVetoRequired(
-            @NonNull ToolCall call,
-            ApprovalDecision.@NonNull Prompt p,
-            @NonNull List<VetoOption> offered) {
-        output.emitVetoRequired(call, p, offered);
     }
 }

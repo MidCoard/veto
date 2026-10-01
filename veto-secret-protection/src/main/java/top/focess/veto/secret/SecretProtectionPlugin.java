@@ -201,7 +201,13 @@ public final class SecretProtectionPlugin extends VetoPlugin {
                 @NonNull String action,
                 JsonValue.@NonNull ObjectValue arguments)
                 throws PluginFailure {
-            return frontendAction(scope, action, arguments);
+            if (!action.equals("show")
+                    || !(arguments.values().get("reference") instanceof JsonValue.StringValue ref))
+                throw new PluginFailure(PluginFailure.Code.INVALID_ARGUMENTS);
+            return candidates
+                    .reveal(scope, ref.value())
+                    .<JsonValue>map(JsonValue.StringValue::new)
+                    .orElse(JsonValue.NullValue.INSTANCE);
         }
     }
 
@@ -228,20 +234,6 @@ public final class SecretProtectionPlugin extends VetoPlugin {
         } catch (IOException failure) {
             throw new IllegalStateException("Cannot load frontend module", failure);
         }
-    }
-
-    private @NonNull JsonValue frontendAction(
-            Scope.@NonNull AgentScope scope,
-            @NonNull String action,
-            JsonValue.@NonNull ObjectValue arguments)
-            throws PluginFailure {
-        if (!action.equals("show")
-                || !(arguments.values().get("reference") instanceof JsonValue.StringValue ref))
-            throw new PluginFailure(PluginFailure.Code.INVALID_ARGUMENTS);
-        return candidates
-                .reveal(scope, ref.value())
-                .<JsonValue>map(JsonValue.StringValue::new)
-                .orElse(JsonValue.NullValue.INSTANCE);
     }
 
     private @NonNull ImportCredentialResult importCredential(@NonNull ImportCredentialArgs args) {

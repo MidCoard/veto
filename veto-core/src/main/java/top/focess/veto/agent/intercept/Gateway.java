@@ -94,13 +94,13 @@ public class Gateway {
      * HitlRegistry} decides {@link ApprovalDecision} from the result.
      */
     public @NonNull GatewayResult screen(@NonNull ToolCall call, @NonNull ToolDefinition def) {
-        return screen(call, def, null);
+        return screen(call, def, null, null, null, null, null);
     }
 
     /** Convenience overload screening with the agent's thought as the only SLM context. */
     public @NonNull GatewayResult screen(
             @NonNull ToolCall call, @NonNull ToolDefinition def, String thought) {
-        return screen(call, def, null, thought);
+        return screen(call, def, null, thought, null, null, null);
     }
 
     /** Convenience overload with an active task and thought, but no execution context. */
@@ -109,7 +109,7 @@ public class Gateway {
             @NonNull ToolDefinition def,
             String activeTask,
             String thought) {
-        return screen(call, def, activeTask, thought, null);
+        return screen(call, def, activeTask, thought, null, null, null);
     }
 
     /** Convenience overload with no GUIDE plan step. */
@@ -119,7 +119,7 @@ public class Gateway {
             String activeTask,
             String thought,
             String executionContext) {
-        return screen(call, def, activeTask, thought, executionContext, null);
+        return screen(call, def, activeTask, thought, executionContext, null, null);
     }
 
     /** GUIDE provenance supplements the original user task; it does not grant permissions. */

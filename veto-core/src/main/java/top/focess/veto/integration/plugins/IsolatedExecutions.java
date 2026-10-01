@@ -214,7 +214,7 @@ public final class IsolatedExecutions {
             var compiler =
                     PromptCompiler.isolated(translator, mapper, render(spec.system()), inputBudget);
             UniformLLMCaller measured =
-                    request -> {
+                    (request, ignoredSessionId) -> {
                         scope.check();
                         int overhead =
                                 bytes(request.systemPrompt())
@@ -249,6 +249,7 @@ public final class IsolatedExecutions {
                                         request.nativeToolsEnabled(),
                                         request.responseContract());
                         try {
+                            // Provider resolution uses the host-authorized parent session.
                             return caller.call(bounded, session.toString());
                         } finally {
                             for (var usage : LlmSystemUsage.snapshot()) {

@@ -34,7 +34,7 @@ import top.focess.veto.agent.intercept.IngressDefense;
 import top.focess.veto.agent.intercept.VetoOption;
 import top.focess.veto.agent.loop.PromptCompiler;
 import top.focess.veto.agent.tool.ToolEngineImpl;
-import top.focess.veto.agent.translation.DefaultCapabilityTranslator;
+import top.focess.veto.agent.translation.VetoCapabilityTranslator;
 import top.focess.veto.agent.web.ReaderTestHarness;
 import top.focess.veto.api.agent.AgentState;
 import top.focess.veto.api.agent.tool.AgentTool;
@@ -79,7 +79,7 @@ class WebReadAgentIntegrationTest {
         List<VetoAgent> childAgents = new ArrayList<>();
         AtomicInteger childTurn = new AtomicInteger();
         UniformLLMCaller childCaller =
-                request -> {
+                (request, modelSessionId) -> {
                     childRequests.add(request);
                     var active = registry.agents(sessionId);
                     assertEquals(2, active.size());
@@ -144,7 +144,7 @@ class WebReadAgentIntegrationTest {
                         mapper,
                         childCaller,
                         models,
-                        new DefaultCapabilityTranslator(mapper),
+                        new VetoCapabilityTranslator(),
                         registry,
                         new TurnLogService(turnRepository, mapper),
                         maxRounds,
@@ -179,7 +179,7 @@ class WebReadAgentIntegrationTest {
         List<VetoRequest> parentRequests = new ArrayList<>();
         AtomicInteger parentTurn = new AtomicInteger();
         UniformLLMCaller parentCaller =
-                request -> {
+                (request, modelSessionId) -> {
                     parentRequests.add(request);
                     if (parentTurn.getAndIncrement() > 0)
                         return new VetoResponse(null, null, "Timeout is 30 seconds.");
@@ -414,7 +414,7 @@ class WebReadAgentIntegrationTest {
         CountDownLatch releaseChild = new CountDownLatch(1);
         AtomicReference<Thread> readerThread = new AtomicReference<>();
         UniformLLMCaller childCaller =
-                request -> {
+                (request, modelSessionId) -> {
                     readerThread.set(Thread.currentThread());
                     entered.countDown();
                     while (releaseChild.getCount() != 0) {
@@ -439,7 +439,7 @@ class WebReadAgentIntegrationTest {
                         mapper,
                         childCaller,
                         models,
-                        new DefaultCapabilityTranslator(mapper),
+                        new VetoCapabilityTranslator(),
                         registry,
                         new TurnLogService(turnRepository, mapper),
                         5,
@@ -469,7 +469,7 @@ class WebReadAgentIntegrationTest {
         engine.afterSingletonsInstantiated();
         AtomicInteger parentCalls = new AtomicInteger();
         UniformLLMCaller parentCaller =
-                request ->
+                (request, modelSessionId) ->
                         parentCalls.incrementAndGet() > 1
                                 ? new VetoResponse(null, null, "Next task complete")
                                 : call(
@@ -623,7 +623,7 @@ class WebReadAgentIntegrationTest {
             @NonNull HitlRegistry hitl) {
         PromptCompiler compiler =
                 new PromptCompiler(
-                        new DefaultCapabilityTranslator(mapper),
+                        new VetoCapabilityTranslator(),
                         new SystemPromptResolver(),
                         mapper,
                         "FULL_ACCESS");

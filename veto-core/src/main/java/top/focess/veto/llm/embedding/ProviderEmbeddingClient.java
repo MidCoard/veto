@@ -85,7 +85,7 @@ public final class ProviderEmbeddingClient implements TextEmbedding {
         try {
             String body = mapper.writeValueAsString(Map.of("model", model, "input", text));
             HttpRequest req =
-                    httpRequest(base + "/v1/embeddings", body)
+                    httpRequest(URI.create(base + "/v1/embeddings"), body)
                             .header("Authorization", "Bearer " + apiKey)
                             .build();
             JsonNode vec = read(req).path("data").path(0).path("embedding");
@@ -148,10 +148,6 @@ public final class ProviderEmbeddingClient implements TextEmbedding {
             throw new IllegalStateException("embedding profile.model is not set");
         }
         return model;
-    }
-
-    private HttpRequest.@NonNull Builder httpRequest(@NonNull String uri, @NonNull String body) {
-        return httpRequest(URI.create(uri), body);
     }
 
     private HttpRequest.@NonNull Builder httpRequest(@NonNull URI uri, @NonNull String body) {

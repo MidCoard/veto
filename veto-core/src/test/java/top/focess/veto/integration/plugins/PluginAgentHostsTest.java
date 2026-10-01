@@ -32,7 +32,7 @@ import top.focess.veto.agent.intercept.IngressDefense;
 import top.focess.veto.agent.intercept.ToolExecutionPermit;
 import top.focess.veto.agent.tool.ToolCallContext;
 import top.focess.veto.agent.tool.ToolCallContextHolder;
-import top.focess.veto.agent.translation.DefaultCapabilityTranslator;
+import top.focess.veto.agent.translation.VetoCapabilityTranslator;
 import top.focess.veto.api.agent.AgentResult;
 import top.focess.veto.api.agent.AgentState;
 import top.focess.veto.api.agent.tool.NativeTool;
@@ -88,7 +88,7 @@ class PluginAgentHostsTest {
                 var executions =
                         new IsolatedExecutions(
                                 mapper,
-                                request -> {
+                                (request, modelSessionId) -> {
                                     entered.countDown();
                                     while (true) {
                                         try {
@@ -105,7 +105,7 @@ class PluginAgentHostsTest {
                                     throw new CancellationException();
                                 },
                                 models,
-                                new DefaultCapabilityTranslator(mapper),
+                                new VetoCapabilityTranslator(),
                                 fixture.registry,
                                 new TurnLogService(null, mapper),
                                 new IngressDefense(),

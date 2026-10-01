@@ -18,10 +18,6 @@ public final class ToolJson {
      * @return encoded JSON object text
      */
     public static @NonNull String object(@NonNull Record value) {
-        return encode(value);
-    }
-
-    private static @NonNull String encode(@NonNull Object value) {
         try {
             return MAPPER.writeValueAsString(value);
         } catch (JsonProcessingException ignored) {

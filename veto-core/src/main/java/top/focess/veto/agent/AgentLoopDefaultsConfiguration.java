@@ -1,8 +1,6 @@
 package top.focess.veto.agent;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.jspecify.annotations.NonNull;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Bean;
@@ -10,9 +8,8 @@ import org.springframework.context.annotation.Configuration;
 import top.focess.veto.agent.intercept.Gateway;
 import top.focess.veto.agent.loop.PromptCompiler;
 import top.focess.veto.agent.translation.CapabilityTranslator;
-import top.focess.veto.agent.translation.DefaultCapabilityTranslator;
+import top.focess.veto.agent.translation.VetoCapabilityTranslator;
 import top.focess.veto.agent.workspace.Workspace;
-import top.focess.veto.llm.config.LlmJacksonConfig;
 
 /** Registers replaceable loop infrastructure that can be supplied by an embedding application. */
 @Configuration
@@ -21,9 +18,8 @@ public class AgentLoopDefaultsConfiguration {
     /** The default {@link CapabilityTranslator}, overridable by an embedding application. */
     @Bean
     @ConditionalOnMissingBean(CapabilityTranslator.class)
-    public @NonNull CapabilityTranslator defaultCapabilityTranslator(
-            @Qualifier(LlmJacksonConfig.LLM_OBJECT_MAPPER) @NonNull ObjectMapper objectMapper) {
-        return new DefaultCapabilityTranslator(objectMapper);
+    public @NonNull CapabilityTranslator defaultCapabilityTranslator() {
+        return new VetoCapabilityTranslator();
     }
 
     /**

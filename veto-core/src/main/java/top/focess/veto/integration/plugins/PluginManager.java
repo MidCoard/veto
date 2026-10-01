@@ -172,8 +172,6 @@ public final class PluginManager implements AutoCloseable {
     public void bindLifecycleInvalidations(
             @NonNull ObjectProvider<SessionRepository> sessions,
             @NonNull ObjectProvider<SessionInvalidations> invalidations) {
-        sessionRepository = sessions;
-        sessionInvalidations = invalidations;
         for (var plugin : published.plugins)
             plugin.ownResource(
                     () -> {
@@ -390,8 +388,6 @@ public final class PluginManager implements AutoCloseable {
     private final @NonNull Map<ContributionPoint<?>, PointDefinition> definedPoints =
             new ConcurrentHashMap<>();
     private final @NonNull Map<String, Integer> pendingDataCleanups = new HashMap<>();
-    private ObjectProvider<SessionRepository> sessionRepository;
-    private ObjectProvider<SessionInvalidations> sessionInvalidations;
 
     /** Attaches catalog consumers after their Spring initialization completes. */
     @Autowired
@@ -906,12 +902,6 @@ public final class PluginManager implements AutoCloseable {
                                         .noneMatch(plugin -> plugin.identity().id().equals(id)));
     }
 
-    /** Retains a cleanup contributor until its transaction completion callback has run. */
-    public synchronized @NonNull PluginLifecycle beginDataCleanup(@NonNull String id) {
-        var runtime = plugin(id);
-        return beginDataCleanup(runtime);
-    }
-
     /** Retains the captured contributor only if it is still the published activation. */
     public synchronized @NonNull PluginLifecycle beginDataCleanup(
             @NonNull PluginLifecycle runtime) {
@@ -981,20 +971,6 @@ public final class PluginManager implements AutoCloseable {
             if (providers != null) providers.getObject().reload(previous);
             serviceRegistry.bind(previous.catalog, previous.plugins);
             throw failure;
-        }
-    }
-
-    private void invalidateSessions(@NonNull String id) {
-        var repository = sessionRepository;
-        var invalidations = sessionInvalidations;
-        if (repository == null || invalidations == null) return;
-        for (var session : repository.getObject().findAll()) {
-            var bindings = session.getPluginBindings();
-            if (bindings != null
-                    && bindings.stream().anyMatch(binding -> canonicalId(binding.id()).equals(id)))
-                invalidations
-                        .getObject()
-                        .changed(UUID.fromString(session.getId()), "plugin-frontend");
         }
     }
 

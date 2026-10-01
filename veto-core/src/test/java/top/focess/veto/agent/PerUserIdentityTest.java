@@ -17,7 +17,7 @@ import top.focess.veto.agent.identity.SystemPromptResolver;
 import top.focess.veto.agent.intercept.HitlRegistry;
 import top.focess.veto.agent.intercept.IngressDefense;
 import top.focess.veto.agent.loop.PromptCompiler;
-import top.focess.veto.agent.translation.DefaultCapabilityTranslator;
+import top.focess.veto.agent.translation.VetoCapabilityTranslator;
 import top.focess.veto.api.agent.AgentResult;
 import top.focess.veto.api.llm.LlmBinding;
 import top.focess.veto.api.llm.LlmOptions;
@@ -46,7 +46,7 @@ class PerUserIdentityTest {
         ObjectMapper mapper = new ObjectMapper();
         PromptCompiler compiler =
                 new PromptCompiler(
-                        new DefaultCapabilityTranslator(mapper),
+                        new VetoCapabilityTranslator(),
                         new SystemPromptResolver(),
                         mapper,
                         "FULL_ACCESS");
@@ -88,7 +88,7 @@ class PerUserIdentityTest {
 
         List<VetoRequest> seenRequests = new CopyOnWriteArrayList<>();
         UniformLLMCaller caller =
-                request -> {
+                (request, modelSessionId) -> {
                     seenRequests.add(request);
                     return new VetoResponse("Done.", null, "Task complete.");
                 };
@@ -124,7 +124,8 @@ class PerUserIdentityTest {
         TurnRecordRepository repo = Mockito.mock(TurnRecordRepository.class);
         TurnLogService turnLog = new TurnLogService(repo, new ObjectMapper());
 
-        UniformLLMCaller caller = request -> new VetoResponse("Done.", null, "Task complete.");
+        UniformLLMCaller caller =
+                (request, modelSessionId) -> new VetoResponse("Done.", null, "Task complete.");
 
         AgentService service = serviceWith(caller, turnLog);
 
@@ -153,7 +154,7 @@ class PerUserIdentityTest {
 
         List<String> seen = new CopyOnWriteArrayList<>();
         UniformLLMCaller caller =
-                request -> {
+                (request, modelSessionId) -> {
                     String currentUser = UserContext.get();
                     if (currentUser != null) seen.add(currentUser);
                     return new VetoResponse("Done.", null, "Task complete.");
@@ -194,7 +195,7 @@ class PerUserIdentityTest {
 
         AtomicBoolean sawNullContext = new AtomicBoolean();
         UniformLLMCaller caller =
-                request -> {
+                (request, modelSessionId) -> {
                     sawNullContext.set(UserContext.get() == null);
                     return new VetoResponse("Done.", null, "Task complete.");
                 };

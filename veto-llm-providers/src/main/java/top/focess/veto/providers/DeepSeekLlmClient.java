@@ -159,7 +159,7 @@ final class DeepSeekLlmClient extends LlmClient {
                                     item.path("call_id").asText()));
                 }
             }
-            content = NativeToolResponses.normalize(objectMapper, request, content, nativeCalls);
+            content = NativeToolResponses.normalize(request, content, nativeCalls);
 
             JsonNode usage = response.path("usage");
             if (usage.path("input_tokens").isNumber() && usage.path("output_tokens").isNumber()) {

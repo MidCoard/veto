@@ -86,7 +86,7 @@ public abstract class LlmClient {
          * @param rawResponse raw provider response
          */
         public RawCompletion(@NonNull String requestSummary, @NonNull String rawResponse) {
-            this(requestSummary, rawResponse, List.of(), List.of());
+            this(requestSummary, rawResponse, List.of(), List.of(), null);
         }
     }
 }

@@ -18,7 +18,7 @@ import top.focess.veto.agent.loop.PromptCompiler;
 import top.focess.veto.agent.tool.NativeToolDefinition;
 import top.focess.veto.agent.tool.ToolDefinition;
 import top.focess.veto.agent.tool.ToolEngine;
-import top.focess.veto.agent.translation.DefaultCapabilityTranslator;
+import top.focess.veto.agent.translation.VetoCapabilityTranslator;
 import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.tool.ParamCategory;
 import top.focess.veto.api.agent.tool.ToolCapability;
@@ -77,7 +77,7 @@ class PersonaToolWhitelistTest {
         ObjectMapper mapper = new ObjectMapper();
         PromptCompiler compiler =
                 new PromptCompiler(
-                        new DefaultCapabilityTranslator(mapper),
+                        new VetoCapabilityTranslator(),
                         new SystemPromptResolver(),
                         mapper,
                         "FULL_ACCESS");
@@ -108,7 +108,7 @@ class PersonaToolWhitelistTest {
     void productionAgentIsAdvertisedResolvedTools() throws Exception {
         List<VetoRequest> seen = new CopyOnWriteArrayList<>();
         UniformLLMCaller caller =
-                request -> {
+                (request, modelSessionId) -> {
                     seen.add(request);
                     return new VetoResponse("done", null, "ok");
                 };
@@ -129,7 +129,7 @@ class PersonaToolWhitelistTest {
         // An empty engine means no tools are advertised.
         List<VetoRequest> seen = new CopyOnWriteArrayList<>();
         UniformLLMCaller caller =
-                request -> {
+                (request, modelSessionId) -> {
                     seen.add(request);
                     return new VetoResponse("done", null, "ok");
                 };

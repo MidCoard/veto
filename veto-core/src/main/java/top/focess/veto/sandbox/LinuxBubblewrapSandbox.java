@@ -79,7 +79,7 @@ final class LinuxBubblewrapSandbox {
         command.add("--cap-drop");
         command.add("ALL");
         command.add("--");
-        command.addAll(innerBootstrapInvocation());
+        command.addAll(SandboxBootstrap.processInvocation());
         command.add(SandboxBootstrap.LINUX_CHILD_MARKER);
         command.add("--");
         command.addAll(targetCommand);
@@ -108,10 +108,6 @@ final class LinuxBubblewrapSandbox {
             command.add(real.toString());
             command.add(real.toString());
         }
-    }
-
-    private static @NonNull List<@NonNull String> innerBootstrapInvocation() {
-        return SandboxBootstrap.processInvocation();
     }
 
     private Path findBubblewrap(@NonNull Path excludedRoot) {

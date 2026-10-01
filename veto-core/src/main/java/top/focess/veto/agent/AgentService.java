@@ -323,7 +323,7 @@ public class AgentService {
             @NonNull Duration timeout,
             Consumer<String> messageSink)
             throws TimeoutException, InterruptedException {
-        return submit(agentKey, prompt, binding, timeout, messageSink, null);
+        return submit(agentKey, prompt, binding, timeout, messageSink, null, null, null, null);
     }
 
     /**
@@ -341,7 +341,7 @@ public class AgentService {
             Consumer<String> messageSink,
             Consumer<VetoPrompt> vetoSink)
             throws TimeoutException, InterruptedException {
-        return submit(agentKey, prompt, binding, timeout, messageSink, vetoSink, null);
+        return submit(agentKey, prompt, binding, timeout, messageSink, vetoSink, null, null, null);
     }
 
     /**
@@ -460,7 +460,16 @@ public class AgentService {
             @NonNull LlmBinding binding,
             @NonNull List<TurnRecord> history,
             @NonNull UUID userId) {
-        return getOrCreateAgent(sessionId, binding, history, userId, null);
+        return getOrCreateAgent(
+                sessionId,
+                null,
+                binding,
+                history,
+                userId,
+                null,
+                null,
+                0,
+                ToolResultPresentationMode.BASIC);
     }
 
     /**
@@ -481,7 +490,16 @@ public class AgentService {
             @NonNull List<TurnRecord> history,
             @NonNull UUID userId,
             String workspaceRoots) {
-        return getOrCreateAgent(sessionId, null, binding, history, userId, null, workspaceRoots);
+        return getOrCreateAgent(
+                sessionId,
+                null,
+                binding,
+                history,
+                userId,
+                null,
+                workspaceRoots,
+                0,
+                ToolResultPresentationMode.BASIC);
     }
 
     /**
@@ -511,6 +529,7 @@ public class AgentService {
                 userId,
                 owner,
                 workspaceRoots,
+                0,
                 ToolResultPresentationMode.BASIC);
     }
 
@@ -623,20 +642,26 @@ public class AgentService {
     }
 
     private @NonNull VetoAgent createAgent(@NonNull String agentKey, @NonNull LlmBinding binding) {
-        return createAgent(agentKey, binding, DEFAULT_USER_ID, defaultWorkspace);
+        return createAgent(
+                agentKey,
+                null,
+                binding,
+                DEFAULT_USER_ID,
+                null,
+                defaultWorkspace,
+                ToolResultPresentationMode.BASIC);
     }
 
     private @NonNull VetoAgent createAgent(
             @NonNull String agentKey, @NonNull LlmBinding binding, @NonNull UUID userId) {
-        return createAgent(agentKey, binding, userId, defaultWorkspace);
-    }
-
-    private @NonNull VetoAgent createAgent(
-            @NonNull String agentKey,
-            @NonNull LlmBinding binding,
-            @NonNull UUID userId,
-            @NonNull Workspace workspace) {
-        return createAgent(agentKey, null, binding, userId, null, workspace);
+        return createAgent(
+                agentKey,
+                null,
+                binding,
+                userId,
+                null,
+                defaultWorkspace,
+                ToolResultPresentationMode.BASIC);
     }
 
     // The DB-backed create path: agentKey is session.getId() (a UUID) and primaryAgentId is the
@@ -651,26 +676,9 @@ public class AgentService {
             @NonNull LlmBinding binding,
             @NonNull UUID userId,
             String owner,
-            @NonNull Workspace workspace) {
-        return createAgent(
-                agentKey,
-                primaryAgentId,
-                binding,
-                userId,
-                owner,
-                workspace,
-                ToolResultPresentationMode.BASIC);
-    }
-
-    private @NonNull VetoAgent createAgent(
-            @NonNull String agentKey,
-            String primaryAgentId,
-            @NonNull LlmBinding binding,
-            @NonNull UUID userId,
-            String owner,
             @NonNull Workspace workspace,
             @NonNull ToolResultPresentationMode toolResultPresentation) {
-        AgentPersona persona = buildPersona(agentKey, primaryAgentId, binding);
+        AgentPersona persona = buildPersona(agentKey, primaryAgentId);
         // Register this agent's workspace on the HITL registry under its persona id so grant
         // matching + path canonicalization scope to this session's workspace.
         hitlRegistry.setWorkspace(persona.id(), workspace);
@@ -803,20 +811,13 @@ public class AgentService {
         return sessionAgents.startChild(sessionId, parentId, "plugin", scoped, runner, true);
     }
 
-    /** Builds the standalone persona from the active, role-scoped tool catalog. */
-    private @NonNull AgentPersona buildPersona(
-            @NonNull String agentKey, @NonNull LlmBinding binding) {
-        return buildPersona(agentKey, null, binding);
-    }
-
     // persona.id() is the agent identity written to turn_records.agent_id and used as the HITL
     // workspace key. When the DB path supplies primaryAgentId (the AgentEntity id, a UUID) we adopt
     // it
     // verbatim so persisted turns group under the right agent stream and resume can find them;
     // absent
     // that (legacy/test path) we mint a fresh UUID just as before.
-    private @NonNull AgentPersona buildPersona(
-            @NonNull String agentKey, String primaryAgentId, @NonNull LlmBinding binding) {
+    private @NonNull AgentPersona buildPersona(@NonNull String agentKey, String primaryAgentId) {
         Set<ToolDefinition> tools = Set.copyOf(toolEngine.getActiveTools(null));
         var selection = sessionPlugins;
         if (selection != null && primaryAgentId != null) tools = selection.tools(agentKey, tools);
@@ -831,10 +832,10 @@ public class AgentService {
     }
 
     /**
-     * Derives the stable memory-tenant userId for a session owner. Users are keyed by username (no
-     * UUID column on {@code UserEntity}), so a name-based UUID ({@link UUID#nameUUIDFromBytes})
-     * gives each owner a distinct, deterministic tenant id. Memories and turn logs then attribute
-     * to the real user across sessions and restarts, including host-created plugin children.
+     * Derives the existing username-based compatibility identity for memories and turn logs,
+     * including host-created plugin children. The name-based UUID is deterministic across sessions
+     * and restarts; it is distinct from the account incarnation's immutable storage identity and
+     * remains unchanged when a username is reused.
      */
     public @NonNull UUID userIdForOwner(@NonNull String owner) {
         return UUID.nameUUIDFromBytes(owner.getBytes(StandardCharsets.UTF_8));

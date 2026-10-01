@@ -29,7 +29,7 @@ import top.focess.veto.agent.screening.ProtectedSet;
 import top.focess.veto.agent.tool.NativeToolDefinition;
 import top.focess.veto.agent.tool.ToolDefinition;
 import top.focess.veto.agent.tool.ToolEngine;
-import top.focess.veto.agent.translation.DefaultCapabilityTranslator;
+import top.focess.veto.agent.translation.VetoCapabilityTranslator;
 import top.focess.veto.agent.workspace.PathMode;
 import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.api.agent.AgentResult;
@@ -113,7 +113,7 @@ class NewRequirementsTest {
     private static @NonNull UniformLLMCaller scripted(
             @NonNull VetoResponse @NonNull ... responses) {
         ArrayDeque<VetoResponse> queue = new ArrayDeque<>(List.of(responses));
-        return request -> {
+        return (request, modelSessionId) -> {
             VetoResponse r = queue.poll();
             if (r == null) {
                 throw new IllegalStateException("scripted caller exhausted");
@@ -157,7 +157,7 @@ class NewRequirementsTest {
         ObjectMapper mapper = new ObjectMapper();
         PromptCompiler compiler =
                 new PromptCompiler(
-                        new DefaultCapabilityTranslator(mapper),
+                        new VetoCapabilityTranslator(),
                         new SystemPromptResolver(),
                         mapper,
                         "FULL_ACCESS");
@@ -278,7 +278,7 @@ class NewRequirementsTest {
         TestToolEngine mcpEngine = new TestToolEngine();
 
         UniformLLMCaller caller =
-                request -> {
+                (request, modelSessionId) -> {
                     throw new LlmException(
                             "Local SLM process disconnected unexpectedly.", false) {};
                 };
@@ -286,7 +286,7 @@ class NewRequirementsTest {
         ObjectMapper mapper = new ObjectMapper();
         PromptCompiler compiler =
                 new PromptCompiler(
-                        new DefaultCapabilityTranslator(mapper),
+                        new VetoCapabilityTranslator(),
                         new SystemPromptResolver(),
                         mapper,
                         "FULL_ACCESS");
