@@ -34,6 +34,35 @@ class ContributionCatalogTest {
     }
 
     @Test
+    void exactPointLookupsReusePreparedImmutableListsIncludingEmptyPoints() {
+        var other =
+                new ContributionPoint<>(
+                        new ContributionId("example:empty"),
+                        1,
+                        Integer.class,
+                        ContributionPoint.Cardinality.MULTIPLE);
+        var catalog =
+                labels().define(other, value -> {})
+                        .stage(PLUGIN, List.of(Contribution.of(LABELS, "label", "value")))
+                        .freeze();
+        var equivalent =
+                new ContributionPoint<>(
+                        LABELS.id(), 1, String.class, ContributionPoint.Cardinality.MULTIPLE);
+        var prepared = catalog.entries(LABELS);
+        assertSame(prepared, catalog.entries(LABELS));
+        assertSame(prepared, catalog.entries(equivalent));
+        assertSame(prepared.getFirst(), catalog.entries(LABELS).getFirst());
+        var empty = catalog.entries(other);
+        assertTrue(empty.isEmpty());
+        assertSame(empty, catalog.entries(other));
+        assertThrows(UnsupportedOperationException.class, prepared::clear);
+        var wrongType =
+                new ContributionPoint<>(
+                        LABELS.id(), 1, Integer.class, ContributionPoint.Cardinality.MULTIPLE);
+        assertThrows(IllegalArgumentException.class, () -> catalog.entries(wrongType));
+    }
+
+    @Test
     void pluginDefinedPointGroupsOtherPluginsJsonEntries() {
         var schema = new JsonValue.ObjectValue(Map.of("type", new JsonValue.StringValue("object")));
         var point =
@@ -287,16 +316,23 @@ class ContributionCatalogTest {
 
     @Test
     void crossPointValidatorsRunBeforeSnapshotIsReturned() {
+        List<List<ContributionEntry<String>>> attempts = new ArrayList<>();
         var builder =
                 labels().validateWith(
                                 catalog -> {
+                                    attempts.add(catalog.entries(LABELS));
                                     if (catalog.entries(LABELS).isEmpty())
                                         throw new IllegalArgumentException(
                                                 "Missing application requirement");
                                 });
         assertThrows(IllegalArgumentException.class, builder::freeze);
         builder.stage(BUILTIN, List.of(Contribution.of(LABELS, "label", "label")));
-        assertEquals(1, builder.freeze().entries(LABELS).size());
+        var catalog = builder.freeze();
+        assertEquals(1, catalog.entries(LABELS).size());
+        assertTrue(
+                attempts.getFirst().isEmpty(),
+                "failed snapshot remains immutable after correction");
+        assertSame(attempts.getLast(), catalog.entries(LABELS));
     }
 
     @Test

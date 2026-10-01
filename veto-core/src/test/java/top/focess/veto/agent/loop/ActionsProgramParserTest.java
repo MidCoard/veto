@@ -9,8 +9,8 @@ import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.builtin.planning.ActionsProgramParser;
 import top.focess.veto.builtin.planning.GenerateAction;
-import top.focess.veto.builtin.planning.ProgramValidator;
 import top.focess.veto.builtin.planning.PlanVariables;
+import top.focess.veto.builtin.planning.ProgramValidator;
 
 class ActionsProgramParserTest {
     private static final @NonNull ObjectMapper MAPPER = new ObjectMapper();

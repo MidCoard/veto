@@ -48,7 +48,7 @@ public class AuthLifecycleManager {
     public synchronized void signup(@NonNull String username, @NonNull String password) {
         log.info("AuthLifecycleManager: Signing up user '{}'", username);
         vault.signup(username, password);
-        if (lifecycleEvents != null) lifecycleEvents.ownerOpened(username);
+        if (lifecycleEvents != null) lifecycleEvents.userRegistered(username);
     }
 
     /**
@@ -60,7 +60,7 @@ public class AuthLifecycleManager {
     public synchronized void login(@NonNull String username, @NonNull String password) {
         log.info("AuthLifecycleManager: Logging in user '{}'", username);
         vault.login(username, password);
-        if (lifecycleEvents != null) lifecycleEvents.ownerOpened(username);
+        if (lifecycleEvents != null) lifecycleEvents.userLoggedIn(username);
     }
 
     /**
@@ -71,7 +71,7 @@ public class AuthLifecycleManager {
      */
     public synchronized void logout(@NonNull String username) {
         log.info("AuthLifecycleManager: Logging out user '{}'", username);
-        if (lifecycleEvents != null) lifecycleEvents.ownerClosed(username);
+        if (lifecycleEvents != null) lifecycleEvents.userLogout(username);
         try {
             promptHandler.deactivateUser(username);
         } catch (Exception e) {

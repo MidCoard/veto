@@ -76,20 +76,10 @@ class PluginContractTest {
     }
 
     @Test
-    void stagedContributionsAreImmutableAndResourcesStayPackageRelative() {
+    void promptResourcesStayPackageRelative() {
         for (String path :
                 List.of("../secret.md", "/prompts/a.md", "prompts/../a.md", "prompts/a\\b.md"))
             assertThrows(IllegalArgumentException.class, () -> new PromptContribution(path) {});
-        var registrations = new ArrayList<Contribution<?>>();
-        registrations.add(
-                Contribution.of(
-                        StandardContributionPoints.CATEGORIES,
-                        "text",
-                        new ToolCategory("Text", "Text tools") {}));
-        var contributions = new PluginContributions(registrations);
-        registrations.clear();
-        assertEquals(1, contributions.entries().size());
-        assertThrows(UnsupportedOperationException.class, () -> contributions.entries().clear());
     }
 
     @Test

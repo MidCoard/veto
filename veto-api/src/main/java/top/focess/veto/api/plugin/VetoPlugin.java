@@ -2,30 +2,30 @@ package top.focess.veto.api.plugin;
 
 import java.util.Set;
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.contract.PluginFailure;
 
 /**
- * Trusted installable plugin. Java package entries have a public constructor accepting {@link
- * PluginContext} and {@link JsonValue.ObjectValue}; that constructor registers each aspect through
- * {@link PluginContext#register}. Start makes the instance ready, and the host publishes the
- * validated registrations only after successful start. Close releases owned resources, including
- * after startup failure when an instance was constructed. Host adapters sanitize unchecked failures
- * so only {@link PluginFailure} codes are public.
+ * One trusted, installed plugin instance. The host discovers enabled packages at backend startup,
+ * then calls each Java entry's public {@code (PluginContext, JsonValue.ObjectValue)} constructor.
+ * The constructor can register aspects through {@link PluginContext#register}. The host constructs
+ * every admitted plugin before calling any plugin's {@link #start()}, so services and contribution
+ * points registered during construction can be found from {@code start()}.
+ *
+ * <p>The host validates the catalog, calls {@code start()} once, and admits calls only after it
+ * succeeds. On backend shutdown or startup failure after an instance exists, the host closes
+ * admission and calls {@link #stopping()} to unblock waits. During graceful shutdown it lets
+ * already admitted calls finish, then calls {@link #close()} once, closes registered resources, and
+ * releases the package loader. A fatal plugin failure can begin cleanup immediately. If the
+ * constructor throws before an instance exists, these instance methods cannot run; the host still
+ * closes resources already registered with the context.
+ *
+ * <p>Management enable/disable choices apply at the next backend startup; they do not restart this
+ * instance while the backend runs. Host adapters sanitize unchecked failures so only {@link
+ * PluginFailure} codes are public.
  */
 public abstract class VetoPlugin implements AutoCloseable {
-    /** Creates the plugin before its constructor registers aspects. */
+    /** Creates the base instance; the concrete entry constructor receives the bound context. */
     protected VetoPlugin() {}
-
-    /**
-     * Older fixture-only contribution batch hook; installed Java plugins register through their
-     * constructor context instead.
-     *
-     * @return this instance's complete contribution batch after construction
-     */
-    public @NonNull PluginContributions contributions() {
-        return new PluginContributions(java.util.List.of());
-    }
 
     /**
      * Returns the stable installed identity used for provenance, namespaces, and lifecycle
@@ -71,41 +71,31 @@ public abstract class VetoPlugin implements AutoCloseable {
     }
 
     /**
-     * Older fixture-only activation bridge. Constructor-bound Java plugins register through their
-     * context; script adapters register during host binding. Named services are not discoverable
-     * until activation finishes.
-     *
-     * @param context host-granted services and lifecycle state for this instance
-     * @param configuration immutable plugin configuration
-     * @return the complete set of contributions to validate and publish
-     * @throws PluginFailure when initialization cannot produce a valid contribution set
-     * @throws PluginDeclinedException to intentionally remain inactive before contributions are
-     *     published; this is not permitted from {@link #start()}
-     */
-    public @NonNull PluginContributions initialize(
-            @NonNull PluginContext context, JsonValue.@NonNull ObjectValue configuration)
-            throws PluginFailure {
-        return contributions();
-    }
-
-    /**
-     * Starts owned resources after all contributions and named services have been validated.
+     * Starts this instance once after all admitted plugins have been constructed and the initial
+     * catalog has been validated. Cross-plugin service discovery belongs here or in later work.
+     * Returning successfully allows the host to mark the instance active and admit calls. If this
+     * method fails, the host signals {@link #stopping()} and performs cleanup.
      *
      * @throws PluginFailure when the plugin cannot start
      */
     public abstract void start() throws PluginFailure;
 
     /**
-     * Admission has closed. Cancel plugin-owned blocking waits without waiting for handlers to
-     * drain; ordinary resources remain usable by admitted handlers until close. Called once on the
-     * lifecycle executor, including failure and partial initialization.
+     * Called at most once when admission closes, including backend shutdown, startup failure after
+     * construction, and fatal plugin failure. Cancel plugin-owned blocking waits here without
+     * waiting for admitted handlers to drain. On graceful shutdown, resources used by those
+     * handlers remain available until {@link #close()}. This callback runs on the host lifecycle
+     * executor and may run even if {@link #start()} was never called or did not finish.
      *
      * @throws PluginFailure when the plugin cannot prepare for shutdown
      */
     public void stopping() throws PluginFailure {}
 
     /**
-     * Releases owned resources once admitted calls have drained; must tolerate partial startup.
+     * Releases instance-owned resources at most once. On graceful shutdown the host first waits for
+     * admitted calls to drain; on fatal failure cleanup may begin sooner. This method must tolerate
+     * a constructed instance whose {@link #start()} never succeeded. After it returns, the host
+     * closes resources registered with the context and releases the package loader.
      *
      * @throws PluginFailure when an owned resource cannot be released
      */

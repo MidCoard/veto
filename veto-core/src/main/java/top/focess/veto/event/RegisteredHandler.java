@@ -1,6 +1,7 @@
 package top.focess.veto.event;
 
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.api.event.EventPriority;
 import top.focess.veto.api.event.Listener;
 
 /**
@@ -10,7 +11,7 @@ import top.focess.veto.api.event.Listener;
  * @param namespace contributing plugin identity used for selection and admission
  * @param listener object declaring the handler
  * @param invoker compiled zero-reflection call
- * @param weight {@link top.focess.veto.api.event.EventPriority} sort weight; smaller runs earlier
+ * @param weight {@link EventPriority} sort weight; smaller runs earlier
  * @param order registration sequence, the stable tiebreak within one weight
  * @param notCallIfPrevented skip once the chain is prevented
  * @param notCallIfCancelled skip once the event is cancelled

@@ -1,7 +1,5 @@
 package top.focess.veto.integration.plugins;
 
-import top.focess.veto.api.plugin.PluginScope;
-
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
@@ -27,6 +25,7 @@ import top.focess.veto.api.agent.workflow.PluginAwait;
 import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.api.plugin.PluginHost;
+import top.focess.veto.api.plugin.PluginScope;
 import top.focess.veto.api.plugin.storage.PluginStorage;
 
 class BoundPluginHostTest {

@@ -1,7 +1,5 @@
 package top.focess.veto.builtin.monitor;
 
-import top.focess.veto.api.plugin.PluginScope;
-
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -9,11 +7,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.api.plugin.PluginScope;
+import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.storage.PluginStorage;
 import top.focess.veto.api.plugin.storage.PluginStorage.Document;
 import top.focess.veto.api.plugin.storage.PluginStorage.Entry;
-import top.focess.veto.api.plugin.storage.PluginStorage.SessionScope;
 import top.focess.veto.api.plugin.storage.PluginStorage.Store;
 
 /** Monitor aggregates use session stores; optional payload chunks remain feature-owned. */
@@ -35,9 +34,11 @@ public final class StoredMonitorRepository implements MonitorRepository {
         String cursor = null;
         do {
             var page = storage.scopes(PluginScope.SESSION, cursor, 100);
-            for (var scope : page.entries())
-                if (scope instanceof SessionScope session)
-                    sessions.put(session.sessionId(), storage.session(session));
+            for (var grant : page.entries())
+                if (grant.scope() instanceof Scope.SessionScope session)
+                    sessions.put(
+                            session.session(),
+                            storage.session(new PluginStorage.Grant<>(grant.token(), session)));
             cursor = page.cursor();
         } while (cursor != null);
     }

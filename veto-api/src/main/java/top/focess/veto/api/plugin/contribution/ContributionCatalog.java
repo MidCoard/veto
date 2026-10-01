@@ -18,13 +18,9 @@ import org.jspecify.annotations.NonNull;
  */
 public final class ContributionCatalog {
     private final @NonNull Map<ContributionId, Definition<?>> definitions;
-    private final @NonNull List<Staged> entries;
 
-    private ContributionCatalog(
-            @NonNull Map<ContributionId, Definition<?>> definitions,
-            @NonNull List<Staged> entries) {
+    private ContributionCatalog(@NonNull Map<ContributionId, Definition<?>> definitions) {
         this.definitions = Map.copyOf(definitions);
-        this.entries = List.copyOf(entries);
     }
 
     /**
@@ -32,30 +28,37 @@ public final class ContributionCatalog {
      *
      * @param <T> implementation contract type
      * @param point contribution point whose entries are requested
-     * @return immutable ordered entries, possibly empty
+     * @return the prepared immutable ordered entries, possibly empty; repeated lookups reuse the
+     *     list
      * @throws IllegalArgumentException if the point was not defined with the same contract
      */
+    // WHY: exact point equality includes the runtime contract; preparation casts each entry to it.
+    @SuppressWarnings("unchecked")
     public <T> @NonNull List<ContributionEntry<T>> entries(@NonNull ContributionPoint<T> point) {
         Definition<?> definition = definitions.get(point.id());
         if (definition == null || !definition.point().equals(point)) throw invalid();
-        List<ContributionEntry<T>> result = new ArrayList<>();
-        for (Staged entry : entries) {
-            if (entry.contribution().point().equals(point)) {
-                T implementation = point.contract().cast(entry.contribution().implementation());
-                if (implementation == null) throw invalid();
-                result.add(new ContributionEntry<T>(entry.id(), entry.source(), implementation));
-            }
-        }
-        return List.copyOf(result);
+        return (List<ContributionEntry<T>>) (List<?>) definition.entries();
     }
 
     private record Definition<T>(
-            @NonNull ContributionPoint<T> point, @NonNull Consumer<T> validator) {
+            @NonNull ContributionPoint<T> point,
+            @NonNull Consumer<T> validator,
+            @NonNull List<ContributionEntry<T>> entries) {
         void validate(@NonNull Contribution<?> contribution) {
             if (!point.equals(contribution.point())) throw invalid();
             T implementation = point.contract().cast(contribution.implementation());
             if (implementation == null) throw invalid();
             validator.accept(implementation);
+        }
+
+        @NonNull Definition<T> prepare(@NonNull List<Staged> ordered) {
+            List<ContributionEntry<T>> prepared = new ArrayList<>();
+            for (Staged entry : ordered) {
+                T implementation = point.contract().cast(entry.contribution().implementation());
+                if (implementation == null) throw invalid();
+                prepared.add(new ContributionEntry<>(entry.id(), entry.source(), implementation));
+            }
+            return new Definition<>(point, validator, List.copyOf(prepared));
         }
     }
 
@@ -107,7 +110,7 @@ public final class ContributionCatalog {
                 @NonNull ContributionPoint<T> point, @NonNull Consumer<T> validator) {
             mutable();
             if (definitions.size() >= 256 || definitions.containsKey(point.id())) throw invalid();
-            definitions.put(point.id(), new Definition<>(point, validator));
+            definitions.put(point.id(), new Definition<>(point, validator, List.of()));
             return this;
         }
 
@@ -172,7 +175,7 @@ public final class ContributionCatalog {
          */
         public @NonNull ContributionCatalog freeze() {
             mutable();
-            List<Staged> ordered = new ArrayList<>();
+            Map<ContributionId, Definition<?>> prepared = new LinkedHashMap<>();
             for (Definition<?> definition : definitions.values()) {
                 ContributionPoint<?> point = definition.point();
                 List<Staged> group =
@@ -182,9 +185,9 @@ public final class ContributionCatalog {
                 if ((point.cardinality() == ContributionPoint.Cardinality.SINGLE
                                 && group.size() > 1)
                         || (required.contains(point.id()) && group.isEmpty())) throw invalid();
-                ordered.addAll(sort(group));
+                prepared.put(point.id(), definition.prepare(sort(group)));
             }
-            ContributionCatalog catalog = new ContributionCatalog(definitions, ordered);
+            ContributionCatalog catalog = new ContributionCatalog(prepared);
             for (var validator : catalogValidators) validator.accept(catalog);
             frozen = true;
             return catalog;

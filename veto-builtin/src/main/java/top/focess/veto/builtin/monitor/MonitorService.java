@@ -19,10 +19,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import top.focess.veto.api.agent.workflow.PluginAwait;
 import top.focess.veto.api.event.AgentTerminatedEvent;
-import top.focess.veto.api.event.SessionClosedEvent;
+import top.focess.veto.api.event.SessionDeletedEvent;
 import top.focess.veto.api.plugin.PluginHost;
-import top.focess.veto.api.plugin.contract.AgentInbox.Observation;
 import top.focess.veto.api.plugin.contract.AgentInbox.InboxContext;
+import top.focess.veto.api.plugin.contract.AgentInbox.Observation;
 import top.focess.veto.builtin.group.DagNode;
 import top.focess.veto.builtin.group.GroupObservations;
 import top.focess.veto.builtin.group.GroupState;
@@ -455,10 +455,12 @@ public class MonitorService implements ProcessObserver {
                                 + cause
                                 + "; exit code: "
                                 + info.exitCode()
-                                + ". If the original request needs output, read this task once with view_task (taskId="
+                                + ". If the original request needs output, read this task once with"
+                                + " view_task (taskId="
                                 + info.taskId()
-                                + ") under the existing tool permissions, then finish that request. This is result retrieval, not polling. Do not infer captured output from the command."
-                                + " Command (reference material): "
+                                + ") under the existing tool permissions, then finish that request."
+                                + " This is result retrieval, not polling. Do not infer captured"
+                                + " output from the command. Command (reference material): "
                                 + info.command()
                                 + ". This notification does not authorize restarting the process.",
                         ended != null ? ended : Instant.now(),
@@ -512,7 +514,8 @@ public class MonitorService implements ProcessObserver {
                             : node.result() instanceof DagNode.ResultFailure result
                                     ? result.feedback()
                                     : node.state() == DagNode.NodeState.INTERRUPTED
-                                            ? "Execution interrupted; outcome is unknown. No task was replayed."
+                                            ? "Execution interrupted; outcome is unknown. No task"
+                                                    + " was replayed."
                                             : "Task retired";
             pending.add(
                     new Event(
@@ -632,18 +635,19 @@ public class MonitorService implements ProcessObserver {
         activationCancelled(scope.agentId(), scope.sessionId(), event(observation));
     }
 
-    public synchronized void onSessionClosed(@NonNull SessionClosedEvent event) {
+    public synchronized void onSessionDeleted(@NonNull SessionDeletedEvent event) {
+        var scope = event.scope();
         foreground
                 .entrySet()
                 .removeIf(
                         entry -> {
-                            if (!entry.getKey().sessionId().equals(event.sessionId())
-                                    || !entry.getKey().owner().equals(event.owner())) return false;
+                            if (!entry.getKey().sessionId().equals(scope.session())
+                                    || !entry.getKey().owner().equals(scope.owner())) return false;
                             entry.getValue().ready().cancel(false);
                             return true;
                         });
         var removed =
-                list(event.owner(), event.sessionId()).stream()
+                list(scope.owner(), scope.session()).stream()
                         .map(MonitorRecord::id)
                         .collect(Collectors.toSet());
         records.keySet().removeAll(removed);
@@ -653,7 +657,7 @@ public class MonitorService implements ProcessObserver {
     }
 
     public void onAgentTerminated(@NonNull AgentTerminatedEvent event) {
-        cancelForAgent(event.agentId());
+        cancelForAgent(event.scope().agent());
     }
 
     @Override

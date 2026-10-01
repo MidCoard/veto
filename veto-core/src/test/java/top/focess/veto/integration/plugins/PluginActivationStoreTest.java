@@ -3,15 +3,14 @@ package top.focess.veto.integration.plugins;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
-import org.jspecify.annotations.NonNull;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
-import org.springframework.dao.DataIntegrityViolationException;
-
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Set;
+import org.jspecify.annotations.NonNull;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+import org.springframework.dao.DataIntegrityViolationException;
 
 class PluginActivationStoreTest {
     @Test

@@ -1,9 +1,8 @@
 package top.focess.veto.api.plugin.service;
 
-import top.focess.veto.api.plugin.PluginScope;
-
 import java.util.Objects;
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.api.plugin.PluginScope;
 import top.focess.veto.api.plugin.contract.JsonValue;
 
 /**

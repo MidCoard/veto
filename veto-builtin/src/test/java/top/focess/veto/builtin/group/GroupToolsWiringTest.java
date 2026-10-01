@@ -48,7 +48,11 @@ class GroupToolsWiringTest {
             var group = fixture.create();
             fixture.caller =
                     new PluginHost.Invocation(
-                            "owner", fixture.scope.sessionId(), "other-agent", null, "test-call");
+                            "owner",
+                            fixture.grant.scope().session(),
+                            "other-agent",
+                            null,
+                            "test-call");
             assertThrows(
                     ToolExecutionException.class,
                     () ->
@@ -241,7 +245,7 @@ class GroupToolsWiringTest {
                     () -> tool.execute(new CollaborationTools.RemoveMate.Args("mate")));
             fixture.caller =
                     new PluginHost.Invocation(
-                            "owner", fixture.scope.sessionId(), "mate", null, "test-call");
+                            "owner", fixture.grant.scope().session(), "mate", null, "test-call");
             assertThrows(
                     ToolExecutionException.class,
                     () -> tool.execute(new CollaborationTools.RemoveMate.Args("mate")));
@@ -257,7 +261,7 @@ class GroupToolsWiringTest {
                     List.of(
                             new PluginHost.Invocation(
                                     "foreign",
-                                    fixture.scope.sessionId(),
+                                    fixture.grant.scope().session(),
                                     "leader",
                                     null,
                                     "test-call"),

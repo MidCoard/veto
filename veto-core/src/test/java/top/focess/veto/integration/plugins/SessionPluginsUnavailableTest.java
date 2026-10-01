@@ -67,7 +67,8 @@ class SessionPluginsUnavailableTest {
                 selected.status(session.getId()).stream()
                         .map(SessionPlugins.BoundPluginStatus::availability)
                         .toList());
-        assertTrue(selected.status(session.getId()).stream()
-                .noneMatch(SessionPlugins.BoundPluginStatus::available));
+        assertTrue(
+                selected.status(session.getId()).stream()
+                        .noneMatch(SessionPlugins.BoundPluginStatus::available));
     }
 }

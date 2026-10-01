@@ -22,6 +22,7 @@ import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.api.agent.tool.*;
 import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.api.plugin.*;
+import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.api.plugin.contract.*;
 import top.focess.veto.api.plugin.contribution.*;
 import top.focess.veto.api.plugin.storage.PluginStorage;
@@ -55,10 +56,6 @@ public final class ProcessHostFixture implements AutoCloseable {
         try {
             var implementation =
                     new VetoPlugin() {
-                        @Override
-                        public @NonNull PluginContributions contributions() {
-                            return new PluginContributions(List.of());
-                        }
 
                         public @NonNull PluginIdentity identity() {
                             return new PluginIdentity("fixture.process", "1.0.0");
@@ -71,7 +68,9 @@ public final class ProcessHostFixture implements AutoCloseable {
             plugin = new PluginLifecycle(implementation, lifecycle);
             PluginStorage storage = mock(PluginStorage.class);
             PluginStorageFactory scopes = mock(PluginStorageFactory.class);
-            var scope = new PluginStorage.SessionScope("issued", owner, session.toString());
+            var scope =
+                    new PluginStorage.Grant<>(
+                            "issued", new Scope.SessionScope(user.toString(), session.toString()));
             when(storage.currentSession())
                     .thenAnswer(
                             call -> {
@@ -127,7 +126,7 @@ public final class ProcessHostFixture implements AutoCloseable {
                             Map.of(ProcessHost.class, host, PluginHost.class, effects),
                             Map.of());
             feature = new ProcessRuntime(context, mock(TaskEvents.class));
-            plugin.initialize(context, new JsonValue.ObjectValue(Map.of()));
+            plugin.construct(context, new JsonValue.ObjectValue(Map.of()));
             plugin.start();
             List<Contribution<?>> entries = new ArrayList<>();
             entries.add(

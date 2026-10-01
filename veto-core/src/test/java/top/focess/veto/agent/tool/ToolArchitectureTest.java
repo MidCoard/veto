@@ -20,6 +20,7 @@ import top.focess.veto.api.agent.tool.CapabilityTool;
 import top.focess.veto.api.agent.tool.NativeTool;
 import top.focess.veto.api.agent.tool.ToolDoc;
 import top.focess.veto.api.agent.tool.ToolDocs;
+import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.api.plugin.agent.AgentHost;
 import top.focess.veto.api.plugin.agent.AgentProfile;
 import top.focess.veto.api.plugin.contract.AgentConfiguration;
@@ -98,7 +99,8 @@ class ToolArchitectureTest {
             var configuration =
                     new AgentConfiguration.Context(
                             "owner",
-                            new PluginStorage.SessionScope("token", "owner", "session"),
+                            new PluginStorage.Grant<>(
+                                    "token", new Scope.SessionScope("owner", "session")),
                             session,
                             "agent",
                             base,

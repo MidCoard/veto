@@ -12,12 +12,12 @@ import org.junit.jupiter.api.Test;
 import top.focess.veto.api.plugin.PluginContext;
 import top.focess.veto.api.plugin.PluginHost;
 import top.focess.veto.api.plugin.PluginIdentity;
+import top.focess.veto.api.plugin.PluginScope;
+import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.service.PluginServices;
 import top.focess.veto.api.plugin.service.ServiceCallContext;
 import top.focess.veto.api.plugin.service.ServiceException;
-import top.focess.veto.api.plugin.PluginScope;
-import top.focess.veto.api.plugin.Scope;
 
 class SearchServiceClientTest {
     @Test

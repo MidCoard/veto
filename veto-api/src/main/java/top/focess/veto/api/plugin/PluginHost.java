@@ -47,7 +47,11 @@ public interface PluginHost {
             @NonNull String agentId,
             String requestId,
             @NonNull String callId) {
-        /** Returns the authenticated owner, session, and agent as one scope. */
+        /**
+         * Returns the authenticated owner, session, and agent as one identity value.
+         *
+         * @return identity of this admitted invocation; the value itself grants no authority
+         */
         public Scope.@NonNull AgentScope scope() {
             return new Scope.AgentScope(owner, sessionId, agentId);
         }
@@ -71,7 +75,11 @@ public interface PluginHost {
      */
     void wake(@NonNull String owner, @NonNull String sessionId, @NonNull String agentId);
 
-    /** Wakes an agent identified by one scope value; host admission is still checked. */
+    /**
+     * Wakes an agent identified by one scope value; host admission is still checked.
+     *
+     * @param scope identity of the target owner, session, and agent
+     */
     default void wake(Scope.@NonNull AgentScope scope) {
         wake(scope.owner(), scope.session(), scope.agent());
     }
@@ -90,7 +98,13 @@ public interface PluginHost {
         throw new IllegalStateException("Plugin event publication is unavailable");
     }
 
-    /** Publishes to the session identified by one scope value. */
+    /**
+     * Publishes to the session identified by one scope value after host authorization.
+     *
+     * @param scope identity of the target owner and session
+     * @param topic plugin-defined event topic
+     * @param facts JSON event facts
+     */
     default void publish(
             Scope.@NonNull SessionScope scope,
             @NonNull String topic,
@@ -106,7 +120,12 @@ public interface PluginHost {
      */
     void invalidate(@NonNull String sessionId, @NonNull String resource);
 
-    /** Invalidates a resource in the session identified by one scope value. */
+    /**
+     * Invalidates a resource in the session identified by one scope value after host authorization.
+     *
+     * @param scope identity of the target owner and session
+     * @param resource plugin-defined resource identifier
+     */
     default void invalidate(Scope.@NonNull SessionScope scope, @NonNull String resource) {
         invalidate(scope.session(), resource);
     }

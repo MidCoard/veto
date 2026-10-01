@@ -22,6 +22,7 @@ import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.agent.tool.ToolPreparation;
 import top.focess.veto.api.plugin.PluginHost;
 import top.focess.veto.api.plugin.PluginState;
+import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.api.plugin.storage.PluginStorage;
 import top.focess.veto.api.process.Command;
 import top.focess.veto.api.process.CommandResult;
@@ -38,7 +39,7 @@ public final class PluginProcessHosts implements PluginProcessHostFactory {
     private final @NonNull PluginStorageFactory scopes;
     private final @NonNull SessionAgentRegistry agents;
 
-    /** Creates the factory over the sandbox, storage-scope, and agent-registry services. */
+    /** Creates the factory over the sandbox, storage-grant, and agent-registry services. */
     public PluginProcessHosts(
             @NonNull SandboxManager sandbox,
             @NonNull PluginStorageFactory scopes,
@@ -60,7 +61,7 @@ public final class PluginProcessHosts implements PluginProcessHostFactory {
         return new Bound(plugin, storage);
     }
 
-    /** Verifies the running process belongs to the invocation's scope and may still take input. */
+    /** Verifies the running process belongs to the invocation's grant and may still take input. */
     public static void validateInput(
             @NonNull PluginLifecycle plugin,
             PluginHost.@NonNull Invocation invocation,
@@ -89,11 +90,10 @@ public final class PluginProcessHosts implements PluginProcessHostFactory {
             if (plugin.state() != PluginState.ACTIVE
                     || !plugin.bindingId().equals(context.executionPermit().remoteServerName()))
                 throw new SecurityException("Process invocation belongs to another plugin");
-            var scope = storage.currentSession();
-            if (!scope.userId().equals(context.owner())
-                    || !scope.sessionId().equals(String.valueOf(context.sessionId())))
+            var grant = storage.currentSession();
+            if (!scopes.authorizeSession(storage, grant).equals(context.owner())
+                    || !grant.scope().session().equals(String.valueOf(context.sessionId())))
                 throw new SecurityException("Process scope mismatch");
-            scopes.authorizeSession(storage, scope);
             return context;
         }
 
@@ -148,7 +148,7 @@ public final class PluginProcessHosts implements PluginProcessHostFactory {
                     || intent.commands().size() != 1)
                 throw new SecurityException("A background process requires one admitted command");
             prepared.consume();
-            var scope = storage.currentSession();
+            var grant = storage.currentSession();
             var id = UUID.randomUUID();
             var sandboxId = "execution-" + id;
             var handle =
@@ -167,15 +167,15 @@ public final class PluginProcessHosts implements PluginProcessHostFactory {
                                         context.executionPermit().requireExecutionRoot());
                 var invocation =
                         new PluginHost.Invocation(
-                                scope.userId(),
-                                scope.sessionId(),
+                                scopes.authorizeSession(storage, grant),
+                                grant.scope().session(),
                                 context.agentId(),
                                 context.requestId(),
                                 context.executionPermit().callId());
                 var running =
                         new RunningProcess(
                                 this,
-                                scope,
+                                grant,
                                 id,
                                 invocation,
                                 intent,
@@ -254,7 +254,7 @@ public final class PluginProcessHosts implements PluginProcessHostFactory {
 
     private final class RunningProcess implements ProcessHost.Running {
         private final @NonNull Bound owner;
-        private final PluginStorage.@NonNull SessionScope scope;
+        private final PluginStorage.@NonNull Grant<Scope.@NonNull SessionScope> grant;
         private final @NonNull UUID id;
         private final PluginHost.@NonNull Invocation invocation;
         private final ToolPreparation.@NonNull ProcessIntent intent;
@@ -270,7 +270,7 @@ public final class PluginProcessHosts implements PluginProcessHostFactory {
 
         private RunningProcess(
                 @NonNull Bound owner,
-                PluginStorage.@NonNull SessionScope scope,
+                PluginStorage.@NonNull Grant<Scope.@NonNull SessionScope> grant,
                 @NonNull UUID id,
                 PluginHost.@NonNull Invocation invocation,
                 ToolPreparation.@NonNull ProcessIntent intent,
@@ -278,7 +278,7 @@ public final class PluginProcessHosts implements PluginProcessHostFactory {
                 @NonNull Process process,
                 @NonNull String sandboxId) {
             this.owner = owner;
-            this.scope = scope;
+            this.grant = grant;
             this.id = id;
             this.invocation = invocation;
             this.intent = intent;
@@ -320,7 +320,7 @@ public final class PluginProcessHosts implements PluginProcessHostFactory {
         private void admitted() {
             if (owner.plugin.state() != PluginState.ACTIVE)
                 throw new SecurityException("Process plugin is unavailable");
-            scopes.authorizeSession(owner.storage, scope);
+            scopes.authorizeSession(owner.storage, grant);
         }
 
         private void checkInput() {

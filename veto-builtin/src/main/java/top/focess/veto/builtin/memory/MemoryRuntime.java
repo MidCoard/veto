@@ -10,6 +10,7 @@ import top.focess.veto.api.agent.tool.ToolErrors;
 import top.focess.veto.api.llm.TextEmbedding;
 import top.focess.veto.api.plugin.PluginContext;
 import top.focess.veto.api.plugin.PluginHost;
+import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.api.plugin.contract.DataLifecycle;
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.storage.PluginStorage;
@@ -79,14 +80,14 @@ public final class MemoryRuntime extends DataLifecycle {
                 .invocation(tool);
     }
 
-    private PluginStorage.@NonNull SessionScope scope(@NonNull String tool) {
+    private PluginStorage.@NonNull Grant<Scope.@NonNull SessionScope> grant(@NonNull String tool) {
         var invocation = authorize(tool);
-        var scope = context.storage().currentSession();
-        if (!scope.sessionId().equals(invocation.sessionId())
-                || deletingOwners.contains(scope.userId())
-                || deletingSessions.contains(scope.userId() + ":" + scope.sessionId()))
+        var grant = context.storage().currentSession();
+        if (!grant.scope().session().equals(invocation.sessionId())
+                || deletingOwners.contains(grant.scope().owner())
+                || deletingSessions.contains(grant.scope().owner() + ":" + grant.scope().session()))
             throw new SecurityException("Memory scope is being deleted");
-        return scope;
+        return grant;
     }
 
     @Override
@@ -145,16 +146,16 @@ public final class MemoryRuntime extends DataLifecycle {
     public @NonNull MemoryReadCapability reader() {
         return (query, tier, limit, floor) -> {
             synchronized (MemoryRuntime.this) {
-                var scope = scope("recall_memory");
+                var grant = grant("recall_memory");
                 return store().search(
                                 new MemoryQuery(
                                         query,
                                         List.of(tier),
                                         tier == MemoryTier.SESSION
-                                                ? UUID.fromString(scope.sessionId())
+                                                ? UUID.fromString(grant.scope().session())
                                                 : null,
                                         null,
-                                        UUID.fromString(scope.userId()),
+                                        UUID.fromString(grant.scope().owner()),
                                         limit,
                                         floor));
             }
@@ -166,7 +167,7 @@ public final class MemoryRuntime extends DataLifecycle {
         return new MemoryWriteCapability() {
             public @NonNull MemoryId add(@NonNull String content, UUID projectId) {
                 synchronized (MemoryRuntime.this) {
-                    UUID user = UUID.fromString(scope(tool).userId());
+                    UUID user = UUID.fromString(grant(tool).scope().owner());
                     if (!tool.equals("write_memory"))
                         throw new SecurityException("Memory operation mismatch");
                     return store().add(
@@ -185,7 +186,7 @@ public final class MemoryRuntime extends DataLifecycle {
 
             public MemoryId promote(@NonNull MemoryId id) {
                 synchronized (MemoryRuntime.this) {
-                    UUID user = UUID.fromString(scope(tool).userId());
+                    UUID user = UUID.fromString(grant(tool).scope().owner());
                     if (!tool.equals("write_memory"))
                         throw new SecurityException("Memory operation mismatch");
                     return store().promote(id, user);
@@ -194,7 +195,7 @@ public final class MemoryRuntime extends DataLifecycle {
 
             public boolean forget(@NonNull MemoryId id) {
                 synchronized (MemoryRuntime.this) {
-                    UUID user = UUID.fromString(scope(tool).userId());
+                    UUID user = UUID.fromString(grant(tool).scope().owner());
                     if (!tool.equals("forget_memory"))
                         throw new SecurityException("Memory operation mismatch");
                     return store().forget(id, user);

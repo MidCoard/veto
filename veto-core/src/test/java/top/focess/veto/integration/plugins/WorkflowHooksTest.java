@@ -84,8 +84,10 @@ class WorkflowHooksTest {
             none.dispatch(unchanged);
             assertEquals("unchanged", unchanged.text());
             fixture.runtime.close();
-            assertThrows(
-                    IllegalStateException.class, () -> fixture.sessions.dispatch(input(false, "")));
+            var inactive = input(false, "inactive");
+            fixture.sessions.dispatch(inactive);
+            assertEquals("inactive", inactive.text());
+            assertEquals(1, calls.get());
         }
     }
 

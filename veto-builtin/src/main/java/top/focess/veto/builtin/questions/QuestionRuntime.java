@@ -11,10 +11,10 @@ import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.event.AgentTerminatedEvent;
 import top.focess.veto.api.event.EventHandler;
 import top.focess.veto.api.event.Listener;
-import top.focess.veto.api.event.OwnerClosedEvent;
-import top.focess.veto.api.event.SessionClosedEvent;
+import top.focess.veto.api.event.SessionDeletedEvent;
+import top.focess.veto.api.event.UserLogoutEvent;
 import top.focess.veto.api.plugin.PluginHost;
-import top.focess.veto.api.plugin.contract.FrontendContribution.ActionContext;
+import top.focess.veto.api.plugin.Scope;
 
 /** Plugin-owned, in-memory rendezvous. Only the host supplies invocation identities. */
 public final class QuestionRuntime extends Listener implements AutoCloseable {
@@ -46,8 +46,7 @@ public final class QuestionRuntime extends Listener implements AutoCloseable {
     public synchronized @NonNull CompletableFuture<AnswerBatch> register(
             PluginHost.@NonNull Invocation invocation, @NonNull List<Question> questions) {
         if (closed) throw new IllegalStateException("Question runtime closed");
-        var scope =
-                new ActionContext(invocation.owner(), invocation.sessionId(), invocation.agentId());
+        var scope = invocation.scope();
         var key = new Key(scope, invocation.callId());
         var future = new CompletableFuture<AnswerBatch>();
         var snapshot =
@@ -81,7 +80,7 @@ public final class QuestionRuntime extends Listener implements AutoCloseable {
     }
 
     /** Returns the pending batches for the scope, ordered by call id. */
-    public @NonNull List<PendingQuestionBatch> pendingFor(@NonNull ActionContext scope) {
+    public @NonNull List<PendingQuestionBatch> pendingFor(Scope.@NonNull AgentScope scope) {
         return pending.values().stream()
                 .filter(value -> value.key().scope().equals(scope))
                 .sorted(Comparator.comparing(value -> value.key().callId()))
@@ -91,7 +90,7 @@ public final class QuestionRuntime extends Listener implements AutoCloseable {
 
     /** Completes a pending batch with validated answers; returns whether it settled. */
     public boolean answer(
-            @NonNull ActionContext scope,
+            Scope.@NonNull AgentScope scope,
             @NonNull String callId,
             @NonNull Map<@NonNull String, @NonNull String> answers) {
         var value = pending.get(new Key(scope, callId));
@@ -106,31 +105,28 @@ public final class QuestionRuntime extends Listener implements AutoCloseable {
     }
 
     /** Completes a pending batch as cancelled; returns whether it settled. */
-    public boolean cancel(@NonNull ActionContext scope, @NonNull String callId) {
+    public boolean cancel(Scope.@NonNull AgentScope scope, @NonNull String callId) {
         var value = pending.get(new Key(scope, callId));
         return value != null && value.future().complete(new AnswerBatch(Map.of(), true));
     }
 
     @EventHandler
-    public void onOwnerClosed(@NonNull OwnerClosedEvent event) {
-        cancelWhere(scope -> scope.ownerId().equals(event.owner()));
+    public void onUserLogout(@NonNull UserLogoutEvent event) {
+        cancelWhere(scope -> scope.userScope().equals(event.scope()));
     }
 
     @EventHandler
-    public void onSessionClosed(@NonNull SessionClosedEvent event) {
-        cancelWhere(
-                scope ->
-                        scope.ownerId().equals(event.owner())
-                                && scope.sessionId().equals(event.sessionId()));
+    public void onSessionDeleted(@NonNull SessionDeletedEvent event) {
+        cancelWhere(scope -> scope.sessionScope().equals(event.scope()));
     }
 
     @EventHandler
     public void onAgentTerminated(@NonNull AgentTerminatedEvent event) {
-        var target = new ActionContext(event.owner(), event.sessionId(), event.agentId());
+        var target = event.scope();
         cancelWhere(target::equals);
     }
 
-    private synchronized void cancelWhere(@NonNull Predicate<ActionContext> matches) {
+    private synchronized void cancelWhere(@NonNull Predicate<Scope.AgentScope> matches) {
         for (var value : List.copyOf(pending.values())) {
             if (matches.test(value.key().scope()))
                 value.future().complete(new AnswerBatch(Map.of(), true));
@@ -143,15 +139,15 @@ public final class QuestionRuntime extends Listener implements AutoCloseable {
         cancelWhere(scope -> true);
     }
 
-    private void invalidate(@NonNull ActionContext scope) {
+    private void invalidate(Scope.@NonNull AgentScope scope) {
         try {
-            host.invalidate(scope.sessionId(), "interactions");
+            host.invalidate(scope.sessionScope(), "interactions");
         } catch (IllegalStateException | SecurityException ignored) {
             // Revocation must still settle all waiters when the host rejects late notifications.
         }
     }
 
-    private record Key(@NonNull ActionContext scope, @NonNull String callId) {}
+    private record Key(Scope.@NonNull AgentScope scope, @NonNull String callId) {}
 
     private record Pending(
             @NonNull Key key,

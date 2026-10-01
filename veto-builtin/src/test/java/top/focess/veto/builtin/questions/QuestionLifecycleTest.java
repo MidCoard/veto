@@ -12,10 +12,10 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import top.focess.veto.api.event.AgentTerminatedEvent;
-import top.focess.veto.api.event.OwnerClosedEvent;
-import top.focess.veto.api.event.SessionClosedEvent;
+import top.focess.veto.api.event.SessionDeletedEvent;
+import top.focess.veto.api.event.UserLogoutEvent;
 import top.focess.veto.api.plugin.PluginHost;
-import top.focess.veto.api.plugin.contract.FrontendContribution.ActionContext;
+import top.focess.veto.api.plugin.Scope;
 
 class QuestionLifecycleTest {
     @Test
@@ -25,15 +25,15 @@ class QuestionLifecycleTest {
         var pending = runtime.register(original, List.of());
         for (var scope :
                 List.of(
-                        new ActionContext("other", "session", "agent"),
-                        new ActionContext("owner", "other", "agent"),
-                        new ActionContext("owner", "session", "other"))) {
+                        new Scope.AgentScope("other", "session", "agent"),
+                        new Scope.AgentScope("owner", "other", "agent"),
+                        new Scope.AgentScope("owner", "session", "other"))) {
             assertTrue(runtime.pendingFor(scope).isEmpty());
             assertFalse(runtime.answer(scope, "call", Map.of()));
             assertFalse(runtime.cancel(scope, "call"));
         }
         assertFalse(pending.isDone());
-        assertTrue(runtime.cancel(new ActionContext("owner", "session", "agent"), "call"));
+        assertTrue(runtime.cancel(new Scope.AgentScope("owner", "session", "agent"), "call"));
     }
 
     @ParameterizedTest
@@ -46,11 +46,14 @@ class QuestionLifecycleTest {
                         new PluginHost.Invocation("other", "other-session", "agent", null, "call"),
                         List.of());
         switch (transition) {
-            case "owner" -> runtime.onOwnerClosed(new OwnerClosedEvent("owner"));
-            case "session" -> runtime.onSessionClosed(new SessionClosedEvent("owner", "session"));
+            case "owner" -> runtime.onUserLogout(new UserLogoutEvent(new Scope.UserScope("owner")));
+            case "session" ->
+                    runtime.onSessionDeleted(
+                            new SessionDeletedEvent(new Scope.SessionScope("owner", "session")));
             case "agent" ->
                     runtime.onAgentTerminated(
-                            new AgentTerminatedEvent("owner", "session", "agent"));
+                            new AgentTerminatedEvent(
+                                    new Scope.AgentScope("owner", "session", "agent")));
             case "plugin" -> runtime.close();
             default -> throw new AssertionError();
         }
@@ -92,13 +95,16 @@ class QuestionLifecycleTest {
     void registrationAndExceptionalCleanupInvalidateButRejectedAnswersDoNot() {
         var host = mock(PluginHost.class);
         var runtime = new QuestionRuntime(host);
+        var sessionScope = QuestionTestSupport.scope("agent").sessionScope();
         var pending = runtime.register(QuestionTestSupport.invocation("agent", "call"), List.of());
-        verify(host).invalidate("session", "interactions");
+        verify(host).invalidate(sessionScope, "interactions");
+        verifyNoMoreInteractions(host);
         clearInvocations(host);
         assertFalse(runtime.answer(QuestionTestSupport.scope("agent"), "missing", Map.of()));
         verifyNoInteractions(host);
         pending.completeExceptionally(new IllegalStateException("interrupted"));
         assertTrue(runtime.pendingFor(QuestionTestSupport.scope("agent")).isEmpty());
-        verify(host).invalidate("session", "interactions");
+        verify(host).invalidate(sessionScope, "interactions");
+        verifyNoMoreInteractions(host);
     }
 }

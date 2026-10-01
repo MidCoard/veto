@@ -3,14 +3,14 @@ package top.focess.veto.integration.plugins;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.tool.ToolCallContextHolder;
 import top.focess.veto.api.plugin.PluginHost;
-import top.focess.veto.api.plugin.contract.FrontendContribution.ActionContext;
+import top.focess.veto.api.plugin.Scope;
 
 /** Test host for runner wait assertions; production authorization is exercised separately. */
 public final class QuestionTestSupport {
     private QuestionTestSupport() {}
 
-    public static @NonNull ActionContext scope(@NonNull String agent) {
-        return new ActionContext("owner", "session", agent);
+    public static Scope.@NonNull AgentScope scope(@NonNull String agent) {
+        return new Scope.AgentScope("owner", "session", agent);
     }
 
     public static @NonNull PluginHost host() {

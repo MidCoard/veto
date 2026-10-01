@@ -25,7 +25,7 @@ import top.focess.veto.agent.TurnType;
 import top.focess.veto.api.event.BeforeTextCommitEvent;
 import top.focess.veto.api.llm.ProviderType;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
-import top.focess.veto.api.plugin.contract.FrontendContribution;
+import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.integration.plugins.PluginLifecycleEvents;
 import top.focess.veto.integration.plugins.PluginTestSupport;
 import top.focess.veto.model.AgentEntity;
@@ -427,7 +427,7 @@ class SessionServiceTest {
         assertTrue(service.activeSession("term-1").isPresent());
 
         boolean removed;
-        var scope = new FrontendContribution.ActionContext("alice", session.getId(), agent.getId());
+        var scope = new Scope.AgentScope("alice", session.getId(), agent.getId());
         try (var plugins = PluginTestSupport.manager()) {
             var lifecycle = new PluginLifecycleEvents(plugins);
             var users = mock(UserRegistry.class);

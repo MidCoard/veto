@@ -12,7 +12,7 @@ import org.slf4j.LoggerFactory;
 import top.focess.veto.api.event.AgentTerminatedEvent;
 import top.focess.veto.api.event.EventHandler;
 import top.focess.veto.api.event.Listener;
-import top.focess.veto.api.event.SessionClosedEvent;
+import top.focess.veto.api.event.SessionDeletedEvent;
 import top.focess.veto.api.plugin.PluginContext;
 import top.focess.veto.api.plugin.PluginHost;
 import top.focess.veto.api.plugin.contract.AgentInbox;
@@ -58,8 +58,8 @@ public final class MonitorRuntime implements AutoCloseable {
         listener =
                 new Listener() {
                     @EventHandler
-                    public void onSessionClosed(@NonNull SessionClosedEvent event) {
-                        service.onSessionClosed(event);
+                    public void onSessionDeleted(@NonNull SessionDeletedEvent event) {
+                        service.onSessionDeleted(event);
                     }
 
                     @EventHandler

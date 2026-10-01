@@ -7,6 +7,7 @@ import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.SessionAgentRegistry;
 import top.focess.veto.agent.intercept.IngressDefense;
 import top.focess.veto.agent.translation.CapabilityTranslator;
+import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.api.plugin.agent.AgentHost;
 import top.focess.veto.api.plugin.agent.IsolatedAgent;
 import top.focess.veto.api.plugin.contract.JsonValue;
@@ -49,7 +50,8 @@ public final class ReaderTestHarness {
                         65536);
         AgentHost host =
                 new AgentHost() {
-                    public @NonNull Session session(PluginStorage.@NonNull SessionScope scope) {
+                    public @NonNull Session session(
+                            PluginStorage.@NonNull Grant<Scope.@NonNull SessionScope> scope) {
                         throw new UnsupportedOperationException();
                     }
 

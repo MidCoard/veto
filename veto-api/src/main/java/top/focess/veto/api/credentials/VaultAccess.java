@@ -17,8 +17,8 @@ public interface VaultAccess {
     /** An invocation-bound vault handle, never an authorization token for a later call. */
     interface Handle {
         /**
-         * Returns the host-attributed identity of this invocation after rechecking admission.
-         * The returned identity is not a transferable vault authorization.
+         * Returns the host-attributed identity of this invocation after rechecking admission. The
+         * returned identity is not a transferable vault authorization.
          *
          * @return authenticated owner, session, and agent
          */

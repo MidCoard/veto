@@ -1,6 +1,7 @@
 package top.focess.veto.api.plugin.contract;
 
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.api.plugin.Scope;
 
 /** A plugin-owned browser module and its scoped backend actions. */
 public abstract class FrontendContribution {
@@ -24,7 +25,7 @@ public abstract class FrontendContribution {
      * @throws PluginFailure when the action cannot be completed
      */
     public abstract @NonNull JsonValue handle(
-            @NonNull ActionContext scope,
+            Scope.@NonNull AgentScope scope,
             @NonNull String action,
             JsonValue.@NonNull ObjectValue arguments)
             throws PluginFailure;
@@ -37,16 +38,6 @@ public abstract class FrontendContribution {
     public final @NonNull Handler handler() {
         return this::handle;
     }
-
-    /**
-     * Host-authenticated frontend action scope.
-     *
-     * @param ownerId authenticated user identity
-     * @param sessionId selected session identity
-     * @param agentId calling agent identity
-     */
-    public record ActionContext(
-            @NonNull String ownerId, @NonNull String sessionId, @NonNull String agentId) {}
 
     /** Functional action callback used by host action dispatch. */
     @FunctionalInterface
@@ -61,7 +52,7 @@ public abstract class FrontendContribution {
          * @throws PluginFailure when the action cannot be completed
          */
         @NonNull JsonValue handle(
-                @NonNull ActionContext scope,
+                Scope.@NonNull AgentScope scope,
                 @NonNull String action,
                 JsonValue.@NonNull ObjectValue arguments)
                 throws PluginFailure;

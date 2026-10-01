@@ -3,9 +3,11 @@ package top.focess.veto.api.plugin;
 import org.jspecify.annotations.NonNull;
 
 /**
- * An intentional decision during initialization that this plugin cannot run in the current host.
- * The host discards its contributions and closes the instance. Ordinary configuration mistakes and
- * callback failures must use {@code PluginFailure}; this exception is not a way to hide them.
+ * An intentional decision during construction that this plugin cannot run in the current host. The
+ * host withdraws its registrations and closes resources already registered with the context. If the
+ * constructor throws this exception before returning, there is no plugin instance whose lifecycle
+ * callbacks can run. Ordinary configuration mistakes and callback failures must use {@code
+ * PluginFailure}; this exception is not a way to hide them.
  */
 public final class PluginDeclinedException extends RuntimeException {
     /** Public, bounded reason for an intentional non-activation. */

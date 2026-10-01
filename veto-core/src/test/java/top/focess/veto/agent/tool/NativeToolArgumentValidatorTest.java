@@ -29,7 +29,7 @@ class NativeToolArgumentValidatorTest {
     private record Counted(@NonNull String value) {}
 
     public static final class CountingSchema implements InputSchemaSource {
-        private static final AtomicInteger compilations = new AtomicInteger();
+        private static final @NonNull AtomicInteger compilations = new AtomicInteger();
 
         @Override
         public @NonNull JsonNode schema() {
@@ -65,7 +65,7 @@ class NativeToolArgumentValidatorTest {
                         () ->
                                 NativeToolArgumentValidator.validate(
                                         "nested", missing, NestedCollections.class));
-        assertTrue(error.getMessage().contains("groups[0][0].detail"));
+        assertTrue(String.valueOf(error.getMessage()).contains("groups[0][0].detail"));
         var nullElement =
                 mapper.readTree(
                         """
@@ -77,7 +77,7 @@ class NativeToolArgumentValidatorTest {
                         () ->
                                 NativeToolArgumentValidator.validate(
                                         "nested", nullElement, NestedCollections.class));
-        assertTrue(nullError.getMessage().contains("groups[0][0]"));
+        assertTrue(String.valueOf(nullError.getMessage()).contains("groups[0][0]"));
     }
 
     @Test
@@ -97,11 +97,15 @@ class NativeToolArgumentValidatorTest {
     void publicSchemaCopiesCannotChangeTheCachedValidationContract() throws Exception {
         var exposed = (ObjectNode) ToolSchemaCompiler.compileFromRecord(NestedCollections.class);
         exposed.remove("properties");
-        var valid = mapper.readTree("""
+        var valid =
+                mapper.readTree(
+                        """
                 {"groups":[[{"mode":"brief"}]]}
                 """);
         assertDoesNotThrow(
-                () -> NativeToolArgumentValidator.validate("nested", valid, NestedCollections.class));
+                () ->
+                        NativeToolArgumentValidator.validate(
+                                "nested", valid, NestedCollections.class));
         assertTrue(ToolSchemaCompiler.compileFromRecord(NestedCollections.class).has("properties"));
     }
 

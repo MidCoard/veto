@@ -1,59 +1,5 @@
 package top.focess.veto.integration.plugins;
 
-import org.checkerframework.checker.initialization.qual.UnknownInitialization;
-import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
-import org.springframework.beans.factory.ObjectProvider;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.stereotype.Component;
-
-import top.focess.veto.agent.loop.PromptCompiler;
-import top.focess.veto.agent.tool.ToolCallContextHolder;
-import top.focess.veto.agent.tool.ToolEngineImpl;
-import top.focess.veto.agent.tool.ToolSchemaCompiler;
-import top.focess.veto.api.agent.tool.AgentTool;
-import top.focess.veto.api.agent.tool.CapabilityTool;
-import top.focess.veto.api.agent.tool.NativeTool;
-import top.focess.veto.api.agent.tool.RemoteTool;
-import top.focess.veto.api.agent.tool.Tool;
-import top.focess.veto.api.event.ServiceDirectoryChangedEvent;
-import top.focess.veto.api.llm.LocalModelCompletion;
-import top.focess.veto.api.llm.PromptRenderer;
-import top.focess.veto.api.llm.TextEmbedding;
-import top.focess.veto.api.plugin.PluginContext;
-import top.focess.veto.api.plugin.PluginContributions;
-import top.focess.veto.api.plugin.PluginDeclinedException;
-import top.focess.veto.api.plugin.PluginHost;
-import top.focess.veto.api.plugin.PluginIdentity;
-import top.focess.veto.api.plugin.PluginState;
-import top.focess.veto.api.plugin.agent.AgentHost;
-import top.focess.veto.api.plugin.contract.FrontendContribution;
-import top.focess.veto.api.plugin.contract.JsonValue;
-import top.focess.veto.api.plugin.contract.PluginFailure;
-import top.focess.veto.api.plugin.contract.StandardContributionPoints;
-import top.focess.veto.api.plugin.contribution.Contribution;
-import top.focess.veto.api.plugin.contribution.ContributionCatalog;
-import top.focess.veto.api.plugin.contribution.ContributionEntry;
-import top.focess.veto.api.plugin.contribution.ContributionPoint;
-import top.focess.veto.api.plugin.contribution.ContributionSource;
-import top.focess.veto.api.plugin.contribution.PluginContributionsDirectory;
-import top.focess.veto.api.plugin.contribution.ProtocolPointDefinition;
-import top.focess.veto.api.plugin.service.PluginServices;
-import top.focess.veto.api.plugin.service.ServiceCallContext;
-import top.focess.veto.api.plugin.service.ServiceException;
-import top.focess.veto.api.plugin.PluginScope;
-import top.focess.veto.api.plugin.Scope;
-import top.focess.veto.api.plugin.storage.PluginStorage;
-import top.focess.veto.api.process.ProcessHost;
-import top.focess.veto.api.resources.CatalogueAccess;
-import top.focess.veto.bus.SessionInvalidations;
-import top.focess.veto.event.EventListenerRegistry;
-import top.focess.veto.event.PluginExecutor;
-import top.focess.veto.integration.plugins.storage.PluginStorageFactory;
-import top.focess.veto.model.SessionRepository;
-import top.focess.veto.plugin.runtime.*;
-
 import java.io.IOException;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -72,7 +18,58 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.function.BiPredicate;
 import java.util.function.Consumer;
-import java.util.stream.Collectors;
+import org.checkerframework.checker.initialization.qual.UnknownInitialization;
+import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Component;
+import top.focess.veto.agent.loop.PromptCompiler;
+import top.focess.veto.agent.tool.ToolCallContextHolder;
+import top.focess.veto.agent.tool.ToolEngineImpl;
+import top.focess.veto.agent.tool.ToolSchemaCompiler;
+import top.focess.veto.api.agent.tool.AgentTool;
+import top.focess.veto.api.agent.tool.CapabilityTool;
+import top.focess.veto.api.agent.tool.NativeTool;
+import top.focess.veto.api.agent.tool.RemoteTool;
+import top.focess.veto.api.agent.tool.Tool;
+import top.focess.veto.api.event.Listener;
+import top.focess.veto.api.event.ServiceDirectoryChangedEvent;
+import top.focess.veto.api.llm.LocalModelCompletion;
+import top.focess.veto.api.llm.PromptRenderer;
+import top.focess.veto.api.llm.TextEmbedding;
+import top.focess.veto.api.plugin.PluginContext;
+import top.focess.veto.api.plugin.PluginDeclinedException;
+import top.focess.veto.api.plugin.PluginHost;
+import top.focess.veto.api.plugin.PluginIdentity;
+import top.focess.veto.api.plugin.PluginScope;
+import top.focess.veto.api.plugin.PluginState;
+import top.focess.veto.api.plugin.Scope;
+import top.focess.veto.api.plugin.agent.AgentHost;
+import top.focess.veto.api.plugin.contract.FrontendContribution;
+import top.focess.veto.api.plugin.contract.JsonValue;
+import top.focess.veto.api.plugin.contract.PluginFailure;
+import top.focess.veto.api.plugin.contract.StandardContributionPoints;
+import top.focess.veto.api.plugin.contribution.Contribution;
+import top.focess.veto.api.plugin.contribution.ContributionCatalog;
+import top.focess.veto.api.plugin.contribution.ContributionEntry;
+import top.focess.veto.api.plugin.contribution.ContributionPoint;
+import top.focess.veto.api.plugin.contribution.ContributionSource;
+import top.focess.veto.api.plugin.contribution.PluginContributionsDirectory;
+import top.focess.veto.api.plugin.contribution.ProtocolPointDefinition;
+import top.focess.veto.api.plugin.service.PluginServices;
+import top.focess.veto.api.plugin.service.ServiceCallContext;
+import top.focess.veto.api.plugin.service.ServiceException;
+import top.focess.veto.api.plugin.storage.PluginStorage;
+import top.focess.veto.api.process.ProcessHost;
+import top.focess.veto.api.resources.CatalogueAccess;
+import top.focess.veto.bus.SessionInvalidations;
+import top.focess.veto.event.EventListenerRegistry;
+import top.focess.veto.event.PluginExecutor;
+import top.focess.veto.integration.plugins.storage.PluginStorageFactory;
+import top.focess.veto.model.SessionRepository;
+import top.focess.veto.plugin.runtime.*;
 
 /**
  * Installed-package lifecycle and live catalog. Broken packages fail activation without replacing
@@ -101,7 +98,7 @@ public final class PluginManager implements AutoCloseable {
             @NonNull String callerId,
             @NonNull String providerId,
             @NonNull PluginScope required,
-            PluginStorage.@NonNull Scope scope)
+            PluginStorage.@NonNull Grant<?> grant)
             throws ServiceException {
         Object bound = grantedServices.getOrDefault(callerId, Map.of()).get(PluginStorage.class);
         Object target = grantedServices.getOrDefault(providerId, Map.of()).get(PluginStorage.class);
@@ -111,23 +108,36 @@ public final class PluginManager implements AutoCloseable {
                 || !(factory instanceof PluginStorageFactory storageFactory))
             throw new ServiceException(ServiceException.Code.UNAVAILABLE);
         try {
-            if (required == PluginScope.USER && scope instanceof PluginStorage.UserScope user) {
-                var issued = storageFactory.transferUser(storage, user, providerStorage);
-                return new ServiceCallContext(
-                        callerId, required, new Scope.UserScope(issued.userId()), issued);
+            if (required == PluginScope.USER && grant.scope() instanceof Scope.UserScope user) {
+                var issued =
+                        storageFactory.transferUser(
+                                storage,
+                                new PluginStorage.Grant<>(grant.token(), user),
+                                providerStorage);
+                return new ServiceCallContext(callerId, required, issued.scope(), issued);
             }
-            if (required == PluginScope.SESSION
-                    && scope instanceof PluginStorage.SessionScope session) {
+            if ((required == PluginScope.SESSION || required == PluginScope.AGENT)
+                    && grant.scope() instanceof Scope.SessionScope identity) {
+                var session = new PluginStorage.Grant<>(grant.token(), identity);
                 var available = serviceAccess.sessions;
                 if (available == null
-                        || !available.getObject().includes(session.sessionId(), callerId)
-                        || !available.getObject().includes(session.sessionId(), providerId))
+                        || !available.getObject().includes(identity.session(), callerId)
+                        || !available.getObject().includes(identity.session(), providerId))
                     throw new ServiceException(ServiceException.Code.UNAVAILABLE);
+                var agent =
+                        required == PluginScope.AGENT
+                                ? AgentServiceScope.authorize(storageFactory, storage, session)
+                                : null;
                 var issued = storageFactory.transferSession(storage, session, providerStorage);
                 return new ServiceCallContext(
                         callerId,
                         required,
-                        new Scope.SessionScope(issued.userId(), issued.sessionId()),
+                        agent == null
+                                ? issued.scope()
+                                : new Scope.AgentScope(
+                                        issued.scope().owner(),
+                                        issued.scope().session(),
+                                        agent.agent()),
                         issued);
             }
         } catch (RuntimeException failure) {
@@ -259,6 +269,8 @@ public final class PluginManager implements AutoCloseable {
     }
 
     private volatile @NonNull EventListenerRegistry events;
+    private final EventListenerRegistry.@NonNull Preparation listenerPreparation =
+            new EventListenerRegistry.Preparation();
     private final @NonNull Map<@NonNull String, @NonNull String> toolNames;
     private final @NonNull Map<Class<?>, Object> baseServices;
     private final @NonNull PluginConfigurations configurations;
@@ -289,8 +301,8 @@ public final class PluginManager implements AutoCloseable {
     /** A plugin paired with host-owned registrations grouped by contribution point. */
     public record Registration(
             @NonNull PluginLifecycle plugin, @NonNull PointRegistrations points) {
-        public @NonNull PluginContributions contributions() {
-            return new PluginContributions(points.entries());
+        public @NonNull List<@NonNull Contribution<?>> entries() {
+            return points.entries();
         }
     }
 
@@ -427,7 +439,7 @@ public final class PluginManager implements AutoCloseable {
             while (pending.hasNext()) {
                 var plugin = pending.next();
                 try {
-                    registered.add(initializePlugin(plugin, services, configurations, toolNames));
+                    registered.add(constructPlugin(plugin, services, configurations, toolNames));
                 } catch (PluginDeclinedException declinedReason) {
                     withdrawDefinitions(plugin.identity().id());
                     grantedServices.remove(plugin.identity().id());
@@ -468,16 +480,8 @@ public final class PluginManager implements AutoCloseable {
             registrations = List.copyOf(registered);
             for (var entry : validatedCatalog.entries(StandardContributionPoints.DATA_LIFECYCLE))
                 dataLifecycleOwners.add(entry.source().namespace());
-            List<PluginLifecycle> admitted = plugins;
-            events =
-                    EventListenerRegistry.build(
-                            validatedCatalog,
-                            (namespace, body) -> admit(admitted, namespace, body));
-            events.broadcast(
-                    new ServiceDirectoryChangedEvent(),
-                    admitted.stream()
-                            .map(plugin -> plugin.identity().id())
-                            .collect(Collectors.toSet()));
+            events = preparedEvents(validatedCatalog, plugins, listenerPreparation);
+            events.broadcast(new ServiceDirectoryChangedEvent());
             ready = true;
         } catch (Exception | ServiceConfigurationError e) {
             definedPoints.clear();
@@ -490,7 +494,7 @@ public final class PluginManager implements AutoCloseable {
         }
     }
 
-    private @NonNull Registration initializePlugin(
+    private @NonNull Registration constructPlugin(
             @UnknownInitialization PluginManager this,
             @NonNull PluginLifecycle plugin,
             @NonNull Map<Class<?>, Object> availableServices,
@@ -550,24 +554,17 @@ public final class PluginManager implements AutoCloseable {
         pluginServices.put(PluginContributionsDirectory.class, contributionsFor(plugin));
         var points = new PointRegistrations();
         var handlers = contributionHandlers(plugin, points);
-        PluginContributions legacy =
-                plugin.initialize(
-                        new PluginContext(
-                                plugin.identity(),
-                                () -> {},
-                                () -> {
-                                    throw new IllegalStateException(
-                                            "Plugin context is not bound to a lifecycle owner");
-                                },
-                                pluginServices,
-                                handlers),
-                        settings.forPlugin(plugin.identity().id()));
-        for (var contribution : legacy.entries()) {
-            Consumer<Contribution<?>> handler = handlers.get(contribution.point());
-            if (handler == null)
-                throw new IllegalArgumentException("Unrecognized contribution point");
-            handler.accept(contribution);
-        }
+        plugin.construct(
+                new PluginContext(
+                        plugin.identity(),
+                        () -> {},
+                        () -> {
+                            throw new IllegalStateException(
+                                    "Plugin context is not bound to a lifecycle owner");
+                        },
+                        pluginServices,
+                        handlers),
+                settings.forPlugin(plugin.identity().id()));
         return new Registration(plugin, points);
     }
 
@@ -627,6 +624,16 @@ public final class PluginManager implements AutoCloseable {
                         point,
                         contribution -> {
                             validateFrontend(contribution.implementation());
+                            registerContribution(plugin, points, contribution);
+                        });
+            } else if (point.equals(StandardContributionPoints.LISTENERS)) {
+                handlers.put(
+                        point,
+                        contribution -> {
+                            if (!(contribution.implementation() instanceof Listener listener))
+                                throw new IllegalArgumentException(
+                                        "Listener contribution required");
+                            listenerPreparation.prepare(listener);
                             registerContribution(plugin, points, contribution);
                         });
             } else {
@@ -743,7 +750,7 @@ public final class PluginManager implements AutoCloseable {
         var points = new HashSet<ContributionPoint<?>>(StandardContributionPoints.ALL);
         for (var registration : registered) {
             var owner = registration.plugin().identity().id();
-            for (var contribution : registration.contributions().entries()) {
+            for (var contribution : registration.entries()) {
                 if (contribution.point().equals(StandardContributionPoints.CONTRIBUTIONS)) {
                     ProtocolPointDefinition definition =
                             (ProtocolPointDefinition) contribution.implementation();
@@ -763,7 +770,7 @@ public final class PluginManager implements AutoCloseable {
             }
         }
         for (var registration : registered)
-            for (var contribution : registration.contributions().entries())
+            for (var contribution : registration.entries())
                 if (!points.contains(contribution.point())
                         && !(contribution.implementation() instanceof JsonValue.ObjectValue))
                     throw new IllegalArgumentException("Unknown contribution point");
@@ -772,7 +779,7 @@ public final class PluginManager implements AutoCloseable {
             builder.stage(
                     new ContributionSource(
                             identity.id(), identity.version(), ContributionSource.Origin.PLUGIN),
-                    registration.contributions().entries().stream()
+                    registration.entries().stream()
                             .filter(entry -> points.contains(entry.point()))
                             .toList());
         }
@@ -828,8 +835,7 @@ public final class PluginManager implements AutoCloseable {
             @NonNull List<DeclinedPlugin> nextDeclined) {
         ContributionCatalog nextCatalog = buildCatalog(nextRegistrations);
         EventListenerRegistry nextEvents =
-                EventListenerRegistry.build(
-                        nextCatalog, (namespace, body) -> admit(nextPlugins, namespace, body));
+                preparedEvents(nextCatalog, nextPlugins, listenerPreparation);
         var previousPlugins = plugins;
         var previousRegistrations = registrations;
         var previousDisabled = disabled;
@@ -848,11 +854,7 @@ public final class PluginManager implements AutoCloseable {
             var providers = llmProviders;
             if (providers != null) providers.getObject().reload(this);
             serviceRegistry.bind(nextCatalog, nextPlugins);
-            nextEvents.broadcast(
-                    new ServiceDirectoryChangedEvent(),
-                    nextPlugins.stream()
-                            .map(plugin -> plugin.identity().id())
-                            .collect(Collectors.toSet()));
+            nextEvents.broadcast(new ServiceDirectoryChangedEvent());
         } catch (RuntimeException failure) {
             plugins = previousPlugins;
             registrations = previousRegistrations;
@@ -920,17 +922,29 @@ public final class PluginManager implements AutoCloseable {
      * Runs an event handler body under the named plugin's admission, translating a checked handler
      * failure into a sanitized {@link PluginFailure}.
      */
+    private static @NonNull EventListenerRegistry preparedEvents(
+            @NonNull ContributionCatalog catalog,
+            @NonNull List<PluginLifecycle> plugins,
+            EventListenerRegistry.@NonNull Preparation preparation) {
+        Map<@NonNull String, @NonNull PluginLifecycle> indexed = new HashMap<>();
+        for (var plugin : plugins) indexed.put(plugin.identity().id(), plugin);
+        var admitted = Map.copyOf(indexed);
+        return EventListenerRegistry.build(
+                catalog,
+                (namespace, body) -> admit(admitted, namespace, body),
+                preparation,
+                namespace -> {
+                    var plugin = admitted.get(namespace);
+                    return plugin != null && plugin.state() == PluginState.ACTIVE;
+                });
+    }
+
     private static void admit(
-            @NonNull List<PluginLifecycle> admitted,
+            @NonNull Map<@NonNull String, @NonNull PluginLifecycle> admitted,
             @NonNull String namespace,
             PluginExecutor.@NonNull Body body)
             throws PluginFailure {
-        PluginLifecycle target = null;
-        for (PluginLifecycle candidate : admitted)
-            if (candidate.identity().id().equals(namespace)) {
-                target = candidate;
-                break;
-            }
+        PluginLifecycle target = admitted.get(namespace);
         if (target == null) throw new PluginFailure(PluginFailure.Code.NOT_READY);
         target.execute(
                 () -> {

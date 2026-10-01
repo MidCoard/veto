@@ -16,7 +16,6 @@ import java.util.function.Consumer;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.api.plugin.PluginContext;
-import top.focess.veto.api.plugin.PluginContributions;
 import top.focess.veto.api.plugin.PluginHost;
 import top.focess.veto.api.plugin.PluginIdentity;
 import top.focess.veto.api.plugin.contract.JsonValue;
@@ -52,10 +51,10 @@ class BuiltinSearchProviderTest {
                         handlers);
         var plugin = new BuiltinPlugin(context, configuration);
         try {
-            var contributions = new PluginContributions(registrations);
+            var contributions = List.copyOf(registrations);
             assertEquals("top.focess.builtin", plugin.identity().id());
             var providers =
-                    contributions.entries().stream()
+                    contributions.stream()
                             .filter(e -> e.point().equals(StandardContributionPoints.SERVICES))
                             .toList();
             assertEquals(
@@ -100,8 +99,8 @@ class BuiltinSearchProviderTest {
         var server =
                 server(
                         """
-                {"web":{"results":[{"title":"Java","url":"https://example.com/java","description":"Docs"}]}}
-                """,
+                        {"web":{"results":[{"title":"Java","url":"https://example.com/java","description":"Docs"}]}}
+                        """,
                         key);
         try (var provider =
                 new BraveSearchProvider(

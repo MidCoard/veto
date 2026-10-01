@@ -14,44 +14,45 @@ import java.util.concurrent.TimeUnit;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.LoggerFactory;
 import top.focess.veto.api.plugin.PluginHost;
+import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.builtin.process.BackgroundTasks.Change;
 import top.focess.veto.builtin.process.BackgroundTasks.ExitCause;
-import top.focess.veto.builtin.process.BackgroundTasks.Owner;
 
 /** Builtin owns process-to-monitor interpretation, retries and frontend invalidation. */
 public final class TaskEvents implements BackgroundTasks.Listener, AutoCloseable {
     private record Pending(
-            @NonNull Owner scope, @NonNull TaskInfo task, @NonNull ExitCause cause) {}
+            Scope.@NonNull AgentScope scope, @NonNull TaskInfo task, @NonNull ExitCause cause) {}
 
     private final @NonNull PluginHost host;
     private final @NonNull ProcessObserver observer;
     private final @NonNull ConcurrentHashMap<UUID, Pending> pending = new ConcurrentHashMap<>();
     private ScheduledExecutorService scheduler;
     private boolean closed;
-    private final @NonNull Set<String> closedOwners = new HashSet<>();
-    private final @NonNull Set<String> closedSessions = new HashSet<>();
-    private final @NonNull Map<UUID, Owner> instances = new LinkedHashMap<>();
+    private final @NonNull Set<Scope.UserScope> loggedOutUsers = new HashSet<>();
+    private final @NonNull Set<Scope.SessionScope> deletedSessions = new HashSet<>();
+    private final @NonNull Map<UUID, Scope.AgentScope> instances = new LinkedHashMap<>();
     private final @NonNull Set<UUID> closedInstances = new HashSet<>();
 
-    /** Drops pending notifications for a closed owner. */
-    public synchronized void ownerClosed(@NonNull String owner) {
-        closedOwners.add(owner);
-        pending.values().removeIf(value -> value.scope().owner().equals(owner));
+    /** Allows new task notifications after a successful signup or login. */
+    public synchronized void userAuthenticated(Scope.@NonNull UserScope scope) {
+        loggedOutUsers.remove(scope);
     }
 
-    /** Drops pending notifications for a closed session. */
-    public synchronized void sessionClosed(@NonNull String owner, @NonNull String session) {
-        closedSessions.add(owner + ":" + session);
-        pending.values()
-                .removeIf(
-                        value ->
-                                value.scope().owner().equals(owner)
-                                        && value.scope().session().equals(session));
+    /** Drops pending notifications when a user logs out. */
+    public synchronized void userLogout(Scope.@NonNull UserScope scope) {
+        loggedOutUsers.add(scope);
+        pending.values().removeIf(value -> value.scope().userScope().equals(scope));
     }
 
-    /** Marks the scope instances closed and drops its pending notifications. */
-    public synchronized void agentClosed(@NonNull Owner scope) {
+    /** Drops pending notifications for a deleted session. */
+    public synchronized void sessionDeleted(Scope.@NonNull SessionScope scope) {
+        deletedSessions.add(scope);
+        pending.values().removeIf(value -> value.scope().sessionScope().equals(scope));
+    }
+
+    /** Marks the agent's instances closed and drops their pending notifications. */
+    public synchronized void agentTerminated(Scope.@NonNull AgentScope scope) {
         instances.forEach(
                 (id, owned) -> {
                     if (owned.equals(scope)) closedInstances.add(id);
@@ -59,9 +60,9 @@ public final class TaskEvents implements BackgroundTasks.Listener, AutoCloseable
         pending.values().removeIf(value -> value.scope().equals(scope));
     }
 
-    private boolean revoked(@NonNull Owner scope) {
-        return closedOwners.contains(scope.owner())
-                || closedSessions.contains(scope.owner() + ":" + scope.session());
+    private boolean revoked(Scope.@NonNull AgentScope scope) {
+        return loggedOutUsers.contains(scope.userScope())
+                || deletedSessions.contains(scope.sessionScope());
     }
 
     /** Creates the notifier over the given host and process observer. */
@@ -82,7 +83,7 @@ public final class TaskEvents implements BackgroundTasks.Listener, AutoCloseable
 
     @Override
     public synchronized void changed(
-            @NonNull Owner scope,
+            Scope.@NonNull AgentScope scope,
             @NonNull TaskInfo info,
             @NonNull ExitCause cause,
             @NonNull Change change) {
@@ -106,7 +107,7 @@ public final class TaskEvents implements BackgroundTasks.Listener, AutoCloseable
             facts.put("alive", new JsonValue.BooleanValue(info.alive()));
             facts.put("cause", new JsonValue.StringValue(cause.name()));
             host.publish(
-                    scope.session(),
+                    scope.sessionScope(),
                     "task_" + change.name().toLowerCase(Locale.ROOT),
                     new JsonValue.ObjectValue(facts));
         } catch (RuntimeException error) {
@@ -116,7 +117,7 @@ public final class TaskEvents implements BackgroundTasks.Listener, AutoCloseable
                             error.getClass().getSimpleName());
         }
         try {
-            host.invalidate(scope.session(), "tasks");
+            host.invalidate(scope.sessionScope(), "tasks");
         } catch (RuntimeException error) {
             LoggerFactory.getLogger(TaskEvents.class)
                     .debug(

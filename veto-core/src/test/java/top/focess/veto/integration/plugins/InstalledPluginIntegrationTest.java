@@ -2,23 +2,21 @@ package top.focess.veto.integration.plugins;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-import org.jspecify.annotations.NonNull;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
-
-import top.focess.veto.api.plugin.PluginState;
-import top.focess.veto.api.plugin.contract.JsonValue;
-import top.focess.veto.api.plugin.contract.StandardContributionPoints;
-import top.focess.veto.api.plugin.contribution.ContributionId;
-import top.focess.veto.api.plugin.contribution.ContributionPoint;
-import top.focess.veto.plugin.runtime.PluginClassLoader;
-
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Set;
 import java.util.jar.JarEntry;
 import java.util.jar.JarOutputStream;
+import org.jspecify.annotations.NonNull;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+import top.focess.veto.api.plugin.PluginState;
+import top.focess.veto.api.plugin.contract.JsonValue;
+import top.focess.veto.api.plugin.contract.StandardContributionPoints;
+import top.focess.veto.api.plugin.contribution.ContributionId;
+import top.focess.veto.api.plugin.contribution.ContributionPoint;
+import top.focess.veto.plugin.runtime.PluginClassLoader;
 
 class InstalledPluginIntegrationTest {
     @Test

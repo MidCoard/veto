@@ -11,7 +11,6 @@ import java.util.function.Consumer;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.api.plugin.PluginContext;
-import top.focess.veto.api.plugin.PluginContributions;
 import top.focess.veto.api.plugin.PluginHost;
 import top.focess.veto.api.plugin.PluginIdentity;
 import top.focess.veto.api.plugin.contract.JsonValue;
@@ -45,7 +44,7 @@ class BuiltinPluginTest {
         var configuration = new JsonValue.ObjectValue(Map.of());
         var plugin = new BuiltinPlugin(context, configuration);
         try (plugin) {
-            var contributions = new PluginContributions(registrations);
+            var contributions = List.copyOf(registrations);
             plugin.start();
             assertEquals(
                     List.of(
@@ -86,12 +85,12 @@ class BuiltinPluginTest {
                             "web_search",
                             "write_memory",
                             "write_to_file"),
-                    contributions.entries().stream()
+                    contributions.stream()
                             .filter(e -> e.point().equals(StandardContributionPoints.TOOLS))
                             .map(e -> e.localId())
                             .sorted()
                             .toList());
-            assertEquals(51, contributions.entries().size());
+            assertEquals(51, contributions.size());
             var featurePoints =
                     Map.of(
                             StandardContributionPoints.AGENT_INBOX,
@@ -114,14 +113,14 @@ class BuiltinPluginTest {
                     (point, ids) ->
                             assertEquals(
                                     ids,
-                                    contributions.entries().stream()
+                                    contributions.stream()
                                             .filter(entry -> entry.point().equals(point))
                                             .map(entry -> entry.localId())
                                             .sorted()
                                             .toList()));
             assertEquals(
                     List.of("search"),
-                    contributions.entries().stream()
+                    contributions.stream()
                             .filter(e -> e.point().equals(StandardContributionPoints.SERVICES))
                             .map(e -> e.localId())
                             .sorted()

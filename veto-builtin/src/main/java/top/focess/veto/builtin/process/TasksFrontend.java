@@ -8,6 +8,7 @@ import java.util.Map;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
+import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.api.plugin.contract.FrontendContribution;
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.contract.JsonValues;
@@ -38,13 +39,13 @@ public final class TasksFrontend extends FrontendContribution {
      * stopOrRemove}).
      */
     public @NonNull JsonValue handle(
-            FrontendContribution.@NonNull ActionContext scope,
+            Scope.@NonNull AgentScope scope,
             @NonNull String action,
             JsonValue.@NonNull ObjectValue arguments)
             throws PluginFailure {
         try {
-            String agent = scope.agentId();
-            var owned = new BackgroundTasks.Owner(scope.ownerId(), scope.sessionId(), agent);
+            String agent = scope.agent();
+            var owned = new Scope.AgentScope(scope.owner(), scope.session(), agent);
             int offset = Math.max(0, number(arguments, "offset", 0));
             if (action.equals("list")) {
                 var values = tasks.list(owned);
@@ -94,7 +95,7 @@ public final class TasksFrontend extends FrontendContribution {
     }
 
     private @NonNull Map<String, @Nullable Object> row(
-            BackgroundTasks.@NonNull Owner scope, @NonNull TaskInfo task) {
+            Scope.@NonNull AgentScope scope, @NonNull TaskInfo task) {
         Map<String, @Nullable Object> result = new LinkedHashMap<>();
         result.put("taskId", task.taskId());
         result.put("taskInstanceId", task.taskInstanceId().toString());

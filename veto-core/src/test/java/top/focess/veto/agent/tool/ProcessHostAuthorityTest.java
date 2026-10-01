@@ -124,6 +124,8 @@ class ProcessHostAuthorityTest {
                             Workspace.single(directory, PathMode.REAL)));
             var running = fixture.host.startApproved();
             try {
+                assertEquals(fixture.owner, running.invocation().owner());
+                assertNotEquals(fixture.user.toString(), running.invocation().owner());
                 var input =
                         new ToolCall(
                                 "input_task",

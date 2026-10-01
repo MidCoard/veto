@@ -21,6 +21,7 @@ import top.focess.veto.agent.tool.ToolCallContextHolder;
 import top.focess.veto.api.agent.AgentResult;
 import top.focess.veto.api.agent.AgentState;
 import top.focess.veto.api.plugin.PluginState;
+import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.api.plugin.agent.AgentHost;
 import top.focess.veto.api.plugin.agent.AgentProfile;
 import top.focess.veto.api.plugin.agent.IsolatedAgent;
@@ -88,18 +89,19 @@ public final class PluginAgentHosts implements PluginAgentHostFactory {
     public @NonNull AgentHost bind(
             @NonNull PluginLifecycle plugin, @NonNull PluginStorage storage) {
         return new AgentHost() {
-            public @NonNull Session session(PluginStorage.@NonNull SessionScope scope) {
-                scopes.authorizeSession(storage, scope);
+            public @NonNull Session session(
+                    PluginStorage.@NonNull Grant<Scope.@NonNull SessionScope> grant) {
+                scopes.authorizeSession(storage, grant);
                 return new Session() {
                     public @NonNull String id() {
-                        return scope.sessionId();
+                        return grant.scope().session();
                     }
 
                     public @NonNull Child open(
                             @NonNull String id,
                             @NonNull String parentId,
                             @NonNull AgentProfile profile) {
-                        return openChild(plugin, storage, scope, id, parentId, profile);
+                        return openChild(plugin, storage, grant, id, parentId, profile);
                     }
                 };
             }
@@ -114,11 +116,11 @@ public final class PluginAgentHosts implements PluginAgentHostFactory {
                         || !plugin.bindingId().equals(call.executionPermit().remoteServerName()))
                     throw new SecurityException("Invocation does not belong to this plugin");
                 CapabilityAccess.require(call.executionPermit().capability());
-                var scope = storage.currentSession();
-                String owner = scopes.authorizeSession(storage, scope);
+                var grant = storage.currentSession();
+                String owner = scopes.authorizeSession(storage, grant);
                 var sessionId = call.sessionId();
                 if (sessionId == null
-                        || !scope.sessionId().equals(sessionId.toString())
+                        || !grant.scope().session().equals(sessionId.toString())
                         || !owner.equals(call.owner()))
                     throw new SecurityException("Invocation scope mismatch");
                 var child =
@@ -130,7 +132,7 @@ public final class PluginAgentHosts implements PluginAgentHostFactory {
                                         return plugin.state() == PluginState.ACTIVE
                                                 && vault.isUnlocked(owner)
                                                 && owner.equals(
-                                                        scopes.authorizeSession(storage, scope));
+                                                        scopes.authorizeSession(storage, grant));
                                     } catch (RuntimeException failure) {
                                         return false;
                                     }
@@ -150,16 +152,16 @@ public final class PluginAgentHosts implements PluginAgentHostFactory {
     private synchronized AgentHost.@NonNull Child openChild(
             @NonNull PluginLifecycle plugin,
             @NonNull PluginStorage storage,
-            PluginStorage.@NonNull SessionScope scope,
+            PluginStorage.@NonNull Grant<Scope.@NonNull SessionScope> grant,
             @NonNull String id,
             @NonNull String parentId,
             @NonNull AgentProfile profile) {
-        String owner = scopes.authorizeSession(storage, scope);
+        String owner = scopes.authorizeSession(storage, grant);
         if (!vault.isUnlocked(owner)) throw new SecurityException("Session owner is locked");
         UUID parsedId = UUID.fromString(id);
         log.debug("Opening plugin child agent id={}", parsedId);
         if (id.equals(parentId)) throw new SecurityException("Child cannot replace its parent");
-        var session = sessions.findById(scope.sessionId()).orElseThrow();
+        var session = sessions.findById(grant.scope().session()).orElseThrow();
         var parent =
                 identities
                         .findById(parentId)
@@ -183,7 +185,7 @@ public final class PluginAgentHosts implements PluginAgentHostFactory {
                         .filter(entry -> entry.agent().id().equals(id))
                         .findFirst()
                         .orElse(null);
-        if (live != null) return child(plugin, storage, scope, live.agent());
+        if (live != null) return child(plugin, storage, grant, live.agent());
         if (row == null) {
             row = AgentEntity.spawned(id, session.getId(), profile.name());
             row.claimPlugin(namespace, parentId);
@@ -201,7 +203,7 @@ public final class PluginAgentHosts implements PluginAgentHostFactory {
                                     namespace,
                                     profile,
                                     history.load(session.getId(), id));
-            return child(plugin, storage, scope, agent);
+            return child(plugin, storage, grant, agent);
         } finally {
             if (previous == null) UserContext.clear();
             else UserContext.set(previous);
@@ -211,14 +213,14 @@ public final class PluginAgentHosts implements PluginAgentHostFactory {
     private void authorizeRelease(
             @NonNull PluginLifecycle plugin,
             @NonNull PluginStorage storage,
-            PluginStorage.@NonNull SessionScope scope) {
-        if (!plugin.cleaningResources()) scopes.authorizeSession(storage, scope);
+            PluginStorage.@NonNull Grant<Scope.@NonNull SessionScope> grant) {
+        if (!plugin.cleaningResources()) scopes.authorizeSession(storage, grant);
     }
 
     private AgentHost.@NonNull Child child(
             @NonNull PluginLifecycle plugin,
             @NonNull PluginStorage storage,
-            PluginStorage.@NonNull SessionScope scope,
+            PluginStorage.@NonNull Grant<Scope.@NonNull SessionScope> grant,
             @NonNull VetoAgent agent) {
         Runnable release =
                 () -> {
@@ -236,7 +238,7 @@ public final class PluginAgentHosts implements PluginAgentHostFactory {
             }
 
             public AgentHost.@NonNull Request submit(@NonNull String prompt) {
-                String owner = scopes.authorizeSession(storage, scope);
+                String owner = scopes.authorizeSession(storage, grant);
                 if (!vault.isUnlocked(owner))
                     throw new SecurityException("Session owner is locked");
                 var request = agent.submitRequest(prompt);
@@ -254,14 +256,14 @@ public final class PluginAgentHosts implements PluginAgentHostFactory {
                     }
 
                     public boolean cancel(@NonNull Duration timeout) throws InterruptedException {
-                        authorizeRelease(plugin, storage, scope);
+                        authorizeRelease(plugin, storage, grant);
                         return agent.cancelTask(request.result(), timeout);
                     }
                 };
             }
 
             public void close() {
-                authorizeRelease(plugin, storage, scope);
+                authorizeRelease(plugin, storage, grant);
                 release.run();
                 plugin.releaseResource(agent);
             }

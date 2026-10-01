@@ -4,21 +4,18 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
-
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
-
 import top.focess.veto.agent.SessionAgentRegistry;
 import top.focess.veto.integration.plugins.PluginManager;
 import top.focess.veto.integration.plugins.SessionPlugins;
 import top.focess.veto.model.SessionEntity;
 import top.focess.veto.model.SessionRepository;
 import top.focess.veto.vault.UserContext;
-
-import java.util.List;
-import java.util.Optional;
-import java.util.UUID;
 
 class PluginFrontendControllerTest {
     @Test

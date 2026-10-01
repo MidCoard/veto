@@ -17,7 +17,7 @@ class GroupOrchestratorProductionWiringTest {
                     group.groupId().toString(),
                     fixture.runtime
                             .history()
-                            .load(fixture.scope.sessionId(), fixture.runtime.registry())
+                            .load(fixture.grant.scope().session(), fixture.runtime.registry())
                             .getFirst()
                             .id());
         }

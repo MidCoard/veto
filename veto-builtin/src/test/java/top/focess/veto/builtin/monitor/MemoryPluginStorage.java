@@ -8,8 +8,9 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.api.plugin.storage.PluginStorage;
 import top.focess.veto.api.plugin.PluginScope;
+import top.focess.veto.api.plugin.Scope;
+import top.focess.veto.api.plugin.storage.PluginStorage;
 
 /** API-only host fixture; host authorization and durable transactions are tested by core. */
 final class MemoryPluginStorage implements PluginStorage {
@@ -21,34 +22,35 @@ final class MemoryPluginStorage implements PluginStorage {
     }
 
     @Override
-    public @NonNull Store user(@NonNull UserScope scope) {
-        return stores.computeIfAbsent("user/" + scope.userId(), ignored -> new MemoryStore());
+    public @NonNull Store user(@NonNull Grant<Scope.@NonNull UserScope> grant) {
+        return stores.computeIfAbsent(
+                "user/" + grant.scope().owner(), ignored -> new MemoryStore());
     }
 
     @Override
-    public @NonNull Store session(@NonNull SessionScope scope) {
-        return stores.computeIfAbsent(scope.sessionId(), ignored -> new MemoryStore());
+    public @NonNull Store session(@NonNull Grant<Scope.@NonNull SessionScope> grant) {
+        return stores.computeIfAbsent(grant.scope().session(), ignored -> new MemoryStore());
     }
 
     @Override
-    public @NonNull Page<@NonNull Scope> scopes(
+    public @NonNull Page<@NonNull Grant<?>> scopes(
             @NonNull PluginScope kind, String cursor, int limit) {
         return new Page<>(
                 List.of(
-                        new SessionScope("s", "u", "session"),
-                        new SessionScope("c", "u", "closed"),
-                        new SessionScope("k", "u", "kept")),
+                        new Grant<>("s", new Scope.SessionScope("u", "session")),
+                        new Grant<>("c", new Scope.SessionScope("u", "closed")),
+                        new Grant<>("k", new Scope.SessionScope("u", "kept"))),
                 null);
     }
 
     @Override
-    public @NonNull SessionScope currentSession() {
-        return new SessionScope("s", "u", "session");
+    public @NonNull Grant<Scope.@NonNull SessionScope> currentSession() {
+        return new Grant<>("s", new Scope.SessionScope("u", "session"));
     }
 
     @Override
-    public @NonNull UserScope currentUser() {
-        return new UserScope("u", "u");
+    public @NonNull Grant<Scope.@NonNull UserScope> currentUser() {
+        return new Grant<>("u", new Scope.UserScope("u"));
     }
 
     private static final class MemoryStore implements Store {

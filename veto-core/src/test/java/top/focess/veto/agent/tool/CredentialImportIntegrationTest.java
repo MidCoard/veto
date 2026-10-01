@@ -22,7 +22,7 @@ import top.focess.veto.api.credentials.VaultAccess;
 import top.focess.veto.api.event.BeforeTextCommitEvent;
 import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
-import top.focess.veto.api.plugin.contract.FrontendContribution;
+import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.api.plugin.contract.PluginFailure;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
 import top.focess.veto.integration.plugins.HostResourceConfiguration;
@@ -51,8 +51,7 @@ class CredentialImportIntegrationTest {
         var mapper = new ObjectMapper();
         var workspace = Workspace.single(directory, PathMode.REAL);
         try (var plugins = PluginTestSupport.manager(hostServices(vault))) {
-            var scope =
-                    new FrontendContribution.ActionContext("alice", session.toString(), "agent");
+            var scope = new Scope.AgentScope("alice", session.toString(), "agent");
             String reference = reference(plugins, scope);
             when(vault.createSecureNoteIfAbsent(
                             "alice",
@@ -152,8 +151,7 @@ class CredentialImportIntegrationTest {
     }
 
     private static @NonNull String reference(
-            @NonNull PluginManager plugins, FrontendContribution.@NonNull ActionContext scope)
-            throws PluginFailure {
+            @NonNull PluginManager plugins, Scope.@NonNull AgentScope scope) throws PluginFailure {
         String captured =
                 PluginTestSupport.protect(
                         plugins,
@@ -192,8 +190,7 @@ class CredentialImportIntegrationTest {
         if (!(service instanceof VaultAccess access))
             throw new AssertionError("Vault host service missing");
         try (var plugins = PluginTestSupport.manager(services)) {
-            var scope =
-                    new FrontendContribution.ActionContext("alice", session.toString(), "agent");
+            var scope = new Scope.AgentScope("alice", session.toString(), "agent");
             String reference = reference(plugins, scope);
             var engine = engineWith(new ObjectMapper(), plugins);
             var definition = importTool(engine);
@@ -214,9 +211,8 @@ class CredentialImportIntegrationTest {
 
             installContext(call, definition, workspace, "alice", session, "agent");
             var writer = open(access, reference, "github", "Repository");
-            assertEquals("alice", writer.owner());
-            assertEquals(session.toString(), writer.sessionId());
-            assertEquals("agent", writer.agentId());
+            assertEquals(
+                    new Scope.AgentScope("alice", session.toString(), "agent"), writer.scope());
             // Even identical approved arguments on a new invocation do not renew a retained writer.
             installContext(call, definition, workspace, "alice", session, "agent");
             assertThrows(SecurityException.class, writer::isUnlocked);
@@ -260,19 +256,16 @@ class CredentialImportIntegrationTest {
                     SecurityException.class, () -> open(access, reference, "github", "Repository"));
             for (var other :
                     List.of(
-                            new FrontendContribution.ActionContext(
-                                    "bob", session.toString(), "agent"),
-                            new FrontendContribution.ActionContext(
-                                    "alice", UUID.randomUUID().toString(), "agent"),
-                            new FrontendContribution.ActionContext(
-                                    "alice", session.toString(), "mate"))) {
+                            new Scope.AgentScope("bob", session.toString(), "agent"),
+                            new Scope.AgentScope("alice", UUID.randomUUID().toString(), "agent"),
+                            new Scope.AgentScope("alice", session.toString(), "mate"))) {
                 installContext(
                         call,
                         definition,
                         workspace,
-                        other.ownerId(),
-                        UUID.fromString(other.sessionId()),
-                        other.agentId());
+                        other.owner(),
+                        UUID.fromString(other.session()),
+                        other.agent());
                 assertThrows(
                         IllegalStateException.class,
                         () -> invokeImport(plugins, reference, "github", "Repository"));

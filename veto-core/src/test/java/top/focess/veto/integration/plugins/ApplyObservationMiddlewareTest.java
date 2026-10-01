@@ -12,7 +12,6 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 import top.focess.veto.api.plugin.PluginContext;
-import top.focess.veto.api.plugin.PluginContributions;
 import top.focess.veto.api.plugin.PluginIdentity;
 import top.focess.veto.api.plugin.VetoPlugin;
 import top.focess.veto.api.plugin.contract.Cancellation;
@@ -70,14 +69,9 @@ class ApplyObservationMiddlewareTest {
             return identity;
         }
 
-        @Override
-        public @NonNull PluginContributions contributions() {
-            return new PluginContributions(
-                    List.of(
-                            Contribution.of(
-                                    StandardContributionPoints.OBSERVATION,
-                                    "middleware",
-                                    middleware)));
+        public @NonNull Contribution<ObservationMiddleware> contribution() {
+            return Contribution.of(
+                    StandardContributionPoints.OBSERVATION, "middleware", middleware);
         }
 
         @Override
@@ -99,24 +93,23 @@ class ApplyObservationMiddlewareTest {
         builder.define(StandardContributionPoints.OBSERVATION, ignored -> {});
         for (var stub : stubs) {
             var plugin = new PluginLifecycle(stub, lifecycle);
-            var contributions =
-                    plugin.initialize(
-                            new PluginContext(
-                                    stub.identity(),
-                                    () -> {},
-                                    () -> {
-                                        throw new IllegalStateException(
-                                                "Plugin context is not bound to a lifecycle owner");
-                                    },
-                                    Map.of(),
-                                    Map.of()),
-                            new JsonValue.ObjectValue(Map.of()));
+            plugin.construct(
+                    new PluginContext(
+                            stub.identity(),
+                            () -> {},
+                            () -> {
+                                throw new IllegalStateException(
+                                        "Plugin context is not bound to a lifecycle owner");
+                            },
+                            Map.of(),
+                            Map.of()),
+                    new JsonValue.ObjectValue(Map.of()));
             builder.stage(
                     new ContributionSource(
                             stub.identity().id(),
                             stub.identity().version(),
                             ContributionSource.Origin.PLUGIN),
-                    contributions.entries());
+                    List.of(stub.contribution()));
             managed.add(plugin);
         }
         var catalog = builder.freeze();

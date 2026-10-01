@@ -66,10 +66,10 @@ import top.focess.veto.api.llm.VetoRequest;
 import top.focess.veto.api.llm.VetoResponse;
 import top.focess.veto.api.llm.exceptions.LlmException;
 import top.focess.veto.api.llm.exceptions.ModelSchemaException;
+import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.api.plugin.agent.AgentProfile;
 import top.focess.veto.api.plugin.agent.IsolatedAgent;
 import top.focess.veto.api.plugin.contract.AgentConfiguration;
-import top.focess.veto.api.plugin.contract.FrontendContribution;
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
 import top.focess.veto.api.plugin.contribution.Contribution;
@@ -482,7 +482,7 @@ class AgentRunnerTest {
                             null,
                             0,
                             ToolResultPresentationMode.BASIC);
-            var scope = new FrontendContribution.ActionContext("alice", session, agentId);
+            var scope = new Scope.AgentScope("alice", session, agentId);
             agent.submit("Inspect password=synthetic-token");
             assertTrue(agent.await(EPISODE_TIMEOUT).success());
             var userTurn =

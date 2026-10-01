@@ -20,9 +20,9 @@ class GroupHistoryStoreTest {
     @Test
     void restartViewKeepsIdleMembersAndRequestIdentityWithoutClaimingLiveExecution() {
         var fixture = new GroupTestHost();
-        UUID session = UUID.fromString(fixture.scope.sessionId());
+        UUID session = UUID.fromString(fixture.grant.scope().session());
         var store = fixture.runtime.history();
-        store.scope(fixture.scope);
+        store.grant(fixture.grant);
         var registry = new GroupRegistry();
         registry.attachHistory(store);
         var group =
@@ -108,9 +108,9 @@ class GroupHistoryStoreTest {
     @Test
     void savedTransitionsCanBeReadWithoutAnyLiveGroup() {
         var fixture = new GroupTestHost();
-        UUID session = UUID.fromString(fixture.scope.sessionId());
+        UUID session = UUID.fromString(fixture.grant.scope().session());
         var store = fixture.runtime.history();
-        store.scope(fixture.scope);
+        store.grant(fixture.grant);
         var registry = new GroupRegistry();
         registry.attachHistory(store);
         var group =
@@ -142,7 +142,7 @@ class GroupHistoryStoreTest {
     void largeProfileRoundTripPreservesDescriptionGuidanceAndNestedRecoveryData() {
         try (var fixture = new GroupTestHost()) {
             var store = fixture.runtime.history();
-            store.scope(fixture.scope);
+            store.grant(fixture.grant);
             String description = "work🛰️".repeat(14000);
             String guidance = "Use evidence. ".repeat(2000);
             var task =
@@ -167,9 +167,9 @@ class GroupHistoryStoreTest {
                             new AgentProfile.Prompt("builtin-mate-profile", data),
                             Map.of("origin", "legacy"));
             assertTrue(description.length() > 65536);
-            store.profile(fixture.scope.sessionId(), "mate", profile);
+            store.profile(fixture.grant.scope().session(), "mate", profile);
             var restarted = new GroupHistoryStore(fixture.storage);
-            assertEquals(profile, restarted.profile(fixture.scope.sessionId(), "mate"));
+            assertEquals(profile, restarted.profile(fixture.grant.scope().session(), "mate"));
             var replacement =
                     new AgentProfile(
                             "Updated Mate",
@@ -179,8 +179,8 @@ class GroupHistoryStoreTest {
                             "MID",
                             profile.prompt(),
                             profile.metadata());
-            restarted.profile(fixture.scope.sessionId(), "mate", replacement);
-            assertEquals(replacement, store.profile(fixture.scope.sessionId(), "mate"));
+            restarted.profile(fixture.grant.scope().session(), "mate", replacement);
+            assertEquals(replacement, store.profile(fixture.grant.scope().session(), "mate"));
         }
     }
 }

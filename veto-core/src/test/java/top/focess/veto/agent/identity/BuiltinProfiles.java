@@ -7,6 +7,7 @@ import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.AgentProfiles;
 import top.focess.veto.agent.tool.ToolDefinition;
 import top.focess.veto.agent.tool.ToolEngine;
+import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.api.plugin.agent.AgentHost;
 import top.focess.veto.api.plugin.agent.AgentProfile;
 import top.focess.veto.api.plugin.contract.AgentConfiguration;
@@ -31,7 +32,8 @@ public final class BuiltinProfiles {
         var context =
                 new AgentConfiguration.Context(
                         "owner",
-                        new PluginStorage.SessionScope("test", "user", "session"),
+                        new PluginStorage.Grant<>(
+                                "test", new Scope.SessionScope("user", "session")),
                         new AgentHost.Session() {
                             public @NonNull String id() {
                                 return "session";

@@ -344,11 +344,13 @@ public final class NativeToolArgumentValidator {
             }
             return;
         }
-        if (rule.fields() != null && value.isObject()) {
-            validateRecordRules(value, rule.fields(), path, issues);
-        } else if (rule.element() != null && value.isArray()) {
+        var fields = rule.fields();
+        var element = rule.element();
+        if (fields != null && value.isObject()) {
+            validateRecordRules(value, fields, path, issues);
+        } else if (element != null && value.isArray()) {
             for (int i = 0; i < value.size(); i++)
-                validateAnnotatedValue(value.get(i), rule.element(), path + "[" + i + "]", issues);
+                validateAnnotatedValue(value.get(i), element, path + "[" + i + "]", issues);
         }
     }
 

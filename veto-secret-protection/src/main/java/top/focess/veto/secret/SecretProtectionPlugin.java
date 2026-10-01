@@ -197,7 +197,7 @@ public final class SecretProtectionPlugin extends VetoPlugin {
 
         @Override
         public @NonNull JsonValue handle(
-                @NonNull ActionContext scope,
+                Scope.@NonNull AgentScope scope,
                 @NonNull String action,
                 JsonValue.@NonNull ObjectValue arguments)
                 throws PluginFailure {
@@ -231,7 +231,7 @@ public final class SecretProtectionPlugin extends VetoPlugin {
     }
 
     private @NonNull JsonValue frontendAction(
-            FrontendContribution.@NonNull ActionContext scope,
+            Scope.@NonNull AgentScope scope,
             @NonNull String action,
             JsonValue.@NonNull ObjectValue arguments)
             throws PluginFailure {
@@ -239,10 +239,7 @@ public final class SecretProtectionPlugin extends VetoPlugin {
                 || !(arguments.values().get("reference") instanceof JsonValue.StringValue ref))
             throw new PluginFailure(PluginFailure.Code.INVALID_ARGUMENTS);
         return candidates
-                .reveal(
-                        new Scope.AgentScope(
-                                scope.ownerId(), scope.sessionId(), scope.agentId()),
-                        ref.value())
+                .reveal(scope, ref.value())
                 .<JsonValue>map(JsonValue.StringValue::new)
                 .orElse(JsonValue.NullValue.INSTANCE);
     }
@@ -260,8 +257,7 @@ public final class SecretProtectionPlugin extends VetoPlugin {
             throw new IllegalStateException("Credential import cancelled");
         var receipt =
                 candidates.importOnce(
-                        new Scope.AgentScope(
-                                authorized.owner(), authorized.sessionId(), authorized.agentId()),
+                        authorized.scope(),
                         args.secret_ref(),
                         args.service(),
                         args.label(),
@@ -343,25 +339,23 @@ public final class SecretProtectionPlugin extends VetoPlugin {
         }
 
         @EventHandler
-        public void onOwnerOpen(@NonNull OwnerOpenEvent event) {
-            candidates.openOwner(event.owner());
+        public void onUserAuthenticated(@NonNull UserAuthenticatedEvent event) {
+            candidates.openOwner(event.scope().owner());
         }
 
         @EventHandler
-        public void onOwnerClosed(@NonNull OwnerClosedEvent event) {
-            candidates.closeOwner(event.owner());
+        public void onUserLogout(@NonNull UserLogoutEvent event) {
+            candidates.closeOwner(event.scope().owner());
         }
 
         @EventHandler
-        public void onSessionClosed(@NonNull SessionClosedEvent event) {
-            candidates.retireSession(event.owner(), event.sessionId());
+        public void onSessionDeleted(@NonNull SessionDeletedEvent event) {
+            candidates.retireSession(event.scope().owner(), event.scope().session());
         }
 
         @EventHandler
         public void onAgentTerminated(@NonNull AgentTerminatedEvent event) {
-            candidates.discardAgent(
-                    new Scope.AgentScope(
-                            event.owner(), event.sessionId(), event.agentId()));
+            candidates.discardAgent(event.scope());
         }
     }
 }

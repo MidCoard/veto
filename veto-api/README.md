@@ -14,9 +14,9 @@ their context and configuration.
 
 | API | Purpose | Authority and availability |
 |---|---|---|
-| `PluginContributions` | Publish tools, hooks, named services, and other implementations | Registration only; acceptance requires activation validation and grants no permission. |
+| `context.register(point, id, aspect)` | Publish tools, hooks, named services, and other implementations | Point-specific registration and activation validation grant no execution permission. |
 | `context.service(SomeType.class)` | Obtain an optional Java capability supplied by the host | Host-granted authority keyed by exact Java class identity; calls remain subject to current admission and authorization. |
-| `context.services()` | Find a named, versioned JSON protocol implemented by another plugin | Plugin-to-plugin communication using only `JsonValue`; the directory is populated after initialization. |
+| `context.services()` | Find a named, versioned JSON protocol implemented by another plugin | Plugin-to-plugin communication using only `JsonValue`; the initial directory is populated after construction. |
 | `PluginHost` | Request host-mediated invocation facts, waits, wake hints, events, and invalidation | Each operation applies its own lifecycle, selection, invocation, and authorization checks. |
 | `context.storage()` | Access this plugin's application, user, or session namespace | Scoped persistence using host-issued scopes; old handles are revalidated and may be revoked. |
 
@@ -27,35 +27,68 @@ isolation. A contribution declaration is never proof that an implementation is c
 ## Lifecycle and admission
 
 The host discovers the entry metadata, binds the plugin-specific context and configuration,
-and constructs the plugin on its lifecycle executor. It then reads the required
-`contributions()` batch. Construction must not start threads or perform external effects.
-All plugins finish contribution staging before the host binds the named service directory.
-A provider therefore registers `SERVICES` in `contributions()`, while a consumer calls
-`services().find(...)` only in `start` or later. After catalog validation, `start()` makes
-the plugin ready and the host publishes its contributions.
+and constructs the plugin on its lifecycle executor. The constructor registers aspects through
+`context.register`. Construction must not start threads or perform external effects.
+All admitted plugins complete construction before the host binds the initial named service directory.
+A provider therefore registers `SERVICES` in its constructor, while a consumer calls
+`services().find(...)` only in `start` or later. After catalog validation, the host calls
+`start()` once. A successful return marks the instance active and permits its calls.
 
-An administrator may later disable an installed package, withdrawing its contributions
-and draining calls before `close()`, or enable it by loading a fresh instance from its
-package. `preferredToolName` lets a plugin request a stable public tool name; an
+An administrator can change whether an installed package is enabled at the **next backend
+startup**. This does not stop or start an instance in the running backend. On that startup,
+the host constructs enabled packages and leaves disabled packages unconstructed.
+`preferredToolName` lets a plugin request a stable public tool name; an
 operator alias takes precedence and a collision rejects activation.
 
 A plugin that cannot apply to this host may throw `PluginDeclinedException`
-from its constructor or `contributions()` with a bounded public reason. The host closes it and
-reports `DECLINED`; no contributions are published. It must not use this to
+from its constructor with a bounded public reason. The host cleans up registered resources
+and reports `DECLINED`; no contributions are published. It must not use this to
 mask invalid configuration or callback bugs. A decline from `start()` is not
 supported because the contribution catalog has already been validated.
 
 Contribution handlers run on their caller's thread unless their contract says otherwise.
-Plugins own synchronization inside their implementations. Before shutdown, the host closes
-admission and calls `stopping()` once so the plugin can cancel blocking waits. Previously
-admitted calls may still drain. The host then calls `close()` once, including after partial
-initialization or startup failure. `close()` releases owned resources and tolerates partial state.
+Plugins own synchronization inside their implementations. On backend shutdown, the host
+closes admission and calls `stopping()` at most once so the plugin can cancel blocking waits.
+Previously admitted calls may still run; on graceful shutdown they drain before `close()`
+is called once. A fatal plugin failure may start cleanup immediately. Startup failure after
+construction also invokes these callbacks, even if `start()` did not succeed. If the
+constructor throws before an instance exists, there are no instance callbacks; the host
+still closes resources already registered with the context. After `close()`, the host closes
+registered resources and its package loader. Implementations must tolerate partial startup.
 
 `context.state()` is a live observation, not an admission token. Named service handles and
 host services recheck current authority. A provider may be absent because it is not installed,
 selected, compatible, or active, so discovery returns `Optional`. Retaining a handle does not
 preserve access after either plugin loses admission. Treat
 `ServiceException.Code.UNAVAILABLE` as current availability and apply a suitable fallback.
+
+## Events plugins can receive
+
+The host currently has a fixed catalog of concrete event classes. Workflow events go to the
+session's selected plugins and may transform or prevent work according to their contract;
+lifecycle and directory events are best-effort broadcasts to active plugins.
+
+| Family | Concrete events | Host boundary |
+|---|---|---|
+| Authentication | `UserRegisteredEvent`, `UserLoggedInEvent`, `UserLogoutEvent` | Successful signup; successful login; start of unified logout, respectively. `UserAuthenticatedEvent` is an abstract parent received for either success. |
+| Runtime lifecycle | `SessionDeletedEvent`, `AgentTerminatedEvent` | Committed session deletion; agent termination. |
+| Workflow before | `BeforeInputEvent`, `BeforeModelEvent`, `BeforeToolEvent`, `BeforeObservationEvent`, `BeforeTextCommitEvent` | Input, model, tool, observation, and text-publication boundaries. `BeforeTextCommitEvent.Phase` identifies its specific text boundary. |
+| Workflow after | `AfterModelEvent`, `AfterToolEvent` | Model response or tool result produced. |
+| Directory | `ServiceDirectoryChangedEvent` | A changed service directory was published. |
+
+This is the published plugin event surface, not a record of every backend action. There is no
+plugin event for failed signup/login, successful completion of logout, session creation or
+terminal deactivation, agent startup, or user deletion. Required permanent-data deletion uses
+the separate `DATA_LIFECYCLE` contribution, not a best-effort event.
+`BeforeObservationEvent` transforms every executed tool result, including failures, after
+`AfterToolEvent` and before final ingress defense. Successful native workspace reads then also
+cross `BeforeTextCommitEvent.Phase.FILE_OBSERVATION`, whose replacement text enters that defense
+before history publication. `FILE_CAPTURE` runs earlier, inside an admitted workspace read;
+`INPUT` protects user text before recording it. These boundaries do not emit events for arbitrary
+asynchronous observations or every file operation. `ToolCallEvent` and `ToolResultEvent` in
+`api.agent` are agent-output records delivered through their own listeners, not subclasses of
+`api.event.Event` and not registrations in this plugin event table. `CancellableEvent` is an
+available base type, but none of the concrete host events above extends it.
 
 ## Minimal named-service plugins
 
@@ -64,37 +97,31 @@ This complete provider publishes a versioned JSON protocol:
 ```java
 package example;
 
-import java.util.List;
 import top.focess.veto.api.plugin.PluginContext;
-import top.focess.veto.api.plugin.PluginContributions;
 import top.focess.veto.api.plugin.PluginIdentity;
+import top.focess.veto.api.plugin.PluginScope;
 import top.focess.veto.api.plugin.VetoPlugin;
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.contract.PluginFailure;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
-import top.focess.veto.api.plugin.contribution.Contribution;
 import top.focess.veto.api.plugin.service.PluginService;
 import top.focess.veto.api.plugin.service.ServiceCallContext;
-import top.focess.veto.api.plugin.service.ServiceScope;
 
 public final class TextProviderPlugin extends VetoPlugin {
     public TextProviderPlugin(
-            PluginContext context, JsonValue.ObjectValue configuration) {}
-
-    public PluginIdentity identity() {
-        return new PluginIdentity("example.text", "1.0.0");
-    }
-
-    public PluginContributions contributions() {
-        var service = new PluginService("example:text", 1, ServiceScope.GLOBAL) {
+            PluginContext context, JsonValue.ObjectValue configuration) {
+        var service = new PluginService("example:text", 1, PluginScope.APPLICATION) {
             public JsonValue invoke(ServiceCallContext caller, JsonValue request) {
                 return request instanceof JsonValue.StringValue text
                         ? new JsonValue.StringValue(text.value().trim())
                         : JsonValue.NullValue.INSTANCE;
             }
         };
-        return new PluginContributions(List.of(
-                Contribution.of(StandardContributionPoints.SERVICES, "text", service)));
+        context.register(StandardContributionPoints.SERVICES, "text", service);
+    }
+
+    public PluginIdentity identity() {
+        return new PluginIdentity("example.text", "1.0.0");
     }
 
     public void start() throws PluginFailure {}
@@ -108,10 +135,8 @@ provider implementation type:
 ```java
 package example;
 
-import java.util.List;
 import java.util.Optional;
 import top.focess.veto.api.plugin.PluginContext;
-import top.focess.veto.api.plugin.PluginContributions;
 import top.focess.veto.api.plugin.PluginIdentity;
 import top.focess.veto.api.plugin.VetoPlugin;
 import top.focess.veto.api.plugin.contract.JsonValue;
@@ -130,10 +155,6 @@ public final class TextConsumerPlugin extends VetoPlugin {
 
     public PluginIdentity identity() {
         return new PluginIdentity("example.consumer", "1.0.0");
-    }
-
-    public PluginContributions contributions() {
-        return new PluginContributions(List.of());
     }
 
     public void start() throws PluginFailure {
@@ -229,13 +250,21 @@ Requests and responses are bounded `JsonValue` trees. `available()` exposes prot
 version, scope, and host-attributed provider ID. Duplicate name/version pairs fail activation;
 distinct major versions may coexist.
 
-Each service registration declares `GLOBAL`, `USER`, or `SESSION`. Global handlers use
-`handle.invoke(request)`. Scoped handlers use `handle.invoke(scope, request)` with a scope issued
+Each service registration declares `APPLICATION`, `USER`, `SESSION`, or `AGENT`. Application handlers use
+`handle.invoke(request)`. Scoped handlers use `handle.invoke(grant, request)` with a grant issued
 to the calling plugin by `PluginStorage.currentUser()`, `currentSession()`, or authorized recovery.
 The host validates that grant on every call and supplies a `ServiceCallContext` to the provider;
 JSON identity fields confer no authority. A scoped call without a matching grant fails. The
-provider receives the validated user/session identity and a newly issued scope bound to its own
+provider receives the validated shared scope identity and a newly issued grant bound to its own
 `PluginStorage`; the caller's token is never transferred to it.
+
+An `AGENT` service accepts a session grant only while a matching host-admitted tool call is
+executing. The host verifies its current call ID, caller-bound execution permit, authenticated
+owner, exact session, and both plugins' pinned bindings, then takes the agent identity from
+that invocation. A retained session grant cannot manufacture an agent or authorize background
+agent calls. Scoped service owner identities use immutable storage user IDs; the host compares
+the grant's authenticated login owner separately from that ID. `Scope` values carry identity,
+not authority. Durable storage remains application/user/session only.
 
 Lookup and invocation apply caller/provider lifecycle and current selection checks. A retained
 handle pins a descriptor but bypasses no check; it does not retain provider implementation
@@ -265,9 +294,18 @@ All execution passes through the gateway.
 
 `context.storage()` returns `PluginStorage` bound to the current plugin ID. Its application
 store is scoped to that plugin and Veto installation. User and session stores require
-host-issued scopes; caller-created identity strings grant nothing. `currentUser()` and
-`currentSession()` require an authenticated invocation. `scopes(...)` lists only scopes the
+host-issued `Grant<Scope.UserScope>` or `Grant<Scope.SessionScope>` values. A grant contains
+an opaque token and the existing shared `Scope` identity; it does not recreate user/session
+identity fields. Its scope owner is the immutable storage user ID. Login-name resolution
+belongs to the host authorization boundary. Caller-created identities or grant records
+issue no authority. `currentUser()` and `currentSession()` require an authenticated
+invocation. `scopes(...)` lists only grants the
 host authorizes for this plugin's recovery or background work.
+
+Use `grant.scope().owner()` and, for session grants, `grant.scope().session()` to inspect
+identity; pass the complete grant to `user`, `session`, or a scoped service handle. Providers
+read `ServiceCallContext.identity()` and `storageGrant()`. The context rejects identities
+that disagree with the grant, including the session projection of an agent identity.
 
 `put` is compare-and-set: a null expected revision inserts only when absent, while a non-null
 revision must match. `delete` also requires the current revision. Conflicts are explicit, and

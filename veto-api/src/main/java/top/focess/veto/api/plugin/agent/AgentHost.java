@@ -5,6 +5,7 @@ import java.util.concurrent.CompletableFuture;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.agent.AgentResult;
 import top.focess.veto.api.agent.AgentState;
+import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.api.plugin.storage.PluginStorage;
 
 /** Session-bound execution authority. Plugins cannot choose an owner or host workspace path. */
@@ -25,10 +26,10 @@ public interface AgentHost {
     /**
      * Returns a session-bound agent namespace after validating the host-issued scope.
      *
-     * @param scope host-issued session scope
+     * @param grant host-issued session grant
      * @return the bound agent namespace
      */
-    @NonNull Session session(PluginStorage.@NonNull SessionScope scope);
+    @NonNull Session session(PluginStorage.@NonNull Grant<Scope.@NonNull SessionScope> grant);
 
     /** Agent operations bound to one authorized session. */
     interface Session {

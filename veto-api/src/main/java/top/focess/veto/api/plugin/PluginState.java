@@ -1,12 +1,12 @@
 package top.focess.veto.api.plugin;
 
-/** Host-observed state of one installed plugin instance. */
+/** Host-observed lifecycle state, or catalog state for a disabled installed package. */
 public enum PluginState {
-    /** The instance has been constructed but initialization has not begun. */
+    /** Lifecycle binding has not begun; an installed entry may not yet have an instance. */
     NEW,
-    /** The host is invoking {@link VetoPlugin#initialize}. */
+    /** The host is constructing the entry or binding its context and registrations. */
     INITIALIZING,
-    /** Contributions were validated, but the plugin has not started. */
+    /** Construction and context binding succeeded; {@link VetoPlugin#start()} has not run. */
     INITIALIZED,
     /** The host is invoking {@link VetoPlugin#start}. */
     STARTING,
@@ -16,11 +16,9 @@ public enum PluginState {
     STOPPING,
     /** Cleanup has completed and the instance cannot be reused. */
     CLOSED,
-    /**
-     * Initialization intentionally declined; cleanup completed without publishing contributions.
-     */
+    /** Construction intentionally declined; cleanup completed without publishing contributions. */
     DECLINED,
-    /** Operator disabled the installed package; re-enable constructs a fresh entry instance. */
+    /** Catalog state for a package disabled at backend startup; no plugin instance was created. */
     DISABLED,
     /** A lifecycle callback failed; the host still attempts cleanup. */
     FAILED

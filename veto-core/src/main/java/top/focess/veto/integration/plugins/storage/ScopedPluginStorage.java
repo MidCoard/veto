@@ -1,33 +1,8 @@
 package top.focess.veto.integration.plugins.storage;
 
-import top.focess.veto.api.plugin.PluginScope;
-
 import com.fasterxml.jackson.databind.ObjectMapper;
-
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceException;
-
-import org.jspecify.annotations.NonNull;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.context.annotation.Bean;
-import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.stereotype.Component;
-import org.springframework.transaction.PlatformTransactionManager;
-import org.springframework.transaction.support.TransactionTemplate;
-
-import top.focess.veto.agent.tool.ToolCallContextHolder;
-import top.focess.veto.api.plugin.PluginState;
-import top.focess.veto.api.plugin.contract.JsonValues;
-import top.focess.veto.api.plugin.storage.PluginStorage;
-import top.focess.veto.integration.plugins.PluginHostServices;
-import top.focess.veto.model.SessionEntity;
-import top.focess.veto.plugin.runtime.PluginJson;
-import top.focess.veto.plugin.runtime.PluginLifecycle;
-import top.focess.veto.plugin.runtime.ScriptPlugin;
-import top.focess.veto.util.Nullness;
-import top.focess.veto.vault.UserContext;
-import top.focess.veto.vault.UserEntity;
-
 import java.nio.charset.StandardCharsets;
 import java.sql.SQLException;
 import java.util.ArrayList;
@@ -40,6 +15,27 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Supplier;
+import org.jspecify.annotations.NonNull;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Bean;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.stereotype.Component;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
+import top.focess.veto.agent.tool.ToolCallContextHolder;
+import top.focess.veto.api.plugin.PluginScope;
+import top.focess.veto.api.plugin.PluginState;
+import top.focess.veto.api.plugin.Scope;
+import top.focess.veto.api.plugin.contract.JsonValues;
+import top.focess.veto.api.plugin.storage.PluginStorage;
+import top.focess.veto.integration.plugins.PluginHostServices;
+import top.focess.veto.model.SessionEntity;
+import top.focess.veto.plugin.runtime.PluginJson;
+import top.focess.veto.plugin.runtime.PluginLifecycle;
+import top.focess.veto.plugin.runtime.ScriptPlugin;
+import top.focess.veto.util.Nullness;
+import top.focess.veto.vault.UserContext;
+import top.focess.veto.vault.UserEntity;
 
 /** Scoped CAS records share the host transaction and referential deletion boundary. */
 @Component
@@ -75,45 +71,47 @@ public class ScopedPluginStorage implements PluginStorageFactory {
 
     @Override
     public @NonNull String authorizeSession(
-            @NonNull PluginStorage storage, PluginStorage.@NonNull SessionScope scope) {
+            @NonNull PluginStorage storage,
+            PluginStorage.@NonNull Grant<Scope.@NonNull SessionScope> grant) {
         if (!(storage instanceof Bound bound))
             throw new SecurityException("Unrecognized storage binding");
-        return transaction(() -> bound.validate(scope).owner());
+        return transaction(() -> bound.validate(grant, PluginScope.SESSION).owner());
     }
 
     @Override
     public @NonNull String authorizeUser(
-            @NonNull PluginStorage storage, PluginStorage.@NonNull UserScope scope) {
+            @NonNull PluginStorage storage,
+            PluginStorage.@NonNull Grant<Scope.@NonNull UserScope> grant) {
         if (!(storage instanceof Bound bound))
             throw new SecurityException("Unrecognized storage binding");
-        return transaction(() -> bound.validate(scope).owner());
+        return transaction(() -> bound.validate(grant, PluginScope.USER).owner());
     }
 
     @Override
-    public PluginStorage.@NonNull UserScope transferUser(
+    public PluginStorage.@NonNull Grant<Scope.@NonNull UserScope> transferUser(
             @NonNull PluginStorage caller,
-            PluginStorage.@NonNull UserScope scope,
+            PluginStorage.@NonNull Grant<Scope.@NonNull UserScope> grant,
             @NonNull PluginStorage provider) {
         if (!(caller instanceof Bound callerBound) || !(provider instanceof Bound providerBound))
             throw new SecurityException("Unrecognized storage binding");
         return transaction(
                 () ->
-                        (PluginStorage.UserScope)
-                                providerBound.issue(callerBound.validate(scope).owner(), null));
+                        providerBound.issueUser(
+                                callerBound.validate(grant, PluginScope.USER).owner()));
     }
 
     @Override
-    public PluginStorage.@NonNull SessionScope transferSession(
+    public PluginStorage.@NonNull Grant<Scope.@NonNull SessionScope> transferSession(
             @NonNull PluginStorage caller,
-            PluginStorage.@NonNull SessionScope scope,
+            PluginStorage.@NonNull Grant<Scope.@NonNull SessionScope> grant,
             @NonNull PluginStorage provider) {
         if (!(caller instanceof Bound callerBound) || !(provider instanceof Bound providerBound))
             throw new SecurityException("Unrecognized storage binding");
         return transaction(
                 () ->
-                        (PluginStorage.SessionScope)
-                                providerBound.issue(
-                                        callerBound.validate(scope).owner(), scope.sessionId()));
+                        providerBound.issueSession(
+                                callerBound.validate(grant, PluginScope.SESSION).owner(),
+                                grant.scope().session()));
     }
 
     /** Called inside the permanent deletion transaction even when no plugin is loaded. */
@@ -137,13 +135,13 @@ public class ScopedPluginStorage implements PluginStorageFactory {
         return result;
     }
 
-    private record Grant(PluginStorage.@NonNull Scope scope, @NonNull String owner) {}
+    private record IssuedGrant(PluginStorage.@NonNull Grant<?> grant, @NonNull String owner) {}
 
     private final class Bound implements PluginStorage {
         private final @NonNull PluginLifecycle plugin;
         private final @NonNull String namespace;
         private final @NonNull Set<@NonNull String> selectionIds;
-        private final @NonNull Map<@NonNull String, @NonNull Grant> grants = new HashMap<>();
+        private final @NonNull Map<@NonNull String, @NonNull IssuedGrant> grants = new HashMap<>();
 
         Bound(@NonNull PluginLifecycle plugin) {
             this.plugin = plugin;
@@ -160,27 +158,45 @@ public class ScopedPluginStorage implements PluginStorageFactory {
         }
 
         @SuppressWarnings("ConstantValue") // WHY: EntityManager.find returns null for a missing row
-        private synchronized @NonNull Scope issue(@NonNull String owner, String session) {
+        private synchronized PluginStorage.@NonNull Grant<?> issue(
+                @NonNull String owner, String session) {
             admitted();
             UserEntity user = database.find(UserEntity.class, owner);
             if (user == null) throw new SecurityException("User scope no longer exists");
             String identity = user.storageIdentity();
             database.flush();
             if (session != null) validateSession(owner, session);
-            for (Grant grant : grants.values()) {
-                Scope scope = grant.scope();
-                if (scope.userId().equals(identity)
-                        && (session == null && scope instanceof UserScope
-                                || scope instanceof SessionScope value
-                                        && value.sessionId().equals(session))) return scope;
+            for (IssuedGrant issued : grants.values()) {
+                var grant = issued.grant();
+                if (identity.equals(grant.scope().owner())
+                        && (session == null && grant.scope() instanceof Scope.UserScope
+                                || grant.scope() instanceof Scope.SessionScope value
+                                        && value.session().equals(session))) return grant;
             }
             String token = UUID.randomUUID().toString();
-            Scope scope =
+            PluginStorage.Grant<?> grant =
                     session == null
-                            ? new UserScope(token, identity)
-                            : new SessionScope(token, identity, session);
-            grants.put(token, new Grant(scope, owner));
-            return scope;
+                            ? new PluginStorage.Grant<>(token, new Scope.UserScope(identity))
+                            : new PluginStorage.Grant<>(
+                                    token, new Scope.SessionScope(identity, session));
+            grants.put(token, new IssuedGrant(grant, owner));
+            return grant;
+        }
+
+        private PluginStorage.@NonNull Grant<Scope.@NonNull UserScope> issueUser(
+                @NonNull String owner) {
+            var issued = issue(owner, null);
+            if (!(issued.scope() instanceof Scope.UserScope user))
+                throw new IllegalStateException("User scope has another identity type");
+            return new PluginStorage.Grant<>(issued.token(), user);
+        }
+
+        private PluginStorage.@NonNull Grant<Scope.@NonNull SessionScope> issueSession(
+                @NonNull String owner, @NonNull String session) {
+            var issued = issue(owner, session);
+            if (!(issued.scope() instanceof Scope.SessionScope identity))
+                throw new IllegalStateException("Session scope has another identity type");
+            return new PluginStorage.Grant<>(issued.token(), identity);
         }
 
         @SuppressWarnings("ConstantValue") // WHY: EntityManager.find returns null for a missing row
@@ -206,39 +222,48 @@ public class ScopedPluginStorage implements PluginStorageFactory {
         }
 
         @SuppressWarnings("ConstantValue") // WHY: EntityManager.find returns null for a missing row
-        private synchronized @NonNull Grant validate(@NonNull Scope scope) {
+        private synchronized @NonNull IssuedGrant validate(PluginStorage.@NonNull Grant<?> grant) {
             admitted();
-            Grant grant = grants.get(scope.token());
-            if (grant == null || !grant.scope().equals(scope))
+            IssuedGrant issued = grants.get(grant.token());
+            if (issued == null || !issued.grant().equals(grant))
                 throw new SecurityException("Unrecognized storage scope");
-            UserEntity user = database.find(UserEntity.class, grant.owner());
-            if (user == null || !user.storageIdentity().equals(scope.userId()))
+            UserEntity user = database.find(UserEntity.class, issued.owner());
+            if (user == null || !user.storageIdentity().equals(grant.scope().owner()))
                 throw new SecurityException("Expired storage scope");
-            if (scope instanceof SessionScope session)
-                validateSession(grant.owner(), session.sessionId());
-            return grant;
+            if (grant.scope() instanceof Scope.SessionScope session)
+                validateSession(issued.owner(), session.session());
+            return issued;
+        }
+
+        private @NonNull IssuedGrant validate(
+                PluginStorage.@NonNull Grant<?> grant, @NonNull PluginScope kind) {
+            if (kind == PluginScope.USER && !(grant.scope() instanceof Scope.UserScope)
+                    || kind == PluginScope.SESSION
+                            && !(grant.scope() instanceof Scope.SessionScope))
+                throw new SecurityException("Storage grant kind does not match the operation");
+            return validate(grant);
         }
 
         @Override
         @SuppressWarnings(
-                "resource") // WHY: the invocation scope is owned by its opener, closed elsewhere
-        public @NonNull SessionScope currentSession() {
+                "resource") // WHY: the invocation context is owned by its opener, closed elsewhere
+        public PluginStorage.@NonNull Grant<Scope.@NonNull SessionScope> currentSession() {
             var callback = PluginInvocationContext.current();
             if (callback != null)
-                return transaction(() -> (SessionScope) issue(callback.owner, callback.session));
+                return transaction(() -> issueSession(callback.owner, callback.session));
             var call = ToolCallContextHolder.get();
             if (call == null || call.owner() == null || call.sessionId() == null)
                 throw new SecurityException("No authenticated session invocation");
             String owner = Nullness.requireNonNull(call.owner());
             String session = Nullness.requireNonNull(call.sessionId()).toString();
-            return transaction(() -> (SessionScope) issue(owner, session));
+            return transaction(() -> issueSession(owner, session));
         }
 
         @Override
-        public @NonNull UserScope currentUser() {
+        public PluginStorage.@NonNull Grant<Scope.@NonNull UserScope> currentUser() {
             String owner = UserContext.get();
             if (owner == null) throw new SecurityException("No authenticated user invocation");
-            return transaction(() -> (UserScope) issue(owner, null));
+            return transaction(() -> issueUser(owner));
         }
 
         @Override
@@ -248,19 +273,20 @@ public class ScopedPluginStorage implements PluginStorageFactory {
         }
 
         @Override
-        public @NonNull Store user(@NonNull UserScope scope) {
-            transaction(() -> validate(scope));
-            return new BoundStore(scope);
+        public @NonNull Store user(PluginStorage.@NonNull Grant<Scope.@NonNull UserScope> grant) {
+            transaction(() -> validate(grant, PluginScope.USER));
+            return new BoundStore(grant);
         }
 
         @Override
-        public @NonNull Store session(@NonNull SessionScope scope) {
-            transaction(() -> validate(scope));
-            return new BoundStore(scope);
+        public @NonNull Store session(
+                PluginStorage.@NonNull Grant<Scope.@NonNull SessionScope> grant) {
+            transaction(() -> validate(grant, PluginScope.SESSION));
+            return new BoundStore(grant);
         }
 
         @Override
-        public @NonNull Page<@NonNull Scope> scopes(
+        public @NonNull Page<PluginStorage.@NonNull Grant<?>> scopes(
                 @NonNull PluginScope kind, String cursor, int limit) {
             if (kind == PluginScope.APPLICATION || kind == PluginScope.AGENT)
                 throw new IllegalArgumentException("Only user and session scopes can be listed");
@@ -278,7 +304,7 @@ public class ScopedPluginStorage implements PluginStorageFactory {
                                             .setParameter("after", after)
                                             .setMaxResults(pageSize + 1)
                                             .getResultList();
-                            List<Scope> scopes = new ArrayList<>();
+                            List<PluginStorage.Grant<?>> scopes = new ArrayList<>();
                             for (var session :
                                     sessions.subList(0, Math.min(pageSize, sessions.size()))) {
                                 try {
@@ -306,7 +332,7 @@ public class ScopedPluginStorage implements PluginStorageFactory {
                                         .setParameter("after", after)
                                         .setMaxResults(pageSize + 1)
                                         .getResultList();
-                        List<Scope> scopes = new ArrayList<>();
+                        List<PluginStorage.Grant<?>> scopes = new ArrayList<>();
                         int count = Math.min(rows.size(), pageSize);
                         for (String identity : rows.subList(0, count)) {
                             var records =
@@ -338,29 +364,31 @@ public class ScopedPluginStorage implements PluginStorageFactory {
         }
 
         private final class BoundStore implements Store {
-            private final Scope scope;
+            private final PluginStorage.Grant<?> grant;
             private final @NonNull String kind;
             private final @NonNull String identity;
             private final @NonNull String cursorBinding;
 
-            BoundStore(Scope scope) {
-                this.scope = scope;
-                kind =
-                        scope == null
-                                ? "APPLICATION"
-                                : scope instanceof SessionScope ? "SESSION" : "USER";
-                identity =
-                        scope == null
-                                ? "application"
-                                : scope instanceof SessionScope session
-                                        ? session.sessionId()
-                                        : scope.userId();
+            BoundStore(PluginStorage.Grant<?> grant) {
+                this.grant = grant;
+                if (grant == null) {
+                    kind = "APPLICATION";
+                    identity = "application";
+                } else if (grant.scope() instanceof Scope.SessionScope session) {
+                    kind = "SESSION";
+                    identity = session.session();
+                } else if (grant.scope() instanceof Scope.UserScope user) {
+                    kind = "USER";
+                    identity = user.owner();
+                } else {
+                    throw new SecurityException("Unsupported storage scope");
+                }
                 cursorBinding = namespace + ":" + kind + ":" + identity;
             }
 
             private void check() {
                 admitted();
-                if (scope != null) validate(scope);
+                if (grant != null) validate(grant);
             }
 
             private @NonNull List<@NonNull PluginRecord> find(@NonNull String key) {
@@ -472,13 +500,13 @@ public class ScopedPluginStorage implements PluginStorageFactory {
                                     row.revision = revision;
                                     row.schemaVersion = document.schemaVersion();
                                     row.payload = payload;
-                                    if (scope != null) {
-                                        Grant grant = validate(scope);
-                                        row.user = database.find(UserEntity.class, grant.owner());
-                                        if (scope instanceof SessionScope session)
+                                    if (grant != null) {
+                                        IssuedGrant issued = validate(grant);
+                                        row.user = database.find(UserEntity.class, issued.owner());
+                                        if (grant.scope() instanceof Scope.SessionScope session)
                                             row.session =
                                                     validateSession(
-                                                            grant.owner(), session.sessionId());
+                                                            issued.owner(), session.session());
                                     }
                                     database.persist(row);
                                     database.flush();

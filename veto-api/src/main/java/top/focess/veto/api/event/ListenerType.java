@@ -6,8 +6,9 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * Marks a concrete {@link Listener} for automatic registration when its plugin is loaded. The host
- * instantiates an annotated listener through its public no-argument constructor.
+ * Optional marker on a concrete {@link Listener}. The current host does not scan this annotation or
+ * instantiate marked classes; a plugin must explicitly register its listener instance at the
+ * listeners contribution point.
  */
 @Target(ElementType.TYPE)
 @Retention(RetentionPolicy.RUNTIME)

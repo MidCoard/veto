@@ -16,7 +16,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.api.plugin.PluginHost;
+import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.api.process.ProcessHost;
 
 /** Volatile builtin task state. The host alone starts and authorizes process effects. */
@@ -25,14 +25,6 @@ public final class BackgroundTasks implements AutoCloseable {
     private static final int MAX_LINE_BYTES = 65536;
     private static final int MAX_INPUT_BYTES = 65536;
     private static final int MAX_QUEUED_BYTES = 262144;
-
-    /** Owner/session/agent triple that owns a task. */
-    public record Owner(@NonNull String owner, @NonNull String session, @NonNull String agent) {
-        /** Derives the scope from a plugin invocation. */
-        public static @NonNull Owner from(PluginHost.@NonNull Invocation invocation) {
-            return new Owner(invocation.owner(), invocation.sessionId(), invocation.agentId());
-        }
-    }
 
     /** Why a background task terminated. */
     public enum ExitCause {
@@ -54,7 +46,7 @@ public final class BackgroundTasks implements AutoCloseable {
     public interface Listener {
         /** Called when a task starts, exits or is removed. */
         void changed(
-                @NonNull Owner scope,
+                Scope.@NonNull AgentScope scope,
                 @NonNull TaskInfo info,
                 @NonNull ExitCause cause,
                 @NonNull Change change);
@@ -90,7 +82,7 @@ public final class BackgroundTasks implements AutoCloseable {
     public synchronized @NonNull TaskInfo start() {
         if (closed) throw new IllegalStateException("Process tasks are closed");
         var process = host.get().startApproved();
-        var scope = Owner.from(process.invocation());
+        var scope = process.invocation().scope();
         var task = new Task("bg-" + ids.incrementAndGet(), scope, process);
         tasks.put(task.id, task);
         changed(task, Change.STARTED);
@@ -99,7 +91,7 @@ public final class BackgroundTasks implements AutoCloseable {
     }
 
     /** Returns the scoped tasks, alive first. */
-    public @NonNull List<TaskInfo> list(@NonNull Owner scope) {
+    public @NonNull List<TaskInfo> list(Scope.@NonNull AgentScope scope) {
         return tasks.values().stream()
                 .filter(task -> task.scope.equals(scope))
                 .map(Task::info)
@@ -112,7 +104,7 @@ public final class BackgroundTasks implements AutoCloseable {
     }
 
     /** Resolves an owned task for input or control; empty when unknown. */
-    public @NonNull Optional<Target> target(@NonNull Owner scope, @NonNull String id) {
+    public @NonNull Optional<Target> target(Scope.@NonNull AgentScope scope, @NonNull String id) {
         Task task = owned(scope, id);
         if (task == null) return Optional.empty();
         synchronized (task.inputLock) {
@@ -122,13 +114,13 @@ public final class BackgroundTasks implements AutoCloseable {
     }
 
     /** Returns the current info of an owned task; empty when unknown. */
-    public @NonNull Optional<TaskInfo> status(@NonNull Owner scope, @NonNull String id) {
+    public @NonNull Optional<TaskInfo> status(Scope.@NonNull AgentScope scope, @NonNull String id) {
         return Optional.ofNullable(owned(scope, id)).map(Task::info);
     }
 
     /** Blocks until the task output drains and the process exits. */
-    public @NonNull Optional<TaskInfo> awaitExit(@NonNull Owner scope, @NonNull String id)
-            throws InterruptedException {
+    public @NonNull Optional<TaskInfo> awaitExit(
+            Scope.@NonNull AgentScope scope, @NonNull String id) throws InterruptedException {
         Task task = owned(scope, id);
         if (task == null) return Optional.empty();
         task.drained.await();
@@ -137,7 +129,8 @@ public final class BackgroundTasks implements AutoCloseable {
     }
 
     /** Returns the last {@code lines} lines of task output; empty when unknown. */
-    public @NonNull Optional<String> output(@NonNull Owner scope, @NonNull String id, int lines) {
+    public @NonNull Optional<String> output(
+            Scope.@NonNull AgentScope scope, @NonNull String id, int lines) {
         Task task = owned(scope, id);
         if (task == null) return Optional.empty();
         synchronized (task.lines) {
@@ -152,7 +145,7 @@ public final class BackgroundTasks implements AutoCloseable {
 
     /** Returns one character-offset page of output for the exact task instance. */
     public @NonNull TextPage outputPage(
-            @NonNull Owner scope,
+            Scope.@NonNull AgentScope scope,
             @NonNull String id,
             @NonNull UUID instance,
             int offset,
@@ -187,7 +180,8 @@ public final class BackgroundTasks implements AutoCloseable {
     }
 
     /** Returns the recorded stdin write failures of an owned task. */
-    public @NonNull List<@NonNull String> inputFailures(@NonNull Owner scope, @NonNull String id) {
+    public @NonNull List<@NonNull String> inputFailures(
+            Scope.@NonNull AgentScope scope, @NonNull String id) {
         Task task = owned(scope, id);
         if (task == null) return List.of();
         synchronized (task.inputLock) {
@@ -196,7 +190,7 @@ public final class BackgroundTasks implements AutoCloseable {
     }
 
     /** Validates and enqueues the host-prepared stdin write for an owned task. */
-    public @NonNull InputResult queueInput(@NonNull Owner scope, @NonNull String id) {
+    public @NonNull InputResult queueInput(Scope.@NonNull AgentScope scope, @NonNull String id) {
         Task task = owned(scope, id);
         if (task == null) return InputResult.failure(InputStatus.TASK_NOT_FOUND);
         synchronized (task.inputLock) {
@@ -222,7 +216,7 @@ public final class BackgroundTasks implements AutoCloseable {
 
     /** Requests task termination with the given cause; empty when unknown. */
     public @NonNull Optional<TaskInfo> stop(
-            @NonNull Owner scope, @NonNull String id, @NonNull ExitCause cause) {
+            Scope.@NonNull AgentScope scope, @NonNull String id, @NonNull ExitCause cause) {
         Task task = owned(scope, id);
         if (task == null) return Optional.empty();
         stop(task, cause);
@@ -231,7 +225,7 @@ public final class BackgroundTasks implements AutoCloseable {
 
     /** Stops a running task or removes an exited one; fails on a stale instance. */
     public @NonNull Action stopOrRemove(
-            @NonNull Owner scope, @NonNull String id, @NonNull UUID instance) {
+            Scope.@NonNull AgentScope scope, @NonNull String id, @NonNull UUID instance) {
         Task task = require(scope, id, instance);
         if (task.alive) {
             stop(task, ExitCause.USER_STOP);
@@ -245,17 +239,17 @@ public final class BackgroundTasks implements AutoCloseable {
 
     /** Returns info for the exact task instance; fails when no longer available. */
     public @NonNull TaskInfo exact(
-            @NonNull Owner scope, @NonNull String id, @NonNull UUID instance) {
+            Scope.@NonNull AgentScope scope, @NonNull String id, @NonNull UUID instance) {
         return require(scope, id, instance).info();
     }
 
-    private Task owned(@NonNull Owner scope, @NonNull String id) {
+    private Task owned(Scope.@NonNull AgentScope scope, @NonNull String id) {
         Task task = tasks.get(id);
         return task != null && task.scope.equals(scope) ? task : null;
     }
 
     private @NonNull Task require(
-            @NonNull Owner scope, @NonNull String id, @NonNull UUID instance) {
+            Scope.@NonNull AgentScope scope, @NonNull String id, @NonNull UUID instance) {
         Task task = owned(scope, id);
         if (task == null || !task.process.id().equals(instance))
             throw new IllegalArgumentException("Task is no longer available");
@@ -392,21 +386,18 @@ public final class BackgroundTasks implements AutoCloseable {
     }
 
     /** Stops every task owned by the terminated agent. */
-    public void onAgentTerminated(
-            @NonNull String owner, @NonNull String session, @NonNull String agent) {
-        var scope = new Owner(owner, session, agent);
+    public void onAgentTerminated(Scope.@NonNull AgentScope scope) {
         stopMatching(task -> task.scope.equals(scope));
     }
 
-    /** Stops every task running in the closed session. */
-    public void onSessionClosed(@NonNull String owner, @NonNull String session) {
-        stopMatching(
-                task -> task.scope.owner().equals(owner) && task.scope.session().equals(session));
+    /** Stops every task running in the deleted session. */
+    public void onSessionDeleted(Scope.@NonNull SessionScope scope) {
+        stopMatching(task -> task.scope.sessionScope().equals(scope));
     }
 
     /** Stops every task owned by the closed owner. */
-    public void onOwnerClosed(@NonNull String owner) {
-        stopMatching(task -> task.scope.owner().equals(owner));
+    public void onUserLogout(Scope.@NonNull UserScope scope) {
+        stopMatching(task -> task.scope.userScope().equals(scope));
     }
 
     @Override
@@ -417,7 +408,7 @@ public final class BackgroundTasks implements AutoCloseable {
 
     private static final class Task {
         final @NonNull String id;
-        final @NonNull Owner scope;
+        final Scope.@NonNull AgentScope scope;
         final ProcessHost.@NonNull Running process;
         final @NonNull Instant started = Instant.now();
         final @NonNull ArrayDeque<String> lines = new ArrayDeque<>();
@@ -432,7 +423,10 @@ public final class BackgroundTasks implements AutoCloseable {
         int queuedBytes;
         boolean writing, closeQueued, stdinClosed;
 
-        Task(@NonNull String id, @NonNull Owner scope, ProcessHost.@NonNull Running process) {
+        Task(
+                @NonNull String id,
+                Scope.@NonNull AgentScope scope,
+                ProcessHost.@NonNull Running process) {
             this.id = id;
             this.scope = scope;
             this.process = process;

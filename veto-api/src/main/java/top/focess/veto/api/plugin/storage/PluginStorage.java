@@ -1,56 +1,47 @@
 package top.focess.veto.api.plugin.storage;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.PluginScope;
+import top.focess.veto.api.plugin.Scope;
+import top.focess.veto.api.plugin.contract.JsonValue;
 
 /**
  * Durable namespace bound to the current plugin identity.
  *
  * <p>Application, user, and session stores cannot access another plugin's namespace. User and
- * session scopes are host-issued grants rather than caller-chosen identity strings, and every
+ * session stores require host-issued grants rather than caller-chosen identity strings, and every
  * operation revalidates plugin admission, scope existence, ownership, and authorization. Retained
  * stores and scopes may therefore become unusable after stop, deselection, or permanent scope
  * deletion. Plugin disable or uninstall retains data by default; a future management purge is not
  * part of this API guarantee.
  */
 public interface PluginStorage {
-    /** Host-issued opaque authorization scope. */
-    sealed interface Scope permits UserScope, SessionScope {
-        /**
-         * Returns the opaque authorization token carried by this scope.
-         *
-         * @return the opaque token used for host revalidation
-         */
-        @NonNull String token();
-
-        /**
-         * Returns the authenticated user bound to this scope.
-         *
-         * @return the authenticated user represented by this scope
-         */
-        @NonNull String userId();
+    /**
+     * Host-issued storage authorization paired with the shared scope identity.
+     *
+     * <p>The scope's owner is the immutable storage user ID, not a login name. The identity alone
+     * grants no access; every operation validates this token against its issuing plugin binding and
+     * the current scope incarnation. Constructing a grant does not issue a token or authorize
+     * storage. Only user and session scopes have stores; application storage is already bound to
+     * the plugin installation.
+     *
+     * @param <S> shared user or session scope type
+     * @param token opaque host authorization token
+     * @param scope shared identity authorized by this token
+     */
+    record Grant<S extends @NonNull Scope>(@NonNull String token, @NonNull S scope) {
+        /** Validates that this grant names a supported storage scope. */
+        public Grant {
+            Objects.requireNonNull(token, "token");
+            Objects.requireNonNull(scope, "scope");
+            if (!(scope instanceof Scope.UserScope || scope instanceof Scope.SessionScope))
+                throw new IllegalArgumentException(
+                        "Storage grants require a user or session scope");
+        }
     }
-
-    /**
-     * Host-issued user scope.
-     *
-     * @param token opaque host authorization token
-     * @param userId authenticated user ID
-     */
-    record UserScope(@NonNull String token, @NonNull String userId) implements Scope {}
-
-    /**
-     * Host-issued session scope.
-     *
-     * @param token opaque host authorization token
-     * @param userId authenticated user ID
-     * @param sessionId authorized session ID
-     */
-    record SessionScope(@NonNull String token, @NonNull String userId, @NonNull String sessionId)
-            implements Scope {}
 
     /**
      * Versioned JSON document stored by a plugin.
@@ -145,42 +136,42 @@ public interface PluginStorage {
     @NonNull Store application();
 
     /**
-     * Returns this plugin's store for a revalidated host-issued user scope.
+     * Returns this plugin's store for a revalidated host-issued user grant.
      *
-     * @param scope host-issued user scope
+     * @param grant host-issued user grant
      * @return the bound user store
      */
-    @NonNull Store user(@NonNull UserScope scope);
+    @NonNull Store user(@NonNull Grant<Scope.@NonNull UserScope> grant);
 
     /**
-     * Returns this plugin's store for a revalidated host-issued session scope.
+     * Returns this plugin's store for a revalidated host-issued session grant.
      *
-     * @param scope host-issued session scope
+     * @param grant host-issued session grant
      * @return the bound session store
      */
-    @NonNull Store session(@NonNull SessionScope scope);
+    @NonNull Store session(@NonNull Grant<Scope.@NonNull SessionScope> grant);
 
     /**
-     * Host-authorized scopes for recovery and background work; never another plugin's namespace.
+     * Host-authorized grants for recovery and background work; never another plugin's namespace.
      *
      * @param kind scope kind to enumerate
      * @param cursor prior page cursor, or {@code null} for the first page
      * @param limit maximum requested scopes
-     * @return a page of host-authorized scopes
+     * @return a page of host-authorized grants containing shared scope identities
      */
-    @NonNull Page<@NonNull Scope> scopes(@NonNull PluginScope kind, String cursor, int limit);
+    @NonNull Page<@NonNull Grant<?>> scopes(@NonNull PluginScope kind, String cursor, int limit);
 
     /**
-     * Returns the session scope for the active authenticated invocation.
+     * Returns the session grant for the active authenticated invocation.
      *
-     * @return the session scope installed for the current authenticated invocation
+     * @return the session grant installed for the current authenticated invocation
      */
-    @NonNull SessionScope currentSession();
+    @NonNull Grant<Scope.@NonNull SessionScope> currentSession();
 
     /**
-     * Returns the user scope for the active authenticated invocation.
+     * Returns the user grant for the active authenticated invocation.
      *
-     * @return the user scope installed for the current authenticated invocation
+     * @return the user grant installed for the current authenticated invocation
      */
-    @NonNull UserScope currentUser();
+    @NonNull Grant<Scope.@NonNull UserScope> currentUser();
 }

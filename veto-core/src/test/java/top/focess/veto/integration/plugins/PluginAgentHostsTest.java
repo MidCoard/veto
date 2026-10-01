@@ -41,8 +41,8 @@ import top.focess.veto.api.llm.ProviderType;
 import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.api.plugin.PluginContext;
-import top.focess.veto.api.plugin.PluginContributions;
 import top.focess.veto.api.plugin.PluginIdentity;
+import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.api.plugin.VetoPlugin;
 import top.focess.veto.api.plugin.agent.AgentHost;
 import top.focess.veto.api.plugin.agent.AgentProfile;
@@ -240,7 +240,7 @@ class PluginAgentHostsTest {
         final @NonNull AgentService service = mock(AgentService.class);
         final @NonNull VetoAgent agent = mock(VetoAgent.class);
         final @NonNull AgentEntity row;
-        final PluginStorage.@NonNull SessionScope scope;
+        final PluginStorage.@NonNull Grant<Scope.@NonNull SessionScope> scope;
         final @NonNull AgentHost host;
         final @NonNull PluginAgentHosts hosts;
         final @NonNull AgentProfile profile =
@@ -250,10 +250,8 @@ class PluginAgentHostsTest {
             VetoPlugin implementation = mock(VetoPlugin.class);
             var identity = new PluginIdentity("test.plugin", "1.0.0");
             when(implementation.identity()).thenReturn(identity);
-            when(implementation.initialize(any(), any()))
-                    .thenReturn(new PluginContributions(List.of()));
             plugin = new PluginLifecycle(implementation, executor);
-            plugin.initialize(
+            plugin.construct(
                     new PluginContext(
                             identity,
                             () -> {},
@@ -266,7 +264,9 @@ class PluginAgentHostsTest {
                     new JsonValue.ObjectValue(Map.of()));
             plugin.start();
             session.setPrimaryAgentId(parent);
-            scope = new PluginStorage.SessionScope("token", "owner", session.getId());
+            scope =
+                    new PluginStorage.Grant<>(
+                            "token", new Scope.SessionScope("owner", session.getId()));
             when(scopes.authorizeSession(storage, scope)).thenReturn("owner");
             when(vault.isUnlocked("owner")).thenReturn(true);
             when(sessions.findById(session.getId())).thenReturn(Optional.of(session));

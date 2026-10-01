@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.api.plugin.contract.FrontendContribution;
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.contract.JsonValues;
@@ -37,12 +38,12 @@ public final class MonitorFrontend extends FrontendContribution {
      * details}).
      */
     public @NonNull JsonValue handle(
-            FrontendContribution.@NonNull ActionContext scope,
+            Scope.@NonNull AgentScope scope,
             @NonNull String action,
             JsonValue.@NonNull ObjectValue args)
             throws PluginFailure {
         try {
-            var records = service.list(scope.ownerId(), scope.sessionId());
+            var records = service.list(scope.owner(), scope.session());
             int offset = offset(args);
             if (action.equals("list")) {
                 var items =
@@ -162,8 +163,7 @@ public final class MonitorFrontend extends FrontendContribution {
             }
             if (!List.of("pause", "resume", "cancel").contains(action))
                 throw new IllegalArgumentException();
-            service.control(
-                    scope.ownerId(), scope.sessionId(), record.agentId(), record.id(), action);
+            service.control(scope.owner(), scope.session(), record.agentId(), record.id(), action);
             return new JsonValue.BooleanValue(true);
         } catch (IllegalArgumentException | ArithmeticException | SecurityException failure) {
             throw new PluginFailure(PluginFailure.Code.INVALID_ARGUMENTS);

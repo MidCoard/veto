@@ -12,7 +12,6 @@ import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.api.agent.workflow.PluginAwait;
 import top.focess.veto.api.plugin.PluginContext;
-import top.focess.veto.api.plugin.PluginContributions;
 import top.focess.veto.api.plugin.PluginIdentity;
 import top.focess.veto.api.plugin.VetoPlugin;
 import top.focess.veto.api.plugin.contract.AgentInbox;
@@ -54,10 +53,6 @@ class CompositeAgentInboxTest {
                 };
         var plugin =
                 new VetoPlugin() {
-                    @Override
-                    public @NonNull PluginContributions contributions() {
-                        return new PluginContributions(List.of());
-                    }
 
                     public void start() {}
 
@@ -70,7 +65,7 @@ class CompositeAgentInboxTest {
         try (var executor = Executors.newSingleThreadExecutor()) {
             var managed = new PluginLifecycle(plugin, executor);
             try {
-                managed.initialize(
+                managed.construct(
                         new PluginContext(
                                 plugin.identity(),
                                 () -> {},

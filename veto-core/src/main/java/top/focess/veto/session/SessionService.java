@@ -510,7 +510,7 @@ public class SessionService {
                     () -> {
                         activeSessions.entrySet().removeIf(e -> sessionId.equals(e.getValue()));
                         var events = lifecycleEvents;
-                        if (events != null) events.sessionClosed(owner, sessionId);
+                        if (events != null) events.sessionDeleted(owner, sessionId);
                         agentService.remove(sessionId);
                     };
             if (TransactionSynchronizationManager.isSynchronizationActive())

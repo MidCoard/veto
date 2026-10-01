@@ -140,7 +140,7 @@ class GroupShutdownRaceTest {
         var secondContext =
                 new AgentConfiguration.Context(
                         original.owner(),
-                        original.scope(),
+                        original.storageGrant(),
                         original.agents(),
                         "second-leader",
                         original.base(),
@@ -149,7 +149,7 @@ class GroupShutdownRaceTest {
         fixture.caller =
                 new PluginHost.Invocation(
                         "owner",
-                        fixture.scope.sessionId(),
+                        fixture.grant.scope().session(),
                         "second-leader",
                         "request-two",
                         "test-call");

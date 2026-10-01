@@ -11,6 +11,7 @@ import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.llm.PromptRenderer;
 import top.focess.veto.api.plugin.PluginContext;
 import top.focess.veto.api.plugin.PluginHost;
+import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.api.plugin.agent.AgentHost;
 import top.focess.veto.api.plugin.agent.AgentProfile;
 import top.focess.veto.api.plugin.contract.AgentConfiguration;
@@ -21,8 +22,9 @@ final class GroupTestHost implements AutoCloseable {
     final @NonNull PluginStorage storage = mock(PluginStorage.class);
     final @NonNull PluginHost host = mock(PluginHost.class);
     final AgentHost.@NonNull Session agents = mock(AgentHost.Session.class);
-    final PluginStorage.@NonNull SessionScope scope =
-            new PluginStorage.SessionScope("scope", "user", UUID.randomUUID().toString());
+    final PluginStorage.@NonNull Grant<Scope.@NonNull SessionScope> grant =
+            new PluginStorage.Grant<>(
+                    "scope", new Scope.SessionScope("user", UUID.randomUUID().toString()));
     final @NonNull Map<String, PluginStorage.Entry> rows = new ConcurrentHashMap<>();
     final @NonNull GroupRuntime runtime;
     final AgentConfiguration.@NonNull Context configuration;
@@ -31,11 +33,11 @@ final class GroupTestHost implements AutoCloseable {
     GroupTestHost() {
         caller =
                 new PluginHost.Invocation(
-                        "owner", scope.sessionId(), "leader", "request-one", "test-call");
+                        "owner", grant.scope().session(), "leader", "request-one", "test-call");
         var store = mock(PluginStorage.Store.class);
         when(storage.session(any())).thenReturn(store);
         when(storage.scopes(any(), any(), anyInt()))
-                .thenReturn(new PluginStorage.Page<>(List.of(scope), null));
+                .thenReturn(new PluginStorage.Page<>(List.of(grant), null));
         when(store.get(anyString()))
                 .thenAnswer(call -> Optional.ofNullable(rows.get(required(call.getArgument(0)))));
         when(store.list(anyString(), any(), anyInt()))
@@ -92,7 +94,7 @@ final class GroupTestHost implements AutoCloseable {
                 .when(store)
                 .delete(anyString(), anyString());
         when(host.invocation(anyString())).thenAnswer(call -> caller);
-        when(agents.id()).thenReturn(scope.sessionId());
+        when(agents.id()).thenReturn(grant.scope().session());
         when(agents.open(anyString(), anyString(), any()))
                 .thenAnswer(call -> child(required(call.getArgument(0))));
         var context = mock(PluginContext.class);
@@ -117,7 +119,7 @@ final class GroupTestHost implements AutoCloseable {
         configuration =
                 new AgentConfiguration.Context(
                         "owner",
-                        scope,
+                        grant,
                         agents,
                         "leader",
                         profile,

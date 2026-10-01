@@ -1,41 +1,28 @@
 package top.focess.veto.api.event;
 
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.api.plugin.Scope;
 
 /** Notifies that one agent reached terminal execution. */
 public final class AgentTerminatedEvent extends LifecycleEvent {
-    private final @NonNull String sessionId;
-    private final @NonNull String agentId;
+    private final Scope.@NonNull AgentScope scope;
 
     /**
-     * Creates the agent-terminated notification.
+     * Creates the notification for one agent identity.
      *
-     * @param owner authenticated owner identity
-     * @param sessionId containing session identity
-     * @param agentId terminated agent identity
+     * @param scope terminated agent identity
      */
-    public AgentTerminatedEvent(
-            @NonNull String owner, @NonNull String sessionId, @NonNull String agentId) {
-        super(owner);
-        this.sessionId = sessionId;
-        this.agentId = agentId;
-    }
-
-    /**
-     * Returns the containing session identity.
-     *
-     * @return session identity
-     */
-    public @NonNull String sessionId() {
-        return sessionId;
+    public AgentTerminatedEvent(Scope.@NonNull AgentScope scope) {
+        this.scope = scope;
     }
 
     /**
      * Returns the terminated agent identity.
      *
-     * @return agent identity
+     * @return the terminated agent's scope
      */
-    public @NonNull String agentId() {
-        return agentId;
+    @Override
+    public Scope.@NonNull AgentScope scope() {
+        return scope;
     }
 }

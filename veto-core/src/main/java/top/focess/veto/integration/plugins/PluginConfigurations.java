@@ -1,15 +1,13 @@
 package top.focess.veto.integration.plugins;
 
-import org.jspecify.annotations.NonNull;
-import org.springframework.boot.context.properties.ConfigurationProperties;
-import org.springframework.stereotype.Component;
-
-import top.focess.veto.api.plugin.contract.JsonValue;
-import top.focess.veto.plugin.runtime.*;
-
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
+import org.jspecify.annotations.NonNull;
+import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.stereotype.Component;
+import top.focess.veto.api.plugin.contract.JsonValue;
+import top.focess.veto.plugin.runtime.*;
 
 /** Operator configuration passed only to the plugin with the matching identity. */
 @Component

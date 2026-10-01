@@ -3,6 +3,7 @@ package top.focess.veto.builtin.tools;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.api.plugin.contract.FrontendContribution;
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.contract.PluginFailure;
@@ -25,7 +26,7 @@ public final class ToolsFrontend extends FrontendContribution {
 
     @Override
     public @NonNull JsonValue handle(
-            @NonNull ActionContext scope,
+            Scope.@NonNull AgentScope scope,
             @NonNull String action,
             JsonValue.@NonNull ObjectValue arguments)
             throws PluginFailure {

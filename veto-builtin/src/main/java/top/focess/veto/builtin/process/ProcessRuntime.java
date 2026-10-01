@@ -9,16 +9,17 @@ import top.focess.veto.api.agent.tool.ToolPreparation;
 import top.focess.veto.api.event.AgentTerminatedEvent;
 import top.focess.veto.api.event.EventHandler;
 import top.focess.veto.api.event.Listener;
-import top.focess.veto.api.event.OwnerClosedEvent;
-import top.focess.veto.api.event.SessionClosedEvent;
+import top.focess.veto.api.event.SessionDeletedEvent;
+import top.focess.veto.api.event.UserAuthenticatedEvent;
+import top.focess.veto.api.event.UserLogoutEvent;
 import top.focess.veto.api.plugin.PluginContext;
 import top.focess.veto.api.plugin.PluginHost;
+import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.process.ChainMode;
 import top.focess.veto.api.process.Command;
 import top.focess.veto.api.process.CommandResult;
 import top.focess.veto.api.process.ProcessHost;
-import top.focess.veto.builtin.process.BackgroundTasks.Owner;
 
 /** Builtin policy and views around host-authorized process effects. */
 public final class ProcessRuntime extends Listener {
@@ -43,20 +44,25 @@ public final class ProcessRuntime extends Listener {
 
     @EventHandler
     public void onAgentTerminated(@NonNull AgentTerminatedEvent event) {
-        events.agentClosed(new Owner(event.owner(), event.sessionId(), event.agentId()));
-        tasks.onAgentTerminated(event.owner(), event.sessionId(), event.agentId());
+        events.agentTerminated(event.scope());
+        tasks.onAgentTerminated(event.scope());
     }
 
     @EventHandler
-    public void onSessionClosed(@NonNull SessionClosedEvent event) {
-        events.sessionClosed(event.owner(), event.sessionId());
-        tasks.onSessionClosed(event.owner(), event.sessionId());
+    public void onSessionDeleted(@NonNull SessionDeletedEvent event) {
+        events.sessionDeleted(event.scope());
+        tasks.onSessionDeleted(event.scope());
     }
 
     @EventHandler
-    public void onOwnerClosed(@NonNull OwnerClosedEvent event) {
-        events.ownerClosed(event.owner());
-        tasks.onOwnerClosed(event.owner());
+    public void onUserAuthenticated(@NonNull UserAuthenticatedEvent event) {
+        events.userAuthenticated(event.scope());
+    }
+
+    @EventHandler
+    public void onUserLogout(@NonNull UserLogoutEvent event) {
+        events.userLogout(event.scope());
+        tasks.onUserLogout(event.scope());
     }
 
     /** Returns the volatile background-task registry. */
@@ -69,11 +75,11 @@ public final class ProcessRuntime extends Listener {
                 .orElseThrow(() -> new IllegalStateException("Process host unavailable"));
     }
 
-    private @NonNull Owner scope(@NonNull String tool) {
-        return Owner.from(
-                context.service(PluginHost.class)
-                        .orElseThrow(() -> new IllegalStateException("Plugin host unavailable"))
-                        .invocation(tool));
+    private Scope.@NonNull AgentScope scope(@NonNull String tool) {
+        return context.service(PluginHost.class)
+                .orElseThrow(() -> new IllegalStateException("Plugin host unavailable"))
+                .invocation(tool)
+                .scope();
     }
 
     /** Returns a scope-checked execution capability for the named tool. */
@@ -160,7 +166,7 @@ public final class ProcessRuntime extends Listener {
                 if (bytes.length == 0 && !closeStdin)
                     throw new IllegalArgumentException("Input is empty");
                 var target =
-                        tasks.target(Owner.from(invocation), id)
+                        tasks.target(invocation.scope(), id)
                                 .orElseThrow(() -> new IllegalArgumentException("Task not found"));
                 if (!target.info().alive() || !target.stdinAvailable())
                     throw new IllegalArgumentException("Task stdin unavailable");

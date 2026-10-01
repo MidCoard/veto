@@ -118,15 +118,19 @@ class PluginLlmProvidersTest {
                     assertThrows(
                             ModelCapabilityException.class,
                             () -> providers.require(ProviderType.OPENAI, "session-1"));
-            assertTrue(mismatch.getMessage().contains("different-revision"));
-            assertTrue(mismatch.getMessage().contains("Restore the pinned plugin revision"));
+            var mismatchMessage = mismatch.getMessage();
+            if (mismatchMessage == null) throw new AssertionError("Missing mismatch diagnostic");
+            assertTrue(mismatchMessage.contains("different-revision"));
+            assertTrue(mismatchMessage.contains("Restore the pinned plugin revision"));
 
             when(selections.bindings("session-1")).thenReturn(List.of());
             var absent =
                     assertThrows(
                             ModelCapabilityException.class,
                             () -> providers.require(ProviderType.OPENAI, "session-1"));
-            assertTrue(absent.getMessage().contains("not selected for this session"));
+            var absentMessage = absent.getMessage();
+            if (absentMessage == null) throw new AssertionError("Missing selection diagnostic");
+            assertTrue(absentMessage.contains("not selected for this session"));
         } finally {
             manager.close();
         }

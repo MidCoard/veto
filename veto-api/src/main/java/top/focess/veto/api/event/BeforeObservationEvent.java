@@ -4,8 +4,11 @@ import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.plugin.contract.Cancellation;
 
 /**
- * Fired before an ordinary observation is published. Handlers transform {@link #text()} in place;
- * the submitter reads the final value after dispatch.
+ * Fired for an executed tool result after the after-tool transformation and before final ingress
+ * defense and history publication, including unsuccessful results. Handlers transform {@link
+ * #text()} in place; the submitter reads the final value after dispatch. Successful native
+ * workspace reads also cross {@link BeforeTextCommitEvent.Phase#FILE_OBSERVATION} after this
+ * transformation.
  */
 public final class BeforeObservationEvent extends WorkflowEvent {
     private @NonNull String text;

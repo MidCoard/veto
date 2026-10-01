@@ -1,10 +1,8 @@
 package example;
 
-import java.util.List;
 import java.util.Optional;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.plugin.PluginContext;
-import top.focess.veto.api.plugin.PluginContributions;
 import top.focess.veto.api.plugin.PluginIdentity;
 import top.focess.veto.api.plugin.VetoPlugin;
 import top.focess.veto.api.plugin.contract.JsonValue;
@@ -24,10 +22,6 @@ public final class TextConsumerPlugin extends VetoPlugin {
 
     public @NonNull PluginIdentity identity() {
         return new PluginIdentity("example.consumer", "1.0.0");
-    }
-
-    public @NonNull PluginContributions contributions() {
-        return new PluginContributions(List.of());
     }
 
     public void start() throws PluginFailure {

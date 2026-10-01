@@ -1,6 +1,7 @@
 package top.focess.veto.integration.plugins.storage;
 
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.api.plugin.storage.PluginStorage;
 import top.focess.veto.plugin.runtime.PluginLifecycle;
 
@@ -9,23 +10,25 @@ public interface PluginStorageFactory {
     /** Returns the storage bound to the given plugin activation. */
     @NonNull PluginStorage bind(@NonNull PluginLifecycle plugin);
 
-    /** Validates the scope against its issuing binding and returns the session owner. */
+    /** Validates the grant against its issuing binding and returns the session owner. */
     @NonNull String authorizeSession(
-            @NonNull PluginStorage storage, PluginStorage.@NonNull SessionScope scope);
+            @NonNull PluginStorage storage,
+            PluginStorage.@NonNull Grant<Scope.@NonNull SessionScope> grant);
 
-    /** Validates a user scope against its issuing plugin binding and live owner. */
+    /** Validates a user grant against its issuing plugin binding and live owner. */
     @NonNull String authorizeUser(
-            @NonNull PluginStorage storage, PluginStorage.@NonNull UserScope scope);
+            @NonNull PluginStorage storage,
+            PluginStorage.@NonNull Grant<Scope.@NonNull UserScope> grant);
 
     /** Validates a caller grant and issues a distinct user grant for the provider binding. */
-    PluginStorage.@NonNull UserScope transferUser(
+    PluginStorage.@NonNull Grant<Scope.@NonNull UserScope> transferUser(
             @NonNull PluginStorage caller,
-            PluginStorage.@NonNull UserScope scope,
+            PluginStorage.@NonNull Grant<Scope.@NonNull UserScope> grant,
             @NonNull PluginStorage provider);
 
     /** Validates a caller grant and issues a distinct session grant for the provider binding. */
-    PluginStorage.@NonNull SessionScope transferSession(
+    PluginStorage.@NonNull Grant<Scope.@NonNull SessionScope> transferSession(
             @NonNull PluginStorage caller,
-            PluginStorage.@NonNull SessionScope scope,
+            PluginStorage.@NonNull Grant<Scope.@NonNull SessionScope> grant,
             @NonNull PluginStorage provider);
 }

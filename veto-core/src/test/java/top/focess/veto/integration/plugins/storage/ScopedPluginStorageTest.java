@@ -1,12 +1,11 @@
 package top.focess.veto.integration.plugins.storage;
 
-import top.focess.veto.api.plugin.PluginScope;
-
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.persistence.EntityManager;
+import java.lang.reflect.InvocationTargetException;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -30,7 +29,9 @@ import top.focess.veto.agent.SessionAgentRegistry;
 import top.focess.veto.agent.tool.ToolCallContextHolder;
 import top.focess.veto.api.plugin.PluginBinding;
 import top.focess.veto.api.plugin.PluginIdentity;
+import top.focess.veto.api.plugin.PluginScope;
 import top.focess.veto.api.plugin.PluginState;
+import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.api.plugin.VetoPlugin;
 import top.focess.veto.api.plugin.contract.FrontendContribution;
 import top.focess.veto.api.plugin.contract.JsonValue;
@@ -112,7 +113,8 @@ class ScopedPluginStorageTest {
         factory.destroy();
     }
 
-    private PluginStorage.@NonNull SessionScope scope(@NonNull PluginStorage storage) {
+    private PluginStorage.@NonNull Grant<Scope.@NonNull SessionScope> scope(
+            @NonNull PluginStorage storage) {
         var invocation = new PluginInvocationContext("owner", session);
         try {
             return storage.currentSession();
@@ -201,7 +203,7 @@ class ScopedPluginStorageTest {
     @Test
     void preparationAndPresentationCannotMutateAnyStorageScope() {
         UserContext.set("owner");
-        PluginStorage.UserScope user;
+        PluginStorage.Grant<Scope.@NonNull UserScope> user;
         try {
             user = first.currentUser();
         } finally {
@@ -243,7 +245,7 @@ class ScopedPluginStorageTest {
                     }
 
                     public @NonNull JsonValue handle(
-                            @NonNull ActionContext scope,
+                            Scope.@NonNull AgentScope scope,
                             @NonNull String action,
                             JsonValue.@NonNull ObjectValue arguments)
                             throws PluginFailure {
@@ -274,6 +276,15 @@ class ScopedPluginStorageTest {
                 .thenReturn(Optional.of(Nullness.requireNonNull(row)));
         when(selected.bindings(session))
                 .thenReturn(List.of(new PluginBinding("one", "1.0.0", "1.0.0")));
+        when(selected.status(session))
+                .thenReturn(
+                        List.of(
+                                new SessionPlugins.BoundPluginStatus(
+                                        "one",
+                                        "1.0.0",
+                                        "1.0.0",
+                                        true,
+                                        SessionPlugins.BoundPluginAvailability.AVAILABLE)));
         when(plugins.catalog()).thenReturn(catalog);
         when(plugins.plugin("one")).thenReturn(plugin);
         when(plugin.execute(any()))
@@ -370,10 +381,62 @@ class ScopedPluginStorageTest {
                 SecurityException.class,
                 () ->
                         first.session(
-                                new PluginStorage.SessionScope(
-                                        authorized.token(), "forged", session)));
+                                new PluginStorage.Grant<>(
+                                        authorized.token(),
+                                        new Scope.SessionScope("forged", session))));
+        assertThrows(
+                SecurityException.class,
+                () ->
+                        first.session(
+                                new PluginStorage.Grant<>(
+                                        authorized.token(),
+                                        new Scope.SessionScope(
+                                                authorized.scope().owner(),
+                                                UUID.randomUUID().toString()))));
+        assertThrows(
+                SecurityException.class,
+                () ->
+                        first.session(
+                                new PluginStorage.Grant<>(
+                                        UUID.randomUUID().toString(), authorized.scope())));
         assertEquals(1, first.scopes(PluginScope.SESSION, null, 50).entries().size());
         assertTrue(a.list("same", null, 50).entries().size() == 1);
+    }
+
+    @Test
+    void erasedStoreMethodsRejectWrongGrantKind() throws Exception {
+        var sessionGrant = scope(first);
+        UserContext.set("owner");
+        try {
+            var userGrant = first.currentUser();
+            first.session(sessionGrant).put("session-only", null, VALUE);
+            first.user(userGrant).put("user-only", null, VALUE);
+            assertTrue(first.session(sessionGrant).get("user-only").isEmpty());
+            assertTrue(first.user(userGrant).get("session-only").isEmpty());
+
+            var sessionMethod = PluginStorage.class.getMethod("session", PluginStorage.Grant.class);
+            var userMethod = PluginStorage.class.getMethod("user", PluginStorage.Grant.class);
+            var wrongSession =
+                    assertThrows(
+                            InvocationTargetException.class,
+                            () -> sessionMethod.invoke(first, userGrant));
+            var wrongUser =
+                    assertThrows(
+                            InvocationTargetException.class,
+                            () -> userMethod.invoke(first, sessionGrant));
+            var sessionFailure = wrongSession.getCause();
+            var userFailure = wrongUser.getCause();
+            if (sessionFailure == null || userFailure == null)
+                throw new AssertionError("Missing rejected-grant cause");
+            assertInstanceOf(SecurityException.class, sessionFailure);
+            assertInstanceOf(SecurityException.class, userFailure);
+            assertEquals(
+                    VALUE,
+                    first.session(sessionGrant).get("session-only").orElseThrow().document());
+            assertEquals(VALUE, first.user(userGrant).get("user-only").orElseThrow().document());
+        } finally {
+            UserContext.clear();
+        }
     }
 
     @Test
@@ -381,8 +444,7 @@ class ScopedPluginStorageTest {
         var callerSession = scope(first);
         var providerSession = host.transferSession(first, callerSession, second);
         assertNotEquals(callerSession.token(), providerSession.token());
-        assertEquals(callerSession.userId(), providerSession.userId());
-        assertEquals(callerSession.sessionId(), providerSession.sessionId());
+        assertEquals(callerSession.scope(), providerSession.scope());
         assertDoesNotThrow(() -> second.session(providerSession));
         assertThrows(SecurityException.class, () -> first.session(providerSession));
         assertThrows(SecurityException.class, () -> second.session(callerSession));
@@ -391,13 +453,10 @@ class ScopedPluginStorageTest {
                 () ->
                         host.transferSession(
                                 first,
-                                new PluginStorage.SessionScope(
-                                        "forged",
-                                        callerSession.userId(),
-                                        callerSession.sessionId()),
+                                new PluginStorage.Grant<>("forged", callerSession.scope()),
                                 second));
 
-        PluginStorage.UserScope callerUser;
+        PluginStorage.Grant<Scope.@NonNull UserScope> callerUser;
         UserContext.set("owner");
         try {
             callerUser = first.currentUser();
@@ -406,6 +465,7 @@ class ScopedPluginStorageTest {
         }
         var providerUser = host.transferUser(first, callerUser, second);
         assertNotEquals(callerUser.token(), providerUser.token());
+        assertEquals(callerUser.scope(), providerUser.scope());
         assertDoesNotThrow(() -> second.user(providerUser));
         assertThrows(SecurityException.class, () -> first.user(providerUser));
     }
@@ -493,7 +553,7 @@ class ScopedPluginStorageTest {
     @Test
     void userDeletionInvalidatesOldAccountScopeAndPreservesApplicationData() {
         UserContext.set("owner");
-        PluginStorage.UserScope oldScope;
+        PluginStorage.Grant<Scope.@NonNull UserScope> oldScope;
         try {
             oldScope = first.currentUser();
         } finally {
@@ -518,7 +578,7 @@ class ScopedPluginStorageTest {
         UserContext.set("owner");
         try {
             var replacement = first.currentUser();
-            assertNotEquals(oldScope.userId(), replacement.userId());
+            assertNotEquals(oldScope.scope().owner(), replacement.scope().owner());
             assertTrue(first.user(replacement).get("key").isEmpty());
         } finally {
             UserContext.clear();

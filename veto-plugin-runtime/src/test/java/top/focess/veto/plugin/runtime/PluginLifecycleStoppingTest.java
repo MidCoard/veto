@@ -2,7 +2,6 @@ package top.focess.veto.plugin.runtime;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
@@ -16,7 +15,6 @@ import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import top.focess.veto.api.plugin.PluginContext;
-import top.focess.veto.api.plugin.PluginContributions;
 import top.focess.veto.api.plugin.PluginIdentity;
 import top.focess.veto.api.plugin.PluginState;
 import top.focess.veto.api.plugin.VetoPlugin;
@@ -34,10 +32,6 @@ class PluginLifecycleStoppingTest {
         var blocked = new CompletableFuture<Boolean>();
         var plugin =
                 new VetoPlugin() {
-                    @Override
-                    public @NonNull PluginContributions contributions() {
-                        return new PluginContributions(List.of());
-                    }
 
                     public @NonNull PluginIdentity identity() {
                         return new PluginIdentity("test.stop", "1.0.0");
@@ -58,7 +52,7 @@ class PluginLifecycleStoppingTest {
         try (var lifecycle = Executors.newSingleThreadExecutor();
                 var calls = Executors.newVirtualThreadPerTaskExecutor()) {
             var managed = new PluginLifecycle(plugin, lifecycle);
-            managed.initialize(
+            managed.construct(
                     new PluginContext(
                             plugin.identity(),
                             () -> {},
@@ -105,10 +99,6 @@ class PluginLifecycleStoppingTest {
         var release = new CompletableFuture<Boolean>();
         var plugin =
                 new VetoPlugin() {
-                    @Override
-                    public @NonNull PluginContributions contributions() {
-                        return new PluginContributions(List.of());
-                    }
 
                     public @NonNull PluginIdentity identity() {
                         return new PluginIdentity("test.drain", "1.0.0");
@@ -127,7 +117,7 @@ class PluginLifecycleStoppingTest {
         try (var lifecycle = Executors.newSingleThreadExecutor();
                 var calls = Executors.newVirtualThreadPerTaskExecutor()) {
             var managed = new PluginLifecycle(plugin, lifecycle);
-            managed.initialize(
+            managed.construct(
                     new PluginContext(
                             plugin.identity(),
                             () -> {},

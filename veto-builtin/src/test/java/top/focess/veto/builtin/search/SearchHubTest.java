@@ -8,11 +8,11 @@ import java.util.Map;
 import java.util.Optional;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
+import top.focess.veto.api.plugin.PluginScope;
+import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.service.PluginServices;
 import top.focess.veto.api.plugin.service.ServiceCallContext;
-import top.focess.veto.api.plugin.PluginScope;
-import top.focess.veto.api.plugin.Scope;
 
 class SearchHubTest {
     @Test

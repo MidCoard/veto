@@ -1,14 +1,17 @@
 package top.focess.veto.controller;
 
 import com.fasterxml.jackson.databind.JsonNode;
-
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.springframework.http.*;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
-
 import top.focess.veto.agent.SessionAgentRegistry;
 import top.focess.veto.api.plugin.PluginState;
+import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.api.plugin.contract.*;
 import top.focess.veto.integration.plugins.PluginManager;
 import top.focess.veto.integration.plugins.SessionPlugins;
@@ -16,11 +19,6 @@ import top.focess.veto.integration.plugins.storage.PluginInvocationContext;
 import top.focess.veto.model.SessionEntity;
 import top.focess.veto.model.SessionRepository;
 import top.focess.veto.plugin.runtime.*;
-
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
 
 /** Session-authorized frontend code and actions; separate from model tools and history. */
 @RestController
@@ -157,7 +155,7 @@ public final class PluginFrontendController {
                                             return entry.implementation()
                                                     .handler()
                                                     .handle(
-                                                            new FrontendContribution.ActionContext(
+                                                            new Scope.AgentScope(
                                                                     session.getOwner(),
                                                                     session.getId(),
                                                                     request.agentId()),

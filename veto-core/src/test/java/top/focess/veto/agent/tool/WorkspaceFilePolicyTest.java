@@ -30,7 +30,7 @@ import top.focess.veto.api.agent.tool.ToolErrorCode;
 import top.focess.veto.api.agent.tool.ToolExecutionException;
 import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
-import top.focess.veto.api.plugin.contract.FrontendContribution;
+import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.builtin.workspace.DeletePathTool;
 import top.focess.veto.builtin.workspace.ViewFileTool;
 import top.focess.veto.builtin.workspace.WriteToFileTool;
@@ -65,8 +65,7 @@ class WorkspaceFilePolicyTest {
                     key,
                     PluginTestSupport.reveal(
                                     plugins,
-                                    new FrontendContribution.ActionContext(
-                                            "owner", SESSION.toString(), "agent"),
+                                    new Scope.AgentScope("owner", SESSION.toString(), "agent"),
                                     reference)
                             .orElseThrow());
             assertEquals("first\r\n" + key + "\r\nlast\r\n", Files.readString(file));

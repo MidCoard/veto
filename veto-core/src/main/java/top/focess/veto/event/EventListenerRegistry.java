@@ -3,12 +3,14 @@ package top.focess.veto.event;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Predicate;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -23,11 +25,13 @@ import top.focess.veto.api.event.BeforeToolEvent;
 import top.focess.veto.api.event.Cancellable;
 import top.focess.veto.api.event.Event;
 import top.focess.veto.api.event.EventHandler;
+import top.focess.veto.api.event.EventPriority;
 import top.focess.veto.api.event.Listener;
-import top.focess.veto.api.event.OwnerClosedEvent;
-import top.focess.veto.api.event.OwnerOpenEvent;
 import top.focess.veto.api.event.ServiceDirectoryChangedEvent;
-import top.focess.veto.api.event.SessionClosedEvent;
+import top.focess.veto.api.event.SessionDeletedEvent;
+import top.focess.veto.api.event.UserLoggedInEvent;
+import top.focess.veto.api.event.UserLogoutEvent;
+import top.focess.veto.api.event.UserRegisteredEvent;
 import top.focess.veto.api.event.WorkflowEvent;
 import top.focess.veto.api.plugin.contract.PluginFailure;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
@@ -41,7 +45,7 @@ import top.focess.veto.util.Nullness;
  * <p>Every {@code @EventHandler} method on a contributed {@link Listener} is reflected exactly
  * once, at registration, into an {@link EventInvoker}. Dispatch is then a plain interface call
  * backed by a method handle, with no per-invocation reflection, run synchronously on the calling
- * (workflow) thread. Handlers fire in {@link top.focess.veto.api.event.EventPriority} order,
+ * (workflow) thread. Handlers fire in {@link EventPriority} order within each event type,
  * registration order as the stable tiebreak. The host expands inherited handlers into each known
  * concrete event's list at table construction, most specific type first. A handler is skipped once
  * the event is {@link Event#isPrevent() prevented} or, for a {@link Cancellable} event, cancelled,
@@ -58,9 +62,10 @@ public final class EventListenerRegistry {
                     BeforeTextCommitEvent.class,
                     AfterModelEvent.class,
                     AfterToolEvent.class,
-                    OwnerOpenEvent.class,
-                    OwnerClosedEvent.class,
-                    SessionClosedEvent.class,
+                    UserRegisteredEvent.class,
+                    UserLoggedInEvent.class,
+                    UserLogoutEvent.class,
+                    SessionDeletedEvent.class,
                     AgentTerminatedEvent.class,
                     ServiceDirectoryChangedEvent.class);
     private static final @NonNull Logger log =
@@ -68,12 +73,35 @@ public final class EventListenerRegistry {
 
     private final @NonNull Map<Class<?>, List<RegisteredHandler>> byEventType;
     private final @NonNull PluginExecutor executor;
+    private final @NonNull Predicate<@NonNull String> active;
+
+    /** Host-owned preparation cache; ClassValue does not retain unloaded listener classes. */
+    public static final class Preparation {
+        private final @NonNull ClassValue<@NonNull List<Compiled>> handlers =
+                new ClassValue<>() {
+                    @Override
+                    protected @NonNull List<Compiled> computeValue(@NonNull Class<?> type) {
+                        return List.copyOf(compile(type));
+                    }
+                };
+
+        /** Checks and compiles a listener before its registration is stored or published. */
+        public void prepare(@NonNull Listener listener) {
+            log.debug("Prepared {} listener handlers", compiled(listener).size());
+        }
+
+        private @NonNull List<Compiled> compiled(@NonNull Listener listener) {
+            return handlers.get(listener.getClass());
+        }
+    }
 
     private EventListenerRegistry(
             @NonNull Map<Class<?>, List<RegisteredHandler>> byEventType,
-            @NonNull PluginExecutor executor) {
+            @NonNull PluginExecutor executor,
+            @NonNull Predicate<@NonNull String> active) {
         this.byEventType = byEventType;
         this.executor = executor;
+        this.active = active;
     }
 
     /**
@@ -85,15 +113,22 @@ public final class EventListenerRegistry {
      */
     public static @NonNull EventListenerRegistry build(
             @NonNull ContributionCatalog catalog, @NonNull PluginExecutor executor) {
+        return build(catalog, executor, new Preparation(), namespace -> true);
+    }
+
+    /** Builds prepared routes using the owning host's reusable registration-time compilation. */
+    public static @NonNull EventListenerRegistry build(
+            @NonNull ContributionCatalog catalog,
+            @NonNull PluginExecutor executor,
+            @NonNull Preparation preparation,
+            @NonNull Predicate<@NonNull String> active) {
         Map<Class<?>, List<RegisteredHandler>> grouped = new HashMap<>();
-        Map<Class<?>, List<Compiled>> cache = new HashMap<>();
         int order = 0;
         for (ContributionEntry<Listener> entry :
                 catalog.entries(StandardContributionPoints.LISTENERS)) {
             Listener listener = entry.implementation();
             String namespace = entry.source().namespace();
-            List<Compiled> compiled =
-                    cache.computeIfAbsent(listener.getClass(), EventListenerRegistry::compile);
+            List<Compiled> compiled = preparation.compiled(listener);
             for (Compiled handler : compiled) {
                 RegisteredHandler registered =
                         new RegisteredHandler(
@@ -123,7 +158,7 @@ public final class EventListenerRegistry {
             }
             frozen.put(concrete, List.copyOf(dispatch));
         }
-        return new EventListenerRegistry(Map.copyOf(frozen), executor);
+        return new EventListenerRegistry(Map.copyOf(frozen), executor, active);
     }
 
     /**
@@ -139,7 +174,7 @@ public final class EventListenerRegistry {
     public void submit(@NonNull Event event, @NonNull Set<String> selected) {
         dispatch(
                 event,
-                selected,
+                selected::contains,
                 (namespace, failure) -> {
                     throw new IllegalStateException("Workflow listener unavailable");
                 });
@@ -156,16 +191,25 @@ public final class EventListenerRegistry {
      * @param active plugin identities currently active
      */
     public void broadcast(@NonNull Event event, @NonNull Set<String> active) {
+        broadcast(event, active::contains);
+    }
+
+    /** Broadcasts only to prepared route recipients whose current activation is active. */
+    public void broadcast(@NonNull Event event) {
+        broadcast(event, active);
+    }
+
+    private void broadcast(@NonNull Event event, @NonNull Predicate<@NonNull String> recipients) {
         dispatch(
                 event,
-                active,
+                recipients,
                 (namespace, failure) ->
                         log.warn("Lifecycle listener {} failed", namespace, failure));
     }
 
     private void dispatch(
             @NonNull Event event,
-            @NonNull Set<String> selected,
+            @NonNull Predicate<@NonNull String> selected,
             @NonNull FailureHandler onFailure) {
         List<RegisteredHandler> handlers = byEventType.get(event.getClass());
         if (handlers == null) throw new IllegalArgumentException("Unregistered event type");
@@ -174,7 +218,7 @@ public final class EventListenerRegistry {
             if (event instanceof Cancellable cancellable
                     && cancellable.isCancelled()
                     && handler.notCallIfCancelled()) continue;
-            if (!selected.contains(handler.namespace())) continue;
+            if (!selected.test(handler.namespace())) continue;
             if (event instanceof WorkflowEvent workflow) {
                 try {
                     workflow.cancellation().checkCancelled();
@@ -212,11 +256,15 @@ public final class EventListenerRegistry {
             if (method.isSynthetic() || method.isBridge()) continue;
             EventHandler annotation = method.getAnnotation(EventHandler.class);
             if (annotation == null) continue;
+            if (Modifier.isStatic(method.getModifiers()))
+                throw new IllegalArgumentException("@EventHandler must be an instance method");
             if (method.getParameterCount() != 1)
                 throw new IllegalArgumentException("@EventHandler takes exactly one parameter");
             Class<?> eventType = method.getParameterTypes()[0];
             if (!Event.class.isAssignableFrom(eventType))
                 throw new IllegalArgumentException("@EventHandler parameter must be an Event");
+            if (HOST_EVENTS.stream().noneMatch(eventType::isAssignableFrom))
+                throw new IllegalArgumentException("@EventHandler has no host event route");
             if (method.getReturnType() != void.class)
                 throw new IllegalArgumentException("@EventHandler must return void");
             result.add(

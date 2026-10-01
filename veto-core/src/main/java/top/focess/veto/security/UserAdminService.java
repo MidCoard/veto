@@ -123,7 +123,7 @@ public class UserAdminService {
             Runnable notifyDeleted =
                     () -> {
                         var events = pluginEvents;
-                        if (events != null) events.sessionClosed(username, s.getId());
+                        if (events != null) events.sessionDeleted(username, s.getId());
                     };
             if (TransactionSynchronizationManager.isSynchronizationActive())
                 TransactionSynchronizationManager.registerSynchronization(

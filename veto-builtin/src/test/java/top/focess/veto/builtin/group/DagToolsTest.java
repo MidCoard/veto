@@ -35,7 +35,7 @@ class DagToolsTest {
         fixture.caller =
                 new PluginHost.Invocation(
                         "owner",
-                        fixture.scope.sessionId(),
+                        fixture.grant.scope().session(),
                         agentId.equals("leader-1") ? "leader" : agentId,
                         null,
                         "test-call");

@@ -3,22 +3,36 @@ package top.focess.veto.api.plugin;
 import java.util.Objects;
 import org.jspecify.annotations.NonNull;
 
-/** Host-attributed identity boundary for a plugin operation. */
+/**
+ * Host-attributed identity boundary for a plugin operation; the value itself grants no authority.
+ */
 public abstract sealed class Scope
         permits Scope.GlobalScope, Scope.UserScope, Scope.SessionScope, Scope.AgentScope {
     private Scope() {}
 
-    /** Owner identity, absent only for a global operation. */
+    /**
+     * Returns the owner identity for this operation.
+     *
+     * @return owner identity, or {@code null} for a global operation
+     */
     public String owner() {
         return null;
     }
 
-    /** Session identity, present for session and agent operations. */
+    /**
+     * Returns the session identity for this operation.
+     *
+     * @return session identity, or {@code null} for global and user operations
+     */
     public String session() {
         return null;
     }
 
-    /** Agent identity, present only for agent operations. */
+    /**
+     * Returns the agent identity for this operation.
+     *
+     * @return agent identity, or {@code null} unless this is an agent operation
+     */
     public String agent() {
         return null;
     }
@@ -39,6 +53,7 @@ public abstract sealed class Scope
 
     /** Global operation with no owner, session, or agent identity. */
     public static final class GlobalScope extends Scope {
+        /** Creates an identity with no owner, session, or agent. */
         public GlobalScope() {}
     }
 
@@ -46,6 +61,12 @@ public abstract sealed class Scope
     public static final class UserScope extends Scope {
         private final @NonNull String owner;
 
+        /**
+         * Creates a user identity value without granting authorization.
+         *
+         * @param owner owner identity attributed by the host
+         * @throws NullPointerException when owner is null
+         */
         public UserScope(@NonNull String owner) {
             this.owner = Objects.requireNonNull(owner, "owner");
         }
@@ -61,6 +82,13 @@ public abstract sealed class Scope
         private final @NonNull String owner;
         private final @NonNull String session;
 
+        /**
+         * Creates a session identity value without granting authorization.
+         *
+         * @param owner owner identity attributed by the host
+         * @param session session identity attributed by the host
+         * @throws NullPointerException when owner or session is null
+         */
         public SessionScope(@NonNull String owner, @NonNull String session) {
             this.owner = Objects.requireNonNull(owner, "owner");
             this.session = Objects.requireNonNull(session, "session");
@@ -75,6 +103,15 @@ public abstract sealed class Scope
         public @NonNull String session() {
             return session;
         }
+
+        /**
+         * Returns the containing user identity.
+         *
+         * @return a user identity with this scope's owner
+         */
+        public @NonNull UserScope userScope() {
+            return new UserScope(owner);
+        }
     }
 
     /** Operation belonging to one owner, session, and agent. */
@@ -83,8 +120,15 @@ public abstract sealed class Scope
         private final @NonNull String session;
         private final @NonNull String agent;
 
-        public AgentScope(
-                @NonNull String owner, @NonNull String session, @NonNull String agent) {
+        /**
+         * Creates an agent identity value without granting authorization.
+         *
+         * @param owner owner identity attributed by the host
+         * @param session session identity attributed by the host
+         * @param agent agent identity attributed by the host
+         * @throws NullPointerException when owner, session, or agent is null
+         */
+        public AgentScope(@NonNull String owner, @NonNull String session, @NonNull String agent) {
             this.owner = Objects.requireNonNull(owner, "owner");
             this.session = Objects.requireNonNull(session, "session");
             this.agent = Objects.requireNonNull(agent, "agent");
@@ -103,6 +147,24 @@ public abstract sealed class Scope
         @Override
         public @NonNull String agent() {
             return agent;
+        }
+
+        /**
+         * Returns the containing session identity.
+         *
+         * @return a session identity with this scope's owner and session
+         */
+        public @NonNull SessionScope sessionScope() {
+            return new SessionScope(owner, session);
+        }
+
+        /**
+         * Returns the containing user identity.
+         *
+         * @return a user identity with this scope's owner
+         */
+        public @NonNull UserScope userScope() {
+            return new UserScope(owner);
         }
     }
 }

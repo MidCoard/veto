@@ -1,12 +1,9 @@
 package top.focess.veto.controller.dto;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
-
-import org.jspecify.annotations.*;
-
-import top.focess.veto.api.plugin.PluginState;
-
 import java.util.*;
+import org.jspecify.annotations.*;
+import top.focess.veto.api.plugin.PluginState;
 
 /** Payload describing an installed plugin's identity, state, hooks, and tools. */
 @JsonInclude(JsonInclude.Include.NON_NULL)

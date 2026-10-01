@@ -14,14 +14,13 @@ import top.focess.veto.api.agent.tool.CapabilityTool;
 import top.focess.veto.api.credentials.VaultAccess;
 import top.focess.veto.api.event.BeforeTextCommitEvent;
 import top.focess.veto.api.event.Listener;
-import top.focess.veto.api.event.OwnerClosedEvent;
-import top.focess.veto.api.event.OwnerOpenEvent;
-import top.focess.veto.api.event.SessionClosedEvent;
+import top.focess.veto.api.event.SessionDeletedEvent;
+import top.focess.veto.api.event.UserLoggedInEvent;
+import top.focess.veto.api.event.UserLogoutEvent;
 import top.focess.veto.api.plugin.PluginContext;
 import top.focess.veto.api.plugin.PluginIdentity;
 import top.focess.veto.api.plugin.PluginState;
 import top.focess.veto.api.plugin.Scope;
-import top.focess.veto.api.plugin.contract.FrontendContribution;
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.contract.ObservationMiddleware;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
@@ -29,8 +28,8 @@ import top.focess.veto.api.plugin.contribution.Contribution;
 
 /** The plugin is self-contained: typed points and host-service import. */
 class SecretProtectionPluginTest {
-    private static final FrontendContribution.@NonNull ActionContext SCOPE =
-            new FrontendContribution.ActionContext("owner", "session", "agent");
+    private static final Scope.@NonNull AgentScope SCOPE =
+            new Scope.AgentScope("owner", "session", "agent");
 
     private static @NonNull List<Contribution<?>> initialize(
             @NonNull Map<@NonNull Class<?>, @NonNull Object> services) {
@@ -78,11 +77,12 @@ class SecretProtectionPluginTest {
         var lifecycle = contribution(entries, SecretProtectionPlugin.SecretLifecycle.class);
         String captured = commit(lifecycle, SCOPE, "password=alpha");
         assertTrue(captured.contains("[SECRET_REF:s_"), captured);
-        lifecycle.onOwnerClosed(new OwnerClosedEvent("owner"));
+        lifecycle.onUserLogout(new UserLogoutEvent(new Scope.UserScope("owner")));
         assertThrows(IllegalStateException.class, () -> commit(lifecycle, SCOPE, "password=alpha"));
-        lifecycle.onOwnerOpen(new OwnerOpenEvent("owner"));
+        lifecycle.onUserAuthenticated(new UserLoggedInEvent(new Scope.UserScope("owner")));
         assertTrue(commit(lifecycle, SCOPE, "password=beta").contains("[SECRET_REF:s_"));
-        lifecycle.onSessionClosed(new SessionClosedEvent("owner", "session"));
+        lifecycle.onSessionDeleted(
+                new SessionDeletedEvent(new Scope.SessionScope("owner", "session")));
         assertThrows(IllegalStateException.class, () -> commit(lifecycle, SCOPE, "password=beta"));
     }
 
@@ -159,13 +159,13 @@ class SecretProtectionPluginTest {
 
     private static @NonNull String commit(
             SecretProtectionPlugin.@NonNull SecretLifecycle lifecycle,
-            FrontendContribution.@NonNull ActionContext scope,
+            Scope.@NonNull AgentScope scope,
             @NonNull String text) {
         var event =
                 new BeforeTextCommitEvent(
-                        scope.ownerId(),
-                        scope.sessionId(),
-                        scope.agentId(),
+                        scope.owner(),
+                        scope.session(),
+                        scope.agent(),
                         () -> false,
                         BeforeTextCommitEvent.Phase.INPUT,
                         "user",

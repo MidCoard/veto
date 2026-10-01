@@ -11,7 +11,6 @@ import top.focess.veto.api.credentials.VaultAccess;
 import top.focess.veto.api.event.BeforeTextCommitEvent;
 import top.focess.veto.api.plugin.PluginState;
 import top.focess.veto.api.plugin.Scope;
-import top.focess.veto.api.plugin.contract.FrontendContribution;
 import top.focess.veto.api.plugin.contract.PluginFailure;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
 import top.focess.veto.plugin.runtime.*;
@@ -54,7 +53,7 @@ class PluginManagerDiscoveryTest {
     @Test
     void importToolFailsWithoutHostGrantedAccess() throws Exception {
         try (var plugins = PluginTestSupport.manager()) {
-            var scope = new FrontendContribution.ActionContext("owner", "session", "agent");
+            var scope = new Scope.AgentScope("owner", "session", "agent");
             String reference = capture(plugins, scope);
             var failure =
                     assertThrows(
@@ -91,7 +90,7 @@ class PluginManagerDiscoveryTest {
         try (var plugins =
                 PluginTestSupport.manager(
                         new PluginHostServices(Map.of(VaultAccess.class, access)))) {
-            var scope = new FrontendContribution.ActionContext("owner", "session", "agent");
+            var scope = new Scope.AgentScope("owner", "session", "agent");
             String reference = capture(plugins, scope);
             String receipt = invokeImport(plugins, reference, "github", "Repository");
             assertEquals(
@@ -104,20 +103,19 @@ class PluginManagerDiscoveryTest {
     void lifecycleEventsReachThePluginThroughTheDispatcher() throws Exception {
         try (var plugins = PluginTestSupport.manager()) {
             var events = new PluginLifecycleEvents(plugins);
-            var scope = new FrontendContribution.ActionContext("owner", "session", "agent");
+            var scope = new Scope.AgentScope("owner", "session", "agent");
             String reference = capture(plugins, scope);
             events.agentTerminated("owner", "session", "agent");
             assertTrue(PluginTestSupport.reveal(plugins, scope, reference).isEmpty());
             reference = capture(plugins, scope);
-            events.sessionClosed("owner", "session");
+            events.sessionDeleted("owner", "session");
             assertTrue(PluginTestSupport.reveal(plugins, scope, reference).isEmpty());
             assertThrows(IllegalStateException.class, () -> capture(plugins, scope));
-            var otherSession =
-                    new FrontendContribution.ActionContext("owner", "other-session", "agent");
+            var otherSession = new Scope.AgentScope("owner", "other-session", "agent");
             capture(plugins, otherSession);
-            events.ownerClosed("owner");
+            events.userLogout("owner");
             assertThrows(IllegalStateException.class, () -> capture(plugins, otherSession));
-            events.ownerOpened("owner");
+            events.userLoggedIn("owner");
             capture(plugins, otherSession);
         }
     }
@@ -132,8 +130,7 @@ class PluginManagerDiscoveryTest {
     }
 
     private static @NonNull String capture(
-            @NonNull PluginManager plugins, FrontendContribution.@NonNull ActionContext scope)
-            throws PluginFailure {
+            @NonNull PluginManager plugins, Scope.@NonNull AgentScope scope) throws PluginFailure {
         String captured =
                 PluginTestSupport.protect(
                         plugins,

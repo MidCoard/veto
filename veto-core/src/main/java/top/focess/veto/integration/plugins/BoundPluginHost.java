@@ -1,7 +1,5 @@
 package top.focess.veto.integration.plugins;
 
-import top.focess.veto.api.plugin.PluginScope;
-
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
@@ -9,7 +7,9 @@ import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.tool.ToolCallContextHolder;
 import top.focess.veto.api.agent.workflow.PluginAwait;
 import top.focess.veto.api.plugin.PluginHost;
+import top.focess.veto.api.plugin.PluginScope;
 import top.focess.veto.api.plugin.PluginState;
+import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.storage.PluginStorage;
 import top.focess.veto.integration.plugins.storage.PluginStorageFactory;
@@ -22,7 +22,7 @@ final class BoundPluginHost implements PluginHost {
     private final @NonNull PluginLifecycle plugin;
     private final @NonNull PluginStorage storage;
     private final @NonNull PluginStorageFactory factory;
-    private final @NonNull Map<String, PluginStorage.SessionScope> scopes =
+    private final @NonNull Map<String, PluginStorage.Grant<Scope.@NonNull SessionScope>> scopes =
             new ConcurrentHashMap<>();
 
     BoundPluginHost(
@@ -47,23 +47,23 @@ final class BoundPluginHost implements PluginHost {
     }
 
     private @NonNull String authorize(@NonNull String session) {
-        var scope = scopes.get(session);
-        if (scope == null) {
+        var grant = scopes.get(session);
+        if (grant == null) {
             String cursor = null;
             do {
                 var page = storage.scopes(PluginScope.SESSION, cursor, 200);
                 for (var entry : page.entries())
-                    if (entry instanceof PluginStorage.SessionScope value
-                            && value.sessionId().equals(session)) {
-                        scope = value;
-                        scopes.put(session, value);
+                    if (entry.scope() instanceof Scope.SessionScope value
+                            && value.session().equals(session)) {
+                        grant = new PluginStorage.Grant<>(entry.token(), value);
+                        scopes.put(session, grant);
                         break;
                     }
                 cursor = page.cursor();
-            } while (scope == null && cursor != null);
+            } while (grant == null && cursor != null);
         }
-        if (scope == null) throw new SecurityException("Session does not select this plugin");
-        return factory.authorizeSession(storage, scope);
+        if (grant == null) throw new SecurityException("Session does not select this plugin");
+        return factory.authorizeSession(storage, grant);
     }
 
     public void whenReady(@NonNull Runnable callback) {

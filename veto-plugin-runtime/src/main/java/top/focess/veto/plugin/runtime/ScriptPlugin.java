@@ -12,19 +12,15 @@ import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Set;
-import org.checkerframework.checker.initialization.qual.UnderInitialization;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.agent.tool.RemoteTool;
-import top.focess.veto.api.agent.tool.Tool;
 import top.focess.veto.api.plugin.PluginContext;
-import top.focess.veto.api.plugin.PluginContributions;
 import top.focess.veto.api.plugin.PluginIdentity;
 import top.focess.veto.api.plugin.VetoPlugin;
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.contract.PluginFailure;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
 import top.focess.veto.api.plugin.contract.ToolContribution;
-import top.focess.veto.api.plugin.contribution.Contribution;
 
 /** Operator-trusted local code, not a sandbox. Only tools are supported in protocol v1. */
 public final class ScriptPlugin extends VetoPlugin {
@@ -50,7 +46,6 @@ public final class ScriptPlugin extends VetoPlugin {
     private final @NonNull ScriptHost host;
     private final boolean ownsHost;
     private final @NonNull Path executable;
-    private final @NonNull PluginContributions contributions;
 
     private @NonNull Runnable failureReporter = () -> {};
 
@@ -74,63 +69,37 @@ public final class ScriptPlugin extends VetoPlugin {
         this.descriptors = List.copyOf(descriptors);
         this.snapshot = snapshot;
         this.executable = executable;
-        this.contributions = buildContributions();
     }
 
     void bind(@NonNull PluginContext context, JsonValue.@NonNull ObjectValue configuration) {
         failureReporter = context::reportFailure;
         PluginSchema.require(configuration.values().isEmpty());
-        for (var contribution : contributions.entries()) {
-            if (!(contribution.implementation() instanceof Tool tool))
-                throw new IllegalStateException("Script contribution is not a tool");
-            context.register(StandardContributionPoints.TOOLS, contribution.localId(), tool);
+        for (var tool : tools()) {
+            context.register(
+                    StandardContributionPoints.TOOLS,
+                    tool.id(),
+                    new ToolContribution(
+                            tool.description(),
+                            PluginJson.object(tool.inputSchema()),
+                            PluginJson.object(tool.outputSchema()),
+                            RemoteTool.Effect.EXTERNAL_UNKNOWN,
+                            Set.of(),
+                            (arguments, cancellation) -> {
+                                cancellation.checkCancelled();
+                                try {
+                                    var result = invoke(tool, PluginJson.toNode(arguments));
+                                    cancellation.checkCancelled();
+                                    return PluginJson.fromNode(result);
+                                } catch (IOException failure) {
+                                    throw new PluginFailure(PluginFailure.Code.INTERNAL_FAILURE);
+                                } catch (IllegalArgumentException failure) {
+                                    // Invalid tool arguments must
+                                    // surface as a contract failure,
+                                    // not a raw runtime exception.
+                                    throw new PluginFailure(PluginFailure.Code.INVALID_ARGUMENTS);
+                                }
+                            }));
         }
-    }
-
-    @SuppressWarnings(
-            "method.invocation") // Stored callbacks run only after construction; their owner fields
-    // are assigned above.
-    private @NonNull PluginContributions buildContributions(
-            @UnderInitialization ScriptPlugin this) {
-        return new PluginContributions(
-                tools().stream()
-                        .<Contribution<?>>map(
-                                tool ->
-                                        Contribution.of(
-                                                StandardContributionPoints.TOOLS,
-                                                tool.id(),
-                                                new ToolContribution(
-                                                        tool.description(),
-                                                        PluginJson.object(tool.inputSchema()),
-                                                        PluginJson.object(tool.outputSchema()),
-                                                        RemoteTool.Effect.EXTERNAL_UNKNOWN,
-                                                        Set.of(),
-                                                        (arguments, cancellation) -> {
-                                                            cancellation.checkCancelled();
-                                                            try {
-                                                                var result =
-                                                                        invoke(
-                                                                                tool,
-                                                                                PluginJson.toNode(
-                                                                                        arguments));
-                                                                cancellation.checkCancelled();
-                                                                return PluginJson.fromNode(result);
-                                                            } catch (IOException failure) {
-                                                                throw new PluginFailure(
-                                                                        PluginFailure.Code
-                                                                                .INTERNAL_FAILURE);
-                                                            } catch (
-                                                                    IllegalArgumentException
-                                                                            failure) {
-                                                                // Invalid tool arguments must
-                                                                // surface as a contract failure,
-                                                                // not a raw runtime exception.
-                                                                throw new PluginFailure(
-                                                                        PluginFailure.Code
-                                                                                .INVALID_ARGUMENTS);
-                                                            }
-                                                        })))
-                        .toList());
     }
 
     @Override

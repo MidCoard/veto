@@ -1,7 +1,5 @@
 package top.focess.veto.integration.plugins.storage;
 
-import top.focess.veto.api.plugin.PluginScope;
-
 import jakarta.persistence.EntityManager;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
@@ -10,8 +8,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
+import top.focess.veto.api.plugin.PluginScope;
 import top.focess.veto.api.plugin.PluginState;
-import top.focess.veto.api.plugin.storage.PluginStorage;
 import top.focess.veto.controller.RequestAuthorization;
 import top.focess.veto.integration.plugins.PluginManager;
 import top.focess.veto.plugin.runtime.PluginLifecycle;

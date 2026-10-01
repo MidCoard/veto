@@ -1,57 +1,50 @@
 package top.focess.veto.api.plugin.service;
 
-import top.focess.veto.api.plugin.PluginScope;
-import top.focess.veto.api.plugin.Scope;
-
 import java.util.Objects;
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.api.plugin.PluginScope;
+import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.api.plugin.storage.PluginStorage;
 
 /**
  * Host-derived caller facts supplied to one admitted service invocation. Scope identities are
  * validated by the host; request JSON cannot choose or replace them. User and session IDs are
- * absent for a global call, and session ID is absent for a user call.
+ * absent for a global call, and session ID is absent for a user call. Scoped service owner
+ * identities are immutable storage user IDs, rather than login names. AGENT calls require a
+ * matching live host tool invocation in addition to a revalidated session grant; the identity value
+ * itself conveys no authority.
  *
  * @param callerId host-attributed calling plugin ID, or empty for a host adapter
  * @param scope declared service scope
  * @param identity host-attributed global, user, session, or agent identity
- * @param storageScope host-issued scope bound to the provider plugin's storage, if scoped
+ * @param storageGrant host-issued grant bound to the provider plugin's storage, if scoped
  */
 public record ServiceCallContext(
         @NonNull String callerId,
         @NonNull PluginScope scope,
         @NonNull Scope identity,
-        PluginStorage.Scope storageScope) {
+        PluginStorage.Grant<?> storageGrant) {
     /** Checks that only facts valid for the declared scope are present. */
     public ServiceCallContext {
         Objects.requireNonNull(scope, "scope");
         Objects.requireNonNull(identity, "identity");
-        if (scope == PluginScope.APPLICATION
-                        && (!(identity instanceof Scope.GlobalScope) || storageScope != null)
-                || scope == PluginScope.USER
-                        && (!(identity instanceof Scope.UserScope)
-                                || !(storageScope instanceof PluginStorage.UserScope))
-                || scope == PluginScope.SESSION
-                        && (!(identity instanceof Scope.SessionScope)
-                                || !(storageScope instanceof PluginStorage.SessionScope))
-                || scope == PluginScope.AGENT
-                        && (!(identity instanceof Scope.AgentScope)
-                                || !(storageScope instanceof PluginStorage.SessionScope)))
-            throw new IllegalArgumentException("Invalid service call scope");
-    }
-
-    /** Authenticated owner, absent for global calls. */
-    public String userId() {
-        return identity.owner();
-    }
-
-    /** Authenticated session, absent for global and user calls. */
-    public String sessionId() {
-        return identity.session();
-    }
-
-    /** Authenticated agent, present only for agent calls. */
-    public String agentId() {
-        return identity.agent();
+        boolean valid =
+                switch (scope) {
+                    case APPLICATION ->
+                            identity instanceof Scope.GlobalScope && storageGrant == null;
+                    case USER ->
+                            identity instanceof Scope.UserScope
+                                    && storageGrant != null
+                                    && identity.equals(storageGrant.scope());
+                    case SESSION ->
+                            identity instanceof Scope.SessionScope
+                                    && storageGrant != null
+                                    && identity.equals(storageGrant.scope());
+                    case AGENT ->
+                            identity instanceof Scope.AgentScope agent
+                                    && storageGrant != null
+                                    && agent.sessionScope().equals(storageGrant.scope());
+                };
+        if (!valid) throw new IllegalArgumentException("Invalid service call scope");
     }
 }

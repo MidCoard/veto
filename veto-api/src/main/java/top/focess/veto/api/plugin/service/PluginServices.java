@@ -1,10 +1,9 @@
 package top.focess.veto.api.plugin.service;
 
-import top.focess.veto.api.plugin.PluginScope;
-
 import java.util.List;
 import java.util.Optional;
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.api.plugin.PluginScope;
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.storage.PluginStorage;
 
@@ -52,15 +51,18 @@ public interface PluginServices {
         @NonNull JsonValue invoke(@NonNull JsonValue request) throws ServiceException;
 
         /**
-         * Invokes a user- or session-scoped service with a host-issued scope. The host revalidates
-         * the token against the calling plugin and current owner/session on every call.
+         * Invokes a scoped service with a host-issued storage grant. The host revalidates the token
+         * against the calling plugin and current owner/session on every call. An AGENT service
+         * requires a session grant and a matching currently admitted tool invocation; the host
+         * derives the agent from that invocation. A retained session grant alone cannot authorize
+         * an agent call, and request JSON cannot supply its identity.
          *
-         * @param scope caller-owned host grant matching the service's declared scope
+         * @param grant caller-owned host grant matching the service's declared scope
          * @param request bounded JSON request
          * @return bounded JSON response
          * @throws ServiceException when admission, scope validation, or execution fails
          */
-        @NonNull JsonValue invoke(PluginStorage.@NonNull Scope scope, @NonNull JsonValue request)
+        @NonNull JsonValue invoke(PluginStorage.@NonNull Grant<?> grant, @NonNull JsonValue request)
                 throws ServiceException;
     }
 

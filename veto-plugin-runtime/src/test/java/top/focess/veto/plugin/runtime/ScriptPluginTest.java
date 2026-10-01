@@ -79,7 +79,7 @@ class ScriptPluginTest {
         try {
             var script = new ScriptPluginLoader(node, timeout).load(root);
             managed = new PluginLifecycle(script, executor);
-            managed.initialize(context(script.identity()), new JsonValue.ObjectValue(Map.of()));
+            managed.construct(context(script.identity()), new JsonValue.ObjectValue(Map.of()));
             managed.start();
             return new LoadedScript(script, managed, executor);
         } catch (Exception failure) {
@@ -171,8 +171,7 @@ class ScriptPluginTest {
         var second = new PluginLifecycle(secondScript, executor);
         try {
             for (var managed : List.of(first, second)) {
-                managed.initialize(
-                        context(managed.identity()), new JsonValue.ObjectValue(Map.of()));
+                managed.construct(context(managed.identity()), new JsonValue.ObjectValue(Map.of()));
                 managed.start();
             }
             first.close();

@@ -181,7 +181,7 @@ public final class InstalledPluginLoader {
         }
         var loader = new PluginClassLoader(id, urls);
         try {
-            Class<?> implementation = Class.forName(entryPoint, true, loader);
+            Class<?> implementation = Class.forName(entryPoint, false, loader);
             if (!VetoPlugin.class.isAssignableFrom(implementation))
                 throw new IOException("Java entry point must implement VetoPlugin");
             Constructor<? extends VetoPlugin> constructor =

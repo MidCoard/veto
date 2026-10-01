@@ -71,7 +71,7 @@ class ToolContractIntegrityTest {
     }
 
     @Test
-    void everyCallExamplePassesItsRuntimeArgumentValidator() {
+    void everyCallExampleMatchesItsRuntimeArgumentValidationOutcome() {
         for (CapabilityTool<?> tool : tools) {
             validateExamples(tool.getName(), tool.getClass(), tool.getArgsClass());
         }
@@ -114,7 +114,35 @@ class ToolContractIntegrityTest {
 
     private void validateExamples(
             @NonNull String toolName, @NonNull Class<?> toolClass, @NonNull Class<?> argsClass) {
-        for (String example : ToolDocs.examplesOf(toolClass)) {
+        var examples = ToolDocs.examplesOf(toolClass);
+        var results = ToolDocs.returnExamplesOf(toolClass);
+        assertEquals(
+                examples.size(), results.size(), "argument and result examples must be paired");
+        for (int index = 0; index < examples.size(); index++) {
+            var example = examples.get(index);
+            var expectedResult = results.get(index);
+            if (example == null || expectedResult == null)
+                throw new AssertionError("Argument and result examples must exist");
+            if (expectedResult.startsWith("Invalid arguments for " + toolName + ":")) {
+                var failure =
+                        assertThrows(
+                                ToolExecutionException.class,
+                                () ->
+                                        NativeToolArgumentValidator.validate(
+                                                toolName, mapper.readTree(example), argsClass),
+                                () ->
+                                        toolName
+                                                + " must reject its documented invalid example: "
+                                                + example);
+                assertEquals(ToolErrorCode.VALIDATION.INVALID_ARGUMENTS, failure.errorCode());
+                assertTrue(
+                        String.valueOf(failure.getMessage()).startsWith(expectedResult),
+                        () ->
+                                toolName
+                                        + " validation diagnostic must match its paired result: "
+                                        + expectedResult);
+                continue;
+            }
             assertDoesNotThrow(
                     () -> {
                         JsonNode args = mapper.readTree(example);

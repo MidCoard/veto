@@ -1,7 +1,5 @@
 package top.focess.veto.integration.plugins.storage;
 
-import top.focess.veto.api.plugin.PluginScope;
-
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -10,6 +8,8 @@ import java.util.Optional;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.tool.ToolCallContextHolder;
+import top.focess.veto.api.plugin.PluginScope;
+import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.api.plugin.storage.PluginStorage;
 import top.focess.veto.plugin.runtime.PluginLifecycle;
 
@@ -20,58 +20,62 @@ public final class ConfigurationStorageFixture implements PluginStorageFactory {
     }
 
     public @NonNull String authorizeSession(
-            @NonNull PluginStorage storage, PluginStorage.@NonNull SessionScope scope) {
+            @NonNull PluginStorage storage,
+            PluginStorage.@NonNull Grant<Scope.@NonNull SessionScope> scope) {
         storage.session(scope);
-        return scope.userId();
+        return scope.scope().owner();
     }
 
     public @NonNull String authorizeUser(
-            @NonNull PluginStorage storage, PluginStorage.@NonNull UserScope scope) {
+            @NonNull PluginStorage storage,
+            PluginStorage.@NonNull Grant<Scope.@NonNull UserScope> scope) {
         storage.user(scope);
-        return scope.userId();
+        return scope.scope().owner();
     }
 
-    public PluginStorage.@NonNull UserScope transferUser(
+    public PluginStorage.@NonNull Grant<Scope.@NonNull UserScope> transferUser(
             @NonNull PluginStorage caller,
-            PluginStorage.@NonNull UserScope scope,
+            PluginStorage.@NonNull Grant<Scope.@NonNull UserScope> scope,
             @NonNull PluginStorage provider) {
         throw new UnsupportedOperationException("Fixture has no user scopes");
     }
 
-    public PluginStorage.@NonNull SessionScope transferSession(
+    public PluginStorage.@NonNull Grant<Scope.@NonNull SessionScope> transferSession(
             @NonNull PluginStorage caller,
-            PluginStorage.@NonNull SessionScope scope,
+            PluginStorage.@NonNull Grant<Scope.@NonNull SessionScope> scope,
             @NonNull PluginStorage provider) {
         throw new UnsupportedOperationException("Fixture has no cross-plugin scopes");
     }
 
     private static final class Storage implements PluginStorage {
-        private final @NonNull Map<@NonNull String, @NonNull SessionScope> scopes = new HashMap<>();
+        private final @NonNull Map<@NonNull String, @NonNull Grant<Scope.@NonNull SessionScope>>
+                scopes = new HashMap<>();
         private final @NonNull Map<@NonNull String, @NonNull Store> stores = new HashMap<>();
 
         public @NonNull Store application() {
             throw new UnsupportedOperationException("Fixture supports session configuration only");
         }
 
-        public @NonNull Store user(@NonNull UserScope scope) {
+        public @NonNull Store user(@NonNull Grant<Scope.@NonNull UserScope> scope) {
             throw new UnsupportedOperationException("Fixture supports session configuration only");
         }
 
-        public synchronized @NonNull Store session(@NonNull SessionScope scope) {
-            var issued = scopes.get(scope.sessionId());
+        public synchronized @NonNull Store session(
+                @NonNull Grant<Scope.@NonNull SessionScope> scope) {
+            var issued = scopes.get(scope.scope().session());
             if (issued == null || !scope.equals(issued))
                 throw new SecurityException("Unknown fixture scope");
-            return stores.computeIfAbsent(scope.sessionId(), ignored -> new MemoryStore());
+            return stores.computeIfAbsent(scope.scope().session(), ignored -> new MemoryStore());
         }
 
-        public synchronized @NonNull Page<@NonNull Scope> scopes(
+        public synchronized @NonNull Page<@NonNull Grant<?>> scopes(
                 @NonNull PluginScope kind, String cursor, int limit) {
             if (cursor != null) throw new IllegalArgumentException("Unknown cursor");
             return new Page<>(
                     kind == PluginScope.SESSION ? List.copyOf(scopes.values()) : List.of(), null);
         }
 
-        public synchronized @NonNull SessionScope currentSession() {
+        public synchronized @NonNull Grant<Scope.@NonNull SessionScope> currentSession() {
             var invocation = PluginInvocationContext.current();
             var call = ToolCallContextHolder.get();
             String owner =
@@ -86,13 +90,16 @@ public final class ConfigurationStorageFixture implements PluginStorageFactory {
             var scope =
                     scopes.computeIfAbsent(
                             session,
-                            id -> new SessionScope(UUID.randomUUID().toString(), owner, id));
-            if (!scope.userId().equals(owner))
+                            id ->
+                                    new Grant<>(
+                                            UUID.randomUUID().toString(),
+                                            new Scope.SessionScope(owner, id)));
+            if (!scope.scope().owner().equals(owner))
                 throw new SecurityException("Fixture owner mismatch");
             return scope;
         }
 
-        public @NonNull UserScope currentUser() {
+        public @NonNull Grant<Scope.@NonNull UserScope> currentUser() {
             throw new UnsupportedOperationException("Fixture supports session configuration only");
         }
     }

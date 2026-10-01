@@ -16,7 +16,6 @@ import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import top.focess.veto.api.credentials.VaultAccess;
 import top.focess.veto.api.llm.LocalModelCompletion;
 import top.focess.veto.api.plugin.PluginContext;
-import top.focess.veto.api.plugin.PluginContributions;
 import top.focess.veto.api.plugin.PluginIdentity;
 import top.focess.veto.api.plugin.VetoPlugin;
 import top.focess.veto.api.plugin.contract.JsonValue;
@@ -151,10 +150,6 @@ class HostResourceConfigurationTest {
         var plugin =
                 new PluginLifecycle(
                         new VetoPlugin() {
-                            @Override
-                            public @NonNull PluginContributions contributions() {
-                                return new PluginContributions(java.util.List.of());
-                            }
 
                             public @NonNull PluginIdentity identity() {
                                 return new PluginIdentity("example.local-model", "1.0.0");
@@ -165,7 +160,7 @@ class HostResourceConfigurationTest {
                             public void close() {}
                         },
                         lifecycle);
-        plugin.initialize(
+        plugin.construct(
                 new PluginContext(
                         plugin.identity(),
                         () -> {},

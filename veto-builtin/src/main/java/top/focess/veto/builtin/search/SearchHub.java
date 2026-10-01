@@ -7,12 +7,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.api.plugin.PluginScope;
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.service.PluginService;
 import top.focess.veto.api.plugin.service.PluginServices;
 import top.focess.veto.api.plugin.service.ServiceCallContext;
 import top.focess.veto.api.plugin.service.ServiceException;
-import top.focess.veto.api.plugin.PluginScope;
 
 /** Builtin-owned search service; external providers are revocable opaque JSON callbacks. */
 public final class SearchHub extends PluginService {

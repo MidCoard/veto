@@ -19,7 +19,7 @@ import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.agent.tool.ToolResult;
 import top.focess.veto.api.event.BeforeTextCommitEvent;
 import top.focess.veto.api.llm.ToolCall;
-import top.focess.veto.api.plugin.contract.FrontendContribution;
+import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.builtin.workspace.ViewFileTool;
 import top.focess.veto.integration.plugins.PluginLifecycleEvents;
 import top.focess.veto.integration.plugins.PluginManager;
@@ -49,7 +49,7 @@ class IngressDefenseMaskingTest {
 
     @Test
     void protectedFileReferencesSurviveMaskingOnlyWithinTheirLiveScope() throws Exception {
-        var scope = new FrontendContribution.ActionContext("owner", "session", "agent");
+        var scope = new Scope.AgentScope("owner", "session", "agent");
         String captured =
                 PluginTestSupport.protect(
                         plugins,
@@ -89,11 +89,10 @@ class IngressDefenseMaskingTest {
                         PluginTestSupport.protect(
                                 plugins,
                                 BeforeTextCommitEvent.Phase.FILE_OBSERVATION,
-                                new FrontendContribution.ActionContext(
-                                        "owner", "session", "other-agent"),
+                                new Scope.AgentScope("owner", "session", "other-agent"),
                                 "file",
                                 fileResult.content()));
-        new PluginLifecycleEvents(plugins).ownerClosed("owner");
+        new PluginLifecycleEvents(plugins).userLogout("owner");
         assertThrows(
                 IllegalStateException.class,
                 () ->

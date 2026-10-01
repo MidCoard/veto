@@ -6,6 +6,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.api.plugin.contract.FrontendContribution;
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.contract.JsonValues;
@@ -33,7 +34,7 @@ public final class QuestionsFrontend extends FrontendContribution {
 
     /** Answers frontend actions ({@code list}, {@code answer}, {@code cancel}). */
     public @NonNull JsonValue handle(
-            FrontendContribution.@NonNull ActionContext scope,
+            Scope.@NonNull AgentScope scope,
             @NonNull String action,
             JsonValue.@NonNull ObjectValue args)
             throws PluginFailure {

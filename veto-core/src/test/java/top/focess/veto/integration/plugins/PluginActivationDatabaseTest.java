@@ -2,18 +2,22 @@ package top.focess.veto.integration.plugins;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import java.nio.file.Path;
+import java.util.Set;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 
-import java.nio.file.Path;
-import java.util.Set;
-
 @DataJpaTest
 class PluginActivationDatabaseTest {
-    @Autowired private @NonNull PluginActivationRepository repository;
+    private final @NonNull PluginActivationRepository repository;
+
+    @Autowired
+    PluginActivationDatabaseTest(@NonNull PluginActivationRepository repository) {
+        this.repository = repository;
+    }
 
     @Test
     void desiredStateSurvivesStoreReconstruction(@TempDir @NonNull Path root) throws Exception {

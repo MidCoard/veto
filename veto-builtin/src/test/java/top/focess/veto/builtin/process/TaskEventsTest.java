@@ -12,12 +12,61 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.api.plugin.PluginHost;
+import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.builtin.monitor.MonitorRecord;
 import top.focess.veto.builtin.monitor.MonitorRepository;
 import top.focess.veto.builtin.monitor.MonitorService;
 
 class TaskEventsTest {
+    @Test
+    void logoutSuppressesNotificationsUntilTheUserAuthenticatesAgain() {
+        List<String> observed = new ArrayList<>();
+        PluginHost host =
+                new PluginHost() {
+                    public @NonNull Invocation invocation(@NonNull String tool) {
+                        throw new UnsupportedOperationException();
+                    }
+
+                    public void wake(
+                            @NonNull String owner,
+                            @NonNull String session,
+                            @NonNull String agent) {}
+
+                    public void invalidate(@NonNull String session, @NonNull String resource) {}
+                };
+        var events =
+                new TaskEvents(
+                        host, (owner, task, cause) -> observed.add(owner + ":" + task.taskId()));
+        var session = UUID.randomUUID();
+        var scope = new Scope.AgentScope("owner", session.toString(), "agent");
+        var task =
+                new TaskInfo(
+                        "bg-1",
+                        "agent",
+                        "program",
+                        "workspace",
+                        Instant.now(),
+                        false,
+                        0,
+                        1,
+                        Instant.now(),
+                        session,
+                        UUID.randomUUID(),
+                        "request");
+
+        events.userLogout(scope.userScope());
+        events.changed(
+                scope, task, BackgroundTasks.ExitCause.NATURAL, BackgroundTasks.Change.EXITED);
+        assertTrue(observed.isEmpty());
+
+        events.userAuthenticated(scope.userScope());
+        events.changed(
+                scope, task, BackgroundTasks.ExitCause.NATURAL, BackgroundTasks.Change.EXITED);
+        assertEquals(List.of("owner:bg-1"), observed);
+        events.close();
+    }
+
     @Test
     void retriesExitWithCapturedOwnerAndStopsRetryingAfterClose() {
         var fail = new AtomicBoolean(true);
@@ -53,7 +102,7 @@ class TaskEventsTest {
                             observations.add(owner + ":" + task.alive() + ":" + cause);
                         });
         var session = UUID.randomUUID();
-        var scope = new BackgroundTasks.Owner("spawn-owner", session.toString(), "agent");
+        var scope = new Scope.AgentScope("spawn-owner", session.toString(), "agent");
         var instance = UUID.randomUUID();
         var started = Instant.now();
         var live =
@@ -130,7 +179,7 @@ class TaskEventsTest {
                             received.add(task);
                         });
         var session = UUID.randomUUID();
-        var scope = new BackgroundTasks.Owner("owner", session.toString(), "agent");
+        var scope = new Scope.AgentScope("owner", session.toString(), "agent");
         var exited =
                 new TaskInfo(
                         "bg-1",
@@ -147,7 +196,7 @@ class TaskEventsTest {
                         "original-request");
         events.changed(
                 scope, exited, BackgroundTasks.ExitCause.NATURAL, BackgroundTasks.Change.EXITED);
-        events.sessionClosed("owner", session.toString());
+        events.sessionDeleted(new Scope.SessionScope("owner", session.toString()));
         available.set(true);
         events.retry();
         events.changed(
@@ -184,7 +233,7 @@ class TaskEventsTest {
         var events = new TaskEvents(host, monitor);
         var session = UUID.randomUUID();
         var instance = UUID.randomUUID();
-        var scope = new BackgroundTasks.Owner("owner", session.toString(), "agent");
+        var scope = new Scope.AgentScope("owner", session.toString(), "agent");
         var now = Instant.now();
         var live =
                 new TaskInfo(

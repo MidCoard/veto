@@ -23,8 +23,14 @@ import top.focess.veto.api.plugin.contribution.Contribution;
 import top.focess.veto.api.plugin.contribution.ContributionPoint;
 
 /**
- * Host-owned, single-threaded plugin lifecycle: atomic admission state, resource ownership, and
- * cleanup, all driven on the control executor.
+ * Host-owned controller for one {@link VetoPlugin} instance: construction, activation, admission,
+ * and cleanup are serialized on the control executor. The plugin implements the callbacks; this
+ * class decides when to invoke them. A normal path is {@link #construct(PluginContext,
+ * JsonValue.ObjectValue)}, {@link #start()}, then {@link #close()}. Closing signals the plugin's
+ * stopping callback, drains admitted calls, invokes its close callback, closes contributed
+ * resources, and finally releases the installed package loader. Failure can begin cleanup before
+ * admitted calls drain. A constructor failure has no plugin instance to call back but still closes
+ * host-owned partial resources.
  *
  * <p>This is the single-threaded lifecycle half of the plugin runtime. The concurrent invocation
  * counting and same-thread reentrancy guard live in {@link InvocationAdmission}; the two share one
@@ -223,12 +229,12 @@ public final class PluginLifecycle implements AutoCloseable {
         @NonNull T run() throws PluginFailure;
     }
 
-    /** Initializes the plugin on the control executor, returning its declared contributions. */
-    public @NonNull PluginContributions initialize(
+    /** Constructs or binds the plugin on the control executor before it starts. */
+    public void construct(
             @NonNull PluginContext context, JsonValue.@NonNull ObjectValue configuration)
             throws PluginFailure {
         requireExternalControl();
-        return await(
+        await(
                 submit(
                         () -> {
                             require(PluginState.NEW);
@@ -254,9 +260,8 @@ public final class PluginLifecycle implements AutoCloseable {
                                             PluginFailure.Code.INVALID_CONFIGURATION);
                                 if (current instanceof ScriptPlugin script)
                                     script.bind(bound, configuration);
-                                var legacy = current.initialize(bound, configuration);
                                 state = PluginState.INITIALIZED;
-                                return legacy;
+                                return Boolean.TRUE;
                             } catch (PluginDeclinedException declined) {
                                 state = PluginState.STOPPING;
                                 signalStopping();
@@ -387,6 +392,7 @@ public final class PluginLifecycle implements AutoCloseable {
     private void signalStopping() {
         if (stopping) return;
         stopping = true;
+        stopWaits();
         for (var release : stoppingResources.values()) {
             try {
                 release.run();
@@ -410,7 +416,6 @@ public final class PluginLifecycle implements AutoCloseable {
         if (cleaned) return;
         cleaned = true;
         active.completeExceptionally(new IllegalStateException("Plugin stopped before activation"));
-        stopWaits();
         try {
             VetoPlugin current = plugin;
             if (current != null) current.close();

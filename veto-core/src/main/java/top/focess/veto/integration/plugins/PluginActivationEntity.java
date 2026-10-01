@@ -4,7 +4,6 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
-
 import org.jspecify.annotations.NonNull;
 
 /** Administrator's desired plugin state for the next backend start. */

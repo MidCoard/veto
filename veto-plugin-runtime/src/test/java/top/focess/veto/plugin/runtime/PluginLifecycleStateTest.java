@@ -12,13 +12,11 @@ import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.api.plugin.*;
 import top.focess.veto.api.plugin.PluginContext;
-import top.focess.veto.api.plugin.PluginContributions;
 import top.focess.veto.api.plugin.PluginIdentity;
 import top.focess.veto.api.plugin.PluginState;
 import top.focess.veto.api.plugin.VetoPlugin;
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.contract.PluginFailure;
-import top.focess.veto.api.plugin.contract.StandardContributionPoints;
 
 class PluginLifecycleStateTest {
     @Test
@@ -27,7 +25,8 @@ class PluginLifecycleStateTest {
                 var callers = Executors.newVirtualThreadPerTaskExecutor()) {
             var observer = new Observer(false);
             var managed = new PluginLifecycle(observer, control);
-            managed.initialize(
+            observer.lifecycle = managed;
+            managed.construct(
                     new PluginContext(
                             observer.identity(),
                             () -> {},
@@ -81,7 +80,8 @@ class PluginLifecycleStateTest {
         try (var control = Executors.newSingleThreadExecutor()) {
             var observer = new Observer(false);
             try (var managed = new PluginLifecycle(observer, control)) {
-                managed.initialize(
+                observer.lifecycle = managed;
+                managed.construct(
                         new PluginContext(
                                 observer.identity(),
                                 () -> {},
@@ -105,7 +105,7 @@ class PluginLifecycleStateTest {
     }
 
     private static final class Observer extends VetoPlugin {
-        private PluginContext context;
+        private PluginLifecycle lifecycle;
         private final @NonNull List<PluginState> callbacks = new ArrayList<>();
         private final @NonNull List<String> releases = new ArrayList<>();
         private final boolean failStart;
@@ -118,50 +118,31 @@ class PluginLifecycleStateTest {
             return new PluginIdentity("test.observer", "1.0.0");
         }
 
-        @NonNull PluginContext context() {
-            var current = context;
-            if (current == null) throw new IllegalStateException("Not initialized");
+        @NonNull PluginLifecycle lifecycle() {
+            var current = lifecycle;
+            if (current == null) throw new IllegalStateException("Not bound");
             return current;
         }
 
-        public @NonNull PluginContributions initialize(
-                @NonNull PluginContext context, JsonValue.@NonNull ObjectValue configuration) {
-            this.context = context;
-            callbacks.add(context.state());
-            if (failStart) {
-                context.register(
-                        StandardContributionPoints.RESOURCES, "first", () -> releases.add("first"));
-                context.register(
-                        StandardContributionPoints.RESOURCES,
-                        "second",
-                        () -> releases.add("second"));
-            }
-            return contributions();
-        }
-
-        @Override
-        public @NonNull PluginContributions contributions() {
-            return new PluginContributions(List.of());
-        }
-
         public void start() {
-            callbacks.add(context().state());
+            callbacks.add(lifecycle().state());
             if (failStart) throw new IllegalStateException("Start failed");
         }
 
         public void close() {
-            callbacks.add(context().state());
+            callbacks.add(lifecycle().state());
         }
     }
 
     @Test
-    void sameContextObservesCallbacksAndSubsequentTransitions() throws Exception {
+    void lifecycleObservesCallbacksAndSubsequentTransitions() throws Exception {
         try (var executor = Executors.newSingleThreadExecutor()) {
             var observer = new Observer(false);
             var managed = new PluginLifecycle(observer, executor);
+            observer.lifecycle = managed;
             try {
                 assertEquals(PluginState.NEW, managed.state());
-                managed.initialize(
+                managed.construct(
                         new PluginContext(
                                 observer.identity(),
                                 () -> {},
@@ -172,19 +153,14 @@ class PluginLifecycleStateTest {
                                 Map.of(),
                                 Map.of()),
                         new JsonValue.ObjectValue(Map.of()));
-                var context = observer.context();
-                assertEquals(PluginState.INITIALIZED, context.state());
+                assertEquals(PluginState.INITIALIZED, managed.state());
                 managed.start();
-                assertEquals(PluginState.ACTIVE, context.state());
-                assertEquals(managed.state(), managed.execute(context::state));
+                assertEquals(PluginState.ACTIVE, managed.state());
+                assertEquals(managed.state(), managed.execute(managed::state));
                 managed.close();
-                assertEquals(PluginState.CLOSED, context.state());
+                assertEquals(PluginState.CLOSED, managed.state());
                 assertEquals(
-                        List.of(
-                                PluginState.INITIALIZING,
-                                PluginState.STARTING,
-                                PluginState.STOPPING),
-                        observer.callbacks);
+                        List.of(PluginState.STARTING, PluginState.STOPPING), observer.callbacks);
             } finally {
                 managed.close();
             }
@@ -196,8 +172,9 @@ class PluginLifecycleStateTest {
         try (var executor = Executors.newSingleThreadExecutor()) {
             var observer = new Observer(true);
             var managed = new PluginLifecycle(observer, executor);
+            observer.lifecycle = managed;
             try {
-                managed.initialize(
+                managed.construct(
                         new PluginContext(
                                 observer.identity(),
                                 () -> {},
@@ -208,12 +185,11 @@ class PluginLifecycleStateTest {
                                 Map.of(),
                                 Map.of()),
                         new JsonValue.ObjectValue(Map.of()));
+                managed.registerResource(() -> observer.releases.add("first"));
+                managed.registerResource(() -> observer.releases.add("second"));
                 assertThrows(PluginFailure.class, managed::start);
-                assertEquals(PluginState.FAILED, observer.context().state());
-                assertEquals(managed.state(), observer.context().state());
-                assertEquals(
-                        List.of(PluginState.INITIALIZING, PluginState.STARTING, PluginState.FAILED),
-                        observer.callbacks);
+                assertEquals(PluginState.FAILED, managed.state());
+                assertEquals(List.of(PluginState.STARTING, PluginState.FAILED), observer.callbacks);
                 assertEquals(List.of("second", "first"), observer.releases);
             } finally {
                 managed.close();

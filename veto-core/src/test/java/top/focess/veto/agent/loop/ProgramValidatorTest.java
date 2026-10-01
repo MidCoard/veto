@@ -16,8 +16,8 @@ import top.focess.veto.builtin.planning.ActionsProgramParser;
 import top.focess.veto.builtin.planning.Check;
 import top.focess.veto.builtin.planning.ConditionalGotoAction;
 import top.focess.veto.builtin.planning.GenerateAction;
-import top.focess.veto.builtin.planning.ProgramValidator;
 import top.focess.veto.builtin.planning.PlanVariables;
+import top.focess.veto.builtin.planning.ProgramValidator;
 import top.focess.veto.builtin.planning.StopAction;
 import top.focess.veto.util.Nullness;
 

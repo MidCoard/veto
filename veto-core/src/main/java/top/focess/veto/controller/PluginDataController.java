@@ -1,7 +1,5 @@
 package top.focess.veto.controller;
 
-import top.focess.veto.api.plugin.PluginScope;
-
 import org.jspecify.annotations.NonNull;
 import org.springframework.http.CacheControl;
 import org.springframework.http.ResponseEntity;
@@ -10,7 +8,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-import top.focess.veto.api.plugin.storage.PluginStorage;
+import top.focess.veto.api.plugin.PluginScope;
 import top.focess.veto.integration.plugins.storage.RetainedPluginData;
 
 /** Authenticated host inventory of retained, uninterpreted plugin data. */

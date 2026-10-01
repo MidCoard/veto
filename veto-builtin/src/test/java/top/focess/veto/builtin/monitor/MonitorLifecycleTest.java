@@ -9,11 +9,11 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
-import top.focess.veto.api.event.SessionClosedEvent;
+import top.focess.veto.api.event.SessionDeletedEvent;
 import top.focess.veto.api.plugin.PluginContext;
 import top.focess.veto.api.plugin.PluginHost;
 import top.focess.veto.api.plugin.PluginIdentity;
-import top.focess.veto.api.plugin.contract.FrontendContribution;
+import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.contract.PluginFailure;
 import top.focess.veto.api.plugin.storage.PluginStorage;
@@ -87,8 +87,10 @@ class MonitorLifecycleTest {
             service.createTimer(
                     "owner", "closed", "offline", "Review", Instant.now().plusSeconds(60));
             service.createTimer("owner", "kept", "other", "Review", Instant.now().plusSeconds(60));
-            service.onSessionClosed(new SessionClosedEvent("foreign", "kept"));
-            service.onSessionClosed(new SessionClosedEvent("owner", "closed"));
+            service.onSessionDeleted(
+                    new SessionDeletedEvent(new Scope.SessionScope("foreign", "kept")));
+            service.onSessionDeleted(
+                    new SessionDeletedEvent(new Scope.SessionScope("owner", "closed")));
             assertTrue(service.list("owner", "closed").isEmpty());
             assertEquals("ACTIVE", service.list("owner", "kept").getFirst().state());
         }
@@ -108,8 +110,7 @@ class MonitorLifecycleTest {
                                     "Review",
                                     Instant.now().plusSeconds(60));
             var frontend = new MonitorFrontend(runtime.service());
-            var scope =
-                    new FrontendContribution.ActionContext("owner", "session", "different-agent");
+            var scope = new Scope.AgentScope("owner", "session", "different-agent");
             var args = new JsonValue.ObjectValue(Map.of("id", new JsonValue.StringValue(row.id())));
             for (String operation : new String[] {"pause", "resume", "cancel"}) {
                 assertEquals(
@@ -122,16 +123,14 @@ class MonitorLifecycleTest {
                     PluginFailure.class,
                     () ->
                             frontend.handle(
-                                    new FrontendContribution.ActionContext(
-                                            "foreign", "session", "agent"),
+                                    new Scope.AgentScope("foreign", "session", "agent"),
                                     "pause",
                                     args));
             assertThrows(
                     PluginFailure.class,
                     () ->
                             frontend.handle(
-                                    new FrontendContribution.ActionContext(
-                                            "owner", "foreign", "agent"),
+                                    new Scope.AgentScope("owner", "foreign", "agent"),
                                     "pause",
                                     args));
             assertTrue(frontend.module().contains("registerInspector"));
@@ -164,8 +163,7 @@ class MonitorLifecycleTest {
                     PluginFailure.class,
                     () ->
                             frontend.handle(
-                                    new FrontendContribution.ActionContext(
-                                            "owner", "session", "agent"),
+                                    new Scope.AgentScope("owner", "session", "agent"),
                                     "pause",
                                     new JsonValue.ObjectValue(
                                             Map.of("id", new JsonValue.StringValue("group")))));

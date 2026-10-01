@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.api.plugin.contract.FrontendContribution;
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.contract.JsonValues;
@@ -41,13 +42,13 @@ public final class GroupFrontend extends FrontendContribution {
      */
     @SuppressWarnings("RedundantTypeArguments")
     public @NonNull JsonValue handle(
-            FrontendContribution.@NonNull ActionContext scope,
+            Scope.@NonNull AgentScope scope,
             @NonNull String action,
             JsonValue.@NonNull ObjectValue args)
             throws PluginFailure {
         try {
             var groups =
-                    runtime.history().load(scope.sessionId(), runtime.registry()).stream()
+                    runtime.history().load(scope.session(), runtime.registry()).stream()
                             .sorted(
                                     Comparator.comparing(GroupHistoryView::createdAt)
                                             .thenComparing(GroupHistoryView::id))

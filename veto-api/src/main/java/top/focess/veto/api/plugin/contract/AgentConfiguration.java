@@ -3,6 +3,7 @@ package top.focess.veto.api.plugin.contract;
 import java.util.List;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.agent.tool.ToolCapability;
+import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.api.plugin.agent.AgentHost;
 import top.focess.veto.api.plugin.agent.AgentProfile;
 import top.focess.veto.api.plugin.storage.PluginStorage;
@@ -40,8 +41,8 @@ public abstract class AgentConfiguration {
      * Immutable inputs for one configuration evaluation.
      *
      * @param owner authenticated owner
-     * @param scope host-issued session scope
-     * @param agents agent authority bound to that scope
+     * @param storageGrant host-issued session grant
+     * @param agents agent authority bound to that grant
      * @param agentId current agent
      * @param base host base profile
      * @param authorizedTools tools already admitted by the host
@@ -49,7 +50,7 @@ public abstract class AgentConfiguration {
      */
     public record Context(
             @NonNull String owner,
-            PluginStorage.@NonNull SessionScope scope,
+            PluginStorage.@NonNull Grant<Scope.@NonNull SessionScope> storageGrant,
             AgentHost.@NonNull Session agents,
             @NonNull String agentId,
             @NonNull AgentProfile base,

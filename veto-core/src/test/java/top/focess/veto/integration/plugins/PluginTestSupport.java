@@ -21,9 +21,9 @@ import org.springframework.beans.factory.ObjectProvider;
 import top.focess.veto.api.event.BeforeTextCommitEvent;
 import top.focess.veto.api.plugin.PluginBinding;
 import top.focess.veto.api.plugin.PluginHost;
+import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.api.plugin.agent.AgentHost;
 import top.focess.veto.api.plugin.agent.AgentProfile;
-import top.focess.veto.api.plugin.contract.FrontendContribution;
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.contract.PluginFailure;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
@@ -119,7 +119,7 @@ public final class PluginTestSupport {
                             storage.session(scope);
                             return new AgentHost.Session() {
                                 public @NonNull String id() {
-                                    return scope.sessionId();
+                                    return scope.scope().session();
                                 }
 
                                 public AgentHost.@NonNull Child open(
@@ -160,15 +160,15 @@ public final class PluginTestSupport {
     public static @NonNull String protect(
             @NonNull PluginManager manager,
             BeforeTextCommitEvent.@NonNull Phase phase,
-            FrontendContribution.@NonNull ActionContext scope,
+            Scope.@NonNull AgentScope scope,
             @NonNull String sourceId,
             @NonNull String text)
             throws PluginFailure {
         var event =
                 new BeforeTextCommitEvent(
-                        scope.ownerId(),
-                        scope.sessionId(),
-                        scope.agentId(),
+                        scope.owner(),
+                        scope.session(),
+                        scope.agent(),
                         () -> false,
                         phase,
                         sourceId,
@@ -186,7 +186,7 @@ public final class PluginTestSupport {
     /** Reveals a reference through the plugin's frontend "show" action; empty when unavailable. */
     public static @NonNull Optional<String> reveal(
             @NonNull PluginManager manager,
-            FrontendContribution.@NonNull ActionContext scope,
+            Scope.@NonNull AgentScope scope,
             @NonNull String reference)
             throws PluginFailure {
         var entry =
@@ -206,10 +206,10 @@ public final class PluginTestSupport {
                                         entry.implementation()
                                                 .handler()
                                                 .handle(
-                                                        new FrontendContribution.ActionContext(
-                                                                scope.ownerId(),
-                                                                scope.sessionId(),
-                                                                scope.agentId()),
+                                                        new Scope.AgentScope(
+                                                                scope.owner(),
+                                                                scope.session(),
+                                                                scope.agent()),
                                                         "show",
                                                         new JsonValue.ObjectValue(
                                                                 Map.of(

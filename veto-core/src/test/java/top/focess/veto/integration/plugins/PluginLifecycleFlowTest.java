@@ -57,7 +57,7 @@ class PluginLifecycleFlowTest {
                             handlers);
             var configuration = new JsonValue.ObjectValue(Map.of());
             var managed = new PluginLifecycle(new BuiltinPlugin(context, configuration), executor);
-            managed.initialize(context, configuration);
+            managed.construct(context, configuration);
             managed.start();
             var delegate = mock(requireNonNull(ModelFlow.class));
             var runtime = mock(requireNonNull(ModelFlow.Runtime.class));

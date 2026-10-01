@@ -27,11 +27,6 @@ public final class WorkflowPluginFixture implements AutoCloseable {
         var implementation =
                 new VetoPlugin() {
                     @Override
-                    public @NonNull PluginContributions contributions() {
-                        return new PluginContributions(contributions);
-                    }
-
-                    @Override
                     public @NonNull PluginIdentity identity() {
                         return new PluginIdentity("fixture.workflow", "1.0.0");
                     }
@@ -43,7 +38,7 @@ public final class WorkflowPluginFixture implements AutoCloseable {
                     public void close() {}
                 };
         runtime = new PluginLifecycle(implementation, lifecycle);
-        runtime.initialize(
+        runtime.construct(
                 new PluginContext(
                         runtime.identity(),
                         () -> {},

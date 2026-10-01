@@ -1,7 +1,5 @@
 package top.focess.veto.plugin.runtime;
 
-import top.focess.veto.api.plugin.PluginScope;
-
 import static org.junit.jupiter.api.Assertions.*;
 
 import java.util.List;
@@ -12,6 +10,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.api.plugin.*;
+import top.focess.veto.api.plugin.PluginScope;
+import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.api.plugin.contract.*;
 import top.focess.veto.api.plugin.contribution.*;
 import top.focess.veto.api.plugin.service.*;
@@ -61,10 +61,35 @@ class PluginServiceRegistryTest {
             assertEquals(
                     "demo.provider",
                     services.find("demo:echo", 1).orElseThrow().descriptor().providerId());
-            assertEquals(5, services.available().size());
+            assertEquals(6, services.available().size());
             assertThrows(
                     ClassNotFoundException.class,
                     () -> Class.forName("top.focess.veto.builtin.BuiltinPlugin"));
+        }
+    }
+
+    @Test
+    void agentServiceRevalidatesHostInvocationOnEveryRetainedHandleCall() throws Exception {
+        try (var pair = new Pair()) {
+            var handle = pair.consumer.context.services().find("demo:agent", 1).orElseThrow();
+            var grant =
+                    new PluginStorage.Grant<>("valid", new Scope.SessionScope("owner", "session"));
+            assertThrows(
+                    ServiceException.class,
+                    () -> handle.invoke(grant, JsonValue.NullValue.INSTANCE));
+            pair.agentAdmitted.set(true);
+            assertEquals(
+                    new JsonValue.StringValue("host-agent"),
+                    handle.invoke(grant, JsonValue.NullValue.INSTANCE));
+            pair.agentAdmitted.set(false);
+            assertThrows(
+                    ServiceException.class,
+                    () -> handle.invoke(grant, JsonValue.NullValue.INSTANCE));
+            pair.agentAdmitted.set(true);
+            pair.providerRuntime.close();
+            assertThrows(
+                    ServiceException.class,
+                    () -> handle.invoke(grant, JsonValue.NullValue.INSTANCE));
         }
     }
 
@@ -85,13 +110,14 @@ class PluginServiceRegistryTest {
                                     ServiceException.class,
                                     () ->
                                             handle.invoke(
-                                                    new PluginStorage.UserScope("forged", "owner"),
+                                                    new PluginStorage.Grant<>(
+                                                            "forged", new Scope.UserScope("owner")),
                                                     JsonValue.NullValue.INSTANCE))
                             .code());
             assertEquals(
                     new JsonValue.StringValue("owner"),
                     handle.invoke(
-                            new PluginStorage.UserScope("valid", "owner"),
+                            new PluginStorage.Grant<>("valid", new Scope.UserScope("owner")),
                             JsonValue.NullValue.INSTANCE));
         }
     }
@@ -107,7 +133,8 @@ class PluginServiceRegistryTest {
                                     ServiceException.class,
                                     () ->
                                             handle.invoke(
-                                                    new PluginStorage.UserScope("valid", "owner"),
+                                                    new PluginStorage.Grant<>(
+                                                            "valid", new Scope.UserScope("owner")),
                                                     JsonValue.NullValue.INSTANCE))
                             .code());
             assertEquals(
@@ -116,14 +143,17 @@ class PluginServiceRegistryTest {
                                     ServiceException.class,
                                     () ->
                                             handle.invoke(
-                                                    new PluginStorage.SessionScope(
-                                                            "expired", "owner", "session"),
+                                                    new PluginStorage.Grant<>(
+                                                            "expired",
+                                                            new Scope.SessionScope(
+                                                                    "owner", "session")),
                                                     JsonValue.NullValue.INSTANCE))
                             .code());
             assertEquals(
                     new JsonValue.StringValue("session"),
                     handle.invoke(
-                            new PluginStorage.SessionScope("valid", "owner", "session"),
+                            new PluginStorage.Grant<>(
+                                    "valid", new Scope.SessionScope("owner", "session")),
                             JsonValue.NullValue.INSTANCE));
         }
     }
@@ -213,70 +243,75 @@ class PluginServiceRegistryTest {
             return new PluginIdentity(id, "1.0.0");
         }
 
-        public @NonNull PluginContributions initialize(
-                @NonNull PluginContext context, JsonValue.@NonNull ObjectValue configuration) {
-            this.context = context;
-            return contributions();
-        }
-
-        @Override
-        public @NonNull PluginContributions contributions() {
+        public @NonNull List<Contribution<?>> entries() {
             if (id.equals("demo.provider"))
-                return new PluginContributions(
-                        List.of(
-                                Contribution.of(
-                                        StandardContributionPoints.SERVICES,
-                                        "echo",
-                                        service("demo:echo", 1, request -> request)),
-                                Contribution.of(
-                                        StandardContributionPoints.SERVICES,
-                                        "failure",
-                                        service(
-                                                "demo:failure",
-                                                1,
-                                                request -> {
-                                                    throw new IllegalStateException(
-                                                            "private-provider-secret");
-                                                })),
-                                Contribution.of(
-                                        StandardContributionPoints.SERVICES,
-                                        "user",
-                                        service(
-                                                "demo:user",
-                                                1,
-                                                PluginScope.USER,
-                                                (call, request) -> {
-                                                    String owner = call.userId();
-                                                    if (owner == null)
-                                                        throw new AssertionError("Missing user");
-                                                    return new JsonValue.StringValue(owner);
-                                                })),
-                                Contribution.of(
-                                        StandardContributionPoints.SERVICES,
-                                        "session",
-                                        service(
-                                                "demo:session",
-                                                1,
-                                                PluginScope.SESSION,
-                                                (call, request) -> {
-                                                    String session = call.sessionId();
-                                                    if (session == null)
-                                                        throw new AssertionError("Missing session");
-                                                    return new JsonValue.StringValue(session);
-                                                }))));
-            return new PluginContributions(
-                    List.of(
-                            Contribution.of(
-                                    StandardContributionPoints.SERVICES,
-                                    "relay",
-                                    service(
-                                            "demo:relay",
-                                            1,
-                                            request ->
-                                                    context.services()
-                                                            .find("demo:echo", 1)
-                                                            .orElseThrow()
-                                                            .invoke(request)))));
+                return List.of(
+                        Contribution.of(
+                                StandardContributionPoints.SERVICES,
+                                "echo",
+                                service("demo:echo", 1, request -> request)),
+                        Contribution.of(
+                                StandardContributionPoints.SERVICES,
+                                "failure",
+                                service(
+                                        "demo:failure",
+                                        1,
+                                        request -> {
+                                            throw new IllegalStateException(
+                                                    "private-provider-secret");
+                                        })),
+                        Contribution.of(
+                                StandardContributionPoints.SERVICES,
+                                "user",
+                                service(
+                                        "demo:user",
+                                        1,
+                                        PluginScope.USER,
+                                        (call, request) -> {
+                                            String owner = call.identity().owner();
+                                            if (owner == null)
+                                                throw new AssertionError("Missing user");
+                                            return new JsonValue.StringValue(owner);
+                                        })),
+                        Contribution.of(
+                                StandardContributionPoints.SERVICES,
+                                "session",
+                                service(
+                                        "demo:session",
+                                        1,
+                                        PluginScope.SESSION,
+                                        (call, request) -> {
+                                            String session = call.identity().session();
+                                            if (session == null)
+                                                throw new AssertionError("Missing session");
+                                            return new JsonValue.StringValue(session);
+                                        })),
+                        Contribution.of(
+                                StandardContributionPoints.SERVICES,
+                                "agent",
+                                service(
+                                        "demo:agent",
+                                        1,
+                                        PluginScope.AGENT,
+                                        (call, request) -> {
+                                            var identity = call.identity();
+                                            if (!(identity instanceof Scope.AgentScope agent))
+                                                throw new AssertionError(
+                                                        "Missing host agent identity");
+                                            return new JsonValue.StringValue(agent.agent());
+                                        })));
+            return List.of(
+                    Contribution.of(
+                            StandardContributionPoints.SERVICES,
+                            "relay",
+                            service(
+                                    "demo:relay",
+                                    1,
+                                    request ->
+                                            context.services()
+                                                    .find("demo:echo", 1)
+                                                    .orElseThrow()
+                                                    .invoke(request))));
         }
 
         public void start() {}
@@ -287,6 +322,7 @@ class PluginServiceRegistryTest {
     private static final class Pair implements AutoCloseable {
         final @NonNull ExecutorService executor = Executors.newSingleThreadExecutor();
         final @NonNull AtomicBoolean allowed = new AtomicBoolean(true);
+        final @NonNull AtomicBoolean agentAdmitted = new AtomicBoolean();
         final @NonNull PluginServiceRegistry registry =
                 new PluginServiceRegistry(
                         (caller, provider) -> allowed.get(),
@@ -294,17 +330,20 @@ class PluginServiceRegistryTest {
                             if (!scope.token().equals("valid"))
                                 throw new ServiceException(ServiceException.Code.UNAVAILABLE);
                             if (required == PluginScope.USER
-                                    && scope instanceof PluginStorage.UserScope user)
-                                return new ServiceCallContext(
-                                        caller, required, new Scope.UserScope(user.userId()), user);
+                                    && scope.scope() instanceof Scope.UserScope user)
+                                return new ServiceCallContext(caller, required, user, scope);
                             if (required == PluginScope.SESSION
-                                    && scope instanceof PluginStorage.SessionScope session)
+                                    && scope.scope() instanceof Scope.SessionScope session)
+                                return new ServiceCallContext(caller, required, session, scope);
+                            if (required == PluginScope.AGENT
+                                    && scope.scope() instanceof Scope.SessionScope session
+                                    && agentAdmitted.get())
                                 return new ServiceCallContext(
                                         caller,
                                         required,
-                                        new Scope.SessionScope(
-                                                session.userId(), session.sessionId()),
-                                        session);
+                                        new Scope.AgentScope(
+                                                session.owner(), session.session(), "host-agent"),
+                                        scope);
                             throw new ServiceException(ServiceException.Code.UNAVAILABLE);
                         });
         final @NonNull TestPlugin consumer = new TestPlugin("demo.consumer");
@@ -317,23 +356,23 @@ class PluginServiceRegistryTest {
                     new ContributionCatalog.Builder()
                             .define(StandardContributionPoints.SERVICES, ignored -> {});
             for (var runtime : List.of(consumerRuntime, providerRuntime)) {
-                var contributions =
-                        runtime.initialize(
-                                new PluginContext(
-                                        runtime.identity(),
-                                        () -> {},
-                                        () -> {
-                                            throw new IllegalStateException(
-                                                    "Plugin context is not bound to a lifecycle"
-                                                            + " owner");
-                                        },
-                                        Map.of(PluginServices.class, registry.forPlugin(runtime)),
-                                        Map.of()),
-                                new JsonValue.ObjectValue(Map.of()));
+                var context =
+                        new PluginContext(
+                                runtime.identity(),
+                                () -> {},
+                                () -> {
+                                    throw new IllegalStateException(
+                                            "Plugin context is not bound to a lifecycle"
+                                                    + " owner");
+                                },
+                                Map.of(PluginServices.class, registry.forPlugin(runtime)),
+                                Map.of());
+                ((TestPlugin) runtime.implementation()).context = context;
+                runtime.construct(context, new JsonValue.ObjectValue(Map.of()));
                 builder.stage(
                         new ContributionSource(
                                 runtime.identity().id(), "1.0.0", ContributionSource.Origin.PLUGIN),
-                        contributions.entries());
+                        ((TestPlugin) runtime.implementation()).entries());
             }
             registry.bind(builder.freeze(), List.of(consumerRuntime, providerRuntime));
             consumerRuntime.start();

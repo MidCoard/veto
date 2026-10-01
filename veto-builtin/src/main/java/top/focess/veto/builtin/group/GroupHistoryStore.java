@@ -1,7 +1,5 @@
 package top.focess.veto.builtin.group;
 
-import top.focess.veto.api.plugin.PluginScope;
-
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
@@ -16,6 +14,8 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.api.plugin.PluginScope;
+import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.api.plugin.agent.AgentProfile;
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.contract.JsonValues;
@@ -24,12 +24,12 @@ import top.focess.veto.api.plugin.storage.PluginStorage;
 /** Append-only snapshot chain with bounded chunks and a CAS head; feature-owned schema. */
 public final class GroupHistoryStore {
     private final @NonNull PluginStorage storage;
-    private final @NonNull Map<String, PluginStorage.SessionScope> scopes =
+    private final @NonNull Map<String, PluginStorage.Grant<Scope.@NonNull SessionScope>> grants =
             new ConcurrentHashMap<>();
 
-    /** Registers a session scope so its store can be resolved without a lookup scan. */
-    public void scope(PluginStorage.@NonNull SessionScope scope) {
-        scopes.put(scope.sessionId(), scope);
+    /** Registers a session grant so its store can be resolved without a lookup scan. */
+    public void grant(PluginStorage.@NonNull Grant<Scope.@NonNull SessionScope> grant) {
+        grants.put(grant.scope().session(), grant);
     }
 
     private final @NonNull ObjectMapper mapper = new ObjectMapper().findAndRegisterModules();
@@ -39,18 +39,19 @@ public final class GroupHistoryStore {
         this.storage = storage;
     }
 
-    /** Resolves the storage store of the given session, scanning scopes when not cached. */
+    /** Resolves the storage store of the given session, scanning grants when not cached. */
     public PluginStorage.@NonNull Store session(@NonNull String id) {
-        var cached = scopes.get(id);
+        var cached = grants.get(id);
         if (cached != null) return storage.session(cached);
         String cursor = null;
         do {
             var page = storage.scopes(PluginScope.SESSION, cursor, 200);
-            for (var scope : page.entries())
-                if (scope instanceof PluginStorage.SessionScope session
-                        && session.sessionId().equals(id)) {
-                    scope(session);
-                    return storage.session(session);
+            for (var grant : page.entries())
+                if (grant.scope() instanceof Scope.SessionScope session
+                        && session.session().equals(id)) {
+                    var typedGrant = new PluginStorage.Grant<>(grant.token(), session);
+                    grant(typedGrant);
+                    return storage.session(typedGrant);
                 }
             cursor = page.cursor();
         } while (cursor != null);

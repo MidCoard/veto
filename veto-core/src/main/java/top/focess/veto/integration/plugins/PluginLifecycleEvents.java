@@ -1,7 +1,5 @@
 package top.focess.veto.integration.plugins;
 
-import java.util.HashSet;
-import java.util.Set;
 import java.util.function.Function;
 import org.jspecify.annotations.NonNull;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -10,10 +8,11 @@ import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import top.focess.veto.api.event.AgentTerminatedEvent;
 import top.focess.veto.api.event.Event;
-import top.focess.veto.api.event.OwnerClosedEvent;
-import top.focess.veto.api.event.OwnerOpenEvent;
-import top.focess.veto.api.event.SessionClosedEvent;
-import top.focess.veto.api.plugin.PluginState;
+import top.focess.veto.api.event.SessionDeletedEvent;
+import top.focess.veto.api.event.UserLoggedInEvent;
+import top.focess.veto.api.event.UserLogoutEvent;
+import top.focess.veto.api.event.UserRegisteredEvent;
+import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.api.plugin.contract.DataLifecycle;
 import top.focess.veto.api.plugin.contract.PluginFailure;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
@@ -97,25 +96,30 @@ public class PluginLifecycleEvents {
         this.manager = manager;
     }
 
-    /** Best-effort notification that the owner's vault was opened. */
-    public void ownerOpened(@NonNull String ownerId) {
-        broadcast(new OwnerOpenEvent(ownerId));
+    /** Best-effort notification after signup created and authenticated a user. */
+    public void userRegistered(@NonNull String ownerId) {
+        broadcast(new UserRegisteredEvent(new Scope.UserScope(ownerId)));
     }
 
-    /** Best-effort notification that the owner's vault was closed. */
-    public void ownerClosed(@NonNull String ownerId) {
-        broadcast(new OwnerClosedEvent(ownerId));
+    /** Best-effort notification after an existing user logged in. */
+    public void userLoggedIn(@NonNull String ownerId) {
+        broadcast(new UserLoggedInEvent(new Scope.UserScope(ownerId)));
     }
 
-    /** Best-effort notification that a session ended. */
-    public void sessionClosed(@NonNull String ownerId, @NonNull String sessionId) {
-        broadcast(new SessionClosedEvent(ownerId, sessionId));
+    /** Best-effort notification when unified user logout begins. */
+    public void userLogout(@NonNull String ownerId) {
+        broadcast(new UserLogoutEvent(new Scope.UserScope(ownerId)));
+    }
+
+    /** Best-effort notification after session deletion commits. */
+    public void sessionDeleted(@NonNull String ownerId, @NonNull String sessionId) {
+        broadcast(new SessionDeletedEvent(new Scope.SessionScope(ownerId, sessionId)));
     }
 
     /** Best-effort notification that a session agent terminated. */
     public void agentTerminated(
             @NonNull String ownerId, @NonNull String sessionId, @NonNull String agentId) {
-        broadcast(new AgentTerminatedEvent(ownerId, sessionId, agentId));
+        broadcast(new AgentTerminatedEvent(new Scope.AgentScope(ownerId, sessionId, agentId)));
     }
 
     /**
@@ -124,12 +128,6 @@ public class PluginLifecycleEvents {
      * termination.
      */
     private void broadcast(@NonNull Event event) {
-        if (manager.catalog().entries(StandardContributionPoints.LISTENERS).isEmpty()) return;
-        Set<String> active = new HashSet<>();
-        for (var entry : manager.catalog().entries(StandardContributionPoints.LISTENERS)) {
-            String namespace = entry.source().namespace();
-            if (manager.plugin(namespace).state() == PluginState.ACTIVE) active.add(namespace);
-        }
-        manager.events().broadcast(event, active);
+        manager.events().broadcast(event);
     }
 }

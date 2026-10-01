@@ -16,7 +16,7 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import top.focess.veto.agent.SessionAgentRegistry;
 import top.focess.veto.api.plugin.PluginBinding;
 import top.focess.veto.api.plugin.PluginHost;
-import top.focess.veto.api.plugin.contract.FrontendContribution.ActionContext;
+import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
 import top.focess.veto.api.plugin.storage.PluginStorage;
 import top.focess.veto.builtin.questions.Question;
@@ -28,6 +28,7 @@ import top.focess.veto.integration.plugins.storage.PluginStorageFactory;
 import top.focess.veto.model.SessionEntity;
 import top.focess.veto.model.SessionRepository;
 import top.focess.veto.plugin.runtime.PluginLifecycle;
+import top.focess.veto.session.SessionHistoryLoader;
 import top.focess.veto.util.Nullness;
 import top.focess.veto.vault.UserContext;
 
@@ -35,11 +36,11 @@ import top.focess.veto.vault.UserContext;
 public final class QuestionActionFixture implements AutoCloseable {
     public final @NonNull SessionEntity session = new SessionEntity("alice", "session");
     public final @NonNull SessionRepository sessions = mock();
-    public final @NonNull SessionPlugins selected = mock();
+    public final @NonNull SessionPlugins selected;
     public final @NonNull PluginManager manager;
     private final @NonNull Object runtime;
     public final @NonNull MockMvc mvc;
-    public final @NonNull ActionContext scope;
+    public final Scope.@NonNull AgentScope scope;
 
     public QuestionActionFixture() throws IOException {
         var config = new PluginHostConfiguration();
@@ -66,27 +67,28 @@ public final class QuestionActionFixture implements AutoCloseable {
 
                     public @NonNull String authorizeSession(
                             @NonNull PluginStorage storage,
-                            PluginStorage.@NonNull SessionScope scope) {
+                            PluginStorage.@NonNull Grant<Scope.@NonNull SessionScope> scope) {
                         return backing.authorizeSession(storage, scope);
                     }
 
                     public @NonNull String authorizeUser(
                             @NonNull PluginStorage storage,
-                            PluginStorage.@NonNull UserScope scope) {
+                            PluginStorage.@NonNull Grant<Scope.@NonNull UserScope> scope) {
                         return backing.authorizeUser(storage, scope);
                     }
 
-                    public PluginStorage.@NonNull UserScope transferUser(
+                    public PluginStorage.@NonNull Grant<Scope.@NonNull UserScope> transferUser(
                             @NonNull PluginStorage caller,
-                            PluginStorage.@NonNull UserScope scope,
+                            PluginStorage.@NonNull Grant<Scope.@NonNull UserScope> scope,
                             @NonNull PluginStorage provider) {
                         return backing.transferUser(caller, scope, provider);
                     }
 
-                    public PluginStorage.@NonNull SessionScope transferSession(
-                            @NonNull PluginStorage caller,
-                            PluginStorage.@NonNull SessionScope scope,
-                            @NonNull PluginStorage provider) {
+                    public PluginStorage.@NonNull Grant<Scope.@NonNull SessionScope>
+                            transferSession(
+                                    @NonNull PluginStorage caller,
+                                    PluginStorage.@NonNull Grant<Scope.@NonNull SessionScope> scope,
+                                    @NonNull PluginStorage provider) {
                         return backing.transferSession(caller, scope, provider);
                     }
                 };
@@ -114,11 +116,13 @@ public final class QuestionActionFixture implements AutoCloseable {
                                                         "top.focess.veto.builtin.questions.QuestionRuntime"))
                         .findFirst()
                         .orElseThrow();
-        scope = new ActionContext("alice", session.getId(), "agent");
+        scope = new Scope.AgentScope("alice", session.getId(), "agent");
         when(sessions.findFirstByNameAndOwnerOrderByLastActiveAtDesc("session", "alice"))
                 .thenReturn(Optional.of(session));
-        when(selected.bindings(session.getId()))
-                .thenReturn(List.of(new PluginBinding("top.focess.builtin", "1.0.100", "1.0.100")));
+        selected = spy(new SessionPlugins(manager, sessions, mock(SessionHistoryLoader.class)));
+        when(sessions.findById(session.getId())).thenReturn(Optional.of(session));
+        session.setPluginBindings(
+                List.of(new PluginBinding("top.focess.builtin", "1.0.100", "1.0.100")));
         SessionAgentRegistry agents = mock(SessionAgentRegistry.class);
         when(agents.records(UUID.fromString(session.getId())))
                 .thenReturn(
@@ -139,14 +143,14 @@ public final class QuestionActionFixture implements AutoCloseable {
 
     public PluginHost.@NonNull Invocation invocation(@NonNull String call) {
         return new PluginHost.Invocation(
-                scope.ownerId(), scope.sessionId(), scope.agentId(), "request", call);
+                scope.owner(), scope.session(), scope.agent(), "request", call);
     }
 
     public int pendingCount() {
         try {
             Object result =
                     runtime.getClass()
-                            .getMethod("pendingFor", ActionContext.class)
+                            .getMethod("pendingFor", Scope.AgentScope.class)
                             .invoke(runtime, scope);
             return ((List<?>) Nullness.requireNonNull(result)).size();
         } catch (ReflectiveOperationException e) {

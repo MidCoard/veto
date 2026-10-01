@@ -18,8 +18,8 @@ import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.event.AgentTerminatedEvent;
 import top.focess.veto.api.event.EventHandler;
 import top.focess.veto.api.event.Listener;
-import top.focess.veto.api.event.OwnerClosedEvent;
-import top.focess.veto.api.event.SessionClosedEvent;
+import top.focess.veto.api.event.SessionDeletedEvent;
+import top.focess.veto.api.event.UserLogoutEvent;
 import top.focess.veto.api.llm.PromptRenderer;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.api.plugin.PluginContext;
@@ -42,8 +42,8 @@ public final class GroupRuntime extends AgentConfiguration
 
     private final class GroupListener extends Listener {
         @EventHandler
-        public void onSessionClosed(@NonNull SessionClosedEvent event) {
-            GroupRuntime.this.onSessionClosed(event);
+        public void onSessionDeleted(@NonNull SessionDeletedEvent event) {
+            GroupRuntime.this.onSessionDeleted(event);
         }
 
         @EventHandler
@@ -52,8 +52,8 @@ public final class GroupRuntime extends AgentConfiguration
         }
 
         @EventHandler
-        public void onOwnerClosed(@NonNull OwnerClosedEvent event) {
-            GroupRuntime.this.onOwnerClosed(event);
+        public void onUserLogout(@NonNull UserLogoutEvent event) {
+            GroupRuntime.this.onUserLogout(event);
         }
     }
 
@@ -153,18 +153,18 @@ public final class GroupRuntime extends AgentConfiguration
 
     public synchronized Intent configure(@NonNull Context context) {
         if (!activationReady) throw new IllegalStateException("Host startup is not ready");
-        contexts.put(key(context.scope().sessionId(), context.agentId()), context);
+        contexts.put(key(context.storageGrant().scope().session(), context.agentId()), context);
         if (history == null) return null;
-        history.scope(context.scope());
+        history.grant(context.storageGrant());
         if (context.authorizedTools().stream()
                         .noneMatch(
                                 tool ->
                                         GroupProfiles.owns(tool, Set.of("create_group"))
                                                 && context.base().tools().contains(tool.name()))
-                && history.profile(context.scope().sessionId(), context.agentId()) == null)
-            return null;
+                && history.profile(context.storageGrant().scope().session(), context.agentId())
+                        == null) return null;
         // Children keep their feature-owned profile; do not accidentally acquire standalone tools.
-        var own = history.profile(context.scope().sessionId(), context.agentId());
+        var own = history.profile(context.storageGrant().scope().session(), context.agentId());
         if (own != null && own.label().equals("MATE"))
             return new Intent(own, transitionFor(context));
         Group group =
@@ -172,16 +172,18 @@ public final class GroupRuntime extends AgentConfiguration
                         .filter(
                                 value ->
                                         context.agentId().equals(value.leaderId())
-                                                && context.scope()
-                                                        .sessionId()
+                                                && context.storageGrant()
+                                                        .scope()
+                                                        .session()
                                                         .equals(String.valueOf(value.sessionId()))
                                                 && value.state() != GroupState.DISBANDED)
                         .findFirst()
                         .orElse(null);
         if (group == null
-                && !restored.contains(key(context.scope().sessionId(), context.agentId()))) {
+                && !restored.contains(
+                        key(context.storageGrant().scope().session(), context.agentId()))) {
             var saved =
-                    history.latestSnapshots(context.scope().sessionId()).stream()
+                    history.latestSnapshots(context.storageGrant().scope().session()).stream()
                             .filter(
                                     value ->
                                             value.leaderId().equals(context.agentId())
@@ -199,7 +201,7 @@ public final class GroupRuntime extends AgentConfiguration
                         new Group(
                                 id,
                                 context.agentId(),
-                                context.scope().userId(),
+                                context.storageGrant().scope().owner(),
                                 saved.brief(),
                                 new ExecutionDag(
                                         id,
@@ -214,7 +216,7 @@ public final class GroupRuntime extends AgentConfiguration
                                 context.owner(),
                                 context.agents(),
                                 ToolResultPresentationMode.BASIC,
-                                UUID.fromString(context.scope().sessionId()));
+                                UUID.fromString(context.storageGrant().scope().session()));
                 groups.put(group);
             }
         }
@@ -223,11 +225,12 @@ public final class GroupRuntime extends AgentConfiguration
             group = group.withState(GroupState.ACTIVE, Instant.now());
             groups.put(group);
         }
-        restored.add(key(context.scope().sessionId(), context.agentId()));
+        restored.add(key(context.storageGrant().scope().session(), context.agentId()));
         AgentProfile profile = own == null ? GroupProfiles.standalone(context) : own;
         if (group != null) {
             String profileKey = group.groupId() + "/leader";
-            var savedProfile = history.profile(context.scope().sessionId(), profileKey);
+            var savedProfile =
+                    history.profile(context.storageGrant().scope().session(), profileKey);
             if (savedProfile == null) {
                 savedProfile =
                         GroupProfiles.role(
@@ -237,7 +240,7 @@ public final class GroupRuntime extends AgentConfiguration
                                 true,
                                 configuration,
                                 null);
-                history.profile(context.scope().sessionId(), profileKey, savedProfile);
+                history.profile(context.storageGrant().scope().session(), profileKey, savedProfile);
             }
             profile = savedProfile;
         }
@@ -245,7 +248,8 @@ public final class GroupRuntime extends AgentConfiguration
     }
 
     private Transition transitionFor(@NonNull Context context) {
-        var pending = transitions.get(key(context.scope().sessionId(), context.agentId()));
+        var pending =
+                transitions.get(key(context.storageGrant().scope().session(), context.agentId()));
         if (pending == null || !pending.prompt().equals("runtime-leader")) return pending;
         var data = new LinkedHashMap<>(pending.data().values());
         data.put("task", new JsonValue.StringValue(context.activeTask()));
@@ -350,7 +354,7 @@ public final class GroupRuntime extends AgentConfiguration
                 new Group(
                         id,
                         scope.agentId(),
-                        context.scope().userId(),
+                        context.storageGrant().scope().owner(),
                         brief,
                         new ExecutionDag(id, List.of()),
                         board,
@@ -433,42 +437,45 @@ public final class GroupRuntime extends AgentConfiguration
         if (failure != null) throw failure;
     }
 
-    public void onSessionClosed(@NonNull SessionClosedEvent event) {
+    public void onSessionDeleted(@NonNull SessionDeletedEvent event) {
+        var scope = event.scope();
         try {
             stopGroups(
                     group ->
-                            event.owner().equals(group.owner())
-                                    && event.sessionId().equals(String.valueOf(group.sessionId())));
+                            scope.owner().equals(group.owner())
+                                    && scope.session().equals(String.valueOf(group.sessionId())));
         } finally {
-            restored.removeIf(key -> key.startsWith(event.sessionId() + "/"));
-            contexts.keySet().removeIf(key -> key.startsWith(event.sessionId() + "/"));
-            transitions.keySet().removeIf(key -> key.startsWith(event.sessionId() + "/"));
+            restored.removeIf(key -> key.startsWith(scope.session() + "/"));
+            contexts.keySet().removeIf(key -> key.startsWith(scope.session() + "/"));
+            transitions.keySet().removeIf(key -> key.startsWith(scope.session() + "/"));
         }
     }
 
     public void onAgentTerminated(@NonNull AgentTerminatedEvent event) {
+        var scope = event.scope();
         try {
             stopGroups(
                     group ->
-                            event.owner().equals(group.owner())
-                                    && event.agentId().equals(group.leaderId())
-                                    && event.sessionId().equals(String.valueOf(group.sessionId())));
+                            scope.owner().equals(group.owner())
+                                    && scope.agent().equals(group.leaderId())
+                                    && scope.session().equals(String.valueOf(group.sessionId())));
         } finally {
-            String key = key(event.sessionId(), event.agentId());
+            String key = key(scope.session(), scope.agent());
             contexts.remove(key);
             transitions.remove(key);
             restored.remove(key);
         }
     }
 
-    public void onOwnerClosed(@NonNull OwnerClosedEvent event) {
+    public void onUserLogout(@NonNull UserLogoutEvent event) {
+        var scope = event.scope();
         var owned =
                 contexts.entrySet().stream()
-                        .filter(entry -> event.owner().equals(entry.getValue().owner()))
+                        .filter(entry -> scope.owner().equals(entry.getValue().owner()))
                         .map(Map.Entry::getKey)
                         .toList();
         try {
-            stopGroups(group -> event.owner().equals(group.owner()));
+            stopGroups(group -> scope.owner().equals(group.owner()));
         } finally {
             for (var key : owned) {
                 contexts.remove(key);

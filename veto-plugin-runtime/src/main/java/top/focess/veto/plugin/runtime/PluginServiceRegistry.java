@@ -10,7 +10,9 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiPredicate;
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.api.plugin.PluginScope;
 import top.focess.veto.api.plugin.PluginState;
+import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.contract.PluginFailure;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
@@ -20,8 +22,6 @@ import top.focess.veto.api.plugin.service.PluginServices;
 import top.focess.veto.api.plugin.service.ServiceCallContext;
 import top.focess.veto.api.plugin.service.ServiceException;
 import top.focess.veto.api.plugin.service.ServiceHandler;
-import top.focess.veto.api.plugin.PluginScope;
-import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.api.plugin.storage.PluginStorage;
 
 /** Atomically bound service directory; implementation objects never escape to consumers. */
@@ -42,14 +42,14 @@ public final class PluginServiceRegistry {
     private final @NonNull BiPredicate<@NonNull String, @NonNull String> allowed;
     private final @NonNull ScopeResolver scopeResolver;
 
-    /** Validates a caller-owned host scope and derives the provider-visible call context. */
+    /** Validates a caller-owned host grant and derives the provider-visible call context. */
     @FunctionalInterface
     public interface ScopeResolver {
         @NonNull ServiceCallContext resolve(
                 @NonNull String callerId,
                 @NonNull String providerId,
                 @NonNull PluginScope required,
-                PluginStorage.@NonNull Scope scope)
+                PluginStorage.@NonNull Grant<?> grant)
                 throws ServiceException;
     }
 
@@ -57,7 +57,7 @@ public final class PluginServiceRegistry {
     public PluginServiceRegistry(@NonNull BiPredicate<@NonNull String, @NonNull String> allowed) {
         this(
                 allowed,
-                (callerId, providerId, required, scope) -> {
+                (callerId, providerId, required, grant) -> {
                     throw new ServiceException(ServiceException.Code.UNAVAILABLE);
                 });
     }
@@ -185,7 +185,8 @@ public final class PluginServiceRegistry {
                             }
 
                             public @NonNull JsonValue invoke(
-                                    PluginStorage.@NonNull Scope scope, @NonNull JsonValue request)
+                                    PluginStorage.@NonNull Grant<?> grant,
+                                    @NonNull JsonValue request)
                                     throws ServiceException {
                                 Entry current = entries.get(key);
                                 if (current == null
@@ -199,7 +200,7 @@ public final class PluginServiceRegistry {
                                                 caller.identity().id(),
                                                 current.owner().identity().id(),
                                                 current.service().scope(),
-                                                scope);
+                                                grant);
                                 return invokeService(caller, current, context, request);
                             }
                         });

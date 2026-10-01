@@ -2,9 +2,9 @@ package top.focess.veto.plugin.runtime;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -14,8 +14,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
+import top.focess.veto.api.agent.workflow.PluginAwait;
 import top.focess.veto.api.plugin.PluginContext;
-import top.focess.veto.api.plugin.PluginContributions;
 import top.focess.veto.api.plugin.PluginIdentity;
 import top.focess.veto.api.plugin.PluginState;
 import top.focess.veto.api.plugin.VetoPlugin;
@@ -24,6 +24,42 @@ import top.focess.veto.api.plugin.contract.PluginFailure;
 
 @Timeout(10)
 class PluginLifecycleStoppingResourcesTest {
+    @Test
+    void stoppingFailsOwnedAwaitBeforeDrainingItsAdmittedHandler() throws Exception {
+        var plugin = new TestPlugin();
+        var entered = new CountDownLatch(1);
+        var source = new CompletableFuture<Boolean>();
+        try (var lifecycle = Executors.newSingleThreadExecutor();
+                var calls = Executors.newVirtualThreadPerTaskExecutor()) {
+            var managed = start(plugin, lifecycle);
+            var owned = managed.ownAwait(new PluginAwait("waiting", source));
+            var result =
+                    calls.submit(
+                            () ->
+                                    managed.execute(
+                                            () -> {
+                                                entered.countDown();
+                                                return owned.ready().join();
+                                            }));
+            try {
+                assertTrue(entered.await(2, TimeUnit.SECONDS));
+                var closed = calls.submit(managed::close);
+                closed.get(2, TimeUnit.SECONDS);
+                var failure =
+                        assertThrows(
+                                ExecutionException.class, () -> result.get(2, TimeUnit.SECONDS));
+                var completion = assertInstanceOf(CompletionException.class, failure.getCause());
+                assertInstanceOf(IllegalStateException.class, completion.getCause());
+                assertTrue(source.isCancelled());
+                assertEquals(PluginState.CLOSED, managed.state());
+                assertEquals(1, plugin.cleaned.get());
+            } finally {
+                source.complete(true);
+                managed.close();
+            }
+        }
+    }
+
     @Test
     void releasesBeforeDrainOnceAndRejectsNewResourcesWhileStopping() throws Exception {
         var plugin = new TestPlugin();
@@ -158,7 +194,7 @@ class PluginLifecycleStoppingResourcesTest {
     private static @NonNull PluginLifecycle start(
             @NonNull TestPlugin plugin, @NonNull ExecutorService lifecycle) throws PluginFailure {
         var managed = new PluginLifecycle(plugin, lifecycle);
-        managed.initialize(
+        managed.construct(
                 new PluginContext(
                         plugin.identity(),
                         () -> {},
@@ -174,10 +210,6 @@ class PluginLifecycleStoppingResourcesTest {
     }
 
     private static final class TestPlugin extends VetoPlugin {
-        @Override
-        public @NonNull PluginContributions contributions() {
-            return new PluginContributions(List.of());
-        }
 
         private final @NonNull AtomicInteger cleaned = new AtomicInteger();
 

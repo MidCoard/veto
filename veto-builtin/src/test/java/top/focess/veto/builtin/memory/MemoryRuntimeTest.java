@@ -14,6 +14,7 @@ import org.junit.jupiter.api.Test;
 import top.focess.veto.api.plugin.PluginContext;
 import top.focess.veto.api.plugin.PluginHost;
 import top.focess.veto.api.plugin.PluginIdentity;
+import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.storage.PluginStorage;
 import top.focess.veto.builtin.memory.embedder.HashEmbedder;
@@ -40,10 +41,14 @@ class MemoryRuntimeTest {
                                         owner, session.toString(), "agent", "request", "call"));
         when(storage.currentSession())
                 .thenReturn(
-                        new PluginStorage.SessionScope(
-                                "token", userIdentity.toString(), session.toString()));
+                        new PluginStorage.Grant<>(
+                                "token",
+                                new Scope.SessionScope(
+                                        userIdentity.toString(), session.toString())));
         when(storage.currentUser())
-                .thenReturn(new PluginStorage.UserScope("token", userIdentity.toString()));
+                .thenReturn(
+                        new PluginStorage.Grant<>(
+                                "token", new Scope.UserScope(userIdentity.toString())));
         var services = new HashMap<Class<?>, Object>();
         services.put(PluginHost.class, host);
         services.put(PluginStorage.class, storage);

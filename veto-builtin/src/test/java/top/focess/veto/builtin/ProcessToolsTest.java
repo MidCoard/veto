@@ -25,7 +25,6 @@ import top.focess.veto.api.plugin.PluginIdentity;
 import top.focess.veto.api.process.Command;
 import top.focess.veto.api.process.CommandResult;
 import top.focess.veto.api.process.ProcessHost;
-import top.focess.veto.builtin.process.BackgroundTasks;
 import top.focess.veto.builtin.process.ProcessRuntime;
 import top.focess.veto.builtin.process.TaskEvents;
 import top.focess.veto.builtin.tools.InputTaskTool;
@@ -94,10 +93,7 @@ class ProcessToolsTest {
             assertTrue(status.path("recentOutput").asText().contains("got:hello"));
             assertEquals(
                     "original-request",
-                    runtime.tasks()
-                            .status(BackgroundTasks.Owner.from(host.invocation), id)
-                            .orElseThrow()
-                            .requestId());
+                    runtime.tasks().status(host.invocation.scope(), id).orElseThrow().requestId());
             assertEquals(
                     "already_exited",
                     mapper.readTree(stop.execute(new StopTaskTool.Args(id)))

@@ -8,17 +8,100 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.jar.JarEntry;
 import java.util.jar.JarOutputStream;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.api.parallel.ResourceLock;
+import org.junit.jupiter.api.parallel.Resources;
 import top.focess.veto.api.plugin.PluginContext;
 import top.focess.veto.api.plugin.PluginState;
 import top.focess.veto.api.plugin.VetoPlugin;
 import top.focess.veto.api.plugin.contract.JsonValue;
+import top.focess.veto.api.plugin.contract.PluginFailure;
 
+@ResourceLock(Resources.SYSTEM_PROPERTIES)
 class InstalledPluginLoaderTest {
+    @Test
+    void constructorFailureClosesAlreadyRegisteredResourcesExactlyOnce(@TempDir @NonNull Path root)
+            throws Exception {
+        Path directory = Files.createDirectory(root.resolve("one"));
+        writeJavaPackage(directory);
+        var loader =
+                new InstalledPluginLoader(
+                        Path.of(""), Duration.ofSeconds(5), false, ScriptExecutionMode.TRUSTED);
+        var closed = new AtomicInteger();
+        try (var control = Executors.newSingleThreadExecutor()) {
+            var managed = new PluginLifecycle(loader.load(root).getFirst(), control);
+            try {
+                var failure =
+                        assertThrows(
+                                PluginFailure.class,
+                                () ->
+                                        managed.construct(
+                                                new PluginContext(
+                                                        managed.identity(),
+                                                        () -> {},
+                                                        managed::state,
+                                                        Map.of(AtomicInteger.class, closed),
+                                                        Map.of()),
+                                                new JsonValue.ObjectValue(Map.of())));
+                assertEquals(PluginFailure.Code.INTERNAL_FAILURE, failure.code());
+                assertEquals(PluginState.FAILED, managed.state());
+                assertThrows(IllegalStateException.class, managed::implementation);
+                assertEquals(1, closed.get());
+            } finally {
+                managed.close();
+            }
+            assertEquals(1, closed.get());
+        }
+    }
+
+    @Test
+    void discoveryDefersEntryInitializationUntilContextBoundConstruction(
+            @TempDir @NonNull Path root) throws Exception {
+        String marker = "veto.test.installed-sample.initialized";
+        String previous = System.clearProperty("veto.test.installed-sample.initialized");
+        try {
+            Path directory = Files.createDirectory(root.resolve("one"));
+            writeJavaPackage(directory);
+            var loader =
+                    new InstalledPluginLoader(
+                            Path.of(""), Duration.ofSeconds(5), false, ScriptExecutionMode.TRUSTED);
+            var plugins = loader.load(root);
+            try (var installed = plugins.getFirst()) {
+                assertNull(System.getProperty(marker));
+                var plugin =
+                        installed.create(
+                                new PluginContext(
+                                        installed.identity(),
+                                        () -> {},
+                                        () -> PluginState.INITIALIZING,
+                                        Map.of(),
+                                        Map.of()),
+                                new JsonValue.ObjectValue(Map.of()));
+                try {
+                    assertEquals("true", System.getProperty(marker));
+                } finally {
+                    plugin.close();
+                }
+            }
+        } finally {
+            String replaced =
+                    previous == null
+                            ? System.clearProperty("veto.test.installed-sample.initialized")
+                            : System.setProperty(marker, previous);
+            if (replaced != null)
+                System.getLogger("veto.test.installed-sample")
+                        .log(
+                                System.Logger.Level.DEBUG,
+                                "Restored initialization marker: " + replaced);
+        }
+    }
+
     @Test
     void javaPackageLoadsThroughPrivateClassloader(@TempDir @NonNull Path root) throws Exception {
         Path directory = Files.createDirectory(root.resolve("one"));

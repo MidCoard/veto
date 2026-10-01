@@ -33,7 +33,7 @@ class GroupProfilesTest {
                             "agent", "description", "STANDALONE", names, "DEFAULT", null, Map.of());
             var context =
                     new AgentConfiguration.Context(
-                            "owner", fixture.scope, fixture.agents, "leader", base, tools, "");
+                            "owner", fixture.grant, fixture.agents, "leader", base, tools, "");
             assertEquals(names, GroupProfiles.standalone(context).tools());
             assertEquals(
                     Set.of("recall_memory"),
@@ -80,7 +80,7 @@ class GroupProfilesTest {
                             Map.of());
             var context =
                     new AgentConfiguration.Context(
-                            "owner", fixture.scope, fixture.agents, "leader", base, tools, "");
+                            "owner", fixture.grant, fixture.agents, "leader", base, tools, "");
             assertEquals(
                     Set.of("read", "think", "create_group", "import_secret"),
                     GroupProfiles.standalone(context).tools());
@@ -127,7 +127,7 @@ class GroupProfilesTest {
                 var context =
                         new AgentConfiguration.Context(
                                 "owner",
-                                fixture.scope,
+                                fixture.grant,
                                 fixture.agents,
                                 "leader",
                                 base,

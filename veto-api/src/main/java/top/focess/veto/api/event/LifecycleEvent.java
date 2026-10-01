@@ -1,34 +1,26 @@
 package top.focess.veto.api.event;
 
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.api.plugin.Scope;
 
 /**
- * Base for best-effort owner, session, and agent lifecycle notifications.
+ * Base for best-effort user authentication, logout, session deletion, and agent termination
+ * notifications.
  *
  * <p>The host broadcasts a lifecycle event to every active plugin that contributed a {@link
- * Listener} after the corresponding runtime transition. Unlike {@link WorkflowEvent}, it carries no
- * cancellation signal and is never session-selected: observing one grants no authority, and a
- * handler that fails is logged and skipped so it cannot break logout, session deletion, or agent
- * termination.
+ * Listener} at the transition documented by its concrete type; logout is announced when it begins.
+ * Unlike {@link WorkflowEvent}, it carries no cancellation signal and is never session-selected:
+ * observing one grants no authority, and a handler that fails is logged and skipped so it cannot
+ * break logout, session deletion, or agent termination.
  */
 public abstract class LifecycleEvent extends Event {
-    private final @NonNull String owner;
+    /** Creates a non-cancellable lifecycle notification. */
+    protected LifecycleEvent() {}
 
     /**
-     * Creates the lifecycle notification for an owner.
+     * Returns the event's typed identity; observing it grants no authority.
      *
-     * @param owner authenticated owner identity
+     * @return the owner, session, or agent identity relevant to this event
      */
-    protected LifecycleEvent(@NonNull String owner) {
-        this.owner = owner;
-    }
-
-    /**
-     * Returns the authenticated owner identity.
-     *
-     * @return owner identity
-     */
-    public @NonNull String owner() {
-        return owner;
-    }
+    public abstract @NonNull Scope scope();
 }

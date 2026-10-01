@@ -31,8 +31,10 @@ class GroupRecoveryServiceTest {
     }
 
     private void save(@NonNull GroupTestHost fixture, @NonNull GroupHistoryView view) {
-        fixture.runtime.history().scope(fixture.scope);
-        fixture.runtime.history().append(fixture.scope.sessionId(), view, view.createdAt(), null);
+        fixture.runtime.history().grant(fixture.grant);
+        fixture.runtime
+                .history()
+                .append(fixture.grant.scope().session(), view, view.createdAt(), null);
     }
 
     @Test

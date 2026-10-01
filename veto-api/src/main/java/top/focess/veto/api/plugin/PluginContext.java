@@ -121,8 +121,8 @@ public final class PluginContext {
     }
 
     /**
-     * Returns the host-mediated effects service required by this plugin, or fails initialization
-     * when the host did not grant it. Plugins that can operate without it should use {@link
+     * Returns the host-mediated effects service required by this plugin, or fails construction when
+     * the host did not grant it. Plugins that can operate without it should use {@link
      * #service(Class)} instead. Retaining this object is not retained authorization.
      *
      * @return the granted plugin host
@@ -135,7 +135,7 @@ public final class PluginContext {
 
     /**
      * Returns the named JSON protocol directory for plugin-to-plugin communication. During
-     * initialization the directory is not yet populated; discover providers in {@code start()} or
+     * construction the directory is not yet populated; discover providers in {@code start()} or
      * later. If the host does not grant a directory, this returns an empty one.
      *
      * @return the named service directory

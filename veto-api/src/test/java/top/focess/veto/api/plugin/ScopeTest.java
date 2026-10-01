@@ -28,14 +28,18 @@ class ScopeTest {
         assertEquals("owner", agent.owner());
         assertEquals("session", agent.session());
         assertEquals("agent", agent.agent());
+        assertEquals(session, ((Scope.AgentScope) agent).sessionScope());
+        assertEquals(user, ((Scope.AgentScope) agent).userScope());
+        assertEquals(user, ((Scope.SessionScope) session).userScope());
     }
 
     @Test
+    @SuppressWarnings(
+            "argument") // WHY: deliberately violate the non-null contract to verify rejection.
     void requiredIdentityCannotBeMissing() {
         assertThrows(NullPointerException.class, () -> new Scope.UserScope(null));
         assertThrows(NullPointerException.class, () -> new Scope.SessionScope("owner", null));
         assertThrows(
-                NullPointerException.class,
-                () -> new Scope.AgentScope("owner", "session", null));
+                NullPointerException.class, () -> new Scope.AgentScope("owner", "session", null));
     }
 }
