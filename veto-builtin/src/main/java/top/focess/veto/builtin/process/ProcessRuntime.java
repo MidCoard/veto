@@ -39,7 +39,7 @@ public final class ProcessRuntime extends Listener {
                                                 () ->
                                                         new IllegalStateException(
                                                                 "Process host unavailable")));
-        tasks.listener(events);
+        tasks.observer(events);
     }
 
     @EventHandler
@@ -150,9 +150,8 @@ public final class ProcessRuntime extends Listener {
             }
 
             @Override
-            public @NonNull InputResult queueInput(
-                    @NonNull String id, byte @NonNull [] bytes, boolean closeStdin) {
-                return tasks.queueInput(scope(tool), id);
+            public @NonNull InputResult enqueueApprovedInput(@NonNull String id) {
+                return tasks.enqueueApprovedInput(scope(tool), id);
             }
 
             @Override

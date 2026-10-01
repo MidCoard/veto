@@ -6,55 +6,93 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.BlockingQueue;
+import java.util.function.Supplier;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
-import top.focess.veto.agent.AgentRuntimeState.ActivatedObservation;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import top.focess.veto.agent.ExecutionControl.Wait;
 import top.focess.veto.agent.continuation.RequestContinuationStore;
 import top.focess.veto.api.agent.AgentAction;
+import top.focess.veto.api.agent.AgentResult;
 import top.focess.veto.api.agent.AgentState;
 import top.focess.veto.api.plugin.contract.AgentInbox;
+import top.focess.veto.integration.plugins.SessionPlugins;
 import top.focess.veto.util.Nullness;
 import top.focess.veto.vault.KeysteadVault;
 
-/** Executes plugin-supplied observations under the existing request budget and lifecycle gates. */
+/**
+ * Owns continuation budgets and observation acknowledgements. The runner serializes ledger/history
+ * operations; work claiming and completion require the caller's request-transition monitor. This
+ * component returns claimed work without publishing request/control transitions or invoking
+ * listeners.
+ */
 final class AgentContinuationExecution {
+    private static final @NonNull Logger log =
+            LoggerFactory.getLogger("top.focess.veto.agent.AgentContinuationExecution");
     private static final int MAX_TRANSIENT_EPISODES = 256;
-    private final @NonNull AgentRuntimeState runtime;
+    private final @NonNull String agentId;
+    private final @NonNull UUID sessionId;
+    private final String owner;
+    private final long maxCallsPerEpisode;
+    private final @NonNull AgentOutput output;
+    private final @NonNull BlockingQueue<QueuedRequest> actionQueue;
+    private final @NonNull Supplier<@Nullable SessionPlugins> sessionPlugins;
+    private KeysteadVault executionVault;
+    private RequestContinuationStore continuationStore;
+    private AgentInbox workSource;
 
     /** Live request ledgers retained for late plugin observations during this agent lifetime. */
     private final @NonNull Map<String, RequestEpisode> episodes = new LinkedHashMap<>();
 
-    AgentContinuationExecution(@NonNull AgentRuntimeState runtime) {
-        this.runtime = runtime;
+    private record ActivatedObservation(
+            AgentInbox.@NonNull Observation event, @NonNull String requestId) {}
+
+    private final @NonNull Map<String, ActivatedObservation> activatedObservations =
+            new LinkedHashMap<>();
+
+    AgentContinuationExecution(
+            @NonNull String agentId,
+            @NonNull UUID sessionId,
+            String owner,
+            long maxCallsPerEpisode,
+            @NonNull AgentOutput output,
+            @NonNull BlockingQueue<QueuedRequest> actionQueue,
+            @NonNull Supplier<@Nullable SessionPlugins> sessionPlugins) {
+        this.agentId = agentId;
+        this.sessionId = sessionId;
+        this.owner = owner;
+        this.maxCallsPerEpisode = maxCallsPerEpisode;
+        this.output = output;
+        this.actionQueue = actionQueue;
+        this.sessionPlugins = sessionPlugins;
     }
 
     void attachExecutionVault(@NonNull KeysteadVault vault) {
-        runtime.executionVault = vault;
+        executionVault = vault;
     }
 
     void attachContinuationStore(@NonNull RequestContinuationStore store) {
-        runtime.continuationStore = store;
+        continuationStore = store;
     }
 
     RequestEpisode findContinuation(@NonNull String requestId) {
         RequestEpisode live = episodes.get(requestId);
         if (live != null) return live;
-        RequestContinuationStore store = runtime.continuationStore;
+        RequestContinuationStore store = continuationStore;
         if (store != null) {
-            var saved = store.load(runtime.sessionId, runtime.agentId, requestId).orElse(null);
+            var saved = store.load(sessionId, agentId, requestId).orElse(null);
             if (saved != null) {
                 Long granted = saved.grantedCalls();
-                var value = new RequestEpisode(requestId, runtime.maxCallsPerEpisode);
+                var value = new RequestEpisode(requestId, maxCallsPerEpisode);
                 value.task(saved.task());
                 value.breaker()
                         .restore(
                                 saved.consumedCalls(),
                                 granted != null
                                         ? granted
-                                        : runtime.maxCallsPerEpisode < 0
-                                                ? -1
-                                                : runtime.maxCallsPerEpisode);
+                                        : maxCallsPerEpisode < 0 ? -1 : maxCallsPerEpisode);
                 episodes.put(requestId, value);
                 return value;
             }
@@ -63,7 +101,7 @@ final class AgentContinuationExecution {
     }
 
     @NonNull RequestEpisode newEpisode() {
-        return new RequestEpisode(UUID.randomUUID().toString(), runtime.maxCallsPerEpisode);
+        return new RequestEpisode(UUID.randomUUID().toString(), maxCallsPerEpisode);
     }
 
     void remember(@NonNull RequestEpisode episode) {
@@ -77,31 +115,28 @@ final class AgentContinuationExecution {
     }
 
     void settled(@NonNull RequestEpisode episode) {
-        // Production can reload a late observation from its durable checkpoint. Embedded runners
-        // without that store keep a bounded transient window for the same behavior.
-        if (runtime.continuationStore != null) episodes.remove(episode.id(), episode);
+        // Durable checkpoints support late observations; embedded runners retain a bounded window.
+        if (continuationStore != null) episodes.remove(episode.id(), episode);
     }
 
-    void reserveRequestCall() {
-        runtime.lifecycle().currentRequest().episode.breaker().recordModelCall();
-        persistRequest();
+    void reserveRequestCall(@NonNull RequestHandle handle) {
+        handle.episode.breaker().recordModelCall();
+        persistRequest(handle);
     }
 
-    void persistRequest() {
-        RequestContinuationStore store = runtime.continuationStore;
-        RequestHandle handle = runtime.control.request();
+    void persistRequest(RequestHandle handle) {
+        RequestContinuationStore store = continuationStore;
         if (store == null || handle == null) return;
         store.save(
-                runtime.sessionId,
-                runtime.agentId,
+                sessionId,
+                agentId,
                 handle.episode.id(),
                 handle.episode.task(),
                 handle.episode.breaker().count(),
                 handle.episode.breaker().grantedCalls());
     }
 
-    boolean belongsToActiveRequest(AgentInbox.@NonNull Observation event) {
-        RequestHandle handle = runtime.control.request();
+    boolean belongsToActiveRequest(AgentInbox.@NonNull Observation event, RequestHandle handle) {
         if (handle == null) return false;
         String observationId = handle.episode.observationId();
         return observationId != null
@@ -110,23 +145,17 @@ final class AgentContinuationExecution {
     }
 
     void attachWorkSource(@NonNull AgentInbox service) {
-        runtime.workSource = service;
+        workSource = service;
     }
 
-    void signalWork() {
-        if (runtime.control.open() && runtime.workQueued.compareAndSet(false, true))
-            runtime.actionQueue.add(
-                    new QueuedRequest(
-                            new AgentAction.WorkAvailableAction(), new RequestHandle(runtime)));
-    }
-
-    @NonNull List<AgentInbox.Observation> pendingObservations(@NonNull AgentInbox service) {
+    @NonNull List<AgentInbox.Observation> pendingObservations(
+            @NonNull AgentInbox service, RequestHandle handle) {
         List<AgentInbox.Observation> eligible = new ArrayList<>();
-        for (AgentInbox.Observation event : service.pending(scope())) {
+        for (AgentInbox.Observation event : service.pending(scope(handle))) {
             String request = event.requestId();
             boolean cancelled =
                     request != null
-                            && runtime.output().history().stream()
+                            && output.history().stream()
                                     .anyMatch(
                                             turn ->
                                                     turn.type() == TurnType.EXECUTION_ERROR
@@ -142,142 +171,136 @@ final class AgentContinuationExecution {
                 continue;
             }
             try {
-                service.cancelled(scope(), event);
+                service.cancelled(scope(handle), event);
             } catch (RuntimeException error) {
-                AgentRuntimeState.log.warn(
-                        "Cancelled request observation {} awaits persistence", event.id(), error);
+                log.warn("Cancelled request observation {} awaits persistence", event.id(), error);
             }
         }
         return eligible;
     }
 
-    boolean injectObservations() {
+    /** The caller checks the execution boundary before injecting into this request's history. */
+    boolean injectObservations(@NonNull RequestHandle handle) {
         AgentInbox service = source();
         if (service == null) return false;
-        runtime.lifecycle().checkExecutionBoundary();
         boolean inserted = false;
-        for (AgentInbox.Observation event : pendingObservations(service)) {
-            if (!belongsToActiveRequest(event)) continue;
+        for (AgentInbox.Observation event : pendingObservations(service, handle)) {
+            if (!belongsToActiveRequest(event, handle)) continue;
             boolean recorded =
-                    runtime.output().history().stream()
+                    output.history().stream()
                             .anyMatch(t -> event.id().equals(t.payload().get("eventId")));
             if (!recorded) {
-                runtime.output()
-                        .appendTurn(
-                                new TurnRecord(
-                                        runtime.output().nextTurn(),
-                                        TurnType.RUNTIME_EVENT,
-                                        attributes(event),
-                                        event.occurredAt()));
+                output.appendTurn(
+                        new TurnRecord(
+                                output.nextTurn(),
+                                TurnType.RUNTIME_EVENT,
+                                attributes(event, handle),
+                                event.occurredAt()));
             }
-            service.started(scope(), event);
-            runtime.activatedObservations.put(
-                    event.id(),
-                    new ActivatedObservation(
-                            event, runtime.lifecycle().currentRequest().episode.id()));
+            service.started(scope(handle), event);
+            activatedObservations.put(
+                    event.id(), new ActivatedObservation(event, handle.episode.id()));
             // A retried acknowledgement still needs reasoning, even if the history already exists.
             inserted = true;
         }
         return inserted;
     }
 
-    void completeOrWaitForWork() {
-        if (runtime.lifecycle().currentRequest().awaiting()) {
-            runtime.lifecycle().saveExecutionWait(Wait.PLUGIN);
-            runtime.lifecycle().transitionTo(AgentState.WAITING);
-            signalWork();
-        } else runtime.lifecycle().completeSuccess();
-    }
-
-    QueuedRequest claimWork() {
-        KeysteadVault vault = runtime.executionVault;
-        String executionOwner = runtime.owner;
-        if (vault != null && (executionOwner == null || !vault.isUnlocked(executionOwner)))
-            return null;
+    void complete(@NonNull RequestHandle handle, @NonNull AgentResult result) {
         AgentInbox service = source();
-        if (runtime.control.waiting(Wait.INTERRUPTED)
-                || runtime.control instanceof ExecutionControl.Suspended suspended
-                        && !suspended.waits().equals(Set.of(Wait.PLUGIN))
-                || runtime.control.waiting(Wait.BREAKER)
-                || runtime.control.state() == AgentState.PAUSED
-                || runtime.control.state() == AgentState.INTERCEPTED
-                || !runtime.control.open()) return null;
-        synchronized (runtime) {
-            RequestHandle waiting = runtime.control.request();
-            if (runtime.control.waiting(Wait.PLUGIN) && waiting != null && waiting.readyToResume())
-                return new QueuedRequest(new AgentAction.WorkAction(), waiting);
-            if (service == null) return null;
-            // A newly submitted user task owns its own handoff future and goes first.
-            if (runtime.actionQueue.stream()
-                    .anyMatch(
-                            a ->
-                                    a.action() instanceof AgentAction.UserPromptAction
-                                            || a.action()
-                                                    instanceof AgentAction.DirectUserPromptAction))
-                return null;
-            var events = pendingObservations(service);
-            if (events.isEmpty()) return null;
-            if (runtime.control.waiting(Wait.PLUGIN)) {
-                if (events.stream().noneMatch(this::belongsToActiveRequest)) return null;
-            } else {
-                AgentInbox.Observation first = null;
-                for (AgentInbox.Observation candidate : events) {
-                    String candidateOrigin = candidate.requestId();
-                    if (candidateOrigin == null || findContinuation(candidateOrigin) != null) {
-                        first = candidate;
-                        break;
-                    }
-                }
-                if (first == null) return null;
-                String origin = first.requestId();
-                String episodeId = first.continuationId();
-                String requestId =
-                        origin != null
-                                ? origin
-                                : episodeId != null ? episodeId : "observation:" + first.id();
-                RequestEpisode continuation = findContinuation(requestId);
-                if (origin != null && continuation == null) {
-                    AgentRuntimeState.log.warn(
-                            "Plugin work event {} awaits unavailable request context {}",
-                            first.id(),
-                            origin);
-                    return null;
-                }
-                RequestEpisode episode =
-                        continuation != null
-                                ? continuation
-                                : new RequestEpisode(requestId, runtime.maxCallsPerEpisode);
-                if (continuation == null) episode.task(first.content());
-                remember(episode);
-                episode.observationId(origin == null ? first.id() : null);
-                RequestHandle requestHandle = new RequestHandle(runtime, episode);
-                runtime.control = runtime.control.withRequest(requestHandle);
-                var listener = runtime.backgroundRequestListener;
-                if (listener != null) listener.accept(requestHandle);
+        if (service == null) return;
+        for (var entry : List.copyOf(activatedObservations.entrySet())) {
+            ActivatedObservation observation = entry.getValue();
+            if (!handle.episode.id().equals(observation.requestId())) continue;
+            try {
+                service.completed(scope(handle), observation.event(), result.success());
+                activatedObservations.remove(entry.getKey());
+            } catch (RuntimeException error) {
+                log.warn("Plugin completion remains unacknowledged", error);
             }
-            RequestHandle request = runtime.control.request();
-            if (request == null)
-                throw new IllegalStateException("Plugin work has no request owner");
-            return new QueuedRequest(new AgentAction.WorkAction(), request);
         }
     }
 
-    AgentInbox source() {
-        if (runtime.workSource != null) return runtime.workSource;
-        var selected = runtime.sessionPlugins;
-        return selected == null ? null : selected.workSource(runtime.sessionId.toString());
+    /** Called under the caller's request-transition monitor with its current control snapshot. */
+    QueuedRequest claimWork(@NonNull ExecutionControl control, @NonNull Object requestOwner) {
+        KeysteadVault vault = executionVault;
+        if (vault != null && (owner == null || !vault.isUnlocked(owner))) return null;
+        AgentInbox service = source();
+        if (control.waiting(Wait.INTERRUPTED)
+                || control instanceof ExecutionControl.Suspended suspended
+                        && !suspended.waits().equals(Set.of(Wait.PLUGIN))
+                || control.waiting(Wait.BREAKER)
+                || control.state() == AgentState.PAUSED
+                || control.state() == AgentState.INTERCEPTED
+                || !control.open()) return null;
+        RequestHandle waiting = control.request();
+        if (control.waiting(Wait.PLUGIN) && waiting != null && waiting.readyToResume())
+            return new QueuedRequest(new AgentAction.WorkAction(), waiting);
+        if (service == null) return null;
+        // A newly submitted user task owns its own handoff future and goes first.
+        if (actionQueue.stream()
+                .anyMatch(
+                        a ->
+                                a.action() instanceof AgentAction.UserPromptAction
+                                        || a.action()
+                                                instanceof AgentAction.DirectUserPromptAction))
+            return null;
+        var events = pendingObservations(service, waiting);
+        if (events.isEmpty()) return null;
+        if (control.waiting(Wait.PLUGIN)) {
+            if (events.stream().noneMatch(event -> belongsToActiveRequest(event, waiting)))
+                return null;
+            if (waiting == null)
+                throw new IllegalStateException("Plugin work has no request owner");
+            return new QueuedRequest(new AgentAction.WorkAction(), waiting);
+        }
+        AgentInbox.Observation first = null;
+        for (AgentInbox.Observation candidate : events) {
+            String candidateOrigin = candidate.requestId();
+            if (candidateOrigin == null || findContinuation(candidateOrigin) != null) {
+                first = candidate;
+                break;
+            }
+        }
+        if (first == null) return null;
+        String origin = first.requestId();
+        String episodeId = first.continuationId();
+        String requestId =
+                origin != null
+                        ? origin
+                        : episodeId != null ? episodeId : "observation:" + first.id();
+        RequestEpisode continuation = findContinuation(requestId);
+        if (origin != null && continuation == null) {
+            log.warn(
+                    "Plugin work event {} awaits unavailable request context {}",
+                    first.id(),
+                    origin);
+            return null;
+        }
+        RequestEpisode episode =
+                continuation != null
+                        ? continuation
+                        : new RequestEpisode(requestId, maxCallsPerEpisode);
+        if (continuation == null) episode.task(first.content());
+        remember(episode);
+        episode.observationId(origin == null ? first.id() : null);
+        return new QueuedRequest(
+                new AgentAction.WorkAction(), new RequestHandle(requestOwner, episode));
     }
 
-    AgentInbox.@NonNull InboxContext scope() {
-        RequestHandle handle = runtime.control.request();
+    AgentInbox source() {
+        if (workSource != null) return workSource;
+        var selected = sessionPlugins.get();
+        return selected == null ? null : selected.workSource(sessionId.toString());
+    }
+
+    AgentInbox.@NonNull InboxContext scope(RequestHandle handle) {
         return new AgentInbox.InboxContext(
-                runtime.sessionId.toString(),
-                runtime.agentId,
-                handle == null ? null : handle.episode.id());
+                sessionId.toString(), agentId, handle == null ? null : handle.episode.id());
     }
 
     private @NonNull Map<@NonNull String, @Nullable Object> attributes(
-            AgentInbox.@NonNull Observation event) {
+            AgentInbox.@NonNull Observation event, @NonNull RequestHandle handle) {
         var attributes = new LinkedHashMap<@NonNull String, @Nullable Object>(event.attributes());
         attributes.put("eventId", event.id());
         attributes.put("topic", event.topic());
@@ -285,7 +308,7 @@ final class AgentContinuationExecution {
                 "requestId",
                 event.requestId() == null ? "" : Nullness.requireNonNull(event.requestId()));
         attributes.put("content", event.content());
-        attributes.put("originatingTask", runtime.currentTask());
+        attributes.put("originatingTask", handle.episode.task());
         return attributes;
     }
 }

@@ -35,7 +35,6 @@ public interface TaskControlCapability {
     /** Requests task termination; empty when unknown. */
     @NonNull Optional<TaskInfo> stop(@NonNull String taskId);
 
-    /** Queues bytes for the task stdin, optionally closing it afterwards. */
-    @NonNull InputResult queueInput(
-            @NonNull String taskId, byte @NonNull [] bytes, boolean closeStdin);
+    /** Queues the host-admitted prepared input for this exact task. */
+    @NonNull InputResult enqueueApprovedInput(@NonNull String taskId);
 }

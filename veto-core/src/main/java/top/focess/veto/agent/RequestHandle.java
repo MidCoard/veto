@@ -19,7 +19,7 @@ import top.focess.veto.api.agent.workflow.PluginAwait;
  * Caller-owned result and confirmation that execution can no longer produce effects.
  *
  * <p>Not independently thread-safe as a whole. Public result/settlement futures support concurrent
- * observation; internal request and approval state belongs to the runner and its runtime monitor.
+ * observation; internal request and approval state belongs to the runner and its lifecycle monitor.
  * This instance's monitor separately guards plugin wait registration and consumption, while
  * cancellation is volatile. Future completion callbacks execute inline on the registering or
  * completing thread and can also run while this monitor is held; they must not block or acquire
@@ -70,7 +70,6 @@ public final class RequestHandle {
     @NonNull String message = "";
     volatile boolean cancelled;
     boolean interruptSent;
-    @NonNull String requestId;
 
     RequestHandle(@NonNull Object owner) {
         this(owner, new RequestEpisode(UUID.randomUUID().toString(), -1));
@@ -79,7 +78,6 @@ public final class RequestHandle {
     RequestHandle(@NonNull Object owner, @NonNull RequestEpisode episode) {
         this.owner = owner;
         this.episode = episode;
-        this.requestId = episode.id();
     }
 
     final class Result extends CompletableFuture<AgentResult> {
@@ -90,7 +88,7 @@ public final class RequestHandle {
 
     /** The id of the episode this request drives. */
     public @NonNull String requestId() {
-        return requestId;
+        return episode.id();
     }
 
     /** The future completed with this request's {@link AgentResult} when the episode settles. */

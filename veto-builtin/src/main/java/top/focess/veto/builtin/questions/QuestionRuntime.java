@@ -52,7 +52,7 @@ public final class QuestionRuntime extends Listener implements AutoCloseable {
     }
 
     /** Registers a question batch for the invocation; fails when the call id is already pending. */
-    public synchronized @NonNull CompletableFuture<AnswerBatch> register(
+    synchronized @NonNull CompletableFuture<AnswerBatch> register(
             PluginHost.@NonNull Invocation invocation, @NonNull List<Question> questions) {
         if (closed) throw new IllegalStateException("Question runtime closed");
         var scope = invocation.scope();

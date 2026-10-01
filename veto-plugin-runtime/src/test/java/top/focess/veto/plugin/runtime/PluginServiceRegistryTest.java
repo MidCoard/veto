@@ -20,6 +20,46 @@ import top.focess.veto.api.plugin.storage.PluginStorage;
 
 class PluginServiceRegistryTest {
     @Test
+    void callbackUsesTheSameDeclaredFailureAndDualAdmissionContractAsServices() throws Exception {
+        try (var pair = new Pair()) {
+            var callback =
+                    pair.consumer
+                            .context
+                            .services()
+                            .registerCallback(
+                                    request -> {
+                                        throw new ServiceException(
+                                                ServiceException.Code.INVALID_REQUEST);
+                                    });
+            var handle =
+                    pair.registry
+                            .forPlugin(pair.providerRuntime)
+                            .findCallback(callback.id())
+                            .orElseThrow();
+            assertEquals(
+                    ServiceException.Code.INVALID_REQUEST,
+                    assertThrows(
+                                    ServiceException.class,
+                                    () -> handle.invoke(JsonValue.NullValue.INSTANCE))
+                            .code());
+            pair.providerRuntime.close();
+            assertEquals(
+                    ServiceException.Code.UNAVAILABLE,
+                    assertThrows(
+                                    ServiceException.class,
+                                    () -> handle.invoke(JsonValue.NullValue.INSTANCE))
+                            .code());
+            callback.close();
+        }
+    }
+
+    @FunctionalInterface
+    private interface ScopedServiceHandler {
+        @NonNull JsonValue invoke(@NonNull ServiceCallContext context, @NonNull JsonValue request)
+                throws Exception;
+    }
+
+    @Test
     void retainedCallbackViewCannotRegisterAfterRevocationOrClose() throws Exception {
         try (var pair = new Pair()) {
             var services = pair.consumer.context.services();

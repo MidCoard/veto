@@ -28,7 +28,7 @@ import top.focess.veto.builtin.process.BackgroundTasks.ExitCause;
  * Callbacks must not wait for task workers whose notifications need this monitor; retry shutdown
  * does not join a worker while holding it.
  */
-public final class TaskEvents implements BackgroundTasks.Listener, AutoCloseable {
+public final class TaskEvents implements BackgroundTasks.TaskObserver, AutoCloseable {
     private record Pending(
             Scope.@NonNull AgentScope scope, @NonNull TaskInfo task, @NonNull ExitCause cause) {}
 

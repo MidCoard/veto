@@ -285,8 +285,10 @@ class ScopedPluginStorageTest {
                                         "1.0.0",
                                         true,
                                         SessionPlugins.BoundPluginAvailability.AVAILABLE)));
-        when(plugins.catalog()).thenReturn(catalog);
-        when(plugins.plugin("one")).thenReturn(plugin);
+        var publication = mock(PluginManager.PublishedState.class);
+        when(publication.catalog()).thenReturn(catalog);
+        when(publication.plugin("one")).thenReturn(plugin);
+        when(plugins.snapshot()).thenReturn(publication);
         when(plugin.execute(any()))
                 .thenAnswer(
                         invocation -> {

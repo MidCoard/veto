@@ -122,19 +122,24 @@ public class VetoAgent implements Agent {
 
     @Override
     public void submit(@NonNull String prompt) {
-        latestRequest = runner.startTask(null, new AgentAction.UserPromptAction(prompt));
+        latestRequest = submitRequest(prompt, null);
     }
 
     @Override
     public void submit(@NonNull String prompt, Consumer<AgentResult> callback) {
-        latestRequest = runner.startTask(callback, new AgentAction.UserPromptAction(prompt));
+        latestRequest = submitRequest(prompt, callback);
     }
 
     @Override
     public @NonNull RequestHandle submitRequest(@NonNull String prompt) {
-        RequestHandle request = runner.startTask(null, new AgentAction.UserPromptAction(prompt));
+        RequestHandle request = submitRequest(prompt, null);
         latestRequest = request;
         return request;
+    }
+
+    private @NonNull RequestHandle submitRequest(
+            @NonNull String prompt, Consumer<AgentResult> callback) {
+        return runner.startTask(callback, new AgentAction.UserPromptAction(prompt));
     }
 
     @Override

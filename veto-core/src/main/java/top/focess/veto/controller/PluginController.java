@@ -68,8 +68,9 @@ public class PluginController {
             "resource") // WHY: PluginLifecycle handles are owned by PluginManager, closed elsewhere
     public @NonNull List<PluginResponse> list() {
         authorization.requireAdmin();
+        var publication = plugins.snapshot();
         List<PluginResponse> active =
-                plugins.plugins().stream()
+                publication.plugins().stream()
                         .map(
                                 plugin -> {
                                     var script =
@@ -83,7 +84,7 @@ public class PluginController {
                                             script == null ? null : script.digest(),
                                             plugin.state() == PluginState.ACTIVE
                                                     && (script == null || script.active()),
-                                            plugins.registrations().stream()
+                                            publication.registrations().stream()
                                                     .filter(r -> r.plugin() == plugin)
                                                     .flatMap(r -> r.entries().stream())
                                                     .map(e -> e.point().id().value())
@@ -91,7 +92,7 @@ public class PluginController {
                                                     .distinct()
                                                     .sorted()
                                                     .toList(),
-                                            plugins
+                                            publication
                                                     .catalog()
                                                     .entries(StandardContributionPoints.TOOLS)
                                                     .stream()
@@ -102,7 +103,13 @@ public class PluginController {
                                                                             .equals(
                                                                                     plugin.identity()
                                                                                             .id()))
-                                                    .map(plugins::toolName)
+                                                    .map(
+                                                            entry ->
+                                                                    plugins.toolName(
+                                                                            publication,
+                                                                            entry.source()
+                                                                                    .namespace(),
+                                                                            entry.id().value()))
                                                     .distinct()
                                                     .sorted()
                                                     .toList(),
@@ -112,7 +119,7 @@ public class PluginController {
                                 })
                         .toList();
         var result = new ArrayList<>(active);
-        for (var plugin : plugins.declined())
+        for (var plugin : publication.declined())
             result.add(
                     new PluginResponse(
                             plugin.id(),
@@ -125,7 +132,7 @@ public class PluginController {
                             PluginState.DECLINED,
                             plugin.reason().name(),
                             plugins.desiredEnabled(plugin.id())));
-        for (var plugin : plugins.disabled())
+        for (var plugin : publication.disabled())
             result.add(
                     new PluginResponse(
                             plugin.id(),

@@ -24,16 +24,21 @@ import top.focess.veto.builtin.memory.embedder.Embedder;
  * vector so similarity is meaningful (identical texts → 1.0; very different texts → ~0).
  * Deployments can instead supply an {@link Embedder} backed by a local embedding model.
  */
-@SuppressWarnings(
-        "DuplicatedCode") // Store implementations intentionally share filtering and vector math.
 public class InMemoryMemoryStore implements MemoryStore {
 
     private final @NonNull Embedder embedder;
+    private final boolean positiveScoresOnly;
     private final @NonNull ConcurrentMap<MemoryId, Memory> store = new ConcurrentHashMap<>();
 
     /** Creates a store that embeds content with the given embedder. */
     public InMemoryMemoryStore(@NonNull Embedder embedder) {
+        this(embedder, false);
+    }
+
+    /** Creates the shared volatile store with the vector profile's positive-score policy. */
+    public InMemoryMemoryStore(@NonNull Embedder embedder, boolean positiveScoresOnly) {
         this.embedder = embedder;
+        this.positiveScoresOnly = positiveScoresOnly;
     }
 
     @Override
@@ -59,11 +64,12 @@ public class InMemoryMemoryStore implements MemoryStore {
             if (projectFilter != null && !projectFilter.equals(m.projectId())) {
                 continue;
             }
-            if (m.embedding().length == 0) {
+            var embedding = m.embedding();
+            if (embedding.length == 0) {
                 continue;
             }
-            float score = cosineSimilarity(queryVec, m.embedding());
-            if (score >= query.scoreFloor()) {
+            float score = cosineSimilarity(queryVec, embedding);
+            if ((!positiveScoresOnly || score > 0f) && score >= query.scoreFloor()) {
                 matches.add(new ScoredMemory(m, score));
             }
         }

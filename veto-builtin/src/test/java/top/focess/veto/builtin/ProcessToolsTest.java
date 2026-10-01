@@ -18,6 +18,8 @@ import java.util.concurrent.TimeUnit;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
+import top.focess.veto.api.agent.tool.ToolErrorCode;
+import top.focess.veto.api.agent.tool.ToolExecutionException;
 import top.focess.veto.api.agent.tool.ToolPreparation;
 import top.focess.veto.api.plugin.PluginContext;
 import top.focess.veto.api.plugin.PluginHost;
@@ -81,9 +83,20 @@ class ProcessToolsTest {
             var started = mapper.readTree(run.execute(args));
             assertEquals("started", started.path("status").asText());
             String id = started.path("taskId").asText();
+            var empty =
+                    assertThrows(
+                            ToolExecutionException.class,
+                            () ->
+                                    input.prepare(
+                                            new InputTaskTool.Args(id, "", false, false),
+                                            host.invocation));
+            assertEquals(ToolErrorCode.VALIDATION.EMPTY_INPUT, empty.errorCode());
             var write = new InputTaskTool.Args(id, "hello", true, true);
             host.preparation = input.prepare(write, host.invocation);
-            var queued = mapper.readTree(input.execute(write));
+            // The host has admitted preparation; execution consumes that payload, not new bytes.
+            var queued =
+                    mapper.readTree(
+                            input.execute(new InputTaskTool.Args(id, "ignored", false, false)));
             assertEquals("queued", queued.path("status").asText());
             assertEquals(6, queued.path("bytes").asInt());
             assertTrue(queued.path("closeQueued").asBoolean());

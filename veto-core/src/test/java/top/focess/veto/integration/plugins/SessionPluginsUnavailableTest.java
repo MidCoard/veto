@@ -5,12 +5,17 @@ import static org.mockito.Mockito.*;
 
 import java.util.List;
 import java.util.Optional;
+import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.api.plugin.PluginBinding;
+import top.focess.veto.api.plugin.PluginDeclinedException;
 import top.focess.veto.api.plugin.PluginIdentity;
 import top.focess.veto.api.plugin.PluginState;
+import top.focess.veto.api.plugin.contract.StandardContributionPoints;
+import top.focess.veto.api.plugin.contribution.ContributionCatalog;
 import top.focess.veto.model.SessionEntity;
 import top.focess.veto.model.SessionRepository;
+import top.focess.veto.plugin.runtime.InstalledPluginLoader;
 import top.focess.veto.plugin.runtime.PluginLifecycle;
 import top.focess.veto.session.SessionHistoryLoader;
 
@@ -18,13 +23,12 @@ class SessionPluginsUnavailableTest {
     @Test
     void missingPluginPreservesPinWithoutLockingSession() {
         var manager = mock(PluginManager.class);
+        publication(manager, List.of());
         var sessions = mock(SessionRepository.class);
         var session = new SessionEntity("owner", "session", "D:/workspace");
         var pin = new PluginBinding("missing.plugin", "1.0.0", "revision");
         session.setPluginBindings(List.of(pin));
         when(sessions.findById(session.getId())).thenReturn(Optional.of(session));
-        when(manager.plugin("missing.plugin"))
-                .thenThrow(new IllegalArgumentException("Plugin is absent"));
 
         var selected = new SessionPlugins(manager, sessions, mock(SessionHistoryLoader.class));
         assertEquals(List.of(pin), selected.bindings(session.getId()));
@@ -50,12 +54,23 @@ class SessionPluginsUnavailableTest {
         var changed = new PluginBinding("changed.plugin", "1.0.0", "old-revision");
         session.setPluginBindings(List.of(disabled, declined, changed));
         when(sessions.findById(session.getId())).thenReturn(Optional.of(session));
-        when(manager.isDisabled("disabled.plugin")).thenReturn(true);
-        when(manager.isDeclined("declined.plugin")).thenReturn(true);
         var runtime = mock(PluginLifecycle.class);
         when(runtime.state()).thenReturn(PluginState.ACTIVE);
         when(runtime.identity()).thenReturn(new PluginIdentity("changed.plugin", "1.0.0"));
-        when(manager.plugin("changed.plugin")).thenReturn(runtime);
+        var publication = publication(manager, List.of(runtime));
+        when(publication.disabled())
+                .thenReturn(
+                        List.of(
+                                new InstalledPluginLoader.DisabledPackage(
+                                        "disabled.plugin", "Disabled", "1.0.0")));
+        when(publication.declined())
+                .thenReturn(
+                        List.of(
+                                new PluginManager.DeclinedPlugin(
+                                        "declined.plugin",
+                                        "Declined",
+                                        "1.0.0",
+                                        PluginDeclinedException.Reason.NOT_APPLICABLE)));
 
         var selected = new SessionPlugins(manager, sessions, mock(SessionHistoryLoader.class));
 
@@ -70,5 +85,29 @@ class SessionPluginsUnavailableTest {
         assertTrue(
                 selected.status(session.getId()).stream()
                         .noneMatch(SessionPlugins.BoundPluginStatus::available));
+    }
+
+    private static PluginManager.@NonNull PublishedState publication(
+            @NonNull PluginManager manager, @NonNull List<PluginLifecycle> plugins) {
+        var builder = new ContributionCatalog.Builder();
+        for (var point : StandardContributionPoints.ALL) builder.define(point, ignored -> {});
+        var publication = mock(PluginManager.PublishedState.class);
+        when(publication.catalog()).thenReturn(builder.freeze());
+        when(publication.plugins()).thenReturn(plugins);
+        when(publication.disabled()).thenReturn(List.of());
+        when(publication.declined()).thenReturn(List.of());
+        when(publication.plugin(anyString()))
+                .thenAnswer(
+                        invocation -> {
+                            String id = invocation.getArgument(0);
+                            return plugins.stream()
+                                    .filter(plugin -> plugin.identity().id().equals(id))
+                                    .findFirst()
+                                    .orElseThrow(
+                                            () -> new IllegalArgumentException("Plugin is absent"));
+                        });
+        when(manager.canonicalId(anyString())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(manager.snapshot()).thenReturn(publication);
+        return publication;
     }
 }

@@ -25,9 +25,10 @@ import top.focess.veto.api.process.ProcessHost;
  * <p>Tool and lifecycle callers overlap virtual output/input workers. The registry monitor
  * serializes start against close; concurrent task lookup remains available during draining.
  * Per-task line and input monitors protect their bounded buffers, and the task monitor makes exit
- * notification occur once. Process state is published through volatile fields. Listener callbacks
- * can run under the registry or exit monitor and must not wait for a drainer or acquire those
- * monitors from another thread. Lifecycle admission supplies revocation for owner/session cleanup.
+ * notification occur once. Process state is published through volatile fields. Task observer
+ * callbacks can run under the registry or exit monitor and must not wait for a drainer or acquire
+ * those monitors from another thread. Lifecycle admission supplies revocation for owner/session
+ * cleanup.
  */
 public final class BackgroundTasks implements AutoCloseable {
     private static final int MAX_LINES = 5000;
@@ -44,7 +45,7 @@ public final class BackgroundTasks implements AutoCloseable {
         SHUTDOWN
     }
 
-    /** Kind of task lifecycle change reported to a {@link Listener}. */
+    /** Kind of task lifecycle change reported to a {@link TaskObserver}. */
     public enum Change {
         STARTED,
         EXITED,
@@ -52,7 +53,7 @@ public final class BackgroundTasks implements AutoCloseable {
     }
 
     /** Observer of task lifecycle changes. */
-    public interface Listener {
+    public interface TaskObserver {
         /** Called when a task starts, exits or is removed. */
         void changed(
                 Scope.@NonNull AgentScope scope,
@@ -74,7 +75,7 @@ public final class BackgroundTasks implements AutoCloseable {
     private final @NonNull Supplier<@NonNull ProcessHost> host;
     private final @NonNull ConcurrentHashMap<String, Task> tasks = new ConcurrentHashMap<>();
     private final @NonNull AtomicLong ids = new AtomicLong();
-    private volatile Listener listener;
+    private volatile TaskObserver observer;
     private boolean closed;
 
     /** Creates the registry, pulling approved processes from the given host supplier. */
@@ -83,8 +84,8 @@ public final class BackgroundTasks implements AutoCloseable {
     }
 
     /** Registers the lifecycle observer. */
-    public void listener(@NonNull Listener listener) {
-        this.listener = listener;
+    public void observer(@NonNull TaskObserver observer) {
+        this.observer = observer;
     }
 
     /** Starts an approved host process as a new background task. */
@@ -199,7 +200,8 @@ public final class BackgroundTasks implements AutoCloseable {
     }
 
     /** Validates and enqueues the host-prepared stdin write for an owned task. */
-    public @NonNull InputResult queueInput(Scope.@NonNull AgentScope scope, @NonNull String id) {
+    public @NonNull InputResult enqueueApprovedInput(
+            Scope.@NonNull AgentScope scope, @NonNull String id) {
         Task task = owned(scope, id);
         if (task == null) return InputResult.failure(InputStatus.TASK_NOT_FOUND);
         synchronized (task.inputLock) {
@@ -369,7 +371,7 @@ public final class BackgroundTasks implements AutoCloseable {
     }
 
     private void changed(@NonNull Task task, @NonNull Change change) {
-        var target = listener;
+        var target = observer;
         if (target != null) {
             try {
                 target.changed(task.scope, task.info(), task.cause, change);

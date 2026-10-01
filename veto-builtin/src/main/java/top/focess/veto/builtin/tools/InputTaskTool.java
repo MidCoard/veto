@@ -119,6 +119,11 @@ public final class InputTaskTool extends PreparedTool<InputTaskTool.Args> {
     @Override
     public @NonNull ToolPreparation prepare(
             @NonNull Args args, PluginHost.@NonNull Invocation invocation) {
+        if (args.content().isEmpty() && !args.appendNewline() && !args.closeStdin()) {
+            return ToolErrors.failure(
+                    ToolErrorCode.VALIDATION.EMPTY_INPUT,
+                    "Empty input: no content, newline, or stdin close was requested.");
+        }
         byte[] content = args.content().getBytes(StandardCharsets.UTF_8);
         byte[] bytes = args.appendNewline() ? Arrays.copyOf(content, content.length + 1) : content;
         if (args.appendNewline()) bytes[content.length] = (byte) '\n';
@@ -139,15 +144,7 @@ public final class InputTaskTool extends PreparedTool<InputTaskTool.Args> {
 
     /** Runs the tool against the supplied capability. */
     public @NonNull String execute(@NonNull Args args, @NonNull TaskControlCapability capability) {
-        if (args.content().isEmpty() && !args.appendNewline() && !args.closeStdin()) {
-            return ToolErrors.failure(
-                    ToolErrorCode.VALIDATION.EMPTY_INPUT,
-                    "Empty input: no content, newline, or stdin close was requested.");
-        }
-        byte[] content = args.content().getBytes(StandardCharsets.UTF_8);
-        byte[] bytes = args.appendNewline() ? Arrays.copyOf(content, content.length + 1) : content;
-        if (args.appendNewline()) bytes[content.length] = (byte) '\n';
-        var queued = capability.queueInput(args.taskId(), bytes, args.closeStdin());
+        var queued = capability.enqueueApprovedInput(args.taskId());
         if (!queued.queued()) {
             String message =
                     switch (queued.status()) {

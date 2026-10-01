@@ -22,6 +22,7 @@ import top.focess.veto.api.plugin.contract.StandardContributionPoints;
 import top.focess.veto.api.plugin.contribution.Contribution;
 import top.focess.veto.api.plugin.contribution.ContributionCatalog;
 import top.focess.veto.api.plugin.contribution.ContributionSource;
+import top.focess.veto.event.EventListenerRegistry;
 import top.focess.veto.plugin.runtime.*;
 
 /**
@@ -81,9 +82,7 @@ class ApplyObservationMiddlewareTest {
         public void close() {}
     }
 
-    /**
-     * A manager whose plugin list and catalog are replaced by the given stub middleware plugins.
-     */
+    /** A manager whose coherent publication contains the given stub middleware plugins. */
     private @NonNull PluginManager managerWith(@NonNull MiddlewarePlugin @NonNull ... stubs)
             throws Exception {
         var lifecycle = Executors.newSingleThreadExecutor();
@@ -91,6 +90,7 @@ class ApplyObservationMiddlewareTest {
         List<PluginLifecycle> managed = new ArrayList<>();
         var builder = new ContributionCatalog.Builder();
         builder.define(StandardContributionPoints.OBSERVATION, ignored -> {});
+        builder.define(StandardContributionPoints.LISTENERS, ignored -> {});
         for (var stub : stubs) {
             var plugin = new PluginLifecycle(stub, lifecycle);
             plugin.construct(
@@ -116,8 +116,28 @@ class ApplyObservationMiddlewareTest {
         for (var plugin : managed) plugin.start();
         var manager = PluginTestSupport.manager();
         manager.close();
-        ReflectionTestUtils.setField(manager, "plugins", List.copyOf(managed));
-        ReflectionTestUtils.setField(manager, "catalog", catalog);
+        EventListenerRegistry events =
+                ReflectionTestUtils.invokeMethod(
+                        manager,
+                        "preparedEvents",
+                        catalog,
+                        managed,
+                        new EventListenerRegistry.Preparation());
+        if (events == null) throw new AssertionError("Prepared event registry must exist");
+        var constructor =
+                PluginManager.PublishedState.class.getDeclaredConstructor(
+                        List.class,
+                        List.class,
+                        List.class,
+                        List.class,
+                        ContributionCatalog.class,
+                        EventListenerRegistry.class,
+                        Map.class);
+        constructor.setAccessible(true);
+        var publication =
+                constructor.newInstance(
+                        managed, List.of(), List.of(), List.of(), catalog, events, Map.of());
+        ReflectionTestUtils.setField(manager, "published", publication);
         return manager;
     }
 

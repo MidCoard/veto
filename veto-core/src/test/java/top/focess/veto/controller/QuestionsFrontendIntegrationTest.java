@@ -1,7 +1,6 @@
 package top.focess.veto.controller;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.doReturn;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -102,7 +101,7 @@ class QuestionsFrontendIntegrationTest {
                                     .contentType(MediaType.APPLICATION_JSON)
                                     .content(new ObjectMapper().writeValueAsString(foreign)))
                     .andExpect(status().isNotFound());
-            doReturn(List.of()).when(fixture.selected).bindings(fixture.session.getId());
+            fixture.useUnselectedSession();
             perform(fixture, "list", Map.of()).andExpect(status().isNotFound());
             perform(fixture, "cancel", Map.of("callId", "call")).andExpect(status().isNotFound());
             assertFalse(future.isDone());

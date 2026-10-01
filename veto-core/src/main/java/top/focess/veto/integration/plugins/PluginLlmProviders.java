@@ -36,22 +36,22 @@ public final class PluginLlmProviders {
         this.mapper = mapper;
         this.audit = audit;
         this.selections = selections;
-        providers = build(manager, mapper, audit);
+        providers = build(manager.snapshot(), mapper, audit);
     }
 
     /** Rebuilds provider adapters from the currently published plugin catalog. */
-    public synchronized void reload(@NonNull PluginManager manager) {
-        providers = build(manager, mapper, audit);
+    public synchronized void reload(PluginManager.@NonNull PublishedState state) {
+        providers = build(state, mapper, audit);
     }
 
     private static @NonNull Map<ProviderType, RegisteredProvider> build(
-            @NonNull PluginManager manager,
+            PluginManager.@NonNull PublishedState state,
             @NonNull ObjectMapper mapper,
             @NonNull AuditLogger audit) {
         Map<ProviderType, RegisteredProvider> values = new HashMap<>();
-        for (var entry : manager.catalog().entries(StandardContributionPoints.LLM_PROVIDERS)) {
+        for (var entry : state.catalog().entries(StandardContributionPoints.LLM_PROVIDERS)) {
             var implementation = entry.implementation();
-            var runtime = manager.plugin(entry.source().namespace());
+            var runtime = state.plugin(entry.source().namespace());
             var type = implementation.type();
             var strategy =
                     new AbstractLlmProvider(mapper, audit) {

@@ -276,28 +276,10 @@ public final class PluginServiceRegistry {
                                                 caller == null ? "" : caller.identity().id(),
                                                 current.owner().identity().id()))
                                     throw new ServiceException(ServiceException.Code.UNAVAILABLE);
-                                try {
-                                    PluginLifecycle.Operation<Outcome> operation =
-                                            () ->
-                                                    current.owner()
-                                                            .execute(
-                                                                    () ->
-                                                                            invokeCallbackHandler(
-                                                                                    current
-                                                                                            .handler(),
-                                                                                    request));
-                                    Outcome outcome =
-                                            caller == null
-                                                    ? operation.run()
-                                                    : caller.execute(operation);
-                                    if (outcome.failure() != null) throw outcome.failure();
-                                    JsonValue result = outcome.value();
-                                    if (result == null)
-                                        throw new ServiceException(ServiceException.Code.FAILED);
-                                    return result;
-                                } catch (PluginFailure failure) {
-                                    throw new ServiceException(ServiceException.Code.UNAVAILABLE);
-                                }
+                                return invokeAdmitted(
+                                        caller,
+                                        current.owner(),
+                                        () -> invokeCallbackHandler(current.handler(), request));
                             }
                         });
             }
@@ -323,13 +305,18 @@ public final class PluginServiceRegistry {
             @NonNull ServiceCallContext context,
             @NonNull JsonValue request)
             throws ServiceException {
+        return invokeAdmitted(
+                caller, entry.owner(), () -> invokeHandler(entry.service(), context, request));
+    }
+
+    private static @NonNull JsonValue invokeAdmitted(
+            PluginLifecycle caller,
+            @NonNull PluginLifecycle owner,
+            PluginLifecycle.@NonNull Operation<Outcome> body)
+            throws ServiceException {
         Outcome outcome;
         try {
-            PluginLifecycle.Operation<Outcome> operation =
-                    () ->
-                            entry.owner()
-                                    .execute(
-                                            () -> invokeHandler(entry.service(), context, request));
+            PluginLifecycle.Operation<Outcome> operation = () -> owner.execute(body);
             outcome = caller == null ? operation.run() : caller.execute(operation);
         } catch (PluginFailure failure) {
             throw new ServiceException(ServiceException.Code.UNAVAILABLE);

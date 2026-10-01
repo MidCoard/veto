@@ -19,9 +19,9 @@ import org.jspecify.annotations.*;
  * are snapshots, not invocation admission. Unregistration removes its key before best-effort
  * unload; invocation rechecks the key under the exchange lock before contacting Node.
  *
- * <p>Failure listeners may run on the process-exit completion thread or on the failing exchange
- * caller while the exchange lock is held. They must only signal failure and must not wait for
- * lifecycle cleanup or another exchange. Ordinary listener failures do not skip other listeners; a
+ * <p>Failure listeners run on the process-exit completion thread or failing exchange caller after
+ * transport cleanup and unlocking. Recipients are removed atomically before fanout so concurrent
+ * failure paths notify each registration once. Ordinary listener failures do not skip others; a
  * fatal JVM error is propagated after all remaining listeners are attempted.
  */
 public final class ScriptHost implements AutoCloseable {
@@ -87,11 +87,31 @@ public final class ScriptHost implements AutoCloseable {
     }
 
     private void failAll() {
-        Error fatal = null;
+        List<Runnable> listeners;
+        lock.lock();
+        try {
+            listeners = drainFailures();
+        } finally {
+            lock.unlock();
+        }
+        notifyFailures(listeners);
+    }
+
+    /** Called with the transport lock held; captures recipients without executing callbacks. */
+    private @NonNull List<Runnable> drainFailures() {
+        var listeners = new ArrayList<Runnable>();
         for (var entry : registrations.entrySet()) {
-            if (!registrations.remove(entry.getKey(), entry.getValue())) continue;
+            if (registrations.remove(entry.getKey(), entry.getValue()))
+                listeners.add(entry.getValue());
+        }
+        return List.copyOf(listeners);
+    }
+
+    private static void notifyFailures(@NonNull List<Runnable> listeners) {
+        Error fatal = null;
+        for (var listener : listeners) {
             try {
-                entry.getValue().run();
+                listener.run();
             } catch (Throwable failure) {
                 fatal = preserveFatal(fatal, failure);
                 if (fatal == null)
@@ -176,6 +196,7 @@ public final class ScriptHost implements AutoCloseable {
     private @NonNull JsonNode exchange(@NonNull String method, @NonNull JsonNode params)
             throws IOException {
         boolean acquired = false;
+        List<Runnable> failures = List.of();
         try {
             acquired = lock.tryLock(timeoutMillis, TimeUnit.MILLISECONDS);
             if (!acquired) throw new IOException("Plugin is busy");
@@ -235,7 +256,7 @@ public final class ScriptHost implements AutoCloseable {
                     // Abort transport I/O before waiting for its worker to exit. Lifecycle cleanup
                     // is queued separately and may be waiting for this startup hook to return.
                     terminate(worker);
-                    failAll();
+                    failures = drainFailures();
                     future.cancel(true);
                     if (e instanceof InterruptedException) Thread.currentThread().interrupt();
                     throw new IOException("Plugin invocation failed");
@@ -246,6 +267,7 @@ public final class ScriptHost implements AutoCloseable {
             throw new IOException("Plugin invocation cancelled");
         } finally {
             if (acquired) lock.unlock();
+            notifyFailures(failures);
         }
     }
 }

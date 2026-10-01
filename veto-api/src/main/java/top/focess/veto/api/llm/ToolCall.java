@@ -2,6 +2,7 @@ package top.focess.veto.api.llm;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.NullNode;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -50,7 +51,7 @@ public record ToolCall(
             NativeToolState nativeState) {
         this.nativeState = nativeState;
         this.toolName = toolName;
-        this.args = immutableMap(args);
+        this.args = snapshotArguments(args);
         this.callId =
                 callId == null ? "call_" + UUID.randomUUID().toString().substring(0, 8) : callId;
     }
@@ -87,10 +88,23 @@ public record ToolCall(
         this(toolName, args, null);
     }
 
-    private static @NonNull Map<@NonNull String, Object> immutableMap(
-            @NonNull Map<@NonNull String, Object> source) {
+    /**
+     * Copies decoded tool JSON arguments into owned, immutable maps and lists. Mutable Jackson
+     * containers are normalized to the same Java JSON shape; JSON null remains serializable as
+     * null. This is an output/history snapshot and imposes no plugin-protocol size limits.
+     *
+     * @param source decoded JSON argument object
+     * @return owned argument snapshot
+     */
+    public static @NonNull Map<@NonNull String, Object> snapshotArguments(
+            @NonNull Map<?, ?> source) {
         Map<@NonNull String, Object> copy = new LinkedHashMap<>();
-        source.forEach((key, value) -> copy.put(key, immutableValue(value)));
+        source.forEach(
+                (key, value) -> {
+                    if (!(key instanceof String name))
+                        throw new IllegalArgumentException("JSON object key must be a string");
+                    copy.put(name, immutableValue(value));
+                });
         return Collections.unmodifiableMap(copy);
     }
 
@@ -99,15 +113,7 @@ public record ToolCall(
             return NullNode.getInstance();
         }
         if (value instanceof Map<?, ?> nested) {
-            Map<Object, Object> copy = new LinkedHashMap<>();
-            for (var entry : nested.entrySet()) {
-                Object key = entry.getKey();
-                if (key == null) {
-                    throw new IllegalArgumentException("JSON object key must not be null");
-                }
-                copy.put(key, immutableValue(entry.getValue()));
-            }
-            return Collections.unmodifiableMap(copy);
+            return snapshotArguments(nested);
         }
         if (value instanceof List<?> list) {
             List<Object> copy = new ArrayList<>(list.size());
@@ -115,6 +121,26 @@ public record ToolCall(
                 copy.add(immutableValue(child));
             }
             return Collections.unmodifiableList(copy);
+        }
+        if (value instanceof JsonNode node) {
+            if (node.isNull()) return NullNode.getInstance();
+            if (node.isObject()) {
+                Map<@NonNull String, Object> copy = new LinkedHashMap<>();
+                node.properties()
+                        .forEach(
+                                entry ->
+                                        copy.put(entry.getKey(), immutableValue(entry.getValue())));
+                return Collections.unmodifiableMap(copy);
+            }
+            if (node.isArray()) {
+                List<Object> copy = new ArrayList<>(node.size());
+                node.forEach(child -> copy.add(immutableValue(child)));
+                return Collections.unmodifiableList(copy);
+            }
+            if (node.isTextual()) return node.asText();
+            if (node.isBoolean()) return node.booleanValue();
+            if (node.isNumber()) return node.numberValue();
+            throw new IllegalArgumentException("Unsupported JSON argument node");
         }
         return value;
     }

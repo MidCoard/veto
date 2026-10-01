@@ -70,7 +70,7 @@ public final class MemoryRuntime extends DataLifecycle {
             store =
                     switch (profile) {
                         case "memory" -> new InMemoryMemoryStore(embedder);
-                        case "vector" -> new VectorIndexMemoryStore(new VectorIndex(), embedder);
+                        case "vector" -> new InMemoryMemoryStore(embedder, true);
                         default ->
                                 context.service(MemoryBackendFactory.class)
                                         .orElseThrow(

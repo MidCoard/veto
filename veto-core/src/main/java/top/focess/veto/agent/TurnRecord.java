@@ -53,9 +53,11 @@ public record TurnRecord(
      */
     public TurnRecord {
         llmUsage = List.copyOf(llmUsage);
-        var content = new LinkedHashMap<>(payload);
+        Map<@NonNull String, @Nullable Object> content = new LinkedHashMap<>(payload);
         content.remove("llmUsage");
         content.remove("usageCheckpoint");
+        if (type == TurnType.TOOL_CALL && content.get("args") instanceof Map<?, ?> args)
+            content.put("args", ToolCall.snapshotArguments(args));
         payload = content;
         // Null-tolerant unmodifiable copy: the payload schema has OPTIONAL fields (e.g. a
         // synthetic TOOL_RESPONSE observation carries no call_id), so Map.copyOf's null-hostile

@@ -78,12 +78,15 @@ public final class PluginFrontendController {
     @GetMapping
     public @NonNull ResponseEntity<List<Module>> list(@PathVariable @NonNull String name) {
         var ids = ids(session(name));
+        var publication = plugins.snapshot();
         var modules =
-                plugins.catalog().entries(StandardContributionPoints.FRONTEND).stream()
+                publication.catalog().entries(StandardContributionPoints.FRONTEND).stream()
                         .filter(
                                 e ->
                                         ids.contains(e.source().namespace())
-                                                && plugins.plugin(e.source().namespace()).state()
+                                                && publication
+                                                                .plugin(e.source().namespace())
+                                                                .state()
                                                         == PluginState.ACTIVE)
                         .map(
                                 e ->
@@ -92,16 +95,19 @@ public final class PluginFrontendController {
                                                 e.source().namespace(),
                                                 1,
                                                 e.implementation().module(),
-                                                toolNames(e.source().namespace())))
+                                                toolNames(publication, e.source().namespace())))
                         .toList();
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(modules);
     }
 
-    private @NonNull Map<String, String> toolNames(@NonNull String pluginId) {
+    private @NonNull Map<String, String> toolNames(
+            PluginManager.@NonNull PublishedState publication, @NonNull String pluginId) {
         Map<String, String> names = new LinkedHashMap<>();
-        for (var entry : plugins.catalog().entries(StandardContributionPoints.TOOLS)) {
+        for (var entry : publication.catalog().entries(StandardContributionPoints.TOOLS)) {
             if (pluginId.equals(entry.source().namespace()))
-                names.put(entry.id().localId(), plugins.toolName(pluginId, entry.id().value()));
+                names.put(
+                        entry.id().localId(),
+                        plugins.toolName(publication, pluginId, entry.id().value()));
         }
         return Map.copyOf(names);
     }
@@ -129,8 +135,9 @@ public final class PluginFrontendController {
         if (agents.records(UUID.fromString(session.getId())).stream()
                 .noneMatch(agent -> agent.id().equals(request.agentId())))
             throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+        var publication = plugins.snapshot();
         var entry =
-                plugins.catalog().entries(StandardContributionPoints.FRONTEND).stream()
+                publication.catalog().entries(StandardContributionPoints.FRONTEND).stream()
                         .filter(
                                 e ->
                                         ids.contains(e.source().namespace())
@@ -145,7 +152,8 @@ public final class PluginFrontendController {
         }
         try {
             var value =
-                    plugins.plugin(entry.source().namespace())
+                    publication
+                            .plugin(entry.source().namespace())
                             .execute(
                                     () -> {
                                         var invocation =

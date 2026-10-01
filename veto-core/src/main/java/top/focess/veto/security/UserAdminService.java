@@ -13,6 +13,7 @@ import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import top.focess.veto.agent.continuation.RequestContinuationStore;
 import top.focess.veto.agent.intercept.HitlRecordRepository;
+import top.focess.veto.integration.plugins.PluginDataCleanup;
 import top.focess.veto.integration.plugins.PluginLifecycleEvents;
 import top.focess.veto.integration.plugins.storage.ScopedPluginStorage;
 import top.focess.veto.model.AgentInstanceRepository;
@@ -35,6 +36,13 @@ import top.focess.veto.vault.UserRegistry;
 @Service
 public class UserAdminService {
     private PluginLifecycleEvents pluginEvents;
+    private PluginDataCleanup pluginDataCleanup;
+
+    /** Attaches required transactional cleanup independently of notification delivery. */
+    @Autowired
+    public void attachPluginDataCleanup(@NonNull PluginDataCleanup cleanup) {
+        pluginDataCleanup = cleanup;
+    }
 
     /** Setter-injects the plugin lifecycle event sink notified on user/session deletion. */
     @Autowired
@@ -109,7 +117,7 @@ public class UserAdminService {
      */
     @Transactional
     public void deleteUser(@NonNull String username) {
-        var dataEvents = pluginEvents;
+        var dataEvents = pluginDataCleanup;
         if (dataEvents != null) dataEvents.beforeOwnerDeleted(username);
         try {
             auth.logout(username);

@@ -167,13 +167,20 @@ public final class ProcessHostFixture implements AutoCloseable {
                                     entries)
                             .freeze();
             PluginManager manager = mock(PluginManager.class);
+            var publication = mock(PluginManager.PublishedState.class);
+            when(publication.catalog()).thenReturn(catalog);
+            when(publication.plugins()).thenReturn(List.of(plugin));
+            when(publication.disabled()).thenReturn(List.of());
+            when(publication.declined()).thenReturn(List.of());
+            when(publication.plugin(plugin.identity().id())).thenReturn(plugin);
+            when(manager.snapshot()).thenReturn(publication);
             when(manager.catalog()).thenReturn(catalog);
             when(manager.plugins()).thenReturn(List.of(plugin));
             when(manager.plugin(plugin.identity().id())).thenReturn(plugin);
-            when(manager.toolName(anyString(), anyString()))
+            when(manager.toolName(eq(publication), anyString(), anyString()))
                     .thenAnswer(
                             call -> {
-                                String id = call.getArgument(1);
+                                String id = call.getArgument(2);
                                 if (id == null) throw new AssertionError();
                                 return id.substring(id.indexOf(':') + 1);
                             });

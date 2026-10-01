@@ -41,24 +41,23 @@ public interface Agent {
     void submit(@NonNull String prompt);
 
     /**
-     * Non-blocking submit with a callback fired on the agent's virtual thread when the task done.
+     * Non-blocking submit with a callback attached to this request's result. The callback runs
+     * inline when the result completes, potentially on a submitting or execution thread.
      */
     void submit(@NonNull String prompt, Consumer<AgentResult> callback);
 
-    /** Block the caller until the current task completes (or the timeout elapses). */
+    /** Block on the latest submitted request view (or until the timeout elapses). */
     @NonNull AgentResult await(@NonNull Duration timeout)
             throws TimeoutException, InterruptedException;
 
-    /** The current task's result future, or a completed future if idle. */
+    /** Latest request's result view; use a retained handle to observe a specific submission. */
     @NonNull CompletableFuture<AgentResult> result();
 
-    /** Submit and retain this request's identity independently of later submissions. */
-    default @NonNull RequestHandle submitRequest(@NonNull String prompt) {
-        submit(prompt);
-        RequestHandle handle = new RequestHandle(this);
-        result().thenAccept(handle.result::complete);
-        return handle;
-    }
+    /**
+     * Submits a prompt and returns the actual execution-owned request handle. Its identity, result
+     * and settlement remain associated with this submission independently of later submissions.
+     */
+    @NonNull RequestHandle submitRequest(@NonNull String prompt);
 
     // --- Lifecycle ---
     /** Request termination; actual exit is confirmed separately via {@link #awaitTermination}. */

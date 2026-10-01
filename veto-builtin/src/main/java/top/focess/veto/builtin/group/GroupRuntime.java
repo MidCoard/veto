@@ -24,6 +24,7 @@ import top.focess.veto.api.llm.PromptRenderer;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.api.plugin.PluginContext;
 import top.focess.veto.api.plugin.PluginHost;
+import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.api.plugin.agent.AgentHost;
 import top.focess.veto.api.plugin.agent.AgentProfile;
 import top.focess.veto.api.plugin.contract.AgentConfiguration;
@@ -34,10 +35,11 @@ import top.focess.veto.api.plugin.storage.PluginStorage;
  * Owns the complete group feature, including activation, policy, persistence and shutdown.
  *
  * <p>Host configuration and tool callbacks may overlap the group scheduler. The runtime monitor
- * serializes configuration, group creation and scheduler start/close; concurrent maps publish
- * per-agent context and transition state. DAG edits and shutdown use the orchestrator's per-group
- * locks. Closing stops scheduling before draining each group's members, and may wait under the
- * runtime monitor. Host lifecycle admission must prevent new calls once shutdown begins.
+ * serializes configuration, group creation and scheduler start/close; one concurrent map publishes
+ * immutable per-agent context, transition and recovery state under the full identity. DAG edits and
+ * shutdown use the orchestrator's per-group locks. Closing stops scheduling before draining each
+ * group's members, and may wait under the runtime monitor. Host lifecycle admission must prevent
+ * new calls once shutdown begins.
  */
 public final class GroupRuntime extends AgentConfiguration
         implements GroupObservations, AutoCloseable {
@@ -74,9 +76,11 @@ public final class GroupRuntime extends AgentConfiguration
     private final @NonNull GroupSpawner spawner;
     private final @NonNull GroupOrchestrator orchestrator;
     private final @NonNull GroupOperations operations;
-    private final @NonNull Map<String, Context> contexts = new ConcurrentHashMap<>();
-    private final @NonNull Map<String, Transition> transitions = new ConcurrentHashMap<>();
-    private final @NonNull Set<String> restored = ConcurrentHashMap.newKeySet();
+
+    private record AgentState(Context context, Transition transition, boolean restored) {}
+
+    private final @NonNull Map<Scope.@NonNull AgentScope, @NonNull AgentState> agents =
+            new ConcurrentHashMap<>();
     private ScheduledExecutorService scheduler;
     private volatile boolean activationReady = true;
 
@@ -155,13 +159,32 @@ public final class GroupRuntime extends AgentConfiguration
         return groups;
     }
 
-    private static @NonNull String key(@NonNull String session, @NonNull String agent) {
-        return session + "/" + agent;
+    private static Scope.@NonNull AgentScope key(@NonNull Context context) {
+        return new Scope.AgentScope(
+                context.owner(), context.storageGrant().scope().session(), context.agentId());
+    }
+
+    private void transition(Scope.@NonNull AgentScope scope, @NonNull Transition transition) {
+        agents.compute(
+                scope,
+                (ignored, prior) ->
+                        new AgentState(
+                                prior == null ? null : prior.context(),
+                                transition,
+                                prior != null && prior.restored()));
     }
 
     public synchronized Intent configure(@NonNull Context context) {
         if (!activationReady) throw new IllegalStateException("Host startup is not ready");
-        contexts.put(key(context.storageGrant().scope().session(), context.agentId()), context);
+        var key = key(context);
+        var agent =
+                agents.compute(
+                        key,
+                        (ignored, prior) ->
+                                new AgentState(
+                                        context,
+                                        prior == null ? null : prior.transition(),
+                                        prior != null && prior.restored()));
         if (history == null) return null;
         history.grant(context.storageGrant());
         if (context.authorizedTools().stream()
@@ -187,9 +210,7 @@ public final class GroupRuntime extends AgentConfiguration
                                                 && value.state() != GroupState.DISBANDED)
                         .findFirst()
                         .orElse(null);
-        if (group == null
-                && !restored.contains(
-                        key(context.storageGrant().scope().session(), context.agentId()))) {
+        if (group == null && agent != null && !agent.restored()) {
             var saved =
                     history.latestSnapshots(context.storageGrant().scope().session()).stream()
                             .filter(
@@ -233,7 +254,8 @@ public final class GroupRuntime extends AgentConfiguration
             group = group.withState(GroupState.ACTIVE, Instant.now());
             groups.put(group);
         }
-        restored.add(key(context.storageGrant().scope().session(), context.agentId()));
+        agents.computeIfPresent(
+                key, (ignored, prior) -> new AgentState(prior.context(), prior.transition(), true));
         AgentProfile profile = own == null ? GroupProfiles.standalone(context) : own;
         if (group != null) {
             String profileKey = group.groupId() + "/leader";
@@ -256,8 +278,8 @@ public final class GroupRuntime extends AgentConfiguration
     }
 
     private Transition transitionFor(@NonNull Context context) {
-        var pending =
-                transitions.get(key(context.storageGrant().scope().session(), context.agentId()));
+        var state = agents.get(key(context));
+        var pending = state == null ? null : state.transition();
         if (pending == null || !pending.prompt().equals("runtime-leader")) return pending;
         var data = new LinkedHashMap<>(pending.data().values());
         data.put("task", new JsonValue.StringValue(context.activeTask()));
@@ -272,7 +294,10 @@ public final class GroupRuntime extends AgentConfiguration
             String skillset) {
         var session = group.sessionId();
         if (session == null) throw new IllegalStateException("Missing session");
-        var context = contexts.get(key(session.toString(), group.leaderId()));
+        var owner = group.owner();
+        if (owner == null) throw new IllegalStateException("Missing group owner");
+        var state = agents.get(new Scope.AgentScope(owner, session.toString(), group.leaderId()));
+        var context = state == null ? null : state.context();
         if (context == null) throw new IllegalStateException("Team leader is not active");
         var profile = history().profile(session.toString(), id);
         if (profile == null) {
@@ -326,8 +351,8 @@ public final class GroupRuntime extends AgentConfiguration
                                     "builtin-mate-profile", new JsonValue.ObjectValue(bindings)),
                             profile.metadata());
             history().profile(session.toString(), id, profile);
-            transitions.put(
-                    key(session.toString(), id),
+            transition(
+                    new Scope.AgentScope(owner, session.toString(), id),
                     new Transition(
                             "recovery:" + group.groupId() + ":" + id,
                             "runtime-group-recovery",
@@ -348,7 +373,8 @@ public final class GroupRuntime extends AgentConfiguration
     }
 
     synchronized void create(PluginHost.@NonNull Invocation scope, @NonNull String brief) {
-        var context = contexts.get(key(scope.sessionId(), scope.agentId()));
+        var state = agents.get(scope.scope());
+        var context = state == null ? null : state.context();
         if (context == null) throw new IllegalStateException("Agent configuration is not active");
         if (groups.snapshot().values().stream()
                 .anyMatch(
@@ -380,8 +406,8 @@ public final class GroupRuntime extends AgentConfiguration
 
     void transition(
             PluginHost.@NonNull Invocation scope, @NonNull String prompt, @NonNull String brief) {
-        transitions.put(
-                key(scope.sessionId(), scope.agentId()),
+        transition(
+                scope.scope(),
                 new Transition(
                         UUID.randomUUID().toString(),
                         prompt,
@@ -453,9 +479,7 @@ public final class GroupRuntime extends AgentConfiguration
                             scope.owner().equals(group.owner())
                                     && scope.session().equals(String.valueOf(group.sessionId())));
         } finally {
-            restored.removeIf(key -> key.startsWith(scope.session() + "/"));
-            contexts.keySet().removeIf(key -> key.startsWith(scope.session() + "/"));
-            transitions.keySet().removeIf(key -> key.startsWith(scope.session() + "/"));
+            agents.keySet().removeIf(key -> key.sessionScope().equals(scope));
         }
     }
 
@@ -468,28 +492,16 @@ public final class GroupRuntime extends AgentConfiguration
                                     && scope.agent().equals(group.leaderId())
                                     && scope.session().equals(String.valueOf(group.sessionId())));
         } finally {
-            String key = key(scope.session(), scope.agent());
-            contexts.remove(key);
-            transitions.remove(key);
-            restored.remove(key);
+            agents.remove(scope);
         }
     }
 
     public void onUserLogout(@NonNull UserLogoutEvent event) {
         var scope = event.scope();
-        var owned =
-                contexts.entrySet().stream()
-                        .filter(entry -> scope.owner().equals(entry.getValue().owner()))
-                        .map(Map.Entry::getKey)
-                        .toList();
         try {
             stopGroups(group -> scope.owner().equals(group.owner()));
         } finally {
-            for (var key : owned) {
-                contexts.remove(key);
-                transitions.remove(key);
-                restored.remove(key);
-            }
+            agents.keySet().removeIf(key -> key.userScope().equals(scope));
         }
     }
 
@@ -502,9 +514,7 @@ public final class GroupRuntime extends AgentConfiguration
         try {
             stopGroups(group -> true);
         } finally {
-            contexts.clear();
-            transitions.clear();
-            restored.clear();
+            agents.clear();
         }
     }
 

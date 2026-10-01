@@ -1,7 +1,6 @@
 package top.focess.veto.integration.plugins;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.*;
 
 import java.util.List;
 import java.util.Set;
@@ -78,11 +77,11 @@ class WorkflowHooksTest {
             assertThrows(
                     IllegalStateException.class, () -> fixture.sessions.dispatch(input(true, "")));
             assertEquals(1, calls.get());
-            SessionPlugins none = spy(fixture.sessions);
-            doReturn(List.of()).when(none).bindings("session");
+            fixture.useUnselectedSession();
             var unchanged = input(false, "unchanged");
-            none.dispatch(unchanged);
+            fixture.sessions.dispatch(unchanged);
             assertEquals("unchanged", unchanged.text());
+            fixture.restoreSelectedSession();
             fixture.runtime.close();
             var inactive = input(false, "inactive");
             fixture.sessions.dispatch(inactive);

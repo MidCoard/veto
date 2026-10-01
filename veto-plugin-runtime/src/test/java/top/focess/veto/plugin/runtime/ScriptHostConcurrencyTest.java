@@ -6,7 +6,9 @@ import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
 import java.nio.file.Path;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantLock;
 import org.junit.jupiter.api.Test;
@@ -14,6 +16,58 @@ import org.junit.jupiter.api.Timeout;
 
 @Timeout(10)
 class ScriptHostConcurrencyTest {
+    @Test
+    void concurrentFailurePathsNotifyOnceOutsideTheTransportLock() throws Exception {
+        try (var host = new ScriptHost(Path.of("unused-node"), 1000);
+                var calls = Executors.newVirtualThreadPerTaskExecutor()) {
+            var field = ScriptHost.class.getDeclaredField("lock");
+            field.setAccessible(true);
+            var lock = assertInstanceOf(ReentrantLock.class, field.get(host));
+            var count = new AtomicInteger();
+            var unlocked = new AtomicBoolean();
+            host.register(
+                    "listener",
+                    () -> {
+                        count.incrementAndGet();
+                        var checked =
+                                calls.submit(
+                                        () -> {
+                                            if (!lock.tryLock(2, TimeUnit.SECONDS)) return false;
+                                            try {
+                                                return true;
+                                            } finally {
+                                                lock.unlock();
+                                            }
+                                        });
+                        try {
+                            unlocked.set(checked.get(2, TimeUnit.SECONDS));
+                        } catch (Exception failure) {
+                            throw new IllegalStateException(failure);
+                        }
+                    });
+            var failAll = ScriptHost.class.getDeclaredMethod("failAll");
+            failAll.setAccessible(true);
+            var first =
+                    calls.submit(
+                            () -> {
+                                failAll.invoke(host);
+                                return true;
+                            });
+            var second =
+                    calls.submit(
+                            () -> {
+                                failAll.invoke(host);
+                                return true;
+                            });
+            assertTrue(first.get(2, TimeUnit.SECONDS));
+            assertTrue(second.get(2, TimeUnit.SECONDS));
+            assertEquals(1, count.get());
+            assertTrue(
+                    unlocked.get(),
+                    "another thread can acquire transport lock during notification");
+        }
+    }
+
     @Test
     void queuedInvocationCannotStartAWorkerAfterClose() throws Exception {
         var host = new ScriptHost(Path.of("missing-node-for-closed-host"), 5000);

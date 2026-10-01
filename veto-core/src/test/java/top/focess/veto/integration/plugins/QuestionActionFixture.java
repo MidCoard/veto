@@ -11,6 +11,7 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import org.jspecify.annotations.NonNull;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import top.focess.veto.agent.SessionAgentRegistry;
@@ -41,6 +42,17 @@ public final class QuestionActionFixture implements AutoCloseable {
     private final @NonNull Object runtime;
     public final @NonNull MockMvc mvc;
     public final Scope.@NonNull AgentScope scope;
+
+    /** Supplies a distinct persisted row initialized with no selected plugins. */
+    public void useUnselectedSession() {
+        var unselected = new SessionEntity(session.getOwner(), session.getName());
+        ReflectionTestUtils.setField(unselected, "id", session.getId());
+        unselected.setPluginBindings(List.of());
+        when(sessions.findById(session.getId())).thenReturn(Optional.of(unselected));
+        when(sessions.findFirstByNameAndOwnerOrderByLastActiveAtDesc(
+                        session.getName(), session.getOwner()))
+                .thenReturn(Optional.of(unselected));
+    }
 
     public QuestionActionFixture() throws IOException {
         var config = new PluginHostConfiguration();
@@ -180,11 +192,12 @@ public final class QuestionActionFixture implements AutoCloseable {
                         questionConstructor.newInstance(
                                 question.header(), question.id(), question.question(), options));
             }
+            var register =
+                    runtime.getClass()
+                            .getDeclaredMethod("register", PluginHost.Invocation.class, List.class);
+            register.setAccessible(true); // Test-only access to the builtin's internal rendezvous.
             var result =
-                    (CompletableFuture<?>)
-                            runtime.getClass()
-                                    .getMethod("register", PluginHost.Invocation.class, List.class)
-                                    .invoke(runtime, invocation(callId), converted);
+                    (CompletableFuture<?>) register.invoke(runtime, invocation(callId), converted);
             return Nullness.requireNonNull(result)
                     .thenApply(
                             answer -> {

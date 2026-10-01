@@ -36,6 +36,7 @@ class ListenerRegistrationTest {
                     new PluginContext(
                             plugin.identity(), () -> {}, plugin::state, Map.of(), handlers);
             var previousCatalog = manager.catalog();
+            var previousPublication = manager.snapshot();
             var previousEvents = manager.events();
             var previousEntries = registration.entries();
             assertThrows(
@@ -47,10 +48,23 @@ class ListenerRegistrationTest {
                                     new InvalidProbe()));
             assertSame(previousCatalog, manager.catalog());
             assertSame(previousEvents, manager.events());
+            assertSame(previousPublication, manager.snapshot());
             assertEquals(previousEntries, registration.entries());
             var calls = new AtomicInteger();
             context.register(
                     StandardContributionPoints.LISTENERS, "prepared-probe", new ValidProbe(calls));
+            assertSame(plugin, previousPublication.plugin(plugin.identity().id()));
+            assertTrue(
+                    previousPublication
+                            .catalog()
+                            .entries(StandardContributionPoints.LISTENERS)
+                            .stream()
+                            .noneMatch(entry -> entry.id().localId().equals("prepared-probe")));
+            var nextPublication = manager.snapshot();
+            assertSame(plugin, nextPublication.plugin(plugin.identity().id()));
+            assertTrue(
+                    nextPublication.catalog().entries(StandardContributionPoints.LISTENERS).stream()
+                            .anyMatch(entry -> entry.id().localId().equals("prepared-probe")));
             manager.events().broadcast(new UserLoggedInEvent(new Scope.UserScope("probe-user")));
             assertEquals(1, calls.get());
             assertTrue(

@@ -77,8 +77,7 @@ class CompactionRuntimeTest {
                             }
                         });
         Object summary =
-                AgentRuntimeTestAccess.state(runner)
-                        .lifecycle()
+                AgentLifecycleTestAccess.owner(runner)
                         .computeCompactionSummary(
                                 List.of(
                                         TurnRecord.userPrompt(2, "a".repeat(29_000)),
@@ -114,7 +113,7 @@ class CompactionRuntimeTest {
                                 Map.of("call_id", "read-3", "content", "A quoted permission"),
                                 null));
         runner.seedHistory(original);
-        AgentRuntimeTestAccess.state(runner).lifecycle().processCompaction();
+        AgentLifecycleTestAccess.owner(runner).processCompaction();
         assertEquals(1, calls.get());
         assertEquals(original, runner.history().subList(0, original.size()));
         assertTrue(runner.history().stream().noneMatch(turn -> turn.type() == TurnType.REWIND));
@@ -178,7 +177,7 @@ class CompactionRuntimeTest {
                         TurnRecord.userPrompt(2, "a".repeat(40_000)),
                         TurnRecord.userPrompt(3, "b".repeat(40_000)));
         runner.seedHistory(original);
-        AgentRuntimeTestAccess.state(runner).lifecycle().processCompaction();
+        AgentLifecycleTestAccess.owner(runner).processCompaction();
         assertEquals(2, calls.get(), "Do not merge a failed chunk away");
         assertEquals(original, runner.history().subList(0, original.size()));
         assertTrue(runner.history().stream().noneMatch(turn -> turn.type() == TurnType.REWIND));
@@ -209,7 +208,7 @@ class CompactionRuntimeTest {
                                 1, TurnType.AGENT_INIT, Map.of("system_prompt", "Fixture"), null),
                         TurnRecord.userPrompt(2, "a".repeat(60_000)));
         runner.seedHistory(original);
-        AgentRuntimeTestAccess.state(runner).lifecycle().processCompaction();
+        AgentLifecycleTestAccess.owner(runner).processCompaction();
         assertEquals(0, calls.get());
         assertEquals(original, runner.history().subList(0, original.size()));
         assertTrue(runner.history().stream().noneMatch(turn -> turn.type() == TurnType.REWIND));

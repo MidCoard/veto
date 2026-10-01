@@ -176,7 +176,7 @@ public final class EventListenerRegistry {
      * @param event the event to dispatch; handlers transform it in place
      * @param selected plugin identities selected for the current session
      */
-    public void submit(@NonNull Event event, @NonNull Set<String> selected) {
+    public void submit(@NonNull WorkflowEvent event, @NonNull Set<String> selected) {
         dispatch(
                 event,
                 selected::contains,
@@ -194,17 +194,25 @@ public final class EventListenerRegistry {
      *
      * @param event the lifecycle notification to broadcast
      * @param active plugin identities currently active
+     * @throws IllegalArgumentException when supplied a workflow event
      */
     public void broadcast(@NonNull Event event, @NonNull Set<String> active) {
         broadcast(event, active::contains);
     }
 
-    /** Broadcasts only to prepared route recipients whose current activation is active. */
+    /**
+     * Broadcasts only to prepared route recipients whose current activation is active.
+     *
+     * @param event a non-workflow notification
+     * @throws IllegalArgumentException when supplied a workflow event
+     */
     public void broadcast(@NonNull Event event) {
         broadcast(event, active);
     }
 
     private void broadcast(@NonNull Event event, @NonNull Predicate<@NonNull String> recipients) {
+        if (event instanceof WorkflowEvent)
+            throw new IllegalArgumentException("Workflow events require fail-closed submission");
         dispatch(
                 event,
                 recipients,

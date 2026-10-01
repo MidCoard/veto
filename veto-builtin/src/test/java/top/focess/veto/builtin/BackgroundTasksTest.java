@@ -52,7 +52,7 @@ class BackgroundTasksTest {
     void scopesAndInstancesAreExactAndNotificationFailureDoesNotLoseOutput() throws Exception {
         var process = new Running("hello\nworld\n");
         var tasks = new BackgroundTasks(() -> new Host(process));
-        tasks.listener(
+        tasks.observer(
                 (scope, info, cause, change) -> {
                     throw new IllegalStateException("offline");
                 });
@@ -79,7 +79,7 @@ class BackgroundTasksTest {
         var info = tasks.start();
         var scope = process.invocation().scope();
         try {
-            assertTrue(tasks.queueInput(scope, info.taskId()).queued());
+            assertTrue(tasks.enqueueApprovedInput(scope, info.taskId()).queued());
             assertTrue(host.wrote.await(2, TimeUnit.SECONDS));
             long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
             while (tasks.inputFailures(scope, info.taskId()).isEmpty()
@@ -155,7 +155,7 @@ class BackgroundTasksTest {
         var queue = new ArrayDeque<Running>(List.of(first, second, other));
         var tasks = new BackgroundTasks(() -> new Host(queue.removeFirst()));
         var causes = new CopyOnWriteArrayList<BackgroundTasks.ExitCause>();
-        tasks.listener(
+        tasks.observer(
                 (scope, info, cause, change) -> {
                     if (change == BackgroundTasks.Change.EXITED) causes.add(cause);
                 });

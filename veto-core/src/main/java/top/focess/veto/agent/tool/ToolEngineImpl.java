@@ -156,7 +156,7 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
         }
         if (context != null) {
             for (var manager : context.getBeansOfType(PluginManager.class).values()) {
-                staged.addAll(pluginRegistrations(manager));
+                staged.addAll(pluginRegistrations(manager, manager.snapshot()));
             }
         }
         // Validation and construction complete before readers can observe any new registration.
@@ -166,21 +166,23 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
     }
 
     /** Atomically publishes the live plugin tool set after a lifecycle transition. */
-    public synchronized void reloadPlugins(@NonNull PluginManager manager) {
+    public synchronized void reloadPlugins(
+            @NonNull PluginManager manager, PluginManager.@NonNull PublishedState state) {
         if (!initialized) return;
-        catalog = catalog.replacePlugins(pluginRegistrations(manager));
+        catalog = catalog.replacePlugins(pluginRegistrations(manager, state));
     }
 
     private static @NonNull List<RegisteredTool> pluginRegistrations(
-            @NonNull PluginManager manager) {
+            @NonNull PluginManager manager, PluginManager.@NonNull PublishedState state) {
         List<RegisteredTool> staged = new ArrayList<>();
-        for (var entry : manager.catalog().entries(StandardContributionPoints.TOOLS)) {
-            var plugin = manager.plugin(entry.source().namespace());
+        for (var entry : state.catalog().entries(StandardContributionPoints.TOOLS)) {
+            var plugin = state.plugin(entry.source().namespace());
             if (entry.implementation() instanceof RemoteTool descriptor) {
                 RemoteToolDefinition definition =
                         ToolSchemaCompiler.compilePluginScript(
                                 descriptor,
-                                manager.toolName(entry),
+                                manager.toolName(
+                                        state, entry.source().namespace(), entry.id().value()),
                                 PluginJson.toNode(descriptor.inputSchema()),
                                 plugin.bindingId(),
                                 plugin.identity().id(),
@@ -190,7 +192,8 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
                 staged.add(
                         ToolRegistration.local(
                                 tool,
-                                manager.toolName(entry.source().namespace(), entry.id().value()),
+                                manager.toolName(
+                                        state, entry.source().namespace(), entry.id().value()),
                                 plugin,
                                 entry.id().localId()));
             }

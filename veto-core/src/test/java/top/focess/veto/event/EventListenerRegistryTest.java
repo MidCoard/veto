@@ -29,6 +29,25 @@ import top.focess.veto.api.plugin.contribution.ContributionSource;
 
 class EventListenerRegistryTest {
     @Test
+    void broadcastRejectsWorkflowEventsBeforeInvokingHandlers() {
+        var calls = new ArrayList<String>();
+        var registry = registry(new NormalProbe(calls, "listener"));
+        var event =
+                new BeforeToolEvent(
+                        "owner",
+                        "session",
+                        "agent",
+                        () -> false,
+                        new BeforeToolEvent.Invocation(
+                                "tool", "call", new JsonValue.ObjectValue(Map.of())));
+        assertThrows(IllegalArgumentException.class, () -> registry.broadcast(event));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> registry.broadcast(event, Set.of("demo.listener")));
+        assertTrue(calls.isEmpty());
+    }
+
+    @Test
     void pluginAssertionIsContainedButFatalVmErrorsPropagate() {
         var calls = new ArrayList<String>();
         var ordinary = registry(new ErrorProbe(false), new NormalProbe(calls, "later"));

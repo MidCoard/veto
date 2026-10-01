@@ -111,9 +111,11 @@ final class AgentEvents {
                 Object args = numbered.payload().get("args");
                 Object callId = numbered.payload().get("call_id");
                 if (name instanceof @NonNull String toolName) {
-                    @SuppressWarnings("unchecked")
-                    Map<String, Object> argMap =
-                            args instanceof Map ? (Map<String, Object>) args : Map.of();
+                    var argMap =
+                            args instanceof Map<?, ?> values
+                                    ? ToolCall.snapshotArguments(values)
+                                    : Map.<String, Object>of();
+                    var argumentFrame = objectMapper.valueToTree(argMap);
                     calls.emit(new ToolCallEvent(toolName, argMap));
                     // Domain event for every subscriber (web, terminal adapter): the call the agent
                     // is about to run. Carries the authoritative turnNumber + callId so a client
@@ -125,7 +127,7 @@ final class AgentEvents {
                                     .kind(DeltaFrame.Kind.TOOL_CALL)
                                     .attr("turnNumber", numbered.turnNumber())
                                     .attr("toolName", toolName)
-                                    .attr("args", objectMapper.valueToTree(argMap))
+                                    .attr("args", argumentFrame)
                                     .text(toolName);
                     if (callId instanceof @NonNull String c) {
                         b.attr("callId", c);

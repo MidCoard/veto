@@ -26,6 +26,7 @@ import top.focess.veto.api.event.BeforeTextCommitEvent;
 import top.focess.veto.api.llm.ProviderType;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.api.plugin.Scope;
+import top.focess.veto.integration.plugins.PluginDataCleanup;
 import top.focess.veto.integration.plugins.PluginLifecycleEvents;
 import top.focess.veto.integration.plugins.PluginTestSupport;
 import top.focess.veto.model.AgentEntity;
@@ -434,7 +435,9 @@ class SessionServiceTest {
             var user = mock(UserEntity.class);
             when(user.storageIdentity()).thenReturn("alice-storage-identity");
             when(users.findByUsername("alice")).thenReturn(Optional.of(user));
-            lifecycle.attachUsers(users);
+            var cleanup = new PluginDataCleanup(plugins);
+            cleanup.attachUsers(users);
+            service.attachPluginDataCleanup(cleanup);
             service.attachLifecycleEvents(lifecycle);
             String captured =
                     PluginTestSupport.protect(

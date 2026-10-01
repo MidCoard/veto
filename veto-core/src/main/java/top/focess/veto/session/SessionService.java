@@ -27,6 +27,7 @@ import top.focess.veto.api.llm.LlmBinding;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.controller.SessionController;
 import top.focess.veto.i18n.Msg;
+import top.focess.veto.integration.plugins.PluginDataCleanup;
 import top.focess.veto.integration.plugins.PluginLifecycleEvents;
 import top.focess.veto.integration.plugins.SessionPlugins;
 import top.focess.veto.integration.plugins.storage.ScopedPluginStorage;
@@ -76,6 +77,13 @@ public class SessionService {
     }
 
     private PluginLifecycleEvents lifecycleEvents;
+    private PluginDataCleanup pluginDataCleanup;
+
+    /** Attaches required transactional plugin cleanup separately from event notifications. */
+    @Autowired
+    public void attachPluginDataCleanup(@NonNull PluginDataCleanup cleanup) {
+        pluginDataCleanup = cleanup;
+    }
 
     /** Setter-injects the plugin lifecycle event sink notified on session deletion. */
     @Autowired
@@ -504,7 +512,7 @@ public class SessionService {
         }
         for (SessionEntity session : matches) {
             String sessionId = session.getId();
-            var dataEvents = lifecycleEvents;
+            var dataEvents = pluginDataCleanup;
             if (dataEvents != null) dataEvents.beforeSessionDeleted(owner, sessionId);
             Runnable stop =
                     () -> {

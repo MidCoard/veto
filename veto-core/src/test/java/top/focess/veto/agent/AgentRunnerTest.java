@@ -1275,6 +1275,11 @@ class AgentRunnerTest {
             assertTrue(entered.await(5, TimeUnit.SECONDS));
             var cancelled = agent.submitRequest("Second");
             var following = agent.submitRequest("Third");
+            assertEquals(active.episode.id(), active.requestId());
+            assertNotEquals(active.requestId(), cancelled.requestId());
+            assertNotEquals(cancelled.requestId(), following.requestId());
+            assertSame(following.result(), agent.result());
+            assertFalse(active.settled().isDone());
             assertTrue(agent.cancelTask(cancelled.result(), Duration.ofSeconds(1)));
             assertFalse(cancelled.await(EPISODE_TIMEOUT).success());
             assertTrue(cancelled.settled().isDone());
@@ -1282,6 +1287,8 @@ class AgentRunnerTest {
             release.countDown();
             assertTrue(active.await(EPISODE_TIMEOUT).success());
             assertTrue(following.await(EPISODE_TIMEOUT).success());
+            assertTrue(active.settled().get(5, TimeUnit.SECONDS));
+            assertTrue(following.settled().get(5, TimeUnit.SECONDS));
             assertEquals(3, calls.get());
         } finally {
             release.countDown();
@@ -1958,6 +1965,116 @@ class AgentRunnerTest {
             assertTrue(directDone.await(5, TimeUnit.SECONDS));
         } finally {
             service.remove("direct-monitor");
+        }
+    }
+
+    @Test
+    void pluginWaitSettlementTracksTheResumedRequestUntilExecutionExits() throws Exception {
+        var initialEntered = new CountDownLatch(1);
+        var initialRelease = new CountDownLatch(1);
+        var resumedEntered = new CountDownLatch(1);
+        var resumedRelease = new CountDownLatch(1);
+        var interrupted = new CountDownLatch(1);
+        var calls = new AtomicInteger();
+        var signal = new CompletableFuture<Boolean>();
+        var pending = new AtomicBoolean();
+        var service =
+                serviceWith(
+                        modelRequest -> {
+                            int call = calls.incrementAndGet();
+                            if (call == 2) {
+                                initialEntered.countDown();
+                                try {
+                                    if (!initialRelease.await(5, TimeUnit.SECONDS))
+                                        throw new AssertionError("Initial model was not released");
+                                } catch (InterruptedException error) {
+                                    throw new AssertionError(error);
+                                }
+                            }
+                            if (call == 3) {
+                                resumedEntered.countDown();
+                                long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+                                boolean released = false;
+                                while (!released && System.nanoTime() < deadline) {
+                                    try {
+                                        released = resumedRelease.await(20, TimeUnit.MILLISECONDS);
+                                    } catch (InterruptedException ignored) {
+                                        // The provider keeps executing until explicitly released.
+                                        interrupted.countDown();
+                                    }
+                                }
+                                if (!released)
+                                    throw new AssertionError("Resumed model was not released");
+                            }
+                            return new VetoResponse(null, null, "result-" + call);
+                        });
+        try {
+            service.submit("wait-settlement", "Initialize", binding("System"), EPISODE_TIMEOUT);
+            var agent = requireAgent(service.agent("wait-settlement"));
+            var request = agent.submitRequest("Wait for plugin work");
+            assertTrue(initialEntered.await(5, TimeUnit.SECONDS));
+            request.await(new PluginAwait("settlement/wait", signal), agent::signalWork);
+            initialRelease.countDown();
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+            while (agent.state() != AgentState.WAITING && System.nanoTime() < deadline)
+                Thread.sleep(10);
+            assertEquals(AgentState.WAITING, agent.state());
+            assertFalse(request.result().isDone());
+            assertFalse(request.settled().isDone());
+
+            MonitorService monitors = Mockito.mock(MonitorService.class);
+            var event =
+                    new MonitorRecord.Event(
+                            "settlement-event",
+                            "group",
+                            "RESOURCE_EVENT",
+                            "Resume work",
+                            Instant.now(),
+                            request.requestId(),
+                            "dispatch");
+            Mockito.when(monitors.pending(agent.id(), agent.sessionId().toString()))
+                    .thenAnswer(ignored -> pending.get() ? List.of(event) : List.of());
+            Mockito.doAnswer(
+                            ignored -> {
+                                pending.set(false);
+                                return null;
+                            })
+                    .when(monitors)
+                    .acknowledge(Mockito.eq(agent.id()), Mockito.any());
+            agent.attachWorkSource(work(monitors));
+            pending.set(true);
+            signal.complete(true);
+            assertTrue(resumedEntered.await(5, TimeUnit.SECONDS));
+            assertSame(request.result(), agent.result());
+            assertFalse(request.settled().isDone());
+            assertFalse(agent.cancelTask(request.result(), Duration.ofMillis(20)));
+            assertTrue(interrupted.await(5, TimeUnit.SECONDS));
+            assertFalse(request.result().isDone());
+            assertFalse(request.settled().isDone());
+            resumedRelease.countDown();
+            assertTrue(agent.cancelTask(request.result(), Duration.ofSeconds(5)));
+            assertFalse(request.await(EPISODE_TIMEOUT).success());
+            assertTrue(request.settled().get(5, TimeUnit.SECONDS));
+            assertTrue(
+                    agent.history().stream()
+                            .anyMatch(
+                                    turn ->
+                                            turn.type() == TurnType.EXECUTION_ERROR
+                                                    && "CANCELLED"
+                                                            .equals(turn.payload().get("outcome"))
+                                                    && request.requestId()
+                                                            .equals(
+                                                                    turn.payload()
+                                                                            .get("requestId"))));
+            var next = agent.submitRequest("Independent next task");
+            assertNotEquals(request.requestId(), next.requestId());
+            assertTrue(next.await(EPISODE_TIMEOUT).success());
+            assertTrue(next.settled().get(5, TimeUnit.SECONDS));
+            assertEquals(4, calls.get());
+        } finally {
+            initialRelease.countDown();
+            resumedRelease.countDown();
+            service.remove("wait-settlement");
         }
     }
 

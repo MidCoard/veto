@@ -2,6 +2,8 @@ package top.focess.veto.controller;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.util.List;
@@ -25,6 +27,7 @@ class PluginControllerTest {
     void listsHumanNameAndBothToolKinds() {
         var manager = mock(PluginManager.class);
         var catalog = mock(ContributionCatalog.class);
+        var publication = mock(PluginManager.PublishedState.class);
         var lifecycle = mock(PluginLifecycle.class);
         var implementation = mock(VetoPlugin.class);
         var identity = new PluginIdentity("example.tools", "1.0.0");
@@ -38,17 +41,22 @@ class PluginControllerTest {
         NativeTool<?> nativeImplementation = mock(NativeTool.class);
         ContributionEntry<Tool> nativeEntry =
                 new ContributionEntry<>(nativeTool, source, nativeImplementation);
-        when(manager.plugins()).thenReturn(List.of(lifecycle));
-        when(manager.registrations()).thenReturn(List.of());
-        when(manager.catalog()).thenReturn(catalog);
+        when(manager.snapshot()).thenReturn(publication);
+        when(publication.plugins()).thenReturn(List.of(lifecycle));
+        when(publication.registrations()).thenReturn(List.of());
+        when(publication.declined()).thenReturn(List.of());
+        when(publication.disabled()).thenReturn(List.of());
+        when(publication.catalog()).thenReturn(catalog);
         when(lifecycle.identity()).thenReturn(identity);
         when(lifecycle.state()).thenReturn(PluginState.ACTIVE);
         when(lifecycle.implementation()).thenReturn(implementation);
         when(lifecycle.displayName()).thenReturn("Example Tools");
         when(catalog.entries(StandardContributionPoints.TOOLS))
                 .thenReturn(List.of(portableEntry, nativeEntry));
-        when(manager.toolName(portableEntry)).thenReturn("portable_alias");
-        when(manager.toolName(nativeEntry)).thenReturn("native_alias");
+        when(manager.toolName(publication, identity.id(), portable.value()))
+                .thenReturn("portable_alias");
+        when(manager.toolName(publication, identity.id(), nativeTool.value()))
+                .thenReturn("native_alias");
 
         UserContext.set("admin");
         try {
@@ -57,6 +65,9 @@ class PluginControllerTest {
             assertEquals(1, response.size());
             assertEquals("Example Tools", response.getFirst().name());
             assertEquals(List.of("native_alias", "portable_alias"), response.getFirst().tools());
+            verify(manager).snapshot();
+            verify(manager, never()).catalog();
+            verify(manager, never()).plugins();
         } finally {
             UserContext.clear();
         }
