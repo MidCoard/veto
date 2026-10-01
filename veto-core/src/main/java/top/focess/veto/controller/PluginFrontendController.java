@@ -153,7 +153,6 @@ public final class PluginFrontendController {
                                                         session.getOwner(), session.getId());
                                         try {
                                             return entry.implementation()
-                                                    .handler()
                                                     .handle(
                                                             new Scope.AgentScope(
                                                                     session.getOwner(),

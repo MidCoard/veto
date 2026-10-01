@@ -100,9 +100,29 @@ final class BoundPluginHost implements PluginHost {
         delegate.publish(session, plugin.identity().id() + ":" + topic, facts);
     }
 
+    @Override
+    public void publish(
+            Scope.@NonNull SessionScope scope,
+            @NonNull String topic,
+            JsonValue.@NonNull ObjectValue facts) {
+        authorize(scope);
+        publish(scope.session(), topic, facts);
+    }
+
     public void invalidate(@NonNull String session, @NonNull String resource) {
         authorize(session);
         delegate.invalidate(session, resource);
+    }
+
+    @Override
+    public void invalidate(Scope.@NonNull SessionScope scope, @NonNull String resource) {
+        authorize(scope);
+        invalidate(scope.session(), resource);
+    }
+
+    private void authorize(Scope.@NonNull SessionScope scope) {
+        if (!authorize(scope.session()).equals(scope.owner()))
+            throw new SecurityException("Session owner mismatch");
     }
 
     public void wake(@NonNull String owner, @NonNull String session, @NonNull String agent) {

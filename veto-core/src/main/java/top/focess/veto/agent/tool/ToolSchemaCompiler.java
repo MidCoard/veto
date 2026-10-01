@@ -4,6 +4,9 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import java.lang.reflect.AnnotatedArrayType;
+import java.lang.reflect.AnnotatedParameterizedType;
+import java.lang.reflect.AnnotatedType;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.RecordComponent;
 import java.lang.reflect.Type;
@@ -18,6 +21,7 @@ import top.focess.veto.api.agent.tool.ArraySize;
 import top.focess.veto.api.agent.tool.CapabilityTool;
 import top.focess.veto.api.agent.tool.Doc;
 import top.focess.veto.api.agent.tool.NativeTool;
+import top.focess.veto.api.agent.tool.NumberConstraint;
 import top.focess.veto.api.agent.tool.ParamCategory;
 import top.focess.veto.api.agent.tool.RemoteTool;
 import top.focess.veto.api.agent.tool.Required;
@@ -226,24 +230,16 @@ public final class ToolSchemaCompiler {
                 paramNode.put("maxItems", size.max());
             }
 
-            StringConstraint text = component.getAnnotation(StringConstraint.class);
-            if (text != null) {
-                if (type != String.class
-                        || text.minLength() < 0
-                        || text.maxLength() < text.minLength()) {
-                    throw new IllegalArgumentException("Invalid @StringConstraint on " + name);
-                }
-                paramNode.put("minLength", text.minLength());
-                if (text.maxLength() != Integer.MAX_VALUE) {
-                    paramNode.put("maxLength", text.maxLength());
-                }
-                if (!text.pattern().isEmpty()) {
-                    paramNode.put("pattern", Pattern.compile(text.pattern()).pattern());
-                } else if (text.rejectBlank()) {
-                    paramNode.put("pattern", "\\S");
-                }
-            }
-
+            var annotatedType = component.getAnnotatedType();
+            // Older plugin bytecode stores these annotations only on the record component.
+            StringConstraint text = annotatedType.getAnnotation(StringConstraint.class);
+            NumberConstraint number = annotatedType.getAnnotation(NumberConstraint.class);
+            applyConstraints(
+                    paramNode,
+                    annotatedType,
+                    name,
+                    text == null ? component.getAnnotation(StringConstraint.class) : text,
+                    number == null ? component.getAnnotation(NumberConstraint.class) : number);
             properties.set(name, paramNode);
 
             // Repository contracts are nullable by default. JSpecify is @Target(TYPE_USE), so the
@@ -333,30 +329,70 @@ public final class ToolSchemaCompiler {
      * schemas and raw collections leave the element type unrestricted.
      */
     private static @NonNull JsonNode itemsSchemaOf(@NonNull RecordComponent component) {
-        Type type = component.getGenericType();
-        if (type instanceof Class<?> array && array.isArray()) {
-            return schemaOf(array.getComponentType());
-        }
-        if (type instanceof ParameterizedType collection) {
-            return schemaOf(collection.getActualTypeArguments()[0]);
-        }
+        AnnotatedType type = component.getAnnotatedType();
+        if (type instanceof AnnotatedArrayType array)
+            return schemaOf(array.getAnnotatedGenericComponentType());
+        if (type instanceof AnnotatedParameterizedType collection)
+            return schemaOf(collection.getAnnotatedActualTypeArguments()[0]);
         return MAPPER.createObjectNode();
     }
 
-    private static @NonNull JsonNode schemaOf(Type type) {
+    private static @NonNull JsonNode schemaOf(@NonNull AnnotatedType type) {
         ObjectNode schema = MAPPER.createObjectNode();
-        if (type instanceof ParameterizedType parameterized
-                && parameterized.getRawType() instanceof Class<?> raw
+        Type rawType = type.getType();
+        if (type instanceof AnnotatedParameterizedType parameterized
+                && rawType instanceof ParameterizedType generic
+                && generic.getRawType() instanceof Class<?> raw
                 && Collection.class.isAssignableFrom(raw)) {
             schema.put("type", "array");
-            schema.set("items", schemaOf(parameterized.getActualTypeArguments()[0]));
-        } else if (type instanceof Class<?> concrete) {
-            if (concrete.isRecord()) return compileFromRecord(concrete);
-            if (concrete.isEnum()) return enumSchema(concrete);
-            schema.put("type", mapJavaTypeToSchemaType(concrete));
-            if (concrete.isArray()) schema.set("items", schemaOf(concrete.getComponentType()));
+            schema.set("items", schemaOf(parameterized.getAnnotatedActualTypeArguments()[0]));
+        } else if (rawType instanceof Class<?> concrete) {
+            if (concrete.isRecord()) schema = (ObjectNode) compileFromRecord(concrete);
+            else if (concrete.isEnum()) schema = enumSchema(concrete);
+            else {
+                schema.put("type", mapJavaTypeToSchemaType(concrete));
+                if (type instanceof AnnotatedArrayType array)
+                    schema.set("items", schemaOf(array.getAnnotatedGenericComponentType()));
+            }
         }
+        applyConstraints(schema, type, rawType.getTypeName());
         return schema;
+    }
+
+    private static void applyConstraints(
+            @NonNull ObjectNode schema, @NonNull AnnotatedType type, @NonNull String name) {
+        applyConstraints(
+                schema,
+                type,
+                name,
+                type.getAnnotation(StringConstraint.class),
+                type.getAnnotation(NumberConstraint.class));
+    }
+
+    private static void applyConstraints(
+            @NonNull ObjectNode schema,
+            @NonNull AnnotatedType type,
+            @NonNull String name,
+            StringConstraint text,
+            NumberConstraint number) {
+        if (text != null) {
+            if (type.getType() != String.class
+                    || text.minLength() < 0
+                    || text.maxLength() < text.minLength())
+                throw new IllegalArgumentException("Invalid @StringConstraint on " + name);
+            if (text.minLength() > 0) schema.put("minLength", text.minLength());
+            if (text.maxLength() != Integer.MAX_VALUE) schema.put("maxLength", text.maxLength());
+            if (!text.pattern().isEmpty())
+                schema.put("pattern", Pattern.compile(text.pattern()).pattern());
+            else if (text.rejectBlank()) schema.put("pattern", "\\S");
+        }
+        if (number != null) {
+            String kind = schema.path("type").asText();
+            if (!(kind.equals("integer") || kind.equals("number")) || number.min() > number.max())
+                throw new IllegalArgumentException("Invalid @NumberConstraint on " + name);
+            if (number.min() != Long.MIN_VALUE) schema.put("minimum", number.min());
+            if (number.max() != Long.MAX_VALUE) schema.put("maximum", number.max());
+        }
     }
 
     private static @NonNull ObjectNode enumSchema(@NonNull Class<?> enumType) {

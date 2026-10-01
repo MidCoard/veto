@@ -23,7 +23,16 @@ import top.focess.veto.api.agent.AgentResult;
 import top.focess.veto.api.agent.AgentState;
 import top.focess.veto.api.plugin.agent.AgentHost;
 
-/** Plugin-owned dispatch waiter; host request handles own execution and cancellation. */
+/**
+ * Plugin-owned dispatch waiter; host request handles own execution and cancellation.
+ *
+ * <p>One scheduled thread polls and waits for dispatch results. Cancellation and stopping may run
+ * on tool or lifecycle threads; the mate monitor protects the active request, dispatch-exit signal
+ * and close request, while atomic/concurrent state communicates cancellation to the waiter.
+ * Cancellation waits and termination confirmation run outside that monitor; submission and child
+ * close run inside it. The owning spawner orders startup before shutdown, so start must not race
+ * with stop or be called again after the scheduler has stopped.
+ */
 public class MateAgent {
 
     private static final @NonNull Logger log =

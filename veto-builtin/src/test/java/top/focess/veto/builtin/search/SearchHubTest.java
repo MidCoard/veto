@@ -50,6 +50,26 @@ class SearchHubTest {
                                                 "example", "query", SearchOptions.of(3))))
                         .getFirst()
                         .title());
+        when(callback.invoke(any()))
+                .thenReturn(
+                        SearchProtocol.encodeResults(
+                                List.of(
+                                        new SearchResult(
+                                                "blocked", "https://blocked.EXAMPLE.ORG", ""),
+                                        new SearchResult("kept", "https://EXAMPLE.ORG/one", ""),
+                                        new SearchResult("extra", "https://example.org/two", ""))));
+        assertEquals(
+                List.of(new SearchResult("kept", "https://EXAMPLE.ORG/one", "")),
+                SearchProtocol.results(
+                        hub.invoke(
+                                caller,
+                                SearchProtocol.searchRequest(
+                                        "example",
+                                        "query",
+                                        new SearchOptions(
+                                                List.of("example.org"),
+                                                List.of("blocked.example.org"),
+                                                1)))));
         when(services.findCallback("opaque-1")).thenReturn(Optional.empty());
         assertTrue(
                 ((JsonValue.ArrayValue) hub.invoke(caller, operation("providers")))

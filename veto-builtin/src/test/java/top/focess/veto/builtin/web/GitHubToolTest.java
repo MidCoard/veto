@@ -70,12 +70,6 @@ class GitHubToolTest {
             when(response.body()).thenReturn(new byte[1_048_577]);
             assertThrows(ToolExecutionException.class, () -> tool.execute(args, capability));
             verify(client, times(3)).send(any(), any());
-            assertThrows(
-                    ToolExecutionException.class,
-                    () ->
-                            tool.execute(
-                                    new ReadGitHubRepositoryTool.Args("ref", "../bad", "repo"),
-                                    capability));
             verifyNoMoreInteractions(client);
         }
     }

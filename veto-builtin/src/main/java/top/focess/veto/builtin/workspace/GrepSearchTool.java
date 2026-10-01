@@ -18,6 +18,7 @@ import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.tool.Doc;
 import top.focess.veto.api.agent.tool.ParamCategory;
 import top.focess.veto.api.agent.tool.SecurityHint;
+import top.focess.veto.api.agent.tool.StringConstraint;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.agent.tool.ToolDoc;
 import top.focess.veto.api.agent.tool.ToolErrorCode;
@@ -44,7 +45,8 @@ import top.focess.veto.api.agent.tool.WorkspaceReadTool;
                 never followed. Every descendant is checked against the authorized root and protected paths \
                 before it is opened. At most 10000 files, 2000 matches, and 1000000 output characters are \
                 processed, with a maximum traversal time of 10 seconds; a truncation marker means the result \
-                is incomplete.\
+                is incomplete. An input line over 1000000 characters stops the search with an incomplete-result \
+                marker; remaining input is not searched.\
                 """,
         whenToUse =
                 """
@@ -103,7 +105,8 @@ public final class GrepSearchTool extends WorkspaceReadTool<GrepSearchTool.Args>
     public record Args(
             @SecurityHint(ParamCategory.FILESYSTEM_PATH) @Doc("Absolute path to search under.")
                     @NonNull String absolutePath,
-            @Doc("The exact pattern to match.") @NonNull String query,
+            @StringConstraint(minLength = 1) @Doc("The exact pattern to match.")
+                    @NonNull String query,
             @Doc("Whether to match case-insensitively.") Boolean caseInsensitive,
             @Doc("Glob filters for which files to include.") List<String> includes) {}
 
@@ -119,11 +122,6 @@ public final class GrepSearchTool extends WorkspaceReadTool<GrepSearchTool.Args>
 
     @Override
     public @NonNull String execute(@NonNull Args args, @NonNull WorkspaceReadCapability workspace) {
-        if (args.query().isEmpty()) {
-            return ToolErrors.failure(
-                    ToolErrorCode.VALIDATION.INVALID_ARGUMENTS,
-                    "Invalid arguments: query must not be empty.");
-        }
         List<PathMatcher> includes;
         try {
             includes = compileIncludes(args.includes());
@@ -184,7 +182,7 @@ public final class GrepSearchTool extends WorkspaceReadTool<GrepSearchTool.Args>
                                         file.openRead(), StandardCharsets.UTF_8.newDecoder()))) {
                     String line;
                     int lineNumber = 0;
-                    while ((line = reader.readLine()) != null) {
+                    while ((line = readBoundedLine(reader, traversal)) != null) {
                         if (!traversal.withinTime()) break search;
                         lineNumber++;
                         String candidate = insensitive ? line.toLowerCase(Locale.ROOT) : line;
@@ -200,6 +198,9 @@ public final class GrepSearchTool extends WorkspaceReadTool<GrepSearchTool.Args>
                         output.append(rendered);
                         matches++;
                     }
+                } catch (SearchLimit limit) {
+                    reason = limit.getMessage();
+                    break;
                 } catch (IOException ignored) {
                     // Discard incomplete reads, including a later UTF-8 decoding failure.
                     output.setLength(previousLength);
@@ -219,6 +220,33 @@ public final class GrepSearchTool extends WorkspaceReadTool<GrepSearchTool.Args>
             return ToolErrors.failure(
                     ToolErrorCode.WORKSPACE.IO_ERROR,
                     "I/O error: cannot search " + args.absolutePath() + ".");
+        }
+    }
+
+    private static String readBoundedLine(
+            @NonNull BufferedReader reader, @NonNull WorkspaceTraversal traversal)
+            throws IOException {
+        var line = new StringBuilder();
+        int character;
+        while ((character = reader.read()) != -1) {
+            if ((line.length() & 4095) == 0 && !traversal.withinTime())
+                throw new SearchLimit("time limit 10 seconds");
+            if (character == '\n') return line.toString();
+            if (character == '\r') {
+                reader.mark(1);
+                if (reader.read() != '\n') reader.reset();
+                return line.toString();
+            }
+            if (line.length() == 1_000_000)
+                throw new SearchLimit("line limit 1000000 chars; remaining input was not searched");
+            line.append((char) character);
+        }
+        return line.isEmpty() ? null : line.toString();
+    }
+
+    private static final class SearchLimit extends IOException {
+        SearchLimit(@NonNull String reason) {
+            super(reason);
         }
     }
 

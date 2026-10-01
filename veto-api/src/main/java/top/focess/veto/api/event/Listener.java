@@ -7,6 +7,10 @@ package top.focess.veto.api.event;
  * listeners contribution point. The host invokes workflow handlers under the contributing plugin's
  * lifecycle admission for sessions that select it; lifecycle notifications reach active plugins. A
  * listener never acquires authority by observing an event.
+ *
+ * <p>Handlers for one dispatch run serially on its producer's thread. Different dispatches may
+ * invoke this instance concurrently, so listener-owned shared state requires its own coordination.
+ * A handler must not retain an {@link Event} for asynchronous mutation.
  */
 public abstract class Listener {
     /** Constructs an event-listener aspect. */

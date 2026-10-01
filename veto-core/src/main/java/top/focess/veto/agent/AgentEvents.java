@@ -18,7 +18,15 @@ import top.focess.veto.api.agent.ToolResultEvent;
 import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.bus.DeltaFrame;
 
-/** Best-effort transport notifications; never owns execution or persistence. */
+/**
+ * Inline agent-output listeners and transport notifications; never owns execution or persistence.
+ *
+ * <p>Each emission visits a copy-on-write listener snapshot in registration order on the calling
+ * thread, then publishes its frame. Runtime exceptions are logged and isolated; errors propagate.
+ * Subscription changes are safe during emission and affect subsequent snapshots. Distinct emissions
+ * may overlap, so callbacks and the supplied sink must tolerate concurrent callers. There is no
+ * notification executor, global emission order, or deep payload snapshot here.
+ */
 final class AgentEvents {
     private static final @NonNull Logger log =
             LoggerFactory.getLogger("top.focess.veto.agent.AgentEvents");

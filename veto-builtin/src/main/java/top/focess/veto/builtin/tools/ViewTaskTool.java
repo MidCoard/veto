@@ -8,6 +8,7 @@ import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.tool.Doc;
 import top.focess.veto.api.agent.tool.NativeTool;
+import top.focess.veto.api.agent.tool.RequiredWhen;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.agent.tool.ToolDoc;
 import top.focess.veto.api.agent.tool.ToolErrorCode;
@@ -97,7 +98,12 @@ public final class ViewTaskTool extends NativeTool<ViewTaskTool.Args> {
 
     /** Model-facing arguments of {@code view_task}. */
     public record Args(
-            @Doc("The task id (from run_task). Omit to list every task the calling agent owns.")
+            @RequiredWhen(
+                            field = "waitForExit",
+                            values = {"true"},
+                            rejectBlank = true)
+                    @Doc(
+                            "The task id (from run_task). Omit to list every task the calling agent owns.")
                     String taskId,
             @Doc(
                             "Wait for exit and drained output. Requires taskId. Default false"
@@ -134,10 +140,6 @@ public final class ViewTaskTool extends NativeTool<ViewTaskTool.Args> {
     public @NonNull String execute(@NonNull Args args, @NonNull TaskControlCapability capability) {
         String taskId = args.taskId();
         if (taskId == null || taskId.isBlank()) {
-            if (Boolean.TRUE.equals(args.waitForExit()))
-                return ToolErrors.failure(
-                        ToolErrorCode.VALIDATION.INVALID_ARGUMENTS,
-                        "Invalid arguments: waitForExit requires taskId.");
             var all = capability.list();
             return ToolJson.object(
                     new TaskList(all.size(), all.stream().map(ViewTaskTool::summary).toList()));

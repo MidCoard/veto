@@ -3,6 +3,7 @@ package top.focess.veto.builtin.web;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.tool.Doc;
+import top.focess.veto.api.agent.tool.StringConstraint;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.agent.tool.ToolDoc;
 import top.focess.veto.api.agent.tool.ToolResultFormat;
@@ -62,7 +63,11 @@ import top.focess.veto.api.agent.tool.ToolSecurity;
 public final class FindSectionsTool extends WebDocumentTool<FindSectionsTool.Args> {
     /** Model-facing arguments of {@code find_sections}. */
     public record Args(
-            @Doc(
+            @StringConstraint(
+                            maxLength = 200,
+                            rejectBlank = true,
+                            pattern = "(?s)^[\\s\\p{Z}]*[^\\s\\p{Z}].*$")
+                    @Doc(
                             "Nonblank literal keyword, at most 200 characters; case-insensitive"
                                     + " with normalized whitespace.")
                     @NonNull String query) {}

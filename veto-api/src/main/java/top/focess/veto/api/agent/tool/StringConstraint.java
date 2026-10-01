@@ -7,13 +7,13 @@ import java.lang.annotation.Target;
 import org.jspecify.annotations.NonNull;
 
 /**
- * String length and pattern bounds for one tool argument.
+ * String length and pattern bounds for one tool argument or a collection element.
  *
  * <p>The host compiles these into the tool's JSON Schema and enforces them against every call
  * before the tool body runs, so a tool must not re-check them. Implement only constraints the
  * schema cannot express without inspecting sibling values or collection entries.
  */
-@Target(ElementType.RECORD_COMPONENT)
+@Target({ElementType.RECORD_COMPONENT, ElementType.TYPE_USE})
 @Retention(RetentionPolicy.RUNTIME)
 public @interface StringConstraint {
     /**

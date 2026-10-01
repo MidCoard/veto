@@ -40,7 +40,7 @@ public interface ToolErrorCode {
         if (name == null || name.isBlank()) {
             return null;
         }
-        var known = ByName.LOOKUP.get(name);
+        var known = ToolErrorCodes.LOOKUP.get(name);
         if (known != null) return known;
         return name.matches("[A-Za-z][A-Za-z0-9_.:-]{0,127}") ? new Named(name) : null;
     }
@@ -165,10 +165,7 @@ public interface ToolErrorCode {
     /** Network egress, remote tool, and credential failures. */
     enum NETWORK implements ToolErrorCode {
 
-        /** An authenticated GitHub repository read produced no usable answer. */
-        AUTHENTICATED_READ_FAILED,
-
-        /** A GitHub credential or owning session is unavailable for the request. */
+        /** A required imported credential or owning session is unavailable for the request. */
         CREDENTIAL_UNAVAILABLE,
 
         /** A redirect crossed origins, which requires a separately approved call. */
@@ -180,9 +177,6 @@ public interface ToolErrorCode {
         /** A remote fetch or search failed with an unexpected error. */
         FETCH_FAILED,
 
-        /** A GitHub repository request returned an HTTP error. */
-        GITHUB_HTTP_ERROR,
-
         /** The destination host could not be resolved. */
         HOST_UNRESOLVED,
 
@@ -191,9 +185,6 @@ public interface ToolErrorCode {
 
         /** The redirect response has no usable Location target. */
         INVALID_REDIRECT,
-
-        /** A GitHub repository owner or name is invalid. */
-        INVALID_REPOSITORY,
 
         /** The redirect target failed URL validation. */
         REDIRECT_REJECTED,
@@ -208,29 +199,36 @@ public interface ToolErrorCode {
         TOO_MANY_REDIRECTS
     }
 
-    /** Web document reader failures. */
+    /** Bounded reader execution and document-state failures. */
     enum READER implements ToolErrorCode {
-
-        /** The web reader exhausted its execution budget without a validated result. */
+        /** The reader exhausted its execution budget without a validated result. */
         READER_BUDGET,
-
-        /** The web reader was asked to read a page that has not been fetched. */
+        /** A reader document must be fetched before this operation. */
         READER_DOCUMENT,
-
-        /** The web reader lacks an authenticated session owner. */
-        READER_IDENTITY,
-
-        /** The web reader model failed to produce a validated result. */
+        /** The reader model ended without a validated result. */
         READER_MODEL,
+        /** A reader observation exceeded its reading budget. */
+        READER_OBSERVATION
+    }
 
-        /** The web reader has no budget left for the requested observation. */
-        READER_OBSERVATION,
+    /** Collaboration group state and operation failures. */
+    enum GROUP implements ToolErrorCode {
+        /** The calling agent has no active group. */
+        NO_ACTIVE_GROUP,
+        /** The group is no longer active. */
+        NOT_ACTIVE,
+        /** The group record disappeared while an operation was waiting. */
+        RECORD_GONE,
+        /** A collaboration operation was rejected by its domain rules. */
+        REQUEST_REJECTED
+    }
 
-        /** The web reader result could not be encoded. */
-        READER_OUTPUT,
-
-        /** The web reader exceeded its time budget. */
-        READER_TIMEOUT
+    /** Memory item state failures. */
+    enum MEMORY implements ToolErrorCode {
+        /** The embedding provider could not complete a memory operation. */
+        MEMORY_EMBEDDING_FAILED,
+        /** The memory item does not exist or is not owned by this caller. */
+        MEMORY_NOT_FOUND
     }
 
     /** Protection and refusal situations. */
@@ -294,75 +292,49 @@ public interface ToolErrorCode {
         TOOL_FAILURE
     }
 
-    /** Group collaboration failures. */
-    enum GROUP implements ToolErrorCode {
-
-        /** The calling agent has no active group in its context. */
-        NO_ACTIVE_GROUP,
-
-        /** The group is no longer active. */
-        NOT_ACTIVE,
-
-        /** The group record does not exist. */
-        RECORD_GONE,
-
-        /** The group orchestrator rejected the requested change. */
-        REQUEST_REJECTED
-    }
-
-    /** Memory storage failures. */
-    enum MEMORY implements ToolErrorCode {
-
-        /** The memory does not exist or is not owned by the caller. */
-        NOT_FOUND,
-
-        /** The memory content exceeds the per-memory size limit. */
-        TOO_LARGE
-    }
-
     /** Session context failures. */
     enum SESSION implements ToolErrorCode {
 
         /** The call lacks an authenticated session or owner context. */
         NO_SESSION_CONTEXT
     }
+}
 
-    /** Name index over every group enum; fails fast if two groups ever declare the same name. */
-    final class ByName {
-        private static final @NonNull Map<@NonNull String, @NonNull ToolErrorCode> LOOKUP = index();
+/** Name index over every group enum; fails fast if two groups ever declare the same name. */
+final class ToolErrorCodes {
+    static final @NonNull Map<@NonNull String, @NonNull ToolErrorCode> LOOKUP = index();
 
-        private ByName() {}
+    private ToolErrorCodes() {}
 
-        private static ToolErrorCode @NonNull [] requireCodes(ToolErrorCode[] values) {
-            if (values == null) throw new IllegalStateException("Missing tool error codes");
-            return values;
-        }
+    private static ToolErrorCode @NonNull [] requireCodes(ToolErrorCode[] values) {
+        if (values == null) throw new IllegalStateException("Missing tool error codes");
+        return values;
+    }
 
-        private static @NonNull Map<@NonNull String, @NonNull ToolErrorCode> index() {
-            Map<String, ToolErrorCode> lookup = new LinkedHashMap<>();
-            ToolErrorCode[][] groups = {
-                requireCodes(VALIDATION.values()),
-                requireCodes(WORKSPACE.values()),
-                requireCodes(TASK.values()),
-                requireCodes(NETWORK.values()),
-                requireCodes(READER.values()),
-                requireCodes(POLICY.values()),
-                requireCodes(LIFECYCLE.values()),
-                requireCodes(RESULT.values()),
-                requireCodes(GENERIC.values()),
-                requireCodes(GROUP.values()),
-                requireCodes(MEMORY.values()),
-                requireCodes(SESSION.values())
-            };
-            for (ToolErrorCode[] group : groups) {
-                for (ToolErrorCode code : group) {
-                    if (lookup.put(code.name(), code) != null) {
-                        throw new IllegalStateException(
-                                "Duplicate tool error code name: " + code.name());
-                    }
+    private static @NonNull Map<@NonNull String, @NonNull ToolErrorCode> index() {
+        Map<String, ToolErrorCode> lookup = new LinkedHashMap<>();
+        ToolErrorCode[][] groups = {
+            requireCodes(ToolErrorCode.VALIDATION.values()),
+            requireCodes(ToolErrorCode.WORKSPACE.values()),
+            requireCodes(ToolErrorCode.TASK.values()),
+            requireCodes(ToolErrorCode.NETWORK.values()),
+            requireCodes(ToolErrorCode.READER.values()),
+            requireCodes(ToolErrorCode.GROUP.values()),
+            requireCodes(ToolErrorCode.MEMORY.values()),
+            requireCodes(ToolErrorCode.POLICY.values()),
+            requireCodes(ToolErrorCode.LIFECYCLE.values()),
+            requireCodes(ToolErrorCode.RESULT.values()),
+            requireCodes(ToolErrorCode.GENERIC.values()),
+            requireCodes(ToolErrorCode.SESSION.values())
+        };
+        for (ToolErrorCode[] group : groups) {
+            for (ToolErrorCode code : group) {
+                if (lookup.put(code.name(), code) != null) {
+                    throw new IllegalStateException(
+                            "Duplicate tool error code name: " + code.name());
                 }
             }
-            return Map.copyOf(lookup);
         }
+        return Map.copyOf(lookup);
     }
 }

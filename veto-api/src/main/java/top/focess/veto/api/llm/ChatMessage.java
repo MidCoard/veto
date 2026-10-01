@@ -32,8 +32,8 @@ public record ChatMessage(
         String toolArgs,
         String reasoningContent,
         Boolean toolSuccess,
-        @JsonIgnore @NonNull List<Integer> sourceTurns,
-        @JsonIgnore @NonNull List<PromptSpan> promptSources,
+        @JsonIgnore @NonNull List<@NonNull Integer> sourceTurns,
+        @JsonIgnore @NonNull List<@NonNull PromptSpan> promptSources,
         @JsonIgnore NativeToolState nativeState) {
 
     /** Copies the provenance lists so callers cannot mutate a compiled message afterward. */
@@ -63,8 +63,8 @@ public record ChatMessage(
             String toolArgs,
             String reasoningContent,
             Boolean toolSuccess,
-            @NonNull List<Integer> sourceTurns,
-            @NonNull List<PromptSpan> promptSources) {
+            @NonNull List<@NonNull Integer> sourceTurns,
+            @NonNull List<@NonNull PromptSpan> promptSources) {
         this(
                 role,
                 content,
@@ -118,7 +118,7 @@ public record ChatMessage(
             String toolArgs,
             String reasoningContent,
             Boolean toolSuccess,
-            @NonNull List<Integer> sourceTurns) {
+            @NonNull List<@NonNull Integer> sourceTurns) {
         this(
                 role,
                 content,
@@ -137,7 +137,7 @@ public record ChatMessage(
      * @param sources source spans to retain
      * @return message with copied spans and unchanged provider fields
      */
-    public @NonNull ChatMessage withPromptSources(@NonNull List<PromptSpan> sources) {
+    public @NonNull ChatMessage withPromptSources(@NonNull List<@NonNull PromptSpan> sources) {
         return new ChatMessage(
                 role,
                 content,
@@ -179,7 +179,7 @@ public record ChatMessage(
      * @param turns contributing turn numbers
      * @return message with copied turn numbers
      */
-    public @NonNull ChatMessage withSourceTurns(@NonNull List<Integer> turns) {
+    public @NonNull ChatMessage withSourceTurns(@NonNull List<@NonNull Integer> turns) {
         return new ChatMessage(
                 role,
                 content,

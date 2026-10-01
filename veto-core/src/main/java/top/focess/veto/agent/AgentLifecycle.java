@@ -53,7 +53,16 @@ import top.focess.veto.model.tier.ModelTierRegistry;
 import top.focess.veto.util.Nullness;
 import top.focess.veto.vault.KeysteadVault;
 
-/** Owns request completion, cancellation, compaction and persona transitions. */
+/**
+ * Owns request completion, cancellation, compaction and persona transitions.
+ *
+ * <p>Not independently thread-safe. Model/compaction operations belong to the single runner loop;
+ * externally callable admission, cancellation and termination paths coordinate on the shared
+ * runtime monitor. Some event, inbox and future callbacks execute inline under that monitor, so
+ * callbacks must not wait for work that needs it. Termination notification snapshots its callback
+ * under the monitor and normally invokes it outside; late registration can invoke it inline under
+ * the monitor.
+ */
 final class AgentLifecycle {
     private final @NonNull AgentRuntimeState runtime;
 
@@ -250,7 +259,7 @@ final class AgentLifecycle {
     }
 
     @NonNull TurnRecord withRequestId(@NonNull TurnRecord turn) {
-        Map<String, Object> payload = new LinkedHashMap<>(turn.payload());
+        Map<@NonNull String, @Nullable Object> payload = new LinkedHashMap<>(turn.payload());
         String requestId = currentRequest().episode.id();
         payload.put("requestId", requestId);
         return new TurnRecord(turn.turnNumber(), turn.type(), payload, turn.timestamp());

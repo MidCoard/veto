@@ -14,6 +14,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Collectors;
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -710,7 +711,7 @@ public class PromptCompiler {
 
     private static @NonNull TurnRecord withRecordedSource(
             @NonNull TurnRecord turn, @NonNull ChatMessage message, boolean observation) {
-        Map<String, Object> payload = new LinkedHashMap<>(turn.payload());
+        Map<@NonNull String, @Nullable Object> payload = new LinkedHashMap<>(turn.payload());
         if (observation) payload.put("compiled_observation", message.content());
         payload.put(
                 "prompt_source",
@@ -879,7 +880,8 @@ public class PromptCompiler {
         }
     }
 
-    private static @NonNull String str(Map<String, Object> payload, @NonNull String key) {
+    private static @NonNull String str(
+            Map<@NonNull String, ? extends @Nullable Object> payload, @NonNull String key) {
         if (payload == null) {
             return "";
         }
@@ -887,7 +889,8 @@ public class PromptCompiler {
         return v == null ? "" : v.toString();
     }
 
-    private static @NonNull String renderUserPrompt(@NonNull Map<String, Object> payload) {
+    private static @NonNull String renderUserPrompt(
+            @NonNull Map<@NonNull String, ? extends @Nullable Object> payload) {
         String resumeContext = str(payload, "resume_context");
         if (resumeContext.isBlank()) {
             return str(payload, "content");

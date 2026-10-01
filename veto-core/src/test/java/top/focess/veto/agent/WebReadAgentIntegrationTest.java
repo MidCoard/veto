@@ -287,11 +287,11 @@ class WebReadAgentIntegrationTest {
                             .contains(
                                     usePlan
                                             ? "schema violation"
-                                            : "answer exceeds 4000 characters"));
+                                            : "parameter 'answer' is too long"));
             if (!usePlan) {
                 String correction = mapper.writeValueAsString(finalRequest);
-                assertTrue(correction.contains("evidenceIds must contain at most 8"));
-                assertTrue(correction.contains("limitations must contain at most 8"));
+                assertTrue(correction.contains("parameter 'evidenceIds' has too many items"));
+                assertTrue(correction.contains("parameter 'limitations' has too many items"));
             }
         }
         var childHistory = childAgents.getFirst().history();

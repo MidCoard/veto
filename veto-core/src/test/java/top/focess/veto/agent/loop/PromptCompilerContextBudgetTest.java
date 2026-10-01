@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 import top.focess.veto.agent.TurnRecord;
@@ -213,7 +214,7 @@ class PromptCompilerContextBudgetTest {
             var result = ToolResult.success("run_task", "approved-call", "raw output");
             String original = new ToolResultPresenter(mapper).present(result, mode);
             var recorded = TurnRecord.presentedToolResponse(3, result, original, mode);
-            Map<String, Object> payload = new HashMap<>(recorded.payload());
+            Map<@NonNull String, @Nullable Object> payload = new HashMap<>(recorded.payload());
             payload.put(
                     "approval",
                     Map.of("decision", "ACCEPT_COMMAND", "decisionSource", "CLIENT_RESPONSE"));

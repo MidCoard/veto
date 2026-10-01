@@ -10,6 +10,7 @@ import top.focess.veto.api.agent.tool.Doc;
 import top.focess.veto.api.agent.tool.NetworkEgressTool;
 import top.focess.veto.api.agent.tool.ParamCategory;
 import top.focess.veto.api.agent.tool.SecurityHint;
+import top.focess.veto.api.agent.tool.StringConstraint;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.agent.tool.ToolDoc;
 import top.focess.veto.api.agent.tool.ToolErrorCode;
@@ -59,8 +60,8 @@ import top.focess.veto.api.agent.tool.ToolSecurity;
                 Destination denial, unsupported content (UNSUPPORTED_CONTENT: `Unsupported content: ...`), \
                 empty pages (EMPTY_CONTENT: `Empty content: ...`), network/model errors (READER_MODEL: \
                 `Reader model: ...`), cancellation (CANCELLED: `Cancelled: the web reader was cancelled.`), \
-                and exhausted budgets (READER_TIMEOUT: `Reader timeout: ...`; READER_BUDGET: `Reader budget: \
-                ...`) are tool failures. A missing session owner is refused with READER_IDENTITY (`Reader \
+                and exhausted budgets (TIMEOUT: `Reader timeout: ...`; READER_BUDGET: `Reader budget: \
+                ...`) are tool failures. A missing session owner is refused with NO_SESSION_CONTEXT (`Reader \
                 identity: an authenticated session owner is required.`). A cross-origin redirect needs a \
                 fresh call. Failed retrieval never means information was absent.\
                 """,
@@ -103,9 +104,12 @@ public final class WebFetchTool extends NetworkEgressTool<WebFetchTool.Args> {
 
     /** Model-facing arguments of {@code web_fetch}. */
     public record Args(
-            @SecurityHint(ParamCategory.URL) @Doc("Absolute HTTP(S) URL to read.")
+            @StringConstraint(rejectBlank = true)
+                    @SecurityHint(ParamCategory.URL)
+                    @Doc("Absolute HTTP(S) URL to read.")
                     @NonNull String url,
-            @Doc(
+            @StringConstraint(maxLength = 4000, rejectBlank = true)
+                    @Doc(
                             "Question to investigate or material to extract. Rewrite to clarify"
                                     + " intent, split questions, or add useful search terms. Treat"
                                     + " added hypotheses and candidate examples as things to verify,"
@@ -133,14 +137,6 @@ public final class WebFetchTool extends NetworkEgressTool<WebFetchTool.Args> {
     @Override
     public @NonNull String execute(
             @NonNull Args args, @NonNull NetworkEgressCapability capability) {
-        if (args.url().isBlank() || args.objective().isBlank())
-            return ToolErrors.failure(
-                    ToolErrorCode.VALIDATION.INVALID_ARGUMENTS,
-                    "Invalid arguments: url and objective must not be blank.");
-        if (args.objective().length() > 4000)
-            return ToolErrors.failure(
-                    ToolErrorCode.VALIDATION.INVALID_ARGUMENTS,
-                    "Invalid arguments: the reading objective exceeds 4000 characters.");
         try {
             URI parsed = URI.create(args.url().trim());
             log.debug("web_fetch accepted url host={}", parsed.getHost());

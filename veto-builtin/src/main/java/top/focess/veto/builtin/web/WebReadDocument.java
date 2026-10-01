@@ -19,7 +19,6 @@ import top.focess.veto.builtin.web.model.FetchedPage;
 public final class WebReadDocument {
     private static final int SEGMENT_CHARS = 1200;
     private static final int MAX_SEGMENTS = 10000;
-    private static final int MAX_READ_SEGMENTS = 8;
     private static final @NonNull Pattern SEARCH_WHITESPACE = Pattern.compile("(?U)\\s+");
     private static final @NonNull Set<@NonNull String> TEXT_BLOCKS =
             Set.of("h1", "h2", "h3", "h4", "h5", "h6", "p", "pre", "table", "li", "a");
@@ -102,15 +101,7 @@ public final class WebReadDocument {
     }
 
     @NonNull List<@NonNull Entry> find(@NonNull String query) {
-        if (query.isBlank() || query.length() > 200)
-            return ToolErrors.failure(
-                    ToolErrorCode.VALIDATION.INVALID_ARGUMENTS,
-                    "Invalid arguments: use a non-blank keyword of at most 200 characters.");
         String needle = searchText(query);
-        if (needle.isEmpty())
-            return ToolErrors.failure(
-                    ToolErrorCode.VALIDATION.INVALID_ARGUMENTS,
-                    "Invalid arguments: use a non-blank keyword of at most 200 characters.");
         return segments.stream()
                 .filter(
                         s ->
@@ -129,10 +120,6 @@ public final class WebReadDocument {
     }
 
     @NonNull List<@NonNull Segment> read(@NonNull List<@NonNull String> ids) {
-        if (ids.isEmpty() || ids.size() > MAX_READ_SEGMENTS)
-            return ToolErrors.failure(
-                    ToolErrorCode.VALIDATION.INVALID_ARGUMENTS,
-                    "Invalid arguments: read between one and eight segment IDs.");
         return ids.stream().map(this::segment).toList();
     }
 

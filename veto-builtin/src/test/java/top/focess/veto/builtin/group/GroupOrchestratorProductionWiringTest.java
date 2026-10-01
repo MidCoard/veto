@@ -11,7 +11,8 @@ class GroupOrchestratorProductionWiringTest {
             var group = fixture.create();
             assertEquals(
                     group.groupId(),
-                    GroupTestHost.required(fixture.runtime.operations().snapshot()).groupId());
+                    GroupTestHost.required(fixture.runtime.operations().snapshot("inspect_group"))
+                            .groupId());
             assertEquals(group.groupId().toString(), fixture.runtime.snapshot().getFirst().id());
             assertEquals(
                     group.groupId().toString(),

@@ -29,6 +29,58 @@ import top.focess.veto.api.plugin.contribution.ContributionSource;
 
 class EventListenerRegistryTest {
     @Test
+    void pluginAssertionIsContainedButFatalVmErrorsPropagate() {
+        var calls = new ArrayList<String>();
+        var ordinary = registry(new ErrorProbe(false), new NormalProbe(calls, "later"));
+        ordinary.broadcast(
+                new UserLoggedInEvent(new Scope.UserScope("owner")), Set.of("demo.listener"));
+        assertEquals(List.of("later"), calls);
+        var event =
+                new BeforeToolEvent(
+                        "owner",
+                        "session",
+                        "agent",
+                        () -> false,
+                        new BeforeToolEvent.Invocation(
+                                "tool", "call", new JsonValue.ObjectValue(Map.of())));
+        var failure =
+                assertThrows(
+                        IllegalStateException.class,
+                        () -> ordinary.submit(event, Set.of("demo.listener")));
+        assertEquals("Workflow listener unavailable", failure.getMessage());
+        var fatal = registry(new ErrorProbe(true));
+        assertThrows(
+                InternalError.class,
+                () ->
+                        fatal.broadcast(
+                                new UserLoggedInEvent(new Scope.UserScope("owner")),
+                                Set.of("demo.listener")));
+    }
+
+    private static final class ErrorProbe extends Listener {
+        private final boolean fatal;
+
+        private ErrorProbe(boolean fatal) {
+            this.fatal = fatal;
+        }
+
+        private void fail() {
+            if (fatal) throw new InternalError("synthetic fatal error");
+            throw new AssertionError("private plugin diagnostic");
+        }
+
+        @EventHandler
+        public void lifecycle(@NonNull UserLoggedInEvent event) {
+            fail();
+        }
+
+        @EventHandler
+        public void workflow(@NonNull BeforeToolEvent event) {
+            fail();
+        }
+    }
+
+    @Test
     void preparationRejectsStaticHandlersBeforeAnyDispatch() {
         var preparation = new EventListenerRegistry.Preparation();
         var error =

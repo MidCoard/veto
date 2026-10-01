@@ -4,13 +4,13 @@ import org.jspecify.annotations.NonNull;
 import top.focess.veto.builtin.memory.MemoryStore;
 
 /**
- * Deterministic hash embedder - the local default
- * ({@code @ConditionalOnMissingBean(Embedder.class)} in builtin runtime configuration).
+ * Deterministic hash embedder selected as the builtin runtime's local default.
  *
- * <p>Folds UTF-8 bytes into a fixed-length vector and L2-normalizes it. Identical texts produce
- * identical vectors (cosine 1.0); very different texts produce very different vectors. The
- * semantics are weak for semantic recall (a real embedding model wins there) but sufficient to
- * demonstrate the architecture and to run tests/offline without a provider dependency.
+ * <p>Folds bytes in the JVM default charset into a fixed-length vector and L2-normalizes it.
+ * Identical texts produce identical vectors (cosine 1.0); very different texts produce very
+ * different vectors. The semantics are weak for semantic recall (a real embedding model wins there)
+ * but sufficient to demonstrate the architecture and to run tests/offline without a provider
+ * dependency.
  *
  * <p>This deterministic implementation is shared by all {@link MemoryStore} implementations, now
  * extracted to a single place.

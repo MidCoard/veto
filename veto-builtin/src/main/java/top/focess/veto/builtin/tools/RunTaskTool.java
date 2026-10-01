@@ -5,7 +5,9 @@ import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.agent.screening.Danger;
+import top.focess.veto.api.agent.tool.ArraySize;
 import top.focess.veto.api.agent.tool.Doc;
+import top.focess.veto.api.agent.tool.NumberConstraint;
 import top.focess.veto.api.agent.tool.ParamCategory;
 import top.focess.veto.api.agent.tool.PreparedTool;
 import top.focess.veto.api.agent.tool.SecurityHint;
@@ -121,12 +123,14 @@ public final class RunTaskTool extends PreparedTool<RunTaskTool.Args> {
     public record Args(
             @SecurityHint(ParamCategory.SHELL_COMMAND)
                     @Doc("Exactly one command: {executable, args}. Background mode does not chain.")
+                    @ArraySize(min = 1, max = 1)
                     @NonNull List<RunCommandTool.@NonNull CommandInput> commands,
             @Doc(
                             "Request network access for this task. Defaults to false; true may"
                                     + " require approval.")
                     Boolean network,
             @NonNull
+                    @NumberConstraint(min = 0)
                     @Doc(
                             "Requested max lifetime in seconds. 0 selects the configured maximum;"
                                     + " larger values are capped by that maximum.")
@@ -145,8 +149,6 @@ public final class RunTaskTool extends PreparedTool<RunTaskTool.Args> {
     @Override
     public @NonNull ToolPreparation prepare(
             @NonNull Args args, PluginHost.@NonNull Invocation invocation) {
-        if (args.commands().size() != 1)
-            throw new IllegalArgumentException("Exactly one background command is required");
         return new ToolPreparation(
                 new ToolPreparation.ProcessIntent(
                         args.commands().stream()
@@ -173,17 +175,6 @@ public final class RunTaskTool extends PreparedTool<RunTaskTool.Args> {
     public @NonNull String execute(
             @NonNull Args args, @NonNull ProcessExecutionCapability capability) {
         int timeout = args.timeout();
-        if (timeout < 0)
-            return ToolErrors.failure(
-                    ToolErrorCode.VALIDATION.INVALID_ARGUMENTS,
-                    "Invalid arguments: timeout must be zero or positive.");
-        if (args.commands().size() != 1)
-            return ToolErrors.failure(
-                    ToolErrorCode.VALIDATION.INVALID_ARGUMENTS,
-                    "Invalid arguments: exactly one command is required (background mode does not"
-                            + " chain); got "
-                            + args.commands().size()
-                            + ".");
         var input = args.commands().getFirst();
         long maximumTimeout = capability.maxRuntime().toSeconds();
         var info =

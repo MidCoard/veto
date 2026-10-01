@@ -30,7 +30,15 @@ import top.focess.veto.api.plugin.contract.AgentConfiguration;
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.storage.PluginStorage;
 
-/** Owns the complete group feature, including activation, policy, persistence and shutdown. */
+/**
+ * Owns the complete group feature, including activation, policy, persistence and shutdown.
+ *
+ * <p>Host configuration and tool callbacks may overlap the group scheduler. The runtime monitor
+ * serializes configuration, group creation and scheduler start/close; concurrent maps publish
+ * per-agent context and transition state. DAG edits and shutdown use the orchestrator's per-group
+ * locks. Closing stops scheduling before draining each group's members, and may wait under the
+ * runtime monitor. Host lifecycle admission must prevent new calls once shutdown begins.
+ */
 public final class GroupRuntime extends AgentConfiguration
         implements GroupObservations, AutoCloseable {
     private final @NonNull Listener listener = new GroupListener();

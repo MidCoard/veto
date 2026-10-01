@@ -5,6 +5,11 @@ import org.jspecify.annotations.NonNull;
 
 /**
  * Host-attributed identity boundary for a plugin operation; the value itself grants no authority.
+ *
+ * <p>Owner values use the domain of the issuing boundary: host invocation, frontend and lifecycle
+ * scopes contain authenticated login names; storage grants and service contexts contain immutable
+ * storage account IDs. Equal-looking strings do not convert between those domains. Pass a scope
+ * only to operations accepting the domain documented by its issuer.
  */
 public abstract sealed class Scope
         permits Scope.GlobalScope, Scope.UserScope, Scope.SessionScope, Scope.AgentScope {

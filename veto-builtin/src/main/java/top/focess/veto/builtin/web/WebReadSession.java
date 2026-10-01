@@ -17,8 +17,6 @@ import top.focess.veto.builtin.web.model.*;
 
 /** Document state and effect boundary owned by exactly one reader AgentRunner. */
 public final class WebReadSession implements WebDocumentCapability, IsolatedAgent.Tools {
-    private static final int MAX_ANSWER_CHARS = 4000;
-    private static final int MAX_EVIDENCE = 8;
     private static final int OUTLINE_ENTRIES = 24;
     private final @NonNull ObjectMapper mapper = new ObjectMapper();
     private final IsolatedAgent.@NonNull Runtime runtime;
@@ -165,7 +163,7 @@ public final class WebReadSession implements WebDocumentCapability, IsolatedAgen
             return mapper.writeValueAsString(value);
         } catch (JsonProcessingException error) {
             return ToolErrors.failure(
-                    ToolErrorCode.READER.READER_OUTPUT,
+                    ToolErrorCode.RESULT.ENCODING_FAILED,
                     "Reader output: the reader result could not be encoded.");
         }
     }
@@ -181,31 +179,6 @@ public final class WebReadSession implements WebDocumentCapability, IsolatedAgen
             @NonNull FinishReadArgs value,
             @NonNull WebReadDocument document,
             @NonNull Execution execution) {
-        List<String> errors = new ArrayList<>();
-        if (!List.of("complete", "partial", "not_found").contains(value.outcome()))
-            errors.add("outcome must be complete, partial, or not_found.");
-        if (value.answer().isBlank()) errors.add("answer must be nonblank.");
-        if (value.answer().length() > MAX_ANSWER_CHARS)
-            errors.add(
-                    "answer exceeds 4000 characters (received " + value.answer().length() + ").");
-        if (value.evidenceIds().size() > MAX_EVIDENCE)
-            errors.add(
-                    "evidenceIds must contain at most 8 IDs (received "
-                            + value.evidenceIds().size()
-                            + ").");
-        if (value.limitations().size() > 8)
-            errors.add(
-                    "limitations must contain at most 8 entries (received "
-                            + value.limitations().size()
-                            + ").");
-        if (value.limitations().stream().anyMatch(s -> s.length() > 500))
-            errors.add("Each limitations entry must be at most 500 characters.");
-        if (!errors.isEmpty())
-            return ToolErrors.failure(
-                    ToolErrorCode.VALIDATION.INVALID_ARGUMENTS,
-                    "Invalid arguments: "
-                            + String.join(" ", errors)
-                            + " Correct all listed fields together. Choose supporting evidence and keep the answer within its scope; exact quotations are attached from evidenceIds. Combine related limitations.");
         var evidence = value.evidenceIds().stream().distinct().map(document::evidence).toList();
         if (value.outcome().equals("complete") && evidence.isEmpty())
             return ToolErrors.failure(

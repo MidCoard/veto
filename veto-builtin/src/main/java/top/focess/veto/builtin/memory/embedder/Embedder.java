@@ -8,9 +8,8 @@ import top.focess.veto.builtin.memory.PgvectorMemoryStore;
  * Text -> vector embedding for the memory subsystem, decoupled from {@link MemoryStore} so the
  * embedding model can evolve (local implementation vs. provider API) without touching storage.
  *
- * <p>The active bean is selected by builtin runtime configuration: a {@link HashEmbedder} is the
- * local default ({@code @ConditionalOnMissingBean}); when {@code veto.memory.embedder.provider} is
- * configured a a host TextEmbedding port overrides it. Stores and tools inject this single bean and
+ * <p>The builtin runtime selects {@link HashEmbedder} as the local default or a host-authorized
+ * TextEmbedding port for a configured provider. Stores and tools share that selected instance and
  * never call a provider directly.
  */
 public interface Embedder {

@@ -2,21 +2,39 @@ package top.focess.veto.plugin.runtime;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import java.io.*;
+import java.lang.System.Logger;
+import java.lang.System.Logger.Level;
 import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.locks.ReentrantLock;
 import org.jspecify.annotations.*;
 
-/** One lazy Node process per manager. Trusted plugins share a heap; this is not a sandbox. */
+/**
+ * One lazy Node process per manager. Trusted plugins share a heap; this is not a sandbox.
+ *
+ * <p>Threading: one reentrant lock serializes process startup, framed request/response exchanges,
+ * sequence allocation, registration and close. Close waits for the active exchange, then rejects
+ * later registration and queued invocations. Concurrent registration lookups and process-ID reads
+ * are snapshots, not invocation admission. Unregistration removes its key before best-effort
+ * unload; invocation rechecks the key under the exchange lock before contacting Node.
+ *
+ * <p>Failure listeners may run on the process-exit completion thread or on the failing exchange
+ * caller while the exchange lock is held. They must only signal failure and must not wait for
+ * lifecycle cleanup or another exchange. Ordinary listener failures do not skip other listeners; a
+ * fatal JVM error is propagated after all remaining listeners are attempted.
+ */
 public final class ScriptHost implements AutoCloseable {
     private final @NonNull Path node;
+    private static final @NonNull Logger log =
+            System.getLogger("top.focess.veto.plugin.runtime.ScriptHost");
     private final long timeoutMillis;
     private final @NonNull ReentrantLock lock = new ReentrantLock();
     private final @NonNull Map<String, Runnable> registrations = new ConcurrentHashMap<>();
     private volatile Process process;
     private Path hostFile;
     private long sequence;
+    private boolean closed;
 
     /** Creates a host that will lazily launch the given Node binary with a per-call timeout. */
     public ScriptHost(@NonNull Path node, long timeoutMillis) {
@@ -26,7 +44,13 @@ public final class ScriptHost implements AutoCloseable {
 
     /** Registers a plugin key and the failure listener invoked if the shared process dies. */
     public void register(@NonNull String key, @NonNull Runnable failure) {
-        registrations.put(key, failure);
+        lock.lock();
+        try {
+            if (closed) throw new IllegalStateException("Script host is closed");
+            registrations.put(key, failure);
+        } finally {
+            lock.unlock();
+        }
     }
 
     /** Reports whether the given plugin key is currently registered with this host. */
@@ -63,10 +87,31 @@ public final class ScriptHost implements AutoCloseable {
     }
 
     private void failAll() {
-        registrations.forEach(
-                (key, listener) -> {
-                    if (registrations.remove(key, listener)) listener.run();
-                });
+        Error fatal = null;
+        for (var entry : registrations.entrySet()) {
+            if (!registrations.remove(entry.getKey(), entry.getValue())) continue;
+            try {
+                entry.getValue().run();
+            } catch (Throwable failure) {
+                fatal = preserveFatal(fatal, failure);
+                if (fatal == null)
+                    log.log(
+                            Level.WARNING,
+                            "Script failure listener failed: {0}",
+                            failure.getClass().getSimpleName());
+            }
+        }
+        if (fatal != null) throw fatal;
+    }
+
+    // Preserve the legacy fatal signal while the JDK still supports it.
+    @SuppressWarnings("removal")
+    private static Error preserveFatal(Error fatal, @NonNull Throwable failure) {
+        if (fatal != null) return fatal;
+        return failure instanceof Error error
+                        && (error instanceof VirtualMachineError || error instanceof ThreadDeath)
+                ? error
+                : null;
     }
 
     /** Invokes a registered plugin's handler in the shared process and returns its JSON result. */
@@ -100,15 +145,22 @@ public final class ScriptHost implements AutoCloseable {
 
     @Override
     public void close() {
-        registrations.clear();
-        var current = process;
-        if (current != null) terminate(current);
-        var file = hostFile;
-        if (file != null)
-            try {
-                Files.deleteIfExists(file);
-            } catch (IOException ignored) {
-            }
+        lock.lock();
+        try {
+            if (closed) return;
+            closed = true;
+            registrations.clear();
+            var current = process;
+            if (current != null) terminate(current);
+            var file = hostFile;
+            if (file != null)
+                try {
+                    Files.deleteIfExists(file);
+                } catch (IOException ignored) {
+                }
+        } finally {
+            lock.unlock();
+        }
     }
 
     private static void terminate(@NonNull Process worker) {
@@ -127,6 +179,9 @@ public final class ScriptHost implements AutoCloseable {
         try {
             acquired = lock.tryLock(timeoutMillis, TimeUnit.MILLISECONDS);
             if (!acquired) throw new IOException("Plugin is busy");
+            if (closed) throw new IOException("Script host is closed");
+            if (method.equals("invoke") && !registered(params.path("plugin").asText()))
+                throw new IOException("Plugin not registered");
             // Measure the invocation budget only after admission, so waiting for a busy host does
             // not consume the time available to actually talk to it.
             long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMillis);

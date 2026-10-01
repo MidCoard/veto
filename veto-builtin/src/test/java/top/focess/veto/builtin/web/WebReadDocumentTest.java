@@ -36,8 +36,6 @@ class WebReadDocumentTest {
         document.recordInspection(List.of(body));
         assertEquals("Retry\t rules:\n  preserve this spacing.", read.text());
         assertEquals(read.text(), document.evidence(body).quote());
-        assertThrows(ToolExecutionException.class, () -> document.find("\u00a0\t"));
-        assertThrows(ToolExecutionException.class, () -> document.find("x".repeat(201)));
     }
 
     @Test

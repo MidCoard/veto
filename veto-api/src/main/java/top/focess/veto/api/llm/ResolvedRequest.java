@@ -18,6 +18,16 @@ import org.jspecify.annotations.NonNull;
 public record ResolvedRequest(
         @NonNull VetoRequest request, String baseUrl, @NonNull String apiKey) {
     /**
+     * Returns a diagnostic view that never includes the resolved credential.
+     *
+     * @return provider and model identifiers without credential or request content
+     */
+    @Override
+    public @NonNull String toString() {
+        return "ResolvedRequest[provider=" + providerType() + ", model=" + modelName() + "]";
+    }
+
+    /**
      * Returns the provider type from the underlying request.
      *
      * @return the provider type

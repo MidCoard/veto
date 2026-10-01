@@ -36,7 +36,15 @@ import top.focess.veto.model.tier.ModelTierRegistry;
 import top.focess.veto.util.Nullness;
 import top.focess.veto.vault.KeysteadVault;
 
-/** Per-runner host state. All task synchronization uses this single object. */
+/**
+ * Per-runner host state; not independently thread-safe.
+ *
+ * <p>The runner loop owns model/turn execution. Its monitor coordinates request admission,
+ * cancellation and lifecycle transitions with external callers; volatile fields provide individual
+ * snapshots, not an atomic snapshot of the whole state. The action queue, history and request wait
+ * registry have their own concurrency contracts. Configuration dependencies must be attached before
+ * starting the loop unless their specific setter supports live updates.
+ */
 final class AgentRuntimeState {
     static final @NonNull Logger log = LoggerFactory.getLogger("top.focess.veto.agent.AgentRunner");
 

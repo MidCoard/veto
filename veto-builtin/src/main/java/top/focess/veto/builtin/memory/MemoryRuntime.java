@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.api.agent.tool.ToolErrorCode;
 import top.focess.veto.api.agent.tool.ToolErrors;
 import top.focess.veto.api.llm.TextEmbedding;
 import top.focess.veto.api.plugin.PluginContext;
@@ -17,7 +18,15 @@ import top.focess.veto.api.plugin.storage.PluginStorage;
 import top.focess.veto.builtin.memory.embedder.Embedder;
 import top.focess.veto.builtin.memory.embedder.HashEmbedder;
 
-/** Owns memory backend selection and caller-bound feature policy for one builtin activation. */
+/**
+ * Owns memory backend selection and caller-bound feature policy for one builtin activation.
+ *
+ * <p>Tool operations and account/session deletion callbacks share the runtime monitor. It protects
+ * lazy backend initialization and deletion markers, and keeps authorization, embedding and backend
+ * access inside the same exclusion boundary so writes cannot pass a prepared deletion. Transaction
+ * completion callbacks reacquire this monitor. Backend and embedding implementations must not wait
+ * for another operation on this runtime; slow I/O serializes callers by design.
+ */
 public final class MemoryRuntime extends DataLifecycle {
     private final @NonNull Set<String> deletingOwners = new HashSet<>();
     private final @NonNull Set<String> deletingSessions = new HashSet<>();
@@ -44,7 +53,7 @@ public final class MemoryRuntime extends DataLifecycle {
                                     return remote.embed(text);
                                 } catch (IllegalStateException failure) {
                                     return ToolErrors.failure(
-                                            () -> "MEMORY_EMBEDDING_FAILED",
+                                            ToolErrorCode.MEMORY.MEMORY_EMBEDDING_FAILED,
                                             "Memory embedding failed; memory operation did not"
                                                     + " complete.");
                                 }

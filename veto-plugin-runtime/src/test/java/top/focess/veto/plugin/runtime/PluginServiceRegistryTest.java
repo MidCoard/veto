@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -18,6 +19,99 @@ import top.focess.veto.api.plugin.service.*;
 import top.focess.veto.api.plugin.storage.PluginStorage;
 
 class PluginServiceRegistryTest {
+    @Test
+    void retainedCallbackViewCannotRegisterAfterRevocationOrClose() throws Exception {
+        try (var pair = new Pair()) {
+            var services = pair.consumer.context.services();
+            var registered = services.registerCallback(request -> request);
+            assertTrue(services.findCallback(registered.id()).isPresent());
+            pair.registry.revoke(pair.consumerRuntime.identity().id());
+            assertTrue(services.findCallback(registered.id()).isEmpty());
+            assertThrows(
+                    IllegalStateException.class,
+                    () -> services.registerCallback(request -> request));
+            var freshView = pair.registry.forPlugin(pair.consumerRuntime);
+            assertThrows(
+                    IllegalStateException.class,
+                    () -> freshView.registerCallback(request -> request));
+            pair.consumerRuntime.close();
+            assertThrows(
+                    IllegalStateException.class,
+                    () -> services.registerCallback(request -> request));
+            registered.close();
+        }
+        try (var pair = new Pair()) {
+            var services = pair.consumer.context.services();
+            pair.consumerRuntime.close();
+            assertThrows(
+                    IllegalStateException.class,
+                    () -> services.registerCallback(request -> request));
+        }
+    }
+
+    @Test
+    void callbackRegistrationRemainsAvailableDuringConstructionAndStart() throws Exception {
+        var registry = new PluginServiceRegistry((caller, provider) -> true);
+        var identity = new PluginIdentity("demo.callbacks", "1.0.0");
+        try (var executor = Executors.newSingleThreadExecutor()) {
+            var descriptor =
+                    new InstalledPlugin(
+                            identity,
+                            "Callbacks",
+                            Objects.requireNonNull(
+                                    CallbackPlugin.class.getConstructor(
+                                            PluginContext.class, JsonValue.ObjectValue.class)),
+                            new PluginClassLoader(identity.id(), List.of()));
+            var managed = new PluginLifecycle(descriptor, executor);
+            var services = registry.forPlugin(managed);
+            try {
+                managed.construct(
+                        new PluginContext(
+                                identity,
+                                () -> {},
+                                managed::state,
+                                Map.of(PluginServices.class, services),
+                                Map.of()),
+                        new JsonValue.ObjectValue(Map.of()));
+                var plugin = assertInstanceOf(CallbackPlugin.class, managed.implementation());
+                var initialized = services.registerCallback(request -> request);
+                managed.start();
+                assertTrue(services.findCallback(plugin.constructed).isPresent());
+                assertTrue(services.findCallback(plugin.started).isPresent());
+                assertTrue(services.findCallback(initialized.id()).isPresent());
+                registry.revoke(identity.id());
+                assertTrue(services.findCallback(plugin.constructed).isEmpty());
+                assertTrue(services.findCallback(plugin.started).isEmpty());
+                assertTrue(services.findCallback(initialized.id()).isEmpty());
+                initialized.close();
+            } finally {
+                managed.close();
+            }
+        }
+    }
+
+    public static final class CallbackPlugin extends VetoPlugin {
+        private final @NonNull PluginServices services;
+        private final @NonNull String constructed;
+        private @NonNull String started = "";
+
+        public CallbackPlugin(
+                @NonNull PluginContext context, JsonValue.@NonNull ObjectValue configuration) {
+            services = context.services();
+            constructed = services.registerCallback(request -> request).id();
+        }
+
+        public @NonNull PluginIdentity identity() {
+            return new PluginIdentity("demo.callbacks", "1.0.0");
+        }
+
+        public void start() {
+            started = services.registerCallback(request -> request).id();
+        }
+
+        public void close() {}
+    }
+
     private static @NonNull PluginService service(
             @NonNull String name, int version, @NonNull ServiceHandler handler) {
         return service(

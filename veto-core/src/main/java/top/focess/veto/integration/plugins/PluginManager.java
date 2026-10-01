@@ -54,6 +54,7 @@ import top.focess.veto.api.plugin.contract.StandardContributionPoints;
 import top.focess.veto.api.plugin.contribution.Contribution;
 import top.focess.veto.api.plugin.contribution.ContributionCatalog;
 import top.focess.veto.api.plugin.contribution.ContributionEntry;
+import top.focess.veto.api.plugin.contribution.ContributionId;
 import top.focess.veto.api.plugin.contribution.ContributionPoint;
 import top.focess.veto.api.plugin.contribution.ContributionSource;
 import top.focess.veto.api.plugin.contribution.PluginContributionsDirectory;
@@ -75,6 +76,15 @@ import top.focess.veto.plugin.runtime.*;
  * Installed-package lifecycle and live catalog. Broken packages fail activation without replacing
  * the last published catalog. Installed Java and script packages are scanned from the plugin
  * directory.
+ *
+ * <p>Threading: startup construction is externally owned. After publication, readers use immutable
+ * volatile catalog/list snapshots and concurrent host-service maps; separate getters need not
+ * observe the same publication. Active contribution registration serializes validation and
+ * republication on the manager monitor. Desired activation writes and data-cleanup claim counts use
+ * that same monitor. Point validators and metadata getters may run during republication under it
+ * and must not block or wait for another management operation. Plugin invocation/event bodies run
+ * through lifecycle admission outside the manager monitor. Shutdown is externally coordinated and
+ * closes activations in reverse order before shutting down their serial control executor.
  */
 @Component
 public final class PluginManager implements AutoCloseable {
@@ -216,39 +226,58 @@ public final class PluginManager implements AutoCloseable {
     private @NonNull PluginContributionsDirectory contributionsFor(
             @UnknownInitialization PluginManager this, @NonNull PluginLifecycle caller) {
         return (pointId, major) -> {
-            ContributionCatalog snapshot = catalog;
-            var definition =
-                    snapshot.entries(StandardContributionPoints.CONTRIBUTIONS).stream()
-                            .filter(
-                                    entry ->
-                                            entry.implementation().id().equals(pointId)
-                                                    && entry.implementation().major() == major)
-                            .findFirst();
-            if (definition.isEmpty() || caller.state() != PluginState.ACTIVE) return List.of();
-            var pointOwner = definition.orElseThrow();
-            if (!serviceAccess.test(caller.identity().id(), pointOwner.source().namespace()))
+            var group = contributionGroups.get(pointId);
+            if (group == null || group.major() != major || caller.state() != PluginState.ACTIVE)
                 return List.of();
-            if (plugins.stream()
-                    .noneMatch(
-                            plugin ->
-                                    plugin.identity().id().equals(pointOwner.source().namespace())
-                                            && plugin.state() == PluginState.ACTIVE))
+            if (group.owner().state() != PluginState.ACTIVE
+                    || !serviceAccess.test(caller.identity().id(), group.owner().identity().id()))
                 return List.of();
             var result = new ArrayList<PluginContributionsDirectory.Entry>();
-            for (var entry : snapshot.entries(pointOwner.implementation().point())) {
-                String providerId = entry.source().namespace();
-                if (serviceAccess.test(caller.identity().id(), providerId)
-                        && plugins.stream()
-                                .anyMatch(
-                                        plugin ->
-                                                plugin.identity().id().equals(providerId)
-                                                        && plugin.state() == PluginState.ACTIVE))
-                    result.add(
-                            new PluginContributionsDirectory.Entry(
-                                    entry.id(), providerId, entry.implementation()));
+            for (var prepared : group.entries()) {
+                if (prepared.owner().state() == PluginState.ACTIVE
+                        && serviceAccess.test(
+                                caller.identity().id(), prepared.entry().providerId()))
+                    result.add(prepared.entry());
             }
             return List.copyOf(result);
         };
+    }
+
+    private record DirectoryEntry(
+            PluginContributionsDirectory.@NonNull Entry entry, @NonNull PluginLifecycle owner) {}
+
+    private record DirectoryGroup(
+            int major,
+            @NonNull PluginLifecycle owner,
+            @NonNull List<@NonNull DirectoryEntry> entries) {}
+
+    private static @NonNull Map<@NonNull ContributionId, @NonNull DirectoryGroup> prepareDirectory(
+            @NonNull ContributionCatalog catalog, @NonNull List<PluginLifecycle> plugins) {
+        Map<String, PluginLifecycle> owners = new HashMap<>();
+        for (var plugin : plugins) owners.put(plugin.identity().id(), plugin);
+        Map<@NonNull ContributionId, @NonNull DirectoryGroup> groups = new HashMap<>();
+        for (var definition : catalog.entries(StandardContributionPoints.CONTRIBUTIONS)) {
+            var owner = owners.get(definition.source().namespace());
+            if (owner == null) throw new IllegalArgumentException("Contribution owner unavailable");
+            List<@NonNull DirectoryEntry> entries = new ArrayList<>();
+            for (var entry : catalog.entries(definition.implementation().point())) {
+                var provider = owners.get(entry.source().namespace());
+                if (provider == null)
+                    throw new IllegalArgumentException("Contribution provider unavailable");
+                entries.add(
+                        new DirectoryEntry(
+                                new PluginContributionsDirectory.Entry(
+                                        entry.id(),
+                                        entry.source().namespace(),
+                                        entry.implementation()),
+                                provider));
+            }
+            groups.put(
+                    definition.implementation().id(),
+                    new DirectoryGroup(
+                            definition.implementation().major(), owner, List.copyOf(entries)));
+        }
+        return Map.copyOf(groups);
     }
 
     private final @NonNull ExecutorService lifecycle =
@@ -261,6 +290,8 @@ public final class PluginManager implements AutoCloseable {
     private volatile @NonNull List<Registration> registrations = List.of();
     private volatile boolean ready;
     private volatile @NonNull ContributionCatalog catalog = emptyCatalog();
+    private volatile @NonNull Map<@NonNull ContributionId, @NonNull DirectoryGroup>
+            contributionGroups = Map.of();
 
     private static @NonNull ContributionCatalog emptyCatalog() {
         var builder = new ContributionCatalog.Builder();
@@ -471,10 +502,12 @@ public final class PluginManager implements AutoCloseable {
             serviceRegistry.bind(validatedCatalog, staged);
             catalog = validatedCatalog;
             plugins = List.copyOf(staged);
+            contributionGroups = prepareDirectory(validatedCatalog, plugins);
             for (var plugin : staged) plugin.start();
             validatedCatalog = buildCatalog(registered);
             serviceRegistry.bind(validatedCatalog, staged);
             catalog = validatedCatalog;
+            contributionGroups = prepareDirectory(validatedCatalog, plugins);
             declined = List.copyOf(declinedPlugins);
             disabled = List.copyOf(disabledPackages);
             registrations = List.copyOf(registered);
@@ -836,18 +869,21 @@ public final class PluginManager implements AutoCloseable {
         ContributionCatalog nextCatalog = buildCatalog(nextRegistrations);
         EventListenerRegistry nextEvents =
                 preparedEvents(nextCatalog, nextPlugins, listenerPreparation);
+        var nextGroups = prepareDirectory(nextCatalog, nextPlugins);
         var previousPlugins = plugins;
         var previousRegistrations = registrations;
         var previousDisabled = disabled;
         var previousDeclined = declined;
         var previousCatalog = catalog;
         var previousEvents = events;
+        var previousGroups = contributionGroups;
         plugins = nextPlugins;
         registrations = nextRegistrations;
         disabled = nextDisabled;
         declined = nextDeclined;
         catalog = nextCatalog;
         events = nextEvents;
+        contributionGroups = nextGroups;
         try {
             var tools = toolEngine;
             if (tools != null) tools.getObject().reloadPlugins(this);
@@ -862,6 +898,7 @@ public final class PluginManager implements AutoCloseable {
             declined = previousDeclined;
             catalog = previousCatalog;
             events = previousEvents;
+            contributionGroups = previousGroups;
             var tools = toolEngine;
             if (tools != null) tools.getObject().reloadPlugins(this);
             var providers = llmProviders;

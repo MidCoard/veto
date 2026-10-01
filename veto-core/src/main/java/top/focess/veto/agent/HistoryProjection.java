@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 
 /** Ordered replay shared by prompt compilation, compaction, and the record inspector. */
 public final class HistoryProjection {
@@ -129,7 +130,7 @@ public final class HistoryProjection {
         TurnRecord init =
                 TurnRecord.agentInit(
                         lastTurn + 1, role.toLowerCase(Locale.ROOT), system, provider, model);
-        Map<String, Object> payload = new LinkedHashMap<>(init.payload());
+        Map<@NonNull String, @Nullable Object> payload = new LinkedHashMap<>(init.payload());
         payload.put("context_update", true);
         return List.of(new TurnRecord(init.turnNumber(), init.type(), payload, init.timestamp()));
     }
@@ -172,7 +173,8 @@ public final class HistoryProjection {
                 if (turn.payload().get("content") instanceof String content && !content.isBlank())
                     additions.add(TurnRecord.userPrompt(++number, content));
             } else {
-                Map<String, Object> payload = new LinkedHashMap<>(turn.payload());
+                Map<@NonNull String, @Nullable Object> payload =
+                        new LinkedHashMap<>(turn.payload());
                 payload.putIfAbsent("restored_from_turn", turn.turnNumber());
                 additions.add(new TurnRecord(++number, turn.type(), payload, null));
             }

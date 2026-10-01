@@ -7,6 +7,7 @@ import java.util.Map;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import top.focess.veto.agent.intercept.ApprovalDecision;
 import top.focess.veto.agent.intercept.ApprovalReceipt;
 import top.focess.veto.agent.intercept.VetoOption;
@@ -78,7 +79,7 @@ final class AgentOutput {
     void appendThought(@NonNull VetoResponse response, String modelCallId) {
         String thought = response.thought();
         // Provider-exposed reasoning is display text; native replay state lives on tool calls.
-        Map<String, Object> payload = new HashMap<>();
+        Map<@NonNull String, @Nullable Object> payload = new HashMap<>();
         if (thought != null && !thought.isBlank()) {
             payload.put("response", thought);
             payload.put("provider_reasoning", true);
@@ -121,7 +122,7 @@ final class AgentOutput {
             String modelCallId,
             boolean runtimeForwarded,
             boolean nativeResponseText) {
-        Map<String, Object> payload = new LinkedHashMap<>();
+        Map<@NonNull String, @Nullable Object> payload = new LinkedHashMap<>();
         if (runtimeForwarded) payload.put("runtimeOutputTokens", 0L);
         if (nativeResponseText) payload.put("native_response_text", true);
         payload.put("content", message);
@@ -168,7 +169,7 @@ final class AgentOutput {
                                 .approvalReceipts
                                 .remove(responseCallId);
         if (receipt != null) {
-            Map<String, Object> payload = new HashMap<>(turn.payload());
+            Map<@NonNull String, @Nullable Object> payload = new HashMap<>(turn.payload());
             payload.put("approval", receipt);
             turn = new TurnRecord(turn.turnNumber(), turn.type(), payload, turn.timestamp());
         }
@@ -181,7 +182,7 @@ final class AgentOutput {
 
     void appendToolCall(@NonNull ToolCall call, String origin) {
         TurnRecord turn = TurnRecord.toolCall(nextTurn(), call);
-        Map<String, Object> payload = new LinkedHashMap<>(turn.payload());
+        Map<@NonNull String, @Nullable Object> payload = new LinkedHashMap<>(turn.payload());
         if (origin != null) payload.put("model_call_id", origin);
         ToolDefinition definition = tools.resolveDefinition(call.toolName());
         if (definition != null) {
@@ -204,7 +205,7 @@ final class AgentOutput {
                 (turn.type() == TurnType.RUNTIME_EVENT || turn.type() == TurnType.MONITOR_EVENT)
                         || (turn.type() == TurnType.TOOL_RESPONSE && question);
         if (turn.type() == TurnType.AGENT_INIT) {
-            Map<String, Object> metadata = new LinkedHashMap<>(turn.payload());
+            Map<@NonNull String, @Nullable Object> metadata = new LinkedHashMap<>(turn.payload());
             metadata.put("contextMaxTokens", view.get().contextMaxTokens());
             PromptSource.Rendered source = systemSource;
             if (source != null

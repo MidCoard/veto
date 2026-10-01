@@ -4,11 +4,15 @@ import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.plugin.contract.Cancellation;
 
 /**
- * Base for session-scoped workflow events dispatched on the agent's workflow thread.
+ * Base for session-scoped workflow events dispatched synchronously on the producer's thread.
  *
  * <p>Carries the workflow identity and the cooperative cancellation signal. Subclasses add the
  * mutable payload their handlers transform. Observing an event never grants authority, and a
  * handler cannot relax a decision another handler already tightened.
+ *
+ * <p>The caller may be an agent worker, an input-submitting thread, or an admitted tool caller.
+ * Handlers complete before the producer reads the transformed event; no event executor or
+ * cross-dispatch serialization is implied. The confinement contract of {@link Event} applies.
  */
 public abstract class WorkflowEvent extends Event {
     private final String owner;

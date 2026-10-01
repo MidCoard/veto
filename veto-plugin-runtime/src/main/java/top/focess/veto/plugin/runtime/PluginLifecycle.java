@@ -38,6 +38,13 @@ import top.focess.veto.api.plugin.contribution.ContributionPoint;
  * the {@code ACTIVE -> STOPPING/FAILED} transition performed here. Releasing a slot is routed back
  * through {@link #submit} so the close-completion re-check runs on the control thread, which is
  * what lets {@link #close()} block until every admitted call has drained.
+ *
+ * <p>Threading: external callers may admit operations and register resources concurrently. The
+ * shared monitor guards admission counts and resource registration against revocation; plugin
+ * operations execute on their caller threads outside that monitor. Construction, start, stopping,
+ * and cleanup callbacks execute on the supplied serial control executor, outside the admission
+ * monitor. That executor must remain available until close completes. Lifecycle methods reject
+ * synchronous waits from control callbacks or admitted operations to prevent self-deadlock.
  */
 public final class PluginLifecycle implements AutoCloseable {
     private VetoPlugin plugin;
@@ -393,11 +400,13 @@ public final class PluginLifecycle implements AutoCloseable {
         if (stopping) return;
         stopping = true;
         stopWaits();
+        Error fatal = null;
         for (var release : stoppingResources.values()) {
             try {
                 release.run();
             } catch (Throwable failure) {
                 state = PluginState.FAILED;
+                fatal = preserveFatal(fatal, failure);
             }
         }
         stoppingResources.clear();
@@ -407,13 +416,24 @@ public final class PluginLifecycle implements AutoCloseable {
                 current.stopping();
             } catch (Throwable failure) {
                 state = PluginState.FAILED;
+                fatal = preserveFatal(fatal, failure);
             }
         }
-        if (state == PluginState.FAILED) cleanup();
+        if (state == PluginState.FAILED) cleanup(fatal);
     }
 
     private void cleanup() {
-        if (cleaned) return;
+        cleanup(null);
+    }
+
+    private void cleanup(Error fatal) {
+        if (cleaned) {
+            if (fatal != null) {
+                closed.completeExceptionally(fatal);
+                throw fatal;
+            }
+            return;
+        }
         cleaned = true;
         active.completeExceptionally(new IllegalStateException("Plugin stopped before activation"));
         try {
@@ -421,20 +441,23 @@ public final class PluginLifecycle implements AutoCloseable {
             if (current != null) current.close();
         } catch (Throwable failure) {
             state = PluginState.FAILED;
+            fatal = preserveFatal(fatal, failure);
         } finally {
             while (!contributedResources.isEmpty()) {
                 try {
                     contributedResources.removeFirst().close();
-                } catch (Exception failure) {
+                } catch (Throwable failure) {
                     state = PluginState.FAILED;
+                    fatal = preserveFatal(fatal, failure);
                 }
             }
             InstalledPlugin descriptor = installed;
             if (descriptor != null) {
                 try {
                     descriptor.close();
-                } catch (RuntimeException failure) {
+                } catch (Throwable failure) {
                     state = PluginState.FAILED;
+                    fatal = preserveFatal(fatal, failure);
                 }
             }
             for (var release : resources.values()) {
@@ -442,10 +465,25 @@ public final class PluginLifecycle implements AutoCloseable {
                     release.run();
                 } catch (Throwable failure) {
                     state = PluginState.FAILED;
+                    fatal = preserveFatal(fatal, failure);
                 }
             }
             resources.clear();
         }
+        if (fatal != null) {
+            closed.completeExceptionally(fatal);
+            throw fatal;
+        }
+    }
+
+    // ThreadDeath remains a supported fatal signal and must propagate while the JDK retains it.
+    @SuppressWarnings("removal")
+    private static Error preserveFatal(Error fatal, @NonNull Throwable failure) {
+        if (fatal != null) return fatal;
+        return failure instanceof Error error
+                        && (error instanceof VirtualMachineError || error instanceof ThreadDeath)
+                ? error
+                : null;
     }
 
     private void require(@NonNull PluginState expected) throws PluginFailure {

@@ -34,7 +34,7 @@ import top.focess.veto.api.agent.tool.ToolSecurity;
                 plaintext: `Unsupported content: ...` (UNSUPPORTED_CONTENT), `Empty content: the page has no \
                 readable content.` (EMPTY_CONTENT), `Observation budget: no budget remains for the page \
                 outline.` (READER_OBSERVATION), `Cancelled: the web reader was cancelled.` (CANCELLED), or \
-                `Reader timeout: the web reader exceeded its time budget.` (READER_TIMEOUT).\
+                `Reader timeout: the web reader exceeded its time budget.` (TIMEOUT).\
                 """,
         errorsAndEdgeCases =
                 """

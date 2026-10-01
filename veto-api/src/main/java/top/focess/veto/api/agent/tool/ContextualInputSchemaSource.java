@@ -17,9 +17,9 @@ public interface ContextualInputSchemaSource extends InputSchemaSource {
      * @param submissions control-submission kinds keyed by tool name
      */
     record Context(
-            @NonNull List<ToolDefinition> tools,
-            @NonNull Set<String> localTools,
-            @NonNull Map<String, ControlSubmission.Kind> submissions) {
+            @NonNull List<@NonNull ToolDefinition> tools,
+            @NonNull Set<@NonNull String> localTools,
+            @NonNull Map<@NonNull String, ControlSubmission.@NonNull Kind> submissions) {
         /** Creates immutable copies of every catalogue collection. */
         public Context {
             tools = List.copyOf(tools);

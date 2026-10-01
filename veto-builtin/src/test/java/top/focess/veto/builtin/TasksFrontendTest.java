@@ -28,7 +28,6 @@ class TasksFrontendTest {
                 new Scope.AgentScope(
                         invocation.owner(), invocation.sessionId(), invocation.agentId());
         var contribution = new TasksFrontend(tasks);
-        var handler = contribution.handler();
         var args =
                 new JsonValue.ObjectValue(
                         Map.of(
@@ -44,16 +43,19 @@ class TasksFrontendTest {
                                     scope.owner(), UUID.randomUUID().toString(), scope.agent()),
                             new Scope.AgentScope(scope.owner(), scope.session(), "other"))) {
                 var list =
-                        object(handler.handle(wrong, "list", new JsonValue.ObjectValue(Map.of())));
+                        object(
+                                contribution.handle(
+                                        wrong, "list", new JsonValue.ObjectValue(Map.of())));
                 assertEquals(
                         new JsonValue.NumberValue(BigDecimal.ZERO), list.values().get("total"));
                 assertThrows(
-                        PluginFailure.class, () -> handler.handle(wrong, "stopOrRemove", args));
+                        PluginFailure.class,
+                        () -> contribution.handle(wrong, "stopOrRemove", args));
             }
             assertThrows(
                     PluginFailure.class,
                     () ->
-                            handler.handle(
+                            contribution.handle(
                                     scope,
                                     "stopOrRemove",
                                     new JsonValue.ObjectValue(
@@ -64,12 +66,15 @@ class TasksFrontendTest {
                                                     new JsonValue.StringValue(
                                                             UUID.randomUUID().toString())))));
             assertTrue(process.isAlive());
-            var stopped = object(handler.handle(scope, "stopOrRemove", args));
+            var stopped = object(contribution.handle(scope, "stopOrRemove", args));
             assertEquals(new JsonValue.StringValue("stopped"), stopped.values().get("status"));
             tasks.awaitExit(invocation.scope(), info.taskId());
             var pageArgs = new HashMap<String, JsonValue>(args.values());
             pageArgs.put("limit", new JsonValue.NumberValue(BigDecimal.valueOf(3)));
-            var page = object(handler.handle(scope, "output", new JsonValue.ObjectValue(pageArgs)));
+            var page =
+                    object(
+                            contribution.handle(
+                                    scope, "output", new JsonValue.ObjectValue(pageArgs)));
             assertEquals(new JsonValue.StringValue("abc"), page.values().get("text"));
             assertEquals(
                     new JsonValue.NumberValue(BigDecimal.valueOf(3)),
@@ -77,12 +82,14 @@ class TasksFrontendTest {
             pageArgs.put("offset", new JsonValue.NumberValue(BigDecimal.valueOf(3)));
             assertEquals(
                     new JsonValue.StringValue("def"),
-                    object(handler.handle(scope, "output", new JsonValue.ObjectValue(pageArgs)))
+                    object(
+                                    contribution.handle(
+                                            scope, "output", new JsonValue.ObjectValue(pageArgs)))
                             .values()
                             .get("text"));
-            var removed = object(handler.handle(scope, "stopOrRemove", args));
+            var removed = object(contribution.handle(scope, "stopOrRemove", args));
             assertEquals(new JsonValue.StringValue("removed"), removed.values().get("status"));
-            assertThrows(PluginFailure.class, () -> handler.handle(scope, "output", args));
+            assertThrows(PluginFailure.class, () -> contribution.handle(scope, "output", args));
         } finally {
             tasks.close();
         }

@@ -39,8 +39,8 @@ public abstract class LlmClient {
     public record RawCompletion(
             @NonNull String requestSummary,
             @NonNull String rawResponse,
-            @NonNull List<NativeToolState> nativeStates,
-            @NonNull List<ToolCall> nativeCalls,
+            @NonNull List<@NonNull NativeToolState> nativeStates,
+            @NonNull List<@NonNull ToolCall> nativeCalls,
             String reasoning) {
         /** Copies native replay blocks and decoded calls. */
         public RawCompletion {
@@ -59,8 +59,8 @@ public abstract class LlmClient {
         public RawCompletion(
                 @NonNull String requestSummary,
                 @NonNull String rawResponse,
-                @NonNull List<NativeToolState> nativeStates,
-                @NonNull List<ToolCall> nativeCalls) {
+                @NonNull List<@NonNull NativeToolState> nativeStates,
+                @NonNull List<@NonNull ToolCall> nativeCalls) {
             this(requestSummary, rawResponse, nativeStates, nativeCalls, null);
         }
 

@@ -1,9 +1,12 @@
 package top.focess.veto.api.plugin.contract;
 
 import java.time.Instant;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 
 /** Plugin-owned inbox and completion policy; the host only executes admitted continuations. */
 public abstract class AgentInbox {
@@ -29,7 +32,8 @@ public abstract class AgentInbox {
      * @param content observation text
      * @param occurredAt source event time
      * @param topic plugin-defined topic
-     * @param attributes immutable plugin-defined attributes copied on construction
+     * @param attributes immutable plugin-defined attributes copied on construction; values may
+     *     represent JSON null
      * @param continuationId optional plugin-local continuation key
      */
     public record Observation(
@@ -38,11 +42,11 @@ public abstract class AgentInbox {
             @NonNull String content,
             @NonNull Instant occurredAt,
             @NonNull String topic,
-            @NonNull Map<String, Object> attributes,
+            @NonNull Map<@NonNull String, ? extends @Nullable Object> attributes,
             String continuationId) {
         /** Defensively copies the plugin-defined attributes. */
         public Observation {
-            attributes = Map.copyOf(attributes);
+            attributes = Collections.unmodifiableMap(new LinkedHashMap<>(attributes));
         }
     }
 

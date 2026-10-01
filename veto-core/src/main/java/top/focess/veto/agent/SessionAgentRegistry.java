@@ -23,7 +23,15 @@ import top.focess.veto.memory.TurnRecordRepository;
 import top.focess.veto.model.AgentEntity;
 import top.focess.veto.model.AgentInstanceRepository;
 
-/** Owns live agents and invocation dependencies independently of group membership. */
+/**
+ * Owns live agents and invocation dependencies independently of group membership.
+ *
+ * <p>Thread-safe for membership operations after dependency injection: this instance's monitor
+ * serializes registration, parent/child validation, removal and shutdown. Returned lists are
+ * snapshots of membership, not frozen agent state. Persistence, invalidation and agent lifecycle
+ * calls currently run under the monitor; those collaborators must not block waiting for another
+ * thread to enter this registry. Dependency attachment is a startup operation.
+ */
 @Component
 public final class SessionAgentRegistry {
     private SessionInvalidations invalidations;

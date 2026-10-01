@@ -14,6 +14,7 @@ import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.tool.Doc;
 import top.focess.veto.api.agent.tool.ParamCategory;
 import top.focess.veto.api.agent.tool.SecurityHint;
+import top.focess.veto.api.agent.tool.StringConstraint;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.agent.tool.ToolDoc;
 import top.focess.veto.api.agent.tool.ToolErrorCode;
@@ -90,7 +91,9 @@ public final class FindFilesTool extends WorkspaceReadTool<FindFilesTool.Args> {
                     @SecurityHint(ParamCategory.FILESYSTEM_PATH)
                     @Doc("Absolute directory path to search below.")
                     String absolutePath,
-            @NonNull @Doc("Portable relative-path glob using `*`, `**`, and `?`.")
+            @StringConstraint(rejectBlank = true, pattern = "^[^\\\\]*$")
+                    @NonNull
+                    @Doc("Portable relative-path glob using `*`, `**`, and `?`.")
                     String pattern) {}
 
     @Override
@@ -105,11 +108,6 @@ public final class FindFilesTool extends WorkspaceReadTool<FindFilesTool.Args> {
 
     @Override
     public @NonNull String execute(@NonNull Args args, @NonNull WorkspaceReadCapability workspace) {
-        if (args.pattern().isBlank() || args.pattern().indexOf('\\') >= 0) {
-            return ToolErrors.failure(
-                    ToolErrorCode.VALIDATION.INVALID_ARGUMENTS,
-                    "Invalid arguments: pattern must be non-blank and use '/' separators.");
-        }
         Pattern matcher = Pattern.compile(globRegex(args.pattern()));
         try {
             WorkspaceFile root = workspace.file(args.absolutePath());

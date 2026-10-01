@@ -6,8 +6,8 @@ import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 
 /**
- * A single memory entry stored by the the host memory store. Carries the captured content (already
- * masked via {@code accept_and_mask}), its embedding, source attribution, and tier tag.
+ * A builtin memory entry carrying explicitly supplied content, its embedding, source attribution,
+ * and tier tag. Content masking belongs to the caller's capture policy.
  *
  * <p>Session entries have a non-null {@code sessionId}; cross-session entries have a null {@code
  * sessionId}. The {@code tier} is derivable from that distinction but stored explicitly for query

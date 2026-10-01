@@ -13,8 +13,10 @@ import org.jspecify.annotations.NonNull;
  * A simple in-memory vector index using brute-force cosine similarity. For larger corpora, an HNSW
  * or pgvector-backed implementation provides sub-linear approximate-nearest-neighbor search.
  *
- * <p>The index is thread-safe: a single {@link ReentrantReadWriteLock} guards the vector array.
- * Reads (search) are concurrent; writes (insert) are exclusive.
+ * <p>A single {@link ReentrantReadWriteLock} excludes mutations while a search traverses the
+ * vectors. Searches may overlap; insert and remove are exclusive, and inserted arrays are copied.
+ * The concurrent map permits size observations without taking that lock. Callers must not mutate a
+ * query array during search. No external callbacks execute under the index lock.
  *
  * <p>This in-memory backend is a dependency-free fallback for deployments that do not select a
  * persistent vector store.

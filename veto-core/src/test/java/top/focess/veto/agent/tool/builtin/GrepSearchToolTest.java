@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -21,6 +22,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import top.focess.veto.agent.intercept.ToolExecutionPermit;
 import top.focess.veto.agent.screening.DeployerPolicy;
 import top.focess.veto.agent.tool.CapabilityTestCalls;
+import top.focess.veto.agent.tool.NativeToolArgumentValidator;
 import top.focess.veto.agent.tool.ToolCallContext;
 import top.focess.veto.agent.tool.ToolCallContextHolder;
 import top.focess.veto.api.agent.tool.ToolCapability;
@@ -47,12 +49,18 @@ class GrepSearchToolTest {
                 assertThrows(
                         ToolExecutionException.class,
                         () ->
-                                CapabilityTestCalls.execute(
-                                        tool,
-                                        new GrepSearchTool.Args(
-                                                tempDir.toString(), "", null, null)));
+                                NativeToolArgumentValidator.validate(
+                                        tool.getName(),
+                                        new ObjectMapper()
+                                                .valueToTree(
+                                                        new GrepSearchTool.Args(
+                                                                tempDir.toString(),
+                                                                "",
+                                                                null,
+                                                                null)),
+                                        GrepSearchTool.Args.class));
 
-        assertEquals("Invalid arguments: query must not be empty.", failure.getMessage());
+        assertTrue(String.valueOf(failure.getMessage()).contains("parameter 'query' is too short"));
         assertEquals(ToolErrorCode.VALIDATION.INVALID_ARGUMENTS, failure.errorCode());
     }
 

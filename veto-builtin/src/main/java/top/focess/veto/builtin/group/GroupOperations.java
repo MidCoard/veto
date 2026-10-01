@@ -67,8 +67,8 @@ final class GroupOperations implements GroupControlCapability, DelegationCapabil
     }
 
     @Override
-    public GroupSnapshot snapshot() {
-        var ctx = invocation("inspect_group");
+    public GroupSnapshot snapshot(@NonNull String tool) {
+        var ctx = invocation(tool);
         requireLeader(ctx);
         UUID id = groupId(ctx);
         Group group = id == null ? null : registry.get(id);

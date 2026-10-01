@@ -5,7 +5,9 @@ import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.agent.screening.Danger;
+import top.focess.veto.api.agent.tool.ArraySize;
 import top.focess.veto.api.agent.tool.Doc;
+import top.focess.veto.api.agent.tool.NumberConstraint;
 import top.focess.veto.api.agent.tool.ParamCategory;
 import top.focess.veto.api.agent.tool.PreparedTool;
 import top.focess.veto.api.agent.tool.SecurityHint;
@@ -129,6 +131,7 @@ public final class RunCommandTool extends PreparedTool<RunCommandTool.Args> {
                     @Doc(
                             "Discrete commands; Veto connects them per `connect`. No shell, no"
                                     + " chaining operators in input.")
+                    @ArraySize(min = 1, max = Integer.MAX_VALUE)
                     @NonNull List<@NonNull CommandInput> commands,
             @Doc("How Veto connects the commands: STOP_ON_FAILURE (default), RUN_ALL, or PIPE.")
                     ChainMode connect,
@@ -137,6 +140,7 @@ public final class RunCommandTool extends PreparedTool<RunCommandTool.Args> {
                                     + " require approval.")
                     Boolean network,
             @NonNull
+                    @NumberConstraint(min = 0)
                     @Doc(
                             "Timeout in seconds. 0 selects the configured maximum; larger values"
                                     + " are capped by that maximum.")
@@ -190,14 +194,6 @@ public final class RunCommandTool extends PreparedTool<RunCommandTool.Args> {
     /** Runs the tool against the supplied capability. */
     public @NonNull String execute(
             @NonNull Args args, @NonNull ProcessExecutionCapability capability) {
-        if (args.timeout() < 0)
-            return ToolErrors.failure(
-                    ToolErrorCode.VALIDATION.INVALID_ARGUMENTS,
-                    "Invalid arguments: timeout must be zero or positive.");
-        if (args.commands().isEmpty())
-            return ToolErrors.failure(
-                    ToolErrorCode.VALIDATION.INVALID_ARGUMENTS,
-                    "Invalid arguments: commands must contain at least one command.");
         var commands =
                 args.commands().stream().map(c -> new Command(c.executable(), c.args())).toList();
         ChainMode mode = args.connect();

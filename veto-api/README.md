@@ -18,7 +18,7 @@ their context and configuration.
 | `context.service(SomeType.class)` | Obtain an optional Java capability supplied by the host | Host-granted authority keyed by exact Java class identity; calls remain subject to current admission and authorization. |
 | `context.services()` | Find a named, versioned JSON protocol implemented by another plugin | Plugin-to-plugin communication using only `JsonValue`; the initial directory is populated after construction. |
 | `PluginHost` | Request host-mediated invocation facts, waits, wake hints, events, and invalidation | Each operation applies its own lifecycle, selection, invocation, and authorization checks. |
-| `context.storage()` | Access this plugin's application, user, or session namespace | Scoped persistence using host-issued scopes; old handles are revalidated and may be revoked. |
+| `context.storage()` | Access this plugin's application, user, or session namespace | Scoped persistence using host-issued grants; old handles are revalidated and may be revoked. |
 
 Java plugins run as trusted code in the Veto JVM. These APIs make host decisions explicit,
 but they do not sandbox arbitrary Java, remove ambient JVM access, or provide OS process
@@ -33,6 +33,9 @@ All admitted plugins complete construction before the host binds the initial nam
 A provider therefore registers `SERVICES` in its constructor, while a consumer calls
 `services().find(...)` only in `start` or later. After catalog validation, the host calls
 `start()` once. A successful return marks the instance active and permits its calls.
+An active plugin may also call `context.register`; the host validates and prepares
+each complete aspect before publishing it, and rolls back a rejected registration.
+Listener invocation uses prepared concrete routes while checking live admission.
 
 An administrator can change whether an installed package is enabled at the **next backend
 startup**. This does not stop or start an instance in the running backend. On that startup,

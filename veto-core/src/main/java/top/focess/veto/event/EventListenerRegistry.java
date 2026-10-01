@@ -42,15 +42,20 @@ import top.focess.veto.util.Nullness;
 /**
  * Immutable dispatch table of compiled event handlers.
  *
- * <p>Every {@code @EventHandler} method on a contributed {@link Listener} is reflected exactly
- * once, at registration, into an {@link EventInvoker}. Dispatch is then a plain interface call
- * backed by a method handle, with no per-invocation reflection, run synchronously on the calling
- * (workflow) thread. Handlers fire in {@link EventPriority} order within each event type,
+ * <p>Public {@code @EventHandler} methods on a contributed {@link Listener} are validated and
+ * compiled at registration into reusable {@link EventInvoker}s. Dispatch is then a plain interface
+ * call backed by a method handle, with no per-invocation reflection, run synchronously on the
+ * producer's calling thread. Handlers fire in {@link EventPriority} order within each event type,
  * registration order as the stable tiebreak. The host expands inherited handlers into each known
  * concrete event's list at table construction, most specific type first. A handler is skipped once
  * the event is {@link Event#isPrevent() prevented} or, for a {@link Cancellable} event, cancelled,
  * according to its annotation flags; only plugins selected for the session are invoked, each under
- * its own admission.
+ * its own admission. Lifecycle broadcasts use current active-plugin admission instead of session
+ * selection.
+ *
+ * <p>The table is immutable and can serve concurrent dispatches, but it supplies no lock around
+ * listener instances. One event's handlers run serially; distinct events can reach the same
+ * listener concurrently. Producers own each mutable event for the duration of one dispatch.
  */
 public final class EventListenerRegistry {
     private static final @NonNull List<Class<? extends Event>> HOST_EVENTS =
@@ -183,9 +188,9 @@ public final class EventListenerRegistry {
     /**
      * Broadcasts a best-effort lifecycle notification to every active listener.
      *
-     * <p>Unlike {@link #submit}, a failing handler is logged and skipped so one plugin can never
-     * break logout, session deletion, or agent termination. Lifecycle events are not {@link
-     * WorkflowEvent}s, so the cancellation gate is inert here.
+     * <p>Unlike {@link #submit}, nonfatal handler failures are logged and skipped; fatal VM errors
+     * and thread death propagate. Lifecycle events are not {@link WorkflowEvent}s, so the
+     * cancellation gate is inert here.
      *
      * @param event the lifecycle notification to broadcast
      * @param active plugin identities currently active
@@ -207,6 +212,7 @@ public final class EventListenerRegistry {
                         log.warn("Lifecycle listener {} failed", namespace, failure));
     }
 
+    @SuppressWarnings("removal") // ThreadDeath remains a fatal callback signal while supported.
     private void dispatch(
             @NonNull Event event,
             @NonNull Predicate<@NonNull String> selected,
@@ -231,7 +237,9 @@ public final class EventListenerRegistry {
                 executor.admit(
                         handler.namespace(),
                         () -> handler.invoker().invoke(handler.listener(), event));
-            } catch (PluginFailure | RuntimeException failure) {
+            } catch (VirtualMachineError | ThreadDeath fatal) {
+                throw fatal;
+            } catch (Throwable failure) {
                 onFailure.onFailure(handler.namespace(), failure);
             }
         }
@@ -240,7 +248,7 @@ public final class EventListenerRegistry {
     /** Per-handler failure policy: abort the workflow, or log and continue a broadcast. */
     @FunctionalInterface
     private interface FailureHandler {
-        void onFailure(@NonNull String namespace, @NonNull Exception failure);
+        void onFailure(@NonNull String namespace, @NonNull Throwable failure);
     }
 
     private record Compiled(

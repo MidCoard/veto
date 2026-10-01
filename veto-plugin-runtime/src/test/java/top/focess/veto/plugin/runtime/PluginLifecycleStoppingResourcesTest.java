@@ -2,6 +2,7 @@ package top.focess.veto.plugin.runtime;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
@@ -191,6 +192,98 @@ class PluginLifecycleStoppingResourcesTest {
         }
     }
 
+    @Test
+    void resourceAssertionDoesNotSkipRemainingCleanupOrLeaveCloseWaiting() throws Exception {
+        var plugin = new TestPlugin();
+        var remaining = new AtomicInteger();
+        var hostRelease = new AtomicInteger();
+        try (var lifecycle = Executors.newSingleThreadExecutor()) {
+            var managed = start(plugin, lifecycle);
+            managed.registerResource(remaining::incrementAndGet);
+            managed.registerResource(
+                    () -> {
+                        throw new AssertionError("synthetic plugin error");
+                    });
+            managed.ownResource(hostRelease::incrementAndGet);
+            managed.close();
+            assertEquals(PluginState.FAILED, managed.state());
+            assertEquals(1, remaining.get());
+            assertEquals(1, hostRelease.get());
+            assertEquals(1, plugin.cleaned.get());
+            managed.close();
+            assertEquals(1, remaining.get());
+        }
+    }
+
+    @Test
+    void fatalResourceErrorPropagatesAfterOtherCleanupAndCompletesTheCloseSignal()
+            throws Exception {
+        var plugin = new TestPlugin();
+        var remaining = new AtomicInteger();
+        var hostRelease = new AtomicInteger();
+        try (var lifecycle = Executors.newSingleThreadExecutor()) {
+            var managed = start(plugin, lifecycle);
+            managed.registerResource(remaining::incrementAndGet);
+            managed.registerResource(
+                    () -> {
+                        throw new InternalError("synthetic fatal error");
+                    });
+            managed.ownResource(hostRelease::incrementAndGet);
+            var failure = assertThrows(CompletionException.class, managed::close);
+            assertInstanceOf(InternalError.class, failure.getCause());
+            assertEquals(1, remaining.get());
+            assertEquals(1, hostRelease.get());
+            assertEquals(1, plugin.cleaned.get());
+            managed.close();
+        }
+    }
+
+    @Test
+    // Verify the legacy fatal signal is preserved while supported by the JDK.
+    @SuppressWarnings("removal")
+    void fatalStoppingErrorSurvivesLaterFailuresAndReleasesEveryRemainingResource()
+            throws Exception {
+        for (boolean hostStopping : List.of(true, false)) {
+            var plugin = new TestPlugin();
+            Error original = hostStopping ? new InternalError("host stopping") : new ThreadDeath();
+            plugin.stoppingError = hostStopping ? new ThreadDeath() : original;
+            var earlyRelease = new AtomicInteger();
+            var contributedRelease = new AtomicInteger();
+            var hostRelease = new AtomicInteger();
+            try (var lifecycle = Executors.newSingleThreadExecutor()) {
+                var managed = start(plugin, lifecycle);
+                managed.ownStoppingResource(new Object(), earlyRelease::incrementAndGet);
+                if (hostStopping) {
+                    managed.ownStoppingResource(
+                            new Object(),
+                            () -> {
+                                throw original;
+                            });
+                }
+                managed.registerResource(contributedRelease::incrementAndGet);
+                managed.registerResource(
+                        () -> {
+                            throw new InternalError("later cleanup");
+                        });
+                managed.ownResource(hostRelease::incrementAndGet);
+
+                var failure = assertThrows(CompletionException.class, managed::close);
+                var cause = failure.getCause();
+                if (cause == null) throw new AssertionError("Missing fatal stopping cause");
+                assertSame(original, cause);
+                assertEquals(PluginState.FAILED, managed.state());
+                assertEquals(1, earlyRelease.get());
+                assertEquals(1, plugin.stopped.get());
+                assertEquals(1, contributedRelease.get());
+                assertEquals(1, hostRelease.get());
+                assertEquals(1, plugin.cleaned.get());
+                managed.close();
+                assertEquals(1, plugin.stopped.get());
+                assertEquals(1, plugin.cleaned.get());
+            }
+        }
+    }
+
     private static @NonNull PluginLifecycle start(
             @NonNull TestPlugin plugin, @NonNull ExecutorService lifecycle) throws PluginFailure {
         var managed = new PluginLifecycle(plugin, lifecycle);
@@ -212,12 +305,21 @@ class PluginLifecycleStoppingResourcesTest {
     private static final class TestPlugin extends VetoPlugin {
 
         private final @NonNull AtomicInteger cleaned = new AtomicInteger();
+        private final @NonNull AtomicInteger stopped = new AtomicInteger();
+        private Error stoppingError;
 
         public @NonNull PluginIdentity identity() {
             return new PluginIdentity("test.resources", "1.0.0");
         }
 
         public void start() {}
+
+        @Override
+        public void stopping() {
+            stopped.incrementAndGet();
+            var failure = stoppingError;
+            if (failure != null) throw failure;
+        }
 
         public void close() {
             cleaned.incrementAndGet();

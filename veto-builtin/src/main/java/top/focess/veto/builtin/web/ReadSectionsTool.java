@@ -3,6 +3,7 @@ package top.focess.veto.builtin.web;
 import java.util.List;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.agent.screening.Danger;
+import top.focess.veto.api.agent.tool.ArraySize;
 import top.focess.veto.api.agent.tool.Doc;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.agent.tool.ToolDoc;
@@ -64,7 +65,8 @@ import top.focess.veto.api.agent.tool.ToolSecurity;
 public final class ReadSectionsTool extends WebDocumentTool<ReadSectionsTool.Args> {
     /** Model-facing arguments of {@code read_sections}. */
     public record Args(
-            @Doc("One to eight section IDs from the fetched document, in reading order.")
+            @ArraySize(min = 1, max = 8)
+                    @Doc("One to eight section IDs from the fetched document, in reading order.")
                     @NonNull List<@NonNull String> ids) {}
 
     private final @NonNull WebDocumentCapability document;

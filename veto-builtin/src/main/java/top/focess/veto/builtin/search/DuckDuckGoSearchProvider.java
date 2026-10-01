@@ -86,9 +86,7 @@ public class DuckDuckGoSearchProvider implements SearchProvider, AutoCloseable {
                     "DuckDuckGo search failed: HTTP " + response.statusCode());
         }
         List<@NonNull SearchResult> results = parse(response.body());
-        results = applyDomainFilters(results, options);
-        int cap = options.maxResults() > 0 ? options.maxResults() : 10;
-        return results.size() > cap ? results.subList(0, cap) : results;
+        return SearchPolicy.apply(results, options);
     }
 
     @Override
@@ -136,58 +134,6 @@ public class DuckDuckGoSearchProvider implements SearchProvider, AutoCloseable {
             return "https:" + href;
         }
         return href;
-    }
-
-    /** Applies the allowed/blocked domain filters (host suffix match, www-insensitive). */
-    private @NonNull List<@NonNull SearchResult> applyDomainFilters(
-            @NonNull List<@NonNull SearchResult> results, @NonNull SearchOptions options) {
-        List<@NonNull String> allowedDomains = options.allowedDomains();
-        List<@NonNull String> blockedDomains = options.blockedDomains();
-        if ((allowedDomains == null || allowedDomains.isEmpty())
-                && (blockedDomains == null || blockedDomains.isEmpty())) {
-            return results;
-        }
-        List<@NonNull SearchResult> out = new ArrayList<>();
-        for (SearchResult r : results) {
-            String host = hostOf(r.url());
-            if (host == null) {
-                continue;
-            }
-            if (blockedDomains != null && matchesAny(host, blockedDomains)) {
-                continue;
-            }
-            if (allowedDomains != null
-                    && !allowedDomains.isEmpty()
-                    && !matchesAny(host, allowedDomains)) {
-                continue;
-            }
-            out.add(r);
-        }
-        return out;
-    }
-
-    private static boolean matchesAny(
-            @NonNull String host, @NonNull List<@NonNull String> domains) {
-        for (String d : domains) {
-            String domain = normalizeDomain(d);
-            if (!domain.isEmpty() && (host.equals(domain) || host.endsWith("." + domain))) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private static @NonNull String normalizeDomain(@NonNull String d) {
-        String s = d.trim().toLowerCase();
-        return s.startsWith("www.") ? s.substring("www.".length()) : s;
-    }
-
-    private static String hostOf(@NonNull String url) {
-        try {
-            return URI.create(url).getHost();
-        } catch (IllegalArgumentException e) {
-            return null;
-        }
     }
 
     @Override

@@ -15,7 +15,15 @@ import top.focess.veto.api.plugin.storage.PluginStorage.Document;
 import top.focess.veto.api.plugin.storage.PluginStorage.Entry;
 import top.focess.veto.api.plugin.storage.PluginStorage.Store;
 
-/** Monitor aggregates use session stores; optional payload chunks remain feature-owned. */
+/**
+ * Monitor aggregates use session stores; optional payload chunks remain feature-owned.
+ *
+ * <p>The repository monitor serializes session discovery, cached entry revisions and all reads and
+ * writes, including host storage calls. MonitorService normally acquires its state monitor before
+ * this repository monitor; direct stored-record reads acquire only the repository monitor. Storage
+ * callbacks must not wait for another thread to enter the service or repository. The monitor
+ * protects local caches; storage compare-and-set revisions remain the durable conflict boundary.
+ */
 public final class StoredMonitorRepository implements MonitorRepository {
     private record Stored(@NonNull Store store, @NonNull Entry entry) {}
 

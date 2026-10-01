@@ -20,10 +20,10 @@ public record AgentProfile(
         @NonNull String name,
         @NonNull String description,
         @NonNull String label,
-        @NonNull Set<String> tools,
+        @NonNull Set<@NonNull String> tools,
         String tier,
         Prompt prompt,
-        @NonNull Map<String, String> metadata) {
+        @NonNull Map<@NonNull String, @NonNull String> metadata) {
     /**
      * Reference to a host-resolved prompt resource and its interpolation data.
      *

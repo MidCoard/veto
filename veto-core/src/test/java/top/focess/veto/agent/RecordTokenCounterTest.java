@@ -2,9 +2,13 @@ package top.focess.veto.agent;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.api.llm.ChatMessage;
 import top.focess.veto.api.llm.LlmOptions;
@@ -15,8 +19,22 @@ import top.focess.veto.api.llm.VetoRequest;
 import top.focess.veto.llm.core.*;
 
 class RecordTokenCounterTest {
-    private static com.fasterxml.jackson.databind.@NonNull JsonNode json(@NonNull Object value) {
-        return new com.fasterxml.jackson.databind.ObjectMapper().valueToTree(value);
+    @Test
+    void nullableObservationFactsSurviveHistorySnapshotAndTokenProjection() {
+        var facts = new LinkedHashMap<@NonNull String, @Nullable Object>();
+        facts.put("optional", null);
+        var turn = new TurnRecord(1, TurnType.RUNTIME_EVENT, facts, null);
+        facts.clear();
+        assertTrue(turn.payload().containsKey("optional"));
+        assertNull(turn.payload().get("optional"));
+        var projected = RecordTokenCounter.unmeasured(turn);
+        assertTrue(projected.payload().containsKey("optional"));
+        assertNull(projected.payload().get("optional"));
+        assertThrows(UnsupportedOperationException.class, () -> projected.payload().clear());
+    }
+
+    private static @NonNull JsonNode json(@NonNull Object value) {
+        return new ObjectMapper().valueToTree(value);
     }
 
     private @NonNull VetoRequest request(@NonNull List<ChatMessage> messages) {

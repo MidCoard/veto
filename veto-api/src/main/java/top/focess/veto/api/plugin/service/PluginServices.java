@@ -16,6 +16,11 @@ import top.focess.veto.api.plugin.storage.PluginStorage;
  * handles recheck caller and provider admission on every invocation. A retained handle keeps a
  * descriptor, not the provider implementation or classloader; revocation makes invocation
  * unavailable even if the consumer keeps its handle.
+ *
+ * <p>Handles support concurrent invocation subject to per-call admission. Service and callback
+ * handlers coordinate their own shared state; the host does not serialize their bodies globally.
+ * Callback registration and revocation are serialized by the host so a retained view cannot
+ * register new callbacks for an activation that has been revoked or stopped.
  */
 public interface PluginServices {
     /**
@@ -120,6 +125,8 @@ public interface PluginServices {
      *
      * @param handler plugin-owned callback
      * @return registration carrying an opaque reference and explicit revocation
+     * @throws IllegalStateException when the owning activation is revoked or no longer accepts
+     *     registration
      */
     @NonNull CallbackRegistration registerCallback(@NonNull ServiceHandler handler);
 

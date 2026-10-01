@@ -19,7 +19,15 @@ import top.focess.veto.api.plugin.contract.AgentInbox;
 import top.focess.veto.api.plugin.storage.PluginStorage;
 import top.focess.veto.builtin.group.GroupObservations;
 
-/** All monitor resources are created, restored and released by the builtin plugin. */
+/**
+ * All monitor resources are created, restored and released by the builtin plugin.
+ *
+ * <p>The runtime monitor orders restore, scheduler startup and shutdown; volatile readiness
+ * publishes whether inbox polling is available. Tool, listener and scheduled calls enter the
+ * separate MonitorService state lock. Close first fails foreground waits, then waits for scheduler
+ * termination while holding the runtime monitor; scheduled ticks must not acquire that monitor.
+ * Host lifecycle admission excludes new plugin calls during shutdown.
+ */
 public final class MonitorRuntime implements AutoCloseable {
     private final PluginHost host;
     private final StoredMonitorRepository repository;

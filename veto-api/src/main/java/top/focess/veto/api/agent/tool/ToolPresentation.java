@@ -1,7 +1,10 @@
 package top.focess.veto.api.agent.tool;
 
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import top.focess.veto.api.resources.CatalogueTree;
 
 /** Optional read-only tool availability and facts for its own MDC extension. */
@@ -18,12 +21,13 @@ public interface ToolPresentation {
      * Tool availability and facts used by its prompt extension.
      *
      * @param available whether the tool should be advertised
-     * @param facts structured facts for prompt rendering
+     * @param facts structured facts for prompt rendering; values may represent JSON null
      */
-    record State(boolean available, @NonNull Map<String, Object> facts) {
+    record State(
+            boolean available, @NonNull Map<@NonNull String, ? extends @Nullable Object> facts) {
         /** Defensively copies the facts map. */
         public State {
-            facts = Map.copyOf(facts);
+            facts = Collections.unmodifiableMap(new LinkedHashMap<>(facts));
         }
     }
 }

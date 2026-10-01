@@ -31,10 +31,10 @@ public record ToolDefinition(
         @NonNull String name,
         @NonNull String description,
         @NonNull Map<String, Object> inputSchema,
-        @NonNull List<String> examples,
+        @NonNull List<@NonNull String> examples,
         @NonNull ToolDocumentation documentation,
-        @NonNull List<String> returnExamples,
-        @NonNull List<ToolResultFormat> resultFormats) {
+        @NonNull List<@NonNull String> returnExamples,
+        @NonNull List<@NonNull ToolResultFormat> resultFormats) {
 
     /** Copies and orders schema and prompt-side collections. */
     public ToolDefinition {

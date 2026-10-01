@@ -3,7 +3,7 @@ package top.focess.veto.builtin.memory;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 
-/** Host capability for adding, promoting and forgetting memories. */
+/** Builtin memory mutations bound to a host-authorized invocation. */
 public interface MemoryWriteCapability {
     /** Stores new content and returns its identifier. */
     @NonNull MemoryId add(@NonNull String content, UUID projectId);

@@ -6,6 +6,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import top.focess.veto.api.agent.tool.ToolErrorCode;
 import top.focess.veto.api.agent.tool.ToolResult;
 import top.focess.veto.api.agent.tool.ToolResultFormat;
@@ -25,7 +26,7 @@ import top.focess.veto.api.llm.ToolResultPresentationMode;
 public record TurnRecord(
         int turnNumber,
         @NonNull TurnType type,
-        @NonNull Map<String, Object> payload,
+        @NonNull Map<@NonNull String, ? extends @Nullable Object> payload,
         Instant timestamp,
         @NonNull List<UsageMeasurement> llmUsage) {
 
@@ -36,7 +37,7 @@ public record TurnRecord(
     public TurnRecord(
             int turnNumber,
             @NonNull TurnType type,
-            @NonNull Map<String, Object> payload,
+            @NonNull Map<@NonNull String, ? extends @Nullable Object> payload,
             Instant timestamp) {
         this(
                 turnNumber,
@@ -98,7 +99,7 @@ public record TurnRecord(
      */
     public static @NonNull TurnRecord breakerContinuation(
             int turnNumber, @NonNull String content, @NonNull String resumeContext) {
-        Map<String, Object> payload = new LinkedHashMap<>();
+        Map<@NonNull String, @Nullable Object> payload = new LinkedHashMap<>();
         payload.put("content", content);
         payload.put("resume_context", resumeContext);
         return new TurnRecord(turnNumber, TurnType.USER_PROMPT, payload, null);
@@ -127,7 +128,7 @@ public record TurnRecord(
 
     /** A tool call the agent issued ({@code payload.call_id/tool_name/args}). */
     public static @NonNull TurnRecord toolCall(int turnNumber, @NonNull ToolCall call) {
-        Map<String, Object> p = new LinkedHashMap<>();
+        Map<@NonNull String, @Nullable Object> p = new LinkedHashMap<>();
         p.put("call_id", call.callId());
         p.put("tool_name", call.toolName());
         p.put("args", call.args());
@@ -171,7 +172,7 @@ public record TurnRecord(
             @NonNull ToolResult result,
             @NonNull String presentedContent,
             @NonNull ToolResultPresentationMode presentation) {
-        Map<String, Object> payload =
+        Map<@NonNull String, @Nullable Object> payload =
                 toolResponsePayload(
                         result.callId(),
                         result.status(),
@@ -197,7 +198,7 @@ public record TurnRecord(
                 null);
     }
 
-    private static @NonNull Map<String, Object> toolResponsePayload(
+    private static @NonNull Map<@NonNull String, @Nullable Object> toolResponsePayload(
             String callId,
             @NonNull ToolResultStatus status,
             @NonNull ToolResultFormat format,
@@ -205,7 +206,7 @@ public record TurnRecord(
             ToolErrorCode errorCode) {
         // callId is OPTIONAL (absent for synthetic observations — plan-escape, llm-error,
         // tool-not-found), so Map.of's null-hostile builder would throw; use a null-tolerant map.
-        Map<String, Object> p = new LinkedHashMap<>();
+        Map<@NonNull String, @Nullable Object> p = new LinkedHashMap<>();
         if (callId != null) {
             p.put("call_id", callId);
         }
@@ -235,7 +236,7 @@ public record TurnRecord(
     /** A rewind that also re-injects a recalled brief as the next user message. */
     public static @NonNull TurnRecord rewind(
             int turnNumber, int fromIndex, @NonNull String content) {
-        Map<String, Object> payload = new LinkedHashMap<>();
+        Map<@NonNull String, @Nullable Object> payload = new LinkedHashMap<>();
         payload.put("from_index", fromIndex);
         payload.put("content", content);
         return new TurnRecord(turnNumber, TurnType.REWIND, payload, null);
@@ -259,7 +260,7 @@ public record TurnRecord(
             @NonNull String systemPrompt,
             @NonNull String provider,
             @NonNull String model) {
-        Map<String, Object> payload = new LinkedHashMap<>();
+        Map<@NonNull String, @Nullable Object> payload = new LinkedHashMap<>();
         payload.put("role", role);
         payload.put("system_prompt", systemPrompt);
         payload.put("provider", provider);

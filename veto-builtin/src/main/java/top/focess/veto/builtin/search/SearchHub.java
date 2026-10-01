@@ -108,7 +108,9 @@ public final class SearchHub extends PluginService {
         if (builtin != null) {
             try {
                 return SearchProtocol.encodeResults(
-                        builtin.search(parsed.query(), parsed.options()));
+                        SearchPolicy.apply(
+                                builtin.search(parsed.query(), parsed.options()),
+                                parsed.options()));
             } catch (HttpTimeoutException failure) {
                 throw new ServiceException(ServiceException.Code.TIMEOUT);
             } catch (Exception failure) {
@@ -124,7 +126,8 @@ public final class SearchHub extends PluginService {
             throw new ServiceException(ServiceException.Code.UNAVAILABLE);
         JsonValue result = handle.invoke(SearchProtocol.request(parsed.query(), parsed.options()));
         try {
-            return SearchProtocol.encodeResults(SearchProtocol.results(result));
+            return SearchProtocol.encodeResults(
+                    SearchPolicy.apply(SearchProtocol.results(result), parsed.options()));
         } catch (IllegalArgumentException failure) {
             throw new ServiceException(ServiceException.Code.FAILED);
         }

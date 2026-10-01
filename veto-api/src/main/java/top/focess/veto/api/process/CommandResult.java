@@ -15,7 +15,12 @@ public record CommandResult(
         int exitCode,
         @NonNull String stdout,
         @NonNull String stderr,
-        @NonNull List<Integer> perCommand) {
+        @NonNull List<@NonNull Integer> perCommand) {
+
+    /** Captures the exit codes as an immutable result snapshot. */
+    public CommandResult {
+        perCommand = List.copyOf(perCommand);
+    }
 
     /**
      * Checks whether the command chain exited successfully.

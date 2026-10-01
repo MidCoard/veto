@@ -9,6 +9,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -32,6 +33,7 @@ import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.builtin.workspace.DeletePathTool;
+import top.focess.veto.builtin.workspace.GrepSearchTool;
 import top.focess.veto.builtin.workspace.ViewFileTool;
 import top.focess.veto.builtin.workspace.WriteToFileTool;
 import top.focess.veto.integration.plugins.PluginTestSupport;
@@ -39,6 +41,44 @@ import top.focess.veto.integration.plugins.PluginTestSupport;
 class WorkspaceFilePolicyTest {
     private static final @NonNull UUID USER = UUID.randomUUID();
     private static final @NonNull UUID SESSION = UUID.randomUUID();
+
+    @Test
+    void grepStopsAtOversizedInputLineAndRetainsExplicitIncompleteEvidence(
+            @TempDir @NonNull Path root) throws Exception {
+        var file =
+                Files.writeString(
+                        root.resolve("huge.txt"),
+                        "needle\r\n" + "x".repeat(1_000_001) + "needle\n");
+        var tool = new GrepSearchTool();
+        bind(tool, Map.of("absolutePath", file.toString(), "query", "needle"), root, Set.of());
+        String result =
+                tool.execute(
+                        new GrepSearchTool.Args(file.toString(), "needle", null, null),
+                        CapabilityResolver.require(WorkspaceReadCapability.class));
+        assertTrue(result.contains(":1: needle\n"), result);
+        assertTrue(
+                result.contains(
+                        "[truncated: line limit 1000000 chars; remaining input was not searched]"),
+                result);
+        assertFalse(result.contains(":2:"));
+    }
+
+    @Test
+    void grepDiscardsEarlierMatchesWhenALaterLineIsNotUtf8(@TempDir @NonNull Path root)
+            throws Exception {
+        var file = root.resolve("invalid.txt");
+        byte[] prefix = ("needle\n" + "safe\n".repeat(2000)).getBytes(StandardCharsets.UTF_8);
+        byte[] bytes = Arrays.copyOf(prefix, prefix.length + 1);
+        bytes[prefix.length] = (byte) 0xff;
+        Files.write(file, bytes);
+        var tool = new GrepSearchTool();
+        bind(tool, Map.of("absolutePath", file.toString(), "query", "needle"), root, Set.of());
+        assertEquals(
+                "(no matches)",
+                tool.execute(
+                        new GrepSearchTool.Args(file.toString(), "needle", null, null),
+                        CapabilityResolver.require(WorkspaceReadCapability.class)));
+    }
 
     @Test
     void viewFileCapturesBeforeLineRendering(@TempDir @NonNull Path root) throws Exception {

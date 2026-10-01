@@ -35,7 +35,7 @@ public interface PluginHost {
     /**
      * Host-derived identity of an admitted tool call.
      *
-     * @param owner authenticated owner ID
+     * @param owner authenticated login name (not the immutable storage account ID)
      * @param sessionId selected session ID
      * @param agentId executing agent ID
      * @param requestId durable request ID, or {@code null} when none exists
@@ -48,7 +48,7 @@ public interface PluginHost {
             String requestId,
             @NonNull String callId) {
         /**
-         * Returns the authenticated owner, session, and agent as one identity value.
+         * Returns the authenticated login name, session, and agent as one host identity value.
          *
          * @return identity of this admitted invocation; the value itself grants no authority
          */
@@ -69,7 +69,7 @@ public interface PluginHost {
     /**
      * Hint only; host recovery, selection, pause, approval, and budget gates remain authoritative.
      *
-     * @param owner owner containing the target agent
+     * @param owner authenticated login name containing the target agent
      * @param sessionId target session
      * @param agentId target agent
      */
@@ -101,7 +101,8 @@ public interface PluginHost {
     /**
      * Publishes to the session identified by one scope value after host authorization.
      *
-     * @param scope identity of the target owner and session
+     * @param scope host identity of the target login name and session; the complete identity is
+     *     checked by the bound host, and a storage grant's account-ID scope is not interchangeable
      * @param topic plugin-defined event topic
      * @param facts JSON event facts
      */
@@ -109,7 +110,7 @@ public interface PluginHost {
             Scope.@NonNull SessionScope scope,
             @NonNull String topic,
             JsonValue.@NonNull ObjectValue facts) {
-        publish(scope.session(), topic, facts);
+        throw new IllegalStateException("Scoped plugin event publication is unavailable");
     }
 
     /**
@@ -123,10 +124,11 @@ public interface PluginHost {
     /**
      * Invalidates a resource in the session identified by one scope value after host authorization.
      *
-     * @param scope identity of the target owner and session
+     * @param scope host identity of the target login name and session; the complete identity is
+     *     checked by the bound host, and a storage grant's account-ID scope is not interchangeable
      * @param resource plugin-defined resource identifier
      */
     default void invalidate(Scope.@NonNull SessionScope scope, @NonNull String resource) {
-        invalidate(scope.session(), resource);
+        throw new IllegalStateException("Scoped plugin invalidation is unavailable");
     }
 }

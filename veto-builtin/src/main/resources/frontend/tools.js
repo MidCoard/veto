@@ -624,7 +624,7 @@ function parseGrepSearchArgs(args) {
   };
 }
 var GREP_NO_MATCHES = "(no matches)";
-var GREP_ROW_RE = /^(.*):(\d+): (.*)$/;
+var GREP_ROW_RE = /^(.*?):(\d+): (.*)$/;
 function parseGrepContent(text) {
   const rawLines = text.replace(/\n$/, "").split("\n");
   if (rawLines.length === 1 && rawLines[0] === "") return [];

@@ -44,7 +44,16 @@ import top.focess.veto.util.Nullness;
 import top.focess.veto.vault.KeysteadVault;
 import top.focess.veto.vault.UserContext;
 
-/** Public agent facade and single-thread action-queue coordinator. */
+/**
+ * Public agent facade and single-thread action-queue coordinator.
+ *
+ * <p>Supports concurrent request submission, cancellation and observation through the respective
+ * entry points, but is not safe for arbitrary concurrent method calls. Exactly one thread may run
+ * {@link #run()}; model/turn execution remains confined to that loop. Attach dependencies before
+ * starting it. Runtime-monitor transitions, the concurrent action queue and independently guarded
+ * history/waits coordinate external callers. Event and completion callbacks execute inline on their
+ * producer's thread; no global callback serialization is provided.
+ */
 public final class AgentRunner implements Runnable {
     private final @NonNull AgentRuntimeState runtime;
     private final @NonNull ModelFlowStack flowStack = new ModelFlowStack();

@@ -11,11 +11,13 @@ import java.util.jar.JarOutputStream;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.springframework.test.util.ReflectionTestUtils;
 import top.focess.veto.api.plugin.PluginState;
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
 import top.focess.veto.api.plugin.contribution.ContributionId;
 import top.focess.veto.api.plugin.contribution.ContributionPoint;
+import top.focess.veto.api.plugin.contribution.PluginContributionsDirectory;
 import top.focess.veto.plugin.runtime.PluginClassLoader;
 
 class InstalledPluginIntegrationTest {
@@ -148,6 +150,16 @@ class InstalledPluginIntegrationTest {
             manager.setEnabledOnNextStart("sample.point", false);
             assertFalse(manager.desiredEnabled("sample.point"));
             assertEquals(1, manager.catalog().entries(point).size());
+            PluginContributionsDirectory directory =
+                    ReflectionTestUtils.invokeMethod(
+                            manager, "contributionsFor", manager.plugin("sample.consumer"));
+            if (directory == null) throw new AssertionError("Missing contribution directory");
+            var visible = directory.entries(point.id(), 1);
+            assertEquals(1, visible.size());
+            assertSame(visible.getFirst(), directory.entries(point.id(), 1).getFirst());
+            assertTrue(directory.entries(point.id(), 2).isEmpty());
+            manager.plugin("sample.point").close();
+            assertTrue(directory.entries(point.id(), 1).isEmpty());
         }
     }
 

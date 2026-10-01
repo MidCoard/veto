@@ -1,7 +1,10 @@
 package top.focess.veto.api.plugin.contract;
 
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import top.focess.veto.api.agent.control.SourceEvidence;
 import top.focess.veto.api.llm.VetoResponse;
 
@@ -14,12 +17,15 @@ public abstract class ModelResponsePolicy {
      * Structured correction prompt requested after policy rejection.
      *
      * @param resource host-resolved prompt resource
-     * @param data immutable interpolation data copied on construction
+     * @param data immutable interpolation data copied on construction; values may represent JSON
+     *     null
      */
-    public record Correction(@NonNull String resource, @NonNull Map<String, Object> data) {
+    public record Correction(
+            @NonNull String resource,
+            @NonNull Map<@NonNull String, ? extends @Nullable Object> data) {
         /** Defensively copies the interpolation data. */
         public Correction {
-            data = Map.copyOf(data);
+            data = Collections.unmodifiableMap(new LinkedHashMap<>(data));
         }
     }
 

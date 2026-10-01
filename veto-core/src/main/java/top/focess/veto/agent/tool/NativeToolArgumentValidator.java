@@ -10,6 +10,7 @@ import java.lang.reflect.AnnotatedType;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.RecordComponent;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.LinkedHashSet;
@@ -50,7 +51,6 @@ public final class NativeToolArgumentValidator {
             @NonNull String name,
             @NonNull ValueRule value,
             RequiredRule required,
-            StringRule string,
             UniqueRule unique) {}
 
     private record StringRule(
@@ -61,7 +61,11 @@ public final class NativeToolArgumentValidator {
     private record RequiredRule(
             @NonNull String field, @NonNull List<@NonNull String> values, boolean rejectBlank) {}
 
-    private record ValueRule(boolean nonNull, List<@NonNull FieldRule> fields, ValueRule element) {}
+    private record ValueRule(
+            boolean nonNull,
+            List<@NonNull FieldRule> fields,
+            ValueRule element,
+            StringRule string) {}
 
     private NativeToolArgumentValidator() {}
 
@@ -194,14 +198,6 @@ public final class NativeToolArgumentValidator {
                                     conditional.field(),
                                     List.of(conditional.values()),
                                     conditional.rejectBlank());
-            StringConstraint text = component.getAnnotation(StringConstraint.class);
-            StringRule string =
-                    text == null
-                            ? null
-                            : new StringRule(
-                                    text.rejectBlank(),
-                                    List.of(text.forbidden()),
-                                    text.forbiddenIgnoreCase());
             UniqueBy uniqueBy = component.getAnnotation(UniqueBy.class);
             UniqueRule unique =
                     uniqueBy == null
@@ -211,7 +207,7 @@ public final class NativeToolArgumentValidator {
             if (unique != null) {
                 if (!(component.getGenericType() instanceof ParameterizedType collection)
                         || !(collection.getRawType() instanceof Class<?> raw)
-                        || !java.util.Collection.class.isAssignableFrom(raw)
+                        || !Collection.class.isAssignableFrom(raw)
                         || !(collection.getActualTypeArguments()[0] instanceof Class<?> element)
                         || !element.isRecord())
                     throw new IllegalArgumentException(
@@ -227,15 +223,21 @@ public final class NativeToolArgumentValidator {
             fields.add(
                     new FieldRule(
                             component.getName(),
-                            valueRule(component.getAnnotatedType()),
+                            valueRule(
+                                    component.getAnnotatedType(),
+                                    component.getAnnotation(StringConstraint.class)),
                             required,
-                            string,
                             unique));
         }
         return List.copyOf(fields);
     }
 
     private static @NonNull ValueRule valueRule(@NonNull AnnotatedType type) {
+        return valueRule(type, null);
+    }
+
+    private static @NonNull ValueRule valueRule(
+            @NonNull AnnotatedType type, StringConstraint componentConstraint) {
         List<FieldRule> fields = null;
         ValueRule element = null;
         if (type.getType() instanceof Class<?> concrete && concrete.isRecord()) {
@@ -245,10 +247,20 @@ public final class NativeToolArgumentValidator {
         } else if (type instanceof AnnotatedParameterizedType parameterized
                 && type.getType() instanceof ParameterizedType generic
                 && generic.getRawType() instanceof Class<?> raw
-                && java.util.Collection.class.isAssignableFrom(raw)) {
+                && Collection.class.isAssignableFrom(raw)) {
             element = valueRule(parameterized.getAnnotatedActualTypeArguments()[0]);
         }
-        return new ValueRule(type.isAnnotationPresent(NonNull.class), fields, element);
+        StringConstraint text = type.getAnnotation(StringConstraint.class);
+        // Legacy plugin records expose the constraint only through RecordComponent.
+        if (text == null) text = componentConstraint;
+        StringRule string =
+                text == null
+                        ? null
+                        : new StringRule(
+                                text.rejectBlank(),
+                                List.of(text.forbidden()),
+                                text.forbiddenIgnoreCase());
+        return new ValueRule(type.isAnnotationPresent(NonNull.class), fields, element, string);
     }
 
     private static void validateRecordRules(
@@ -262,8 +274,6 @@ public final class NativeToolArgumentValidator {
             if (nestedValue != null) {
                 validateAnnotatedValue(
                         nestedValue, field.value(), childPath(path, field.name()), issues);
-                validateStringRule(
-                        nestedValue, field.string(), childPath(path, field.name()), issues);
                 validateUniqueRule(
                         nestedValue, field.unique(), childPath(path, field.name()), issues);
             }
@@ -344,6 +354,7 @@ public final class NativeToolArgumentValidator {
             }
             return;
         }
+        validateStringRule(value, rule.string(), path, issues);
         var fields = rule.fields();
         var element = rule.element();
         if (fields != null && value.isObject()) {

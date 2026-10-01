@@ -8,6 +8,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import top.focess.veto.agent.RecordTokenCounter;
 import top.focess.veto.agent.RecordUsage;
 import top.focess.veto.agent.UsageMeasurement;
@@ -17,7 +18,7 @@ public record SessionRecord(
         @NonNull String agentId,
         int turnNumber,
         @NonNull String type,
-        @NonNull Map<String, Object> payload,
+        @NonNull Map<@NonNull String, ? extends @Nullable Object> payload,
         @NonNull Instant timestamp,
         boolean active,
         int rewoundByTurnNumber,
@@ -29,7 +30,7 @@ public record SessionRecord(
             @NonNull String agentId,
             int turnNumber,
             @NonNull String type,
-            @NonNull Map<String, Object> payload,
+            @NonNull Map<@NonNull String, ? extends @Nullable Object> payload,
             @NonNull Instant timestamp,
             boolean active,
             int rewoundByTurnNumber,

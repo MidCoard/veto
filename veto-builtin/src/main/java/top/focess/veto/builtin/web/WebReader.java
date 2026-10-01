@@ -75,7 +75,7 @@ public final class WebReader {
                         encoded = mapper.writeValueAsString(evidence);
                     } catch (Exception failure) {
                         return ToolErrors.failure(
-                                ToolErrorCode.READER.READER_OUTPUT,
+                                ToolErrorCode.RESULT.ENCODING_FAILED,
                                 "Reader output: the reader result could not be encoded.");
                     }
                 } catch (InterruptedException failure) {
@@ -85,7 +85,7 @@ public final class WebReader {
                             "Cancelled: the web reader was cancelled.");
                 } catch (TimeoutException failure) {
                     return ToolErrors.failure(
-                            ToolErrorCode.READER.READER_TIMEOUT,
+                            ToolErrorCode.NETWORK.TIMEOUT,
                             "Reader timeout: the web reader exceeded its time budget.");
                 } catch (ExecutionException failure) {
                     return ToolErrors.failure(

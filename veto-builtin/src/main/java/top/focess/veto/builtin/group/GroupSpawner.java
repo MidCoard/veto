@@ -9,7 +9,15 @@ import java.util.concurrent.ConcurrentHashMap;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.plugin.agent.AgentHost;
 
-/** Plugin-owned member lifetime; all execution authority is carried by host child handles. */
+/**
+ * Plugin-owned member lifetime; all execution authority is carried by host child handles.
+ *
+ * <p>The spawner monitor serializes member creation, including host child opening and polling
+ * startup. Concurrent maps support lookup while member cancellation and shutdown run. Group
+ * orchestration must exclude new provisioning during group shutdown through its per-group lock; map
+ * concurrency alone does not make creation atomic with stopping. Exit waits occur outside the
+ * spawner monitor, and child callbacks must not wait for another creation on that monitor.
+ */
 public final class GroupSpawner implements GroupOrchestrator.MateProvisioner, AutoCloseable {
     /** Opens host child agents for new group members. */
     @FunctionalInterface

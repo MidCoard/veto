@@ -18,6 +18,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
@@ -252,7 +253,7 @@ class NativeReasoningWireTest {
             int number = 4;
             for (var call : calls) {
                 var turn = TurnRecord.toolCall(number++, call);
-                var payload = new LinkedHashMap<>(turn.payload());
+                var payload = new LinkedHashMap<@NonNull String, @Nullable Object>(turn.payload());
                 payload.put("model_call_id", "request-1");
                 history.add(
                         MAPPER.readValue(

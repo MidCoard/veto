@@ -23,11 +23,10 @@ import top.focess.veto.builtin.memory.embedder.Embedder;
  * <p>Activated by setting {@code
  * veto.plugins.configuration[top.focess.builtin][memory-store]=pgvector}. <b>Requires PostgreSQL
  * with the pgvector extension installed</b> (the {@code vector} type and {@code <=>} operator are
- * not part of core Postgres and are absent from the H2 test database). On startup it
- * self-provisions the extension + the {@code pgvector_memories} table (guarded — if pgvector is
- * unavailable it logs and the store surfaces errors on use rather than failing the context load).
- * It is therefore <b>not exercised by the H2 test suite</b>, consistent with {@link JpaMemoryStore}
- * (also untested); it is verified against a real Postgres+pgvector in deployment.
+ * not part of core Postgres and are absent from the H2 test database). The trusted persistence
+ * factory provisions the extension and {@code pgvector_memories} table when selecting this backend.
+ * Provisioning failures are logged and surfaced on use. SQL-level tests do not establish that a
+ * production PostgreSQL deployment has the required extension and schema.
  *
  * <p>Embedding is delegated to the injected {@link Embedder} (the local hash implementation by
  * default, a provider embedder when configured); the {@code vector(N)} column dimension tracks

@@ -104,22 +104,6 @@ class ProcessToolsTest {
         }
     }
 
-    @Test
-    void multipleBackgroundCommandsAreRejectedDuringPreparation() {
-        var tool = new RunTaskTool();
-        var args =
-                new RunTaskTool.Args(
-                        List.of(
-                                new RunCommandTool.CommandInput("a", List.of()),
-                                new RunCommandTool.CommandInput("b", List.of())),
-                        false,
-                        0);
-        var invocation =
-                new PluginHost.Invocation(
-                        "owner", UUID.randomUUID().toString(), "agent", null, "call");
-        assertThrows(IllegalArgumentException.class, () -> tool.prepare(args, invocation));
-    }
-
     public static final class Echo {
         public static void main(String[] args) throws IOException {
             var reader = new BufferedReader(new InputStreamReader(System.in));

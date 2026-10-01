@@ -64,6 +64,31 @@ class WebFetchExecutorLoopTest {
     }
 
     @Test
+    void privateReaderRejectsOversizedFinishAtRealHostPreflightAndCanCorrect() throws Exception {
+        var invalid =
+                call(
+                        "finish_read",
+                        Map.of(
+                                "outcome",
+                                "complete",
+                                "answer",
+                                "x".repeat(4001),
+                                "evidenceIds",
+                                List.of("s1"),
+                                "limitations",
+                                List.of()));
+        String result =
+                execute(tool(script(List.of(fetch(), read(), invalid, finish("s1"))), 7, 10));
+        assertEquals("complete", mapper.readTree(result).path("outcome").asText());
+        assertEquals(4, requests.size());
+        String correction = requests.get(3).messages().getLast().content();
+        assertTrue(correction.contains("answer"), correction);
+        assertTrue(correction.contains("parameter 'answer' is too long"), correction);
+        assertFalse(correction.contains("xxxx"));
+        verify(access).fetch();
+    }
+
+    @Test
     void smallSelectedModelStopsBeforeProviderOrNetworkWithoutTierFallback() {
         WebFetchTool tool = tool(script(List.of(fetch(), read(), finish("s1"))), 6, 10);
         when(models.resolve("test-owner", ModelTier.LOW))
@@ -431,6 +456,7 @@ class WebFetchExecutorLoopTest {
         WebFetchTool tool = tool(blocking(interrupted, worker, new CountDownLatch(1)), 4, 1);
         ToolExecutionException error =
                 assertThrows(ToolExecutionException.class, () -> execute(tool));
+        assertEquals(ToolErrorCode.NETWORK.TIMEOUT, error.errorCode());
         String message = error.content();
         assertTrue(message.contains("time budget"));
         assertTrue(interrupted.await(3, TimeUnit.SECONDS));

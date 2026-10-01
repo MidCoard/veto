@@ -1,8 +1,6 @@
 package top.focess.veto.builtin.group;
 
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
-import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -211,7 +209,7 @@ public final class GroupTools {
         @Override
         public @NonNull String execute(
                 @NonNull Args args, @NonNull GroupControlCapability capability) {
-            GroupSnapshot group = capability.snapshot();
+            GroupSnapshot group = capability.snapshot(getName());
             if (group == null) {
                 return ToolErrors.failure(
                         ToolErrorCode.GROUP.NO_ACTIVE_GROUP,
@@ -328,7 +326,7 @@ public final class GroupTools {
         @Override
         public @NonNull String execute(
                 @NonNull Args args, @NonNull GroupControlCapability capability) {
-            GroupSnapshot initial = capability.snapshot();
+            GroupSnapshot initial = capability.snapshot(getName());
             if (initial == null) {
                 return ToolErrors.failure(
                         ToolErrorCode.GROUP.NO_ACTIVE_GROUP,
@@ -459,7 +457,7 @@ public final class GroupTools {
         @Override
         public @NonNull String execute(
                 @NonNull Args args, @NonNull GroupControlCapability capability) {
-            GroupSnapshot group = capability.snapshot();
+            GroupSnapshot group = capability.snapshot(getName());
             if (group == null) {
                 return ToolErrors.failure(
                         ToolErrorCode.GROUP.NO_ACTIVE_GROUP,
@@ -521,7 +519,7 @@ public final class GroupTools {
         long next = since;
         for (BlackboardMessage message : messages) {
             next = Math.max(next, message.turnSeq());
-            var report = resultFromMate(message);
+            var report = GroupOrchestrator.resultFromMate(message);
             String payload =
                     report instanceof DagNode.ResultSuccess success
                             ? success.summary()
@@ -550,34 +548,5 @@ public final class GroupTools {
                         observations,
                         "next",
                         next));
-    }
-
-    static DagNode.@NonNull NodeResult resultFromMate(@NonNull BlackboardMessage message) {
-        String[] parts = message.payload().split(":", 3);
-        if (message.type() == BlackboardMessage.MessageType.ACCEPT
-                && parts.length == 3
-                && "accept-base64".equals(parts[1])) {
-            try {
-                String summary =
-                        new String(Base64.getDecoder().decode(parts[2]), StandardCharsets.UTF_8);
-                return summary.isBlank()
-                        ? new DagNode.ResultFailure("Mate returned an empty report.", List.of())
-                        : new DagNode.ResultSuccess(summary);
-            } catch (IllegalArgumentException e) {
-                return new DagNode.ResultFailure("Mate returned an undecodable report.", List.of());
-            }
-        }
-        if (message.type() == BlackboardMessage.MessageType.FEEDBACK && parts.length == 3) {
-            return new DagNode.ResultFailure(parts[2].strip(), List.of());
-        }
-        if (message.type() == BlackboardMessage.MessageType.STATUS) {
-            return new DagNode.ResultFailure(
-                    parts.length == 3 ? parts[2].strip() : message.payload(), List.of());
-        }
-        if (message.type() == BlackboardMessage.MessageType.ACCEPT) {
-            return new DagNode.ResultFailure(
-                    "Mate returned an invalid completion message.", List.of());
-        }
-        return new DagNode.ResultNone();
     }
 }

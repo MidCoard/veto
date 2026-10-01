@@ -19,7 +19,16 @@ import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.api.process.ProcessHost;
 
-/** Volatile builtin task state. The host alone starts and authorizes process effects. */
+/**
+ * Volatile builtin task state. The host alone starts and authorizes process effects.
+ *
+ * <p>Tool and lifecycle callers overlap virtual output/input workers. The registry monitor
+ * serializes start against close; concurrent task lookup remains available during draining.
+ * Per-task line and input monitors protect their bounded buffers, and the task monitor makes exit
+ * notification occur once. Process state is published through volatile fields. Listener callbacks
+ * can run under the registry or exit monitor and must not wait for a drainer or acquire those
+ * monitors from another thread. Lifecycle admission supplies revocation for owner/session cleanup.
+ */
 public final class BackgroundTasks implements AutoCloseable {
     private static final int MAX_LINES = 5000;
     private static final int MAX_LINE_BYTES = 65536;

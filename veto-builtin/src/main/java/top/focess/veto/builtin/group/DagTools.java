@@ -159,7 +159,7 @@ public final class DagTools {
         @Override
         public @NonNull String execute(
                 @NonNull Args args, @NonNull GroupControlCapability capability) {
-            if (capability.snapshot() == null)
+            if (capability.snapshot(getName()) == null)
                 return ToolErrors.failure(
                         ToolErrorCode.GROUP.NO_ACTIVE_GROUP,
                         "Node not created: no active group in your context. create_node is a Leader"
@@ -292,7 +292,7 @@ public final class DagTools {
         @Override
         public @NonNull String execute(
                 @NonNull Args args, @NonNull GroupControlCapability capability) {
-            if (capability.snapshot() == null)
+            if (capability.snapshot(getName()) == null)
                 return ToolErrors.failure(
                         ToolErrorCode.GROUP.NO_ACTIVE_GROUP,
                         "Node not removed: no active group in your context. remove_node is a Leader"

@@ -1,16 +1,14 @@
 package top.focess.veto.builtin.web;
 
-import java.net.URI;
 import java.net.http.HttpTimeoutException;
-import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.tool.Doc;
 import top.focess.veto.api.agent.tool.NativeTool;
 import top.focess.veto.api.agent.tool.ParamCategory;
 import top.focess.veto.api.agent.tool.SecurityHint;
+import top.focess.veto.api.agent.tool.StringConstraint;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.agent.tool.ToolDoc;
 import top.focess.veto.api.agent.tool.ToolErrorCode;
@@ -18,6 +16,7 @@ import top.focess.veto.api.agent.tool.ToolErrors;
 import top.focess.veto.api.agent.tool.ToolResultFormat;
 import top.focess.veto.api.agent.tool.ToolSecurity;
 import top.focess.veto.builtin.search.SearchOptions;
+import top.focess.veto.builtin.search.SearchPolicy;
 import top.focess.veto.builtin.search.SearchProvider;
 import top.focess.veto.builtin.search.SearchResult;
 
@@ -110,7 +109,13 @@ public final class WebSearchTool extends NativeTool<WebSearchTool.Args> {
 
     /** Model-facing arguments of {@code web_search}. */
     public record Args(
-            @SecurityHint(ParamCategory.GENERIC) @Doc("Search query (at least 2 characters).")
+            @StringConstraint(
+                            minLength = 2,
+                            rejectBlank = true,
+                            pattern =
+                                    "(?s)^\\p{javaWhitespace}*\\P{javaWhitespace}.*\\P{javaWhitespace}\\p{javaWhitespace}*$")
+                    @SecurityHint(ParamCategory.GENERIC)
+                    @Doc("Search query (at least 2 characters).")
                     @NonNull String query,
             @SecurityHint(ParamCategory.GENERIC)
                     @Doc("Only include results from these domains (optional).")
@@ -132,25 +137,16 @@ public final class WebSearchTool extends NativeTool<WebSearchTool.Args> {
     @Override
     public @NonNull String execute(@NonNull Args args) {
         String query = args.query();
-        if (query.isBlank() || query.strip().length() < 2) {
-            return ToolErrors.failure(
-                    ToolErrorCode.VALIDATION.INVALID_ARGUMENTS,
-                    "Invalid arguments: query must be at least 2 characters.");
-        }
         SearchOptions options =
                 new SearchOptions(
                         args.allowed_domains(), args.blocked_domains(), DEFAULT_MAX_RESULTS);
         try {
             List<@NonNull SearchResult> results =
-                    applyDomainFilters(provider.search(query, options), options);
+                    SearchPolicy.apply(provider.search(query, options), options);
             if (results.isEmpty()) {
                 return "(no results)";
             }
-            List<@NonNull SearchResult> bounded =
-                    results.size() <= DEFAULT_MAX_RESULTS
-                            ? results
-                            : results.subList(0, DEFAULT_MAX_RESULTS);
-            return format(bounded);
+            return format(results);
         } catch (IllegalArgumentException e) {
             String diagnostic = e.getMessage();
             return ToolErrors.failure(
@@ -209,56 +205,5 @@ public final class WebSearchTool extends NativeTool<WebSearchTool.Args> {
                     + " chars]";
         }
         return sb.toString();
-    }
-
-    private static @NonNull List<@NonNull SearchResult> applyDomainFilters(
-            @NonNull List<@NonNull SearchResult> results, @NonNull SearchOptions options) {
-        List<@NonNull String> allowed = options.allowedDomains();
-        List<@NonNull String> blocked = options.blockedDomains();
-        if ((allowed == null || allowed.isEmpty()) && (blocked == null || blocked.isEmpty())) {
-            return results;
-        }
-        List<@NonNull SearchResult> filtered = new ArrayList<>();
-        for (SearchResult result : results) {
-            String host = hostOf(result.url());
-            if (host == null || (blocked != null && matchesAny(host, blocked))) {
-                continue;
-            }
-            if (allowed != null && !allowed.isEmpty() && !matchesAny(host, allowed)) {
-                continue;
-            }
-            filtered.add(result);
-        }
-        return List.copyOf(filtered);
-    }
-
-    private static boolean matchesAny(
-            @NonNull String host, @NonNull List<@NonNull String> domains) {
-        for (String candidate : domains) {
-            if (candidate == null) {
-                continue;
-            }
-            String domain = candidate.strip().toLowerCase(Locale.ROOT);
-            if (domain.startsWith("www.")) {
-                domain = domain.substring(4);
-            }
-            if (!domain.isEmpty() && (host.equals(domain) || host.endsWith("." + domain))) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private static String hostOf(@NonNull String url) {
-        try {
-            String host = URI.create(url).getHost();
-            if (host == null) {
-                return null;
-            }
-            String normalized = host.toLowerCase(Locale.ROOT);
-            return normalized.startsWith("www.") ? normalized.substring(4) : normalized;
-        } catch (IllegalArgumentException e) {
-            return null;
-        }
     }
 }

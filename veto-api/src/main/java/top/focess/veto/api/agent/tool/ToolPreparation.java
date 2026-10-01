@@ -37,11 +37,7 @@ public record ToolPreparation(@NonNull Intent intent, JsonValue.@NonNull ObjectV
         public ProcessIntent {
             commands =
                     commands.stream()
-                            .map(
-                                    command ->
-                                            new Command(
-                                                    command.executable(),
-                                                    List.copyOf(command.args())))
+                            .map(command -> new Command(command.executable(), command.args()))
                             .toList();
             if (commands.isEmpty() || commands.size() > 64 || timeout.isNegative())
                 throw new IllegalArgumentException("Invalid process intent");

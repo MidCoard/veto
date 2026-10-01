@@ -7,9 +7,11 @@ import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.agent.capability.WorkspaceWriteCapability;
 import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.tool.Doc;
+import top.focess.veto.api.agent.tool.NumberConstraint;
 import top.focess.veto.api.agent.tool.ParamCategory;
 import top.focess.veto.api.agent.tool.Required;
 import top.focess.veto.api.agent.tool.SecurityHint;
+import top.focess.veto.api.agent.tool.StringConstraint;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.agent.tool.ToolDoc;
 import top.focess.veto.api.agent.tool.ToolErrorCode;
@@ -105,9 +107,12 @@ public final class ReplaceFileContentTool extends WorkspaceWriteTool<ReplaceFile
     public record Args(
             @SecurityHint(ParamCategory.FILESYSTEM_PATH) @Doc("Absolute path of the file to patch.")
                     @NonNull String absolutePath,
-            @Required @Doc("1-indexed starting line (inclusive).") int startLine,
+            @NumberConstraint(min = 1) @Required @Doc("1-indexed starting line (inclusive).")
+                    int startLine,
             @Required @Doc("1-indexed ending line (inclusive).") int endLine,
-            @SecurityHint(ParamCategory.CODE_CONTENT) @Doc("Exact text range to replace.")
+            @StringConstraint(minLength = 1)
+                    @SecurityHint(ParamCategory.CODE_CONTENT)
+                    @Doc("Exact text range to replace.")
                     @NonNull String targetContent,
             @SecurityHint(ParamCategory.CODE_CONTENT) @Doc("The replacement text.")
                     @NonNull String replacementContent) {}
@@ -125,16 +130,12 @@ public final class ReplaceFileContentTool extends WorkspaceWriteTool<ReplaceFile
     @Override
     public @NonNull String execute(
             @NonNull Args args, @NonNull WorkspaceWriteCapability workspace) {
-        if (args.startLine() < 1 || args.endLine() < args.startLine()) {
+        if (args.endLine() < args.startLine()) {
             return ToolErrors.failure(
                     ToolErrorCode.VALIDATION.INVALID_ARGUMENTS,
                     "Invalid arguments: startLine must be at least 1 and endLine must be at least"
                             + " startLine.");
         }
-        if (args.targetContent().isEmpty())
-            return ToolErrors.failure(
-                    ToolErrorCode.VALIDATION.INVALID_ARGUMENTS,
-                    "Invalid arguments: targetContent must not be empty.");
         try {
             var file = workspace.file(args.absolutePath());
             if (!"file".equals(file.kind()))

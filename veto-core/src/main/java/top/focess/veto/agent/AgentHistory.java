@@ -9,7 +9,15 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import top.focess.veto.memory.TurnLogService;
 
-/** Owns synchronized history snapshots, durable numbering and turn persistence. */
+/**
+ * Owns history snapshots, durable numbering and turn persistence.
+ *
+ * <p>Thread-safe for in-memory history operations: this instance's monitor guards numbering,
+ * appends, usage replacement and snapshot creation. Required persistence runs under that monitor
+ * before publication. Best-effort persistence runs outside it and may finish out of order; a
+ * snapshot does not imply those writes have finished. The session supplier must support the
+ * callers' threads. Snapshots copy the list, not mutable objects nested in a turn's payload.
+ */
 final class AgentHistory {
     private static final @NonNull Logger log =
             LoggerFactory.getLogger("top.focess.veto.agent.AgentHistory");

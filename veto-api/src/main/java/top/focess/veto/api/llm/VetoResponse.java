@@ -23,8 +23,9 @@ public record VetoResponse(
         String message,
         List<@NonNull Citation> citations) {
 
-    /** Copies citation groups when present. */
+    /** Copies decoded calls and citation groups when present. */
     public VetoResponse {
+        if (calls != null) calls = List.copyOf(calls);
         if (citations != null) citations = List.copyOf(citations);
     }
 

@@ -2,9 +2,11 @@ package top.focess.veto.plugin.runtime;
 
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
@@ -24,7 +26,19 @@ import top.focess.veto.api.plugin.service.ServiceException;
 import top.focess.veto.api.plugin.service.ServiceHandler;
 import top.focess.veto.api.plugin.storage.PluginStorage;
 
-/** Atomically bound service directory; implementation objects never escape to consumers. */
+/**
+ * Atomically bound service directory; implementation objects never escape to consumers.
+ *
+ * <p>Threading: bind and revoke serialize replacement of the immutable volatile directory under
+ * this registry's monitor. Readers and retained handles do not take that monitor; each invocation
+ * rechecks generation, visibility and lifecycle admission. Callback registrations use a concurrent
+ * map. Service and callback bodies execute on caller threads outside the registry monitor, and
+ * implementations must support simultaneous admitted calls. Metadata getters used by bind/revoke
+ * run under the monitor and must not block or reenter management. Registration handles should be
+ * released by their owning activation; invocation admission does not itself own those handles.
+ * Revoked activation IDs remain as string-only tombstones for this directory's lifetime; obtaining
+ * another view cannot resurrect registration. They retain no implementation objects or loaders.
+ */
 public final class PluginServiceRegistry {
     private record Key(@NonNull String name, int version) {}
 
@@ -39,6 +53,9 @@ public final class PluginServiceRegistry {
     private final @NonNull ConcurrentHashMap<String, CallbackEntry> callbacks =
             new ConcurrentHashMap<>();
     private final @NonNull AtomicLong generations = new AtomicLong();
+    private final @NonNull Map<String, Set<String>> callbackOwners = new HashMap<>();
+    // Stable activation strings record revocation without retaining plugin classes or loaders.
+    private final @NonNull Set<String> revokedCallbackActivations = new HashSet<>();
     private final @NonNull BiPredicate<@NonNull String, @NonNull String> allowed;
     private final @NonNull ScopeResolver scopeResolver;
 
@@ -94,6 +111,8 @@ public final class PluginServiceRegistry {
 
     /** Revokes one provider's registrations before its lifecycle and classloader are closed. */
     public synchronized void revoke(@NonNull String providerId) {
+        var activation = callbackOwners.remove(providerId);
+        if (activation != null) revokedCallbackActivations.addAll(activation);
         var remaining = new HashMap<Key, Entry>();
         entries.forEach(
                 (key, entry) -> {
@@ -107,7 +126,10 @@ public final class PluginServiceRegistry {
     }
 
     /** Returns the service view authorized for the given calling plugin. */
-    public @NonNull PluginServices forPlugin(@NonNull PluginLifecycle caller) {
+    public synchronized @NonNull PluginServices forPlugin(@NonNull PluginLifecycle caller) {
+        callbackOwners
+                .computeIfAbsent(caller.identity().id(), ignored -> new HashSet<>())
+                .add(caller.bindingId());
         return view(caller);
     }
 
@@ -210,7 +232,16 @@ public final class PluginServiceRegistry {
                 if (caller == null) throw new IllegalStateException("Plugin caller is required");
                 String id = UUID.randomUUID().toString();
                 CallbackEntry registration = new CallbackEntry(handler, caller);
-                callbacks.put(id, registration);
+                synchronized (PluginServiceRegistry.this) {
+                    var state = caller.state();
+                    if ((state != PluginState.INITIALIZING
+                                    && state != PluginState.INITIALIZED
+                                    && state != PluginState.STARTING
+                                    && state != PluginState.ACTIVE)
+                            || revokedCallbackActivations.contains(caller.bindingId()))
+                        throw new IllegalStateException("Plugin callback registration is closed");
+                    callbacks.put(id, registration);
+                }
                 return new CallbackRegistration() {
                     public @NonNull String id() {
                         return id;

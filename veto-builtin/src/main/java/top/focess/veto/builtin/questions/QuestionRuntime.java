@@ -16,7 +16,16 @@ import top.focess.veto.api.event.UserLogoutEvent;
 import top.focess.veto.api.plugin.PluginHost;
 import top.focess.veto.api.plugin.Scope;
 
-/** Plugin-owned, in-memory rendezvous. Only the host supplies invocation identities. */
+/**
+ * Plugin-owned, in-memory rendezvous. Only the host supplies invocation identities.
+ *
+ * <p>Admitted tool calls, frontend answers and lifecycle cancellation may run concurrently. The
+ * runtime monitor serializes registration with close and bulk cancellation; concurrent lookup and
+ * atomic future completion settle a batch at most once. The asking thread waits outside the
+ * monitor. Completing a future may run its callbacks inline, including invalidation; callbacks must
+ * not block waiting for another thread to register or close on the same monitor. Pending views are
+ * weakly consistent snapshots rather than a transaction across all batches.
+ */
 public final class QuestionRuntime extends Listener implements AutoCloseable {
     private final @NonNull PluginHost host;
     private final @NonNull ConcurrentHashMap<Key, Pending> pending = new ConcurrentHashMap<>();

@@ -204,7 +204,6 @@ public final class PluginTestSupport {
                         .execute(
                                 () ->
                                         entry.implementation()
-                                                .handler()
                                                 .handle(
                                                         new Scope.AgentScope(
                                                                 scope.owner(),

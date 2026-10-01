@@ -17,9 +17,16 @@ import org.springframework.stereotype.Component;
  * Sits between the agent loop and the transport layer ({@link WebSocketBus}) and multiplexes
  * per-session {@link DeltaFrame} streams to subscribed consumers.
  *
- * <p>Per-session sequence is monotonic (assigned by the broker on publish). Consumers subscribe to
- * a session id and receive frames in order. The transport layer (e.g. the WebSocket bus) is one
- * such consumer; tests and other transports can subscribe in parallel.
+ * <p>The broker atomically assigns increasing sequence numbers per session. Subscribers run inline
+ * on each publisher's thread, with session subscribers before wildcard subscribers. Concurrent
+ * publications may overlap and reach a subscriber out of sequence; assigning a sequence does not
+ * serialize callback delivery. The transport layer (e.g. the WebSocket bus) is one such consumer;
+ * tests and other transports can subscribe in parallel.
+ *
+ * <p>Subscription collections support concurrent changes and use copy-on-write iteration snapshots.
+ * Consumers own coordination of their shared state. Runtime exceptions from one consumer are logged
+ * and skipped; errors propagate. The broker provides no buffering, replay, acknowledgement, or
+ * remote-delivery guarantee.
  */
 @Component
 public class DeltaBroker {

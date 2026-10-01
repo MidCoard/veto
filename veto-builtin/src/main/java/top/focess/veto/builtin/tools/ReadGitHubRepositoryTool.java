@@ -39,17 +39,15 @@ import top.focess.veto.api.agent.tool.*;
                 """,
         resultContract =
                 """
-                JSON with id, private, full_name and optional description/default_branch. Responses are \
-                filtered before returning. Errors do not include raw service bodies. Failures are plaintext: \
-                `Invalid repository: the repository owner or name is invalid.` (INVALID_REPOSITORY), \
-                `Credential unavailable: ...` (CREDENTIAL_UNAVAILABLE), `GitHub HTTP error: the repository \
-                request returned HTTP <status>.` (GITHUB_HTTP_ERROR), or `Authenticated read failed: the \
-                repository information could not be read.` (AUTHENTICATED_READ_FAILED).\
+                Filtered JSON with id, private, full_name and optional description/default_branch. Plaintext \
+                failures use INVALID_ARGUMENTS, CREDENTIAL_UNAVAILABLE, HTTP_ERROR, or FETCH_FAILED \
+                without raw service bodies.\
                 """,
         errorsAndEdgeCases =
                 """
-                Invalid repository names, unavailable or wrong-owner credentials, HTTP errors, timeouts and \
-                oversized responses fail safely.\
+                Repository-name bounds fail before dispatch with INVALID_ARGUMENTS and field diagnostics; \
+                the paired invalid sample retains its legacy wording. Wrong-owner credentials, timeouts and \
+                oversized responses also fail safely.\
                 """,
         security =
                 """
@@ -106,9 +104,14 @@ public final class ReadGitHubRepositoryTool extends NetworkEgressTool<ReadGitHub
     /** Model-facing arguments of {@code read_github_repository}. */
     public record Args(
             @Doc("Imported credential_ref; never a plaintext token.") @NonNull String credentialRef,
-            @Doc("GitHub repository owner login, not the credential owner.")
+            @StringConstraint(pattern = "^[A-Za-z0-9][A-Za-z0-9-]{0,38}$")
+                    @Doc("GitHub repository owner login, not the credential owner.")
                     @NonNull String repositoryOwner,
-            @Doc("Repository name, without a path or URL.") @NonNull String repositoryName) {}
+            @StringConstraint(
+                            pattern = "^[A-Za-z0-9_.-]{1,100}$",
+                            forbidden = {".", ".."})
+                    @Doc("Repository name, without a path or URL.")
+                    @NonNull String repositoryName) {}
 
     @Override
     public @NonNull String getName() {
@@ -129,13 +132,6 @@ public final class ReadGitHubRepositoryTool extends NetworkEgressTool<ReadGitHub
     @Override
     public @NonNull String execute(
             @NonNull Args args, @NonNull NetworkEgressCapability restricted) {
-        if (!args.repositoryOwner().matches("[A-Za-z0-9][A-Za-z0-9-]{0,38}")
-                || !args.repositoryName().matches("[A-Za-z0-9_.-]{1,100}")
-                || args.repositoryName().equals(".")
-                || args.repositoryName().equals(".."))
-            return ToolErrors.failure(
-                    ToolErrorCode.NETWORK.INVALID_REPOSITORY,
-                    "Invalid repository: the repository owner or name is invalid.");
         var answer = new AtomicReference<String>();
         var status = new AtomicInteger();
         try (var lease = restricted.openImportedCredential("credentialRef", "github")) {
@@ -204,14 +200,14 @@ public final class ReadGitHubRepositoryTool extends NetworkEgressTool<ReadGitHub
         }
         if (status.get() != 0)
             return ToolErrors.failure(
-                    ToolErrorCode.NETWORK.GITHUB_HTTP_ERROR,
+                    ToolErrorCode.NETWORK.HTTP_ERROR,
                     "GitHub HTTP error: the repository request returned HTTP "
                             + status.get()
                             + ".");
         var result = answer.get();
         return result == null
                 ? ToolErrors.failure(
-                        ToolErrorCode.NETWORK.AUTHENTICATED_READ_FAILED,
+                        ToolErrorCode.NETWORK.FETCH_FAILED,
                         "Authenticated read failed: the repository information could not be read.")
                 : result;
     }

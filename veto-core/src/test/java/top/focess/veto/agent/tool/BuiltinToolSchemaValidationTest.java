@@ -1,11 +1,14 @@
 package top.focess.veto.agent.tool;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
@@ -15,6 +18,18 @@ import top.focess.veto.builtin.questions.Option;
 import top.focess.veto.builtin.questions.Question;
 import top.focess.veto.builtin.response.AnswerWithCitationsTool;
 import top.focess.veto.builtin.tools.AskUserTool;
+import top.focess.veto.builtin.tools.ReadGitHubRepositoryTool;
+import top.focess.veto.builtin.tools.RunCommandTool;
+import top.focess.veto.builtin.tools.RunTaskTool;
+import top.focess.veto.builtin.tools.ViewTaskTool;
+import top.focess.veto.builtin.web.FindSectionsTool;
+import top.focess.veto.builtin.web.ReadSectionsTool;
+import top.focess.veto.builtin.web.WebFetchTool;
+import top.focess.veto.builtin.web.WebSearchTool;
+import top.focess.veto.builtin.web.model.FinishReadArgs;
+import top.focess.veto.builtin.workspace.FindFilesTool;
+import top.focess.veto.builtin.workspace.GrepSearchTool;
+import top.focess.veto.builtin.workspace.ReplaceFileContentTool;
 
 /**
  * The declarative argument bounds of the builtin tools live only on their record annotations
@@ -28,6 +43,130 @@ class BuiltinToolSchemaValidationTest {
             AnswerWithCitationsTool.Args.class;
 
     private final @NonNull ObjectMapper mapper = new ObjectMapper();
+
+    @Test
+    void processAndWorkspaceStaticBoundsRejectAtHostPreflight() {
+        var command = new RunCommandTool.CommandInput("echo", List.of("ok"));
+        assertRejected(
+                "run_command",
+                new RunCommandTool.Args(List.of(), null, false, 0),
+                RunCommandTool.Args.class);
+        assertRejected(
+                "run_command",
+                new RunCommandTool.Args(List.of(command), null, false, -1),
+                RunCommandTool.Args.class);
+        assertRejected(
+                "run_task",
+                new RunTaskTool.Args(List.of(command, command), false, 0),
+                RunTaskTool.Args.class);
+        assertRejected(
+                "run_task",
+                new RunTaskTool.Args(List.of(command), false, -1),
+                RunTaskTool.Args.class);
+        assertRejected("view_task", new ViewTaskTool.Args(null, true), ViewTaskTool.Args.class);
+        assertRejected("view_task", new ViewTaskTool.Args(" ", true), ViewTaskTool.Args.class);
+        assertRejected(
+                "grep_search",
+                new GrepSearchTool.Args("/p", "", null, null),
+                GrepSearchTool.Args.class);
+        assertRejected(
+                "find_files", new FindFilesTool.Args("/p", "\\bad"), FindFilesTool.Args.class);
+        assertRejected("find_files", new FindFilesTool.Args("/p", " "), FindFilesTool.Args.class);
+        assertRejected(
+                "replace_file_content",
+                new ReplaceFileContentTool.Args("/p", 0, 1, "x", "y"),
+                ReplaceFileContentTool.Args.class);
+        assertRejected(
+                "replace_file_content",
+                new ReplaceFileContentTool.Args("/p", 1, 1, "", "y"),
+                ReplaceFileContentTool.Args.class);
+    }
+
+    @Test
+    void readerPreflightReportsAllOutputViolationsWithoutEchoingContents() {
+        var invalid =
+                new FinishReadArgs(
+                        "invented",
+                        "z".repeat(4001),
+                        Collections.nCopies(15, "untrusted-id"),
+                        Collections.nCopies(9, "q".repeat(501)));
+        JsonNode json = mapper.valueToTree(invalid);
+        var error =
+                assertThrows(
+                        ToolExecutionException.class,
+                        () ->
+                                NativeToolArgumentValidator.validate(
+                                        "finish_read", json, FinishReadArgs.class));
+        String message = String.valueOf(error.getMessage());
+        for (String field : List.of("outcome", "answer", "evidenceIds", "limitations"))
+            assertTrue(message.contains(field), message);
+        assertFalse(message.contains("untrusted-id"));
+        assertFalse(message.contains("zzzz"));
+        assertFalse(message.contains("qqqq"));
+    }
+
+    @Test
+    void publicAndPrivateReaderBoundsUseTheSameHostPreflight() {
+        assertRejected(
+                "web_search", new WebSearchTool.Args(" x ", null, null), WebSearchTool.Args.class);
+        assertRejected(
+                "web_search",
+                new WebSearchTool.Args("\u2000x\u2000", null, null),
+                WebSearchTool.Args.class);
+        assertRejected(
+                "web_fetch",
+                new WebFetchTool.Args("https://example.org", "x".repeat(4001)),
+                WebFetchTool.Args.class);
+        assertRejected(
+                "read_github_repository",
+                new ReadGitHubRepositoryTool.Args("ref", "../bad", "repo"),
+                ReadGitHubRepositoryTool.Args.class);
+        assertRejected(
+                "read_github_repository",
+                new ReadGitHubRepositoryTool.Args("ref", "owner", ".."),
+                ReadGitHubRepositoryTool.Args.class);
+        assertRejected(
+                "read_sections", new ReadSectionsTool.Args(List.of()), ReadSectionsTool.Args.class);
+        assertRejected(
+                "read_sections",
+                new ReadSectionsTool.Args(Collections.nCopies(9, "s1")),
+                ReadSectionsTool.Args.class);
+        assertRejected(
+                "find_sections", new FindSectionsTool.Args(" "), FindSectionsTool.Args.class);
+        assertRejected(
+                "find_sections", new FindSectionsTool.Args("\u00a0"), FindSectionsTool.Args.class);
+        assertRejected(
+                "find_sections",
+                new FindSectionsTool.Args("\u00a0\t"),
+                FindSectionsTool.Args.class);
+        assertRejected(
+                "find_sections",
+                new FindSectionsTool.Args("x".repeat(201)),
+                FindSectionsTool.Args.class);
+        for (var invalid :
+                List.of(
+                        new FinishReadArgs("success", "Answer", List.of(), List.of()),
+                        new FinishReadArgs("partial", " ", List.of(), List.of()),
+                        new FinishReadArgs("complete", "x".repeat(4001), List.of("s1"), List.of()),
+                        new FinishReadArgs(
+                                "partial", "Answer", Collections.nCopies(9, "s1"), List.of()),
+                        new FinishReadArgs(
+                                "partial", "Answer", List.of(), Collections.nCopies(9, "limit")),
+                        new FinishReadArgs(
+                                "partial", "Answer", List.of(), List.of("x".repeat(501))))) {
+            JsonNode json = mapper.valueToTree(invalid);
+            var error =
+                    assertThrows(
+                            ToolExecutionException.class,
+                            () ->
+                                    NativeToolArgumentValidator.validate(
+                                            "finish_read", json, FinishReadArgs.class));
+            assertEquals(ToolErrorCode.VALIDATION.INVALID_ARGUMENTS, error.errorCode());
+            String message = String.valueOf(error.getMessage());
+            assertTrue(message.contains("finish_read"));
+            assertFalse(message.contains("xxxx"));
+        }
+    }
 
     @Test
     void askUserRejectsQuestionBatchOutsideOneToTen() {

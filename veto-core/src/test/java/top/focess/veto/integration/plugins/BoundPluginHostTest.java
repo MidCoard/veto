@@ -26,9 +26,40 @@ import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.api.plugin.PluginHost;
 import top.focess.veto.api.plugin.PluginScope;
+import top.focess.veto.api.plugin.Scope;
+import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.storage.PluginStorage;
 
 class BoundPluginHostTest {
+    @Test
+    void scopedEffectsRejectWrongOwnerWithoutDiscardingTheSuppliedIdentity() throws Exception {
+        try (var fixture = new PluginAgentHostsTest.Fixture()) {
+            PluginHost delegate = mock(PluginHost.class);
+            var grant =
+                    new PluginStorage.Grant<>(
+                            "distinct-account",
+                            new Scope.SessionScope(
+                                    "immutable-account-id", fixture.session.getId()));
+            when(fixture.scopes.authorizeSession(fixture.storage, grant)).thenReturn("owner");
+            when(fixture.storage.scopes(PluginScope.SESSION, null, 200))
+                    .thenReturn(new PluginStorage.Page<>(List.of(grant), null));
+            var host =
+                    new BoundPluginHost(delegate, fixture.plugin, fixture.storage, fixture.scopes);
+            var valid = new Scope.SessionScope("owner", fixture.session.getId());
+            var invalid = new Scope.SessionScope("different-owner", fixture.session.getId());
+            var facts = new JsonValue.ObjectValue(Map.of());
+            assertThrows(SecurityException.class, () -> host.publish(invalid, "changed", facts));
+            assertThrows(SecurityException.class, () -> host.invalidate(invalid, "groups"));
+            verifyNoInteractions(delegate);
+            host.publish(valid, "changed", facts);
+            host.invalidate(valid, "groups");
+            verify(delegate).publish(fixture.session.getId(), "test.plugin:changed", facts);
+            verify(delegate).invalidate(fixture.session.getId(), "groups");
+            assertNotEquals(valid.owner(), grant.scope().owner());
+            assertThrows(SecurityException.class, () -> host.invalidate(grant.scope(), "groups"));
+        }
+    }
+
     @Test
     void invocationAndAwaitResolveLocalNamesWithoutExpandingThePermit() throws Exception {
         for (String name : List.of("plugin_test_plugin__operation", "custom_operation")) {

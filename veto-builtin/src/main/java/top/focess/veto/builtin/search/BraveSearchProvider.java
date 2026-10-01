@@ -80,7 +80,7 @@ public class BraveSearchProvider implements SearchProvider, AutoCloseable {
         if (response.statusCode() != 200) {
             throw new IllegalStateException("Brave search failed: HTTP " + response.statusCode());
         }
-        return parse(response.body());
+        return SearchPolicy.apply(parse(response.body()), options);
     }
 
     @Override
@@ -90,6 +90,7 @@ public class BraveSearchProvider implements SearchProvider, AutoCloseable {
 
     private @NonNull List<@NonNull SearchResult> parse(@NonNull String body) throws Exception {
         JsonNode root = mapper.readTree(body);
+        if (root == null) throw new IllegalArgumentException("Empty search response");
         JsonNode results = root.path("web").path("results");
         List<@NonNull SearchResult> out = new ArrayList<>();
         if (results.isArray()) {

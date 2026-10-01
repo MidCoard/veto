@@ -4,7 +4,15 @@ import java.time.Instant;
 import java.util.*;
 import org.jspecify.annotations.NonNull;
 
-/** A request to execute a specific atomic tool capability within sandbox Sandbox. */
+/**
+ * A request to execute a specific atomic tool capability within sandbox Sandbox.
+ *
+ * <p>Thread-safe for individual status/payload operations: this instance's monitor serializes
+ * updates and getters. Separate getter calls are not a coherent multi-field snapshot, and mark
+ * methods do not enforce a monotonic lifecycle or elect a single executor. Argument and credential
+ * containers are immutable outer copies; mutable nested argument values remain caller-owned and
+ * must not be modified concurrently.
+ */
 public class ToolExecutionRequest {
 
     private final @NonNull String id;

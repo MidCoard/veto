@@ -5,6 +5,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 
 /** Reads only actual measurements; historical estimates are not measurements. */
 public final class RecordTokenCounter {
@@ -12,12 +13,12 @@ public final class RecordTokenCounter {
 
     /** Strips every token-count field so the turn carries no measurement (nor any estimate). */
     public static @NonNull TurnRecord unmeasured(@NonNull TurnRecord turn) {
-        Map<String, Object> payload = new LinkedHashMap<>(turn.payload());
+        Map<@NonNull String, @Nullable Object> payload = new LinkedHashMap<>(turn.payload());
         payload.remove("usedTokens");
         payload.remove("tokenCount");
         payload.remove("tokenCountSource");
         payload.remove("tokenDeltaFromTurn");
-        // Keep an explicit JSON null without violating the payload's non-null value contract.
+        // Keep the existing explicit JSON-null node in the durable payload.
         if (turn.type() == TurnType.ASSISTANT_THOUGHT)
             payload.put("usedTokens", NullNode.getInstance());
         return new TurnRecord(
@@ -36,7 +37,7 @@ public final class RecordTokenCounter {
     /**
      * The measured token count in a payload, or {@code null} when it is absent or only estimated.
      */
-    public static Long count(@NonNull Map<String, Object> payload) {
+    public static Long count(@NonNull Map<@NonNull String, ? extends @Nullable Object> payload) {
         if (hasRequestDelta(payload)) return null;
         if (!"measured".equals(payload.get("tokenCountSource"))) return null;
         Object value = payload.get("usedTokens");
@@ -45,7 +46,8 @@ public final class RecordTokenCounter {
                 : null;
     }
 
-    private static boolean hasRequestDelta(@NonNull Map<String, Object> payload) {
+    private static boolean hasRequestDelta(
+            @NonNull Map<@NonNull String, ? extends @Nullable Object> payload) {
         if (payload.containsKey("tokenDeltaFromTurn")) return true;
         return payload.get("llmUsage") instanceof List<?> measurements
                 && measurements.stream()

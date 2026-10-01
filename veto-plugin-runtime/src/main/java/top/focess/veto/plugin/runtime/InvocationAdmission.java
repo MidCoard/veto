@@ -19,6 +19,12 @@ import top.focess.veto.api.plugin.contract.PluginFailure;
  * <p>Releasing a slot runs the decrement and the close-completion re-check on the lifecycle's
  * single control executor, never on the caller thread, which is what lets {@link
  * PluginLifecycle#close()} block until every admitted call has drained.
+ *
+ * <p>The supplied state reader runs under the shared monitor and must be a nonblocking state
+ * lookup. Operation bodies run outside it and may run concurrently; this class does not serialize
+ * plugin implementation state. Same-thread nesting within one activation reuses its slot, while
+ * cross-activation nesting takes independent slots. Count access and decrement require the caller
+ * to hold the shared monitor. A release handoff waits for the serial lifecycle executor.
  */
 final class InvocationAdmission {
     /** Slot-release handoff; may fail when the control executor is already shut down. */

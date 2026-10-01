@@ -1,5 +1,6 @@
 package top.focess.veto.builtin.process;
 
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -7,7 +8,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -19,14 +19,22 @@ import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.builtin.process.BackgroundTasks.Change;
 import top.focess.veto.builtin.process.BackgroundTasks.ExitCause;
 
-/** Builtin owns process-to-monitor interpretation, retries and frontend invalidation. */
+/**
+ * Builtin owns process-to-monitor interpretation, retries and frontend invalidation.
+ *
+ * <p>Process workers, lifecycle events and the retry scheduler share this object's monitor. It
+ * serializes revocation markers, instance tracking and pending observation delivery, including
+ * observer and host callbacks. Pending observations use an ordinary map guarded by that monitor.
+ * Callbacks must not wait for task workers whose notifications need this monitor; retry shutdown
+ * does not join a worker while holding it.
+ */
 public final class TaskEvents implements BackgroundTasks.Listener, AutoCloseable {
     private record Pending(
             Scope.@NonNull AgentScope scope, @NonNull TaskInfo task, @NonNull ExitCause cause) {}
 
     private final @NonNull PluginHost host;
     private final @NonNull ProcessObserver observer;
-    private final @NonNull ConcurrentHashMap<UUID, Pending> pending = new ConcurrentHashMap<>();
+    private final @NonNull Map<UUID, Pending> pending = new HashMap<>();
     private ScheduledExecutorService scheduler;
     private boolean closed;
     private final @NonNull Set<Scope.UserScope> loggedOutUsers = new HashSet<>();

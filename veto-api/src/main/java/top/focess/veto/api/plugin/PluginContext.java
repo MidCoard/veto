@@ -16,6 +16,12 @@ import top.focess.veto.api.plugin.storage.PluginStorage;
  * Host metadata, a live read-only lifecycle view, a failure signal, and host-granted services. Host
  * services are host-granted authority; a plugin never earns them by registering a category or
  * contribution, and receives only what the host chooses to expose.
+ *
+ * <p>Concurrency depends on the bound host contracts. Identity and the outer service map are
+ * immutable; the handler map is a live read-only view, not a synchronized snapshot. A host that
+ * changes handlers concurrently must supply a concurrency-safe map and callbacks. Registration,
+ * state reads and failure reporting call the host inline on the caller's thread. This context
+ * neither serializes contributed aspect calls nor makes granted services thread-safe.
  */
 public final class PluginContext {
     private final @NonNull PluginIdentity identity;
@@ -60,7 +66,8 @@ public final class PluginContext {
     }
 
     /**
-     * Returns the exact-class host grants; registration never expands these grants.
+     * Host integration accessor for rebinding the exact-class grants across lifecycle binding.
+     * Plugin authors should use {@link #service(Class)}; registration never expands these grants.
      *
      * @return immutable host grants
      */
@@ -86,7 +93,8 @@ public final class PluginContext {
     }
 
     /**
-     * Returns the live exact-point handler view to preserve registration across lifecycle binding.
+     * Host integration accessor for preserving registration across lifecycle binding. Plugin
+     * authors should use {@link #register}; invoking a handler still requires host validation.
      *
      * @return read-only live view of the host-owned handler map
      */

@@ -11,7 +11,9 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.api.agent.tool.InputSchemaSource;
+import top.focess.veto.api.agent.tool.NumberConstraint;
 import top.focess.veto.api.agent.tool.RequiredWhen;
+import top.focess.veto.api.agent.tool.StringConstraint;
 import top.focess.veto.api.agent.tool.ToolExecutionException;
 import top.focess.veto.api.agent.tool.ToolInputSchema;
 import top.focess.veto.builtin.planning.PlanPreflight;
@@ -24,6 +26,43 @@ class NativeToolArgumentValidatorTest {
             @NonNull String mode, @RequiredWhen(field = "mode", values = "full") String detail) {}
 
     private record NestedCollections(@NonNull List<@NonNull List<@NonNull NestedChoice>> groups) {}
+
+    private record BoundedElements(
+            @NumberConstraint(min = 0, max = 60) Integer timeout,
+            @NonNull
+                    List<
+                            @NonNull
+                            @StringConstraint(maxLength = 2, rejectBlank = true, forbidden = "no")
+                            String>
+                    notes) {}
+
+    @Test
+    void numericAndElementBoundsAreAdvertisedAndEnforcedAtPreflight() throws Exception {
+        var schema = ToolSchemaCompiler.compileFromRecord(BoundedElements.class);
+        assertEquals(0, schema.path("properties").path("timeout").path("minimum").asInt());
+        assertEquals(60, schema.path("properties").path("timeout").path("maximum").asInt());
+        assertEquals(
+                2, schema.path("properties").path("notes").path("items").path("maxLength").asInt());
+        var valid = mapper.readTree("{\"timeout\":0,\"notes\":[\"😀😀\"]}");
+        assertDoesNotThrow(
+                () ->
+                        NativeToolArgumentValidator.validate(
+                                "bounded", valid, BoundedElements.class));
+        for (String invalid :
+                List.of(
+                        "{\"timeout\":-1,\"notes\":[\"ok\"]}",
+                        "{\"timeout\":61,\"notes\":[\"ok\"]}",
+                        "{\"timeout\":0,\"notes\":[\"abc\"]}",
+                        "{\"timeout\":0,\"notes\":[\"  \"]}",
+                        "{\"timeout\":0,\"notes\":[\"no\"]}")) {
+            var arguments = mapper.readTree(invalid);
+            assertThrows(
+                    ToolExecutionException.class,
+                    () ->
+                            NativeToolArgumentValidator.validate(
+                                    "bounded", arguments, BoundedElements.class));
+        }
+    }
 
     @ToolInputSchema(CountingSchema.class)
     private record Counted(@NonNull String value) {}

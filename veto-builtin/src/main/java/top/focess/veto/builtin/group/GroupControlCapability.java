@@ -14,8 +14,8 @@ public interface GroupControlCapability {
     /** Renders the named group prompt template with the given data. */
     @NonNull String prompt(@NonNull String source, @NonNull Map<String, Object> data);
 
-    /** Current group snapshot, or {@code null} when the caller leads no active group. */
-    GroupSnapshot snapshot();
+    /** Snapshot authorized against the executing local tool, or null when it leads no group. */
+    GroupSnapshot snapshot(@NonNull String tool);
 
     /** Creates an idle collaborator and returns its new mate id. */
     @NonNull String createMate(@NonNull String name, @NonNull String responsibility);

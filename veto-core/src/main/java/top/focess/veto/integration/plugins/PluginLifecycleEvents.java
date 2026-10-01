@@ -20,8 +20,15 @@ import top.focess.veto.vault.UserRegistry;
 
 /**
  * Dispatches best-effort runtime transitions and required permanent-data deletion preparation.
- * Runtime notifications never break logout. Permanent deletion preparation runs in the host
- * transaction and fails closed when an installed contributor is unavailable.
+ * Runtime notifications isolate nonfatal listener failures; fatal VM errors and thread death
+ * propagate. Permanent deletion preparation runs in the host transaction and fails closed when an
+ * installed contributor is unavailable.
+ *
+ * <p>Notifications run inline on authentication/logout callers, committed-deletion transaction
+ * callbacks, or agent termination callers. Each call creates its own event and completes its
+ * prepared recipient route before returning. Separate callers may dispatch concurrently; this
+ * service owns neither a notification queue nor global transition ordering. Required deletion
+ * completion runs in the host transaction's afterCompletion callback rather than as an event.
  */
 @Service
 public class PluginLifecycleEvents {
@@ -124,8 +131,7 @@ public class PluginLifecycleEvents {
 
     /**
      * Broadcasts a lifecycle notification to every active listener. The registry logs and skips a
-     * failing handler, so one plugin can never break logout, session deletion, or agent
-     * termination.
+     * nonfatal handler failure; fatal VM errors and thread death propagate.
      */
     private void broadcast(@NonNull Event event) {
         manager.events().broadcast(event);

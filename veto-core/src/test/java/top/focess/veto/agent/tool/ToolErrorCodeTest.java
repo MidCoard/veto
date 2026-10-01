@@ -40,6 +40,22 @@ class ToolErrorCodeTest {
     }
 
     @Test
+    void historicalFeatureNamesRemainReadableWithoutCanonicalAliases() {
+        for (String historical :
+                List.of(
+                        "AUTHENTICATED_READ_FAILED",
+                        "GITHUB_HTTP_ERROR",
+                        "INVALID_REPOSITORY",
+                        "READER_IDENTITY",
+                        "READER_OUTPUT",
+                        "READER_TIMEOUT",
+                        "NOT_FOUND",
+                        "TOO_LARGE")) {
+            assertEquals(new ToolErrorCode.Named(historical), ToolErrorCode.parse(historical));
+        }
+    }
+
+    @Test
     void everyConstantLivesInItsExpectedGroup() {
         assertGroup(
                 Nullness.requireNonNull(ToolErrorCode.VALIDATION.values()),
@@ -78,16 +94,13 @@ class ToolErrorCodeTest {
                 "TASK_NOT_RUNNING");
         assertGroup(
                 Nullness.requireNonNull(ToolErrorCode.NETWORK.values()),
-                "AUTHENTICATED_READ_FAILED",
                 "CREDENTIAL_UNAVAILABLE",
                 "CROSS_ORIGIN_REDIRECT",
                 "DESTINATION_REFUSED",
                 "FETCH_FAILED",
-                "GITHUB_HTTP_ERROR",
                 "HOST_UNRESOLVED",
                 "HTTP_ERROR",
                 "INVALID_REDIRECT",
-                "INVALID_REPOSITORY",
                 "REDIRECT_REJECTED",
                 "REMOTE_TOOL_FAILED",
                 "TIMEOUT",
@@ -96,11 +109,18 @@ class ToolErrorCodeTest {
                 Nullness.requireNonNull(ToolErrorCode.READER.values()),
                 "READER_BUDGET",
                 "READER_DOCUMENT",
-                "READER_IDENTITY",
                 "READER_MODEL",
-                "READER_OBSERVATION",
-                "READER_OUTPUT",
-                "READER_TIMEOUT");
+                "READER_OBSERVATION");
+        assertGroup(
+                Nullness.requireNonNull(ToolErrorCode.GROUP.values()),
+                "NO_ACTIVE_GROUP",
+                "NOT_ACTIVE",
+                "RECORD_GONE",
+                "REQUEST_REJECTED");
+        assertGroup(
+                Nullness.requireNonNull(ToolErrorCode.MEMORY.values()),
+                "MEMORY_EMBEDDING_FAILED",
+                "MEMORY_NOT_FOUND");
         assertGroup(
                 Nullness.requireNonNull(ToolErrorCode.POLICY.values()),
                 "CALL_BLOCKED",
@@ -123,14 +143,6 @@ class ToolErrorCodeTest {
                 Nullness.requireNonNull(ToolErrorCode.GENERIC.values()),
                 "PLUGIN_CALL_FAILED",
                 "TOOL_FAILURE");
-        assertGroup(
-                Nullness.requireNonNull(ToolErrorCode.GROUP.values()),
-                "NO_ACTIVE_GROUP",
-                "NOT_ACTIVE",
-                "RECORD_GONE",
-                "REQUEST_REJECTED");
-        assertGroup(
-                Nullness.requireNonNull(ToolErrorCode.MEMORY.values()), "NOT_FOUND", "TOO_LARGE");
 
         assertGroup(Nullness.requireNonNull(ToolErrorCode.SESSION.values()), "NO_SESSION_CONTEXT");
     }
@@ -142,7 +154,7 @@ class ToolErrorCodeTest {
         for (ToolErrorCode code : codes) {
             names.add(code.name());
         }
-        // The ByName index also throws on duplicates at class initialization.
+        // The private name index also throws on duplicates at class initialization.
         assertEquals(codes.size(), names.size());
     }
 
@@ -162,12 +174,12 @@ class ToolErrorCodeTest {
         codes.addAll(List.of(Nullness.requireNonNull(ToolErrorCode.TASK.values())));
         codes.addAll(List.of(Nullness.requireNonNull(ToolErrorCode.NETWORK.values())));
         codes.addAll(List.of(Nullness.requireNonNull(ToolErrorCode.READER.values())));
+        codes.addAll(List.of(Nullness.requireNonNull(ToolErrorCode.GROUP.values())));
+        codes.addAll(List.of(Nullness.requireNonNull(ToolErrorCode.MEMORY.values())));
         codes.addAll(List.of(Nullness.requireNonNull(ToolErrorCode.POLICY.values())));
         codes.addAll(List.of(Nullness.requireNonNull(ToolErrorCode.LIFECYCLE.values())));
         codes.addAll(List.of(Nullness.requireNonNull(ToolErrorCode.RESULT.values())));
         codes.addAll(List.of(Nullness.requireNonNull(ToolErrorCode.GENERIC.values())));
-        codes.addAll(List.of(Nullness.requireNonNull(ToolErrorCode.GROUP.values())));
-        codes.addAll(List.of(Nullness.requireNonNull(ToolErrorCode.MEMORY.values())));
         codes.addAll(List.of(Nullness.requireNonNull(ToolErrorCode.SESSION.values())));
         return codes;
     }

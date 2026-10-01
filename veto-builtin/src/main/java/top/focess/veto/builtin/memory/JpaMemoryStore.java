@@ -9,14 +9,13 @@ import org.jspecify.annotations.NonNull;
 import top.focess.veto.builtin.memory.embedder.Embedder;
 
 /**
- * The JPA-backed {@link MemoryStore} — the production path. Persists memories in PostgreSQL via
- * Spring Data JPA + Hibernate (the {@code jsonb} column type for the payload; float-array embedding
- * as comma-separated values for portability; the production path would use pgvector's {@code
- * vector} type).
+ * A builtin-owned JPA-backed {@link MemoryStore}, created through the trusted persistence adapter.
+ * Content uses text columns and embeddings use comma-separated floats. Similarity is computed in
+ * Java; {@link PgvectorMemoryStore} provides the separate SQL vector backend.
  *
  * <p>Activated by setting {@code veto.plugins.configuration[top.focess.builtin][memory-store]=jpa}
- * (the default is {@code memory}, the in-process {@link InMemoryMemoryStore}). Falls back to
- * in-memory if the repository is unavailable.
+ * (the default is {@code memory}, the in-process {@link InMemoryMemoryStore}). An unavailable
+ * persistence adapter fails the selected backend rather than silently changing stores.
  */
 public class JpaMemoryStore implements MemoryStore {
 

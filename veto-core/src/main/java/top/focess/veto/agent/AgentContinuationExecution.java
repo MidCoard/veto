@@ -7,6 +7,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import top.focess.veto.agent.AgentRuntimeState.ActivatedObservation;
 import top.focess.veto.agent.ExecutionControl.Wait;
 import top.focess.veto.agent.continuation.RequestContinuationStore;
@@ -275,8 +276,9 @@ final class AgentContinuationExecution {
                 handle == null ? null : handle.episode.id());
     }
 
-    private @NonNull Map<String, Object> attributes(AgentInbox.@NonNull Observation event) {
-        var attributes = new LinkedHashMap<String, Object>(event.attributes());
+    private @NonNull Map<@NonNull String, @Nullable Object> attributes(
+            AgentInbox.@NonNull Observation event) {
+        var attributes = new LinkedHashMap<@NonNull String, @Nullable Object>(event.attributes());
         attributes.put("eventId", event.id());
         attributes.put("topic", event.topic());
         attributes.put(

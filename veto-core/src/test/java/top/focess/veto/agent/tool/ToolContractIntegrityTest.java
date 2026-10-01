@@ -123,6 +123,25 @@ class ToolContractIntegrityTest {
             var expectedResult = results.get(index);
             if (example == null || expectedResult == null)
                 throw new AssertionError("Argument and result examples must exist");
+            String legacyDiagnostic = legacyStaticFailureDiagnostic(toolName, expectedResult);
+            if (!legacyDiagnostic.isEmpty()) {
+                var failure =
+                        assertThrows(
+                                ToolExecutionException.class,
+                                () ->
+                                        NativeToolArgumentValidator.validate(
+                                                toolName, mapper.readTree(example), argsClass));
+                assertEquals(ToolErrorCode.VALIDATION.INVALID_ARGUMENTS, failure.errorCode());
+                assertTrue(
+                        String.valueOf(failure.getMessage())
+                                .startsWith("Invalid arguments for " + toolName + ":"));
+                assertTrue(
+                        String.valueOf(failure.getMessage()).contains(legacyDiagnostic),
+                        () ->
+                                toolName
+                                        + " must reject the exact bound in its paired invalid sample");
+                continue;
+            }
             if (expectedResult.startsWith("Invalid arguments for " + toolName + ":")) {
                 var failure =
                         assertThrows(
@@ -151,6 +170,46 @@ class ToolContractIntegrityTest {
                     },
                     () -> toolName + " has an invalid call example: " + example);
         }
+    }
+
+    // These exact paired failures predate annotation preflight. Preserve their wire-visible
+    // samples.
+    private static @NonNull String legacyStaticFailureDiagnostic(
+            @NonNull String toolName, @NonNull String result) {
+        return switch (toolName) {
+            case "read_github_repository" ->
+                    result.equals("Invalid repository: the repository owner or name is invalid.")
+                            ? "parameter 'repositoryOwner' does not match its required pattern"
+                            : "";
+            case "web_search" ->
+                    result.equals("Invalid arguments: query must be at least 2 characters.")
+                            ? "parameter 'query' is too short"
+                            : "";
+            case "read_sections" ->
+                    result.equals("Invalid arguments: read between one and eight segment IDs.")
+                            ? "parameter 'ids' has too many items"
+                            : "";
+            case "run_task" ->
+                    result.equals(
+                                    "Invalid arguments: exactly one command is required (background mode does not chain); got 2.")
+                            ? "parameter 'commands' has too many items"
+                            : "";
+            case "find_sections" ->
+                    result.equals(
+                                    "Invalid arguments: use a non-blank keyword of at most 200 characters.")
+                            ? "parameter 'query' must not be blank"
+                            : "";
+            case "web_fetch" ->
+                    result.equals("Invalid arguments: url and objective must not be blank.")
+                            ? "parameter 'objective' must not be blank"
+                            : "";
+            case "finish_read" ->
+                    result.equals(
+                                    "Invalid arguments: outcome must be complete, partial, or not_found. Correct all listed fields together. Choose supporting evidence and keep the answer within its scope; exact quotations are attached from evidenceIds. Combine related limitations.")
+                            ? "parameter 'outcome' does not match its required pattern"
+                            : "";
+            default -> "";
+        };
     }
 
     private void verifyRequiredParameters(

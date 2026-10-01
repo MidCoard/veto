@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.Base64;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -38,6 +39,12 @@ import org.slf4j.LoggerFactory;
  * <p>The engine is <b>deterministic</b>: given the same Blackboard input sequence, it produces the
  * same DAG state transitions. Choosing which Mate receives a node, deciding when to escalate, and
  * re-planning failed work remain the Leader's responsibility; the engine applies those decisions.
+ *
+ * <p>Scheduler ticks and admitted tool operations share one reentrant lock per group for compound
+ * DAG transitions, cursors and cancellation state; different groups may advance concurrently.
+ * Provisioning, registry persistence, blackboard publication and close callbacks execute under that
+ * group lock. Such callbacks must not wait for another thread to acquire the same group lock.
+ * Concurrent maps publish per-group bookkeeping; they do not replace this transition lock.
  */
 public class GroupOrchestrator {
 
@@ -58,6 +65,10 @@ public class GroupOrchestrator {
 
     /** Per-group ledger of last-seen turnSeq so each tick only processes new messages. */
     private final @NonNull ConcurrentMap<UUID, Long> lastSeenSeq = new ConcurrentHashMap<>();
+
+    /** Pending publication retries within this activation, guarded by the group's tick lock. */
+    private final @NonNull ConcurrentMap<UUID, List<BlackboardMessage>> pendingDispatches =
+            new ConcurrentHashMap<>();
 
     private final @NonNull ConcurrentMap<UUID, GroupSpawner> cancellationSpawners =
             new ConcurrentHashMap<>();
@@ -524,9 +535,9 @@ public class GroupOrchestrator {
                                     .mapToLong(BlackboardMessage::turnSeq)
                                     .max()
                                     .orElse(seen);
-                    lastSeenSeq.put(groupId, Math.max(seen, through));
                     group = maybeComplete(group);
                     registry.put(group);
+                    lastSeenSeq.put(groupId, Math.max(seen, through));
                     Group current = group;
                     return new Inspection(
                             new GroupSnapshot(
@@ -584,7 +595,12 @@ public class GroupOrchestrator {
             current = ingest(current, m);
             seen = Math.max(seen, m.turnSeq());
         }
+        // A failed save must leave reports available for the next tick.
+        current = maybeComplete(current);
+        registry.put(current);
         lastSeenSeq.put(groupId, seen);
+
+        publishPending(current);
 
         // 2. If the group is still active, dispatch dispatchable nodes.
         current = dispatch(current);
@@ -773,7 +789,9 @@ public class GroupOrchestrator {
                             dispatchPayload,
                             0,
                             dispatchId);
-            blackboard.post(msg);
+            pendingDispatches
+                    .computeIfAbsent(group.groupId(), ignored -> new ArrayList<>())
+                    .add(msg);
             ExecutionDag next =
                     dag.withNode(
                             n.nodeId(),
@@ -791,7 +809,33 @@ public class GroupOrchestrator {
             group = group.withDag(next);
             dag = next;
         }
+        // The attempt identity must be durable before a Mate can observe its dispatch.
+        registry.put(group);
+        publishPending(group);
         return group;
+    }
+
+    private void publishPending(@NonNull Group group) {
+        var pending = pendingDispatches.get(group.groupId());
+        if (pending == null) return;
+        var iterator = pending.iterator();
+        while (iterator.hasNext()) {
+            var message = iterator.next();
+            boolean live =
+                    group.isActive()
+                            && group.dag().nodes().stream()
+                                    .anyMatch(
+                                            node ->
+                                                    node.state() == DagNode.NodeState.RUNNING
+                                                            && message.receiverId()
+                                                                    .equals(node.assignedMateId())
+                                                            && Objects.equals(
+                                                                    message.dispatchId(),
+                                                                    node.dispatchId()));
+            if (live) blackboard.post(message);
+            iterator.remove();
+        }
+        pendingDispatches.remove(group.groupId());
     }
 
     /** Pass only the assigned task and its direct dependency results to the Mate. */
@@ -925,6 +969,7 @@ public class GroupOrchestrator {
     /** Records completion of an explicitly disbanded group. */
     @SuppressWarnings("resource")
     public void onGroupDisbanded(@NonNull UUID groupId) {
+        pendingDispatches.remove(groupId);
         retiringMates.removeIf(key -> key.startsWith(groupId + ":"));
         cancellationSpawners.remove(groupId);
         log.info("GroupOrchestrator: group {} disbanded", groupId);

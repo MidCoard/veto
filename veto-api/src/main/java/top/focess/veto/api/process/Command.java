@@ -11,4 +11,9 @@ import org.jspecify.annotations.NonNull;
  *     never a shell string
  * @param args the literal argv array passed to the process launcher; no shell parses it
  */
-public record Command(@NonNull String executable, @NonNull List<String> args) {}
+public record Command(@NonNull String executable, @NonNull List<@NonNull String> args) {
+    /** Captures the literal argument list so the command cannot change after construction. */
+    public Command {
+        args = List.copyOf(args);
+    }
+}

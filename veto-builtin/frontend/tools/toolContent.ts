@@ -326,9 +326,9 @@ export interface GrepRow {
 /** Backend's empty-grep marker. */
 export const GREP_NO_MATCHES = '(no matches)';
 
-// Greedy path: the line number is the LAST ":<digits>: " before the text —
-// Windows paths carry their own "C:\" colon.
-const GREP_ROW_RE = /^(.*):(\d+): (.*)$/;
+// The source delimiter precedes the content. A drive colon is not followed by digits.
+// Filenames containing the same delimiter are ambiguous in this plaintext format.
+const GREP_ROW_RE = /^(.*?):(\d+): (.*)$/;
 
 /**
  * Split a grep_search body ("<file>:<n>: <text>" per line) into rows.

@@ -11,6 +11,7 @@ import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import top.focess.veto.agent.TurnRecord;
 
 /**
@@ -92,7 +93,8 @@ public class TurnRecordEntity {
     }
 
     private static @NonNull String serializePayload(
-            Map<String, Object> payload, @NonNull ObjectMapper mapper) {
+            Map<@NonNull String, ? extends @Nullable Object> payload,
+            @NonNull ObjectMapper mapper) {
         if (payload == null || payload.isEmpty()) {
             return "";
         }

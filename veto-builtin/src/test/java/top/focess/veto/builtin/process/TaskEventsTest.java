@@ -72,6 +72,8 @@ class TaskEventsTest {
         var fail = new AtomicBoolean(true);
         List<String> observations = new ArrayList<>();
         List<String> topics = new ArrayList<>();
+        var session = UUID.randomUUID();
+        var scope = new Scope.AgentScope("spawn-owner", session.toString(), "agent");
         PluginHost host =
                 new PluginHost() {
                     public @NonNull Invocation invocation(@NonNull String tool) {
@@ -84,13 +86,25 @@ class TaskEventsTest {
                             @NonNull String agent) {}
 
                     public void invalidate(@NonNull String session, @NonNull String resource) {
+                        throw new AssertionError("Expected complete scoped invalidation identity");
+                    }
+
+                    @Override
+                    public void invalidate(
+                            Scope.@NonNull SessionScope target, @NonNull String resource) {
+                        assertEquals(scope.sessionScope(), target);
                         assertEquals("tasks", resource);
                     }
 
+                    @Override
                     public void publish(
-                            @NonNull String session,
+                            Scope.@NonNull SessionScope target,
                             @NonNull String topic,
                             JsonValue.@NonNull ObjectValue facts) {
+                        assertEquals(scope.sessionScope(), target);
+                        assertEquals(
+                                new JsonValue.StringValue(scope.agent()),
+                                facts.values().get("agentId"));
                         topics.add(topic);
                     }
                 };
@@ -101,8 +115,6 @@ class TaskEventsTest {
                             if (fail.get()) throw new IllegalStateException("store unavailable");
                             observations.add(owner + ":" + task.alive() + ":" + cause);
                         });
-        var session = UUID.randomUUID();
-        var scope = new Scope.AgentScope("spawn-owner", session.toString(), "agent");
         var instance = UUID.randomUUID();
         var started = Instant.now();
         var live =

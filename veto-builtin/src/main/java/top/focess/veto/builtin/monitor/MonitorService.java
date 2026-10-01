@@ -31,7 +31,17 @@ import top.focess.veto.builtin.monitor.MonitorRecord.Event;
 import top.focess.veto.builtin.process.ProcessObserver;
 import top.focess.veto.builtin.process.TaskInfo;
 
-/** Domain observations and time triggers share persistence and a single runner delivery path. */
+/**
+ * Domain observations and time triggers share persistence and a single runner delivery path.
+ *
+ * <p>Tool, inbox, process-observer and scheduler callers share the service monitor for compound
+ * record transitions, persistence retries and foreground waits. Repository operations and group
+ * snapshot reads execute under that monitor; future completion may invoke continuations inline.
+ * Tick delivery copies eligible records under the monitor, then calls host wake outside it.
+ * Repository, group-view and future callbacks must not wait for another thread to enter this
+ * service. Concurrent callers observe serialized state changes, not an atomic database transaction
+ * spanning every monitor.
+ */
 public class MonitorService implements ProcessObserver {
     private static final @NonNull Logger log =
             LoggerFactory.getLogger("top.focess.veto.builtin.monitor.MonitorService");

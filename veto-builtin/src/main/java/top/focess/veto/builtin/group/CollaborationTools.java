@@ -387,7 +387,7 @@ public final class CollaborationTools {
                 @NonNull Args args, @NonNull GroupControlCapability capability) {
             Set<String> deps =
                     args.dependsOn() == null ? Set.of() : new LinkedHashSet<>(args.dependsOn());
-            var group = capability.snapshot();
+            var group = capability.snapshot(getName());
             if (group == null)
                 return ToolErrors.failure(
                         ToolErrorCode.GROUP.NO_ACTIVE_GROUP,

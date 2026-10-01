@@ -114,8 +114,7 @@ final class ToolUsageProjector {
         if (success instanceof Boolean value) {
             return value;
         }
-        return "success"
-                .equalsIgnoreCase(String.valueOf(response.payload().getOrDefault("status", "")));
+        return "success".equalsIgnoreCase(String.valueOf(response.payload().get("status")));
     }
 
     private static String nonBlankString(Object value) {

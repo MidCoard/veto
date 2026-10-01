@@ -1,10 +1,13 @@
 package top.focess.veto.builtin.group;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.anyString;
+import static org.mockito.Mockito.when;
 
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.api.agent.tool.ToolExecutionException;
 import top.focess.veto.api.plugin.PluginHost;
@@ -15,6 +18,61 @@ import top.focess.veto.builtin.group.GroupTools.PostMessage;
 
 /** Actual tool bodies and plugin runtime, with only the public host boundary substituted. */
 class GroupToolsWiringTest {
+    @Test
+    void snapshotReadsUseEachExecutingToolsPermit() {
+        try (var fixture = new GroupTestHost()) {
+            var group = fixture.create();
+            fixture.runtime.registry().put(group.withMate("mate", "review"));
+            var expected = new AtomicReference<>("post_message");
+            when(fixture.host.invocation(anyString()))
+                    .thenAnswer(
+                            call -> {
+                                assertEquals(
+                                        expected.get(),
+                                        call.getArgument(0),
+                                        "exact local tool permit");
+                                return fixture.caller;
+                            });
+            var operations = fixture.runtime.operations();
+            assertEquals(
+                    "posted",
+                    new PostMessage(operations)
+                            .execute(
+                                    new PostMessage.Args(
+                                            BlackboardMessage.MessageType.FEEDBACK,
+                                            "LEADER",
+                                            "note")));
+            expected.set("create_task");
+            assertTrue(
+                    new CollaborationTools.CreateTask(operations)
+                            .execute(
+                                    new CollaborationTools.CreateTask.Args(
+                                            "task", "Review", "mate", List.of()))
+                            .contains("Task registered"));
+            expected.set("create_node");
+            assertTrue(
+                    new DagTools.CreateNode(operations)
+                            .execute(
+                                    new DagTools.CreateNode.Args(
+                                            "node", "Work", "review", List.of(), "mate", false))
+                            .contains("Node created"));
+            expected.set("remove_node");
+            assertTrue(
+                    new DagTools.RemoveNode(operations)
+                            .execute(new DagTools.RemoveNode.Args("node"))
+                            .contains("Node removed"));
+            expected.set("inspect_group");
+            assertFalse(
+                    new InspectGroup(operations).execute(new InspectGroup.Args(0L, 0)).isBlank());
+            expected.set("disband_group");
+            new DisbandGroup(operations).execute(new DisbandGroup.Args());
+            assertEquals(
+                    GroupState.DISBANDED,
+                    GroupTestHost.required(fixture.runtime.registry().get(group.groupId()))
+                            .state());
+        }
+    }
+
     @Test
     void taskRequestComesFromTrustedContextAndSurvivesRetry() {
         try (var fixture = new GroupTestHost()) {

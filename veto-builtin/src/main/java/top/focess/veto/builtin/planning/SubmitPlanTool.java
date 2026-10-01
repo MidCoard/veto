@@ -58,7 +58,7 @@ import top.focess.veto.api.agent.tool.*;
                 """,
         security =
                 """
-                Available only in plan-enabled sessions and for authorized callers. Every plan tool step \
+                Available to authorized callers through the configured tool catalog. Every plan tool step \
                 retains its own permission and workspace checks. Submitting a plan grants no extra authority.\
                 """,
         resultFormats = {ToolResultFormat.JSON},

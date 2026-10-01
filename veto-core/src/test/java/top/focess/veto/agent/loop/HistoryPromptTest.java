@@ -7,6 +7,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.agent.TurnRecord;
 import top.focess.veto.agent.TurnType;
@@ -24,7 +26,9 @@ class HistoryPromptTest {
                 new ToolCall("answer_with_citations", Map.of())
                         .withNativeState(
                                 new NativeToolState("ANTHROPIC", 1, "model", "batch", "[]", 0));
-        var payload = new LinkedHashMap<>(TurnRecord.toolCall(3, call).payload());
+        var payload =
+                new LinkedHashMap<@NonNull String, @Nullable Object>(
+                        TurnRecord.toolCall(3, call).payload());
         payload.put("model_call_id", "call-1");
         var messages =
                 compiler.resolveRewinds(

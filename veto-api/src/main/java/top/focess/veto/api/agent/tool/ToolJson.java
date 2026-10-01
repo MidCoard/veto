@@ -24,12 +24,10 @@ public final class ToolJson {
     private static @NonNull String encode(@NonNull Object value) {
         try {
             return MAPPER.writeValueAsString(value);
-        } catch (JsonProcessingException e) {
+        } catch (JsonProcessingException ignored) {
             return ToolErrors.failure(
                     ToolErrorCode.RESULT.ENCODING_FAILED,
-                    "Encoding failed: could not encode the tool JSON result ("
-                            + e.getMessage()
-                            + ").");
+                    "Encoding failed: could not encode the tool JSON result.");
         }
     }
 }

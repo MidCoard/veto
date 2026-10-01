@@ -7,10 +7,12 @@ package top.focess.veto.api.event;
  * <p>Every event is preventable, but cancellation is a capability an event must choose. Extending
  * this class adopts {@link Cancellable}, so a later handler may clear the flag; that reversibility
  * is why cancellation must never guard a security decision. The workflow decision chain ({@link
- * WorkflowEvent} and its subclasses) is deliberately NOT cancellable: it halts only through the
- * irreversible {@link Event#prevent()} veto and aborts at run level through {@link
- * WorkflowEvent#cancellation()}, never through a reversible per-event cancel. Use this base only
- * for best-effort notifications whose suppression a later handler may safely undo.
+ * WorkflowEvent} and its subclasses) deliberately does not implement this reversible flag: {@link
+ * Event#prevent()} skips later handlers by default, and the concrete producer determines whether it
+ * vetoes a host action. Run cancellation uses {@link WorkflowEvent#cancellation()}, never a
+ * reversible per-event flag. Use this base only for best-effort notifications whose suppression a
+ * later handler may safely undo. Its flags have the same single-dispatch confinement as {@link
+ * Event}; reversible cancellation does not make an event safe for cross-thread mutation.
  */
 public abstract class CancellableEvent extends Event implements Cancellable {
     private boolean cancelled;

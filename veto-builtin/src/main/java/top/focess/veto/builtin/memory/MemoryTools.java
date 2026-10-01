@@ -207,9 +207,9 @@ public final class MemoryTools {
             resultContract =
                     """
                     - Direct-write success: `memory written: <memory UUID>`. - Promotion success: `promoted: <new \
-                    memory UUID>`. - Promotion failure (failure, NOT_FOUND): `Memory not found: the memory does \
+                    memory UUID>`. - Promotion failure (failure, MEMORY_NOT_FOUND): `Memory not found: the memory does \
                     not exist or is not owned; not promoted.` - Write failures: too-large content (failure, \
-                    TOO_LARGE): `Memory too large: the content exceeds 64000 characters; memory not written.`; \
+                    FILE_TOO_LARGE): `Memory too large: the content exceeds 64000 characters; memory not written.`; \
                     invalid project id (failure, INVALID_ARGUMENTS): `Invalid arguments: projectId must be a \
                     UUID; memory not written.` - Mode-field mismatch (failure, INVALID_ARGUMENTS): `Invalid \
                     arguments: PROMOTE accepts only promoteMemoryId; memory not promoted.` or `Invalid arguments: \
@@ -315,12 +315,12 @@ public final class MemoryTools {
                     return promoted != null
                             ? "promoted: " + promoted.value()
                             : ToolErrors.failure(
-                                    ToolErrorCode.MEMORY.NOT_FOUND,
+                                    ToolErrorCode.MEMORY.MEMORY_NOT_FOUND,
                                     "Memory not found: the memory does not exist or is not owned;"
                                             + " not promoted.");
                 } catch (IllegalArgumentException e) {
                     return ToolErrors.failure(
-                            ToolErrorCode.MEMORY.NOT_FOUND,
+                            ToolErrorCode.MEMORY.MEMORY_NOT_FOUND,
                             "Memory not found: the memory does not exist or is not owned; not"
                                     + " promoted.");
                 }
@@ -335,7 +335,7 @@ public final class MemoryTools {
                     requireValue(requestedContent, "RequiredWhen validation must supply content");
             if (content.length() > MAX_MEMORY_CHARS) {
                 return ToolErrors.failure(
-                        ToolErrorCode.MEMORY.TOO_LARGE,
+                        ToolErrorCode.WORKSPACE.FILE_TOO_LARGE,
                         "Memory too large: the content exceeds 64000 characters; memory not"
                                 + " written.");
             }
@@ -376,7 +376,7 @@ public final class MemoryTools {
             resultContract =
                     """
                     - Success -> `forgotten: <memoryId>`. - Invalid, unknown, or cross-user id (failure, \
-                    NOT_FOUND): `Memory not found: the memory does not exist or is not owned; nothing forgotten.`\
+                    MEMORY_NOT_FOUND): `Memory not found: the memory does not exist or is not owned; nothing forgotten.`\
                     """,
             errorsAndEdgeCases =
                     """
@@ -438,7 +438,7 @@ public final class MemoryTools {
             String id = args.memoryId();
             if (id.isBlank()) {
                 return ToolErrors.failure(
-                        ToolErrorCode.MEMORY.NOT_FOUND,
+                        ToolErrorCode.MEMORY.MEMORY_NOT_FOUND,
                         "Memory not found: the memory does not exist or is not owned; nothing"
                                 + " forgotten.");
             }
@@ -448,12 +448,12 @@ public final class MemoryTools {
                 return forgotten
                         ? "forgotten: " + memoryId.value()
                         : ToolErrors.failure(
-                                ToolErrorCode.MEMORY.NOT_FOUND,
+                                ToolErrorCode.MEMORY.MEMORY_NOT_FOUND,
                                 "Memory not found: the memory does not exist or is not owned;"
                                         + " nothing forgotten.");
             } catch (IllegalArgumentException e) {
                 return ToolErrors.failure(
-                        ToolErrorCode.MEMORY.NOT_FOUND,
+                        ToolErrorCode.MEMORY.MEMORY_NOT_FOUND,
                         "Memory not found: the memory does not exist or is not owned; nothing"
                                 + " forgotten.");
             }
