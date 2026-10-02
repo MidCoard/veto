@@ -1,6 +1,7 @@
 package top.focess.veto.api.event;
 
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.api.plugin.contract.Cancellation;
 
 /**
@@ -13,19 +14,15 @@ public final class BeforeInputEvent extends WorkflowEvent {
     /**
      * Creates the input event.
      *
-     * @param owner authenticated owner, or {@code null} when unavailable
-     * @param sessionId current session identity
-     * @param agentId current agent identity
+     * @param scope authenticated owner, session and agent identity
      * @param cancellation cooperative cancellation signal
      * @param text protected input text
      */
     public BeforeInputEvent(
-            String owner,
-            @NonNull String sessionId,
-            @NonNull String agentId,
+            Scope.@NonNull AgentScope scope,
             @NonNull Cancellation cancellation,
             @NonNull String text) {
-        super(owner, sessionId, agentId, cancellation);
+        super(scope, cancellation);
         this.text = text;
     }
 

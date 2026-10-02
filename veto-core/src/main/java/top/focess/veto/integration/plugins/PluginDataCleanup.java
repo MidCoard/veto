@@ -14,8 +14,10 @@ import top.focess.veto.vault.UserRegistry;
 /**
  * Required permanent-data cleanup coordinated with the deleting host transaction. Preparation fails
  * closed; completion receives the committed/rolled-back outcome. Concurrent transactions hold
- * independent contributor claims. Plugin preparation runs under live admission, and completion
- * releases its claim in finally on the transaction thread.
+ * independent contributor claims that manager shutdown drains before closing activations. Plugin
+ * preparation runs under live admission; completion runs on the transaction thread while its claim
+ * keeps the participant alive, and releases that claim in finally. This service stores no per-call
+ * state; callers must complete their transaction before closing the manager on that same thread.
  */
 @Service
 public final class PluginDataCleanup {
@@ -66,6 +68,7 @@ public final class PluginDataCleanup {
                 .storageIdentity();
     }
 
+    @SuppressWarnings("removal") // ThreadDeath remains a fatal participant signal while supported.
     private void requiredDeletion(
             PluginManager.@NonNull PublishedState publication,
             @NonNull Function<@NonNull DataLifecycle, DataLifecycle.@NonNull Completion> prepare) {
@@ -75,6 +78,7 @@ public final class PluginDataCleanup {
         for (var entry : publication.catalog().entries(StandardContributionPoints.DATA_LIFECYCLE)) {
             String owner = entry.source().namespace();
             var plugin = manager.beginDataCleanup(publication.plugin(owner));
+            boolean registered = false;
             try {
                 var completion = plugin.execute(() -> prepare.apply(entry.implementation()));
                 TransactionSynchronizationManager.registerSynchronization(
@@ -89,9 +93,13 @@ public final class PluginDataCleanup {
                                 }
                             }
                         });
-            } catch (PluginFailure | RuntimeException failure) {
-                manager.endDataCleanup(owner);
+                registered = true;
+            } catch (VirtualMachineError | ThreadDeath fatal) {
+                throw fatal;
+            } catch (PluginFailure | RuntimeException | Error failure) {
                 throw new IllegalStateException("Plugin data cleanup is unavailable", failure);
+            } finally {
+                if (!registered) manager.endDataCleanup(owner);
             }
         }
     }

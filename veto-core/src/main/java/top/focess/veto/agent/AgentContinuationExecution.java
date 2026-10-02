@@ -42,6 +42,8 @@ final class AgentContinuationExecution {
     private KeysteadVault executionVault;
     private RequestContinuationStore continuationStore;
     private AgentInbox workSource;
+    private SessionPlugins workSourceSelection;
+    private AgentInbox selectedWorkSource;
 
     /** Live request ledgers retained for late plugin observations during this agent lifetime. */
     private final @NonNull Map<String, RequestEpisode> episodes = new LinkedHashMap<>();
@@ -291,7 +293,12 @@ final class AgentContinuationExecution {
     AgentInbox source() {
         if (workSource != null) return workSource;
         var selected = sessionPlugins.get();
-        return selected == null ? null : selected.workSource(sessionId.toString());
+        if (selected == null) return null;
+        if (selected != workSourceSelection) {
+            selectedWorkSource = selected.workSource(sessionId.toString());
+            workSourceSelection = selected;
+        }
+        return selectedWorkSource;
     }
 
     AgentInbox.@NonNull InboxContext scope(RequestHandle handle) {

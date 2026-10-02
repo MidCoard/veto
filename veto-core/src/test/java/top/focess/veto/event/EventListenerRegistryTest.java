@@ -1,8 +1,11 @@
 package top.focess.veto.event;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.*;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -20,30 +23,28 @@ import top.focess.veto.api.event.Listener;
 import top.focess.veto.api.event.UserAuthenticatedEvent;
 import top.focess.veto.api.event.UserLoggedInEvent;
 import top.focess.veto.api.event.UserRegisteredEvent;
+import top.focess.veto.api.plugin.PluginState;
 import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.api.plugin.contract.JsonValue;
+import top.focess.veto.api.plugin.contract.PluginFailure;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
 import top.focess.veto.api.plugin.contribution.Contribution;
 import top.focess.veto.api.plugin.contribution.ContributionCatalog;
 import top.focess.veto.api.plugin.contribution.ContributionSource;
+import top.focess.veto.plugin.runtime.PluginLifecycle;
 
 class EventListenerRegistryTest {
     @Test
-    void broadcastRejectsWorkflowEventsBeforeInvokingHandlers() {
+    void sessionRecipientEventRejectsMissingSelectionBeforeInvokingHandlers() {
         var calls = new ArrayList<String>();
         var registry = registry(new NormalProbe(calls, "listener"));
         var event =
                 new BeforeToolEvent(
-                        "owner",
-                        "session",
-                        "agent",
+                        new Scope.AgentScope("owner", "session", "agent"),
                         () -> false,
                         new BeforeToolEvent.Invocation(
                                 "tool", "call", new JsonValue.ObjectValue(Map.of())));
-        assertThrows(IllegalArgumentException.class, () -> registry.broadcast(event));
-        assertThrows(
-                IllegalArgumentException.class,
-                () -> registry.broadcast(event, Set.of("demo.listener")));
+        assertThrows(IllegalArgumentException.class, () -> registry.submit(event));
         assertTrue(calls.isEmpty());
     }
 
@@ -51,14 +52,11 @@ class EventListenerRegistryTest {
     void pluginAssertionIsContainedButFatalVmErrorsPropagate() {
         var calls = new ArrayList<String>();
         var ordinary = registry(new ErrorProbe(false), new NormalProbe(calls, "later"));
-        ordinary.broadcast(
-                new UserLoggedInEvent(new Scope.UserScope("owner")), Set.of("demo.listener"));
+        ordinary.submit(new UserLoggedInEvent(new Scope.UserScope("owner")));
         assertEquals(List.of("later"), calls);
         var event =
                 new BeforeToolEvent(
-                        "owner",
-                        "session",
-                        "agent",
+                        new Scope.AgentScope("owner", "session", "agent"),
                         () -> false,
                         new BeforeToolEvent.Invocation(
                                 "tool", "call", new JsonValue.ObjectValue(Map.of())));
@@ -66,14 +64,11 @@ class EventListenerRegistryTest {
                 assertThrows(
                         IllegalStateException.class,
                         () -> ordinary.submit(event, Set.of("demo.listener")));
-        assertEquals("Workflow listener unavailable", failure.getMessage());
+        assertEquals("Event listener unavailable", failure.getMessage());
         var fatal = registry(new ErrorProbe(true));
         assertThrows(
                 InternalError.class,
-                () ->
-                        fatal.broadcast(
-                                new UserLoggedInEvent(new Scope.UserScope("owner")),
-                                Set.of("demo.listener")));
+                () -> fatal.submit(new UserLoggedInEvent(new Scope.UserScope("owner"))));
     }
 
     private static final class ErrorProbe extends Listener {
@@ -129,24 +124,17 @@ class EventListenerRegistryTest {
                                                 listener)))
                         .freeze();
         var active = new AtomicBoolean(true);
+        var owner = owner();
+        when(owner.state())
+                .thenAnswer(invocation -> active.get() ? PluginState.ACTIVE : PluginState.CLOSED);
         var registry =
-                EventListenerRegistry.build(
-                        catalog,
-                        (namespace, body) -> {
-                            try {
-                                body.run();
-                            } catch (Exception failure) {
-                                throw new IllegalStateException(failure);
-                            }
-                        },
-                        preparation,
-                        namespace -> active.get());
-        registry.broadcast(new UserRegisteredEvent(new Scope.UserScope("owner")));
+                EventListenerRegistry.build(catalog, Map.of("demo.listener", owner), preparation);
+        registry.submit(new UserRegisteredEvent(new Scope.UserScope("owner")));
         assertTrue(calls.isEmpty());
-        registry.broadcast(new UserLoggedInEvent(new Scope.UserScope("owner")));
+        registry.submit(new UserLoggedInEvent(new Scope.UserScope("owner")));
         assertEquals(List.of("active"), calls);
         active.set(false);
-        registry.broadcast(new UserLoggedInEvent(new Scope.UserScope("owner")));
+        registry.submit(new UserLoggedInEvent(new Scope.UserScope("owner")));
         assertEquals(List.of("active"), calls);
     }
 
@@ -156,16 +144,13 @@ class EventListenerRegistryTest {
     }
 
     @Test
-    void dispatchFiltersSelectionAndSortsPriorityBeforeContributionOrder() {
+    void dispatchSortsPriorityBeforeContributionOrder() {
         var calls = new ArrayList<String>();
         var registry =
                 registry(
                         new LowProbe(calls), new NormalProbe(calls, "first"),
                         new NormalProbe(calls, "second"), new HighProbe(calls));
-        registry.broadcast(new UserLoggedInEvent(new Scope.UserScope("owner")), Set.of());
-        assertTrue(calls.isEmpty());
-        registry.broadcast(
-                new UserLoggedInEvent(new Scope.UserScope("owner")), Set.of("demo.listener"));
+        registry.submit(new UserLoggedInEvent(new Scope.UserScope("owner")));
         assertEquals(List.of("high", "first", "second", "low"), calls);
     }
 
@@ -175,9 +160,7 @@ class EventListenerRegistryTest {
         var registry = registry(new RejectProbe(calls));
         var event =
                 new BeforeToolEvent(
-                        "owner",
-                        "session",
-                        "agent",
+                        new Scope.AgentScope("owner", "session", "agent"),
                         () -> false,
                         new BeforeToolEvent.Invocation(
                                 "tool", "call", new JsonValue.ObjectValue(Map.of())));
@@ -193,9 +176,7 @@ class EventListenerRegistryTest {
         var registry = registry(new FailureProbe(), new NormalProbe(calls, "later"));
         var event =
                 new BeforeToolEvent(
-                        "owner",
-                        "session",
-                        "agent",
+                        new Scope.AgentScope("owner", "session", "agent"),
                         () -> false,
                         new BeforeToolEvent.Invocation(
                                 "tool", "call", new JsonValue.ObjectValue(Map.of())));
@@ -203,14 +184,18 @@ class EventListenerRegistryTest {
                 assertThrows(
                         IllegalStateException.class,
                         () -> registry.submit(event, Set.of("demo.listener")));
-        assertEquals("Workflow listener unavailable", failure.getMessage());
-        registry.broadcast(
-                new UserLoggedInEvent(new Scope.UserScope("owner")), Set.of("demo.listener"));
+        assertEquals("Event listener unavailable", failure.getMessage());
+        registry.submit(new UserLoggedInEvent(new Scope.UserScope("owner")));
         assertEquals(List.of("later"), calls);
     }
 
     private static @NonNull EventListenerRegistry registry(
             @NonNull Listener @NonNull ... listeners) {
+        return registry(owner(), listeners);
+    }
+
+    private static @NonNull EventListenerRegistry registry(
+            @NonNull PluginLifecycle owner, @NonNull Listener @NonNull ... listeners) {
         var source =
                 new ContributionSource("demo.listener", "1.0.0", ContributionSource.Origin.PLUGIN);
         var contributions = new ArrayList<@NonNull Contribution<?>>();
@@ -227,14 +212,186 @@ class EventListenerRegistryTest {
                         .stage(source, contributions)
                         .freeze();
         return EventListenerRegistry.build(
-                catalog,
-                (namespace, body) -> {
-                    try {
-                        body.run();
-                    } catch (Exception failure) {
-                        throw new IllegalStateException(failure);
+                catalog, Map.of("demo.listener", owner), new EventListenerRegistry.Preparation());
+    }
+
+    private static @NonNull PluginLifecycle owner() {
+        var owner = mock(PluginLifecycle.class);
+        when(owner.state()).thenReturn(PluginState.ACTIVE);
+        try {
+            doAnswer(
+                            invocation -> {
+                                var operation =
+                                        invocation
+                                                .<PluginLifecycle.Operation<@NonNull Boolean>>
+                                                        getArgument(0);
+                                if (operation == null)
+                                    throw new AssertionError("Admitted operation must exist");
+                                return operation.run();
+                            })
+                    .when(owner)
+                    .<Boolean>execute(any());
+        } catch (PluginFailure failure) {
+            throw new AssertionError(failure);
+        }
+        return owner;
+    }
+
+    @Test
+    void workflowSelectionExcludesHandlers() {
+        var calls = new ArrayList<String>();
+        var registry = registry(new RejectProbe(calls));
+        var event =
+                new BeforeToolEvent(
+                        new Scope.AgentScope("owner", "session", "agent"),
+                        () -> false,
+                        new BeforeToolEvent.Invocation(
+                                "tool", "call", new JsonValue.ObjectValue(Map.of())));
+        registry.submit(event, Set.of());
+        assertTrue(calls.isEmpty());
+        registry.submit(event, Set.of("demo.listener"));
+        assertEquals(List.of("reject", "observe"), calls);
+    }
+
+    @Test
+    void activeRecipientEventCanUseAnExplicitSelectionOrAllActiveOwners() {
+        var calls = new ArrayList<String>();
+        var registry = registry(new NormalProbe(calls, "selected"));
+        registry.submit(new UserLoggedInEvent(new Scope.UserScope("owner")), Set.of());
+        assertTrue(calls.isEmpty());
+        registry.submit(new UserLoggedInEvent(new Scope.UserScope("owner")));
+        assertEquals(List.of("selected"), calls);
+    }
+
+    @Test
+    void activeRecipientFailClosedEventExcludesInactiveOwnersInBothEntryPoints()
+            throws PluginFailure {
+        var calls = new ArrayList<String>();
+        var owner = owner();
+        when(owner.state()).thenReturn(PluginState.CLOSED);
+        var registry = registry(owner, new NormalProbe(calls, "inactive"));
+        var event = mock(UserLoggedInEvent.class);
+        when(event.recipients()).thenReturn(Event.Recipients.ACTIVE_PLUGINS);
+        when(event.failurePolicy()).thenReturn(Event.FailurePolicy.FAIL_CLOSED);
+        assertDoesNotThrow(() -> registry.submit(event));
+        assertDoesNotThrow(() -> registry.submit(event, Set.of("demo.listener")));
+        assertTrue(calls.isEmpty());
+        verify(owner, never()).execute(any());
+    }
+
+    @Test
+    void hostCancellationFailsClosedBeforeItsHandler() {
+        var calls = new ArrayList<String>();
+        var registry = registry(new RejectProbe(calls));
+        var event =
+                new BeforeToolEvent(
+                        new Scope.AgentScope("owner", "session", "agent"),
+                        () -> true,
+                        new BeforeToolEvent.Invocation(
+                                "tool", "call", new JsonValue.ObjectValue(Map.of())));
+        var failure =
+                assertThrows(
+                        IllegalStateException.class,
+                        () -> registry.submit(event, Set.of("demo.listener")));
+        assertEquals("Event listener unavailable", failure.getMessage());
+        assertTrue(calls.isEmpty());
+    }
+
+    @Test
+    void reversibleCancellationDoesNotFilterLowerHandlers() {
+        var calls = new ArrayList<String>();
+        var listener = new Listener() {
+            @EventHandler(priority = EventPriority.HIGHEST)
+            public void cancel(@NonNull BeforeToolEvent event) {
+                calls.add("cancel");
+                event.cancel();
+            }
+
+            @EventHandler(priority = EventPriority.NORMAL)
+            public void restore(@NonNull BeforeToolEvent event) {
+                assertTrue(event.isCancelled());
+                calls.add("restore");
+                event.setCancelled(false);
+            }
+
+            @EventHandler(priority = EventPriority.LOWEST)
+            public void observe(@NonNull BeforeToolEvent event) {
+                assertFalse(event.isCancelled());
+                calls.add("observe");
+            }
+        };
+        var event = new BeforeToolEvent(new Scope.AgentScope("owner", "session", "agent"),
+                () -> false, new BeforeToolEvent.Invocation("tool", "call", new JsonValue.ObjectValue(Map.of())));
+        registry(listener).submit(event, Set.of("demo.listener"));
+        assertEquals(List.of("cancel", "restore", "observe"), calls);
+        assertFalse(event.isCancelled());
+        assertFalse(event.isPrevent());
+    }
+
+    @Test
+    void preventionStillStopsLowerHandlersAfterReversibleCancellation() {
+        var calls = new ArrayList<String>();
+        var listener = new Listener() {
+            @EventHandler(priority = EventPriority.HIGHEST)
+            public void stop(@NonNull BeforeToolEvent event) {
+                calls.add("stop");
+                event.cancel();
+                event.prevent();
+            }
+
+            @EventHandler(priority = EventPriority.LOWEST)
+            public void restore(@NonNull BeforeToolEvent event) {
+                calls.add("restore");
+                event.setCancelled(false);
+            }
+        };
+        var event = new BeforeToolEvent(new Scope.AgentScope("owner", "session", "agent"),
+                () -> false, new BeforeToolEvent.Invocation("tool", "call", new JsonValue.ObjectValue(Map.of())));
+        registry(listener).submit(event, Set.of("demo.listener"));
+        assertEquals(List.of("stop"), calls);
+        assertTrue(event.isCancelled());
+        assertTrue(event.isPrevent());
+    }
+
+    @Test
+    void preparedRoutesIgnoreEmptyAndUnrelatedListeners() {
+        var event = new UserLoggedInEvent(new Scope.UserScope("owner"));
+        assertFalse(registry(new Listener() {}).hasHandlers(event));
+        assertFalse(registry().hasHandlers(event));
+        var unrelated =
+                new Listener() {
+                    @EventHandler
+                    public void event(@NonNull BeforeToolEvent event) {}
+                };
+        assertFalse(registry(unrelated).hasHandlers(event));
+        assertTrue(registry(new NormalProbe(new ArrayList<>(), "normal")).hasHandlers(event));
+    }
+
+    @Test
+    void unknownConcreteEventIsRejectedEvenWithoutHandlers() {
+        var event =
+                new Event(Event.Recipients.ACTIVE_PLUGINS, Event.FailurePolicy.CONTINUE) {
+                    @Override
+                    public Scope.@NonNull GlobalScope scope() {
+                        return new Scope.GlobalScope();
                     }
-                });
+                };
+        var empty = registry();
+        var populated = registry(new NormalProbe(new ArrayList<>(), "normal"));
+        assertThrows(IllegalArgumentException.class, () -> empty.hasHandlers(event));
+        assertThrows(IllegalArgumentException.class, () -> populated.hasHandlers(event));
+        assertThrows(IllegalArgumentException.class, () -> empty.submit(event));
+    }
+
+    @Test
+    void inheritedHandlerMakesConcreteRouteNonEmpty() {
+        var event = new UserRegisteredEvent(new Scope.UserScope("owner"));
+        var listener =
+                new Listener() {
+                    @EventHandler
+                    public void event(@NonNull UserAuthenticatedEvent event) {}
+                };
+        assertTrue(registry(listener).hasHandlers(event));
     }
 
     private static final class NormalProbe extends Listener {
@@ -336,19 +493,12 @@ class EventListenerRegistryTest {
         var registry =
                 EventListenerRegistry.build(
                         catalog,
-                        (namespace, body) -> {
-                            try {
-                                body.run();
-                            } catch (Exception failure) {
-                                throw new IllegalStateException(failure);
-                            }
-                        });
-        registry.broadcast(
-                new UserRegisteredEvent(new Scope.UserScope("owner")), Set.of("demo.listener"));
+                        Map.of("demo.listener", owner()),
+                        new EventListenerRegistry.Preparation());
+        registry.submit(new UserRegisteredEvent(new Scope.UserScope("owner")));
         assertEquals(List.of("registered", "authenticated", "lifecycle", "event"), calls);
         calls.clear();
-        registry.broadcast(
-                new UserLoggedInEvent(new Scope.UserScope("owner")), Set.of("demo.listener"));
+        registry.submit(new UserLoggedInEvent(new Scope.UserScope("owner")));
         assertEquals(List.of("logged-in", "authenticated", "lifecycle", "event"), calls);
     }
 

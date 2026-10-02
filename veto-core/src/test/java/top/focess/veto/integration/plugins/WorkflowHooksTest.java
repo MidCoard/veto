@@ -11,13 +11,15 @@ import org.junit.jupiter.api.Test;
 import top.focess.veto.api.event.BeforeInputEvent;
 import top.focess.veto.api.event.EventHandler;
 import top.focess.veto.api.event.Listener;
+import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.api.plugin.contract.*;
 import top.focess.veto.api.plugin.contribution.*;
 import top.focess.veto.plugin.runtime.*;
 
 class WorkflowHooksTest {
     private static @NonNull BeforeInputEvent input(boolean cancelled, @NonNull String text) {
-        return new BeforeInputEvent("owner", "session", "agent", () -> cancelled, text);
+        return new BeforeInputEvent(
+                new Scope.AgentScope("owner", "session", "agent"), () -> cancelled, text);
     }
 
     /** Appends a fixed suffix; optionally counts how many times it ran. */
@@ -71,20 +73,19 @@ class WorkflowHooksTest {
                                         Set.of(new ContributionId("fixture.workflow:first"))),
                                 Contribution.of(point, "first", first)))) {
             var event = input(false, "");
-            fixture.sessions.dispatch(event);
+            fixture.events.submit(event);
             assertEquals("AB", event.text());
             assertEquals(1, calls.get());
-            assertThrows(
-                    IllegalStateException.class, () -> fixture.sessions.dispatch(input(true, "")));
+            assertThrows(IllegalStateException.class, () -> fixture.events.submit(input(true, "")));
             assertEquals(1, calls.get());
             fixture.useUnselectedSession();
             var unchanged = input(false, "unchanged");
-            fixture.sessions.dispatch(unchanged);
+            fixture.events.submit(unchanged);
             assertEquals("unchanged", unchanged.text());
             fixture.restoreSelectedSession();
             fixture.runtime.close();
             var inactive = input(false, "inactive");
-            fixture.sessions.dispatch(inactive);
+            fixture.events.submit(inactive);
             assertEquals("inactive", inactive.text());
             assertEquals(1, calls.get());
         }
@@ -110,8 +111,8 @@ class WorkflowHooksTest {
             var error =
                     assertThrows(
                             IllegalStateException.class,
-                            () -> fixture.sessions.dispatch(input(false, "")));
-            assertEquals("Workflow listener unavailable", error.getMessage());
+                            () -> fixture.events.submit(input(false, "")));
+            assertEquals("Event listener unavailable", error.getMessage());
             assertNull(error.getCause());
             assertEquals(1, calls.get());
             assertEquals(0, after.get());
@@ -157,7 +158,7 @@ class WorkflowHooksTest {
                                                 new ContributionId(
                                                         "fixture.workflow:observer")))))) {
             var event = input(false, "original");
-            fixture.sessions.dispatch(event);
+            fixture.events.submit(event);
             assertTrue(observed.get());
             assertTrue(event.isPrevent());
             assertEquals(0, following.get());

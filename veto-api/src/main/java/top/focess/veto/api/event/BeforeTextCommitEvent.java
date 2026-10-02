@@ -1,13 +1,15 @@
 package top.focess.veto.api.event;
 
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.api.plugin.contract.Cancellation;
 
 /**
  * Synchronous text boundary before user input or file content is committed or exposed to a model.
- * Listeners may replace {@link #text()}; prevention or listener failure stops publication.
+ * Listeners may replace {@link #text()}; action cancellation or listener failure stops publication.
+ * {@link #prevent()} controls propagation only.
  */
-public final class BeforeTextCommitEvent extends WorkflowEvent {
+public final class BeforeTextCommitEvent extends WorkflowEvent implements Cancellable {
     /** The host operation whose text is about to cross a persistence or model boundary. */
     public enum Phase {
         /** User input before it is recorded. */
@@ -22,27 +24,24 @@ public final class BeforeTextCommitEvent extends WorkflowEvent {
     private final @NonNull String sourceId;
     private @NonNull String text;
     private boolean replaced;
+    private boolean cancelled;
 
     /**
      * Creates a host-attributed text event for one selected session and agent.
      *
-     * @param owner authenticated owner identity
-     * @param sessionId selected session identity
-     * @param agentId calling agent identity
+     * @param scope authenticated owner, session and agent identity
      * @param cancellation request cancellation signal
      * @param phase text publication boundary
      * @param sourceId individual source identity
      * @param text original text
      */
     public BeforeTextCommitEvent(
-            @NonNull String owner,
-            @NonNull String sessionId,
-            @NonNull String agentId,
+            Scope.@NonNull AgentScope scope,
             @NonNull Cancellation cancellation,
             @NonNull Phase phase,
             @NonNull String sourceId,
             @NonNull String text) {
-        super(owner, sessionId, agentId, cancellation);
+        super(scope, cancellation);
         this.phase = phase;
         this.sourceId = sourceId;
         this.text = text;
@@ -92,5 +91,25 @@ public final class BeforeTextCommitEvent extends WorkflowEvent {
      */
     public boolean replaced() {
         return replaced;
+    }
+
+    /**
+     * Returns whether the producer should cancel text publication after delivery.
+     *
+     * @return current reversible action cancellation
+     */
+    @Override
+    public boolean isCancelled() {
+        return cancelled;
+    }
+
+    /**
+     * Sets reversible action cancellation without changing propagation or the host stop signal.
+     *
+     * @param cancelled whether the producer should cancel text publication
+     */
+    @Override
+    public void setCancelled(boolean cancelled) {
+        this.cancelled = cancelled;
     }
 }

@@ -23,11 +23,12 @@ import top.focess.veto.agent.AgentService;
 import top.focess.veto.agent.TurnRecord;
 import top.focess.veto.agent.TurnType;
 import top.focess.veto.api.event.BeforeTextCommitEvent;
+import top.focess.veto.api.event.SessionDeletedEvent;
 import top.focess.veto.api.llm.ProviderType;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.api.plugin.Scope;
+import top.focess.veto.event.EventManager;
 import top.focess.veto.integration.plugins.PluginDataCleanup;
-import top.focess.veto.integration.plugins.PluginLifecycleEvents;
 import top.focess.veto.integration.plugins.PluginTestSupport;
 import top.focess.veto.model.AgentEntity;
 import top.focess.veto.model.AgentInstanceRepository;
@@ -41,6 +42,38 @@ import top.focess.veto.vault.UserEntity;
 import top.focess.veto.vault.UserRegistry;
 
 class SessionServiceTest {
+    @Test
+    void rolledBackSessionDeletionDoesNotPublishDeletionOrStopItsAgent() {
+        var sessions = mock(SessionRepository.class);
+        var agentService = mock(AgentService.class);
+        var session = new SessionEntity("alice", "coder");
+        when(sessions.findByOwner("alice")).thenReturn(List.of(session));
+        var service =
+                new SessionService(
+                        sessions,
+                        mock(AgentInstanceRepository.class),
+                        mock(AgentPatternRepository.class),
+                        agentService,
+                        mock(SessionHistoryLoader.class),
+                        mock(ModelTierRegistry.class));
+        var events = mock(EventManager.class);
+        service.attachEventManager(events);
+        TransactionSynchronizationManager.initSynchronization();
+        TransactionSynchronizationManager.setActualTransactionActive(true);
+        try {
+            assertTrue(service.delete("alice", "coder"));
+            verifyNoInteractions(events);
+            verify(agentService, never()).remove(session.getId());
+            for (var synchronization : TransactionSynchronizationManager.getSynchronizations()) {
+                synchronization.afterCompletion(TransactionSynchronization.STATUS_ROLLED_BACK);
+            }
+            verifyNoInteractions(events);
+            verify(agentService, never()).remove(session.getId());
+        } finally {
+            TransactionSynchronizationManager.clear();
+        }
+    }
+
     @Test
     void monitorActivationUsesExactIdentityAndRejectsMissingRecoveryEvidence() {
         SessionRepository sessions = mock(SessionRepository.class);
@@ -147,6 +180,7 @@ class SessionServiceTest {
 
         SessionEntity session = service.createSession("alice", "coder");
         assertEquals(ToolResultPresentationMode.BASIC, session.getToolResultPresentation());
+        assertEquals(List.of(), session.getPluginBindings());
         requirePrimaryAgentId(session, "primary agent created and linked");
         verify(agents).save(any(AgentEntity.class));
     }
@@ -430,7 +464,7 @@ class SessionServiceTest {
         boolean removed;
         var scope = new Scope.AgentScope("alice", session.getId(), agent.getId());
         try (var plugins = PluginTestSupport.manager()) {
-            var lifecycle = new PluginLifecycleEvents(plugins);
+            var events = spy(PluginTestSupport.eventManager(plugins));
             var users = mock(UserRegistry.class);
             var user = mock(UserEntity.class);
             when(user.storageIdentity()).thenReturn("alice-storage-identity");
@@ -438,7 +472,7 @@ class SessionServiceTest {
             var cleanup = new PluginDataCleanup(plugins);
             cleanup.attachUsers(users);
             service.attachPluginDataCleanup(cleanup);
-            service.attachLifecycleEvents(lifecycle);
+            service.attachEventManager(events);
             String captured =
                     PluginTestSupport.protect(
                             plugins,
@@ -453,9 +487,20 @@ class SessionServiceTest {
             TransactionSynchronizationManager.setActualTransactionActive(true);
             try {
                 removed = service.delete("alice", "coder");
+                verify(events, never()).submit(any());
                 var synchronizations = TransactionSynchronizationManager.getSynchronizations();
                 for (var synchronization : synchronizations) synchronization.beforeCommit(false);
                 for (var synchronization : synchronizations) synchronization.afterCommit();
+                verify(events)
+                        .submit(
+                                argThat(
+                                        event ->
+                                                event instanceof SessionDeletedEvent deleted
+                                                        && deleted.scope()
+                                                                .equals(
+                                                                        new Scope.SessionScope(
+                                                                                "alice",
+                                                                                session.getId()))));
                 for (var synchronization : synchronizations) {
                     synchronization.afterCompletion(TransactionSynchronization.STATUS_COMMITTED);
                 }

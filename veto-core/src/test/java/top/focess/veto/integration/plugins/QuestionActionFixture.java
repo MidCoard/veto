@@ -29,7 +29,6 @@ import top.focess.veto.integration.plugins.storage.PluginStorageFactory;
 import top.focess.veto.model.SessionEntity;
 import top.focess.veto.model.SessionRepository;
 import top.focess.veto.plugin.runtime.PluginLifecycle;
-import top.focess.veto.session.SessionHistoryLoader;
 import top.focess.veto.util.Nullness;
 import top.focess.veto.vault.UserContext;
 
@@ -131,7 +130,7 @@ public final class QuestionActionFixture implements AutoCloseable {
         scope = new Scope.AgentScope("alice", session.getId(), "agent");
         when(sessions.findFirstByNameAndOwnerOrderByLastActiveAtDesc("session", "alice"))
                 .thenReturn(Optional.of(session));
-        selected = spy(new SessionPlugins(manager, sessions, mock(SessionHistoryLoader.class)));
+        selected = spy(new SessionPlugins(manager, sessions));
         when(sessions.findById(session.getId())).thenReturn(Optional.of(session));
         session.setPluginBindings(
                 List.of(new PluginBinding("top.focess.builtin", "1.0.100", "1.0.100")));

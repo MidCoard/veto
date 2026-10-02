@@ -7,10 +7,13 @@ import java.util.regex.Pattern;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.api.event.BeforeTextCommitEvent;
+import top.focess.veto.api.event.UserLoggedInEvent;
+import top.focess.veto.api.event.UserLogoutEvent;
+import top.focess.veto.api.event.UserRegisteredEvent;
 import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.api.plugin.contract.PluginFailure;
 import top.focess.veto.command.PromptHandler;
-import top.focess.veto.integration.plugins.PluginLifecycleEvents;
+import top.focess.veto.event.EventManager;
 import top.focess.veto.integration.plugins.PluginManager;
 import top.focess.veto.integration.plugins.PluginTestSupport;
 
@@ -19,9 +22,9 @@ class AuthLifecycleManagerTest {
     void failedAuthenticationPublishesNeitherSuccessEvent() {
         var vault = mock(KeysteadVault.class);
         var prompts = mock(PromptHandler.class);
-        var events = mock(PluginLifecycleEvents.class);
+        var events = mock(EventManager.class);
         var lifecycle = new AuthLifecycleManager(vault, prompts);
-        lifecycle.attachLifecycleEvents(events);
+        lifecycle.attachEventManager(events);
         doThrow(new IllegalArgumentException("Signup failed"))
                 .when(vault)
                 .signup("alice", "invalid");
@@ -35,12 +38,18 @@ class AuthLifecycleManagerTest {
     void logoutNotificationPrecedesTerminalDetachAndVaultClose() {
         var vault = mock(KeysteadVault.class);
         var prompts = mock(PromptHandler.class);
-        var events = mock(PluginLifecycleEvents.class);
+        var events = mock(EventManager.class);
         var lifecycle = new AuthLifecycleManager(vault, prompts);
-        lifecycle.attachLifecycleEvents(events);
+        lifecycle.attachEventManager(events);
         lifecycle.logout("alice");
         var ordered = inOrder(events, prompts, vault);
-        ordered.verify(events).userLogout("alice");
+        ordered.verify(events)
+                .submit(
+                        argThat(
+                                event ->
+                                        event instanceof UserLogoutEvent fact
+                                                && fact.scope()
+                                                        .equals(new Scope.UserScope("alice"))));
         ordered.verify(prompts).deactivateUser("alice");
         ordered.verify(vault).logout("alice");
     }
@@ -49,16 +58,34 @@ class AuthLifecycleManagerTest {
     void signupAndLoginReportDifferentAuthenticationEvents() {
         KeysteadVault vault = mock(KeysteadVault.class);
         PromptHandler prompts = mock(PromptHandler.class);
-        PluginLifecycleEvents events = mock(PluginLifecycleEvents.class);
+        EventManager events = mock(EventManager.class);
         var lifecycle = new AuthLifecycleManager(vault, prompts);
-        lifecycle.attachLifecycleEvents(events);
+        lifecycle.attachEventManager(events);
 
         lifecycle.signup("alice", "password");
-        verify(events).userRegistered("alice");
-        verify(events, never()).userLoggedIn("alice");
+        verify(events)
+                .submit(
+                        argThat(
+                                event ->
+                                        event instanceof UserRegisteredEvent fact
+                                                && fact.scope()
+                                                        .equals(new Scope.UserScope("alice"))));
+        verify(events, never())
+                .submit(
+                        argThat(
+                                event ->
+                                        event instanceof UserLoggedInEvent fact
+                                                && fact.scope()
+                                                        .equals(new Scope.UserScope("alice"))));
 
         lifecycle.login("alice", "password");
-        verify(events).userLoggedIn("alice");
+        verify(events)
+                .submit(
+                        argThat(
+                                event ->
+                                        event instanceof UserLoggedInEvent fact
+                                                && fact.scope()
+                                                        .equals(new Scope.UserScope("alice"))));
     }
 
     @Test
@@ -71,7 +98,7 @@ class AuthLifecycleManagerTest {
             String reference = capture(plugins, scope, "password=alpha");
             String otherReference = capture(plugins, other, "password=beta");
             var lifecycle = new AuthLifecycleManager(vault, prompts);
-            lifecycle.attachLifecycleEvents(new PluginLifecycleEvents(plugins));
+            lifecycle.attachEventManager(PluginTestSupport.eventManager(plugins));
             doThrow(new IllegalStateException("Detach failed"))
                     .when(prompts)
                     .deactivateUser("alice");
@@ -93,7 +120,7 @@ class AuthLifecycleManagerTest {
             var scope = new Scope.AgentScope("alice", "session", "agent");
             String old = capture(plugins, scope, "password=alpha");
             var lifecycle = new AuthLifecycleManager(vault, prompts);
-            lifecycle.attachLifecycleEvents(new PluginLifecycleEvents(plugins));
+            lifecycle.attachEventManager(PluginTestSupport.eventManager(plugins));
             lifecycle.logout("alice");
             doThrow(new IllegalArgumentException("Login failed"))
                     .when(vault)

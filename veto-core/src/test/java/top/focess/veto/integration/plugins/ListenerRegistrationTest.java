@@ -65,7 +65,7 @@ class ListenerRegistrationTest {
             assertTrue(
                     nextPublication.catalog().entries(StandardContributionPoints.LISTENERS).stream()
                             .anyMatch(entry -> entry.id().localId().equals("prepared-probe")));
-            manager.events().broadcast(new UserLoggedInEvent(new Scope.UserScope("probe-user")));
+            manager.events().submit(new UserLoggedInEvent(new Scope.UserScope("probe-user")));
             assertEquals(1, calls.get());
             assertTrue(
                     manager.catalog().entries(StandardContributionPoints.LISTENERS).stream()

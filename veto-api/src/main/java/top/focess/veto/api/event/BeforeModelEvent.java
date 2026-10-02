@@ -1,31 +1,29 @@
 package top.focess.veto.api.event;
 
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.api.plugin.contract.Cancellation;
 
 /**
- * Fired before the selected model is invoked. This is an observation point: a handler may {@link
- * #prevent()} the call but the {@link ModelCall} itself is read-only.
+ * Fired before the selected model is invoked. A handler may cancel the producer's model call;
+ * {@link #prevent()} controls propagation only. The {@link ModelCall} itself is read-only.
  */
-public final class BeforeModelEvent extends WorkflowEvent {
+public final class BeforeModelEvent extends WorkflowEvent implements Cancellable {
     private final @NonNull ModelCall call;
+    private boolean cancelled;
 
     /**
      * Creates the model-observation event.
      *
-     * @param owner authenticated owner, or {@code null} when unavailable
-     * @param sessionId current session identity
-     * @param agentId current agent identity
+     * @param scope authenticated owner, session and agent identity
      * @param cancellation cooperative cancellation signal
      * @param call selected model endpoint
      */
     public BeforeModelEvent(
-            String owner,
-            @NonNull String sessionId,
-            @NonNull String agentId,
+            Scope.@NonNull AgentScope scope,
             @NonNull Cancellation cancellation,
             @NonNull ModelCall call) {
-        super(owner, sessionId, agentId, cancellation);
+        super(scope, cancellation);
         this.call = call;
     }
 
@@ -36,5 +34,25 @@ public final class BeforeModelEvent extends WorkflowEvent {
      */
     public @NonNull ModelCall call() {
         return call;
+    }
+
+    /**
+     * Returns whether the producer should cancel the model call after delivery.
+     *
+     * @return current reversible action cancellation
+     */
+    @Override
+    public boolean isCancelled() {
+        return cancelled;
+    }
+
+    /**
+     * Sets reversible action cancellation without changing propagation or the host stop signal.
+     *
+     * @param cancelled whether the producer should cancel the model call
+     */
+    @Override
+    public void setCancelled(boolean cancelled) {
+        this.cancelled = cancelled;
     }
 }

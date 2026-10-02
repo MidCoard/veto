@@ -7,10 +7,8 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Service;
-import top.focess.veto.agent.TurnType;
 import top.focess.veto.agent.tool.ToolDefinition;
 import top.focess.veto.api.agent.control.SourceEvidence;
-import top.focess.veto.api.event.WorkflowEvent;
 import top.focess.veto.api.llm.VetoResponse;
 import top.focess.veto.api.plugin.PluginBinding;
 import top.focess.veto.api.plugin.PluginState;
@@ -26,26 +24,20 @@ import top.focess.veto.api.plugin.storage.PluginStorage;
 import top.focess.veto.integration.plugins.storage.PluginInvocationContext;
 import top.focess.veto.model.SessionRepository;
 import top.focess.veto.plugin.runtime.*;
-import top.focess.veto.session.SessionHistoryLoader;
 
 /**
- * Immutable session selection. Installed packages are a catalog, never a global availability
- * switch.
+ * Resolves explicit session plugin bindings against the current publication. Installed packages are
+ * a catalog, never a global availability switch. Reads do not modify session selection.
  */
 @Service
 public class SessionPlugins {
     private final @NonNull PluginManager manager;
     private final @NonNull SessionRepository sessions;
-    private final @NonNull SessionHistoryLoader history;
 
-    /** Creates the selection service over the plugin manager and session stores. */
-    public SessionPlugins(
-            @NonNull PluginManager manager,
-            @NonNull SessionRepository sessions,
-            @NonNull SessionHistoryLoader history) {
+    /** Creates the selection service over the plugin manager and session store. */
+    public SessionPlugins(@NonNull PluginManager manager, @NonNull SessionRepository sessions) {
         this.manager = manager;
         this.sessions = sessions;
-        this.history = history;
     }
 
     /**
@@ -67,86 +59,22 @@ public class SessionPlugins {
                             var plugin = publication.plugin(id);
                             if (plugin.state() != PluginState.ACTIVE)
                                 throw new IllegalArgumentException("Plugin is unavailable: " + id);
-                            return binding(plugin);
+                            return plugin.binding();
                         })
                 .toList();
     }
 
-    private static @NonNull PluginBinding binding(@NonNull PluginLifecycle plugin) {
-        String revision =
-                plugin.implementation() instanceof ScriptPlugin script
-                        ? script.digest()
-                        : plugin.identity().version();
-        return new PluginBinding(plugin.identity().id(), plugin.identity().version(), revision);
-    }
-
     /**
-     * Returns the session's pinned bindings, migrating legacy sessions from their earliest recorded
-     * manifest. Missing or changed plugins remain pinned as opaque history.
+     * Returns explicit persisted bindings. An empty selection is valid; missing bindings are
+     * invalid. Missing or changed plugins remain pinned and are reported through availability.
      */
     public @NonNull List<PluginBinding> bindings(@NonNull String sessionId) {
-        return bindings(sessionId, manager.snapshot());
-    }
-
-    private @NonNull List<PluginBinding> bindings(
-            @NonNull String sessionId, PluginManager.@NonNull PublishedState publication) {
         var session =
                 sessions.findById(sessionId)
                         .orElseThrow(() -> new IllegalStateException("Session not found"));
         var bindings = session.getPluginBindings();
-        if (bindings == null) {
-            // Migrate legacy sessions from their earliest recorded manifest, never from a mutable
-            // switch.
-            var records = history.load(sessionId);
-            String original =
-                    records.stream()
-                            .filter(t -> t.type() == TurnType.AGENT_INIT)
-                            .map(t -> String.valueOf(t.payload().get("system_prompt")))
-                            .findFirst()
-                            .orElse("");
-            bindings =
-                    publication.plugins().stream()
-                            .filter(
-                                    p ->
-                                            original.isEmpty()
-                                                    || publication
-                                                            .catalog()
-                                                            .entries(
-                                                                    StandardContributionPoints
-                                                                            .TOOLS)
-                                                            .stream()
-                                                            .anyMatch(
-                                                                    e ->
-                                                                            e.source()
-                                                                                            .namespace()
-                                                                                            .equals(
-                                                                                                    p.identity()
-                                                                                                            .id())
-                                                                                    && (original
-                                                                                                    .contains(
-                                                                                                            "### `"
-                                                                                                                    + manager
-                                                                                                                            .toolName(
-                                                                                                                                    publication,
-                                                                                                                                    e.source()
-                                                                                                                                            .namespace(),
-                                                                                                                                    e.id().value())
-                                                                                                                    + "`")
-                                                                                            || original
-                                                                                                    .contains(
-                                                                                                            "### `"
-                                                                                                                    + e.id().value()
-                                                                                                                            .substring(
-                                                                                                                                    e.id().value()
-                                                                                                                                                    .indexOf(
-                                                                                                                                                            ':')
-                                                                                                                                            + 1)
-                                                                                                                    + "`"))))
-                            .map(SessionPlugins::binding)
-                            .toList();
-            session.setPluginBindings(bindings);
-            sessions.saveAndFlush(session);
-        }
+        if (bindings == null)
+            throw new IllegalStateException("Session plugin bindings are missing");
         return bindings;
     }
 
@@ -205,17 +133,6 @@ public class SessionPlugins {
         return result;
     }
 
-    /**
-     * Dispatches a workflow event to the session's selected listeners in priority order, each under
-     * its contributing plugin's admission. With no contributed listener the event is returned
-     * unchanged.
-     */
-    public void dispatch(@NonNull WorkflowEvent event) {
-        var publication = manager.snapshot();
-        if (publication.catalog().entries(StandardContributionPoints.LISTENERS).isEmpty()) return;
-        publication.events().submit(event, selectedIds(event.sessionId(), publication));
-    }
-
     /** Opens the model-response policies of the session's selected plugins in catalog order. */
     public @NonNull List<ModelResponsePolicy.Exchange> responsePolicies(@NonNull String sessionId) {
         var publication = manager.snapshot();
@@ -264,22 +181,11 @@ public class SessionPlugins {
         return new CompositeAgentInbox(
                 () -> {
                     var publication = manager.snapshot();
-                    if (publication
-                            .catalog()
-                            .entries(StandardContributionPoints.AGENT_INBOX)
-                            .isEmpty()) return List.of();
+                    var entries = publication.inboxes();
+                    if (entries.isEmpty()) return List.of();
                     var ids = selectedIds(sessionId, publication);
-                    return publication
-                            .catalog()
-                            .entries(StandardContributionPoints.AGENT_INBOX)
-                            .stream()
-                            .filter(entry -> ids.contains(entry.source().namespace()))
-                            .map(
-                                    entry ->
-                                            new CompositeAgentInbox.Entry(
-                                                    entry.id().value(),
-                                                    publication.plugin(entry.source().namespace()),
-                                                    entry.implementation()))
+                    return entries.stream()
+                            .filter(entry -> ids.contains(entry.plugin().identity().id()))
                             .toList();
                 });
     }
@@ -292,7 +198,7 @@ public class SessionPlugins {
                 .anyMatch(entry -> ids.contains(entry.source().namespace()));
     }
 
-    /** True when the session selects the given plugin, resolved through historical aliases. */
+    /** True when the session selects the given plugin, resolved through configured aliases. */
     public boolean includes(@NonNull String sessionId, @NonNull String pluginId) {
         String canonical = manager.canonicalId(pluginId);
         return selectedIds(sessionId).contains(canonical);
@@ -315,9 +221,10 @@ public class SessionPlugins {
         return selectedIds(sessionId, manager.snapshot());
     }
 
-    private @NonNull Set<String> selectedIds(
+    /** Resolves available session pins against the supplied publication without replacing it. */
+    public @NonNull Set<String> selectedIds(
             @NonNull String sessionId, PluginManager.@NonNull PublishedState publication) {
-        return bindings(sessionId, publication).stream()
+        return bindings(sessionId).stream()
                 .filter(
                         binding ->
                                 availability(binding, publication)
@@ -347,7 +254,7 @@ public class SessionPlugins {
             var installed = publication.plugin(canonical);
             if (installed.state() != PluginState.ACTIVE) return BoundPluginAvailability.INACTIVE;
             if (!selected.version().equals(installed.identity().version())
-                    || !selected.revision().equals(binding(installed).revision()))
+                    || !selected.revision().equals(installed.binding().revision()))
                 return BoundPluginAvailability.REVISION_MISMATCH;
             return BoundPluginAvailability.AVAILABLE;
         } catch (IllegalArgumentException missing) {
@@ -376,7 +283,7 @@ public class SessionPlugins {
     /** Reports unavailable pins without mutating or locking the session. */
     public @NonNull List<BoundPluginStatus> status(@NonNull String sessionId) {
         var publication = manager.snapshot();
-        return bindings(sessionId, publication).stream()
+        return bindings(sessionId).stream()
                 .map(
                         binding -> {
                             var availability = availability(binding, publication);

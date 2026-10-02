@@ -27,12 +27,12 @@ import top.focess.veto.api.plugin.agent.AgentProfile;
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.contract.PluginFailure;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
+import top.focess.veto.event.EventManager;
 import top.focess.veto.integration.plugins.storage.ConfigurationStorageFixture;
 import top.focess.veto.integration.plugins.storage.PluginStorageFactory;
 import top.focess.veto.model.SessionEntity;
 import top.focess.veto.model.SessionRepository;
 import top.focess.veto.plugin.runtime.*;
-import top.focess.veto.session.SessionHistoryLoader;
 
 /** Shared wiring for plugin-backed tests using installable manifest packages. */
 public final class PluginTestSupport {
@@ -141,7 +141,6 @@ public final class PluginTestSupport {
      */
     public static @NonNull SessionPlugins sessionPlugins(@NonNull PluginManager manager) {
         SessionRepository sessions = mock(SessionRepository.class);
-        SessionHistoryLoader history = mock(SessionHistoryLoader.class);
         var entity = new SessionEntity("owner", "session");
         entity.setPluginBindings(
                 manager.plugins().stream()
@@ -153,7 +152,12 @@ public final class PluginTestSupport {
                                                 plugin.identity().version()))
                         .toList());
         when(sessions.findById(anyString())).thenReturn(Optional.of(entity));
-        return new SessionPlugins(manager, sessions, history);
+        return new SessionPlugins(manager, sessions);
+    }
+
+    /** Event manager backed by the fixture's explicit all-plugin session selection. */
+    public static @NonNull EventManager eventManager(@NonNull PluginManager manager) {
+        return new EventManager(manager, sessionPlugins(manager));
     }
 
     /** Dispatches the selected plugins' text event outside the session-binding machinery. */
@@ -166,9 +170,7 @@ public final class PluginTestSupport {
             throws PluginFailure {
         var event =
                 new BeforeTextCommitEvent(
-                        scope.owner(),
-                        scope.session(),
-                        scope.agent(),
+                        new Scope.AgentScope(scope.owner(), scope.session(), scope.agent()),
                         () -> false,
                         phase,
                         sourceId,
@@ -179,7 +181,7 @@ public final class PluginTestSupport {
                         manager.plugins().stream()
                                 .map(plugin -> plugin.identity().id())
                                 .collect(java.util.stream.Collectors.toSet()));
-        if (event.isPrevent()) throw new IllegalStateException("Text publication prevented");
+        if (event.isCancelled()) throw new IllegalStateException("Text publication cancelled");
         return event.text();
     }
 

@@ -17,6 +17,7 @@ import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.mockito.Mockito;
 import top.focess.veto.agent.capability.CapabilityResolver;
 import top.focess.veto.agent.capability.ProtectedWorkspaceReadCapabilityImpl;
 import top.focess.veto.agent.intercept.ToolExecutionPermit;
@@ -29,6 +30,7 @@ import top.focess.veto.api.agent.capability.WorkspaceWriteCapability;
 import top.focess.veto.api.agent.tool.NativeTool;
 import top.focess.veto.api.agent.tool.ToolErrorCode;
 import top.focess.veto.api.agent.tool.ToolExecutionException;
+import top.focess.veto.api.event.BeforeTextCommitEvent;
 import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.api.plugin.Scope;
@@ -36,6 +38,7 @@ import top.focess.veto.builtin.workspace.DeletePathTool;
 import top.focess.veto.builtin.workspace.GrepSearchTool;
 import top.focess.veto.builtin.workspace.ViewFileTool;
 import top.focess.veto.builtin.workspace.WriteToFileTool;
+import top.focess.veto.event.EventManager;
 import top.focess.veto.integration.plugins.PluginTestSupport;
 
 class WorkspaceFilePolicyTest {
@@ -81,6 +84,31 @@ class WorkspaceFilePolicyTest {
     }
 
     @Test
+    void protectedCaptureUsesSharedEventDeliveryAndHonorsPrevention(@TempDir @NonNull Path root) {
+        var events = Mockito.mock(EventManager.class);
+        Mockito.doAnswer(
+                        invocation -> {
+                            Object submitted = invocation.getArgument(0);
+                            if (!(submitted instanceof BeforeTextCommitEvent event))
+                                throw new AssertionError("Expected file-capture workflow event");
+                            assertEquals(BeforeTextCommitEvent.Phase.FILE_CAPTURE, event.phase());
+                            assertEquals("synthetic captured text", event.text());
+                            event.cancel();
+                            event.prevent();
+                            return null;
+                        })
+                .when(events)
+                .submit(Mockito.any());
+        var tool = new ViewFileTool();
+        bind(tool, Map.of("absolutePath", root.resolve("file.txt").toString()), root, Set.of());
+        var capability = new ProtectedWorkspaceReadCapabilityImpl(events);
+        assertThrows(
+                IllegalStateException.class,
+                () -> capability.captureFileText("synthetic captured text"));
+        Mockito.verify(events).submit(Mockito.any(BeforeTextCommitEvent.class));
+    }
+
+    @Test
     void viewFileCapturesBeforeLineRendering(@TempDir @NonNull Path root) throws Exception {
         String key =
                 "-----BEGIN PRIVATE KEY-----\r\nsynthetic-material\r\n-----END PRIVATE KEY-----";
@@ -92,7 +120,7 @@ class WorkspaceFilePolicyTest {
                     new ViewFileTool(
                             new ProtectedWorkspaceReadCapabilityImpl(
                                     PluginTestSupport.providerOf(
-                                            PluginTestSupport.sessionPlugins(plugins))));
+                                            PluginTestSupport.eventManager(plugins))));
             bind(tool, Map.of("absolutePath", file.toString()), root, Set.of());
             var capability = CapabilityResolver.require(WorkspaceReadCapability.class);
             String result =

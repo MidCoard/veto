@@ -23,12 +23,14 @@ import top.focess.veto.agent.continuation.RequestContinuationStore;
 import top.focess.veto.agent.intercept.HitlRecordRepository;
 import top.focess.veto.agent.workspace.PathResolver;
 import top.focess.veto.agent.workspace.WorkspaceAdmissionPolicy;
+import top.focess.veto.api.event.SessionDeletedEvent;
 import top.focess.veto.api.llm.LlmBinding;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
+import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.controller.SessionController;
+import top.focess.veto.event.EventManager;
 import top.focess.veto.i18n.Msg;
 import top.focess.veto.integration.plugins.PluginDataCleanup;
-import top.focess.veto.integration.plugins.PluginLifecycleEvents;
 import top.focess.veto.integration.plugins.SessionPlugins;
 import top.focess.veto.integration.plugins.storage.ScopedPluginStorage;
 import top.focess.veto.model.AgentEntity;
@@ -76,7 +78,7 @@ public class SessionService {
         sessionPlugins = value;
     }
 
-    private PluginLifecycleEvents lifecycleEvents;
+    private EventManager eventManager;
     private PluginDataCleanup pluginDataCleanup;
 
     /** Attaches required transactional plugin cleanup separately from event notifications. */
@@ -85,10 +87,10 @@ public class SessionService {
         pluginDataCleanup = cleanup;
     }
 
-    /** Setter-injects the plugin lifecycle event sink notified on session deletion. */
+    /** Setter-injects the event manager notified after committed session deletion. */
     @Autowired
-    public void attachLifecycleEvents(@NonNull PluginLifecycleEvents events) {
-        lifecycleEvents = events;
+    public void attachEventManager(@NonNull EventManager events) {
+        eventManager = events;
     }
 
     private RequestContinuationStore continuations;
@@ -336,16 +338,16 @@ public class SessionService {
         }
 
         SessionEntity session =
-                sessions.save(
-                        new SessionEntity(
-                                owner,
-                                resolvedName,
-                                admittedWorkspaceRoots,
-                                currentWorkspaceRootIndex,
-                                toolResultPresentation));
+                new SessionEntity(
+                        owner,
+                        resolvedName,
+                        admittedWorkspaceRoots,
+                        currentWorkspaceRootIndex,
+                        toolResultPresentation);
         var pluginSelection = sessionPlugins;
-        if (pluginSelection != null)
-            session.setPluginBindings(pluginSelection.selection(pluginIds));
+        session.setPluginBindings(
+                pluginSelection == null ? List.of() : pluginSelection.selection(pluginIds));
+        session = sessions.save(session);
         ModelBinding cache = tierRegistry.resolve(owner, pattern.getTier());
         AgentEntity agent =
                 new AgentEntity(
@@ -541,8 +543,11 @@ public class SessionService {
             Runnable stop =
                     () -> {
                         activeSessions.entrySet().removeIf(e -> sessionId.equals(e.getValue()));
-                        var events = lifecycleEvents;
-                        if (events != null) events.sessionDeleted(owner, sessionId);
+                        var events = eventManager;
+                        if (events != null)
+                            events.submit(
+                                    new SessionDeletedEvent(
+                                            new Scope.SessionScope(owner, sessionId)));
                         agentService.remove(sessionId);
                     };
             if (TransactionSynchronizationManager.isSynchronizationActive())

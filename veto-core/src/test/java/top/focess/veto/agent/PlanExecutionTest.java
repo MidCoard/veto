@@ -46,7 +46,6 @@ import top.focess.veto.builtin.planning.SubmitPlanTool;
 import top.focess.veto.builtin.response.AnswerWithCitationsTool;
 import top.focess.veto.builtin.workspace.ViewFileTool;
 import top.focess.veto.integration.plugins.PluginConfigurations;
-import top.focess.veto.integration.plugins.PluginLifecycleEvents;
 import top.focess.veto.integration.plugins.PluginManager;
 import top.focess.veto.integration.plugins.PluginTestSupport;
 import top.focess.veto.integration.plugins.ProcessHostFixture;
@@ -585,6 +584,7 @@ class PlanExecutionTest {
                         config);
         MANAGERS.add(plugins);
         var sessionPlugins = PluginTestSupport.sessionPlugins(plugins);
+        var eventManager = PluginTestSupport.eventManager(plugins);
         var context = mock(ApplicationContext.class);
         when(context.getBeansOfType(AgentTool.class))
                 .thenReturn(
@@ -602,7 +602,7 @@ class PlanExecutionTest {
                         List.of(
                                 new ViewFileTool(
                                         new ProtectedWorkspaceReadCapabilityImpl(
-                                                PluginTestSupport.providerOf(sessionPlugins)))),
+                                                PluginTestSupport.providerOf(eventManager)))),
                         context) {
                     @Override
                     public @NonNull List<ToolDefinition> getActiveTools(Set<String> whitelist) {
@@ -620,6 +620,7 @@ class PlanExecutionTest {
                     }
                 };
         engine.attachSessionPlugins(sessionPlugins);
+        engine.attachEventManager(eventManager);
         ReflectionTestUtils.invokeMethod(engine, "init");
         PromptCompiler compiler =
                 new PromptCompiler(
@@ -645,7 +646,7 @@ class PlanExecutionTest {
                         null,
                         null);
         service.attachSessionPlugins(sessionPlugins);
-        service.attachLifecycleEvents(new PluginLifecycleEvents(plugins));
+        service.attachEventManager(eventManager);
         service.setConfiguredDefaultWorkspace(Workspace.single(root, PathMode.REAL));
         for (String id :
                 List.of(

@@ -2,6 +2,7 @@ package top.focess.veto.api.event;
 
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.agent.tool.ToolResultFormat;
+import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.api.plugin.contract.Cancellation;
 import top.focess.veto.api.plugin.contract.JsonValue;
 
@@ -25,23 +26,19 @@ public final class AfterToolEvent extends WorkflowEvent {
     /**
      * Creates the tool-observation event.
      *
-     * @param owner authenticated owner, or {@code null} when unavailable
-     * @param sessionId current session identity
-     * @param agentId current agent identity
+     * @param scope authenticated owner, session and agent identity
      * @param cancellation cooperative cancellation signal
      * @param invocation immutable tool invocation that produced the output
      * @param output host-fixed format and success flag
      * @param content observation text handlers may transform
      */
     public AfterToolEvent(
-            String owner,
-            @NonNull String sessionId,
-            @NonNull String agentId,
+            Scope.@NonNull AgentScope scope,
             @NonNull Cancellation cancellation,
             BeforeToolEvent.@NonNull Invocation invocation,
             @NonNull Output output,
             @NonNull String content) {
-        super(owner, sessionId, agentId, cancellation);
+        super(scope, cancellation);
         this.invocation = invocation;
         this.output = output;
         this.content = content;

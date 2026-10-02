@@ -21,8 +21,10 @@ import top.focess.veto.api.event.WorkflowEvent;
 import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.api.llm.VetoRequest;
 import top.focess.veto.api.llm.VetoResponse;
+import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.api.plugin.contract.Cancellation;
 import top.focess.veto.api.plugin.contract.ModelResponsePolicy;
+import top.focess.veto.event.EventManager;
 import top.focess.veto.integration.plugins.SessionPlugins;
 import top.focess.veto.llm.core.UniformLLMCaller;
 import top.focess.veto.plugin.runtime.PluginJson;
@@ -31,13 +33,13 @@ import top.focess.veto.plugin.runtime.PluginJson;
  * Dispatches workflow events to selected plugin listeners and protects inputs at the host boundary.
  */
 final class AgentPluginHooks {
-    private final String owner;
+    private final Scope.AgentScope scope;
     private final @NonNull String sessionId;
-    private final @NonNull String agentId;
     private final @NonNull Cancellation cancellation;
     private final @NonNull ObjectMapper mapper;
     private final @NonNull UniformLLMCaller caller;
     private final @NonNull Supplier<@Nullable SessionPlugins> plugins;
+    private final @NonNull Supplier<@Nullable EventManager> events;
     private final @NonNull BooleanSupplier alive;
     private final @NonNull BooleanSupplier cancelled;
 
@@ -49,15 +51,19 @@ final class AgentPluginHooks {
             @NonNull ObjectMapper mapper,
             @NonNull UniformLLMCaller caller,
             @NonNull Supplier<@Nullable SessionPlugins> plugins,
+            @NonNull Supplier<@Nullable EventManager> events,
             @NonNull BooleanSupplier alive,
             @NonNull BooleanSupplier cancelled) {
-        this.owner = owner;
+        this.scope =
+                owner == null || owner.isBlank()
+                        ? null
+                        : new Scope.AgentScope(owner, sessionId, agentId);
         this.sessionId = sessionId;
-        this.agentId = agentId;
         this.cancellation = cancellation;
         this.mapper = mapper;
         this.caller = caller;
         this.plugins = plugins;
+        this.events = events;
         this.alive = alive;
         this.cancelled = cancelled;
     }
@@ -73,12 +79,17 @@ final class AgentPluginHooks {
     /**
      * Dispatches one workflow event to the session's selected listeners, bracketed by cancellation.
      */
-    private void dispatch(@NonNull WorkflowEvent event) {
-        var selected = plugins.get();
-        if (selected == null) return;
+    private void dispatch(@NonNull EventManager manager, @NonNull WorkflowEvent event) {
         checkCancellation();
-        selected.dispatch(event);
+        manager.submit(event);
         checkCancellation();
+    }
+
+    private Scope.@NonNull AgentScope requireScope() {
+        var identity = scope;
+        if (identity == null)
+            throw new IllegalStateException("Workflow delivery requires an owned agent");
+        return identity;
     }
 
     private BeforeToolEvent.@NonNull Invocation invocation(@NonNull ToolCall call) {
@@ -88,53 +99,63 @@ final class AgentPluginHooks {
 
     /** Transforms user input before model processing. */
     @NonNull String beforeInput(@NonNull String text) {
-        var event = new BeforeInputEvent(owner, sessionId, agentId, cancellation, text);
-        dispatch(event);
+        var manager = events.get();
+        if (manager == null) return text;
+        var event = new BeforeInputEvent(requireScope(), cancellation, text);
+        dispatch(manager, event);
         return event.text();
     }
 
-    /** Evaluates a validated tool call before host authorization; the decision is monotonic. */
-    BeforeToolEvent.@NonNull Decision beforeToolHooks(@NonNull ToolCall call) {
-        var event = new BeforeToolEvent(owner, sessionId, agentId, cancellation, invocation(call));
-        dispatch(event);
-        return event.decision();
+    /** Returns the final tool event, or null when plugin delivery is detached. */
+    BeforeToolEvent beforeTool(@NonNull ToolCall call) {
+        var manager = events.get();
+        if (manager == null) return null;
+        var event = new BeforeToolEvent(requireScope(), cancellation, invocation(call));
+        dispatch(manager, event);
+        return event;
     }
 
     @NonNull VetoResponse callModelWithHooks(@NonNull VetoRequest request) {
+        var manager = events.get();
+        if (manager == null) {
+            var response = caller.call(request, sessionId);
+            checkCancellation();
+            return response;
+        }
+        var identity = requireScope();
         var model = new ModelCall(request.providerType().name(), request.modelName());
-        var before = new BeforeModelEvent(owner, sessionId, agentId, cancellation, model);
-        dispatch(before);
-        if (before.isPrevent())
-            throw new IllegalStateException("Model call prevented by plugin listener");
+        var before = new BeforeModelEvent(identity, cancellation, model);
+        dispatch(manager, before);
+        if (before.isCancelled())
+            throw new IllegalStateException("Model call cancelled by plugin listener");
         VetoResponse response = caller.call(request, sessionId);
-        checkCancellation();
-        var after =
-                new AfterModelEvent(
-                        owner, sessionId, agentId, cancellation, model, response.message());
-        dispatch(after);
+        var after = new AfterModelEvent(identity, cancellation, model, response.message());
+        dispatch(manager, after);
         return new VetoResponse(
                 response.thought(), response.calls(), after.message(), response.citations());
     }
 
     /** Transforms the observation body while the host preserves execution status and format. */
     @NonNull String afterTool(@NonNull ToolCall call, @NonNull ToolResult result) {
+        var manager = events.get();
+        if (manager == null) return result.content();
         var event =
                 new AfterToolEvent(
-                        owner,
-                        sessionId,
-                        agentId,
+                        requireScope(),
                         cancellation,
                         invocation(call),
                         new AfterToolEvent.Output(result.format(), result.success()),
                         result.content());
-        dispatch(event);
+        dispatch(manager, event);
         return event.content();
     }
 
     /** Transforms ordinary observation text before publication. */
     @NonNull String beforeObservation(@NonNull String text) {
-        var event = new BeforeObservationEvent(owner, sessionId, agentId, cancellation, text);
-        dispatch(event);
+        var manager = events.get();
+        if (manager == null) return text;
+        var event = new BeforeObservationEvent(requireScope(), cancellation, text);
+        dispatch(manager, event);
         return event.text();
     }
 
@@ -144,21 +165,19 @@ final class AgentPluginHooks {
     }
 
     @NonNull String captureUserPrompt(@NonNull String prompt) {
-        if (plugins.get() == null) return prompt;
-        if (!alive.getAsBoolean() || owner == null || owner.isBlank())
-            throw new ProtectedInputException();
+        var manager = events.get();
+        if (manager == null) return prompt;
+        if (!alive.getAsBoolean() || scope == null) throw new ProtectedInputException();
         try {
             var event =
                     new BeforeTextCommitEvent(
-                            owner,
-                            sessionId,
-                            agentId,
+                            requireScope(),
                             cancellation,
                             BeforeTextCommitEvent.Phase.INPUT,
                             UUID.randomUUID().toString(),
                             prompt);
-            dispatch(event);
-            if (event.isPrevent()) throw new ProtectedInputException();
+            dispatch(manager, event);
+            if (event.isCancelled()) throw new ProtectedInputException();
             return event.text();
         } catch (RuntimeException failure) {
             throw new ProtectedInputException();

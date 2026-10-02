@@ -48,8 +48,8 @@ import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.api.plugin.agent.AgentProfile;
 import top.focess.veto.bus.DeltaBroker;
 import top.focess.veto.bus.DeltaFrame;
+import top.focess.veto.event.EventManager;
 import top.focess.veto.i18n.Msg;
-import top.focess.veto.integration.plugins.PluginLifecycleEvents;
 import top.focess.veto.integration.plugins.SessionPlugins;
 import top.focess.veto.llm.config.LlmJacksonConfig;
 import top.focess.veto.llm.core.UniformLLMCaller;
@@ -76,7 +76,7 @@ import top.focess.veto.vault.KeysteadVault;
 public class AgentService {
     private SessionPlugins sessionPlugins;
 
-    /** Injects the per-session plugin selection threaded into created runners. */
+    /** Injects the shared service that resolves session plugin selection. */
     @Autowired
     public void attachSessionPlugins(@NonNull SessionPlugins value) {
         sessionPlugins = value;
@@ -100,20 +100,20 @@ public class AgentService {
     private void configureContinuations(@NonNull AgentRunner runner) {
         var plugins = sessionPlugins;
         if (plugins != null) runner.attachSessionPlugins(plugins);
-        var events = lifecycleEvents;
-        if (events != null) runner.attachLifecycleEvents(events);
+        var events = eventManager;
+        if (events != null) runner.attachEventManager(events);
         KeysteadVault vault = executionVault;
         if (vault != null) runner.attachExecutionVault(vault);
         RequestContinuationStore store = continuationStore;
         if (store != null) runner.attachContinuationStore(store);
     }
 
-    private PluginLifecycleEvents lifecycleEvents;
+    private EventManager eventManager;
 
-    /** Injects the bus used to publish agent lifecycle events to plugins. */
+    /** Injects the host dispatcher threaded into every created runner. */
     @Autowired
-    public void attachLifecycleEvents(@NonNull PluginLifecycleEvents events) {
-        lifecycleEvents = events;
+    public void attachEventManager(@NonNull EventManager events) {
+        eventManager = events;
     }
 
     private void bindForSubmission(@NonNull VetoAgent agent, @NonNull LlmBinding binding) {

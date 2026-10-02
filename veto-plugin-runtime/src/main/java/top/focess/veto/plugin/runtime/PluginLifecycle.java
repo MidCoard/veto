@@ -174,6 +174,16 @@ public final class PluginLifecycle implements AutoCloseable {
         return "plugin:" + identity().id() + ":" + identity().version() + ":" + activationId;
     }
 
+    /** Exact persisted selection identity; activation identity remains separate in bindingId. */
+    public @NonNull PluginBinding binding() {
+        var identity = identity();
+        String revision =
+                implementation() instanceof ScriptPlugin script
+                        ? script.digest()
+                        : identity.version();
+        return new PluginBinding(identity.id(), identity.version(), revision);
+    }
+
     /** Wraps an implementation whose lifecycle transitions will run on the given executor. */
     public PluginLifecycle(@NonNull VetoPlugin plugin, @NonNull ExecutorService lifecycle) {
         this.plugin = plugin;

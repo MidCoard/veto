@@ -3,6 +3,7 @@ package top.focess.veto.agent;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -36,10 +37,11 @@ import top.focess.veto.api.agent.tool.ToolResult;
 import top.focess.veto.api.agent.tool.ToolResultFormat;
 import top.focess.veto.api.agent.tool.ToolResultStatus;
 import top.focess.veto.api.event.BeforeTextCommitEvent;
+import top.focess.veto.api.event.BeforeToolEvent;
 import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
+import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.bus.DeltaFrame;
-import top.focess.veto.integration.plugins.SessionPlugins;
 
 /**
  * Screens tool batches, obtains approvals and executes under host-issued permits.
@@ -69,7 +71,6 @@ final class AgentToolExecution {
             @NonNull ToolResultPresentationMode presentation,
             @NonNull Set<String> whitelistedTools,
             @NonNull AgentExecutionPolicy executionPolicy,
-            SessionPlugins sessionPlugins,
             long configurationRevision) {}
 
     AgentToolExecution(
@@ -141,16 +142,19 @@ final class AgentToolExecution {
             calls = callsNeedingDecision;
 
             // 1. Check phase (screen all calls first)
-            List<ApprovalDecision> decisions = new ArrayList<>();
             Map<String, ScreenedInvocation> screenedInvocations = new LinkedHashMap<>();
+            Set<String> cancelledCalls = new HashSet<>();
             boolean hasVeto = false;
             boolean hasRefused = false;
             for (ToolCall call : calls) {
                 ToolDefinition def = toolEngine.resolveDefinition(call.toolName());
-                if (def == null) {
-                    decisions.add(ApprovalDecision.AUTO_APPROVE);
-                } else {
-                    var hookDecision = hooks.beforeToolHooks(call);
+                if (def != null) {
+                    var event = hooks.beforeTool(call);
+                    if (event != null && event.isCancelled()) {
+                        cancelledCalls.add(call.callId());
+                        continue;
+                    }
+                    var hookDecision = event == null ? BeforeToolEvent.Decision.CONTINUE : event.decision();
                     ScreenedInvocation screened =
                             toolBoundary.assess(
                                     call,
@@ -162,7 +166,6 @@ final class AgentToolExecution {
                                     hookDecision);
                     screenedInvocations.put(call.callId(), screened);
                     ApprovalDecision decision = screened.decision();
-                    decisions.add(decision);
                     if (decision instanceof ApprovalDecision.Prompt) hasVeto = true;
                     else if (decision instanceof ApprovalDecision.Refused) hasRefused = true;
                 }
@@ -180,9 +183,9 @@ final class AgentToolExecution {
                 for (int i = 0; i < calls.size(); i++) {
                     ToolCall call = calls.get(i);
                     String callId = call.callId();
-                    ApprovalDecision decision = decisions.get(i);
-                    ToolDefinition def = toolEngine.resolveDefinition(call.toolName());
-
+                    var screened = screenedInvocations.get(callId);
+                    if (screened == null) continue;
+                    ApprovalDecision decision = screened.decision();
                     if (invocation
                             .request()
                             .declinedCallSignatures
@@ -191,13 +194,7 @@ final class AgentToolExecution {
                     } else if (decision instanceof ApprovalDecision.Refused r) {
                         output.emitMessage(r.reason());
                         lifecycle.transitionTo(AgentState.INTERCEPTED);
-                        if (def == null) {
-                            throw new IllegalStateException("Refusal without a tool definition");
-                        }
                         List<VetoOption> offered = List.of(VetoOption.EXEC_DECLINE);
-                        ScreenedInvocation screened = screenedInvocations.get(callId);
-                        if (screened == null)
-                            throw new IllegalStateException("Missing screened invocation");
                         toolBoundary.register(screened, offered, Danger.CRITICAL, null);
                         output.emitVetoRequired(
                                 call,
@@ -215,14 +212,6 @@ final class AgentToolExecution {
                         // listener sends the Prompt synchronously, and the user's reply could
                         // otherwise race register and resolve against a not-yet-registered future.
                         List<VetoOption> offered = p.options();
-                        if (def == null) {
-                            throw new IllegalStateException(
-                                    "Prompt decision without a tool definition for "
-                                            + call.toolName());
-                        }
-                        ScreenedInvocation screened = screenedInvocations.get(callId);
-                        if (screened == null)
-                            throw new IllegalStateException("Missing screened invocation");
                         toolBoundary.register(screened, offered, p.danger(), p.relevance());
                         output.emitVetoRequired(call, p, offered);
                         InterceptResolution resolution = awaitResolution(callId, invocation);
@@ -245,6 +234,10 @@ final class AgentToolExecution {
                 if (!batchApproved) {
                     // Synthesize ToolResponse(status=REFUSED) for all calls, no execution, go IDLE
                     for (ToolCall call : calls) {
+                        if (cancelledCalls.contains(call.callId())) {
+                            cancelledCall(call, batch);
+                            continue;
+                        }
                         output.appendToolCall(call, batch.modelCallId());
                         output.appendToolResponse(
                                 call.toolName(),
@@ -262,7 +255,9 @@ final class AgentToolExecution {
                 lifecycle.transitionTo(AgentState.WAITING);
             for (int i = 0; i < calls.size(); i++) {
                 ToolCall call = calls.get(i);
-                if (skippedCalls.contains(call)) {
+                if (cancelledCalls.contains(call.callId())) {
+                    cancelledCall(call, batch);
+                } else if (skippedCalls.contains(call)) {
                     output.appendToolCall(call, batch.modelCallId());
                     output.appendToolResponse(
                             call.toolName(),
@@ -404,25 +399,23 @@ final class AgentToolExecution {
 
             // (g) final ingress defense, immediately before committing the observation to history.
             String replacement = null;
-            var selected = invocation.sessionPlugins();
+            var eventManager = lifecycle.eventManager();
             String currentOwner = owner;
             if (transformed.success()
                     && def instanceof NativeToolDefinition
                     && def.capability() == ToolCapability.WORKSPACE_READ
-                    && selected != null
+                    && eventManager != null
                     && currentOwner != null) {
                 var event =
                         new BeforeTextCommitEvent(
-                                currentOwner,
-                                sessionId.toString(),
-                                agentId,
+                                new Scope.AgentScope(currentOwner, sessionId.toString(), agentId),
                                 () -> Thread.currentThread().isInterrupted(),
                                 BeforeTextCommitEvent.Phase.FILE_OBSERVATION,
                                 UUID.randomUUID().toString(),
                                 transformed.content());
-                selected.dispatch(event);
-                if (event.isPrevent())
-                    throw new IllegalStateException("File observation prevented");
+                eventManager.submit(event);
+                if (event.isCancelled())
+                    throw new IllegalStateException("File observation cancelled");
                 if (event.replaced()) replacement = event.text();
             }
             String observation = toolBoundary.defend(authorized, transformed, replacement);
@@ -461,7 +454,9 @@ final class AgentToolExecution {
             NativeToolArgumentValidator.validate(
                     local.name(), objectMapper.valueToTree(call.args()), local.argsClass());
 
-        var hookDecision = hooks.beforeToolHooks(call);
+        var event = hooks.beforeTool(call);
+        if (event != null && event.isCancelled()) return cancelledCall(call, batch);
+        var hookDecision = event == null ? BeforeToolEvent.Decision.CONTINUE : event.decision();
         ScreenedInvocation screened =
                 toolBoundary.assess(
                         call,
@@ -507,6 +502,16 @@ final class AgentToolExecution {
             if (lifecycle.control().state() == AgentState.WAITING)
                 lifecycle.transitionTo(AgentState.RUNNING);
         }
+    }
+
+    private @NonNull ToolResult cancelledCall(@NonNull ToolCall call, @NonNull ToolBatch batch) {
+        var result = new ToolResult(
+                call.toolName(), call.callId(), ToolResultStatus.REFUSED,
+                ToolResultFormat.PLAINTEXT, refusedObservation("cancelled by a plugin listener"),
+                ToolErrorCode.POLICY.CALL_BLOCKED);
+        output.appendToolCall(call, batch.modelCallId());
+        output.appendToolResponse(result);
+        return result;
     }
 
     private @NonNull ToolResult toolNotFound(@NonNull ToolCall call, @NonNull ToolBatch batch) {

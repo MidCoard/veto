@@ -25,6 +25,7 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import top.focess.veto.agent.loop.PromptCompiler;
 import top.focess.veto.agent.tool.ToolCallContextHolder;
 import top.focess.veto.agent.tool.ToolEngineImpl;
@@ -67,7 +68,6 @@ import top.focess.veto.api.process.ProcessHost;
 import top.focess.veto.api.resources.CatalogueAccess;
 import top.focess.veto.bus.SessionInvalidations;
 import top.focess.veto.event.EventListenerRegistry;
-import top.focess.veto.event.PluginExecutor;
 import top.focess.veto.integration.plugins.storage.PluginStorageFactory;
 import top.focess.veto.model.SessionRepository;
 import top.focess.veto.plugin.runtime.*;
@@ -290,6 +290,8 @@ public final class PluginManager implements AutoCloseable {
     /** One coherent immutable manager publication; lifecycle admission remains live. */
     public static final class PublishedState {
         private final @NonNull List<PluginLifecycle> plugins;
+        private final @NonNull Map<@NonNull String, @NonNull PluginLifecycle> owners;
+        private final @NonNull List<CompositeAgentInbox.@NonNull Entry> inboxes;
         private final @NonNull List<Registration> registrations;
         private final @NonNull List<InstalledPluginLoader.DisabledPackage> disabled;
         private final @NonNull List<DeclinedPlugin> declined;
@@ -306,6 +308,22 @@ public final class PluginManager implements AutoCloseable {
                 @NonNull EventListenerRegistry events,
                 @NonNull Map<@NonNull ContributionId, @NonNull DirectoryGroup> groups) {
             this.plugins = List.copyOf(plugins);
+            Map<@NonNull String, @NonNull PluginLifecycle> indexed = new HashMap<>();
+            for (var plugin : this.plugins) {
+                if (indexed.putIfAbsent(plugin.identity().id(), plugin) != null)
+                    throw new IllegalArgumentException("Duplicate plugin activation");
+            }
+            owners = Map.copyOf(indexed);
+            List<CompositeAgentInbox.@NonNull Entry> preparedInboxes = new ArrayList<>();
+            for (var entry : catalog.entries(StandardContributionPoints.AGENT_INBOX)) {
+                var owner = owners.get(entry.source().namespace());
+                if (owner == null)
+                    throw new IllegalArgumentException("Inbox activation is missing");
+                preparedInboxes.add(
+                        new CompositeAgentInbox.Entry(
+                                entry.id().value(), owner, entry.implementation()));
+            }
+            inboxes = List.copyOf(preparedInboxes);
             this.registrations = List.copyOf(registrations);
             this.disabled = List.copyOf(disabled);
             this.declined = List.copyOf(declined);
@@ -339,12 +357,16 @@ public final class PluginManager implements AutoCloseable {
             return disabled;
         }
 
+        /** Prepared inbox sources and owners from this exact publication. */
+        public @NonNull List<CompositeAgentInbox.@NonNull Entry> inboxes() {
+            return inboxes;
+        }
+
         /** Resolves a canonical namespace from this publication, never another generation. */
         public @NonNull PluginLifecycle plugin(@NonNull String id) {
-            return plugins.stream()
-                    .filter(plugin -> plugin.identity().id().equals(id))
-                    .findFirst()
-                    .orElseThrow(() -> new IllegalArgumentException("Plugin is unavailable"));
+            var plugin = owners.get(id);
+            if (plugin == null) throw new IllegalArgumentException("Plugin is unavailable");
+            return plugin;
         }
     }
 
@@ -388,6 +410,8 @@ public final class PluginManager implements AutoCloseable {
     private final @NonNull Map<ContributionPoint<?>, PointDefinition> definedPoints =
             new ConcurrentHashMap<>();
     private final @NonNull Map<String, Integer> pendingDataCleanups = new HashMap<>();
+    // Guarded by this monitor; close rejects new deletion claims before draining existing ones.
+    private boolean closing;
 
     /** Attaches catalog consumers after their Spring initialization completes. */
     @Autowired
@@ -592,7 +616,7 @@ public final class PluginManager implements AutoCloseable {
                             prepareDirectory(validatedCatalog, staged));
             for (var entry : validatedCatalog.entries(StandardContributionPoints.DATA_LIFECYCLE))
                 dataLifecycleOwners.add(entry.source().namespace());
-            published.events.broadcast(new ServiceDirectoryChangedEvent());
+            published.events.submit(new ServiceDirectoryChangedEvent());
             ready = true;
         } catch (Exception | ServiceConfigurationError e) {
             definedPoints.clear();
@@ -793,6 +817,7 @@ public final class PluginManager implements AutoCloseable {
             return;
         }
         synchronized (this) {
+            if (closing) throw new IllegalStateException("Plugin manager is closing");
             points.add(contribution);
             var current = published;
             if (current == null
@@ -830,26 +855,10 @@ public final class PluginManager implements AutoCloseable {
         var builder = new ContributionCatalog.Builder();
         for (var point : StandardContributionPoints.ALL) {
             if (point == StandardContributionPoints.TOOLS)
-                builder.define(
-                        StandardContributionPoints.TOOLS,
-                        tool -> {
-                            if (tool instanceof RemoteTool portable) {
-                                PluginSchema.check(PluginJson.toNode(portable.inputSchema()));
-                                PluginSchema.check(PluginJson.toNode(portable.outputSchema()));
-                            } else if (tool instanceof CapabilityTool<?> local
-                                    && (local instanceof AgentTool<?>
-                                            || local instanceof NativeTool<?>)) {
-                                ToolSchemaCompiler.compileFromRecord(local.getArgsClass());
-                            } else throw new IllegalArgumentException("Unsupported plugin tool");
-                        });
+                builder.define(StandardContributionPoints.TOOLS, PluginManager::validateTool);
             else if (point == StandardContributionPoints.FRONTEND)
                 builder.define(
-                        StandardContributionPoints.FRONTEND,
-                        frontend -> {
-                            String module = frontend.module();
-                            if (module.isBlank() || module.length() > 1048576)
-                                throw new IllegalArgumentException("Invalid frontend module size");
-                        });
+                        StandardContributionPoints.FRONTEND, PluginManager::validateFrontend);
             else builder.define(point, ignored -> {});
         }
         var points = new HashSet<ContributionPoint<?>>(StandardContributionPoints.ALL);
@@ -902,9 +911,10 @@ public final class PluginManager implements AutoCloseable {
                                         .noneMatch(plugin -> plugin.identity().id().equals(id)));
     }
 
-    /** Retains the captured contributor only if it is still the published activation. */
+    /** Retains the captured contributor until its transaction completes; shutdown drains claims. */
     public synchronized @NonNull PluginLifecycle beginDataCleanup(
             @NonNull PluginLifecycle runtime) {
+        if (closing) throw new IllegalStateException("Plugin manager is closing");
         String id = runtime.identity().id();
         if (published.plugin(id) != runtime)
             throw new IllegalStateException("Plugin data cleanup publication changed");
@@ -962,7 +972,7 @@ public final class PluginManager implements AutoCloseable {
             var providers = llmProviders;
             if (providers != null) providers.getObject().reload(next);
             serviceRegistry.bind(nextCatalog, nextPlugins);
-            nextEvents.broadcast(new ServiceDirectoryChangedEvent());
+            nextEvents.submit(new ServiceDirectoryChangedEvent());
         } catch (RuntimeException failure) {
             published = previous;
             var tools = toolEngine;
@@ -1008,8 +1018,8 @@ public final class PluginManager implements AutoCloseable {
     }
 
     /**
-     * Runs an event handler body under the named plugin's admission, translating a checked handler
-     * failure into a sanitized {@link PluginFailure}.
+     * Prepares event routes bound to the contributing activation in this publication. Each route
+     * retains its own lifecycle admission rather than looking up a namespace during dispatch.
      */
     private static @NonNull EventListenerRegistry preparedEvents(
             @NonNull ContributionCatalog catalog,
@@ -1017,35 +1027,7 @@ public final class PluginManager implements AutoCloseable {
             EventListenerRegistry.@NonNull Preparation preparation) {
         Map<@NonNull String, @NonNull PluginLifecycle> indexed = new HashMap<>();
         for (var plugin : plugins) indexed.put(plugin.identity().id(), plugin);
-        var admitted = Map.copyOf(indexed);
-        return EventListenerRegistry.build(
-                catalog,
-                (namespace, body) -> admit(admitted, namespace, body),
-                preparation,
-                namespace -> {
-                    var plugin = admitted.get(namespace);
-                    return plugin != null && plugin.state() == PluginState.ACTIVE;
-                });
-    }
-
-    private static void admit(
-            @NonNull Map<@NonNull String, @NonNull PluginLifecycle> admitted,
-            @NonNull String namespace,
-            PluginExecutor.@NonNull Body body)
-            throws PluginFailure {
-        PluginLifecycle target = admitted.get(namespace);
-        if (target == null) throw new PluginFailure(PluginFailure.Code.NOT_READY);
-        target.execute(
-                () -> {
-                    try {
-                        body.run();
-                    } catch (PluginFailure | RuntimeException failure) {
-                        throw failure;
-                    } catch (Exception failure) {
-                        throw new PluginFailure(PluginFailure.Code.INTERNAL_FAILURE);
-                    }
-                    return true;
-                });
+        return EventListenerRegistry.build(catalog, Map.copyOf(indexed), preparation);
     }
 
     public @NonNull List<Registration> registrations() {
@@ -1146,8 +1128,28 @@ public final class PluginManager implements AutoCloseable {
         return result;
     }
 
+    /**
+     * Drains deletion transactions before closing activations; plugin bodies run outside the
+     * monitor.
+     */
     @Override
     public void close() {
+        boolean interrupted = false;
+        synchronized (this) {
+            if (!pendingDataCleanups.isEmpty()
+                    && TransactionSynchronizationManager.isActualTransactionActive())
+                throw new IllegalStateException(
+                        "Cannot close plugins from an active deletion transaction");
+            closing = true;
+            while (!pendingDataCleanups.isEmpty()) {
+                try {
+                    wait();
+                } catch (InterruptedException interruption) {
+                    interrupted = true;
+                }
+            }
+        }
+        if (interrupted) Thread.currentThread().interrupt();
         try {
             for (var plugin : published.plugins.reversed()) {
                 serviceRegistry.revoke(plugin.identity().id());

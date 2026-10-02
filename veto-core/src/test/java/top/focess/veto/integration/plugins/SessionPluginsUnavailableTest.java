@@ -17,7 +17,6 @@ import top.focess.veto.model.SessionEntity;
 import top.focess.veto.model.SessionRepository;
 import top.focess.veto.plugin.runtime.InstalledPluginLoader;
 import top.focess.veto.plugin.runtime.PluginLifecycle;
-import top.focess.veto.session.SessionHistoryLoader;
 
 class SessionPluginsUnavailableTest {
     @Test
@@ -30,7 +29,7 @@ class SessionPluginsUnavailableTest {
         session.setPluginBindings(List.of(pin));
         when(sessions.findById(session.getId())).thenReturn(Optional.of(session));
 
-        var selected = new SessionPlugins(manager, sessions, mock(SessionHistoryLoader.class));
+        var selected = new SessionPlugins(manager, sessions);
         assertEquals(List.of(pin), selected.bindings(session.getId()));
         assertEquals(
                 List.of(
@@ -57,6 +56,7 @@ class SessionPluginsUnavailableTest {
         var runtime = mock(PluginLifecycle.class);
         when(runtime.state()).thenReturn(PluginState.ACTIVE);
         when(runtime.identity()).thenReturn(new PluginIdentity("changed.plugin", "1.0.0"));
+        when(runtime.binding()).thenReturn(new PluginBinding("changed.plugin", "1.0.0", "1.0.0"));
         var publication = publication(manager, List.of(runtime));
         when(publication.disabled())
                 .thenReturn(
@@ -72,7 +72,7 @@ class SessionPluginsUnavailableTest {
                                         "1.0.0",
                                         PluginDeclinedException.Reason.NOT_APPLICABLE)));
 
-        var selected = new SessionPlugins(manager, sessions, mock(SessionHistoryLoader.class));
+        var selected = new SessionPlugins(manager, sessions);
 
         assertEquals(
                 List.of(
@@ -85,6 +85,39 @@ class SessionPluginsUnavailableTest {
         assertTrue(
                 selected.status(session.getId()).stream()
                         .noneMatch(SessionPlugins.BoundPluginStatus::available));
+    }
+
+    @Test
+    void missingBindingsAreRejectedWithoutInferringOrSavingSelection() {
+        var manager = mock(PluginManager.class);
+        var sessions = mock(SessionRepository.class);
+        var session = new SessionEntity("owner", "uninitialized");
+        when(sessions.findById(session.getId())).thenReturn(Optional.of(session));
+        var selected = new SessionPlugins(manager, sessions);
+
+        var failure =
+                assertThrows(IllegalStateException.class, () -> selected.bindings(session.getId()));
+        assertEquals("Session plugin bindings are missing", failure.getMessage());
+        assertNull(session.getPluginBindings());
+        verify(sessions).findById(session.getId());
+        verifyNoMoreInteractions(sessions);
+        verifyNoInteractions(manager);
+    }
+
+    @Test
+    void explicitEmptySelectionRemainsEmptyAndReadsDoNotWrite() {
+        var manager = mock(PluginManager.class);
+        publication(manager, List.of());
+        var sessions = mock(SessionRepository.class);
+        var session = new SessionEntity("owner", "plugin-free");
+        session.setPluginBindings(List.of());
+        when(sessions.findById(session.getId())).thenReturn(Optional.of(session));
+        var selected = new SessionPlugins(manager, sessions);
+
+        assertEquals(List.of(), selected.bindings(session.getId()));
+        assertEquals(List.of(), selected.status(session.getId()));
+        verify(sessions, times(2)).findById(session.getId());
+        verifyNoMoreInteractions(sessions);
     }
 
     private static PluginManager.@NonNull PublishedState publication(

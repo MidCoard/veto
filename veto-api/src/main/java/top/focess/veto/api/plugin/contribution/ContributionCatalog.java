@@ -41,26 +41,7 @@ public final class ContributionCatalog {
     }
 
     private record Definition<T>(
-            @NonNull ContributionPoint<T> point,
-            @NonNull Consumer<T> validator,
-            @NonNull List<ContributionEntry<T>> entries) {
-        void validate(@NonNull Contribution<?> contribution) {
-            if (!point.equals(contribution.point())) throw invalid();
-            T implementation = point.contract().cast(contribution.implementation());
-            if (implementation == null) throw invalid();
-            validator.accept(implementation);
-        }
-
-        @NonNull Definition<T> prepare(@NonNull List<Staged> ordered) {
-            List<ContributionEntry<T>> prepared = new ArrayList<>();
-            for (Staged entry : ordered) {
-                T implementation = point.contract().cast(entry.contribution().implementation());
-                if (implementation == null) throw invalid();
-                prepared.add(new ContributionEntry<>(entry.id(), entry.source(), implementation));
-            }
-            return new Definition<>(point, validator, List.copyOf(prepared));
-        }
-    }
+            @NonNull ContributionPoint<T> point, @NonNull List<ContributionEntry<T>> entries) {}
 
     private record Staged(
             @NonNull ContributionId id,
@@ -76,7 +57,28 @@ public final class ContributionCatalog {
      * during single-threaded bootstrap only; do not expose it to contribution implementations.
      */
     public static final class Builder {
-        private final Map<ContributionId, Definition<?>> definitions = new LinkedHashMap<>();
+        private record Registration<T>(
+                @NonNull ContributionPoint<T> point, @NonNull Consumer<T> validator) {
+            void validate(@NonNull Contribution<?> contribution) {
+                if (!point.equals(contribution.point())) throw invalid();
+                T implementation = point.contract().cast(contribution.implementation());
+                if (implementation == null) throw invalid();
+                validator.accept(implementation);
+            }
+
+            @NonNull Definition<T> prepare(@NonNull List<Staged> ordered) {
+                List<ContributionEntry<T>> prepared = new ArrayList<>();
+                for (Staged entry : ordered) {
+                    T implementation = point.contract().cast(entry.contribution().implementation());
+                    if (implementation == null) throw invalid();
+                    prepared.add(
+                            new ContributionEntry<>(entry.id(), entry.source(), implementation));
+                }
+                return new Definition<>(point, List.copyOf(prepared));
+            }
+        }
+
+        private final Map<ContributionId, Registration<?>> definitions = new LinkedHashMap<>();
         private final Map<ContributionId, Staged> staged = new LinkedHashMap<>();
         private final Set<String> sources = new HashSet<>();
         private final Set<ContributionId> required = new HashSet<>();
@@ -110,7 +112,7 @@ public final class ContributionCatalog {
                 @NonNull ContributionPoint<T> point, @NonNull Consumer<T> validator) {
             mutable();
             if (definitions.size() >= 256 || definitions.containsKey(point.id())) throw invalid();
-            definitions.put(point.id(), new Definition<>(point, validator, List.of()));
+            definitions.put(point.id(), new Registration<>(point, validator));
             return this;
         }
 
@@ -122,7 +124,7 @@ public final class ContributionCatalog {
          */
         public @NonNull Builder require(@NonNull ContributionPoint<?> point) {
             mutable();
-            Definition<?> definition = definitions.get(point.id());
+            Registration<?> definition = definitions.get(point.id());
             if (definition == null || !definition.point().equals(point)) throw invalid();
             required.add(point.id());
             return this;
@@ -143,7 +145,7 @@ public final class ContributionCatalog {
                 throw invalid();
             Map<ContributionId, Staged> batch = new LinkedHashMap<>();
             for (Contribution<?> contribution : contributions) {
-                Definition<?> definition = definitions.get(contribution.point().id());
+                Registration<?> definition = definitions.get(contribution.point().id());
                 if (definition == null) throw invalid();
                 definition.validate(contribution);
                 ContributionId id = source.qualify(contribution.localId());
@@ -176,7 +178,7 @@ public final class ContributionCatalog {
         public @NonNull ContributionCatalog freeze() {
             mutable();
             Map<ContributionId, Definition<?>> prepared = new LinkedHashMap<>();
-            for (Definition<?> definition : definitions.values()) {
+            for (Registration<?> definition : definitions.values()) {
                 ContributionPoint<?> point = definition.point();
                 List<Staged> group =
                         staged.values().stream()

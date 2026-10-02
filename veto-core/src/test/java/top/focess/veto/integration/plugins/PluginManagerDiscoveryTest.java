@@ -8,7 +8,11 @@ import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.api.agent.tool.CapabilityTool;
 import top.focess.veto.api.credentials.VaultAccess;
+import top.focess.veto.api.event.AgentTerminatedEvent;
 import top.focess.veto.api.event.BeforeTextCommitEvent;
+import top.focess.veto.api.event.SessionDeletedEvent;
+import top.focess.veto.api.event.UserLoggedInEvent;
+import top.focess.veto.api.event.UserLogoutEvent;
 import top.focess.veto.api.plugin.PluginState;
 import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.api.plugin.contract.PluginFailure;
@@ -102,20 +106,20 @@ class PluginManagerDiscoveryTest {
     @Test
     void lifecycleEventsReachThePluginThroughTheDispatcher() throws Exception {
         try (var plugins = PluginTestSupport.manager()) {
-            var events = new PluginLifecycleEvents(plugins);
+            var events = PluginTestSupport.eventManager(plugins);
             var scope = new Scope.AgentScope("owner", "session", "agent");
             String reference = capture(plugins, scope);
-            events.agentTerminated("owner", "session", "agent");
+            events.submit(new AgentTerminatedEvent(scope));
             assertTrue(PluginTestSupport.reveal(plugins, scope, reference).isEmpty());
             reference = capture(plugins, scope);
-            events.sessionDeleted("owner", "session");
+            events.submit(new SessionDeletedEvent(new Scope.SessionScope("owner", "session")));
             assertTrue(PluginTestSupport.reveal(plugins, scope, reference).isEmpty());
             assertThrows(IllegalStateException.class, () -> capture(plugins, scope));
             var otherSession = new Scope.AgentScope("owner", "other-session", "agent");
             capture(plugins, otherSession);
-            events.userLogout("owner");
+            events.submit(new UserLogoutEvent(new Scope.UserScope("owner")));
             assertThrows(IllegalStateException.class, () -> capture(plugins, otherSession));
-            events.userLoggedIn("owner");
+            events.submit(new UserLoggedInEvent(new Scope.UserScope("owner")));
             capture(plugins, otherSession);
         }
     }

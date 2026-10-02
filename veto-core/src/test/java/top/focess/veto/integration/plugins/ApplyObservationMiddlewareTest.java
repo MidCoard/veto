@@ -91,6 +91,7 @@ class ApplyObservationMiddlewareTest {
         var builder = new ContributionCatalog.Builder();
         builder.define(StandardContributionPoints.OBSERVATION, ignored -> {});
         builder.define(StandardContributionPoints.LISTENERS, ignored -> {});
+        builder.define(StandardContributionPoints.AGENT_INBOX, ignored -> {});
         for (var stub : stubs) {
             var plugin = new PluginLifecycle(stub, lifecycle);
             plugin.construct(

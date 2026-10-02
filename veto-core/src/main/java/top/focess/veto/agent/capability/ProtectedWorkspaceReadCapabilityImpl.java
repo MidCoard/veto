@@ -10,27 +10,28 @@ import top.focess.veto.api.agent.capability.WorkspaceFile;
 import top.focess.veto.api.agent.capability.WorkspaceReadCapability;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.event.BeforeTextCommitEvent;
-import top.focess.veto.integration.plugins.SessionPlugins;
+import top.focess.veto.api.plugin.Scope;
+import top.focess.veto.event.EventManager;
 
 /** File capture bound to the screened native file read and its owned session. */
 @Component
 public final class ProtectedWorkspaceReadCapabilityImpl implements WorkspaceReadCapability {
-    private final SessionPlugins plugins;
+    private final EventManager events;
 
-    /** Spring construction: uses the session plugin selection when one is available. */
+    /** Spring construction: uses the host event manager when one is available. */
     @Autowired
-    public ProtectedWorkspaceReadCapabilityImpl(@NonNull ObjectProvider<SessionPlugins> plugins) {
-        this.plugins = plugins.getIfAvailable();
+    public ProtectedWorkspaceReadCapabilityImpl(@NonNull ObjectProvider<EventManager> events) {
+        this.events = events.getIfAvailable();
     }
 
     /** Detached construction (tests): capture falls back to the unchanged text. */
     public ProtectedWorkspaceReadCapabilityImpl() {
-        this.plugins = null;
+        this.events = null;
     }
 
-    /** Host dispatch binds protection to the same pinned selection used for this invocation. */
-    public ProtectedWorkspaceReadCapabilityImpl(SessionPlugins plugins) {
-        this.plugins = plugins;
+    /** Host event delivery binds protection to the pinned selection used for this invocation. */
+    public ProtectedWorkspaceReadCapabilityImpl(EventManager events) {
+        this.events = events;
     }
 
     @Override
@@ -48,18 +49,16 @@ public final class ProtectedWorkspaceReadCapabilityImpl implements WorkspaceRead
         if (owner == null || owner.isBlank() || session == null)
             throw new IllegalStateException(
                     "Protected file reading requires an active owned session");
-        if (plugins != null) {
+        if (events != null) {
             var event =
                     new BeforeTextCommitEvent(
-                            owner,
-                            session.toString(),
-                            context.agentId(),
+                            new Scope.AgentScope(owner, session.toString(), context.agentId()),
                             () -> Thread.currentThread().isInterrupted(),
                             BeforeTextCommitEvent.Phase.FILE_CAPTURE,
                             UUID.randomUUID().toString(),
                             input);
-            plugins.dispatch(event);
-            if (event.isPrevent()) throw new IllegalStateException("File capture prevented");
+            events.submit(event);
+            if (event.isCancelled()) throw new IllegalStateException("File capture cancelled");
             return event.text();
         }
         return input;

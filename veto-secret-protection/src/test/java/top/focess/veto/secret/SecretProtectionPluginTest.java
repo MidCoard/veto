@@ -163,13 +163,7 @@ class SecretProtectionPluginTest {
             @NonNull String text) {
         var event =
                 new BeforeTextCommitEvent(
-                        scope.owner(),
-                        scope.session(),
-                        scope.agent(),
-                        () -> false,
-                        BeforeTextCommitEvent.Phase.INPUT,
-                        "user",
-                        text);
+                        scope, () -> false, BeforeTextCommitEvent.Phase.INPUT, "user", text);
         lifecycle.onTextCommit(event);
         return event.text();
     }

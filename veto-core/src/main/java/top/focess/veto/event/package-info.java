@@ -1,7 +1,7 @@
 /**
- * Host-side event dispatch. Listeners are reflected once at registration and compiled into
- * zero-reflection invokers; dispatch runs synchronously on the workflow thread under each
- * contributing plugin's admission and the session's selection.
+ * Shared EventManager submission and host-owned prepared event routes. Listeners are reflected once
+ * at registration and compiled into zero-reflection invokers; dispatch runs synchronously on the
+ * workflow thread under each contributing plugin's admission and the session's selection.
  */
 @DefaultQualifier(
         value = Nullable.class,

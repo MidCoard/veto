@@ -18,6 +18,8 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
@@ -238,6 +240,7 @@ class PluginAgentHostsTest {
         final @NonNull SessionAgentRegistry registry = new SessionAgentRegistry();
         final @NonNull KeysteadVault vault = mock(KeysteadVault.class);
         final @NonNull AgentService service = mock(AgentService.class);
+        final @NonNull SessionHistoryLoader history = mock(SessionHistoryLoader.class);
         final @NonNull VetoAgent agent = mock(VetoAgent.class);
         final @NonNull AgentEntity row;
         final PluginStorage.@NonNull Grant<Scope.@NonNull SessionScope> scope;
@@ -285,8 +288,9 @@ class PluginAgentHostsTest {
                             identities,
                             registry,
                             scopes,
-                            mock(SessionHistoryLoader.class),
+                            history,
                             vault);
+            when(history.load(anyString(), anyString())).thenReturn(List.of());
             host = hosts.bind(plugin, storage);
         }
 
@@ -333,6 +337,211 @@ class PluginAgentHostsTest {
                     .thenThrow(new SecurityException("revoked"));
             assertThrows(SecurityException.class, fixture::open);
             verifyNoInteractions(fixture.service);
+        }
+    }
+
+    @Test
+    void concurrentSameIdentityCreatesOneRowAndRuntime() throws Exception {
+        try (var fixture = new Fixture();
+                var callers = Executors.newFixedThreadPool(2)) {
+            fixture.registry.stop(fixture.childId);
+            var row = new AtomicReference<AgentEntity>();
+            when(fixture.identities.findById(fixture.childId))
+                    .thenAnswer(invocation -> Optional.ofNullable(row.get()));
+            when(fixture.identities.saveAndFlush(any()))
+                    .thenAnswer(
+                            invocation -> {
+                                var saved = invocation.<AgentEntity>getArgument(0);
+                                if (saved == null)
+                                    throw new AssertionError("Saved identity must exist");
+                                row.set(saved);
+                                return saved;
+                            });
+            var entered = new CountDownLatch(1);
+            var release = new CountDownLatch(1);
+            var attempts = new AtomicInteger();
+            when(fixture.service.openPluginAgent(
+                            any(), anyString(), anyString(), anyString(), any(), any()))
+                    .thenAnswer(
+                            invocation -> {
+                                attempts.incrementAndGet();
+                                entered.countDown();
+                                assertTrue(release.await(5, TimeUnit.SECONDS));
+                                fixture.registry.register(
+                                        UUID.fromString(fixture.session.getId()), fixture.agent);
+                                return fixture.agent;
+                            });
+            var first = callers.submit(fixture::open);
+            try {
+                assertTrue(entered.await(5, TimeUnit.SECONDS));
+                var started = new CountDownLatch(1);
+                var second =
+                        callers.submit(
+                                () -> {
+                                    started.countDown();
+                                    return fixture.open();
+                                });
+                assertTrue(started.await(5, TimeUnit.SECONDS));
+                assertThrows(TimeoutException.class, () -> second.get(100, TimeUnit.MILLISECONDS));
+                release.countDown();
+                assertEquals(fixture.childId, first.get(5, TimeUnit.SECONDS).id());
+                assertEquals(fixture.childId, second.get(5, TimeUnit.SECONDS).id());
+                assertEquals(1, attempts.get());
+                verify(fixture.identities).saveAndFlush(any());
+                assertEquals(
+                        1,
+                        fixture.registry.agents(UUID.fromString(fixture.session.getId())).size());
+            } finally {
+                release.countDown();
+            }
+        }
+    }
+
+    @Test
+    void differentIdentityStripesCanCreateWhileAnotherCreationIsBlocked() throws Exception {
+        try (var fixture = new Fixture();
+                var callers = Executors.newFixedThreadPool(2)) {
+            fixture.registry.stop(fixture.childId);
+            UUID firstId = UUID.fromString(fixture.childId);
+            // Flipping one low bit selects another stripe without relying on random hash
+            // collisions.
+            String otherId =
+                    new UUID(
+                                    firstId.getMostSignificantBits(),
+                                    firstId.getLeastSignificantBits() ^ 1)
+                            .toString();
+            when(fixture.identities.findById(fixture.childId)).thenReturn(Optional.empty());
+            when(fixture.identities.findById(otherId)).thenReturn(Optional.empty());
+            var other = mock(VetoAgent.class);
+            when(other.id()).thenReturn(otherId);
+            when(other.state()).thenReturn(AgentState.IDLE);
+            var entered = new CountDownLatch(2);
+            var release = new CountDownLatch(1);
+            when(fixture.service.openPluginAgent(
+                            any(), anyString(), anyString(), anyString(), any(), any()))
+                    .thenAnswer(
+                            invocation -> {
+                                String id = invocation.getArgument(1);
+                                if (id == null)
+                                    throw new AssertionError("Child identity must exist");
+                                entered.countDown();
+                                assertTrue(release.await(5, TimeUnit.SECONDS));
+                                var created = id.equals(otherId) ? other : fixture.agent;
+                                fixture.registry.register(
+                                        UUID.fromString(fixture.session.getId()), created);
+                                return created;
+                            });
+            var first = callers.submit(fixture::open);
+            var second =
+                    callers.submit(
+                            () ->
+                                    fixture.host
+                                            .session(fixture.scope)
+                                            .open(otherId, fixture.parent, fixture.profile));
+            try {
+                assertTrue(
+                        entered.await(5, TimeUnit.SECONDS),
+                        "Independent child creation must overlap");
+                release.countDown();
+                assertEquals(fixture.childId, first.get(5, TimeUnit.SECONDS).id());
+                assertEquals(otherId, second.get(5, TimeUnit.SECONDS).id());
+                assertEquals(
+                        2,
+                        fixture.registry.agents(UUID.fromString(fixture.session.getId())).size());
+            } finally {
+                release.countDown();
+            }
+        }
+    }
+
+    @Test
+    void conflictingPluginCannotClaimIdentityDuringItsCreation() throws Exception {
+        try (var fixture = new Fixture();
+                var callers = Executors.newFixedThreadPool(2)) {
+            fixture.registry.stop(fixture.childId);
+            var row = new AtomicReference<AgentEntity>();
+            when(fixture.identities.findById(fixture.childId))
+                    .thenAnswer(invocation -> Optional.ofNullable(row.get()));
+            when(fixture.identities.saveAndFlush(any()))
+                    .thenAnswer(
+                            invocation -> {
+                                var saved = invocation.<AgentEntity>getArgument(0);
+                                if (saved == null)
+                                    throw new AssertionError("Saved identity must exist");
+                                row.set(saved);
+                                return saved;
+                            });
+            var entered = new CountDownLatch(1);
+            var release = new CountDownLatch(1);
+            when(fixture.service.openPluginAgent(
+                            any(), anyString(), anyString(), anyString(), any(), any()))
+                    .thenAnswer(
+                            invocation -> {
+                                entered.countDown();
+                                assertTrue(release.await(5, TimeUnit.SECONDS));
+                                fixture.registry.register(
+                                        UUID.fromString(fixture.session.getId()), fixture.agent);
+                                return fixture.agent;
+                            });
+            var foreign = mock(PluginLifecycle.class);
+            when(foreign.identity()).thenReturn(new PluginIdentity("foreign.plugin", "1.0.0"));
+            var host = fixture.hosts.bind(foreign, fixture.storage);
+            var first = callers.submit(fixture::open);
+            try {
+                assertTrue(entered.await(5, TimeUnit.SECONDS));
+                var started = new CountDownLatch(1);
+                var conflict =
+                        callers.submit(
+                                () -> {
+                                    started.countDown();
+                                    return host.session(fixture.scope)
+                                            .open(fixture.childId, fixture.parent, fixture.profile);
+                                });
+                assertTrue(started.await(5, TimeUnit.SECONDS));
+                assertThrows(
+                        TimeoutException.class, () -> conflict.get(100, TimeUnit.MILLISECONDS));
+                release.countDown();
+                assertEquals(fixture.childId, first.get(5, TimeUnit.SECONDS).id());
+                var rejected =
+                        assertThrows(
+                                ExecutionException.class, () -> conflict.get(5, TimeUnit.SECONDS));
+                assertInstanceOf(SecurityException.class, rejected.getCause());
+                verify(fixture.service)
+                        .openPluginAgent(
+                                any(), anyString(), anyString(), anyString(), any(), any());
+                verify(foreign, never()).ownResource(any(), any());
+            } finally {
+                release.countDown();
+            }
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void rejectedOwnershipReleasesCreatedRuntimeWithoutStoppingReplacement(boolean replaced)
+            throws Exception {
+        try (var fixture = new Fixture()) {
+            fixture.registry.stop(fixture.childId);
+            clearInvocations(fixture.agent);
+            var replacement = mock(VetoAgent.class);
+            when(replacement.id()).thenReturn(fixture.childId);
+            when(replacement.state()).thenReturn(AgentState.IDLE);
+            when(fixture.service.openPluginAgent(
+                            any(), anyString(), anyString(), anyString(), any(), any()))
+                    .thenAnswer(
+                            invocation -> {
+                                fixture.registry.register(
+                                        UUID.fromString(fixture.session.getId()),
+                                        replaced ? replacement : fixture.agent);
+                                fixture.plugin.close();
+                                return fixture.agent;
+                            });
+            assertThrows(IllegalStateException.class, fixture::open);
+            verify(fixture.agent).terminate();
+            verify(replacement, never()).terminate();
+            var live = fixture.registry.agents(UUID.fromString(fixture.session.getId()));
+            if (replaced) assertSame(replacement, live.getFirst().agent());
+            else assertTrue(live.isEmpty());
         }
     }
 

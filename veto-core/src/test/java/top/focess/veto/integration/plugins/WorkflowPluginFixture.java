@@ -14,11 +14,10 @@ import top.focess.veto.api.plugin.*;
 import top.focess.veto.api.plugin.contract.*;
 import top.focess.veto.api.plugin.contribution.*;
 import top.focess.veto.event.EventListenerRegistry;
-import top.focess.veto.event.PluginExecutor;
+import top.focess.veto.event.EventManager;
 import top.focess.veto.model.SessionEntity;
 import top.focess.veto.model.SessionRepository;
 import top.focess.veto.plugin.runtime.*;
-import top.focess.veto.session.SessionHistoryLoader;
 
 /** Real lifecycle and catalog behind a test discovery adapter. */
 public final class WorkflowPluginFixture implements AutoCloseable {
@@ -26,6 +25,7 @@ public final class WorkflowPluginFixture implements AutoCloseable {
     public final @NonNull PluginLifecycle runtime;
     public final @NonNull PluginManager manager;
     public final @NonNull SessionPlugins sessions;
+    public final @NonNull EventManager events;
     public final @NonNull SessionEntity session = new SessionEntity("owner", "session");
     private final @NonNull SessionRepository repository = mock(SessionRepository.class);
 
@@ -70,6 +70,16 @@ public final class WorkflowPluginFixture implements AutoCloseable {
         manager = mock(PluginManager.class);
         var publication = mock(PluginManager.PublishedState.class);
         when(publication.catalog()).thenReturn(catalog);
+        when(publication.inboxes())
+                .thenReturn(
+                        catalog.entries(StandardContributionPoints.AGENT_INBOX).stream()
+                                .map(
+                                        entry ->
+                                                new CompositeAgentInbox.Entry(
+                                                        entry.id().value(),
+                                                        runtime,
+                                                        entry.implementation()))
+                                .toList());
         when(publication.plugins()).thenReturn(List.of(runtime));
         when(publication.disabled()).thenReturn(List.of());
         when(publication.declined()).thenReturn(List.of());
@@ -91,21 +101,11 @@ public final class WorkflowPluginFixture implements AutoCloseable {
                             String id = Objects.requireNonNull(invocation.<String>getArgument(2));
                             return "plugin_fixture_workflow__" + id.substring(id.indexOf(':') + 1);
                         });
-        PluginExecutor executor =
-                (namespace, body) ->
-                        runtime.execute(
-                                () -> {
-                                    try {
-                                        body.run();
-                                    } catch (PluginFailure | RuntimeException failure) {
-                                        throw failure;
-                                    } catch (Exception failure) {
-                                        throw new PluginFailure(
-                                                PluginFailure.Code.INTERNAL_FAILURE);
-                                    }
-                                    return true;
-                                });
-        var events = EventListenerRegistry.build(catalog, executor);
+        var events =
+                EventListenerRegistry.build(
+                        catalog,
+                        Map.of(runtime.identity().id(), runtime),
+                        new EventListenerRegistry.Preparation());
         when(manager.events()).thenReturn(events);
         when(publication.events()).thenReturn(events);
         session.setPluginBindings(
@@ -115,7 +115,8 @@ public final class WorkflowPluginFixture implements AutoCloseable {
                                 runtime.identity().version(),
                                 runtime.identity().version())));
         when(repository.findById(anyString())).thenReturn(Optional.of(session));
-        sessions = new SessionPlugins(manager, repository, mock(SessionHistoryLoader.class));
+        sessions = new SessionPlugins(manager, repository);
+        this.events = new EventManager(manager, sessions);
         var registry = new PluginServiceRegistry((caller, provider) -> true);
         try {
             registry.bind(catalog, List.of(runtime));

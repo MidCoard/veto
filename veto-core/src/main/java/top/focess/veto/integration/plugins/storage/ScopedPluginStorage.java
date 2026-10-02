@@ -32,7 +32,6 @@ import top.focess.veto.integration.plugins.PluginHostServices;
 import top.focess.veto.model.SessionEntity;
 import top.focess.veto.plugin.runtime.PluginJson;
 import top.focess.veto.plugin.runtime.PluginLifecycle;
-import top.focess.veto.plugin.runtime.ScriptPlugin;
 import top.focess.veto.util.Nullness;
 import top.focess.veto.vault.UserContext;
 import top.focess.veto.vault.UserEntity;
@@ -205,10 +204,7 @@ public class ScopedPluginStorage implements PluginStorageFactory {
             if (session == null || !session.getOwner().equals(owner))
                 throw new SecurityException("Session scope no longer exists");
             var bindings = session.getPluginBindings();
-            String revision =
-                    plugin.implementation() instanceof ScriptPlugin script
-                            ? script.digest()
-                            : plugin.identity().version();
+            String revision = plugin.binding().revision();
             if (bindings == null
                     || bindings.stream()
                             .noneMatch(

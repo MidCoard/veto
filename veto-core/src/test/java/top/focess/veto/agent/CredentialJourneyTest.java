@@ -39,7 +39,6 @@ import top.focess.veto.api.llm.VetoResponse;
 import top.focess.veto.builtin.tools.ReadGitHubRepositoryTool;
 import top.focess.veto.integration.plugins.HostResourceConfiguration;
 import top.focess.veto.integration.plugins.PluginConfigurations;
-import top.focess.veto.integration.plugins.PluginLifecycleEvents;
 import top.focess.veto.integration.plugins.PluginManager;
 import top.focess.veto.integration.plugins.PluginTestSupport;
 import top.focess.veto.llm.core.*;
@@ -90,6 +89,7 @@ class CredentialJourneyTest {
                                                         PluginTestSupport.providerOf(null)))),
                         pluginConfiguration);
         var sessionPlugins = PluginTestSupport.sessionPlugins(plugins);
+        var eventManager = PluginTestSupport.eventManager(plugins);
         HttpClient client = mock(HttpClient.class);
         HttpResponse<byte[]> response = (HttpResponse<byte[]>) mock(HttpResponse.class);
         when(response.statusCode()).thenReturn(200);
@@ -148,6 +148,7 @@ class CredentialJourneyTest {
                     }
                 };
         engine.attachSessionPlugins(sessionPlugins);
+        engine.attachEventManager(eventManager);
         engine.afterSingletonsInstantiated();
         var compiler =
                 new PromptCompiler(
@@ -289,7 +290,7 @@ class CredentialJourneyTest {
                         null,
                         null);
         service.attachSessionPlugins(sessionPlugins);
-        service.attachLifecycleEvents(new PluginLifecycleEvents(plugins));
+        service.attachEventManager(eventManager);
         service.setConfiguredDefaultWorkspace(Workspace.single(root, PathMode.REAL));
         var credentialSession = new SessionEntity("owner", "test");
         String session = credentialSession.getId();

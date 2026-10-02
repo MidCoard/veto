@@ -103,6 +103,7 @@ class ScopedPluginStorageTest {
         VetoPlugin implementation = mock(VetoPlugin.class);
         when(result.identity()).thenReturn(new PluginIdentity(id, "1.0.0"));
         when(result.implementation()).thenReturn(implementation);
+        when(result.binding()).thenCallRealMethod();
         when(implementation.historicalIds()).thenReturn(Set.of());
         when(result.state()).thenReturn(PluginState.ACTIVE);
         return result;

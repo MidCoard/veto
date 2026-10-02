@@ -53,6 +53,8 @@ import top.focess.veto.api.event.AfterModelEvent;
 import top.focess.veto.api.event.BeforeInputEvent;
 import top.focess.veto.api.event.BeforeModelEvent;
 import top.focess.veto.api.event.BeforeTextCommitEvent;
+import top.focess.veto.api.event.BeforeToolEvent;
+import top.focess.veto.api.event.EventPriority;
 import top.focess.veto.api.event.EventHandler;
 import top.focess.veto.api.event.Listener;
 import top.focess.veto.api.llm.ChatMessage;
@@ -83,7 +85,7 @@ import top.focess.veto.builtin.questions.QuestionRuntime;
 import top.focess.veto.builtin.response.CitationResponsePolicy;
 import top.focess.veto.builtin.tools.AskUserTool;
 import top.focess.veto.builtin.tools.RunTaskTool;
-import top.focess.veto.integration.plugins.PluginLifecycleEvents;
+import top.focess.veto.event.EventManager;
 import top.focess.veto.integration.plugins.PluginTestSupport;
 import top.focess.veto.integration.plugins.QuestionTestSupport;
 import top.focess.veto.integration.plugins.SessionPlugins;
@@ -155,6 +157,7 @@ class AgentRunnerTest {
                                         "callbacks",
                                         hook)))) {
             service.attachSessionPlugins(fixture.sessions);
+            service.attachEventManager(fixture.events);
             var agent =
                     service.getOrCreateAgent(
                             session,
@@ -183,13 +186,93 @@ class AgentRunnerTest {
         }
     }
 
-    @Test
-    void beforeModelVetoStopsTheModelCall() throws Exception {
+    @ParameterizedTest
+    @CsvSource({"1,cancel", "2,cancel", "1,uncancel", "2,uncancel", "1,prevent", "2,prevent"})
+    void finalToolCancellationControlsRealExecution(int toolCount, @NonNull String mode)
+            throws Exception {
+        var executed = new AtomicInteger();
+        var earlyCalls = new AtomicInteger();
+        var lateCalls = new AtomicInteger();
+        Listener callbacks = new Listener() {
+            @EventHandler(priority = EventPriority.HIGHEST)
+            public void before(@NonNull BeforeToolEvent event) {
+                earlyCalls.incrementAndGet();
+                if (mode.equals("prevent")) event.prevent();
+                else event.cancel();
+            }
+            @EventHandler(priority = EventPriority.LOWEST)
+            public void after(@NonNull BeforeToolEvent event) {
+                lateCalls.incrementAndGet();
+                assertTrue(event.isCancelled());
+                if (mode.equals("uncancel")) event.setCancelled(false);
+            }
+        };
+        var first = AgentToolDefinition.from("fixture_one", FixtureLoopTool.class,
+                FixtureLoopTool.Args.class, ToolCapability.LOOP_CONTROL);
+        var second = AgentToolDefinition.from("fixture_two", FixtureLoopTool.class,
+                FixtureLoopTool.Args.class, ToolCapability.LOOP_CONTROL);
+        ToolEngine engine = Mockito.mock(ToolEngine.class);
+        Mockito.when(engine.getActiveTools(Mockito.any())).thenReturn(List.of(first, second));
+        Mockito.when(engine.resolveDefinition("fixture_one")).thenReturn(first);
+        Mockito.when(engine.resolveDefinition("fixture_two")).thenReturn(second);
+        Mockito.when(engine.execute(Mockito.any(), Mockito.any())).thenAnswer(invocation -> {
+            ToolCall call = invocation.getArgument(0);
+            if (call == null) throw new AssertionError("Missing tool call");
+            executed.incrementAndGet();
+            return ToolResult.success(call.toolName(), call.callId(), "executed fixture");
+        });
+        var requests = new CopyOnWriteArrayList<VetoRequest>();
+        var service = serviceWith((request, modelSessionId) -> {
+            requests.add(request);
+            if (requests.size() == 1) {
+                var calls = new ArrayList<ToolCall>();
+                calls.add(new ToolCall("fixture_one", Map.of()));
+                if (toolCount == 2) calls.add(new ToolCall("fixture_two", Map.of()));
+                return new VetoResponse(null, calls, null);
+            }
+            return new VetoResponse(null, null, "finished");
+        }, 50, engine, new HitlRegistry());
+        String session = UUID.randomUUID().toString();
+        try (var fixture = new WorkflowPluginFixture(List.of(Contribution.of(
+                StandardContributionPoints.LISTENERS, "tool-cancellation", callbacks)))) {
+            service.attachSessionPlugins(fixture.sessions);
+            service.attachEventManager(fixture.events);
+            var agent = service.getOrCreateAgent(session, UUID.randomUUID().toString(),
+                    binding("System"), List.of(), UUID.randomUUID(), "owner", null, 0,
+                    ToolResultPresentationMode.BASIC);
+            try {
+                agent.submit("Execute the fixture tools");
+                assertTrue(agent.await(EPISODE_TIMEOUT).success());
+                boolean cancelled = mode.equals("cancel");
+                assertEquals(cancelled ? 0 : toolCount, executed.get());
+                assertEquals(toolCount, earlyCalls.get());
+                assertEquals(mode.equals("prevent") ? 0 : toolCount, lateCalls.get());
+                assertEquals(2, requests.size());
+                var results = requests.get(1).messages().stream()
+                        .filter(message -> message.role().equals("tool")).toList();
+                assertEquals(toolCount, results.size());
+                for (var result : results) {
+                    assertEquals(!cancelled, result.toolSuccess());
+                    assertEquals(cancelled, result.content().contains("REFUSED"));
+                    if (!cancelled) assertTrue(result.content().contains("executed fixture"));
+                }
+                Mockito.verify(engine, Mockito.times(cancelled ? 0 : toolCount))
+                        .execute(Mockito.any(), Mockito.any());
+            } finally {
+                service.remove(session);
+            }
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    void beforeModelCancellationStopsButPreventionAloneStillCalls(boolean cancel) throws Exception {
         var calls = new AtomicInteger();
         Listener veto =
                 new Listener() {
                     @EventHandler
                     public void onBeforeModel(@NonNull BeforeModelEvent event) {
+                        if (cancel) event.cancel();
                         event.prevent();
                     }
                 };
@@ -208,6 +291,7 @@ class AgentRunnerTest {
                                         "model-veto",
                                         veto)))) {
             service.attachSessionPlugins(fixture.sessions);
+            service.attachEventManager(fixture.events);
             var agent =
                     service.getOrCreateAgent(
                             session,
@@ -221,8 +305,8 @@ class AgentRunnerTest {
                             ToolResultPresentationMode.BASIC);
             try {
                 agent.submit("Do not call the model");
-                assertFalse(agent.await(EPISODE_TIMEOUT).success());
-                assertEquals(0, calls.get());
+                assertEquals(!cancel, agent.await(EPISODE_TIMEOUT).success());
+                assertEquals(cancel ? 0 : 1, calls.get());
             } finally {
                 service.remove(session);
             }
@@ -470,7 +554,7 @@ class AgentRunnerTest {
         String agentId = UUID.randomUUID().toString();
         try (var plugins = PluginTestSupport.manager()) {
             service.attachSessionPlugins(PluginTestSupport.sessionPlugins(plugins));
-            service.attachLifecycleEvents(new PluginLifecycleEvents(plugins));
+            service.attachEventManager(PluginTestSupport.eventManager(plugins));
             var agent =
                     service.getOrCreateAgent(
                             session,
@@ -546,7 +630,7 @@ class AgentRunnerTest {
         String session = UUID.randomUUID().toString();
         try (var plugins = PluginTestSupport.manager()) {
             service.attachSessionPlugins(PluginTestSupport.sessionPlugins(plugins));
-            service.attachLifecycleEvents(new PluginLifecycleEvents(plugins));
+            service.attachEventManager(PluginTestSupport.eventManager(plugins));
             var agent =
                     service.getOrCreateAgent(
                             session,
@@ -649,6 +733,7 @@ class AgentRunnerTest {
         SessionPlugins selected = Mockito.mock(SessionPlugins.class);
         Mockito.when(selected.workSource(Mockito.anyString())).thenReturn(work(monitors));
         runtime.attachSessionPlugins(selected);
+        runtime.attachEventManager(Mockito.mock(EventManager.class));
         var due = Instant.now().plusSeconds(10);
         monitors.createTimer("alice", session.getId(), identity.getId(), "Review", due);
         try {
@@ -1206,6 +1291,7 @@ class AgentRunnerTest {
                                 Mockito.anyString()))
                 .thenAnswer(call -> new AgentConfiguration.Intent(call.getArgument(4), transition));
         service.attachSessionPlugins(plugins);
+        service.attachEventManager(Mockito.mock(EventManager.class));
         service.setModelTierRegistry(Mockito.mock(ModelTierRegistry.class));
         String session = UUID.randomUUID().toString();
         try {
@@ -2569,6 +2655,7 @@ class AgentRunnerTest {
                 .thenAnswer(call -> call.getArgument(1));
         // configure defaults to null: this fixture selects a response policy, not an agent profile.
         service.attachSessionPlugins(selected);
+        service.attachEventManager(Mockito.mock(EventManager.class));
         service.getOrCreateAgent(
                 agentKey,
                 null,

@@ -71,6 +71,16 @@ The host currently has a fixed catalog of concrete event classes. Workflow event
 session's selected plugins and may transform or prevent work according to their contract;
 lifecycle and directory events are best-effort broadcasts to active plugins.
 
+Delivery is declared by `Event.Recipients` and `Event.FailurePolicy`, independently of
+that family hierarchy. A new non-workflow event can choose `SESSION_PLUGINS` with a
+session or agent scope; all recipients still pass lifecycle admission. `ACTIVE_PLUGINS`
+excludes inactive owners even when the failure policy is `FAIL_CLOSED`. A selected stale
+session activation fails closed when required, and close races are checked by admission.
+All events expose `scope()`; workflow events take one `Scope.AgentScope` instead of
+separate owner/session/agent strings. Cooperative `cancellation()` is optional on `Event`.
+Adding a concrete host event also requires its entry in the prepared host event catalog.
+The old scalar workflow constructors/accessors and registry broadcast entry are removed.
+
 | Family | Concrete events | Host boundary |
 |---|---|---|
 | Authentication | `UserRegisteredEvent`, `UserLoggedInEvent`, `UserLogoutEvent` | Successful signup; successful login; start of unified logout, respectively. `UserAuthenticatedEvent` is an abstract parent received for either success. |
@@ -92,6 +102,11 @@ asynchronous observations or every file operation. `ToolCallEvent` and `ToolResu
 `api.agent` are agent-output records delivered through their own listeners, not subclasses of
 `api.event.Event` and not registrations in this plugin event table. `CancellableEvent` is an
 available base type, but none of the concrete host events above extends it.
+
+The host checks the prepared route for the submitted concrete event before resolving
+session selection. Empty or unrelated listener contributions do not trigger session
+lookups; inherited handlers still count. Unknown concrete event types are rejected.
+Equal-priority handlers retain contribution order through stable sorting.
 
 ## Minimal named-service plugins
 
@@ -184,8 +199,9 @@ handles after `close()`.
 `ContributionPoint<T>` fixes a namespaced ID, major version, Java contract class, and
 cardinality. `Contribution<T>` supplies a local ID, implementation, and optional ordering
 constraints within that exact point. The host supplies source identity and provenance. A
-plugin returns one immutable batch from `initialize`; the host validates and stages it
-atomically before publication.
+plugin registers complete aspects through `context.register(point, localId, aspect)`;
+the owning host handler validates and prepares each registration before storage and
+publication. There is no `initialize` batch API.
 
 The current `StandardContributionPoints` are:
 
@@ -358,3 +374,17 @@ code and keep host implementation types out of plugin artifacts.
 Class literals can be passed directly as `Foo.class`. The build-time Veto nullness checker treats the class-literal expression as non-null while keeping the usual nullable defaults for other expressions. `ToolDocs` contains only tool documentation helpers.
 
 Standard contribution points accept the complete instance of their abstract aspect class. Tools extend `Tool` through `AgentTool`, `NativeTool`, or `RemoteTool`; services extend `PluginService`. Frontend modules, providers, prompts, listeners, policies, and other standard aspects likewise extend their respective API class and are registered as those objects. A component providing multiple aspects registers a separate object for each role.
+
+
+## Propagation and action cancellation
+
+`prevent()` controls whether later handlers are called. It does not cancel the host
+action. Handlers opting into prevented events may observe the event but cannot clear
+its propagation flag. `Cancellable.cancel()` and `setCancelled(false)` change the
+reversible action flag without filtering handlers: the producer reads its final value.
+BeforeToolEvent, BeforeModelEvent and BeforeTextCommitEvent implement that contract.
+Cancelled tool calls produce a REFUSED result for the model without executing the tool;
+other batch calls retain their normal authorization. Clearing cancellation restores
+normal evaluation but cannot relax the tool's separate monotonic approval Decision.
+The read-only `Cancellation` signal represents host/request stopping and is independent
+of this mutable per-event flag. EventHandler.notCallIfCancelled has been removed.

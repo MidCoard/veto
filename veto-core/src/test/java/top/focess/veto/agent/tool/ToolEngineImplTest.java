@@ -40,6 +40,7 @@ import top.focess.veto.api.agent.tool.ToolErrorCode;
 import top.focess.veto.api.agent.tool.ToolErrors;
 import top.focess.veto.api.agent.tool.ToolResult;
 import top.focess.veto.api.agent.tool.ToolResultFormat;
+import top.focess.veto.api.event.BeforeTextCommitEvent;
 import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
@@ -79,6 +80,8 @@ class ToolEngineImplTest {
                     .thenReturn(Map.of("plugins", fixture.manager));
             var engine = new ToolEngineImpl(new ObjectMapper(), List.of(), context);
             engine.attachSessionPlugins(fixture.sessions);
+            var events = spy(fixture.events);
+            engine.attachEventManager(events);
             engine.init();
             String name = "plugin_fixture_workflow__view_file";
             var definition = definition(engine, name);
@@ -91,6 +94,7 @@ class ToolEngineImplTest {
             var approved = executeAuthorized(engine, call, definition, root);
             assertTrue(approved.success(), approved.content());
             assertTrue(approved.content().contains("plugin read through workspace permit"));
+            verify(events).submit(isA(BeforeTextCommitEvent.class));
             var none = spy(fixture.sessions);
             doReturn(false).when(none).includes(anyString(), anyString());
             engine.attachSessionPlugins(none);

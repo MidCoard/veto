@@ -38,8 +38,8 @@ import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.api.llm.VetoResponse;
 import top.focess.veto.api.plugin.contract.AgentInbox;
+import top.focess.veto.event.EventManager;
 import top.focess.veto.i18n.Msg;
-import top.focess.veto.integration.plugins.PluginLifecycleEvents;
 import top.focess.veto.integration.plugins.SessionPlugins;
 import top.focess.veto.llm.core.ToolResultPresenter;
 import top.focess.veto.llm.core.UniformLLMCaller;
@@ -152,6 +152,7 @@ public final class AgentRunner implements Runnable {
                         objectMapper,
                         caller,
                         () -> lifecycleOwner().sessionPlugins(),
+                        () -> lifecycleOwner().eventManager(),
                         () -> lifecycleOwner().control().open(),
                         () -> {
                             var request = lifecycleOwner().control().request();
@@ -844,8 +845,8 @@ public final class AgentRunner implements Runnable {
         lifecycle.terminate();
     }
 
-    /** Attaches the bus used to publish agent lifecycle events to plugins. */
-    public void attachLifecycleEvents(@NonNull PluginLifecycleEvents events) {
-        lifecycle.attachLifecycleEvents(events);
+    /** Attaches the host dispatcher used by agent workflow and lifecycle event producers. */
+    public void attachEventManager(@NonNull EventManager events) {
+        lifecycle.attachEventManager(events);
     }
 }

@@ -50,6 +50,7 @@ import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.builtin.planning.ActionsProgramParser;
 import top.focess.veto.builtin.planning.PlanProgram;
 import top.focess.veto.builtin.planning.ProgramValidator;
+import top.focess.veto.event.EventManager;
 import top.focess.veto.integration.plugins.SessionPlugins;
 import top.focess.veto.llm.core.UniformLLMCaller;
 import top.focess.veto.model.SessionEntity;
@@ -182,6 +183,7 @@ class AgentEndToEndTest {
                     .thenAnswer(
                             call -> transforms.intent(call.getArgument(4), call.getArgument(6)));
             service.attachSessionPlugins(selection);
+            service.attachEventManager(Mockito.mock(EventManager.class));
             var tiers = Mockito.mock(ModelTierRegistry.class);
             var model = transforms.leaderBinding;
             Mockito.when(tiers.resolve(Mockito.anyString(), Mockito.any()))
@@ -557,6 +559,7 @@ class AgentEndToEndTest {
         Mockito.when(selection.tools(Mockito.anyString(), Mockito.any()))
                 .thenAnswer(call -> call.getArgument(1));
         service.attachSessionPlugins(selection);
+        service.attachEventManager(Mockito.mock(EventManager.class));
         service.setModelTierRegistry(Mockito.mock(ModelTierRegistry.class));
         var session = Mockito.mock(SessionEntity.class);
         Mockito.when(session.getId()).thenReturn(sessionId.toString());

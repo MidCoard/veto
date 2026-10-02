@@ -10,7 +10,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.function.Predicate;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -22,7 +21,6 @@ import top.focess.veto.api.event.BeforeModelEvent;
 import top.focess.veto.api.event.BeforeObservationEvent;
 import top.focess.veto.api.event.BeforeTextCommitEvent;
 import top.focess.veto.api.event.BeforeToolEvent;
-import top.focess.veto.api.event.Cancellable;
 import top.focess.veto.api.event.Event;
 import top.focess.veto.api.event.EventHandler;
 import top.focess.veto.api.event.EventPriority;
@@ -32,26 +30,28 @@ import top.focess.veto.api.event.SessionDeletedEvent;
 import top.focess.veto.api.event.UserLoggedInEvent;
 import top.focess.veto.api.event.UserLogoutEvent;
 import top.focess.veto.api.event.UserRegisteredEvent;
-import top.focess.veto.api.event.WorkflowEvent;
+import top.focess.veto.api.plugin.PluginState;
 import top.focess.veto.api.plugin.contract.PluginFailure;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
 import top.focess.veto.api.plugin.contribution.ContributionCatalog;
 import top.focess.veto.api.plugin.contribution.ContributionEntry;
+import top.focess.veto.plugin.runtime.PluginLifecycle;
 import top.focess.veto.util.Nullness;
 
 /**
  * Immutable dispatch table of compiled event handlers.
  *
  * <p>Public {@code @EventHandler} methods on a contributed {@link Listener} are validated and
- * compiled at registration into reusable {@link EventInvoker}s. Dispatch is then a plain interface
- * call backed by a method handle, with no per-invocation reflection, run synchronously on the
- * producer's calling thread. Handlers fire in {@link EventPriority} order within each event type,
- * registration order as the stable tiebreak. The host expands inherited handlers into each known
- * concrete event's list at table construction, most specific type first. A handler is skipped once
- * the event is {@link Event#isPrevent() prevented} or, for a {@link Cancellable} event, cancelled,
- * according to its annotation flags; only plugins selected for the session are invoked, each under
- * its own admission. Lifecycle broadcasts use current active-plugin admission instead of session
- * selection.
+ * compiled at registration into reusable method handles. Publication binds each handle to its
+ * receiver and exact lifecycle activation. Dispatch invokes that bound handle with no
+ * per-invocation reflection, synchronously on the producer's calling thread. Handlers fire in
+ * {@link EventPriority} order within each event type, registration order as the stable tiebreak.
+ * The host expands inherited handlers into each known concrete event's list at table construction,
+ * most specific type first. A handler is skipped once the event is {@link Event#isPrevent()
+ * prevented}, according to its annotation flag. Reversible action cancellation does not filter
+ * handlers. Event recipient policy determines whether explicit session selection is required. Every handler
+ * checks its bound owner's current active state and runs under that owner's atomic admission; event
+ * failure policy determines abort or continuation.
  *
  * <p>The table is immutable and can serve concurrent dispatches, but it supplies no lock around
  * listener instances. One event's handlers run serially; distinct events can reach the same
@@ -77,8 +77,6 @@ public final class EventListenerRegistry {
             LoggerFactory.getLogger("top.focess.veto.event.EventListenerRegistry");
 
     private final @NonNull Map<Class<?>, List<RegisteredHandler>> byEventType;
-    private final @NonNull PluginExecutor executor;
-    private final @NonNull Predicate<@NonNull String> active;
 
     /** Host-owned preparation cache; ClassValue does not retain unloaded listener classes. */
     public static final class Preparation {
@@ -100,54 +98,44 @@ public final class EventListenerRegistry {
         }
     }
 
-    private EventListenerRegistry(
-            @NonNull Map<Class<?>, List<RegisteredHandler>> byEventType,
-            @NonNull PluginExecutor executor,
-            @NonNull Predicate<@NonNull String> active) {
+    private EventListenerRegistry(@NonNull Map<Class<?>, List<RegisteredHandler>> byEventType) {
         this.byEventType = byEventType;
-        this.executor = executor;
-        this.active = active;
     }
 
-    /**
-     * Compiles every listener contributed at {@link StandardContributionPoints#LISTENERS} once.
-     *
-     * @param catalog frozen contribution catalog
-     * @param executor admission bridge to the contributing plugins
-     * @return the immutable dispatch table
-     */
-    public static @NonNull EventListenerRegistry build(
-            @NonNull ContributionCatalog catalog, @NonNull PluginExecutor executor) {
-        return build(catalog, executor, new Preparation(), namespace -> true);
+    /** Whether this concrete event has prepared handlers; unknown event types are rejected. */
+    public boolean hasHandlers(@NonNull Event event) {
+        var handlers = byEventType.get(event.getClass());
+        if (handlers == null) throw new IllegalArgumentException("Unregistered event type");
+        return !handlers.isEmpty();
     }
 
-    /** Builds prepared routes using the owning host's reusable registration-time compilation. */
+    /** Builds concrete routes bound to their exact contributing lifecycle and listener instance. */
     public static @NonNull EventListenerRegistry build(
             @NonNull ContributionCatalog catalog,
-            @NonNull PluginExecutor executor,
-            @NonNull Preparation preparation,
-            @NonNull Predicate<@NonNull String> active) {
+            @NonNull Map<@NonNull String, @NonNull PluginLifecycle> owners,
+            @NonNull Preparation preparation) {
         Map<Class<?>, List<RegisteredHandler>> grouped = new HashMap<>();
-        int order = 0;
-        for (ContributionEntry<Listener> entry :
-                catalog.entries(StandardContributionPoints.LISTENERS)) {
+        var listeners = catalog.entries(StandardContributionPoints.LISTENERS);
+        for (ContributionEntry<Listener> entry : listeners) {
             Listener listener = entry.implementation();
             String namespace = entry.source().namespace();
+            PluginLifecycle owner = owners.get(namespace);
+            if (owner == null) throw new IllegalArgumentException("Listener activation is missing");
             List<Compiled> compiled = preparation.compiled(listener);
             for (Compiled handler : compiled) {
                 RegisteredHandler registered =
                         new RegisteredHandler(
                                 namespace,
-                                listener,
-                                handler.invoker(),
+                                owner,
+                                handler.handle().bindTo(listener),
                                 handler.weight(),
-                                order++,
-                                handler.notCallIfPrevented(),
-                                handler.notCallIfCancelled());
+                                handler.notCallIfPrevented());
                 grouped.computeIfAbsent(handler.eventType(), ignored -> new ArrayList<>())
                         .add(registered);
             }
         }
+        for (var group : grouped.values())
+            group.sort(Comparator.comparingInt(RegisteredHandler::weight));
         Map<Class<?>, List<RegisteredHandler>> frozen = new HashMap<>();
         for (Class<? extends Event> concrete : HOST_EVENTS) {
             List<RegisteredHandler> dispatch = new ArrayList<>();
@@ -155,116 +143,64 @@ public final class EventListenerRegistry {
                     type != null && Event.class.isAssignableFrom(type);
                     type = type.getSuperclass()) {
                 List<RegisteredHandler> group = grouped.get(type);
-                if (group != null) {
-                    List<RegisteredHandler> sorted = new ArrayList<>(group);
-                    sorted.sort(Comparator.naturalOrder());
-                    dispatch.addAll(sorted);
-                }
+                if (group != null) dispatch.addAll(group);
             }
             frozen.put(concrete, List.copyOf(dispatch));
         }
-        return new EventListenerRegistry(Map.copyOf(frozen), executor, active);
+        return new EventListenerRegistry(Map.copyOf(frozen));
     }
 
     /**
-     * Dispatches a workflow event to every selected handler, most specific supertype first.
-     *
-     * <p>Fail-closed: a cancelled workflow or a failing handler aborts dispatch with a sanitized
-     * {@link IllegalStateException}, because plugin messages may carry raw inputs that must never
-     * reach conversation history.
-     *
-     * @param event the event to dispatch; handlers transform it in place
-     * @param selected plugin identities selected for the current session
+     * Submits an event to all active owners; session-recipient events require explicit selection.
      */
-    public void submit(@NonNull WorkflowEvent event, @NonNull Set<String> selected) {
-        dispatch(
-                event,
-                selected::contains,
-                (namespace, failure) -> {
-                    throw new IllegalStateException("Workflow listener unavailable");
-                });
+    public void submit(@NonNull Event event) {
+        submit(event, null);
     }
 
     /**
-     * Broadcasts a best-effort lifecycle notification to every active listener.
+     * Executes the prepared event route synchronously under each owner's admission. Recipient and
+     * failure policies belong to the event; session-recipient events require a selected identity
+     * set. A null set means all active plugins. Nonfatal failures are sanitized and fail closed or
+     * logged and skipped according to the event's policy; fatal VM errors and thread death
+     * propagate.
      *
-     * <p>Unlike {@link #submit}, nonfatal handler failures are logged and skipped; fatal VM errors
-     * and thread death propagate. Lifecycle events are not {@link WorkflowEvent}s, so the
-     * cancellation gate is inert here.
-     *
-     * @param event the lifecycle notification to broadcast
-     * @param active plugin identities currently active
-     * @throws IllegalArgumentException when supplied a workflow event
+     * @param event producer-owned event
+     * @param selected selected plugin identities, or null for all active plugins
      */
-    public void broadcast(@NonNull Event event, @NonNull Set<String> active) {
-        broadcast(event, active::contains);
-    }
-
-    /**
-     * Broadcasts only to prepared route recipients whose current activation is active.
-     *
-     * @param event a non-workflow notification
-     * @throws IllegalArgumentException when supplied a workflow event
-     */
-    public void broadcast(@NonNull Event event) {
-        broadcast(event, active);
-    }
-
-    private void broadcast(@NonNull Event event, @NonNull Predicate<@NonNull String> recipients) {
-        if (event instanceof WorkflowEvent)
-            throw new IllegalArgumentException("Workflow events require fail-closed submission");
-        dispatch(
-                event,
-                recipients,
-                (namespace, failure) ->
-                        log.warn("Lifecycle listener {} failed", namespace, failure));
-    }
-
     @SuppressWarnings("removal") // ThreadDeath remains a fatal callback signal while supported.
-    private void dispatch(
-            @NonNull Event event,
-            @NonNull Predicate<@NonNull String> selected,
-            @NonNull FailureHandler onFailure) {
+    public void submit(@NonNull Event event, Set<String> selected) {
+        if (event.recipients() == Event.Recipients.SESSION_PLUGINS && selected == null)
+            throw new IllegalArgumentException("Session event requires plugin selection");
         List<RegisteredHandler> handlers = byEventType.get(event.getClass());
         if (handlers == null) throw new IllegalArgumentException("Unregistered event type");
         for (RegisteredHandler handler : handlers) {
+            if (selected != null && !selected.contains(handler.namespace())) continue;
             if (event.isPrevent() && handler.notCallIfPrevented()) continue;
-            if (event instanceof Cancellable cancellable
-                    && cancellable.isCancelled()
-                    && handler.notCallIfCancelled()) continue;
-            if (!selected.test(handler.namespace())) continue;
-            if (event instanceof WorkflowEvent workflow) {
-                try {
-                    workflow.cancellation().checkCancelled();
-                } catch (PluginFailure cancelled) {
-                    onFailure.onFailure(handler.namespace(), cancelled);
-                    continue;
-                }
+            if (handler.owner().state() != PluginState.ACTIVE) {
+                if (event.recipients() == Event.Recipients.SESSION_PLUGINS
+                        && event.failurePolicy() == Event.FailurePolicy.FAIL_CLOSED)
+                    throw new IllegalStateException("Event listener unavailable");
+                continue;
             }
             try {
-                executor.admit(
-                        handler.namespace(),
-                        () -> handler.invoker().invoke(handler.listener(), event));
+                var cancellation = event.cancellation();
+                if (cancellation != null) cancellation.checkCancelled();
+                handler.invoke(event);
             } catch (VirtualMachineError | ThreadDeath fatal) {
                 throw fatal;
             } catch (Throwable failure) {
-                onFailure.onFailure(handler.namespace(), failure);
+                if (event.failurePolicy() == Event.FailurePolicy.FAIL_CLOSED)
+                    throw new IllegalStateException("Event listener unavailable");
+                log.warn("Event listener {} failed", handler.namespace(), failure);
             }
         }
-    }
-
-    /** Per-handler failure policy: abort the workflow, or log and continue a broadcast. */
-    @FunctionalInterface
-    private interface FailureHandler {
-        void onFailure(@NonNull String namespace, @NonNull Throwable failure);
     }
 
     private record Compiled(
             @NonNull Class<?> eventType,
-            @NonNull EventInvoker invoker,
+            @NonNull MethodHandle handle,
             int weight,
-            boolean notCallIfPrevented,
-            boolean notCallIfCancelled) {}
+            boolean notCallIfPrevented) {}
 
     private static @NonNull List<Compiled> compile(@NonNull Class<?> type) {
         List<Compiled> result = new ArrayList<>();
@@ -288,13 +224,13 @@ public final class EventListenerRegistry {
                             eventType,
                             compileInvoker(method),
                             Nullness.requireNonNull(annotation.priority()).weight(),
-                            annotation.notCallIfPrevented(),
-                            annotation.notCallIfCancelled()));
+                            annotation.notCallIfPrevented()));
         }
         return result;
     }
 
-    private static @NonNull EventInvoker compileInvoker(@NonNull Method method) {
+    @SuppressWarnings("removal") // ThreadDeath remains a fatal preparation signal while supported.
+    private static @NonNull MethodHandle compileInvoker(@NonNull Method method) {
         Class<?> declaring = method.getDeclaringClass();
         try {
             MethodHandles.Lookup lookup;
@@ -304,20 +240,33 @@ public final class EventListenerRegistry {
                 method.setAccessible(true);
                 lookup = MethodHandles.lookup();
             }
-            MethodHandle handle = lookup.unreflect(method);
-            return (listener, event) -> {
-                try {
-                    handle.invoke(listener, event);
-                } catch (Exception exception) {
-                    throw exception;
-                } catch (Error error) {
-                    throw error;
-                } catch (Throwable failure) {
-                    throw new IllegalStateException("Event handler failed", failure);
-                }
-            };
+            return lookup.unreflect(method);
+        } catch (VirtualMachineError | ThreadDeath fatal) {
+            throw fatal;
         } catch (Throwable failure) {
             throw new IllegalArgumentException("Cannot compile event handler " + method, failure);
+        }
+    }
+
+    private record RegisteredHandler(
+            @NonNull String namespace,
+            @NonNull PluginLifecycle owner,
+            @NonNull MethodHandle handle,
+            int weight,
+            boolean notCallIfPrevented) {
+
+        private void invoke(@NonNull Event event) throws PluginFailure {
+            owner.execute(
+                    () -> {
+                        try {
+                            handle.invoke(event);
+                        } catch (PluginFailure | RuntimeException | Error failure) {
+                            throw failure;
+                        } catch (Throwable failure) {
+                            throw new PluginFailure(PluginFailure.Code.INTERNAL_FAILURE);
+                        }
+                        return Boolean.TRUE;
+                    });
         }
     }
 }

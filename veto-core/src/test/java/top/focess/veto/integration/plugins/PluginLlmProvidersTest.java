@@ -16,10 +16,39 @@ import top.focess.veto.api.llm.*;
 import top.focess.veto.api.llm.exceptions.ModelCapabilityException;
 import top.focess.veto.api.plugin.PluginBinding;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
+import top.focess.veto.api.plugin.contribution.Contribution;
 import top.focess.veto.observability.AuditLogger;
 import top.focess.veto.plugin.runtime.*;
 
 class PluginLlmProvidersTest {
+    @Test
+    void providerMetadataIsCapturedAtPreparationAndNeverCallsTheRetiredPlugin() throws Exception {
+        var implementation = mock(LlmProvider.class);
+        when(implementation.type()).thenReturn(ProviderType.OPENAI);
+        when(implementation.defaultBaseUrl()).thenReturn("https://prepared.example");
+        try (var fixture =
+                new WorkflowPluginFixture(
+                        List.of(
+                                Contribution.of(
+                                        StandardContributionPoints.LLM_PROVIDERS,
+                                        "provider",
+                                        implementation)))) {
+            var providers =
+                    new PluginLlmProviders(
+                            fixture.manager,
+                            new ObjectMapper(),
+                            mock(AuditLogger.class),
+                            fixture.sessions);
+            var strategy = providers.require(ProviderType.OPENAI);
+            assertEquals("https://prepared.example", strategy.defaultBaseUrl());
+            when(implementation.defaultBaseUrl())
+                    .thenThrow(new AssertionError("Runtime metadata callback"));
+            fixture.runtime.close();
+            assertEquals("https://prepared.example", strategy.defaultBaseUrl());
+            verify(implementation, times(1)).defaultBaseUrl();
+        }
+    }
+
     @Test
     void discoveredProviderUsesHostPromptCompilerAndAudit() throws Exception {
         var body = new AtomicReference<String>();

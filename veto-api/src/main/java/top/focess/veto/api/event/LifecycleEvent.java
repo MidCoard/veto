@@ -1,8 +1,5 @@
 package top.focess.veto.api.event;
 
-import org.jspecify.annotations.NonNull;
-import top.focess.veto.api.plugin.Scope;
-
 /**
  * Base for best-effort user authentication, logout, session deletion, and agent termination
  * notifications.
@@ -21,12 +18,7 @@ import top.focess.veto.api.plugin.Scope;
  */
 public abstract class LifecycleEvent extends Event {
     /** Creates a non-cancellable lifecycle notification. */
-    protected LifecycleEvent() {}
-
-    /**
-     * Returns the event's typed identity; observing it grants no authority.
-     *
-     * @return the owner, session, or agent identity relevant to this event
-     */
-    public abstract @NonNull Scope scope();
+    protected LifecycleEvent() {
+        super(Recipients.ACTIVE_PLUGINS, FailurePolicy.CONTINUE);
+    }
 }

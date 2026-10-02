@@ -1,10 +1,12 @@
 package top.focess.veto.integration.plugins;
 
 import java.time.Duration;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Supplier;
+import java.util.stream.IntStream;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
@@ -35,7 +37,14 @@ import top.focess.veto.session.SessionHistoryLoader;
 import top.focess.veto.vault.KeysteadVault;
 import top.focess.veto.vault.UserContext;
 
-/** Per-plugin, session-bound child execution. No feature policy lives here. */
+/**
+ * Per-plugin, session-bound child execution. No feature policy lives here.
+ *
+ * <p>Child opening excludes concurrent ownership checks and creation for the same UUID using a
+ * fixed set of identity stripes. Different stripes can open concurrently; hash collisions share
+ * exclusion. Stripes are never removed or replaced. Registry operations retain their own monitor,
+ * and plugin resource registration happens after the child identity exclusion is released.
+ */
 @Component
 public final class PluginAgentHosts implements PluginAgentHostFactory {
     private static final @NonNull Logger log =
@@ -48,6 +57,8 @@ public final class PluginAgentHosts implements PluginAgentHostFactory {
     private final @NonNull PluginStorageFactory scopes;
     private final @NonNull SessionHistoryLoader history;
     private final @NonNull KeysteadVault vault;
+    private final @NonNull List<@NonNull Object> childLocks =
+            IntStream.range(0, 64).mapToObj(index -> new Object()).toList();
 
     /** Creates the factory over the agent, session, identity, history, and vault services. */
     public PluginAgentHosts(
@@ -149,65 +160,73 @@ public final class PluginAgentHosts implements PluginAgentHostFactory {
         };
     }
 
-    private synchronized AgentHost.@NonNull Child openChild(
+    private AgentHost.@NonNull Child openChild(
             @NonNull PluginLifecycle plugin,
             @NonNull PluginStorage storage,
             PluginStorage.@NonNull Grant<Scope.@NonNull SessionScope> grant,
             @NonNull String id,
             @NonNull String parentId,
             @NonNull AgentProfile profile) {
-        String owner = scopes.authorizeSession(storage, grant);
-        if (!vault.isUnlocked(owner)) throw new SecurityException("Session owner is locked");
         UUID parsedId = UUID.fromString(id);
         log.debug("Opening plugin child agent id={}", parsedId);
         if (id.equals(parentId)) throw new SecurityException("Child cannot replace its parent");
-        var session = sessions.findById(grant.scope().session()).orElseThrow();
-        var parent =
-                identities
-                        .findById(parentId)
-                        .orElseThrow(() -> new SecurityException("Unknown parent"));
-        if (!parent.getSessionId().equals(session.getId()))
-            throw new SecurityException("Parent scope mismatch");
-        String namespace = plugin.identity().id();
-        if (!parentId.equals(session.getPrimaryAgentId())
-                && !namespace.equals(parent.getPluginNamespace()))
-            throw new SecurityException("Parent belongs to another plugin");
-        var row = identities.findById(id).orElse(null);
-        if (row != null
-                && (!row.getSessionId().equals(session.getId())
-                        || !namespace.equals(row.getPluginNamespace())
-                        || row.isEphemeral()
-                        || row.getRole() != AgentEntity.Role.SUB
-                        || !parentId.equals(row.getParentAgentId())))
-            throw new SecurityException("Agent identity belongs to another scope");
-        var live =
-                registry.agents(UUID.fromString(session.getId())).stream()
-                        .filter(entry -> entry.agent().id().equals(id))
-                        .findFirst()
-                        .orElse(null);
-        if (live != null) return child(plugin, storage, grant, live.agent());
-        if (row == null) {
-            row = AgentEntity.spawned(id, session.getId(), profile.name());
-            row.claimPlugin(namespace, parentId);
-            identities.saveAndFlush(row);
+        VetoAgent agent;
+        synchronized (childLocks.get(parsedId.hashCode() & (childLocks.size() - 1))) {
+            // Reauthorize after acquiring exclusion: scopes and vault access can change while
+            // waiting.
+            String owner = scopes.authorizeSession(storage, grant);
+            if (!vault.isUnlocked(owner)) throw new SecurityException("Session owner is locked");
+            var session = sessions.findById(grant.scope().session()).orElseThrow();
+            var parent =
+                    identities
+                            .findById(parentId)
+                            .orElseThrow(() -> new SecurityException("Unknown parent"));
+            if (!parent.getSessionId().equals(session.getId()))
+                throw new SecurityException("Parent scope mismatch");
+            String namespace = plugin.identity().id();
+            if (!parentId.equals(session.getPrimaryAgentId())
+                    && !namespace.equals(parent.getPluginNamespace()))
+                throw new SecurityException("Parent belongs to another plugin");
+            var row = identities.findById(id).orElse(null);
+            if (row != null
+                    && (!row.getSessionId().equals(session.getId())
+                            || !namespace.equals(row.getPluginNamespace())
+                            || row.isEphemeral()
+                            || row.getRole() != AgentEntity.Role.SUB
+                            || !parentId.equals(row.getParentAgentId())))
+                throw new SecurityException("Agent identity belongs to another scope");
+            var live =
+                    registry.agents(UUID.fromString(session.getId())).stream()
+                            .filter(entry -> entry.agent().id().equals(id))
+                            .findFirst()
+                            .orElse(null);
+            if (live != null) {
+                agent = live.agent();
+            } else {
+                if (row == null) {
+                    row = AgentEntity.spawned(id, session.getId(), profile.name());
+                    row.claimPlugin(namespace, parentId);
+                    identities.saveAndFlush(row);
+                }
+                String previous = UserContext.get();
+                UserContext.set(owner);
+                try {
+                    agent =
+                            service.getObject()
+                                    .openPluginAgent(
+                                            session,
+                                            id,
+                                            parentId,
+                                            namespace,
+                                            profile,
+                                            history.load(session.getId(), id));
+                } finally {
+                    if (previous == null) UserContext.clear();
+                    else UserContext.set(previous);
+                }
+            }
         }
-        String previous = UserContext.get();
-        UserContext.set(owner);
-        try {
-            var agent =
-                    service.getObject()
-                            .openPluginAgent(
-                                    session,
-                                    id,
-                                    parentId,
-                                    namespace,
-                                    profile,
-                                    history.load(session.getId(), id));
-            return child(plugin, storage, grant, agent);
-        } finally {
-            if (previous == null) UserContext.clear();
-            else UserContext.set(previous);
-        }
+        return child(plugin, storage, grant, agent);
     }
 
     private void authorizeRelease(
@@ -226,8 +245,14 @@ public final class PluginAgentHosts implements PluginAgentHostFactory {
                 () -> {
                     if (!registry.stopIfSame(agent.id(), agent)) agent.terminate();
                 };
-        if (plugin.ownResource(agent, release))
-            agent.onTermination(() -> plugin.releaseResource(agent));
+        boolean owned;
+        try {
+            owned = plugin.ownResource(agent, release);
+        } catch (RuntimeException stopped) {
+            release.run();
+            throw stopped;
+        }
+        if (owned) agent.onTermination(() -> plugin.releaseResource(agent));
         return new AgentHost.Child() {
             public @NonNull String id() {
                 return agent.id();

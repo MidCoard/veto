@@ -49,6 +49,7 @@ import top.focess.veto.api.plugin.PluginState;
 import top.focess.veto.api.plugin.contract.Cancellation;
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
+import top.focess.veto.event.EventManager;
 import top.focess.veto.integration.plugins.IsolatedExecutions;
 import top.focess.veto.integration.plugins.PluginManager;
 import top.focess.veto.integration.plugins.SessionPlugins;
@@ -97,6 +98,13 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
     private boolean initialized;
     // Injected after construction and read from worker threads; volatile for safe publication.
     private volatile SessionPlugins sessionPlugins;
+    private volatile EventManager eventManager;
+
+    /** Injects shared host event delivery for captured workspace text. */
+    @Autowired
+    public void attachEventManager(@NonNull EventManager value) {
+        eventManager = value;
+    }
 
     /**
      * Injects the session-plugin selection after construction; volatile for worker-thread reads.
@@ -520,8 +528,7 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
 
     private <T> @NonNull String executeWorkspaceRead(
             @NonNull WorkspaceReadTool<T> tool, @NonNull JsonNode jsonArgs) throws Exception {
-        WorkspaceReadCapability capability =
-                new ProtectedWorkspaceReadCapabilityImpl(sessionPlugins);
+        WorkspaceReadCapability capability = new ProtectedWorkspaceReadCapabilityImpl(eventManager);
         return tool.execute(
                 Nullness.requireNonNull(mapper.treeToValue(jsonArgs, tool.getArgsClass())),
                 capability);

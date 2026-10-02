@@ -5,8 +5,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import top.focess.veto.api.event.UserLoggedInEvent;
+import top.focess.veto.api.event.UserLogoutEvent;
+import top.focess.veto.api.event.UserRegisteredEvent;
+import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.command.PromptHandler;
-import top.focess.veto.integration.plugins.PluginLifecycleEvents;
+import top.focess.veto.event.EventManager;
 
 /**
  * Unified service for managing user authentication and vault lifecycle. Ensures that login and
@@ -18,12 +22,12 @@ import top.focess.veto.integration.plugins.PluginLifecycleEvents;
  */
 @Service
 public class AuthLifecycleManager {
-    private PluginLifecycleEvents lifecycleEvents;
+    private EventManager eventManager;
 
-    /** Setter-injected plugin lifecycle hooks notified on owner login/logout. */
+    /** Setter-injected event manager notified on owner authentication/logout. */
     @Autowired
-    public void attachLifecycleEvents(@NonNull PluginLifecycleEvents events) {
-        lifecycleEvents = events;
+    public void attachEventManager(@NonNull EventManager events) {
+        eventManager = events;
     }
 
     private static final @NonNull Logger log =
@@ -48,7 +52,8 @@ public class AuthLifecycleManager {
     public synchronized void signup(@NonNull String username, @NonNull String password) {
         log.info("AuthLifecycleManager: Signing up user '{}'", username);
         vault.signup(username, password);
-        if (lifecycleEvents != null) lifecycleEvents.userRegistered(username);
+        if (eventManager != null)
+            eventManager.submit(new UserRegisteredEvent(new Scope.UserScope(username)));
     }
 
     /**
@@ -60,7 +65,8 @@ public class AuthLifecycleManager {
     public synchronized void login(@NonNull String username, @NonNull String password) {
         log.info("AuthLifecycleManager: Logging in user '{}'", username);
         vault.login(username, password);
-        if (lifecycleEvents != null) lifecycleEvents.userLoggedIn(username);
+        if (eventManager != null)
+            eventManager.submit(new UserLoggedInEvent(new Scope.UserScope(username)));
     }
 
     /**
@@ -71,7 +77,8 @@ public class AuthLifecycleManager {
      */
     public synchronized void logout(@NonNull String username) {
         log.info("AuthLifecycleManager: Logging out user '{}'", username);
-        if (lifecycleEvents != null) lifecycleEvents.userLogout(username);
+        if (eventManager != null)
+            eventManager.submit(new UserLogoutEvent(new Scope.UserScope(username)));
         try {
             promptHandler.deactivateUser(username);
         } catch (Exception e) {

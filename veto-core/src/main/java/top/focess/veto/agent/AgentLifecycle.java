@@ -35,6 +35,7 @@ import top.focess.veto.agent.tool.ToolEngine;
 import top.focess.veto.api.agent.AgentAction;
 import top.focess.veto.api.agent.AgentResult;
 import top.focess.veto.api.agent.AgentState;
+import top.focess.veto.api.event.AgentTerminatedEvent;
 import top.focess.veto.api.llm.LlmBinding;
 import top.focess.veto.api.llm.LlmSystemUsage;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
@@ -46,11 +47,12 @@ import top.focess.veto.api.llm.exceptions.LlmRateLimitException;
 import top.focess.veto.api.llm.exceptions.LlmTimeoutException;
 import top.focess.veto.api.llm.exceptions.ModelCapabilityException;
 import top.focess.veto.api.llm.exceptions.ModelSchemaException;
+import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.api.plugin.agent.AgentProfile;
 import top.focess.veto.api.plugin.contract.JsonValues;
 import top.focess.veto.bus.DeltaFrame;
+import top.focess.veto.event.EventManager;
 import top.focess.veto.i18n.Msg;
-import top.focess.veto.integration.plugins.PluginLifecycleEvents;
 import top.focess.veto.integration.plugins.SessionPlugins;
 import top.focess.veto.model.tier.ModelTierRegistry;
 import top.focess.veto.util.Nullness;
@@ -117,7 +119,7 @@ final class AgentLifecycle {
     private Consumer<RequestHandle> backgroundRequestListener;
     private Runnable terminationCallback;
     private boolean terminationNotified;
-    private PluginLifecycleEvents lifecycleEvents;
+    private EventManager eventManager;
 
     AgentLifecycle(
             @NonNull String agentId,
@@ -195,8 +197,11 @@ final class AgentLifecycle {
                 toolResultPresentation,
                 whitelistedTools,
                 executionPolicy,
-                sessionPlugins,
                 configurationRevision);
+    }
+
+    EventManager eventManager() {
+        return eventManager;
     }
 
     SessionPlugins sessionPlugins() {
@@ -971,14 +976,16 @@ final class AgentLifecycle {
             terminationCallback = null;
         }
         try {
-            var events = lifecycleEvents;
+            var events = eventManager;
             String currentOwner = owner;
             var snapshot = control;
             if (snapshot instanceof ExecutionControl.Closed closed
                     && closed.reason() != ExecutionControl.CloseReason.SHUTDOWN
                     && events != null
                     && currentOwner != null)
-                events.agentTerminated(currentOwner, sessionId.toString(), agentId);
+                events.submit(
+                        new AgentTerminatedEvent(
+                                new Scope.AgentScope(currentOwner, sessionId.toString(), agentId)));
         } finally {
             if (callback != null) callback.run();
         }
@@ -1015,7 +1022,7 @@ final class AgentLifecycle {
         if (thread != null && thread != Thread.currentThread()) thread.interrupt();
     }
 
-    void attachLifecycleEvents(@NonNull PluginLifecycleEvents events) {
-        lifecycleEvents = events;
+    void attachEventManager(@NonNull EventManager events) {
+        eventManager = events;
     }
 }

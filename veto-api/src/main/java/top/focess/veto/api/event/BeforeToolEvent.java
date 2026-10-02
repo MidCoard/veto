@@ -1,6 +1,7 @@
 package top.focess.veto.api.event;
 
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.api.plugin.contract.Cancellation;
 import top.focess.veto.api.plugin.contract.JsonValue;
 
@@ -8,11 +9,13 @@ import top.focess.veto.api.plugin.contract.JsonValue;
  * Fired before a validated tool call is authorized and executed. This is a security gate.
  *
  * <p>The decision is monotonic: {@link #decide} only escalates and never relaxes, and {@link
- * Decision#REJECT} also calls {@link Event#prevent()} so the chain halts irreversibly and no later
- * handler can overturn the veto. This event is intentionally not {@link Cancellable}, because a
- * reversible cancel flag would let a downstream plugin un-reject a call.
+ * Decision#REJECT} also calls {@link Event#prevent()} to stop propagation to later handlers by
+ * default. The host enforces that security decision independently of the reversible {@link
+ * Cancellable} action flag. Clearing action cancellation cannot relax approval requirements or
+ * undo rejection. The producer reads the final action flag after delivery; {@link #cancellation()}
+ * remains the separate read-only host stop signal.
  */
-public final class BeforeToolEvent extends WorkflowEvent {
+public final class BeforeToolEvent extends WorkflowEvent implements Cancellable {
     /** Approval decision a handler can tighten but never relax. */
     public enum Decision {
         /** Allow evaluation to continue without requesting extra approval. */
@@ -37,23 +40,20 @@ public final class BeforeToolEvent extends WorkflowEvent {
 
     private final @NonNull Invocation invocation;
     private @NonNull Decision decision = Decision.CONTINUE;
+    private boolean cancelled;
 
     /**
      * Creates the tool-approval event.
      *
-     * @param owner authenticated owner, or {@code null} when unavailable
-     * @param sessionId current session identity
-     * @param agentId current agent identity
+     * @param scope authenticated owner, session and agent identity
      * @param cancellation cooperative cancellation signal
      * @param invocation immutable tool invocation under evaluation
      */
     public BeforeToolEvent(
-            String owner,
-            @NonNull String sessionId,
-            @NonNull String agentId,
+            Scope.@NonNull AgentScope scope,
             @NonNull Cancellation cancellation,
             @NonNull Invocation invocation) {
-        super(owner, sessionId, agentId, cancellation);
+        super(scope, cancellation);
         this.invocation = invocation;
     }
 
@@ -76,8 +76,29 @@ public final class BeforeToolEvent extends WorkflowEvent {
     }
 
     /**
-     * Escalates the decision; an equal or lower-severity value is ignored. Rejecting also prevents
-     * the remaining chain so the veto cannot be overturned.
+     * Returns whether the producer should cancel the tool action after delivery.
+     *
+     * @return current reversible action cancellation
+     */
+    @Override
+    public boolean isCancelled() {
+        return cancelled;
+    }
+
+    /**
+     * Sets reversible action cancellation without changing the security decision or propagation.
+     *
+     * @param cancelled whether the producer should cancel the tool action
+     */
+    @Override
+    public void setCancelled(boolean cancelled) {
+        this.cancelled = cancelled;
+    }
+
+    /**
+     * Escalates the security decision; an equal or lower-severity value is ignored. Rejection also
+     * prevents propagation to later handlers by default. Neither flag permits relaxing this
+     * decision.
      *
      * @param next this handler's decision
      */

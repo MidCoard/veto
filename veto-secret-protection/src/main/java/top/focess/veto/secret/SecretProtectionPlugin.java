@@ -306,9 +306,7 @@ public final class SecretProtectionPlugin extends VetoPlugin {
         /** Protects text before the host commits it, preserving captured reference markers. */
         @EventHandler
         public void onTextCommit(@NonNull BeforeTextCommitEvent event) {
-            String owner = event.owner();
-            if (owner == null) throw new IllegalStateException("Text owner is required");
-            var scope = new Scope.AgentScope(owner, event.sessionId(), event.agentId());
+            var scope = event.scope();
             switch (event.phase()) {
                 case INPUT ->
                         event.setText(

@@ -13,8 +13,10 @@ import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import top.focess.veto.agent.continuation.RequestContinuationStore;
 import top.focess.veto.agent.intercept.HitlRecordRepository;
+import top.focess.veto.api.event.SessionDeletedEvent;
+import top.focess.veto.api.plugin.Scope;
+import top.focess.veto.event.EventManager;
 import top.focess.veto.integration.plugins.PluginDataCleanup;
-import top.focess.veto.integration.plugins.PluginLifecycleEvents;
 import top.focess.veto.integration.plugins.storage.ScopedPluginStorage;
 import top.focess.veto.model.AgentInstanceRepository;
 import top.focess.veto.model.AgentPatternRepository;
@@ -35,7 +37,7 @@ import top.focess.veto.vault.UserRegistry;
  */
 @Service
 public class UserAdminService {
-    private PluginLifecycleEvents pluginEvents;
+    private EventManager eventManager;
     private PluginDataCleanup pluginDataCleanup;
 
     /** Attaches required transactional cleanup independently of notification delivery. */
@@ -44,10 +46,10 @@ public class UserAdminService {
         pluginDataCleanup = cleanup;
     }
 
-    /** Setter-injects the plugin lifecycle event sink notified on user/session deletion. */
+    /** Attaches the shared event manager notified after session deletion commits. */
     @Autowired
-    public void attachPluginEvents(@NonNull PluginLifecycleEvents events) {
-        pluginEvents = events;
+    public void attachEventManager(@NonNull EventManager events) {
+        eventManager = events;
     }
 
     private ScopedPluginStorage pluginStorage;
@@ -130,8 +132,11 @@ public class UserAdminService {
         for (SessionEntity s : sessions.findByOwner(username)) {
             Runnable notifyDeleted =
                     () -> {
-                        var events = pluginEvents;
-                        if (events != null) events.sessionDeleted(username, s.getId());
+                        var events = eventManager;
+                        if (events != null)
+                            events.submit(
+                                    new SessionDeletedEvent(
+                                            new Scope.SessionScope(username, s.getId())));
                     };
             if (TransactionSynchronizationManager.isSynchronizationActive())
                 TransactionSynchronizationManager.registerSynchronization(

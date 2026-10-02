@@ -1,6 +1,7 @@
 package top.focess.veto.api.event;
 
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.api.plugin.contract.Cancellation;
 
 /**
@@ -15,62 +16,37 @@ import top.focess.veto.api.plugin.contract.Cancellation;
  * cross-dispatch serialization is implied. The confinement contract of {@link Event} applies.
  */
 public abstract class WorkflowEvent extends Event {
-    private final String owner;
-    private final @NonNull String sessionId;
-    private final @NonNull String agentId;
+    private final Scope.@NonNull AgentScope scope;
     private final @NonNull Cancellation cancellation;
 
     /**
-     * Creates the workflow event identity.
+     * Creates a session-selected, fail-closed workflow event.
      *
-     * @param owner authenticated owner, or {@code null} when unavailable for the phase
-     * @param sessionId current session identity
-     * @param agentId current agent identity
+     * @param scope authenticated owner, session and agent identity
      * @param cancellation cooperative cancellation signal
      */
-    protected WorkflowEvent(
-            String owner,
-            @NonNull String sessionId,
-            @NonNull String agentId,
-            @NonNull Cancellation cancellation) {
-        this.owner = owner;
-        this.sessionId = sessionId;
-        this.agentId = agentId;
+    protected WorkflowEvent(Scope.@NonNull AgentScope scope, @NonNull Cancellation cancellation) {
+        super(Recipients.SESSION_PLUGINS, FailurePolicy.FAIL_CLOSED);
+        this.scope = scope;
         this.cancellation = cancellation;
     }
 
     /**
-     * Returns the authenticated owner.
+     * Returns the authenticated owner, session and agent identity.
      *
-     * @return owner identity, or {@code null} when unavailable for the phase
+     * @return workflow agent scope
      */
-    public String owner() {
-        return owner;
-    }
-
-    /**
-     * Returns the current session identity.
-     *
-     * @return session identity
-     */
-    public @NonNull String sessionId() {
-        return sessionId;
-    }
-
-    /**
-     * Returns the current agent identity.
-     *
-     * @return agent identity
-     */
-    public @NonNull String agentId() {
-        return agentId;
+    @Override
+    public Scope.@NonNull AgentScope scope() {
+        return scope;
     }
 
     /**
      * Returns the cooperative cancellation signal.
      *
-     * @return cancellation signal
+     * @return workflow cancellation signal
      */
+    @Override
     public @NonNull Cancellation cancellation() {
         return cancellation;
     }

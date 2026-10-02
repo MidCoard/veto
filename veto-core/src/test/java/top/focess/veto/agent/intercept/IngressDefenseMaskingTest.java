@@ -18,10 +18,10 @@ import top.focess.veto.api.agent.tool.ParamCategory;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.agent.tool.ToolResult;
 import top.focess.veto.api.event.BeforeTextCommitEvent;
+import top.focess.veto.api.event.UserLogoutEvent;
 import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.builtin.workspace.ViewFileTool;
-import top.focess.veto.integration.plugins.PluginLifecycleEvents;
 import top.focess.veto.integration.plugins.PluginManager;
 import top.focess.veto.integration.plugins.PluginTestSupport;
 import top.focess.veto.veto.LlamaCppBridge;
@@ -92,7 +92,8 @@ class IngressDefenseMaskingTest {
                                 new Scope.AgentScope("owner", "session", "other-agent"),
                                 "file",
                                 fileResult.content()));
-        new PluginLifecycleEvents(plugins).userLogout("owner");
+        PluginTestSupport.eventManager(plugins)
+                .submit(new UserLogoutEvent(new Scope.UserScope("owner")));
         assertThrows(
                 IllegalStateException.class,
                 () ->

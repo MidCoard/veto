@@ -1,24 +1,29 @@
 package top.focess.veto.api.event;
 
+import org.jspecify.annotations.NonNull;
+
 /**
- * Opt-in base for non-security notification events that carry reversible cancellation in addition
- * to the always-available irreversible {@link Event#prevent()}.
+ * Opt-in base for events with reversible producer-action cancellation.
  *
- * <p>Every event is preventable, but cancellation is a capability an event must choose. Extending
- * this class adopts {@link Cancellable}, so a later handler may clear the flag; that reversibility
- * is why cancellation must never guard a security decision. The workflow decision chain ({@link
- * WorkflowEvent} and its subclasses) deliberately does not implement this reversible flag: {@link
- * Event#prevent()} skips later handlers by default, and the concrete producer determines whether it
- * vetoes a host action. Run cancellation uses {@link WorkflowEvent#cancellation()}, never a
- * reversible per-event flag. Use this base only for best-effort notifications whose suppression a
- * later handler may safely undo. Its flags have the same single-dispatch confinement as {@link
- * Event}; reversible cancellation does not make an event safe for cross-thread mutation.
+ * <p>A later handler may clear the action flag; the producer reads the final value after delivery.
+ * It neither stops propagation nor relaxes a separate host security decision. Propagation uses
+ * {@link Event#prevent()}, while the cooperative read-only host stop signal uses {@link
+ * Event#cancellation()}. Its flags have the same single-dispatch confinement as {@link Event};
+ * reversible cancellation does not make an event safe for cross-thread mutation.
  */
 public abstract class CancellableEvent extends Event implements Cancellable {
     private boolean cancelled;
 
-    /** Creates the optional cancellation state for a non-security notification event. */
-    protected CancellableEvent() {}
+    /**
+     * Creates reversible cancellation state with explicit delivery policies.
+     *
+     * @param recipients plugin recipients to resolve
+     * @param failurePolicy treatment of nonfatal handler failures
+     */
+    protected CancellableEvent(
+            @NonNull Recipients recipients, @NonNull FailurePolicy failurePolicy) {
+        super(recipients, failurePolicy);
+    }
 
     /**
      * Reports whether the event has been cancelled.
