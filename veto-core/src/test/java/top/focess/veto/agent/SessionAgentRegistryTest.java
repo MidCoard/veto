@@ -332,7 +332,7 @@ class SessionAgentRegistryTest {
     }
 
     private static @NonNull AgentRunner runner(@NonNull AgentPersona persona) {
-        AgentRunner runner = mock(AgentRunner.class);
+        AgentRunner runner = AgentRunnerFixture.mockedRunner(persona.id(), UUID.randomUUID());
         AtomicReference<AgentState> state = new AtomicReference<>(AgentState.IDLE);
         when(runner.state()).thenAnswer(invocation -> state.get());
         when(runner.personaView()).thenReturn(persona);

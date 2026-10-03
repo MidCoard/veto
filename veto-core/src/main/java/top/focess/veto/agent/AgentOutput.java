@@ -3,30 +3,38 @@ package top.focess.veto.agent;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
-import java.util.function.Consumer;
 import java.util.function.Supplier;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
+import top.focess.veto.agent.AgentRunner.VetoRefusedException;
 import top.focess.veto.agent.intercept.ApprovalDecision;
 import top.focess.veto.agent.intercept.ApprovalReceipt;
 import top.focess.veto.agent.intercept.VetoOption;
-import top.focess.veto.agent.intercept.VetoPrompt;
+import top.focess.veto.agent.loop.LoopBreaker;
 import top.focess.veto.agent.loop.MessageCitations;
 import top.focess.veto.agent.loop.PromptCompiler;
 import top.focess.veto.agent.loop.PromptSource;
 import top.focess.veto.agent.tool.ToolDefinition;
 import top.focess.veto.agent.tool.ToolEngine;
-import top.focess.veto.api.agent.ToolCallEvent;
-import top.focess.veto.api.agent.ToolResultEvent;
+import top.focess.veto.api.agent.AgentResult;
 import top.focess.veto.api.agent.tool.ToolErrorCode;
 import top.focess.veto.api.agent.tool.ToolResult;
 import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.api.llm.VetoResponse;
+import top.focess.veto.api.llm.exceptions.CredentialException;
+import top.focess.veto.api.llm.exceptions.LlmAuthException;
+import top.focess.veto.api.llm.exceptions.LlmRateLimitException;
+import top.focess.veto.api.llm.exceptions.LlmTimeoutException;
+import top.focess.veto.api.llm.exceptions.ModelCapabilityException;
+import top.focess.veto.api.llm.exceptions.ModelSchemaException;
 import top.focess.veto.bus.DeltaFrame;
+import top.focess.veto.i18n.Msg;
 import top.focess.veto.llm.core.ToolResultPresenter;
 import top.focess.veto.util.Nullness;
+import top.focess.veto.vault.KeysteadVault;
 
 /** Appends durable history and emits corresponding events in order. */
 final class AgentOutput {
@@ -34,10 +42,11 @@ final class AgentOutput {
             RequestHandle request,
             @NonNull ToolResultPresentationMode presentation,
             boolean question,
-            int contextMaxTokens) {}
+            int contextMaxTokens,
+            @NonNull Locale locale) {}
 
     private final @NonNull AgentHistory journal;
-    private final @NonNull AgentEvents events;
+    final @NonNull AgentEvents events;
     private final @NonNull PromptCompiler compiler;
     private final @NonNull ToolResultPresenter presenter;
     private final @NonNull ToolEngine tools;
@@ -250,47 +259,109 @@ final class AgentOutput {
         events.emitVetoRequired(call, prompt, offered);
     }
 
-    void addMessageListener(@NonNull Consumer<String> listener) {
-        events.messages.add(listener);
-    }
-
-    void removeMessageListener(@NonNull Consumer<String> listener) {
-        events.messages.remove(listener);
-    }
-
-    void addThoughtListener(@NonNull Consumer<String> listener) {
-        events.thoughts.add(listener);
-    }
-
-    void removeThoughtListener(@NonNull Consumer<String> listener) {
-        events.thoughts.remove(listener);
-    }
-
-    void addVetoListener(@NonNull Consumer<VetoPrompt> listener) {
-        events.vetoes.add(listener);
-    }
-
-    void removeVetoListener(@NonNull Consumer<VetoPrompt> listener) {
-        events.vetoes.remove(listener);
-    }
-
-    void addToolCallListener(@NonNull Consumer<ToolCallEvent> listener) {
-        events.calls.add(listener);
-    }
-
-    void removeToolCallListener(@NonNull Consumer<ToolCallEvent> listener) {
-        events.calls.remove(listener);
-    }
-
-    void addToolResultListener(@NonNull Consumer<ToolResultEvent> listener) {
-        events.results.add(listener);
-    }
-
-    void removeToolResultListener(@NonNull Consumer<ToolResultEvent> listener) {
-        events.results.remove(listener);
+    String latestUserTask() {
+        var turns = history();
+        for (int i = turns.size() - 1; i >= 0; i--) {
+            var turn = turns.get(i);
+            if (turn.type() != TurnType.USER_PROMPT) continue;
+            for (var key : List.of("resume_context", "content")) {
+                if (turn.payload().get(key) instanceof String text && !text.isBlank()) return text;
+            }
+        }
+        return null;
     }
 
     @NonNull List<TurnRecord> history() {
         return journal.snapshot();
+    }
+
+    @NonNull AgentResult failure(String message, boolean cancelled, String requestId) {
+        String text = message == null ? "" : message;
+        Map<String, Object> failure = new LinkedHashMap<>();
+        failure.put("content", text);
+        if (cancelled) failure.put("outcome", "CANCELLED");
+        if (requestId != null) failure.put("requestId", requestId);
+        appendTurn(new TurnRecord(nextTurn(), TurnType.EXECUTION_ERROR, failure, null));
+        publishFrame(
+                events.frame(DeltaFrame.Kind.ERROR)
+                        .attr("turnNumber", turnNumber())
+                        .text(text)
+                        .build());
+        return AgentResult.failure(text, Map.of("turns", turnNumber()));
+    }
+
+    void completed(RequestHandle task, @NonNull AgentResult result) {
+        // Publish before completing the future, so awaiting clients observe the terminal event.
+        publishFrame(
+                events.frame(DeltaFrame.Kind.EPISODE_DONE)
+                        .attr("requestId", task == null ? "" : task.episode.id())
+                        .attr("turnNumber", turnNumber())
+                        .attr("success", result.success())
+                        .text(result.message())
+                        .build());
+    }
+
+    void breaker(@NonNull RequestHandle task) {
+        String notice = LoopBreaker.tripNotice(view.get().locale());
+        emitMessage(notice);
+        publishFrame(
+                events.frame(DeltaFrame.Kind.BREAKER_TRIPPED)
+                        .attr("turnNumber", turnNumber())
+                        .attr("maxCallsPerEpisode", task.episode.breaker().maxCallsPerEpisode())
+                        .text(notice)
+                        .build());
+    }
+
+    void compacted(@NonNull String summary, int count) {
+        emitMessage(Msg.get(view.get().locale(), "error.agent.compactDone", count));
+        publishFrame(
+                events.frame(DeltaFrame.Kind.COMPACTION)
+                        .attr("turnNumber", turnNumber())
+                        .attr("compactedTurns", count)
+                        .text(summary)
+                        .build());
+    }
+
+    @NonNull String failureMessage(@NonNull Throwable e) {
+        var locale = view.get().locale();
+        // Pre-pass: a locked vault wins over any wrapper (CredentialException nests it).
+        for (Throwable t = e; t != null; t = t.getCause()) {
+            if (t instanceof KeysteadVault.VaultLockedException) {
+                return Msg.get(locale, "error.agent.vaultLocked");
+            }
+        }
+        for (Throwable t = e; t != null; t = t.getCause()) {
+            String detail = String.valueOf(t.getMessage());
+            String message =
+                    switch (t) {
+                        case VetoRefusedException refused ->
+                                Msg.get(
+                                        locale,
+                                        refused.approvalRequested
+                                                ? "error.agent.approvalNotGranted"
+                                                : "error.agent.vetoRefused");
+                        case CredentialException ignored ->
+                                Msg.get(locale, "error.agent.credentialMissing");
+                        case LlmTimeoutException ignored ->
+                                Msg.get(locale, "error.agent.llmTimeout");
+                        case LlmRateLimitException ignored ->
+                                Msg.get(locale, "error.agent.llmRateLimit");
+                        case LlmAuthException ignored -> Msg.get(locale, "error.agent.llmAuth");
+                        case ModelSchemaException ignored ->
+                                Msg.get(locale, "error.agent.llmSchema", detail);
+                        // The provider uses one exception type for transport and response parse
+                        // failures.
+                        case ModelCapabilityException ignored ->
+                                detail.contains("could not be parsed")
+                                        ? Msg.get(locale, "error.agent.llmParse")
+                                        : Msg.get(locale, "error.agent.llmCallFailed", detail);
+                        case IllegalStateException ignored when detail.contains("embed") ->
+                                Msg.get(locale, "error.agent.embedFailed", detail);
+                        default -> null;
+                    };
+            if (message != null) return message;
+        }
+        String detail = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+        return Msg.get(locale, "error.agent.taskFailed", detail);
     }
 }

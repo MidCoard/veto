@@ -5,6 +5,7 @@ import static org.mockito.Mockito.*;
 
 import java.time.Duration;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
@@ -17,7 +18,7 @@ import top.focess.veto.api.agent.AgentState;
 class VetoAgentTerminationTest {
     @Test
     void terminalStateDoesNotConfirmExecutionExit() throws Exception {
-        AgentRunner runner = mock(AgentRunner.class);
+        AgentRunner runner = AgentRunnerFixture.mockedRunner("termination-test", UUID.randomUUID());
         CountDownLatch entered = new CountDownLatch(1);
         CountDownLatch release = new CountDownLatch(1);
         doAnswer(

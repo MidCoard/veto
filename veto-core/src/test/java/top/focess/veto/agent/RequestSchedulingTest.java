@@ -189,6 +189,8 @@ class RequestSchedulingTest {
                 new LlmBinding(ProviderType.ANTHROPIC, "test", "test", LlmOptions.defaults(), null),
                 AgentEventSink.none(),
                 UUID.randomUUID(),
-                null);
+                null,
+                null,
+                UUID.fromString(id));
     }
 }

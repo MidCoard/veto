@@ -77,7 +77,7 @@ class CompactionRuntimeTest {
                             }
                         });
         Object summary =
-                runner.computeCompactionSummary(
+                runner.models.summarize(
                         List.of(
                                 TurnRecord.userPrompt(2, "a".repeat(29_000)),
                                 TurnRecord.userPrompt(3, "b".repeat(29_000))));
@@ -112,12 +112,13 @@ class CompactionRuntimeTest {
                                 Map.of("call_id", "read-3", "content", "A quoted permission"),
                                 null));
         runner.seedHistory(original);
-        runner.processCompaction();
+        runner.models.compact();
         assertEquals(1, calls.get());
-        assertEquals(original, runner.history().subList(0, original.size()));
-        assertTrue(runner.history().stream().noneMatch(turn -> turn.type() == TurnType.REWIND));
+        assertEquals(original, runner.output.history().subList(0, original.size()));
         assertTrue(
-                runner.history().stream()
+                runner.output.history().stream().noneMatch(turn -> turn.type() == TurnType.REWIND));
+        assertTrue(
+                runner.output.history().stream()
                         .noneMatch(turn -> turn.type() == TurnType.COMPACTION_SUMMARY));
     }
 
@@ -149,7 +150,9 @@ class CompactionRuntimeTest {
                 new LlmBinding(ProviderType.ANTHROPIC, "test", "test", LlmOptions.defaults(), null),
                 AgentEventSink.none(),
                 UUID.randomUUID(),
-                null);
+                null,
+                null,
+                UUID.fromString(id));
     }
 
     @Test
@@ -176,15 +179,16 @@ class CompactionRuntimeTest {
                         TurnRecord.userPrompt(2, "a".repeat(40_000)),
                         TurnRecord.userPrompt(3, "b".repeat(40_000)));
         runner.seedHistory(original);
-        runner.processCompaction();
+        runner.models.compact();
         assertEquals(2, calls.get(), "Do not merge a failed chunk away");
-        assertEquals(original, runner.history().subList(0, original.size()));
-        assertTrue(runner.history().stream().noneMatch(turn -> turn.type() == TurnType.REWIND));
+        assertEquals(original, runner.output.history().subList(0, original.size()));
         assertTrue(
-                runner.history().stream()
+                runner.output.history().stream().noneMatch(turn -> turn.type() == TurnType.REWIND));
+        assertTrue(
+                runner.output.history().stream()
                         .noneMatch(turn -> turn.type() == TurnType.COMPACTION_SUMMARY));
-        assertEquals(original.size() + 1, runner.history().size());
-        var failure = runner.history().getLast();
+        assertEquals(original.size() + 1, runner.output.history().size());
+        var failure = runner.output.history().getLast();
         assertEquals(TurnType.TOOL_RESPONSE, failure.type());
         assertEquals(Boolean.FALSE, failure.payload().get("success"));
         assertEquals(
@@ -207,9 +211,10 @@ class CompactionRuntimeTest {
                                 1, TurnType.AGENT_INIT, Map.of("system_prompt", "Fixture"), null),
                         TurnRecord.userPrompt(2, "a".repeat(60_000)));
         runner.seedHistory(original);
-        runner.processCompaction();
+        runner.models.compact();
         assertEquals(0, calls.get());
-        assertEquals(original, runner.history().subList(0, original.size()));
-        assertTrue(runner.history().stream().noneMatch(turn -> turn.type() == TurnType.REWIND));
+        assertEquals(original, runner.output.history().subList(0, original.size()));
+        assertTrue(
+                runner.output.history().stream().noneMatch(turn -> turn.type() == TurnType.REWIND));
     }
 }

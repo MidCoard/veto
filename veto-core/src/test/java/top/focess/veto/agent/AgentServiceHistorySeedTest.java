@@ -97,7 +97,8 @@ class AgentServiceHistorySeedTest {
                         AgentRunner.class, requireField(ReflectionTestUtils.getField(a, "runner")));
         int turnNumber =
                 assertInstanceOf(
-                        Integer.class, requireField(runner.history().getLast().turnNumber()));
+                        Integer.class,
+                        requireField(runner.output.history().getLast().turnNumber()));
         assertEquals(5, turnNumber, "seedHistory advances turnNumber to the max replayed turn");
     }
 

@@ -29,6 +29,7 @@ public class VetoAgent implements Agent {
 
     private final @NonNull String id;
     private final @NonNull AgentRunner runner;
+    private final @NonNull AgentEvents events;
     private final boolean userInteractionEnabled;
     private final @NonNull Thread executionThread;
 
@@ -48,6 +49,7 @@ public class VetoAgent implements Agent {
             boolean userInteractionEnabled) {
         this.id = persona.id();
         this.runner = runner;
+        this.events = runner.output.events;
         this.userInteractionEnabled = userInteractionEnabled;
         executionThread = Thread.ofVirtual().name("agent-" + id).unstarted(runner::run);
         runner.attachExecutionThread(executionThread);
@@ -109,7 +111,7 @@ public class VetoAgent implements Agent {
 
     /** The provenance of plugins contributing tools to this agent's latest context. */
     public @NonNull PluginContextSnapshot pluginContext() {
-        return runner.pluginContext();
+        return runner.models.pluginContext();
     }
 
     /** The reason the agent is parked (approval, question, breaker, etc.), or {@code null}. */
@@ -167,12 +169,12 @@ public class VetoAgent implements Agent {
 
     @Override
     public @NonNull List<TurnRecord> history() {
-        return runner.history();
+        return runner.output.history();
     }
 
     @Override
     public @NonNull ReadHistory readHistory() {
-        return runner.readHistory();
+        return runner.toolBoundary.readHistory();
     }
 
     @Override
@@ -219,12 +221,12 @@ public class VetoAgent implements Agent {
      * response.message} is emitted.
      */
     public void addMessageListener(@NonNull Consumer<String> listener) {
-        runner.output().addMessageListener(listener);
+        events.messages.add(listener);
     }
 
     /** Unsubscribes a user-facing-message listener. */
     public void removeMessageListener(@NonNull Consumer<String> listener) {
-        runner.output().removeMessageListener(listener);
+        events.messages.remove(listener);
     }
 
     /**
@@ -233,12 +235,12 @@ public class VetoAgent implements Agent {
      * as each {@code response.thought} is emitted, before the matching message.
      */
     public void addThoughtListener(@NonNull Consumer<String> listener) {
-        runner.output().addThoughtListener(listener);
+        events.thoughts.add(listener);
     }
 
     /** Unsubscribes an interim-thought listener. */
     public void removeThoughtListener(@NonNull Consumer<String> listener) {
-        runner.output().removeThoughtListener(listener);
+        events.thoughts.remove(listener);
     }
 
     /**
@@ -247,12 +249,12 @@ public class VetoAgent implements Agent {
      * call parks for approval.
      */
     public void addVetoListener(@NonNull Consumer<VetoPrompt> listener) {
-        runner.output().addVetoListener(listener);
+        events.vetoes.add(listener);
     }
 
     /** Unsubscribes a HITL-veto listener. */
     public void removeVetoListener(@NonNull Consumer<VetoPrompt> listener) {
-        runner.output().removeVetoListener(listener);
+        events.vetoes.remove(listener);
     }
 
     /**
@@ -262,12 +264,12 @@ public class VetoAgent implements Agent {
      * tool result.
      */
     public void addToolCallListener(@NonNull Consumer<ToolCallEvent> listener) {
-        runner.output().addToolCallListener(listener);
+        events.calls.add(listener);
     }
 
     /** Unsubscribes a tool-call listener. */
     public void removeToolCallListener(@NonNull Consumer<ToolCallEvent> listener) {
-        runner.output().removeToolCallListener(listener);
+        events.calls.remove(listener);
     }
 
     /**
@@ -276,12 +278,12 @@ public class VetoAgent implements Agent {
      * agent's virtual thread when a TOOL_RESPONSE turn is appended.
      */
     public void addToolResultListener(@NonNull Consumer<ToolResultEvent> listener) {
-        runner.output().addToolResultListener(listener);
+        events.results.add(listener);
     }
 
     /** Unsubscribes a tool-result listener. */
     public void removeToolResultListener(@NonNull Consumer<ToolResultEvent> listener) {
-        runner.output().removeToolResultListener(listener);
+        events.results.remove(listener);
     }
 
     /** The persona's resolved manifest (for the PromptCompiler / tests). */

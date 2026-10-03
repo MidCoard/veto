@@ -197,10 +197,9 @@ public final class SessionAgentRegistry implements AutoCloseable {
         for (Entry entry : agents(sessionId)) {
             if (entry.ephemeral()) continue;
             VetoAgent agent = entry.agent();
-            AgentSummary saved = result.get(agent.id());
-            result.put(
+            result.compute(
                     agent.id(),
-                    new AgentSummary(
+                    (k, saved) -> new AgentSummary(
                             agent.id(),
                             saved == null ? agent.name() : saved.name(),
                             agent.persona().role(),

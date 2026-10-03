@@ -6,7 +6,6 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Consumer;
-import java.util.function.Supplier;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -33,7 +32,7 @@ final class AgentEvents {
     private final @NonNull String agentId;
     private final @NonNull ObjectMapper objectMapper;
     private final @NonNull AgentEventSink eventSink;
-    private final @NonNull Supplier<UUID> session;
+    private final @NonNull UUID sessionId;
     final @NonNull Listeners<String> messages = new Listeners<>("message");
     final @NonNull Listeners<String> thoughts = new Listeners<>("thought");
     final @NonNull Listeners<VetoPrompt> vetoes = new Listeners<>("veto");
@@ -44,11 +43,11 @@ final class AgentEvents {
             @NonNull String agentId,
             @NonNull ObjectMapper mapper,
             @NonNull AgentEventSink eventSink,
-            @NonNull Supplier<UUID> session) {
+            @NonNull UUID sessionId) {
         this.agentId = agentId;
         this.objectMapper = mapper;
         this.eventSink = eventSink;
-        this.session = session;
+        this.sessionId = sessionId;
     }
 
     final class Listeners<T> {
@@ -89,14 +88,22 @@ final class AgentEvents {
         textFrame(DeltaFrame.Kind.ASSISTANT_THOUGHT, text, turn);
     }
 
-    private void textFrame(DeltaFrame.@NonNull Kind kind, @NonNull String text, int turn) {
+    DeltaFrame.@NonNull Builder frame(DeltaFrame.@NonNull Kind kind) {
+        return DeltaFrame.builder().sessionId(sessionId).kind(kind);
+    }
+
+    void executionChanged() {
         publishFrame(
-                DeltaFrame.builder()
-                        .sessionId(session.get())
-                        .kind(kind)
-                        .attr("turnNumber", turn)
-                        .text(text)
+                frame(DeltaFrame.Kind.SESSION_INVALIDATED)
+                        .attr("agentId", agentId)
+                        .attr(
+                                "resources",
+                                objectMapper.createArrayNode().add("agents").add("execution"))
                         .build());
+    }
+
+    private void textFrame(DeltaFrame.@NonNull Kind kind, @NonNull String text, int turn) {
+        publishFrame(frame(kind).attr("turnNumber", turn).text(text).build());
     }
 
     void turn(@NonNull TurnRecord numbered) {
@@ -123,7 +130,7 @@ final class AgentEvents {
                     // apply it incrementally and pair the later result without refetching history.
                     DeltaFrame.@NonNull Builder b =
                             DeltaFrame.builder()
-                                    .sessionId(session.get())
+                                    .sessionId(sessionId)
                                     .kind(DeltaFrame.Kind.TOOL_CALL)
                                     .attr("turnNumber", numbered.turnNumber())
                                     .attr("toolName", toolName)
@@ -143,7 +150,7 @@ final class AgentEvents {
                     results.emit(new ToolResultEvent(body, Boolean.TRUE.equals(success)));
                     DeltaFrame.@NonNull Builder b =
                             DeltaFrame.builder()
-                                    .sessionId(session.get())
+                                    .sessionId(sessionId)
                                     .kind(DeltaFrame.Kind.TOOL_RESULT)
                                     .attr("turnNumber", numbered.turnNumber())
                                     .attr("success", Boolean.TRUE.equals(success))
@@ -197,7 +204,7 @@ final class AgentEvents {
         // still goes through the authenticated resolve path.
         DeltaFrame.@NonNull Builder frame =
                 DeltaFrame.builder()
-                        .sessionId(session.get())
+                        .sessionId(sessionId)
                         .kind(DeltaFrame.Kind.VETO_REQUIRED)
                         .attr("agentId", agentId)
                         .attr("callId", callId)

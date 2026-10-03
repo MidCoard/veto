@@ -3,7 +3,6 @@ package top.focess.veto.agent;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
-import java.util.function.Supplier;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -15,25 +14,25 @@ import top.focess.veto.memory.TurnLogService;
  * <p>Thread-safe for in-memory history operations: this instance's monitor guards numbering,
  * appends, usage replacement and snapshot creation. Required persistence runs under that monitor
  * before publication. Best-effort persistence runs outside it and may finish out of order; a
- * snapshot does not imply those writes have finished. The session supplier must support the
- * callers' threads. Snapshots copy the list, not mutable objects nested in a turn's payload.
+ * snapshot does not imply those writes have finished. Session identity is fixed at construction.
+ * Snapshots copy the list, not mutable objects nested in a turn's payload.
  */
 final class AgentHistory {
     private static final @NonNull Logger log =
             LoggerFactory.getLogger("top.focess.veto.agent.AgentHistory");
     private final @NonNull List<TurnRecord> history = new ArrayList<>();
     private final TurnLogService turnLogService;
-    private final @NonNull Supplier<UUID> session;
+    private final @NonNull UUID sessionId;
     private final @NonNull UUID userId;
     private final @NonNull String agentId;
 
     AgentHistory(
             TurnLogService log,
-            @NonNull Supplier<UUID> session,
+            @NonNull UUID sessionId,
             @NonNull UUID userId,
             @NonNull String agentId) {
         this.turnLogService = log;
-        this.session = session;
+        this.sessionId = sessionId;
         this.userId = userId;
         this.agentId = agentId;
     }
@@ -66,7 +65,7 @@ final class AgentHistory {
             int highWater = history.isEmpty() ? 0 : history.getLast().turnNumber();
             numbered = turn.turnNumber() <= highWater ? turn.withTurnNumber(highWater + 1) : turn;
             if (required && turnLogService != null) {
-                turnLogService.logRequired(numbered, session.get(), userId, agentId);
+                turnLogService.logRequired(numbered, sessionId, userId, agentId);
             }
             history.add(numbered);
         }
@@ -75,7 +74,7 @@ final class AgentHistory {
         // block history readers, and the service swallows failures so the loop is never affected.
         if (turnLogService != null && !required) {
             try {
-                turnLogService.log(numbered, session.get(), userId, agentId);
+                turnLogService.log(numbered, sessionId, userId, agentId);
             } catch (RuntimeException e) {
                 log.warn("Agent {} turn log failed", agentId, e);
             }
@@ -98,6 +97,6 @@ final class AgentHistory {
         }
         if (updated == null) return;
         if (turnLogService != null)
-            turnLogService.updateMetadata(updated, session.get(), userId, agentId);
+            turnLogService.updateMetadata(updated, sessionId, userId, agentId);
     }
 }

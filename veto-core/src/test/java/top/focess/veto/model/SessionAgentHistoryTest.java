@@ -15,6 +15,7 @@ import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import top.focess.veto.agent.AgentRunner;
+import top.focess.veto.agent.AgentRunnerFixture;
 import top.focess.veto.agent.SessionAgentRegistry;
 import top.focess.veto.agent.TurnRecord;
 import top.focess.veto.agent.TurnType;
@@ -140,7 +141,7 @@ class SessionAgentHistoryTest {
         when(parent.state()).thenReturn(AgentState.IDLE);
         registry.register(session, parent);
         var persona = new AgentPersona("private-child", "Private", "", Set.of());
-        AgentRunner runner = mock(AgentRunner.class);
+        AgentRunner runner = AgentRunnerFixture.mockedRunner(persona.id(), session);
         when(runner.sessionId()).thenReturn(session);
         when(runner.personaView()).thenReturn(persona);
         when(runner.state()).thenReturn(AgentState.IDLE);
@@ -204,7 +205,7 @@ class SessionAgentHistoryTest {
         assertEquals("My assistant", registry.records(sessionId).getFirst().name());
 
         AgentPersona reader = new AgentPersona("reader", "Web reader", "", Set.of());
-        AgentRunner runner = mock(AgentRunner.class);
+        AgentRunner runner = AgentRunnerFixture.mockedRunner(reader.id(), sessionId);
         when(runner.sessionId()).thenReturn(sessionId);
         when(runner.personaView()).thenReturn(reader);
         when(runner.state()).thenReturn(AgentState.IDLE);

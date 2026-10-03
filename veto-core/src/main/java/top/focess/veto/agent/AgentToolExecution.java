@@ -394,7 +394,7 @@ final class AgentToolExecution {
 
             // (g) final ingress defense, immediately before committing the observation to history.
             String replacement = null;
-            var eventManager = runner.eventManager();
+            var eventManager = runner.eventManager;
             String currentOwner = owner;
             if (transformed.success()
                     && def instanceof NativeToolDefinition

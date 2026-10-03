@@ -49,7 +49,7 @@ class AgentEventsTest {
         var frames = new ArrayList<DeltaFrame>();
         var laterEvents = new ArrayList<ToolCallEvent>();
         var session = UUID.randomUUID();
-        var events = new AgentEvents("agent", mapper, frames::add, () -> session);
+        var events = new AgentEvents("agent", mapper, frames::add, session);
         events.calls.add(
                 event -> {
                     if (event == null) throw new AssertionError("Missing tool event");

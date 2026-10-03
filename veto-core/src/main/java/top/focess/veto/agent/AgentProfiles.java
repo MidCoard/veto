@@ -1,14 +1,17 @@
 package top.focess.veto.agent;
 
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.identity.AgentPersona;
 import top.focess.veto.agent.identity.Role;
 import top.focess.veto.agent.tool.ToolDefinition;
+import top.focess.veto.agent.tool.ToolEngine;
 import top.focess.veto.api.llm.LlmBinding;
 import top.focess.veto.api.plugin.agent.AgentProfile;
 import top.focess.veto.api.plugin.contract.AgentConfiguration;
+import top.focess.veto.integration.plugins.SessionPlugins;
 import top.focess.veto.model.tier.ModelTier;
 import top.focess.veto.model.tier.ModelTierRegistry;
 import top.focess.veto.util.Nullness;
@@ -37,6 +40,55 @@ public final class AgentProfiles {
             @NonNull AgentPersona persona,
             @NonNull LlmBinding binding,
             AgentProfile.Prompt prompt) {}
+
+    record Selection(@NonNull Resolved resolved, AgentConfiguration.Transition transition) {}
+
+    static @NonNull Selection select(
+            @NonNull AgentPersona persona,
+            @NonNull LlmBinding binding,
+            SessionPlugins plugins,
+            String owner,
+            @NonNull String session,
+            @NonNull String agentId,
+            @NonNull ToolEngine engine,
+            ModelTierRegistry tiers,
+            @NonNull String task) {
+        if (plugins == null || owner == null)
+            return new Selection(new Resolved(persona, binding, null), null);
+        var available = plugins.tools(session, Set.copyOf(engine.getActiveTools(null)));
+        var base =
+                new AgentProfile(
+                        persona.name(),
+                        persona.description(),
+                        persona.role().name(),
+                        persona.whitelistedTools().stream()
+                                .map(ToolDefinition::name)
+                                .collect(Collectors.toSet()),
+                        null,
+                        null,
+                        Map.of());
+        var intent =
+                plugins.configure(
+                        owner,
+                        session,
+                        agentId,
+                        persona.configurationOwner(),
+                        base,
+                        available.stream().map(AgentProfiles::configurationTool).toList(),
+                        task);
+        if (intent == null)
+            return new Selection(
+                    new Resolved(
+                            persona.withWhitelistedTools(
+                                    plugins.tools(session, persona.whitelistedTools())),
+                            binding,
+                            null),
+                    null);
+        if (tiers == null) throw new IllegalStateException("Model tiers unavailable");
+        return new Selection(
+                resolve(agentId, owner, intent.profile(), available, binding, tiers),
+                intent.transition());
+    }
 
     /**
      * Resolves a requested {@link AgentProfile} against the tools the host actually authorizes and
@@ -68,16 +120,7 @@ public final class AgentProfiles {
                         Role.valueOf(profile.label()));
         var prompt = profile.prompt();
         var tier = profile.tier();
-        if (tier == null)
-            return new Resolved(
-                    persona,
-                    new LlmBinding(
-                            base.provider(),
-                            base.model(),
-                            base.credentialKey(),
-                            base.options(),
-                            base.baseUrl()),
-                    prompt);
+        if (tier == null) return new Resolved(persona, base, prompt);
         var model = tiers.resolve(owner, Nullness.requireNonNull(ModelTier.valueOf(tier)));
         return new Resolved(
                 persona,

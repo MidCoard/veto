@@ -16,7 +16,7 @@ class AgentHistoryTest {
         var log = mock(requireNonNull(TurnLogService.class));
         var session = UUID.randomUUID();
         var user = UUID.randomUUID();
-        var history = new AgentHistory(log, () -> session, user, "agent");
+        var history = new AgentHistory(log, session, user, "agent");
         history.seed(List.of(TurnRecord.userPrompt(7, "persisted")));
         doThrow(new IllegalStateException("storage unavailable"))
                 .when(log)
@@ -35,7 +35,7 @@ class AgentHistoryTest {
         var log = mock(requireNonNull(TurnLogService.class));
         var session = UUID.randomUUID();
         var user = UUID.randomUUID();
-        var history = new AgentHistory(log, () -> session, user, "agent");
+        var history = new AgentHistory(log, session, user, "agent");
         doThrow(new IllegalStateException("storage unavailable"))
                 .when(log)
                 .log(any(), eq(session), eq(user), eq("agent"));
