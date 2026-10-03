@@ -82,27 +82,26 @@ class IngressDefenseMaskingTest {
         assertFalse(masked.contains("extra-secret"));
         assertFalse(masked.contains("synthetic-token"));
         verify(bridge, times(1)).infer(anyString(), anyString());
-        // Outside the live scope the reference is unavailable.
-        assertThrows(
-                IllegalStateException.class,
-                () ->
-                        PluginTestSupport.protect(
-                                plugins,
-                                BeforeTextCommitEvent.Phase.FILE_OBSERVATION,
-                                new Scope.AgentScope("owner", "session", "other-agent"),
-                                "file",
-                                fileResult.content()));
+        // Outside the live scope the listener rejects the reference. Delivery contains that
+        // failure, so no scoped transformation is published and the original text is retained.
+        assertEquals(
+                fileResult.content(),
+                PluginTestSupport.protect(
+                        plugins,
+                        BeforeTextCommitEvent.Phase.FILE_OBSERVATION,
+                        new Scope.AgentScope("owner", "session", "other-agent"),
+                        "file",
+                        fileResult.content()));
         PluginTestSupport.eventManager(plugins)
                 .submit(new UserLogoutEvent(new Scope.UserScope("owner")));
-        assertThrows(
-                IllegalStateException.class,
-                () ->
-                        PluginTestSupport.protect(
-                                plugins,
-                                BeforeTextCommitEvent.Phase.FILE_OBSERVATION,
-                                scope,
-                                "file",
-                                fileResult.content()));
+        assertEquals(
+                fileResult.content(),
+                PluginTestSupport.protect(
+                        plugins,
+                        BeforeTextCommitEvent.Phase.FILE_OBSERVATION,
+                        scope,
+                        "file",
+                        fileResult.content()));
     }
 
     @SuppressWarnings("type.arguments.not.inferred")

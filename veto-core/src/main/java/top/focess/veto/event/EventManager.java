@@ -6,11 +6,13 @@ import org.springframework.stereotype.Service;
 import top.focess.veto.api.event.Event;
 import top.focess.veto.integration.plugins.PluginManager;
 import top.focess.veto.integration.plugins.SessionPlugins;
+import top.focess.veto.integration.plugins.storage.PluginInvocationContext;
 
 /**
- * Shared host entry point for synchronous event delivery. Each event declares its recipients and
- * failure policy independently of its class hierarchy. Each submission captures one prepared
- * publication; every recipient still passes current plugin lifecycle admission.
+ * Shared host entry point for synchronous event delivery. The submitting thread's current session
+ * selects its available pinned plugins; outside a session, matching active plugins receive events.
+ * Each submission captures one prepared publication; every recipient still passes current plugin
+ * lifecycle admission. Event payloads do not select delivery policy.
  *
  * <p>Concurrent submissions are supported. Handlers for one event run serially on its producer's
  * thread; different events may reach the same listener concurrently. Producers own their mutable
@@ -27,19 +29,14 @@ public final class EventManager {
         this.selections = selections;
     }
 
-    /** Delivers the event inline using its declared recipient and failure contracts. */
+    /** Delivers the event inline using the submitting thread's host invocation context. */
     public void submit(@NonNull Event event) {
         var publication = plugins.snapshot();
         var routes = publication.events();
         if (!routes.hasHandlers(event)) return;
         Set<String> selected = null;
-        if (event.recipients() == Event.Recipients.SESSION_PLUGINS) {
-            var sessionId = event.scope().session();
-            if (sessionId == null)
-                throw new IllegalArgumentException(
-                        "Session-selected event requires a session scope");
-            selected = selections.selectedIds(sessionId, publication);
-        }
+        var sessionId = PluginInvocationContext.currentSession();
+        if (sessionId != null) selected = selections.selectedIds(sessionId, publication);
         routes.submit(event, selected);
     }
 }

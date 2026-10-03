@@ -11,8 +11,8 @@ import top.focess.veto.api.plugin.contract.JsonValue;
  * <p>The decision is monotonic: {@link #decide} only escalates and never relaxes, and {@link
  * Decision#REJECT} also calls {@link Event#prevent()} to stop propagation to later handlers by
  * default. The host enforces that security decision independently of the reversible {@link
- * Cancellable} action flag. Clearing action cancellation cannot relax approval requirements or
- * undo rejection. The producer reads the final action flag after delivery; {@link #cancellation()}
+ * Cancellable} action flag. Clearing action cancellation cannot relax approval requirements or undo
+ * rejection. The producer reads the final action flag after delivery; {@link #cancellation()}
  * remains the separate read-only host stop signal.
  */
 public final class BeforeToolEvent extends WorkflowEvent implements Cancellable {

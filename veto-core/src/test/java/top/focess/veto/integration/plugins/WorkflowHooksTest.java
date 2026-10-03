@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.jspecify.annotations.NonNull;
@@ -14,6 +15,7 @@ import top.focess.veto.api.event.Listener;
 import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.api.plugin.contract.*;
 import top.focess.veto.api.plugin.contribution.*;
+import top.focess.veto.integration.plugins.storage.PluginInvocationContext;
 import top.focess.veto.plugin.runtime.*;
 
 class WorkflowHooksTest {
@@ -40,7 +42,7 @@ class WorkflowHooksTest {
         }
     }
 
-    /** Always throws, to verify a handler failure is sanitized and halts the chain. */
+    /** Always throws, to verify a handler failure is contained while the chain continues. */
     public static final class FailingListener extends Listener {
         private final @NonNull AtomicInteger calls;
 
@@ -73,26 +75,56 @@ class WorkflowHooksTest {
                                         Set.of(new ContributionId("fixture.workflow:first"))),
                                 Contribution.of(point, "first", first)))) {
             var event = input(false, "");
-            fixture.events.submit(event);
+            {
+                var invocation = new PluginInvocationContext("owner", "session");
+                try {
+                    fixture.events.submit(event);
+                } finally {
+                    invocation.close();
+                }
+            }
             assertEquals("AB", event.text());
             assertEquals(1, calls.get());
-            assertThrows(IllegalStateException.class, () -> fixture.events.submit(input(true, "")));
+            {
+                var invocation = new PluginInvocationContext("owner", "session");
+                try {
+                    assertThrows(
+                            CancellationException.class,
+                            () -> fixture.events.submit(input(true, "")));
+                } finally {
+                    invocation.close();
+                }
+            }
             assertEquals(1, calls.get());
             fixture.useUnselectedSession();
             var unchanged = input(false, "unchanged");
-            fixture.events.submit(unchanged);
+            {
+                var invocation = new PluginInvocationContext("owner", "session");
+                try {
+                    fixture.events.submit(unchanged);
+                } finally {
+                    invocation.close();
+                }
+            }
             assertEquals("unchanged", unchanged.text());
             fixture.restoreSelectedSession();
             fixture.runtime.close();
             var inactive = input(false, "inactive");
-            fixture.events.submit(inactive);
+            {
+                var invocation = new PluginInvocationContext("owner", "session");
+                try {
+                    fixture.events.submit(inactive);
+                } finally {
+                    invocation.close();
+                }
+            }
             assertEquals("inactive", inactive.text());
             assertEquals(1, calls.get());
         }
     }
 
     @Test
-    void failuresDoNotLeakPluginPayloadOrRunFollowingHooks() throws Exception {
+    void failuresAreContainedAndFollowingHooksRun() throws Exception {
         var calls = new AtomicInteger();
         var after = new AtomicInteger();
         Listener bad = new FailingListener(calls);
@@ -108,14 +140,18 @@ class WorkflowHooksTest {
                                         following,
                                         Set.of(),
                                         Set.of(new ContributionId("fixture.workflow:bad")))))) {
-            var error =
-                    assertThrows(
-                            IllegalStateException.class,
-                            () -> fixture.events.submit(input(false, "")));
-            assertEquals("Event listener unavailable", error.getMessage());
-            assertNull(error.getCause());
+            var event = input(false, "");
+            {
+                var invocation = new PluginInvocationContext("owner", "session");
+                try {
+                    assertDoesNotThrow(() -> fixture.events.submit(event));
+                } finally {
+                    invocation.close();
+                }
+            }
+            assertEquals("B", event.text());
             assertEquals(1, calls.get());
-            assertEquals(0, after.get());
+            assertEquals(1, after.get());
         }
     }
 
@@ -158,7 +194,14 @@ class WorkflowHooksTest {
                                                 new ContributionId(
                                                         "fixture.workflow:observer")))))) {
             var event = input(false, "original");
-            fixture.events.submit(event);
+            {
+                var invocation = new PluginInvocationContext("owner", "session");
+                try {
+                    fixture.events.submit(event);
+                } finally {
+                    invocation.close();
+                }
+            }
             assertTrue(observed.get());
             assertTrue(event.isPrevent());
             assertEquals(0, following.get());

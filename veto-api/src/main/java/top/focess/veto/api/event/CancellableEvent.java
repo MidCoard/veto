@@ -1,7 +1,5 @@
 package top.focess.veto.api.event;
 
-import org.jspecify.annotations.NonNull;
-
 /**
  * Opt-in base for events with reversible producer-action cancellation.
  *
@@ -14,16 +12,8 @@ import org.jspecify.annotations.NonNull;
 public abstract class CancellableEvent extends Event implements Cancellable {
     private boolean cancelled;
 
-    /**
-     * Creates reversible cancellation state with explicit delivery policies.
-     *
-     * @param recipients plugin recipients to resolve
-     * @param failurePolicy treatment of nonfatal handler failures
-     */
-    protected CancellableEvent(
-            @NonNull Recipients recipients, @NonNull FailurePolicy failurePolicy) {
-        super(recipients, failurePolicy);
-    }
+    /** Creates reversible producer-action cancellation state. */
+    protected CancellableEvent() {}
 
     /**
      * Reports whether the event has been cancelled.

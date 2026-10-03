@@ -105,8 +105,14 @@ class AuthLifecycleManagerTest {
             doThrow(new IllegalStateException("Close failed")).when(vault).logout("alice");
             assertThrows(IllegalStateException.class, () -> lifecycle.logout("alice"));
             assertTrue(PluginTestSupport.reveal(plugins, scope, reference).isEmpty());
-            assertThrows(
-                    IllegalStateException.class, () -> capture(plugins, scope, "password=late"));
+            assertEquals(
+                    "password=late",
+                    PluginTestSupport.protect(
+                            plugins,
+                            BeforeTextCommitEvent.Phase.INPUT,
+                            scope,
+                            "source",
+                            "password=late"));
             assertEquals(
                     "beta", PluginTestSupport.reveal(plugins, other, otherReference).orElseThrow());
         }
@@ -126,12 +132,20 @@ class AuthLifecycleManagerTest {
                     .when(vault)
                     .login("alice", "invalid");
             assertThrows(IllegalArgumentException.class, () -> lifecycle.login("alice", "invalid"));
-            assertThrows(
-                    IllegalStateException.class, () -> capture(plugins, scope, "password=alpha"));
+            assertEquals(
+                    "password=alpha",
+                    PluginTestSupport.protect(
+                            plugins,
+                            BeforeTextCommitEvent.Phase.INPUT,
+                            scope,
+                            "source",
+                            "password=alpha"));
+            assertTrue(PluginTestSupport.reveal(plugins, scope, old).isEmpty());
             lifecycle.login("alice", "test-password");
             String reopened = capture(plugins, scope, "password=alpha");
             assertNotEquals(old, reopened);
             assertTrue(PluginTestSupport.reveal(plugins, scope, old).isEmpty());
+            assertEquals("alpha", PluginTestSupport.reveal(plugins, scope, reopened).orElseThrow());
         }
     }
 

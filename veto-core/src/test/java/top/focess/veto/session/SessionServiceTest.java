@@ -508,15 +508,16 @@ class SessionServiceTest {
                 TransactionSynchronizationManager.clear();
             }
             assertTrue(PluginTestSupport.reveal(plugins, scope, secret).isEmpty());
-            assertThrows(
-                    IllegalStateException.class,
-                    () ->
-                            PluginTestSupport.protect(
-                                    plugins,
-                                    BeforeTextCommitEvent.Phase.INPUT,
-                                    scope,
-                                    "late",
-                                    "password=alpha"));
+            // The retired session cannot capture new references. Its listener failure is
+            // contained by event delivery, leaving the submitted text unchanged.
+            assertEquals(
+                    "password=alpha",
+                    PluginTestSupport.protect(
+                            plugins,
+                            BeforeTextCommitEvent.Phase.INPUT,
+                            scope,
+                            "late",
+                            "password=alpha"));
         }
         assertTrue(removed, "delete should report the session removed");
 

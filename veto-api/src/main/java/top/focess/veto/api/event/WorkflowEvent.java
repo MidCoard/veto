@@ -5,7 +5,7 @@ import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.api.plugin.contract.Cancellation;
 
 /**
- * Base for session-scoped workflow events dispatched synchronously on the producer's thread.
+ * Base for workflow payloads carrying agent identity and a cooperative host stop signal.
  *
  * <p>Carries the workflow identity and the cooperative cancellation signal. Subclasses add the
  * mutable payload their handlers transform. Observing an event never grants authority, and a
@@ -20,13 +20,12 @@ public abstract class WorkflowEvent extends Event {
     private final @NonNull Cancellation cancellation;
 
     /**
-     * Creates a session-selected, fail-closed workflow event.
+     * Creates a workflow payload; the host invocation context determines delivery recipients.
      *
      * @param scope authenticated owner, session and agent identity
      * @param cancellation cooperative cancellation signal
      */
     protected WorkflowEvent(Scope.@NonNull AgentScope scope, @NonNull Cancellation cancellation) {
-        super(Recipients.SESSION_PLUGINS, FailurePolicy.FAIL_CLOSED);
         this.scope = scope;
         this.cancellation = cancellation;
     }

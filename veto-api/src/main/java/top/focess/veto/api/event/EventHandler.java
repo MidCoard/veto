@@ -8,7 +8,8 @@ import java.lang.annotation.Target;
 /**
  * Marks a single-parameter method as an event handler. The handled event type is inferred from the
  * method's sole parameter, which must be an {@link Event} type. A handler for an abstract event
- * supertype receives each host-dispatched concrete subtype.
+ * supertype receives each host-dispatched concrete subtype. Cancelled events are delivered by
+ * default so later handlers can inspect or clear cancellation; each handler may opt out.
  */
 @Target(ElementType.METHOD)
 @Retention(RetentionPolicy.RUNTIME)
@@ -22,7 +23,9 @@ public @interface EventHandler {
 
     /**
      * When {@code true}, the handler is skipped for an event already {@link
-     * Cancellable#isCancelled() cancelled}; cancelled events are still delivered by default.
+     * Cancellable#isCancelled() cancelled}. Cancelled events are delivered by default, so later
+     * handlers may reverse cancellation. This option has no effect on events that do not implement
+     * {@link Cancellable}, or on the separate host stop signal from {@link Event#cancellation()}.
      *
      * @return whether to skip cancelled events
      */

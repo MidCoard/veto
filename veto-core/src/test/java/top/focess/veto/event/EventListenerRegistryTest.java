@@ -11,6 +11,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
@@ -35,7 +36,7 @@ import top.focess.veto.plugin.runtime.PluginLifecycle;
 
 class EventListenerRegistryTest {
     @Test
-    void sessionRecipientEventRejectsMissingSelectionBeforeInvokingHandlers() {
+    void nullSelectionDeliversWorkflowToAllActiveOwners() {
         var calls = new ArrayList<String>();
         var registry = registry(new NormalProbe(calls, "listener"));
         var event =
@@ -44,8 +45,8 @@ class EventListenerRegistryTest {
                         () -> false,
                         new BeforeToolEvent.Invocation(
                                 "tool", "call", new JsonValue.ObjectValue(Map.of())));
-        assertThrows(IllegalArgumentException.class, () -> registry.submit(event));
-        assertTrue(calls.isEmpty());
+        registry.submit(event);
+        assertEquals(List.of("listener"), calls);
     }
 
     @Test
@@ -60,11 +61,8 @@ class EventListenerRegistryTest {
                         () -> false,
                         new BeforeToolEvent.Invocation(
                                 "tool", "call", new JsonValue.ObjectValue(Map.of())));
-        var failure =
-                assertThrows(
-                        IllegalStateException.class,
-                        () -> ordinary.submit(event, Set.of("demo.listener")));
-        assertEquals("Event listener unavailable", failure.getMessage());
+        ordinary.submit(event, Set.of("demo.listener"));
+        assertEquals(List.of("later", "later"), calls);
         var fatal = registry(new ErrorProbe(true));
         assertThrows(
                 InternalError.class,
@@ -171,7 +169,7 @@ class EventListenerRegistryTest {
     }
 
     @Test
-    void workflowFailureIsSanitizedWhileLifecycleFailureDoesNotStopLaterHandlers() {
+    void workflowAndLifecycleFailuresDoNotStopLaterHandlers() {
         var calls = new ArrayList<String>();
         var registry = registry(new FailureProbe(), new NormalProbe(calls, "later"));
         var event =
@@ -180,13 +178,61 @@ class EventListenerRegistryTest {
                         () -> false,
                         new BeforeToolEvent.Invocation(
                                 "tool", "call", new JsonValue.ObjectValue(Map.of())));
-        var failure =
-                assertThrows(
-                        IllegalStateException.class,
-                        () -> registry.submit(event, Set.of("demo.listener")));
-        assertEquals("Event listener unavailable", failure.getMessage());
+        registry.submit(event, Set.of("demo.listener"));
+        assertEquals(List.of("later"), calls);
+        registry.submit(new UserLoggedInEvent(new Scope.UserScope("owner")));
+        assertEquals(List.of("later", "later"), calls);
+    }
+
+    @Test
+    void admissionFailureIsContainedAndLaterHandlersStillRun() throws PluginFailure {
+        var calls = new ArrayList<String>();
+        var owner = owner();
+        var first = new AtomicBoolean(true);
+        doAnswer(
+                        invocation -> {
+                            if (first.getAndSet(false))
+                                throw new PluginFailure(PluginFailure.Code.NOT_READY);
+                            var operation =
+                                    invocation
+                                            .<PluginLifecycle.Operation<@NonNull Boolean>>
+                                                    getArgument(0);
+                            if (operation == null) throw new AssertionError("Missing operation");
+                            return operation.run();
+                        })
+                .when(owner)
+                .<Boolean>execute(any());
+        var registry =
+                registry(owner, new NormalProbe(calls, "first"), new NormalProbe(calls, "later"));
         registry.submit(new UserLoggedInEvent(new Scope.UserScope("owner")));
         assertEquals(List.of("later"), calls);
+    }
+
+    @Test
+    void hostCancellationBetweenHandlersStopsRemainingDelivery() {
+        var calls = new ArrayList<String>();
+        var cancelled = new AtomicBoolean(false);
+        var listener =
+                new Listener() {
+                    @EventHandler(priority = EventPriority.HIGHEST)
+                    public void first(@NonNull BeforeToolEvent event) {
+                        calls.add("first");
+                        cancelled.set(true);
+                    }
+
+                    @EventHandler(priority = EventPriority.LOWEST)
+                    public void later(@NonNull BeforeToolEvent event) {
+                        calls.add("unexpected");
+                    }
+                };
+        var event =
+                new BeforeToolEvent(
+                        new Scope.AgentScope("owner", "session", "agent"),
+                        cancelled::get,
+                        new BeforeToolEvent.Invocation(
+                                "tool", "call", new JsonValue.ObjectValue(Map.of())));
+        assertThrows(CancellationException.class, () -> registry(listener).submit(event));
+        assertEquals(List.of("first"), calls);
     }
 
     private static @NonNull EventListenerRegistry registry(
@@ -264,15 +310,12 @@ class EventListenerRegistryTest {
     }
 
     @Test
-    void activeRecipientFailClosedEventExcludesInactiveOwnersInBothEntryPoints()
-            throws PluginFailure {
+    void inactiveOwnersAreExcludedInBothEntryPoints() throws PluginFailure {
         var calls = new ArrayList<String>();
         var owner = owner();
         when(owner.state()).thenReturn(PluginState.CLOSED);
         var registry = registry(owner, new NormalProbe(calls, "inactive"));
-        var event = mock(UserLoggedInEvent.class);
-        when(event.recipients()).thenReturn(Event.Recipients.ACTIVE_PLUGINS);
-        when(event.failurePolicy()).thenReturn(Event.FailurePolicy.FAIL_CLOSED);
+        var event = new UserLoggedInEvent(new Scope.UserScope("owner"));
         assertDoesNotThrow(() -> registry.submit(event));
         assertDoesNotThrow(() -> registry.submit(event, Set.of("demo.listener")));
         assertTrue(calls.isEmpty());
@@ -280,7 +323,7 @@ class EventListenerRegistryTest {
     }
 
     @Test
-    void hostCancellationFailsClosedBeforeItsHandler() {
+    void hostCancellationPropagatesBeforeItsHandler() {
         var calls = new ArrayList<String>();
         var registry = registry(new RejectProbe(calls));
         var event =
@@ -291,37 +334,42 @@ class EventListenerRegistryTest {
                                 "tool", "call", new JsonValue.ObjectValue(Map.of())));
         var failure =
                 assertThrows(
-                        IllegalStateException.class,
+                        CancellationException.class,
                         () -> registry.submit(event, Set.of("demo.listener")));
-        assertEquals("Event listener unavailable", failure.getMessage());
+        assertEquals("Event delivery cancelled", failure.getMessage());
         assertTrue(calls.isEmpty());
     }
 
     @Test
-    void reversibleCancellationDoesNotFilterLowerHandlers() {
+    void reversibleCancellationStillReachesLowerHandlersByDefault() {
         var calls = new ArrayList<String>();
-        var listener = new Listener() {
-            @EventHandler(priority = EventPriority.HIGHEST)
-            public void cancel(@NonNull BeforeToolEvent event) {
-                calls.add("cancel");
-                event.cancel();
-            }
+        var listener =
+                new Listener() {
+                    @EventHandler(priority = EventPriority.HIGHEST)
+                    public void cancel(@NonNull BeforeToolEvent event) {
+                        calls.add("cancel");
+                        event.cancel();
+                    }
 
-            @EventHandler(priority = EventPriority.NORMAL)
-            public void restore(@NonNull BeforeToolEvent event) {
-                assertTrue(event.isCancelled());
-                calls.add("restore");
-                event.setCancelled(false);
-            }
+                    @EventHandler(priority = EventPriority.NORMAL)
+                    public void restore(@NonNull BeforeToolEvent event) {
+                        assertTrue(event.isCancelled());
+                        calls.add("restore");
+                        event.setCancelled(false);
+                    }
 
-            @EventHandler(priority = EventPriority.LOWEST)
-            public void observe(@NonNull BeforeToolEvent event) {
-                assertFalse(event.isCancelled());
-                calls.add("observe");
-            }
-        };
-        var event = new BeforeToolEvent(new Scope.AgentScope("owner", "session", "agent"),
-                () -> false, new BeforeToolEvent.Invocation("tool", "call", new JsonValue.ObjectValue(Map.of())));
+                    @EventHandler(priority = EventPriority.LOWEST)
+                    public void observe(@NonNull BeforeToolEvent event) {
+                        assertFalse(event.isCancelled());
+                        calls.add("observe");
+                    }
+                };
+        var event =
+                new BeforeToolEvent(
+                        new Scope.AgentScope("owner", "session", "agent"),
+                        () -> false,
+                        new BeforeToolEvent.Invocation(
+                                "tool", "call", new JsonValue.ObjectValue(Map.of())));
         registry(listener).submit(event, Set.of("demo.listener"));
         assertEquals(List.of("cancel", "restore", "observe"), calls);
         assertFalse(event.isCancelled());
@@ -329,24 +377,84 @@ class EventListenerRegistryTest {
     }
 
     @Test
+    void cancelledEventSkipsOptedOutHandlersUntilCancellationIsReversed() {
+        var calls = new ArrayList<String>();
+        var listener =
+                new Listener() {
+                    @EventHandler(priority = EventPriority.HIGHEST)
+                    public void cancel(@NonNull BeforeToolEvent event) {
+                        calls.add("cancel");
+                        event.cancel();
+                    }
+
+                    @EventHandler(priority = EventPriority.HIGH, notCallIfCancelled = true)
+                    public void skip(@NonNull BeforeToolEvent event) {
+                        calls.add("unexpected");
+                    }
+
+                    @EventHandler(priority = EventPriority.NORMAL)
+                    public void restore(@NonNull BeforeToolEvent event) {
+                        assertTrue(event.isCancelled());
+                        calls.add("restore");
+                        event.setCancelled(false);
+                    }
+
+                    @EventHandler(priority = EventPriority.LOWEST, notCallIfCancelled = true)
+                    public void resumed(@NonNull BeforeToolEvent event) {
+                        assertFalse(event.isCancelled());
+                        calls.add("resumed");
+                    }
+                };
+        var event =
+                new BeforeToolEvent(
+                        new Scope.AgentScope("owner", "session", "agent"),
+                        () -> false,
+                        new BeforeToolEvent.Invocation(
+                                "tool", "call", new JsonValue.ObjectValue(Map.of())));
+        registry(listener).submit(event, Set.of("demo.listener"));
+        assertEquals(List.of("cancel", "restore", "resumed"), calls);
+        assertFalse(event.isCancelled());
+        assertFalse(event.isPrevent());
+    }
+
+    @Test
+    void cancelledEventOptionDoesNotFilterNonCancellableEvents() {
+        var calls = new ArrayList<String>();
+        var listener =
+                new Listener() {
+                    @EventHandler(notCallIfCancelled = true)
+                    public void observe(@NonNull UserLoggedInEvent event) {
+                        calls.add("observe");
+                    }
+                };
+        registry(listener).submit(new UserLoggedInEvent(new Scope.UserScope("owner")));
+        assertEquals(List.of("observe"), calls);
+    }
+
+    @Test
     void preventionStillStopsLowerHandlersAfterReversibleCancellation() {
         var calls = new ArrayList<String>();
-        var listener = new Listener() {
-            @EventHandler(priority = EventPriority.HIGHEST)
-            public void stop(@NonNull BeforeToolEvent event) {
-                calls.add("stop");
-                event.cancel();
-                event.prevent();
-            }
+        var listener =
+                new Listener() {
+                    @EventHandler(priority = EventPriority.HIGHEST)
+                    public void stop(@NonNull BeforeToolEvent event) {
+                        calls.add("stop");
+                        event.cancel();
+                        event.prevent();
+                    }
 
-            @EventHandler(priority = EventPriority.LOWEST)
-            public void restore(@NonNull BeforeToolEvent event) {
-                calls.add("restore");
-                event.setCancelled(false);
-            }
-        };
-        var event = new BeforeToolEvent(new Scope.AgentScope("owner", "session", "agent"),
-                () -> false, new BeforeToolEvent.Invocation("tool", "call", new JsonValue.ObjectValue(Map.of())));
+                    @EventHandler(priority = EventPriority.LOWEST)
+                    public void restore(@NonNull BeforeToolEvent event) {
+                        calls.add("restore");
+                        event.setCancelled(false);
+                    }
+                };
+        var event =
+                new BeforeToolEvent(
+                        new Scope.AgentScope("owner", "session", "agent"),
+                        () -> false,
+                        new BeforeToolEvent.Invocation(
+                                "tool", "call", new JsonValue.ObjectValue(Map.of())));
         registry(listener).submit(event, Set.of("demo.listener"));
         assertEquals(List.of("stop"), calls);
         assertTrue(event.isCancelled());
@@ -370,7 +478,7 @@ class EventListenerRegistryTest {
     @Test
     void unknownConcreteEventIsRejectedEvenWithoutHandlers() {
         var event =
-                new Event(Event.Recipients.ACTIVE_PLUGINS, Event.FailurePolicy.CONTINUE) {
+                new Event() {
                     @Override
                     public Scope.@NonNull GlobalScope scope() {
                         return new Scope.GlobalScope();
@@ -405,6 +513,11 @@ class EventListenerRegistryTest {
 
         @EventHandler
         public void event(@NonNull UserLoggedInEvent event) {
+            calls.add(label);
+        }
+
+        @EventHandler
+        public void workflow(@NonNull BeforeToolEvent event) {
             calls.add(label);
         }
     }

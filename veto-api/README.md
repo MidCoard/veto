@@ -67,19 +67,20 @@ preserve access after either plugin loses admission. Treat
 
 ## Events plugins can receive
 
-The host currently has a fixed catalog of concrete event classes. Workflow events go to the
-session's selected plugins and may transform or prevent work according to their contract;
-lifecycle and directory events are best-effort broadcasts to active plugins.
-
-Delivery is declared by `Event.Recipients` and `Event.FailurePolicy`, independently of
-that family hierarchy. A new non-workflow event can choose `SESSION_PLUGINS` with a
-session or agent scope; all recipients still pass lifecycle admission. `ACTIVE_PLUGINS`
-excludes inactive owners even when the failure policy is `FAIL_CLOSED`. A selected stale
-session activation fails closed when required, and close races are checked by admission.
-All events expose `scope()`; workflow events take one `Scope.AgentScope` instead of
-separate owner/session/agent strings. Cooperative `cancellation()` is optional on `Event`.
-Adding a concrete host event also requires its entry in the prepared host event catalog.
-The old scalar workflow constructors/accessors and registry broadcast entry are removed.
+The host has a fixed catalog of concrete event classes. Delivery uses the submitting
+thread's existing host invocation context: inside a session, matching listeners belong
+to that session's available pinned plugins; outside a session, matching active plugins
+receive the event. This rule applies to every event family. Payload scope and class
+hierarchy do not decide recipients, and events carry no recipient or failure-policy
+fields. Workflow producers establish and restore their context at the hook call site;
+model-tool callbacks reuse their existing thread-local context. Context is not inherited
+by another thread. Each submission uses one captured publication and exact lifecycle
+admission. Inactive owners skip, and ordinary handler/admission failures are logged and
+contained so remaining eligible handlers continue. Host cooperative cancellation and
+fatal JVM failures remain separate from plugin failure containment.
+All events expose typed `scope()` payload identity. Cooperative `cancellation()` is
+optional. Adding a concrete host event requires its prepared catalog entry. There are
+no scalar workflow identity accessors or per-event delivery-policy constructors.
 
 | Family | Concrete events | Host boundary |
 |---|---|---|
@@ -107,6 +108,22 @@ The host checks the prepared route for the submitted concrete event before resol
 session selection. Empty or unrelated listener contributions do not trigger session
 lookups; inherited handlers still count. Unknown concrete event types are rejected.
 Equal-priority handlers retain contribution order through stable sorting.
+
+## Propagation and action cancellation
+
+`prevent()` controls whether later handlers are called. It does not cancel the host
+action. Handlers opting into prevented events may observe the event but cannot clear
+its propagation flag. `Cancellable.cancel()` and `setCancelled(false)` change the
+reversible action flag: handlers still receive cancelled events by default, and the producer
+reads the final value. A handler may opt out with `notCallIfCancelled = true`; it becomes
+eligible again if an earlier handler clears cancellation.
+BeforeToolEvent, BeforeModelEvent and BeforeTextCommitEvent implement that contract.
+Cancelled tool calls produce a REFUSED result for the model without executing the tool;
+other batch calls retain their normal authorization. Clearing cancellation restores
+normal evaluation but cannot relax the tool's separate monotonic approval Decision.
+The read-only `Cancellation` signal represents host/request stopping and is independent
+of this mutable per-event flag. `notCallIfCancelled` defaults to false and has no effect
+on events that do not implement `Cancellable` or on the host stop signal.
 
 ## Minimal named-service plugins
 
@@ -374,17 +391,3 @@ code and keep host implementation types out of plugin artifacts.
 Class literals can be passed directly as `Foo.class`. The build-time Veto nullness checker treats the class-literal expression as non-null while keeping the usual nullable defaults for other expressions. `ToolDocs` contains only tool documentation helpers.
 
 Standard contribution points accept the complete instance of their abstract aspect class. Tools extend `Tool` through `AgentTool`, `NativeTool`, or `RemoteTool`; services extend `PluginService`. Frontend modules, providers, prompts, listeners, policies, and other standard aspects likewise extend their respective API class and are registered as those objects. A component providing multiple aspects registers a separate object for each role.
-
-
-## Propagation and action cancellation
-
-`prevent()` controls whether later handlers are called. It does not cancel the host
-action. Handlers opting into prevented events may observe the event but cannot clear
-its propagation flag. `Cancellable.cancel()` and `setCancelled(false)` change the
-reversible action flag without filtering handlers: the producer reads its final value.
-BeforeToolEvent, BeforeModelEvent and BeforeTextCommitEvent implement that contract.
-Cancelled tool calls produce a REFUSED result for the model without executing the tool;
-other batch calls retain their normal authorization. Clearing cancellation restores
-normal evaluation but cannot relax the tool's separate monotonic approval Decision.
-The read-only `Cancellation` signal represents host/request stopping and is independent
-of this mutable per-event flag. EventHandler.notCallIfCancelled has been removed.

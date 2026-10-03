@@ -10,6 +10,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CancellationException;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,6 +22,7 @@ import top.focess.veto.api.event.BeforeModelEvent;
 import top.focess.veto.api.event.BeforeObservationEvent;
 import top.focess.veto.api.event.BeforeTextCommitEvent;
 import top.focess.veto.api.event.BeforeToolEvent;
+import top.focess.veto.api.event.Cancellable;
 import top.focess.veto.api.event.Event;
 import top.focess.veto.api.event.EventHandler;
 import top.focess.veto.api.event.EventPriority;
@@ -48,10 +50,10 @@ import top.focess.veto.util.Nullness;
  * {@link EventPriority} order within each event type, registration order as the stable tiebreak.
  * The host expands inherited handlers into each known concrete event's list at table construction,
  * most specific type first. A handler is skipped once the event is {@link Event#isPrevent()
- * prevented}, according to its annotation flag. Reversible action cancellation does not filter
- * handlers. Event recipient policy determines whether explicit session selection is required. Every handler
- * checks its bound owner's current active state and runs under that owner's atomic admission; event
- * failure policy determines abort or continuation.
+ * prevented}, according to its annotation flag. Cancelled events are delivered unless a handler
+ * opts out through its annotation. Every handler checks its bound owner's current active state and
+ * runs under that owner's atomic admission. Ordinary listener failures are logged and contained;
+ * host cooperative cancellation and fatal VM errors propagate.
  *
  * <p>The table is immutable and can serve concurrent dispatches, but it supplies no lock around
  * listener instances. One event's handlers run serially; distinct events can reach the same
@@ -129,7 +131,8 @@ public final class EventListenerRegistry {
                                 owner,
                                 handler.handle().bindTo(listener),
                                 handler.weight(),
-                                handler.notCallIfPrevented());
+                                handler.notCallIfPrevented(),
+                                handler.notCallIfCancelled());
                 grouped.computeIfAbsent(handler.eventType(), ignored -> new ArrayList<>())
                         .add(registered);
             }
@@ -150,47 +153,40 @@ public final class EventListenerRegistry {
         return new EventListenerRegistry(Map.copyOf(frozen));
     }
 
-    /**
-     * Submits an event to all active owners; session-recipient events require explicit selection.
-     */
+    /** Submits an event to all active owners. */
     public void submit(@NonNull Event event) {
         submit(event, null);
     }
 
     /**
-     * Executes the prepared event route synchronously under each owner's admission. Recipient and
-     * failure policies belong to the event; session-recipient events require a selected identity
-     * set. A null set means all active plugins. Nonfatal failures are sanitized and fail closed or
-     * logged and skipped according to the event's policy; fatal VM errors and thread death
-     * propagate.
+     * Executes the prepared event route synchronously under each active owner's admission. A null
+     * selection means all active plugins; an explicit set restricts delivery to those identities.
+     * Ordinary handler and admission failures are logged and contained. Host cooperative
+     * cancellation is checked before each eligible handler and propagates independently, as do
+     * fatal VM errors and thread death.
      *
      * @param event producer-owned event
      * @param selected selected plugin identities, or null for all active plugins
      */
     @SuppressWarnings("removal") // ThreadDeath remains a fatal callback signal while supported.
     public void submit(@NonNull Event event, Set<String> selected) {
-        if (event.recipients() == Event.Recipients.SESSION_PLUGINS && selected == null)
-            throw new IllegalArgumentException("Session event requires plugin selection");
         List<RegisteredHandler> handlers = byEventType.get(event.getClass());
         if (handlers == null) throw new IllegalArgumentException("Unregistered event type");
         for (RegisteredHandler handler : handlers) {
             if (selected != null && !selected.contains(handler.namespace())) continue;
             if (event.isPrevent() && handler.notCallIfPrevented()) continue;
-            if (handler.owner().state() != PluginState.ACTIVE) {
-                if (event.recipients() == Event.Recipients.SESSION_PLUGINS
-                        && event.failurePolicy() == Event.FailurePolicy.FAIL_CLOSED)
-                    throw new IllegalStateException("Event listener unavailable");
-                continue;
-            }
+            if (handler.notCallIfCancelled()
+                    && event instanceof Cancellable cancellable
+                    && cancellable.isCancelled()) continue;
+            if (handler.owner().state() != PluginState.ACTIVE) continue;
+            var cancellation = event.cancellation();
+            if (cancellation != null && cancellation.isCancelled())
+                throw new CancellationException("Event delivery cancelled");
             try {
-                var cancellation = event.cancellation();
-                if (cancellation != null) cancellation.checkCancelled();
                 handler.invoke(event);
             } catch (VirtualMachineError | ThreadDeath fatal) {
                 throw fatal;
             } catch (Throwable failure) {
-                if (event.failurePolicy() == Event.FailurePolicy.FAIL_CLOSED)
-                    throw new IllegalStateException("Event listener unavailable");
                 log.warn("Event listener {} failed", handler.namespace(), failure);
             }
         }
@@ -200,7 +196,8 @@ public final class EventListenerRegistry {
             @NonNull Class<?> eventType,
             @NonNull MethodHandle handle,
             int weight,
-            boolean notCallIfPrevented) {}
+            boolean notCallIfPrevented,
+            boolean notCallIfCancelled) {}
 
     private static @NonNull List<Compiled> compile(@NonNull Class<?> type) {
         List<Compiled> result = new ArrayList<>();
@@ -224,7 +221,8 @@ public final class EventListenerRegistry {
                             eventType,
                             compileInvoker(method),
                             Nullness.requireNonNull(annotation.priority()).weight(),
-                            annotation.notCallIfPrevented()));
+                            annotation.notCallIfPrevented(),
+                            annotation.notCallIfCancelled()));
         }
         return result;
     }
@@ -253,7 +251,8 @@ public final class EventListenerRegistry {
             @NonNull PluginLifecycle owner,
             @NonNull MethodHandle handle,
             int weight,
-            boolean notCallIfPrevented) {
+            boolean notCallIfPrevented,
+            boolean notCallIfCancelled) {
 
         private void invoke(@NonNull Event event) throws PluginFailure {
             owner.execute(

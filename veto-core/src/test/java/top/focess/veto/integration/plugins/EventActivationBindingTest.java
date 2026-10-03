@@ -66,12 +66,7 @@ class EventActivationBindingTest {
             oldRoutes.submit(login());
             assertEquals(1, oldProbe.calls.get());
             assertEquals(1, replacementProbe.calls.get());
-            var failure =
-                    assertThrows(
-                            IllegalStateException.class,
-                            () -> oldRoutes.submit(input(), Set.of("fixture.activation")));
-            assertEquals("Event listener unavailable", failure.getMessage());
-            assertNull(failure.getCause());
+            assertDoesNotThrow(() -> oldRoutes.submit(input(), Set.of("fixture.activation")));
             assertEquals(1, oldProbe.calls.get());
             assertEquals(1, replacementProbe.calls.get());
 
@@ -83,15 +78,12 @@ class EventActivationBindingTest {
     }
 
     @Test
-    void checkedHandlerFailureIsSanitizedAndReleasesRealAdmission() throws Exception {
+    void checkedHandlerFailureIsContainedAndReleasesRealAdmission() throws Exception {
         var probe = new Probe(true);
         try (var activation = new Activation(probe)) {
-            var failure =
-                    assertThrows(
-                            IllegalStateException.class,
-                            () -> activation.events.submit(input(), Set.of("fixture.activation")));
-            assertEquals("Event listener unavailable", failure.getMessage());
-            assertNull(failure.getCause());
+            assertDoesNotThrow(
+                    () -> activation.events.submit(input(), Set.of("fixture.activation")));
+            assertEquals(1, probe.calls.get());
             activation.events.submit(login());
             assertEquals(2, probe.calls.get());
             assertTrue(activation.runtime.execute(() -> true));

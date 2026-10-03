@@ -26,6 +26,7 @@ import top.focess.veto.api.plugin.contract.Cancellation;
 import top.focess.veto.api.plugin.contract.ModelResponsePolicy;
 import top.focess.veto.event.EventManager;
 import top.focess.veto.integration.plugins.SessionPlugins;
+import top.focess.veto.integration.plugins.storage.PluginInvocationContext;
 import top.focess.veto.llm.core.UniformLLMCaller;
 import top.focess.veto.plugin.runtime.PluginJson;
 
@@ -81,7 +82,13 @@ final class AgentPluginHooks {
      */
     private void dispatch(@NonNull EventManager manager, @NonNull WorkflowEvent event) {
         checkCancellation();
-        manager.submit(event);
+        var identity = event.scope();
+        var invocation = new PluginInvocationContext(identity.owner(), identity.session());
+        try {
+            manager.submit(event);
+        } finally {
+            invocation.close();
+        }
         checkCancellation();
     }
 

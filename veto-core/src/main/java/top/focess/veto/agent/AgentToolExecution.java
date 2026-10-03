@@ -154,7 +154,8 @@ final class AgentToolExecution {
                         cancelledCalls.add(call.callId());
                         continue;
                     }
-                    var hookDecision = event == null ? BeforeToolEvent.Decision.CONTINUE : event.decision();
+                    var hookDecision =
+                            event == null ? BeforeToolEvent.Decision.CONTINUE : event.decision();
                     ScreenedInvocation screened =
                             toolBoundary.assess(
                                     call,
@@ -505,10 +506,14 @@ final class AgentToolExecution {
     }
 
     private @NonNull ToolResult cancelledCall(@NonNull ToolCall call, @NonNull ToolBatch batch) {
-        var result = new ToolResult(
-                call.toolName(), call.callId(), ToolResultStatus.REFUSED,
-                ToolResultFormat.PLAINTEXT, refusedObservation("cancelled by a plugin listener"),
-                ToolErrorCode.POLICY.CALL_BLOCKED);
+        var result =
+                new ToolResult(
+                        call.toolName(),
+                        call.callId(),
+                        ToolResultStatus.REFUSED,
+                        ToolResultFormat.PLAINTEXT,
+                        refusedObservation("cancelled by a plugin listener"),
+                        ToolErrorCode.POLICY.CALL_BLOCKED);
         output.appendToolCall(call, batch.modelCallId());
         output.appendToolResponse(result);
         return result;

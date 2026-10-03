@@ -114,11 +114,26 @@ class PluginManagerDiscoveryTest {
             reference = capture(plugins, scope);
             events.submit(new SessionDeletedEvent(new Scope.SessionScope("owner", "session")));
             assertTrue(PluginTestSupport.reveal(plugins, scope, reference).isEmpty());
-            assertThrows(IllegalStateException.class, () -> capture(plugins, scope));
+            assertEquals(
+                    "password=synthetic-token",
+                    PluginTestSupport.protect(
+                            plugins,
+                            BeforeTextCommitEvent.Phase.INPUT,
+                            scope,
+                            "source",
+                            "password=synthetic-token"));
             var otherSession = new Scope.AgentScope("owner", "other-session", "agent");
-            capture(plugins, otherSession);
+            String otherReference = capture(plugins, otherSession);
             events.submit(new UserLogoutEvent(new Scope.UserScope("owner")));
-            assertThrows(IllegalStateException.class, () -> capture(plugins, otherSession));
+            assertTrue(PluginTestSupport.reveal(plugins, otherSession, otherReference).isEmpty());
+            assertEquals(
+                    "password=synthetic-token",
+                    PluginTestSupport.protect(
+                            plugins,
+                            BeforeTextCommitEvent.Phase.INPUT,
+                            otherSession,
+                            "source",
+                            "password=synthetic-token"));
             events.submit(new UserLoggedInEvent(new Scope.UserScope("owner")));
             capture(plugins, otherSession);
         }

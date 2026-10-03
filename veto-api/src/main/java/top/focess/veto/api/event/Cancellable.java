@@ -1,14 +1,17 @@
 package top.focess.veto.api.event;
 
 /**
- * Optional reversible cancellation for non-security notification events.
+ * Optional reversible cancellation of the producer's action after event delivery.
  *
- * <p>A later handler may clear this flag, so it must never guard a security decision. Security
- * gates use {@link Event#prevent()}, which is irreversible and cannot be overturned downstream.
+ * <p>A later handler may clear this flag; the producer reads its final value after delivery.
+ * Cancellation does not stop propagation, which is controlled by {@link Event#prevent()}; a handler
+ * may individually opt out through {@link EventHandler#notCallIfCancelled()}. Cancellation cannot
+ * relax a separate host security decision. The read-only cooperative host stop signal from {@link
+ * Event#cancellation()} is independent of this mutable action flag.
  */
 public interface Cancellable {
     /**
-     * Reports whether the event has been cancelled.
+     * Reports whether the producer's action should be cancelled after delivery.
      *
      * @return current cancellation state
      */
@@ -21,7 +24,7 @@ public interface Cancellable {
      */
     void setCancelled(boolean cancelled);
 
-    /** Cancels the event. */
+    /** Requests cancellation of the producer's action after delivery. */
     default void cancel() {
         setCancelled(true);
     }
