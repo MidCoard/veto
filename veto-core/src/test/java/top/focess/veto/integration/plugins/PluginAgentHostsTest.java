@@ -595,7 +595,7 @@ class PluginAgentHostsTest {
             assertFalse(result.isDone());
             assertFalse(settled.isDone());
             assertFalse(request.cancel(Duration.ZERO));
-            verify(fixture.agent).cancelTask(result, Duration.ZERO);
+            verify(fixture.agent).cancelTask(handle, Duration.ZERO);
             child.close();
             assertFalse(request.settled().isDone());
             assertFalse(child.awaitTermination(Duration.ZERO));

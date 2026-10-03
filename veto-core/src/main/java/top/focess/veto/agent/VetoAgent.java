@@ -5,8 +5,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.TimeoutException;
 import java.util.function.Consumer;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.drift.ReadHistory;
@@ -24,7 +22,7 @@ import top.focess.veto.api.plugin.contract.AgentInbox;
 /**
  * The {@link Agent} implementation. Owns its {@link AgentRunner} internally on a virtual thread;
  * workflows/transports interact only through the {@link Agent} API. The runner blocks on its action
- * queue while {@link AgentState#IDLE}; {@link #submit} enqueues a {@link
+ * queue while {@link AgentState#IDLE}; {@link #submitRequest(String)} enqueues a {@link
  * AgentAction.UserPromptAction} and the virtual thread wakes.
  */
 public class VetoAgent implements Agent {
@@ -33,7 +31,6 @@ public class VetoAgent implements Agent {
     private final @NonNull AgentRunner runner;
     private final boolean userInteractionEnabled;
     private final @NonNull Thread executionThread;
-    private volatile @NonNull RequestHandle latestRequest = new RequestHandle(new Object());
 
     /** Creates a user-interactive agent and starts its runner on a virtual thread. */
     public VetoAgent(@NonNull AgentPersona persona, @NonNull AgentRunner runner) {
@@ -52,8 +49,6 @@ public class VetoAgent implements Agent {
         this.id = persona.id();
         this.runner = runner;
         this.userInteractionEnabled = userInteractionEnabled;
-        // Legacy await/result compatibility lives at the facade; production callers retain handles.
-        runner.onBackgroundRequest(request -> latestRequest = request);
         executionThread = Thread.ofVirtual().name("agent-" + id).start(runner);
     }
 
@@ -67,12 +62,12 @@ public class VetoAgent implements Agent {
         return userInteractionEnabled;
     }
 
-    /** User commands are queued independently of a workflow's submit/await handoff. */
+    /** User commands are queued independently of a workflow request handle. */
     public void submitUserPrompt(@NonNull String prompt) {
         if (!userInteractionEnabled) throw new IllegalStateException("Agent is read-only");
         if (state() == AgentState.TERMINATED)
             throw new IllegalStateException("Agent has terminated");
-        runner.enqueue(new AgentAction.DirectUserPromptAction(prompt));
+        runner.enqueue(new AgentAction.UserPromptAction(prompt));
     }
 
     /** Attaches the plugin work source the agent polls for autonomous observations. */
@@ -121,36 +116,9 @@ public class VetoAgent implements Agent {
     }
 
     @Override
-    public void submit(@NonNull String prompt) {
-        latestRequest = submitRequest(prompt, null);
-    }
-
-    @Override
-    public void submit(@NonNull String prompt, Consumer<AgentResult> callback) {
-        latestRequest = submitRequest(prompt, callback);
-    }
-
-    @Override
-    public @NonNull RequestHandle submitRequest(@NonNull String prompt) {
-        RequestHandle request = submitRequest(prompt, null);
-        latestRequest = request;
-        return request;
-    }
-
-    private @NonNull RequestHandle submitRequest(
+    public @NonNull RequestHandle submitRequest(
             @NonNull String prompt, Consumer<AgentResult> callback) {
         return runner.startTask(callback, new AgentAction.UserPromptAction(prompt));
-    }
-
-    @Override
-    public @NonNull AgentResult await(@NonNull Duration timeout)
-            throws TimeoutException, InterruptedException {
-        return latestRequest.await(timeout);
-    }
-
-    @Override
-    public @NonNull CompletableFuture<AgentResult> result() {
-        return latestRequest.result();
     }
 
     /** Registers a callback run once when the agent's execution thread terminates. */
@@ -171,7 +139,6 @@ public class VetoAgent implements Agent {
     @Override
     public void terminate() {
         runner.terminate();
-        runner.enqueue(new AgentAction.TerminateAction());
     }
 
     @Override
@@ -181,8 +148,7 @@ public class VetoAgent implements Agent {
     }
 
     @Override
-    public boolean cancelTask(
-            @NonNull CompletableFuture<AgentResult> task, @NonNull Duration timeout)
+    public boolean cancelTask(@NonNull RequestHandle task, @NonNull Duration timeout)
             throws InterruptedException {
         return runner.cancelTask(task, timeout);
     }
@@ -198,8 +164,8 @@ public class VetoAgent implements Agent {
     }
 
     @Override
-    public void compact() {
-        latestRequest = runner.startTask(null, new AgentAction.CompactAction());
+    public @NonNull RequestHandle compact() {
+        return runner.startTask(null, new AgentAction.CompactAction());
     }
 
     /**
@@ -246,12 +212,12 @@ public class VetoAgent implements Agent {
      * response.message} is emitted.
      */
     public void addMessageListener(@NonNull Consumer<String> listener) {
-        runner.addMessageListener(listener);
+        runner.output().addMessageListener(listener);
     }
 
     /** Unsubscribes a user-facing-message listener. */
     public void removeMessageListener(@NonNull Consumer<String> listener) {
-        runner.removeMessageListener(listener);
+        runner.output().removeMessageListener(listener);
     }
 
     /**
@@ -260,12 +226,12 @@ public class VetoAgent implements Agent {
      * as each {@code response.thought} is emitted, before the matching message.
      */
     public void addThoughtListener(@NonNull Consumer<String> listener) {
-        runner.addThoughtListener(listener);
+        runner.output().addThoughtListener(listener);
     }
 
     /** Unsubscribes an interim-thought listener. */
     public void removeThoughtListener(@NonNull Consumer<String> listener) {
-        runner.removeThoughtListener(listener);
+        runner.output().removeThoughtListener(listener);
     }
 
     /**
@@ -274,12 +240,12 @@ public class VetoAgent implements Agent {
      * call parks for approval.
      */
     public void addVetoListener(@NonNull Consumer<VetoPrompt> listener) {
-        runner.addVetoListener(listener);
+        runner.output().addVetoListener(listener);
     }
 
     /** Unsubscribes a HITL-veto listener. */
     public void removeVetoListener(@NonNull Consumer<VetoPrompt> listener) {
-        runner.removeVetoListener(listener);
+        runner.output().removeVetoListener(listener);
     }
 
     /**
@@ -289,12 +255,12 @@ public class VetoAgent implements Agent {
      * tool result.
      */
     public void addToolCallListener(@NonNull Consumer<ToolCallEvent> listener) {
-        runner.addToolCallListener(listener);
+        runner.output().addToolCallListener(listener);
     }
 
     /** Unsubscribes a tool-call listener. */
     public void removeToolCallListener(@NonNull Consumer<ToolCallEvent> listener) {
-        runner.removeToolCallListener(listener);
+        runner.output().removeToolCallListener(listener);
     }
 
     /**
@@ -303,12 +269,12 @@ public class VetoAgent implements Agent {
      * agent's virtual thread when a TOOL_RESPONSE turn is appended.
      */
     public void addToolResultListener(@NonNull Consumer<ToolResultEvent> listener) {
-        runner.addToolResultListener(listener);
+        runner.output().addToolResultListener(listener);
     }
 
     /** Unsubscribes a tool-result listener. */
     public void removeToolResultListener(@NonNull Consumer<ToolResultEvent> listener) {
-        runner.removeToolResultListener(listener);
+        runner.output().removeToolResultListener(listener);
     }
 
     /** The persona's resolved manifest (for the PromptCompiler / tests). */

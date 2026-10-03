@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Supplier;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -33,7 +34,7 @@ import top.focess.veto.model.AgentInstanceRepository;
  * thread to enter this registry. Dependency attachment is a startup operation.
  */
 @Component
-public final class SessionAgentRegistry {
+public final class SessionAgentRegistry implements AutoCloseable {
     private SessionInvalidations invalidations;
 
     /** Injects the invalidation bus used to notify subscribers when session agents change. */
@@ -66,9 +67,60 @@ public final class SessionAgentRegistry {
     }
 
     private final @NonNull Map<@NonNull String, @NonNull Entry> live = new HashMap<>();
+    // Transport/session keys identify their primary agent; live alone owns agent instances.
+    private final @NonNull Map<@NonNull String, @NonNull String> transportIds = new HashMap<>();
     private boolean closed;
     private final AgentInstanceRepository repository;
     private final TurnRecordRepository turns;
+
+    /**
+     * Resolves a transport key, creating its primary agent atomically with registration. The host
+     * factory assembles and registers the runner without waiting for its execution to complete.
+     */
+    synchronized @NonNull VetoAgent getOrCreateTransport(
+            @NonNull String key, @NonNull Supplier<@NonNull VetoAgent> create) {
+        if (closed) throw new IllegalStateException("Agent registry is closed");
+        var existing = transportAgent(key);
+        if (existing != null) return existing;
+        var agent = create.get();
+        var entry = live.get(agent.id());
+        if (entry == null || entry.agent() != agent)
+            throw new IllegalStateException("Created agent is not registered");
+        transportIds.put(key, agent.id());
+        return agent;
+    }
+
+    /** The live primary agent for an arbitrary transport key, or null after termination. */
+    public synchronized VetoAgent transportAgent(@NonNull String key) {
+        var id = transportIds.get(key);
+        if (id == null) return null;
+        var entry = live.get(id);
+        if (entry == null) {
+            transportIds.remove(key);
+            return null;
+        }
+        if (entry.agent().state() == AgentState.TERMINATED) {
+            stopIfSame(id, entry.agent());
+            return null;
+        }
+        return entry.agent();
+    }
+
+    /** Captures primary transport membership; independent session peers are not primaries. */
+    public synchronized @NonNull Map<@NonNull String, @NonNull VetoAgent> transports() {
+        Map<@NonNull String, @NonNull VetoAgent> result = new HashMap<>();
+        for (var key : List.copyOf(transportIds.keySet())) {
+            var agent = transportAgent(key);
+            if (agent != null) result.put(key, agent);
+        }
+        return Map.copyOf(result);
+    }
+
+    /** Stops the session owned by this transport, including descendants and independent peers. */
+    public synchronized void stopTransport(@NonNull String key) {
+        var agent = transportAgent(key);
+        if (agent != null) stopSession(agent.sessionId());
+    }
 
     /** Embedded runners without a database still have runtime lifecycle ownership. */
     public SessionAgentRegistry() {
@@ -314,6 +366,7 @@ public final class SessionAgentRegistry {
     public synchronized void stop(@NonNull String agentId) {
         Entry entry = live.remove(agentId);
         if (entry == null) return;
+        transportIds.values().removeIf(agentId::equals);
         if (invalidations != null) invalidations.changed(entry.sessionId(), "agents", "execution");
         var children =
                 live.values().stream()
@@ -347,6 +400,7 @@ public final class SessionAgentRegistry {
 
     /** Closes the registry and stops all live agents (invoked on context shutdown). */
     @PreDestroy
+    @Override
     public synchronized void close() {
         closed = true;
         List.copyOf(live.keySet()).forEach(this::stop);

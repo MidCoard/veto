@@ -4,7 +4,6 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.BlockingQueue;
 import java.util.function.Supplier;
@@ -16,7 +15,6 @@ import top.focess.veto.agent.ExecutionControl.Wait;
 import top.focess.veto.agent.continuation.RequestContinuationStore;
 import top.focess.veto.api.agent.AgentAction;
 import top.focess.veto.api.agent.AgentResult;
-import top.focess.veto.api.agent.AgentState;
 import top.focess.veto.api.plugin.contract.AgentInbox;
 import top.focess.veto.integration.plugins.SessionPlugins;
 import top.focess.veto.util.Nullness;
@@ -228,24 +226,15 @@ final class AgentContinuationExecution {
         KeysteadVault vault = executionVault;
         if (vault != null && (owner == null || !vault.isUnlocked(owner))) return null;
         AgentInbox service = source();
-        if (control.waiting(Wait.INTERRUPTED)
+        if (!control.open()
                 || control instanceof ExecutionControl.Suspended suspended
-                        && !suspended.waits().equals(Set.of(Wait.PLUGIN))
-                || control.waiting(Wait.BREAKER)
-                || control.state() == AgentState.PAUSED
-                || control.state() == AgentState.INTERCEPTED
-                || !control.open()) return null;
+                        && suspended.reason() != Wait.PLUGIN) return null;
         RequestHandle waiting = control.request();
         if (control.waiting(Wait.PLUGIN) && waiting != null && waiting.readyToResume())
             return new QueuedRequest(new AgentAction.WorkAction(), waiting);
         if (service == null) return null;
         // A newly submitted user task owns its own handoff future and goes first.
-        if (actionQueue.stream()
-                .anyMatch(
-                        a ->
-                                a.action() instanceof AgentAction.UserPromptAction
-                                        || a.action()
-                                                instanceof AgentAction.DirectUserPromptAction))
+        if (actionQueue.stream().anyMatch(a -> a.action() instanceof AgentAction.UserPromptAction))
             return null;
         var events = pendingObservations(service, waiting);
         if (events.isEmpty()) return null;

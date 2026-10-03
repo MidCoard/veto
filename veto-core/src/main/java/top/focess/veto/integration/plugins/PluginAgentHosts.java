@@ -281,7 +281,7 @@ public final class PluginAgentHosts implements PluginAgentHostFactory {
 
                     public boolean cancel(@NonNull Duration timeout) throws InterruptedException {
                         authorizeRelease(plugin, storage, grant);
-                        return agent.cancelTask(request.result(), timeout);
+                        return agent.cancelTask(request, timeout);
                     }
                 };
             }

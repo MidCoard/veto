@@ -28,7 +28,7 @@ import top.focess.veto.api.agent.workflow.PluginAwait;
 public final class RequestHandle {
     final @NonNull Object owner;
     final @NonNull RequestEpisode episode;
-    final @NonNull Result result = new Result();
+    final @NonNull CompletableFuture<AgentResult> result = new CompletableFuture<>();
     final @NonNull CompletableFuture<Boolean> settled = new CompletableFuture<>();
     final @NonNull Map<String, ApprovalReceipt> approvalReceipts = new HashMap<>();
     final @NonNull Set<String> declinedCallSignatures = new HashSet<>();
@@ -70,6 +70,8 @@ public final class RequestHandle {
     @NonNull String message = "";
     volatile boolean cancelled;
     boolean interruptSent;
+    // Resolved only by the runner for this request; never replaces the agent's identity.
+    volatile AgentProfiles.Resolved configuration;
 
     RequestHandle(@NonNull Object owner) {
         this(owner, new RequestEpisode(UUID.randomUUID().toString(), -1));
@@ -78,12 +80,6 @@ public final class RequestHandle {
     RequestHandle(@NonNull Object owner, @NonNull RequestEpisode episode) {
         this.owner = owner;
         this.episode = episode;
-    }
-
-    final class Result extends CompletableFuture<AgentResult> {
-        @NonNull RequestHandle handle() {
-            return RequestHandle.this;
-        }
     }
 
     /** The id of the episode this request drives. */

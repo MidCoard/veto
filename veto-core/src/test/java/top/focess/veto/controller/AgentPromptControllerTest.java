@@ -69,7 +69,7 @@ class AgentPromptControllerTest {
                         .prompt("session", "mate", new SubmitPromptRequest("Review"))
                         .getStatusCode());
         verify(mate).submitUserPrompt("Review");
-        verify(mate, never()).submit(anyString());
+        verify(mate, never()).submitRequest(anyString());
     }
 
     @Test

@@ -513,53 +513,31 @@ class WebReadAgentIntegrationTest {
                 "D:/IdeaProjects/veto",
                 0,
                 ToolResultPresentationMode.BASIC);
-        AtomicReference<Throwable> failure = new AtomicReference<>();
-        Thread submission =
-                Thread.ofVirtual()
-                        .start(
-                                () -> {
-                                    try {
-                                        service.submit(
-                                                session,
-                                                "Read the page",
-                                                binding,
-                                                Duration.ofSeconds(20),
-                                                null,
-                                                prompt -> {
-                                                    approval.countDown();
-                                                    if (mode.equals("approval")) return;
-                                                    VetoOption option =
-                                                            prompt.options().stream()
-                                                                    .filter(
-                                                                            value ->
-                                                                                    !value
-                                                                                            .isRefusal())
-                                                                    .findFirst()
-                                                                    .orElseThrow();
-                                                    assertTrue(
-                                                            hitl.resolveOption(
-                                                                    prompt.agentId(),
-                                                                    prompt.callId(),
-                                                                    option.name()));
-                                                });
-                                    } catch (Throwable error) {
-                                        failure.set(error);
-                                    }
-                                });
+        var parent = service.agent(session);
+        if (parent == null) throw new AssertionError("Parent missing");
+        parent.addVetoListener(
+                prompt -> {
+                    approval.countDown();
+                    if (mode.equals("approval")) return;
+                    VetoOption option =
+                            prompt.options().stream()
+                                    .filter(value -> !value.isRefusal())
+                                    .findFirst()
+                                    .orElseThrow();
+                    assertTrue(
+                            hitl.resolveOption(prompt.agentId(), prompt.callId(), option.name()));
+                });
+        var task = parent.submitRequest("Read the page");
         try {
             assertTrue(approval.await(5, TimeUnit.SECONDS));
-            var parent = service.agent(session);
-            if (parent == null) throw new AssertionError("Parent missing");
             if (mode.equals("approval")) {
-                assertTrue(parent.cancelTask(parent.result(), Duration.ofSeconds(3)));
-                submission.join(3000);
-                assertFalse(submission.isAlive());
-                assertFalse(parent.result().get().success());
+                assertTrue(parent.cancelTask(task, Duration.ofSeconds(3)));
+                assertFalse(task.result().get().success());
                 assertTrue(hitl.pendingFor(parent.id()).isEmpty());
                 assertEquals(1, entered.getCount(), "Unapproved reader must never start");
                 verify(network, never()).openApprovedDestination(any());
-                parent.submit("Next task");
-                assertTrue(parent.await(Duration.ofSeconds(3)).success());
+                assertTrue(
+                        parent.submitRequest("Next task").await(Duration.ofSeconds(3)).success());
                 return;
             }
             assertTrue(entered.await(5, TimeUnit.SECONDS));
@@ -572,7 +550,6 @@ class WebReadAgentIntegrationTest {
                             .agent();
             if (mode.equals("session")) service.remove(session);
             else {
-                var task = parent.result();
                 if (mode.equals("stubborn")) {
                     assertFalse(parent.cancelTask(task, Duration.ofMillis(100)));
                     assertTrue(interrupted.await(3, TimeUnit.SECONDS));
@@ -583,36 +560,36 @@ class WebReadAgentIntegrationTest {
                     releaseChild.countDown();
                 }
                 assertTrue(parent.cancelTask(task, Duration.ofSeconds(3)));
-                assertFalse(task.get().success());
+                assertFalse(task.result().get().success());
                 assertEquals(1, persistedCancellations.get());
             }
             assertTrue(interrupted.await(3, TimeUnit.SECONDS));
-            submission.join(3000);
-            assertFalse(submission.isAlive());
+            assertFalse(task.result().get(3, TimeUnit.SECONDS).success());
             Thread worker = readerThread.get();
             if (worker == null) throw new AssertionError("Reader was not started");
             worker.join(3000);
             assertFalse(worker.isAlive());
             assertEquals(AgentState.TERMINATED, child.state());
-            assertFalse(child.result().get(1, TimeUnit.SECONDS).success());
-            assertThrows(IllegalStateException.class, () -> child.submit("Must not restart"));
+            assertTrue(
+                    child.history().stream()
+                            .anyMatch(turn -> turn.type() == TurnType.EXECUTION_ERROR),
+                    "Interrupted child must record its execution failure");
+            assertThrows(
+                    IllegalStateException.class, () -> child.submitRequest("Must not restart"));
             if (mode.equals("session")) {
                 assertTrue(registry.agents(sessionId).isEmpty());
                 assertNull(service.agent(session));
             } else {
                 assertNotEquals(AgentState.TERMINATED, parent.state());
-                parent.submit("Next task");
-                assertTrue(parent.await(Duration.ofSeconds(3)).success());
+                assertTrue(
+                        parent.submitRequest("Next task").await(Duration.ofSeconds(3)).success());
             }
-            assertNull(failure.get());
             // Cancellation completes the submission future before the parent tool unwinds.
             assertTrue(accessClosed.await(3, TimeUnit.SECONDS), "Reader capability was not closed");
             verify(access).close();
         } finally {
             releaseChild.countDown();
             service.remove(session);
-            submission.interrupt();
-            submission.join(3000);
         }
     }
 

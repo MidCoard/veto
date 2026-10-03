@@ -72,7 +72,8 @@ public interface AgentConfiguration {
     /**
      * Requested effective profile and optional transition.
      *
-     * @param profile requested profile, still subject to host authorization
+     * @param profile request execution profile, still subject to host authorization; never replaces
+     *     the agent identity
      * @param transition optional transition metadata
      */
     record Intent(@NonNull AgentProfile profile, Transition transition) {}

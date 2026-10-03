@@ -572,7 +572,7 @@ public final class IsolatedExecutions {
                 }
 
                 public boolean cancel(@NonNull Duration timeout) throws InterruptedException {
-                    return agent.cancelTask(handle.result(), timeout);
+                    return agent.cancelTask(handle, timeout);
                 }
             };
         }

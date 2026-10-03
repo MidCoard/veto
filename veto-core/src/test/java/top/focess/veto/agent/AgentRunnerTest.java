@@ -17,6 +17,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.BooleanSupplier;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -126,7 +127,8 @@ class AgentRunnerTest {
                     .logRequired(Mockito.any(), Mockito.any(), Mockito.any(), Mockito.anyString());
             ReflectionTestUtils.setField(service, "turnLogService", turns);
         }
-        service.submitNow("question-wait", "Ask for a format", binding("System"));
+        var questionRequest =
+                service.submitNow("question-wait", "Ask for a format", binding("System"));
         var agent = requireAgent(service.agent("question-wait"));
         try {
             long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
@@ -134,11 +136,11 @@ class AgentRunnerTest {
                     && System.nanoTime() < deadline) Thread.sleep(10);
             assertEquals(1, questions.pendingFor(QuestionTestSupport.scope(agent.id())).size());
             assertEquals("QUESTION", agent.executionWaitReason());
-            assertFalse(agent.result().isDone());
+            assertFalse(questionRequest.result().isDone());
             if (action.equals("INTERRUPT")) {
-                assertTrue(agent.cancelTask(agent.result(), Duration.ofSeconds(5)));
-                assertFalse(agent.await(EPISODE_TIMEOUT).success());
-                assertEquals("QUESTION", agent.executionWaitReason());
+                assertTrue(agent.cancelTask(questionRequest, Duration.ofSeconds(5)));
+                assertFalse(questionRequest.await(EPISODE_TIMEOUT).success());
+                assertNull(agent.executionWaitReason());
                 assertEquals(1, calls.get());
             } else {
                 if (!action.equals("CANCEL"))
@@ -152,11 +154,11 @@ class AgentRunnerTest {
                             questions.cancel(
                                     QuestionTestSupport.scope(agent.id()), "question-call"));
                 if (action.equals("HISTORY_FAIL")) {
-                    assertFalse(agent.await(EPISODE_TIMEOUT).success());
-                    assertEquals("QUESTION", agent.executionWaitReason());
+                    assertFalse(questionRequest.await(EPISODE_TIMEOUT).success());
+                    assertNull(agent.executionWaitReason());
                     assertEquals(1, calls.get());
                 } else {
-                    assertTrue(agent.await(EPISODE_TIMEOUT).success());
+                    assertTrue(questionRequest.await(EPISODE_TIMEOUT).success());
                     assertNull(agent.executionWaitReason());
                     assertEquals(2, calls.get());
                 }
@@ -196,9 +198,13 @@ class AgentRunnerTest {
             assertEquals(active.episode.id(), active.requestId());
             assertNotEquals(active.requestId(), cancelled.requestId());
             assertNotEquals(cancelled.requestId(), following.requestId());
-            assertSame(following.result(), agent.result());
+            assertNotSame(active.result(), following.result());
             assertFalse(active.settled().isDone());
-            assertTrue(agent.cancelTask(cancelled.result(), Duration.ofSeconds(1)));
+            var foreign = new RequestHandle(new Object());
+            assertFalse(agent.cancelTask(foreign, Duration.ZERO));
+            assertFalse(foreign.result().isDone());
+            assertFalse(foreign.settled().isDone());
+            assertTrue(agent.cancelTask(cancelled, Duration.ofSeconds(1)));
             assertFalse(cancelled.await(EPISODE_TIMEOUT).success());
             assertTrue(cancelled.settled().isDone());
             assertFalse(active.result().isDone());
@@ -221,14 +227,14 @@ class AgentRunnerTest {
         try {
             service.submit("callback-throw", "Warm up", binding("System"), EPISODE_TIMEOUT);
             var agent = requireAgent(service.agent("callback-throw"));
-            agent.submit(
-                    "First",
-                    result -> {
-                        throw new IllegalStateException("subscriber failed");
-                    });
-            var first = agent.result();
+            var first =
+                    agent.submitRequest(
+                            "First",
+                            result -> {
+                                throw new IllegalStateException("subscriber failed");
+                            });
             var following = agent.submitRequest("Second");
-            assertTrue(first.get(5, TimeUnit.SECONDS).success());
+            assertTrue(first.await(EPISODE_TIMEOUT).success());
             assertTrue(agent.cancelTask(first, Duration.ofSeconds(5)));
             assertTrue(following.await(EPISODE_TIMEOUT).success());
         } finally {
@@ -282,19 +288,19 @@ class AgentRunnerTest {
         try {
             service.submit("callback-exit", "Warm up", binding("System"), EPISODE_TIMEOUT);
             var agent = requireAgent(service.agent("callback-exit"));
-            agent.submit(
-                    "Next",
-                    result -> {
-                        entered.countDown();
-                        try {
-                            release.await(5, TimeUnit.SECONDS);
-                        } catch (InterruptedException e) {
-                            Thread.currentThread().interrupt();
-                        }
-                    });
-            var task = agent.result();
+            var task =
+                    agent.submitRequest(
+                            "Next",
+                            result -> {
+                                entered.countDown();
+                                try {
+                                    release.await(5, TimeUnit.SECONDS);
+                                } catch (InterruptedException e) {
+                                    Thread.currentThread().interrupt();
+                                }
+                            });
             assertTrue(entered.await(5, TimeUnit.SECONDS));
-            assertTrue(task.isDone());
+            assertTrue(task.result().isDone());
             assertFalse(agent.cancelTask(task, Duration.ofMillis(20)));
             release.countDown();
             assertTrue(agent.cancelTask(task, Duration.ofSeconds(5)));
@@ -373,8 +379,7 @@ class AgentRunnerTest {
             agent.signalWork();
             assertTrue(cancelled.await(5, TimeUnit.SECONDS));
             assertEquals(0, calls.get());
-            agent.submit("A new task");
-            assertTrue(agent.await(EPISODE_TIMEOUT).success());
+            assertTrue(agent.submitRequest("A new task").await(EPISODE_TIMEOUT).success());
             assertEquals(1, calls.get());
             Mockito.verify(monitors, Mockito.never()).activationStarted(agentId, event);
             assertTrue(
@@ -426,10 +431,9 @@ class AgentRunnerTest {
                             return new VetoResponse(null, null, "completed");
                         });
         try {
-            service.submitNow("cancel-task", "First task", binding("System"));
+            var first = service.submitNow("cancel-task", "First task", binding("System"));
             var agent = requireAgent(service.agent("cancel-task"));
             assertTrue(entered.await(5, TimeUnit.SECONDS));
-            var first = agent.result();
             assertFalse(agent.cancelTask(first, Duration.ofMillis(20)));
             assertTrue(interrupted.await(5, TimeUnit.SECONDS));
             assertFalse(agent.cancelTask(first, Duration.ofMillis(20)));
@@ -437,10 +441,12 @@ class AgentRunnerTest {
                     1,
                     interruptCount.get(),
                     "Repeated cancellation must not interrupt cleanup again");
-            assertFalse(first.isDone(), "uncooperative execution must not be reported stopped");
+            assertFalse(
+                    first.result().isDone(),
+                    "uncooperative execution must not be reported stopped");
             release.countDown();
             assertTrue(agent.cancelTask(first, Duration.ofSeconds(5)));
-            assertFalse(first.get().success());
+            assertFalse(first.await(EPISODE_TIMEOUT).success());
             assertTrue(
                     agent.history().stream()
                             .anyMatch(
@@ -487,8 +493,7 @@ class AgentRunnerTest {
             agent.signalWork();
             assertTrue(observationCancelled.await(5, TimeUnit.SECONDS));
             assertEquals(1, calls.get(), "Cancelled request must not resume on process exit");
-            agent.submit("Second task");
-            assertTrue(agent.await(EPISODE_TIMEOUT).success());
+            assertTrue(agent.submitRequest("Second task").await(EPISODE_TIMEOUT).success());
             assertEquals(2, calls.get());
             assertNotEquals(AgentState.TERMINATED, agent.state());
         } finally {
@@ -512,10 +517,11 @@ class AgentRunnerTest {
                             return new VetoResponse(null, null, "unexpected");
                         });
         try {
-            service.submitNow("wrapped-cancel", "Cancelled work", binding("System"));
+            var cancelled =
+                    service.submitNow("wrapped-cancel", "Cancelled work", binding("System"));
             var agent = requireAgent(service.agent("wrapped-cancel"));
             assertTrue(entered.await(5, TimeUnit.SECONDS));
-            assertTrue(agent.cancelTask(agent.result(), Duration.ofSeconds(5)));
+            assertTrue(agent.cancelTask(cancelled, Duration.ofSeconds(5)));
             var failures =
                     agent.history().stream()
                             .filter(turn -> turn.type() == TurnType.EXECUTION_ERROR)
@@ -611,18 +617,15 @@ class AgentRunnerTest {
                     message -> {
                         if (message.equals("result-4")) directDone.countDown();
                     });
-            agent.submit("Wait for group");
-            var workflow = agent.result();
+            var workflow = agent.submitRequest("Wait for group");
             assertTrue(parked.await(5, TimeUnit.SECONDS));
-            if (!(workflow instanceof RequestHandle.Result owned))
-                throw new AssertionError("Missing request");
-            owned.handle().await(new PluginAwait("group-test", groupReady), agent::signalWork);
+            workflow.await(new PluginAwait("group-test", groupReady), agent::signalWork);
             registered.countDown();
             agent.submitUserPrompt("User follow-up");
-            assertSame(workflow, agent.result());
+            assertFalse(workflow.result().isDone());
             eventPending.set(true);
             agent.signalWork();
-            assertEquals("result-3", workflow.get(5, TimeUnit.SECONDS).message());
+            assertEquals("result-3", workflow.await(EPISODE_TIMEOUT).message());
             assertTrue(directDone.await(5, TimeUnit.SECONDS));
         } finally {
             service.remove("direct-monitor");
@@ -706,14 +709,14 @@ class AgentRunnerTest {
             pending.set(true);
             signal.complete(true);
             assertTrue(resumedEntered.await(5, TimeUnit.SECONDS));
-            assertSame(request.result(), agent.result());
+            assertFalse(request.result().isDone());
             assertFalse(request.settled().isDone());
-            assertFalse(agent.cancelTask(request.result(), Duration.ofMillis(20)));
+            assertFalse(agent.cancelTask(request, Duration.ofMillis(20)));
             assertTrue(interrupted.await(5, TimeUnit.SECONDS));
             assertFalse(request.result().isDone());
             assertFalse(request.settled().isDone());
             resumedRelease.countDown();
-            assertTrue(agent.cancelTask(request.result(), Duration.ofSeconds(5)));
+            assertTrue(agent.cancelTask(request, Duration.ofSeconds(5)));
             assertFalse(request.await(EPISODE_TIMEOUT).success());
             assertTrue(request.settled().get(5, TimeUnit.SECONDS));
             assertTrue(
@@ -873,25 +876,24 @@ class AgentRunnerTest {
                             return new VetoResponse(null, null, "result-" + call);
                         });
         try {
-            service.submitNow("direct-user", "Group task", binding("System"));
+            var workflow = service.submitNow("direct-user", "Group task", binding("System"));
             var agent = requireAgent(service.agent("direct-user"));
             assertTrue(firstEntered.await(5, TimeUnit.SECONDS));
-            var workflow = agent.result();
             agent.submitUserPrompt("User follow-up");
-            assertSame(workflow, agent.result());
+            assertFalse(workflow.result().isDone());
             releaseFirst.countDown();
-            assertEquals("result-1", workflow.get(5, TimeUnit.SECONDS).message());
+            assertEquals("result-1", workflow.await(EPISODE_TIMEOUT).message());
             assertTrue(directEntered.await(5, TimeUnit.SECONDS));
-            agent.submit(
-                    "Next group task",
-                    result -> {
-                        callbacks.incrementAndGet();
-                        thirdDone.countDown();
-                    });
-            var nextWorkflow = agent.result();
+            var nextWorkflow =
+                    agent.submitRequest(
+                            "Next group task",
+                            result -> {
+                                callbacks.incrementAndGet();
+                                thirdDone.countDown();
+                            });
             releaseDirect.countDown();
             assertTrue(thirdDone.await(5, TimeUnit.SECONDS));
-            assertEquals("result-3", nextWorkflow.get(5, TimeUnit.SECONDS).message());
+            assertEquals("result-3", nextWorkflow.await(EPISODE_TIMEOUT).message());
             assertEquals(1, callbacks.get());
             assertTrue(
                     agent.history().stream()
@@ -948,16 +950,21 @@ class AgentRunnerTest {
                         })
                 .when(monitors)
                 .acknowledge(agent.id(), event);
+        var completion = completion(monitors, agent.id(), event);
         agent.attachWorkSource(work(monitors));
         try {
             agent.signalWork();
             if (retryAcknowledgement) {
                 assertTrue(acknowledgementFailed.await(5, TimeUnit.SECONDS));
-                assertFalse(agent.await(EPISODE_TIMEOUT).success());
+                awaitCondition(
+                        () ->
+                                agent.history().stream()
+                                        .anyMatch(turn -> turn.type() == TurnType.EXECUTION_ERROR));
+                assertEquals(1, seen.size(), "Failed acknowledgement must not run the model");
                 agent.signalWork();
             }
             assertTrue(resumed.await(5, TimeUnit.SECONDS));
-            assertTrue(agent.await(EPISODE_TIMEOUT).success());
+            assertEquals(Boolean.TRUE, completion.get(5, TimeUnit.SECONDS));
             assertEquals(
                     1,
                     agent.history().stream().filter(t -> t.type() == TurnType.USER_PROMPT).count());
@@ -1006,11 +1013,12 @@ class AgentRunnerTest {
                         })
                 .when(monitors)
                 .acknowledge(agent.id(), event);
+        var completion = completion(monitors, agent.id(), event);
         agent.attachWorkSource(work(monitors));
         try {
             agent.signalWork();
             assertTrue(consumed.await(5, TimeUnit.SECONDS));
-            assertFalse(agent.await(EPISODE_TIMEOUT).success());
+            assertEquals(Boolean.FALSE, completion.get(5, TimeUnit.SECONDS));
             assertEquals(1, calls.get());
         } finally {
             agent.terminate();
@@ -1078,10 +1086,11 @@ class AgentRunnerTest {
                             })
                     .when(monitors)
                     .acknowledge(Mockito.eq(agent.id()), Mockito.any());
+            var completion = completion(monitors, agent.id(), old);
             agent.attachWorkSource(work(monitors));
             agent.signalWork();
             assertTrue(resumed.await(5, TimeUnit.SECONDS));
-            assertTrue(agent.await(EPISODE_TIMEOUT).success());
+            assertEquals(Boolean.TRUE, completion.get(5, TimeUnit.SECONDS));
             assertEquals(List.of(other), List.copyOf(pending));
             var notification =
                     agent.history().stream()
@@ -1152,8 +1161,7 @@ class AgentRunnerTest {
             agent.attachWorkSource(work(monitors));
             agent.signalWork();
             assertTrue(inNotification.await(5, TimeUnit.SECONDS));
-            agent.submit("New request");
-            var newResult = agent.result();
+            var newResult = agent.submitRequest("New request").result();
             releaseNotification.countDown();
             assertTrue(inUser.await(5, TimeUnit.SECONDS));
             assertFalse(newResult.isDone(), "An old notification must not finish a new request");
@@ -1204,14 +1212,21 @@ class AgentRunnerTest {
                             })
                     .when(monitors)
                     .acknowledge(agent.id(), event);
+            var completion = completion(monitors, agent.id(), event);
             agent.attachWorkSource(work(monitors));
             agent.signalWork();
             assertTrue(appended.await(5, TimeUnit.SECONDS));
-            assertFalse(agent.await(EPISODE_TIMEOUT).success());
+            assertEquals(Boolean.FALSE, completion.get(5, TimeUnit.SECONDS));
             assertEquals(3, calls.get(), "Old request already consumed both calls");
         } finally {
             service.remove("origin-budget");
         }
+    }
+
+    static void awaitCondition(@NonNull BooleanSupplier condition) throws InterruptedException {
+        long deadline = System.nanoTime() + EPISODE_TIMEOUT.toNanos();
+        while (!condition.getAsBoolean() && System.nanoTime() < deadline) Thread.sleep(10);
+        assertTrue(condition.getAsBoolean(), "Expected observation was not completed");
     }
 
     static final @NonNull Duration EPISODE_TIMEOUT = Duration.ofSeconds(10);

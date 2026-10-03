@@ -121,8 +121,8 @@ class ZeroPluginBootTest {
                         "owner",
                         null);
         try {
-            agent.submit("Reply once without tools");
-            var result = agent.await(Duration.ofSeconds(10));
+            var result =
+                    agent.submitRequest("Reply once without tools").await(Duration.ofSeconds(10));
             assertTrue(result.success(), result.message());
             assertEquals("Core workflow completed", result.message());
             assertEquals(Role.STANDALONE, agent.persona().role());

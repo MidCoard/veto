@@ -29,7 +29,6 @@ import top.focess.veto.agent.tool.ToolCallContext;
 import top.focess.veto.agent.tool.ToolCallContextHolder;
 import top.focess.veto.agent.tool.ToolDefinition;
 import top.focess.veto.agent.tool.ToolEngine;
-import top.focess.veto.api.agent.AgentState;
 import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.agent.tool.ToolErrorCode;
@@ -105,7 +104,7 @@ final class AgentToolExecution {
             String thought,
             @NonNull ToolBatch batch,
             @NonNull Invocation invocation) {
-        runner.transitionTo(AgentState.WAITING);
+        runner.setActivity(ExecutionControl.Activity.TOOL);
         try {
 
             if (calls.size() > 1
@@ -194,7 +193,7 @@ final class AgentToolExecution {
                         skippedCalls.add(call);
                     } else if (decision instanceof ApprovalDecision.Refused r) {
                         output.emitMessage(r.reason());
-                        runner.transitionTo(AgentState.INTERCEPTED);
+                        runner.beginWait(Wait.APPROVAL);
                         List<VetoOption> offered = List.of(VetoOption.EXEC_DECLINE);
                         toolBoundary.register(screened, offered, Danger.CRITICAL, null);
                         output.emitVetoRequired(
@@ -208,7 +207,7 @@ final class AgentToolExecution {
                         batchApproved = false;
                         break;
                     } else if (decision instanceof ApprovalDecision.Prompt p) {
-                        runner.transitionTo(AgentState.INTERCEPTED);
+                        runner.beginWait(Wait.APPROVAL);
                         // Register the await target BEFORE advertising the prompt: the veto
                         // listener sends the Prompt synchronously, and the user's reply could
                         // otherwise race register and resolve against a not-yet-registered future.
@@ -246,14 +245,12 @@ final class AgentToolExecution {
                                 AgentToolExecution.refusedObservation(refusalDetail),
                                 false);
                     }
-                    runner.transitionTo(AgentState.IDLE);
                     throw new VetoRefusedException(approvalRequested);
                 }
             }
 
             // 3. Execute phase (all confirmed / skipped)
-            if (runner.control().state() == AgentState.INTERCEPTED)
-                runner.transitionTo(AgentState.WAITING);
+            runner.setActivity(ExecutionControl.Activity.TOOL);
             for (int i = 0; i < calls.size(); i++) {
                 ToolCall call = calls.get(i);
                 if (cancelledCalls.contains(call.callId())) {
@@ -282,10 +279,7 @@ final class AgentToolExecution {
             }
 
         } finally {
-            if (runner.control().state() == AgentState.WAITING
-                    || runner.control().state() == AgentState.INTERCEPTED) {
-                runner.transitionTo(AgentState.RUNNING);
-            }
+            runner.setActivity(ExecutionControl.Activity.MODEL);
         }
         return batch.control;
     }
@@ -381,7 +375,7 @@ final class AgentToolExecution {
             // (e) plugin postAction chain
             runner.checkTaskCancellation();
             boolean waitsForAnswer = def.capability() == ToolCapability.USER_INTERACTION;
-            if (waitsForAnswer) runner.saveExecutionWait(Wait.QUESTION);
+            if (waitsForAnswer) runner.beginWait(Wait.QUESTION);
             ToolResult transformed = toolEngine.execute(call, def);
             runner.checkTaskCancellation();
             ToolResult actualResult = transformed;
@@ -431,11 +425,12 @@ final class AgentToolExecution {
                 else awaiting.signal().ready().cancel(false);
             } else if (observed.success() && responseDirective != null)
                 batch.control = responseDirective;
-            if (waitsForAnswer && runner.control().open()) runner.saveExecutionWait(null);
 
             if (observed.success()) runner.resolveConfiguration();
             return observed;
         } finally {
+            if (def.capability() == ToolCapability.USER_INTERACTION)
+                runner.clearWait(Wait.QUESTION);
             ToolCallContextHolder.clear();
         }
     }
@@ -491,16 +486,15 @@ final class AgentToolExecution {
                 if (resolvedCall == null) {
                     throw new VetoRefusedException(true);
                 }
-                runner.transitionTo(AgentState.RUNNING);
+                runner.setActivity(ExecutionControl.Activity.MODEL);
             }
         }
 
-        runner.transitionTo(AgentState.WAITING);
+        runner.setActivity(ExecutionControl.Activity.TOOL);
         try {
             return executeResolvedCall(screened, batch, invocation);
         } finally {
-            if (runner.control().state() == AgentState.WAITING)
-                runner.transitionTo(AgentState.RUNNING);
+            runner.setActivity(ExecutionControl.Activity.MODEL);
         }
     }
 
@@ -547,7 +541,7 @@ final class AgentToolExecution {
             boolean restoreInterrupt =
                     cancellation != null && cancellation.cancelled && Thread.interrupted();
             try {
-                if (runner.control().open()) runner.saveExecutionWait(null);
+                if (runner.control().open()) runner.clearWait(Wait.APPROVAL);
             } finally {
                 if (restoreInterrupt) Thread.currentThread().interrupt();
             }
@@ -580,14 +574,14 @@ final class AgentToolExecution {
             @NonNull ToolBatch batch,
             @NonNull Invocation invocation) {
         ToolCall call = screened.call();
-        runner.transitionTo(AgentState.INTERCEPTED);
+        runner.beginWait(Wait.APPROVAL);
         // Register before advertising the prompt so a fast reply cannot beat registration.
         List<VetoOption> offered = p.options();
         String callId = call.callId();
         toolBoundary.register(screened, offered, p.danger(), p.relevance());
         output.emitVetoRequired(call, p, offered);
         InterceptResolution resolution = awaitResolution(callId, invocation);
-        runner.transitionTo(AgentState.WAITING);
+        runner.setActivity(ExecutionControl.Activity.TOOL);
         if (resolution.isRefusal()) {
             output.appendToolCall(call, batch.modelCallId());
             output.appendToolResponse(

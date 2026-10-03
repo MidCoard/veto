@@ -3,12 +3,10 @@ package top.focess.veto.agent;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Consumer;
 import org.jspecify.annotations.NonNull;
@@ -68,7 +66,8 @@ import top.focess.veto.vault.KeysteadVault;
  * AgentRunner} managed per {@link VetoAgent}.
  *
  * <p>Resolves (or creates) an agent per transport identity, binds its model configuration, submits
- * a prompt, and blocks for the result. Owns agent lifecycle + veto resolution.
+ * a prompt, and blocks for the request's result. {@link SessionAgentRegistry} owns live membership;
+ * this service assembles agents and resolves vetoes.
  */
 @Service
 @SuppressWarnings(
@@ -160,9 +159,6 @@ public class AgentService {
      */
     static final @NonNull UUID DEFAULT_USER_ID =
             UUID.fromString("00000000-0000-0000-0000-000000000000");
-
-    private final @NonNull ConcurrentHashMap<@NonNull String, @NonNull VetoAgent> agents =
-            new ConcurrentHashMap<>();
 
     /** Spring-wired constructor: assembles the shared service from its collaborators and config. */
     @Autowired
@@ -262,7 +258,8 @@ public class AgentService {
      */
     public @NonNull AgentResult submit(
             @NonNull String agentKey, @NonNull String prompt, @NonNull LlmBinding binding) {
-        VetoAgent agent = agents.computeIfAbsent(agentKey, k -> createAgent(k, binding));
+        VetoAgent agent =
+                sessionAgents.getOrCreateTransport(agentKey, () -> createAgent(agentKey, binding));
         bindForSubmission(agent, binding);
         agent.setLocale(LocaleContextHolder.getLocale());
         var request = agent.submitRequest(prompt);
@@ -286,12 +283,13 @@ public class AgentService {
      * here. This is the transport shape the web UI uses: REST submits, WebSocket streams, REST GET
      * history stays the authoritative read.
      */
-    public void submitNow(
+    public @NonNull RequestHandle submitNow(
             @NonNull String agentKey, @NonNull String prompt, @NonNull LlmBinding binding) {
-        VetoAgent agent = agents.computeIfAbsent(agentKey, k -> createAgent(k, binding));
+        VetoAgent agent =
+                sessionAgents.getOrCreateTransport(agentKey, () -> createAgent(agentKey, binding));
         bindForSubmission(agent, binding);
         agent.setLocale(LocaleContextHolder.getLocale());
-        agent.submit(prompt);
+        return agent.submitRequest(prompt);
     }
 
     /** Synchronous submit with a live result message (for the terminal path). */
@@ -301,7 +299,8 @@ public class AgentService {
             @NonNull LlmBinding binding,
             @NonNull Duration timeout)
             throws TimeoutException, InterruptedException {
-        VetoAgent agent = agents.computeIfAbsent(agentKey, k -> createAgent(k, binding));
+        VetoAgent agent =
+                sessionAgents.getOrCreateTransport(agentKey, () -> createAgent(agentKey, binding));
         bindForSubmission(agent, binding);
         agent.setLocale(LocaleContextHolder.getLocale());
         var request = agent.submitRequest(prompt);
@@ -383,7 +382,8 @@ public class AgentService {
             Consumer<ToolCallEvent> toolCallSink,
             Consumer<ToolResultEvent> toolResultSink)
             throws TimeoutException, InterruptedException {
-        VetoAgent agent = agents.computeIfAbsent(agentKey, k -> createAgent(k, binding));
+        VetoAgent agent =
+                sessionAgents.getOrCreateTransport(agentKey, () -> createAgent(agentKey, binding));
         bindForSubmission(agent, binding);
         agent.setLocale(LocaleContextHolder.getLocale());
         if (messageSink != null) {
@@ -442,7 +442,9 @@ public class AgentService {
             @NonNull Duration timeout,
             @NonNull UUID userId)
             throws TimeoutException, InterruptedException {
-        VetoAgent agent = agents.computeIfAbsent(agentKey, k -> createAgent(k, binding, userId));
+        VetoAgent agent =
+                sessionAgents.getOrCreateTransport(
+                        agentKey, () -> createAgent(agentKey, binding, userId));
         bindForSubmission(agent, binding);
         agent.setLocale(LocaleContextHolder.getLocale());
         var request = agent.submitRequest(prompt);
@@ -570,26 +572,29 @@ public class AgentService {
             String workspaceRoots,
             int currentWorkspaceRootIndex,
             @NonNull ToolResultPresentationMode toolResultPresentation) {
-        boolean[] created = {false};
         Workspace workspace = buildWorkspace(workspaceRoots, currentWorkspaceRootIndex);
         VetoAgent agent =
-                agents.computeIfAbsent(
+                sessionAgents.getOrCreateTransport(
                         sessionId,
-                        k -> {
-                            created[0] = true;
-                            return createAgent(
-                                    k,
-                                    primaryAgentId,
-                                    binding,
-                                    userId,
-                                    owner,
-                                    workspace,
-                                    toolResultPresentation);
+                        () -> {
+                            var created =
+                                    createAgent(
+                                            sessionId,
+                                            primaryAgentId,
+                                            binding,
+                                            userId,
+                                            owner,
+                                            workspace,
+                                            toolResultPresentation);
+                            try {
+                                if (!history.isEmpty()) created.seedHistory(history);
+                            } catch (RuntimeException | Error failure) {
+                                sessionAgents.stopIfSame(created.id(), created);
+                                throw failure;
+                            }
+                            return created;
                         });
         agent.bind(binding);
-        if (created[0] && !history.isEmpty()) {
-            agent.seedHistory(history);
-        }
         agent.refreshConfiguration();
         return agent;
     }
@@ -622,23 +627,20 @@ public class AgentService {
 
     /** The live agent for a transport id (for history / state inspection). */
     public VetoAgent agent(@NonNull String agentKey) {
-        return agents.get(agentKey);
+        return sessionAgents.transportAgent(agentKey);
     }
 
     /**
-     * A live unmodifiable view of all managed agents (for the terminal facade's session inspection
-     * — turn counts for the status bar / {@code /status}). Callers must not mutate.
+     * An immutable snapshot of primary transport agents (for the terminal facade's session
+     * inspection — turn counts for the status bar / {@code /status}). Callers must not mutate.
      */
     public @NonNull Map<@NonNull String, @NonNull VetoAgent> agentsView() {
-        return Collections.unmodifiableMap(agents);
+        return sessionAgents.transports();
     }
 
     /** Removes an agent (logout / disconnect). */
     public void remove(@NonNull String agentKey) {
-        VetoAgent a = agents.remove(agentKey);
-        if (a != null) {
-            sessionAgents.stopSession(a.sessionId());
-        }
+        sessionAgents.stopTransport(agentKey);
     }
 
     private @NonNull VetoAgent createAgent(@NonNull String agentKey, @NonNull LlmBinding binding) {

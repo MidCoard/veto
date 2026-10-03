@@ -1,6 +1,5 @@
 package top.focess.veto.agent;
 
-import java.util.Set;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.agent.AgentState;
 
@@ -16,14 +15,12 @@ sealed interface ExecutionControl {
         QUESTION,
         BREAKER,
         PLUGIN,
-        INTERRUPTED,
-        PAUSE
+        INTERRUPTED
     }
 
     enum CloseReason {
         SHUTDOWN,
-        AGENT_DELETED,
-        SESSION_DELETED
+        AGENT_DELETED
     }
 
     record Idle() implements ExecutionControl {}
@@ -31,12 +28,8 @@ sealed interface ExecutionControl {
     record Executing(RequestHandle request, @NonNull Activity activity)
             implements ExecutionControl {}
 
-    record Suspended(RequestHandle request, @NonNull Activity activity, @NonNull Set<Wait> waits)
-            implements ExecutionControl {
-        public Suspended {
-            waits = Set.copyOf(waits);
-        }
-    }
+    record Suspended(RequestHandle request, @NonNull Activity activity, @NonNull Wait reason)
+            implements ExecutionControl {}
 
     record Closed(@NonNull CloseReason reason) implements ExecutionControl {}
 
@@ -53,7 +46,7 @@ sealed interface ExecutionControl {
     }
 
     default boolean waiting(@NonNull Wait wait) {
-        return this instanceof Suspended value && value.waits().contains(wait);
+        return this instanceof Suspended value && value.reason() == wait;
     }
 
     default @NonNull AgentState state() {
@@ -63,18 +56,14 @@ sealed interface ExecutionControl {
             case Executing value ->
                     value.activity() == Activity.MODEL ? AgentState.RUNNING : AgentState.WAITING;
             case Suspended value ->
-                    value.waits().contains(Wait.PAUSE)
-                            ? AgentState.PAUSED
-                            : value.waits().contains(Wait.APPROVAL)
-                                    ? AgentState.INTERCEPTED
-                                    : AgentState.WAITING;
+                    value.reason() == Wait.APPROVAL ? AgentState.INTERCEPTED : AgentState.WAITING;
         };
     }
 
     default @NonNull ExecutionControl withRequest(RequestHandle request) {
         return switch (this) {
             case Closed value -> value;
-            case Suspended value -> new Suspended(request, value.activity(), value.waits());
+            case Suspended value -> new Suspended(request, value.activity(), value.reason());
             case Executing value ->
                     request == null ? new Idle() : new Executing(request, value.activity());
             case Idle ignored -> request == null ? this : new Executing(request, Activity.MODEL);

@@ -174,8 +174,7 @@ class PerUserIdentityTest {
                         service.userIdForOwner(owner),
                         owner,
                         null);
-        agent.submit("Hello");
-        AgentResult result = agent.await(EPISODE_TIMEOUT);
+        AgentResult result = agent.submitRequest("Hello").await(EPISODE_TIMEOUT);
 
         assertTrue(result.success(), "Episode should complete successfully");
         assertFalse(seen.isEmpty(), "Caller should have been invoked on the agent thread");

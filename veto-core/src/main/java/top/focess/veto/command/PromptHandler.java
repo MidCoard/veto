@@ -28,8 +28,9 @@ import top.focess.veto.vault.KeysteadVault;
  *
  * <h3>Thread safety</h3>
  *
- * <p>Stateless beyond its injected dependencies. The agent map lives in {@link AgentService} (which
- * serializes per-agent episodes); the active-session map lives in {@link SessionService}.
+ * <p>Stateless beyond its injected dependencies. Live membership belongs to the session agent
+ * registry; each agent serializes its own episodes. The active-session map belongs to {@link
+ * SessionService}.
  */
 public class PromptHandler {
 
@@ -66,7 +67,7 @@ public class PromptHandler {
      * meta). Callers must not mutate the returned map.
      */
     public @NonNull Map<String, Agent> sessions() {
-        return new HashMap<>(agentService.agentsView());
+        return Map.copyOf(agentService.agentsView());
     }
 
     /** The active agent for the terminal (if any), for {@code /compact}. */

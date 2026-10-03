@@ -18,6 +18,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 import top.focess.veto.agent.Agent;
 import top.focess.veto.agent.AgentService;
 import top.focess.veto.agent.RecordRecovery;
+import top.focess.veto.agent.SessionAgentRegistry;
 import top.focess.veto.agent.TurnRecord;
 import top.focess.veto.agent.continuation.RequestContinuationStore;
 import top.focess.veto.agent.intercept.HitlRecordRepository;
@@ -105,6 +106,7 @@ public class SessionService {
     private final @NonNull AgentInstanceRepository agents;
     private final @NonNull AgentPatternRepository patterns;
     private final @NonNull AgentService agentService;
+    private final @NonNull SessionAgentRegistry sessionAgents;
     private final @NonNull SessionHistoryLoader historyLoader;
     private final @NonNull ModelTierRegistry tierRegistry;
     private final @NonNull WorkspaceAdmissionPolicy workspaceAdmissionPolicy;
@@ -120,6 +122,7 @@ public class SessionService {
             @NonNull AgentInstanceRepository agents,
             @NonNull AgentPatternRepository patterns,
             @NonNull AgentService agentService,
+            @NonNull SessionAgentRegistry sessionAgents,
             @NonNull SessionHistoryLoader historyLoader,
             @NonNull ModelTierRegistry tierRegistry,
             @NonNull WorkspaceAdmissionPolicy workspaceAdmissionPolicy) {
@@ -127,6 +130,7 @@ public class SessionService {
         this.agents = agents;
         this.patterns = patterns;
         this.agentService = agentService;
+        this.sessionAgents = sessionAgents;
         this.historyLoader = historyLoader;
         this.tierRegistry = tierRegistry;
         this.workspaceAdmissionPolicy = workspaceAdmissionPolicy;
@@ -138,6 +142,7 @@ public class SessionService {
             @NonNull AgentInstanceRepository agents,
             @NonNull AgentPatternRepository patterns,
             @NonNull AgentService agentService,
+            @NonNull SessionAgentRegistry sessionAgents,
             @NonNull SessionHistoryLoader historyLoader,
             @NonNull ModelTierRegistry tierRegistry) {
         this(
@@ -145,6 +150,7 @@ public class SessionService {
                 agents,
                 patterns,
                 agentService,
+                sessionAgents,
                 historyLoader,
                 tierRegistry,
                 WorkspaceAdmissionPolicy.unrestricted());
@@ -548,7 +554,7 @@ public class SessionService {
                             events.submit(
                                     new SessionDeletedEvent(
                                             new Scope.SessionScope(owner, sessionId)));
-                        agentService.remove(sessionId);
+                        sessionAgents.stopSession(UUID.fromString(sessionId));
                     };
             if (TransactionSynchronizationManager.isSynchronizationActive())
                 TransactionSynchronizationManager.registerSynchronization(
@@ -660,12 +666,8 @@ public class SessionService {
                 && target != null
                 && primary.getSessionId().equals(session.getId())
                 && target.getSessionId().equals(session.getId())
-                && agentService.agentsView().values().stream()
-                        .anyMatch(
-                                agent ->
-                                        agent.id().equals(targetId)
-                                                && sessionId.equals(agent.sessionId())))
-            return true;
+                && sessionAgents.agents(sessionId).stream()
+                        .anyMatch(entry -> entry.agent().id().equals(targetId))) return true;
         if (primary == null
                 || target == null
                 || !primary.getSessionId().equals(session.getId())
@@ -734,7 +736,7 @@ public class SessionService {
     public @NonNull Optional<Agent> activeAgent(@NonNull String terminalId) {
         String sessionId = activeSessions.get(terminalId);
         if (sessionId == null) return Optional.empty();
-        return Optional.ofNullable(agentService.agentsView().get(sessionId));
+        return Optional.ofNullable(sessionAgents.transportAgent(sessionId));
     }
 
     private AgentEntity primaryAgent(@NonNull SessionEntity session) {

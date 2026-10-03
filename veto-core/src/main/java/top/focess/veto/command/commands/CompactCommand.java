@@ -40,9 +40,9 @@ public class CompactCommand extends VetoCommand {
 
                     s.output("Initiating compaction on agent " + agent.name() + "...");
                     try {
-                        agent.compact();
+                        var request = agent.compact();
                         // Wait for compaction task to complete
-                        var result = agent.await(Duration.ofMinutes(2));
+                        var result = request.await(Duration.ofMinutes(2));
                         if (result.success()) {
                             s.output("Compaction completed successfully.");
                             return CommandResult.ALLOW;

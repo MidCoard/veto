@@ -112,8 +112,7 @@ class AgentServiceHistorySeedTest {
         AgentService beforeRestart = serviceWith(finishingCaller);
         Agent first =
                 beforeRestart.getOrCreateAgent(sessionId.toString(), binding, List.of(), userId);
-        first.submit("first request");
-        assertTrue(first.await(TIMEOUT).success());
+        assertTrue(first.submitRequest("first request").await(TIMEOUT).success());
         List<TurnRecord> replayed = new ArrayList<>(first.history());
         assertEquals(TurnType.AGENT_INIT, replayed.get(0).type());
         String transformedSystemPrompt = "system prompt recorded by a later role transition";
@@ -141,8 +140,7 @@ class AgentServiceHistorySeedTest {
         Agent resumed =
                 afterRestart.getOrCreateAgent(
                         sessionId.toString(), updatedModelBinding, replayed, userId);
-        resumed.submit("second request");
-        assertTrue(resumed.await(TIMEOUT).success());
+        assertTrue(resumed.submitRequest("second request").await(TIMEOUT).success());
 
         assertEquals(3, count(resumed.history(), TurnType.AGENT_INIT));
         assertEquals(1, count(HistoryProjection.effective(resumed.history()), TurnType.AGENT_INIT));

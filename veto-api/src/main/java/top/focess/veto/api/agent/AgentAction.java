@@ -11,10 +11,8 @@ import org.jspecify.annotations.NonNull;
  */
 public sealed interface AgentAction
         permits AgentAction.UserPromptAction,
-                AgentAction.DirectUserPromptAction,
                 AgentAction.WorkAvailableAction,
                 AgentAction.WorkAction,
-                AgentAction.TerminateAction,
                 AgentAction.CompactAction,
                 AgentAction.ConfigurationAction {
 
@@ -27,21 +25,11 @@ public sealed interface AgentAction
      */
     record UserPromptAction(@NonNull String prompt) implements AgentAction {}
 
-    /**
-     * A direct user request, queued without replacing a workflow's pending result.
-     *
-     * @param prompt user-authored prompt text
-     */
-    record DirectUserPromptAction(@NonNull String prompt) implements AgentAction {}
-
     /** A wake hint; sourced observations are read from plugin work sources by the same Runner. */
     record WorkAvailableAction() implements AgentAction {}
 
     /** An admitted plugin continuation; processed by the same request loop as user input. */
     record WorkAction() implements AgentAction {}
-
-    /** Terminate the session → {@link AgentState#TERMINATED}; the virtual thread stops. */
-    record TerminateAction() implements AgentAction {}
 
     /** Apply pending host configuration on the agent execution thread. */
     record ConfigurationAction() implements AgentAction {}

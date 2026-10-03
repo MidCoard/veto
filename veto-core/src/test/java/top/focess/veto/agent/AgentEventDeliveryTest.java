@@ -91,8 +91,7 @@ class AgentEventDeliveryTest {
                             0,
                             ToolResultPresentationMode.BASIC);
             try {
-                agent.submit("original task");
-                assertTrue(agent.await(EPISODE_TIMEOUT).success());
+                assertTrue(agent.submitRequest("original task").await(EPISODE_TIMEOUT).success());
                 assertEquals(List.of("failing-hook", "later-hook", "model"), calls);
                 assertEquals(1, requests.size());
                 VetoRequest delivered = requests.getFirst();
@@ -166,8 +165,7 @@ class AgentEventDeliveryTest {
                             0,
                             ToolResultPresentationMode.BASIC);
             try {
-                agent.submit("original task");
-                assertTrue(agent.await(EPISODE_TIMEOUT).success());
+                assertTrue(agent.submitRequest("original task").await(EPISODE_TIMEOUT).success());
                 assertEquals(List.of("input", "before-model", "after-model"), events);
                 assertTrue(
                         requests.getFirst().messages().stream()
@@ -269,8 +267,10 @@ class AgentEventDeliveryTest {
                             0,
                             ToolResultPresentationMode.BASIC);
             try {
-                agent.submit("Execute the fixture tools");
-                assertTrue(agent.await(EPISODE_TIMEOUT).success());
+                assertTrue(
+                        agent.submitRequest("Execute the fixture tools")
+                                .await(EPISODE_TIMEOUT)
+                                .success());
                 boolean cancelled = mode.equals("cancel");
                 assertEquals(cancelled ? 0 : toolCount, executed.get());
                 assertEquals(toolCount, earlyCalls.get());
@@ -334,8 +334,11 @@ class AgentEventDeliveryTest {
                             0,
                             ToolResultPresentationMode.BASIC);
             try {
-                agent.submit("Do not call the model");
-                assertEquals(!cancel, agent.await(EPISODE_TIMEOUT).success());
+                assertEquals(
+                        !cancel,
+                        agent.submitRequest("Do not call the model")
+                                .await(EPISODE_TIMEOUT)
+                                .success());
                 assertEquals(cancel ? 0 : 1, calls.get());
             } finally {
                 service.remove(session);

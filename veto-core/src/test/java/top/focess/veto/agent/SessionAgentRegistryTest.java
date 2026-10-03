@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
@@ -17,6 +18,77 @@ import top.focess.veto.api.agent.AgentAction;
 import top.focess.veto.api.agent.AgentState;
 
 class SessionAgentRegistryTest {
+    @Test
+    void arbitraryTransportKeyRecreatesTerminatedPrimaryAndIgnoresOldCallback() {
+        try (var registry = new SessionAgentRegistry()) {
+            UUID session = UUID.randomUUID();
+            var primary = persona("primary", Role.STANDALONE);
+            var oldRunner = runner(primary);
+            when(oldRunner.sessionId()).thenReturn(session);
+            AtomicReference<Runnable> oldCallback = new AtomicReference<>();
+            doAnswer(
+                            invocation -> {
+                                oldCallback.set(invocation.getArgument(0));
+                                return null;
+                            })
+                    .when(oldRunner)
+                    .onTermination(any());
+            var key = "terminal:/socket/non-uuid";
+            var first =
+                    registry.getOrCreateTransport(key, () -> registry.start(primary, oldRunner));
+            assertTrue(registry.transportAgent(key) == first, "Key resolves the original instance");
+            assertSame(
+                    first,
+                    registry.getOrCreateTransport(
+                            key,
+                            () -> {
+                                throw new AssertionError("Live primary must be reused");
+                            }));
+            when(oldRunner.state()).thenReturn(AgentState.TERMINATED);
+            var replacementRunner = runner(primary);
+            when(replacementRunner.sessionId()).thenReturn(session);
+            var replacement =
+                    registry.getOrCreateTransport(
+                            key, () -> registry.start(primary, replacementRunner));
+            assertNotSame(first, replacement);
+            var callback = oldCallback.get();
+            assertNotNull(callback);
+            callback.run();
+            assertTrue(
+                    registry.transportAgent(key) == replacement,
+                    "Stale termination cannot remove the replacement instance");
+            assertEquals(Map.of(key, replacement), registry.transports());
+            assertSame(replacement, registry.agents(session).getFirst().agent());
+            verify(replacementRunner, never()).terminate();
+        }
+    }
+
+    @Test
+    void independentTopLevelPeerDoesNotReplaceTransportPrimary() {
+        try (var registry = new SessionAgentRegistry()) {
+            UUID session = UUID.randomUUID();
+            var primary = persona("primary", Role.STANDALONE);
+            var primaryRunner = runner(primary);
+            when(primaryRunner.sessionId()).thenReturn(session);
+            var key = session.toString();
+            var root =
+                    registry.getOrCreateTransport(
+                            key, () -> registry.start(primary, primaryRunner));
+            var peer = persona("peer", Role.STANDALONE);
+            var peerRunner = runner(peer);
+            when(peerRunner.sessionId()).thenReturn(session);
+            registry.startInSession(session, peer, peerRunner);
+            assertTrue(registry.transportAgent(key) == root, "Peer cannot replace the primary");
+            assertEquals(Map.of(key, root), registry.transports());
+            registry.stopTransport(key);
+            assertNull(registry.transportAgent(key));
+            assertTrue(registry.transports().isEmpty());
+            assertTrue(registry.agents(session).isEmpty());
+            verify(primaryRunner).terminate();
+            verify(peerRunner).terminate();
+        }
+    }
+
     @Test
     void independentAgentJoinsActiveSessionButCannotRestartRemovedSession() {
         SessionAgentRegistry registry = new SessionAgentRegistry();
@@ -99,7 +171,7 @@ class SessionAgentRegistryTest {
         assertThrows(IllegalStateException.class, () -> reader.submitUserPrompt("Change the task"));
         verify(readerRunner, never()).enqueue(any());
         mate.submitUserPrompt("Review the result");
-        verify(mateRunner).enqueue(new AgentAction.DirectUserPromptAction("Review the result"));
+        verify(mateRunner).enqueue(new AgentAction.UserPromptAction("Review the result"));
         assertFalse(
                 registry.records(session).stream()
                         .filter(summary -> summary.id().equals("reader"))

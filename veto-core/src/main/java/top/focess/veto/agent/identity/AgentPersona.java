@@ -12,6 +12,11 @@ public record AgentPersona(
         @NonNull Set<@NonNull ToolDefinition> whitelistedTools,
         @NonNull Role role,
         String configurationOwner) {
+    /** Captures the authorized catalogue so later collection mutation cannot alter identity. */
+    public AgentPersona {
+        whitelistedTools = Set.copyOf(whitelistedTools);
+    }
+
     /** Creates a persona with no configuration owner. */
     public AgentPersona(
             @NonNull String id,
@@ -33,17 +38,6 @@ public record AgentPersona(
 
     /** A copy of this persona with the given tool whitelist. */
     public @NonNull AgentPersona withWhitelistedTools(@NonNull Set<@NonNull ToolDefinition> tools) {
-        return new AgentPersona(id, name, description, tools, role, configurationOwner);
-    }
-
-    /** A copy of this persona with the given role. */
-    public @NonNull AgentPersona withRole(@NonNull Role role) {
-        return new AgentPersona(id, name, description, whitelistedTools, role, configurationOwner);
-    }
-
-    /** A copy of this persona with the given role and tool whitelist. */
-    public @NonNull AgentPersona withRoleAndTools(
-            @NonNull Role role, @NonNull Set<@NonNull ToolDefinition> tools) {
         return new AgentPersona(id, name, description, tools, role, configurationOwner);
     }
 }

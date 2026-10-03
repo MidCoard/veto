@@ -2,11 +2,14 @@ package top.focess.veto.integration.plugins;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockingDetails;
 
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 import org.jspecify.annotations.NonNull;
 import org.springframework.beans.factory.support.StaticListableBeanFactory;
 import top.focess.veto.agent.SessionAgentRegistry;
@@ -14,6 +17,7 @@ import top.focess.veto.api.plugin.PluginHost;
 import top.focess.veto.api.plugin.contract.AgentInbox;
 import top.focess.veto.builtin.group.GroupObservations;
 import top.focess.veto.builtin.group.GroupRegistry;
+import top.focess.veto.builtin.monitor.MonitorRecord;
 import top.focess.veto.builtin.monitor.MonitorService;
 import top.focess.veto.bus.SessionInvalidations;
 import top.focess.veto.session.SessionService;
@@ -40,6 +44,22 @@ public final class MonitorTestSupport {
                                                 group.state(),
                                                 group.dag().nodes()))
                         .toList();
+    }
+
+    /** Observes one activation without polling while holding the service's synchronized method. */
+    public static @NonNull CompletableFuture<Boolean> completion(
+            @NonNull MonitorService service,
+            @NonNull String agentId,
+            MonitorRecord.@NonNull Event event) {
+        var completed = new CompletableFuture<Boolean>();
+        doAnswer(
+                        invocation -> {
+                            completed.complete(invocation.getArgument(2));
+                            return null;
+                        })
+                .when(service)
+                .activationCompleted(eq(agentId), eq(event), anyBoolean());
+        return completed;
     }
 
     public static @NonNull AgentInbox work(@NonNull MonitorService service) {

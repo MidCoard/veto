@@ -7,13 +7,16 @@ import java.util.Set;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.agent.tool.ToolResult;
 import top.focess.veto.api.agent.workflow.ModelFlow;
+import top.focess.veto.api.agent.workflow.ModelFlow.Generated;
+import top.focess.veto.api.agent.workflow.ModelFlow.ModelInput;
+import top.focess.veto.api.agent.workflow.ModelFlow.Runtime;
 import top.focess.veto.api.agent.workflow.ModelFlow.Source;
 import top.focess.veto.api.llm.ResponseContract;
 import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.api.llm.VetoResponse;
 
 /** One accepted program, its bindings and provenance. Uses the runner's normal tool/model path. */
-public final class PlanProgram implements PlanExecution {
+public final class PlanProgram {
     private record GeneratedCitation(
             @NonNull PlanVariables scope,
             @NonNull String message,
@@ -50,71 +53,28 @@ public final class PlanProgram implements PlanExecution {
         scope = new PlanVariables(mapper);
     }
 
-    @Override
     public @NonNull ModelFlow accepted(@NonNull ActionsProgram program) {
-        return ports -> {
+        return runtime -> {
             try {
-                install(program, ports.sourceCallId());
-                run(
-                        new Runtime() {
-                            public boolean running() {
-                                return ports.running();
-                            }
-
-                            public void beforeStep() {
-                                ports.beforeStep();
-                            }
-
-                            public @NonNull ToolResult tool(
-                                    @NonNull ToolCall call, @NonNull PlanStepContext context) {
-                                return ports.tool(call, context.context());
-                            }
-
-                            public @NonNull Generated generate(
-                                    @NonNull GenerateAction action,
-                                    @NonNull ResponseContract contract) {
-                                var value =
-                                        ports.generate(
-                                                new ModelFlow.ModelInput(
-                                                        action.resolvePrompt(scope),
-                                                        action.resolveInputs(scope),
-                                                        action.modelTier(),
-                                                        action.temperature(),
-                                                        action.thought(),
-                                                        action.responseMode()
-                                                                                == GenerateAction
-                                                                                        .ResponseMode
-                                                                                        .CITATIONS
-                                                                        && answerTool != null
-                                                                ? Set.of(answerTool)
-                                                                : Set.of()),
-                                                contract);
-                                return new Generated(
-                                        value.response(), value.citations(), value.modelCallId());
-                            }
-
-                            public void message(
-                                    @NonNull String text,
-                                    Source citations,
-                                    String callId,
-                                    boolean forwarded) {
-                                ports.message(text, citations, callId, forwarded);
-                            }
-
-                            public void escaped(@NonNull String reason) {
-                                ports.observation("plan_escape", reason);
-                            }
-
-                            public @NonNull String prompt(
-                                    @NonNull String source, @NonNull Map<String, Object> data) {
-                                return ports.prompt(source, data);
-                            }
-                        });
+                install(program, runtime.sourceCallId());
+                run(runtime);
             } finally {
-                ports.pop();
-                ports.finish();
+                runtime.pop();
+                runtime.finish();
             }
         };
+    }
+
+    private @NonNull ModelInput modelInput(@NonNull GenerateAction action) {
+        return new ModelInput(
+                action.resolvePrompt(scope),
+                action.resolveInputs(scope),
+                action.modelTier(),
+                action.temperature(),
+                action.thought(),
+                action.responseMode() == GenerateAction.ResponseMode.CITATIONS && answerTool != null
+                        ? Set.of(answerTool)
+                        : Set.of());
     }
 
     /** Returns the current binding scope. */
@@ -140,7 +100,8 @@ public final class PlanProgram implements PlanExecution {
     private void escape(@NonNull Runtime runtime, @NonNull String reason) {
         activeProgram = null;
         programCounter = 0;
-        runtime.escaped(
+        runtime.observation(
+                "plan_escape",
                 "Plan mode exited: "
                         + reason
                         + ". PlanVariables preserved with "
@@ -159,7 +120,6 @@ public final class PlanProgram implements PlanExecution {
         currentSteps = 0;
     }
 
-    @Override
     public void run(@NonNull Runtime runtime) {
         while (runtime.running() && active()) {
             runtime.beforeStep();
@@ -196,7 +156,7 @@ public final class PlanProgram implements PlanExecution {
                                 programCounter,
                                 tool.label(),
                                 sources);
-                result = runtime.tool(call, context);
+                result = runtime.tool(call, context.context());
                 if (activeProgram != program || !runtime.running()) {
                     return; // The tool replaced the role and cleared this program and scope.
                 }
@@ -220,7 +180,8 @@ public final class PlanProgram implements PlanExecution {
                 }
             }
             case GenerateAction gen -> {
-                Generated generated = runtime.generate(gen, ResponseContract.generation());
+                Generated generated =
+                        runtime.generate(modelInput(gen), ResponseContract.generation());
                 VetoResponse response = generated.response();
                 scope.bindGenerate(gen.outputs(), response);
                 gen.outputs()
@@ -263,7 +224,7 @@ public final class PlanProgram implements PlanExecution {
                                     null,
                                     0.0);
                     String answer =
-                            runtime.generate(judgment, ResponseContract.predicate())
+                            runtime.generate(modelInput(judgment), ResponseContract.predicate())
                                     .response()
                                     .message();
                     if (answer == null

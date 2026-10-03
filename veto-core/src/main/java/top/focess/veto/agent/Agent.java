@@ -3,8 +3,6 @@ package top.focess.veto.agent;
 import java.time.Duration;
 import java.util.List;
 import java.util.Set;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.TimeoutException;
 import java.util.function.Consumer;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.drift.ReadHistory;
@@ -37,27 +35,16 @@ public interface Agent {
 
     // --- Execution ---
 
-    /** Submit a prompt for the agent to work on. Non-blocking — the virtual thread picks it up. */
-    void submit(@NonNull String prompt);
+    /** Submits a prompt with its own result and execution settlement. */
+    default @NonNull RequestHandle submitRequest(@NonNull String prompt) {
+        return submitRequest(prompt, null);
+    }
 
     /**
-     * Non-blocking submit with a callback attached to this request's result. The callback runs
-     * inline when the result completes, potentially on a submitting or execution thread.
+     * Submits a prompt and attaches a callback to its result. The callback runs inline on the
+     * submitting or completing thread.
      */
-    void submit(@NonNull String prompt, Consumer<AgentResult> callback);
-
-    /** Block on the latest submitted request view (or until the timeout elapses). */
-    @NonNull AgentResult await(@NonNull Duration timeout)
-            throws TimeoutException, InterruptedException;
-
-    /** Latest request's result view; use a retained handle to observe a specific submission. */
-    @NonNull CompletableFuture<AgentResult> result();
-
-    /**
-     * Submits a prompt and returns the actual execution-owned request handle. Its identity, result
-     * and settlement remain associated with this submission independently of later submissions.
-     */
-    @NonNull RequestHandle submitRequest(@NonNull String prompt);
+    @NonNull RequestHandle submitRequest(@NonNull String prompt, Consumer<AgentResult> callback);
 
     // --- Lifecycle ---
     /** Request termination; actual exit is confirmed separately via {@link #awaitTermination}. */
@@ -68,9 +55,8 @@ public interface Agent {
         return false;
     }
 
-    /** Cancel only the task identified by its result handle and confirm its execution exit. */
-    default boolean cancelTask(
-            @NonNull CompletableFuture<AgentResult> task, @NonNull Duration timeout)
+    /** Cancel only the task identified by its request handle and confirm its execution exit. */
+    default boolean cancelTask(@NonNull RequestHandle task, @NonNull Duration timeout)
             throws InterruptedException {
         return false;
     }
@@ -83,5 +69,5 @@ public interface Agent {
     @NonNull ReadHistory readHistory();
 
     /** Compact the agent's turn history segment. */
-    void compact();
+    @NonNull RequestHandle compact();
 }

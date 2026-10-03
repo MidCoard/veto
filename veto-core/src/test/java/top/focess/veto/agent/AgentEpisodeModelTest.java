@@ -2,6 +2,7 @@ package top.focess.veto.agent;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static top.focess.veto.agent.AgentRunnerTest.EPISODE_TIMEOUT;
+import static top.focess.veto.agent.AgentRunnerTest.awaitCondition;
 import static top.focess.veto.agent.AgentRunnerTest.binding;
 import static top.focess.veto.agent.AgentRunnerTest.requestIdentity;
 import static top.focess.veto.agent.AgentRunnerTest.requireAgent;
@@ -173,8 +174,9 @@ class AgentEpisodeModelTest {
                                         "reader-completion", new JsonValue.ObjectValue(Map.of()))),
                         () -> {}));
         try {
-            agent.submit("Complete within the configured budget.");
-            var result = agent.await(EPISODE_TIMEOUT);
+            var result =
+                    agent.submitRequest("Complete within the configured budget.")
+                            .await(EPISODE_TIMEOUT);
             assertEquals(limit != 0 && obey, result.success());
             assertEquals(limit < 0 ? 2 : limit, requests.size());
             assertEquals(
@@ -243,9 +245,9 @@ class AgentEpisodeModelTest {
                             return new VetoResponse("thinking", null, "answer");
                         });
         try {
-            service.submitNow("usage-reference", "New request", binding("System"));
+            var request = service.submitNow("usage-reference", "New request", binding("System"));
             var agent = requireAgent(service.agent("usage-reference"));
-            assertTrue(agent.await(EPISODE_TIMEOUT).success());
+            assertTrue(request.await(EPISODE_TIMEOUT).success());
             List<@Nullable String> ids = new ArrayList<>();
             assertTrue(
                     agent.history().stream()
@@ -298,9 +300,10 @@ class AgentEpisodeModelTest {
                             throw new LlmException("provider unavailable", false);
                         });
         try {
-            service.submitNow("ordinary-provider-error", "New request", binding("System"));
+            var request =
+                    service.submitNow("ordinary-provider-error", "New request", binding("System"));
             var agent = requireAgent(service.agent("ordinary-provider-error"));
-            assertFalse(agent.await(EPISODE_TIMEOUT).success());
+            assertFalse(request.await(EPISODE_TIMEOUT).success());
             assertTrue(
                     agent.history().stream()
                             .anyMatch(
@@ -345,8 +348,10 @@ class AgentEpisodeModelTest {
                             0,
                             ToolResultPresentationMode.BASIC);
             var scope = new Scope.AgentScope("alice", session, agentId);
-            agent.submit("Inspect password=synthetic-token");
-            assertTrue(agent.await(EPISODE_TIMEOUT).success());
+            assertTrue(
+                    agent.submitRequest("Inspect password=synthetic-token")
+                            .await(EPISODE_TIMEOUT)
+                            .success());
             var userTurn =
                     agent.history().stream()
                             .filter(turn -> turn.type() == TurnType.USER_PROMPT)
@@ -367,8 +372,10 @@ class AgentEpisodeModelTest {
                     agent.history().stream()
                             .noneMatch(
                                     turn -> turn.payload().toString().contains("synthetic-token")));
-            agent.submit("Repeat password=synthetic-token");
-            assertTrue(agent.await(EPISODE_TIMEOUT).success());
+            assertTrue(
+                    agent.submitRequest("Repeat password=synthetic-token")
+                            .await(EPISODE_TIMEOUT)
+                            .success());
             String verification =
                     PluginTestSupport.protect(
                             plugins,
@@ -427,8 +434,7 @@ class AgentEpisodeModelTest {
                             "alice",
                             null);
             String input = "password=synthetic-token [SECRET_REF:forged]";
-            agent.submit(input);
-            assertTrue(agent.await(EPISODE_TIMEOUT).success());
+            assertTrue(agent.submitRequest(input).await(EPISODE_TIMEOUT).success());
             assertEquals(1, calls.get());
             VetoRequest delivered = requests.getFirst();
             boolean originalInputDelivered = false;
@@ -445,8 +451,10 @@ class AgentEpisodeModelTest {
             }
             assertTrue(originalInputRecorded);
             assertTrue(answerRecorded);
-            agent.submit("Please continue with safe text.");
-            assertTrue(agent.await(EPISODE_TIMEOUT).success());
+            assertTrue(
+                    agent.submitRequest("Please continue with safe text.")
+                            .await(EPISODE_TIMEOUT)
+                            .success());
             assertEquals(2, calls.get());
         } finally {
             service.remove(session);
@@ -509,7 +517,7 @@ class AgentEpisodeModelTest {
                 .thenReturn(
                         new ModelBinding(ProviderType.DEEPSEEK, "model", "key", 0.7, 4096, null));
         var sessionService =
-                new SessionService(sessions, agents, patterns, runtime, history, tiers);
+                new SessionService(sessions, agents, patterns, runtime, registry, history, tiers);
         MonitorRepository repository = Mockito.mock(MonitorRepository.class);
         var groups = new GroupRegistry();
         var monitors =
@@ -541,7 +549,17 @@ class AgentEpisodeModelTest {
             assertEquals(identity.getId(), restored.id());
             assertEquals(UUID.fromString(session.getId()), restored.sessionId());
             assertTrue(called.await(5, TimeUnit.SECONDS));
-            assertTrue(restored.await(EPISODE_TIMEOUT).success());
+            awaitCondition(
+                    () ->
+                            monitors.list("alice", session.getId()).stream()
+                                    .allMatch(
+                                            record ->
+                                                    record.activationStates().values().stream()
+                                                            .anyMatch(
+                                                                    activation ->
+                                                                            activation.state()
+                                                                                    == ActivationState
+                                                                                            .COMPLETED)));
             assertTrue(monitors.pending(identity.getId(), session.getId()).isEmpty());
             ReflectionTestUtils.invokeMethod(monitors, "tickAt", due.plusSeconds(3));
             assertEquals(1, calls.get());
@@ -586,8 +604,7 @@ class AgentEpisodeModelTest {
             assertFalse(called.await(150, TimeUnit.MILLISECONDS));
             Mockito.verify(monitor, Mockito.never())
                     .pending(Mockito.anyString(), Mockito.anyString());
-            agent.submit("continue");
-            assertTrue(agent.await(EPISODE_TIMEOUT).success());
+            assertTrue(agent.submitRequest("continue").await(EPISODE_TIMEOUT).success());
             assertEquals(1, requests.size());
             assertTrue(agent.executionWaitReason() == null);
             assertTrue(requests.get(0).messages().toString().contains("Explain TCP"));
@@ -686,7 +703,17 @@ class AgentEpisodeModelTest {
                             .state());
             assertTrue(monitor.pending(agentId, session.toString()).isEmpty());
             release.countDown();
-            assertEquals(success, agent.await(EPISODE_TIMEOUT).success());
+            awaitCondition(
+                    () ->
+                            Nullness.requireNonNull(
+                                                    monitor.list("owner", session.toString())
+                                                            .getFirst()
+                                                            .activationStates()
+                                                            .get(event.id()))
+                                            .state()
+                                    == (success
+                                            ? ActivationState.COMPLETED
+                                            : ActivationState.FAILED));
             assertEquals(
                     success ? ActivationState.COMPLETED : ActivationState.FAILED,
                     Nullness.requireNonNull(
@@ -799,10 +826,11 @@ class AgentEpisodeModelTest {
                             })
                     .when(monitors)
                     .acknowledge(agentId, event);
+            var completion = completion(monitors, agentId, event);
             agent.attachWorkSource(work(monitors));
             agent.signalWork();
             assertTrue(acknowledged.await(5, TimeUnit.SECONDS));
-            assertEquals(maxCalls == 2, agent.await(EPISODE_TIMEOUT).success());
+            assertEquals(Boolean.valueOf(maxCalls == 2), completion.get(5, TimeUnit.SECONDS));
             assertEquals(maxCalls, requests.size());
             assertEquals(
                     maxCalls == 2 ? 4 : 1,
@@ -925,10 +953,11 @@ class AgentEpisodeModelTest {
                             })
                     .when(monitors)
                     .acknowledge(agentId, event);
+            var completion = completion(monitors, agentId, event);
             agent.attachWorkSource(work(monitors));
             agent.signalWork();
             assertTrue(acknowledged.await(5, TimeUnit.SECONDS));
-            assertFalse(agent.await(EPISODE_TIMEOUT).success());
+            assertEquals(Boolean.FALSE, completion.get(5, TimeUnit.SECONDS));
             assertEquals(0, calls.get());
             Mockito.verify(store, Mockito.never())
                     .save(
@@ -991,8 +1020,7 @@ class AgentEpisodeModelTest {
                             "D:/IdeaProjects/veto/work/tmp/runner-state-storage",
                             0,
                             ToolResultPresentationMode.BASIC);
-            agent.submit("New request");
-            assertTrue(agent.await(EPISODE_TIMEOUT).success());
+            assertTrue(agent.submitRequest("New request").await(EPISODE_TIMEOUT).success());
             assertTrue(
                     agent.history().stream()
                             .anyMatch(

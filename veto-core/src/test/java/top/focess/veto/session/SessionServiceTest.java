@@ -20,8 +20,11 @@ import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import top.focess.veto.agent.Agent;
 import top.focess.veto.agent.AgentService;
+import top.focess.veto.agent.SessionAgentRegistry;
 import top.focess.veto.agent.TurnRecord;
 import top.focess.veto.agent.TurnType;
+import top.focess.veto.agent.VetoAgent;
+import top.focess.veto.api.agent.AgentState;
 import top.focess.veto.api.event.BeforeTextCommitEvent;
 import top.focess.veto.api.event.SessionDeletedEvent;
 import top.focess.veto.api.llm.ProviderType;
@@ -42,6 +45,40 @@ import top.focess.veto.vault.UserEntity;
 import top.focess.veto.vault.UserRegistry;
 
 class SessionServiceTest {
+    private final @NonNull SessionAgentRegistry liveAgents = mock(SessionAgentRegistry.class);
+
+    @Test
+    void sessionDeletionStopsIndependentPeerAfterPrimaryAlreadyTerminated() {
+        var sessions = mock(SessionRepository.class);
+        var session = new SessionEntity("alice", "coder");
+        var sessionId = UUID.fromString(session.getId());
+        when(sessions.findByOwner("alice")).thenReturn(List.of(session));
+        try (var registry = new SessionAgentRegistry()) {
+            var primary = mock(VetoAgent.class);
+            when(primary.id()).thenReturn("primary");
+            when(primary.state()).thenReturn(AgentState.IDLE);
+            var peer = mock(VetoAgent.class);
+            when(peer.id()).thenReturn("peer");
+            when(peer.state()).thenReturn(AgentState.IDLE);
+            registry.register(sessionId, primary);
+            registry.register(sessionId, peer);
+            registry.stop("primary");
+            assertEquals(1, registry.agents(sessionId).size());
+            var service =
+                    new SessionService(
+                            sessions,
+                            mock(AgentInstanceRepository.class),
+                            mock(AgentPatternRepository.class),
+                            mock(AgentService.class),
+                            registry,
+                            mock(SessionHistoryLoader.class),
+                            mock(ModelTierRegistry.class));
+            assertTrue(service.delete("alice", "coder"));
+            assertTrue(registry.agents(sessionId).isEmpty());
+            verify(peer).terminate();
+        }
+    }
+
     @Test
     void rolledBackSessionDeletionDoesNotPublishDeletionOrStopItsAgent() {
         var sessions = mock(SessionRepository.class);
@@ -54,6 +91,7 @@ class SessionServiceTest {
                         mock(AgentInstanceRepository.class),
                         mock(AgentPatternRepository.class),
                         agentService,
+                        liveAgents,
                         mock(SessionHistoryLoader.class),
                         mock(ModelTierRegistry.class));
         var events = mock(EventManager.class);
@@ -63,12 +101,12 @@ class SessionServiceTest {
         try {
             assertTrue(service.delete("alice", "coder"));
             verifyNoInteractions(events);
-            verify(agentService, never()).remove(session.getId());
+            verify(liveAgents, never()).stopSession(UUID.fromString(session.getId()));
             for (var synchronization : TransactionSynchronizationManager.getSynchronizations()) {
                 synchronization.afterCompletion(TransactionSynchronization.STATUS_ROLLED_BACK);
             }
             verifyNoInteractions(events);
-            verify(agentService, never()).remove(session.getId());
+            verify(liveAgents, never()).stopSession(UUID.fromString(session.getId()));
         } finally {
             TransactionSynchronizationManager.clear();
         }
@@ -99,7 +137,8 @@ class SessionServiceTest {
         UUID user = UUID.randomUUID();
         when(runtime.userIdForOwner("alice")).thenReturn(user);
         var service =
-                new SessionService(sessions, agents, patterns, runtime, history, tierRegistry);
+                new SessionService(
+                        sessions, agents, patterns, runtime, liveAgents, history, tierRegistry);
         UUID id = UUID.fromString(session.getId());
         assertFalse(service.activateForObservation(id, "bob", primary.getId()));
         assertFalse(service.activateForObservation(id, "alice", primary.getId()));
@@ -176,7 +215,8 @@ class SessionServiceTest {
         when(agents.save(any(AgentEntity.class))).thenAnswer(i -> i.getArgument(0));
 
         SessionService service =
-                new SessionService(sessions, agents, patterns, agentService, loader, tierRegistry);
+                new SessionService(
+                        sessions, agents, patterns, agentService, liveAgents, loader, tierRegistry);
 
         SessionEntity session = service.createSession("alice", "coder");
         assertEquals(ToolResultPresentationMode.BASIC, session.getToolResultPresentation());
@@ -202,7 +242,8 @@ class SessionServiceTest {
         when(agents.save(any(AgentEntity.class))).thenAnswer(i -> i.getArgument(0));
 
         SessionService service =
-                new SessionService(sessions, agents, patterns, agentService, loader, tierRegistry);
+                new SessionService(
+                        sessions, agents, patterns, agentService, liveAgents, loader, tierRegistry);
 
         SessionEntity session =
                 service.createSession(
@@ -232,7 +273,8 @@ class SessionServiceTest {
         when(agents.save(any(AgentEntity.class))).thenAnswer(i -> i.getArgument(0));
 
         SessionService service =
-                new SessionService(sessions, agents, patterns, agentService, loader, tierRegistry);
+                new SessionService(
+                        sessions, agents, patterns, agentService, liveAgents, loader, tierRegistry);
 
         SessionEntity session = service.createSession("alice", "coder", null, CWD);
         assertTrue(
@@ -273,7 +315,8 @@ class SessionServiceTest {
                 .thenReturn(mock(Agent.class));
 
         SessionService service =
-                new SessionService(sessions, agents, patterns, agentService, loader, tierRegistry);
+                new SessionService(
+                        sessions, agents, patterns, agentService, liveAgents, loader, tierRegistry);
 
         Optional<LlmConfig> cfg = service.activate("term-1", "coder", "alice", CWD);
         assertTrue(cfg.isPresent());
@@ -315,7 +358,8 @@ class SessionServiceTest {
                 .thenReturn(mock(Agent.class));
 
         SessionService service =
-                new SessionService(sessions, agents, patterns, agentService, loader, tierRegistry);
+                new SessionService(
+                        sessions, agents, patterns, agentService, liveAgents, loader, tierRegistry);
         service.activate("term-1", "coder", "alice", CWD);
         service.deactivate("term-1");
         assertTrue(service.activeSession("term-1").isEmpty());
@@ -351,7 +395,8 @@ class SessionServiceTest {
                 .thenReturn(mock(Agent.class));
 
         SessionService service =
-                new SessionService(sessions, agents, patterns, agentService, loader, tierRegistry);
+                new SessionService(
+                        sessions, agents, patterns, agentService, liveAgents, loader, tierRegistry);
         service.activate("term-1", "coder", "alice", CWD);
         assertTrue(service.activeSession("term-1").isPresent());
 
@@ -391,7 +436,8 @@ class SessionServiceTest {
                 .thenReturn(mock(Agent.class));
 
         SessionService service =
-                new SessionService(sessions, agents, patterns, agentService, loader, tierRegistry);
+                new SessionService(
+                        sessions, agents, patterns, agentService, liveAgents, loader, tierRegistry);
 
         Optional<LlmConfig> cfg = service.resumeLastSession("term-1", "alice", CWD);
         assertTrue(cfg.isPresent(), "last session auto-resumed");
@@ -408,7 +454,8 @@ class SessionServiceTest {
         when(sessions.findByOwner("alice")).thenReturn(List.of());
 
         SessionService service =
-                new SessionService(sessions, agents, patterns, agentService, loader, tierRegistry);
+                new SessionService(
+                        sessions, agents, patterns, agentService, liveAgents, loader, tierRegistry);
         assertTrue(service.resumeLastSession("term-1", "alice", CWD).isEmpty());
         assertTrue(service.activeSession("term-1").isEmpty());
     }
@@ -423,7 +470,8 @@ class SessionServiceTest {
         when(patterns.findByNameAndOwner("nope", "alice")).thenReturn(Optional.empty());
 
         SessionService service =
-                new SessionService(sessions, agents, patterns, agentService, loader, tierRegistry);
+                new SessionService(
+                        sessions, agents, patterns, agentService, liveAgents, loader, tierRegistry);
         assertThrows(IllegalArgumentException.class, () -> service.createSession("alice", "nope"));
     }
 
@@ -457,7 +505,8 @@ class SessionServiceTest {
                 .thenReturn(mock(Agent.class));
 
         SessionService service =
-                new SessionService(sessions, agents, patterns, agentService, loader, tierRegistry);
+                new SessionService(
+                        sessions, agents, patterns, agentService, liveAgents, loader, tierRegistry);
         service.activate("term-1", "coder", "alice", CWD);
         assertTrue(service.activeSession("term-1").isPresent());
 
@@ -521,7 +570,7 @@ class SessionServiceTest {
         }
         assertTrue(removed, "delete should report the session removed");
 
-        verify(agentService).remove(session.getId());
+        verify(liveAgents).stopSession(UUID.fromString(session.getId()));
         verify(agents).deleteBySessionId(session.getId());
         verify(sessions).delete(session);
         assertTrue(service.activeSession("term-1").isEmpty(), "terminal detached on delete");
@@ -539,9 +588,10 @@ class SessionServiceTest {
                 .thenReturn(Optional.empty());
 
         SessionService service =
-                new SessionService(sessions, agents, patterns, agentService, loader, tierRegistry);
+                new SessionService(
+                        sessions, agents, patterns, agentService, liveAgents, loader, tierRegistry);
         assertFalse(service.delete("alice", "nope"));
-        verify(agentService, never()).remove(anyString());
+        verify(liveAgents, never()).stopSession(any());
     }
 
     @Test
@@ -584,7 +634,8 @@ class SessionServiceTest {
                 .thenReturn(mock(Agent.class));
 
         SessionService service =
-                new SessionService(sessions, agents, patterns, agentService, loader, tierRegistry);
+                new SessionService(
+                        sessions, agents, patterns, agentService, liveAgents, loader, tierRegistry);
         service.activate("term-1", "coder", "alice", CWD);
 
         // The replayed history loaded from the durable log is threaded into getOrCreateAgent so the
@@ -621,7 +672,8 @@ class SessionServiceTest {
         when(agents.save(any(AgentEntity.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
         SessionService service =
-                new SessionService(sessions, agents, patterns, agentService, loader, tierRegistry);
+                new SessionService(
+                        sessions, agents, patterns, agentService, liveAgents, loader, tierRegistry);
 
         SessionEntity created =
                 service.createSession(
@@ -643,7 +695,8 @@ class SessionServiceTest {
         String roots = fakeDir("only-root");
         when(patterns.findByNameAndOwner("coder", "alice")).thenReturn(Optional.of(pattern));
         SessionService service =
-                new SessionService(sessions, agents, patterns, agentService, loader, tierRegistry);
+                new SessionService(
+                        sessions, agents, patterns, agentService, liveAgents, loader, tierRegistry);
 
         IllegalArgumentException failure =
                 assertThrows(
@@ -701,7 +754,8 @@ class SessionServiceTest {
         when(sessions.findByOwner("alice")).thenReturn(List.of(inA, inB, legacy));
 
         SessionService service =
-                new SessionService(sessions, agents, patterns, agentService, loader, tierRegistry);
+                new SessionService(
+                        sessions, agents, patterns, agentService, liveAgents, loader, tierRegistry);
 
         // Terminal in projectA: sees inA (exact) + legacy (null = any) — NOT inB.
         List<SessionEntity> seenInA = service.listSessions("alice", projectA);
@@ -736,7 +790,8 @@ class SessionServiceTest {
         when(sessions.findByOwner("alice")).thenReturn(List.of(a, b));
 
         SessionService service =
-                new SessionService(sessions, agents, patterns, agentService, loader, tierRegistry);
+                new SessionService(
+                        sessions, agents, patterns, agentService, liveAgents, loader, tierRegistry);
 
         // Single-arg REST-style list returns every session regardless of binding.
         assertEquals(2, service.listSessions("alice").size());
@@ -757,7 +812,8 @@ class SessionServiceTest {
                 .thenReturn(Optional.of(session));
 
         SessionService service =
-                new SessionService(sessions, agents, patterns, agentService, loader, tierRegistry);
+                new SessionService(
+                        sessions, agents, patterns, agentService, liveAgents, loader, tierRegistry);
 
         IllegalArgumentException ex =
                 assertThrows(
@@ -808,7 +864,8 @@ class SessionServiceTest {
                 .thenReturn(mock(Agent.class));
 
         SessionService service =
-                new SessionService(sessions, agents, patterns, agentService, loader, tierRegistry);
+                new SessionService(
+                        sessions, agents, patterns, agentService, liveAgents, loader, tierRegistry);
 
         // Subdirectory of the bound workspace: still in-scope.
         Optional<LlmConfig> cfg = service.activate("term-1", "alpha", "alice", projectASub);
@@ -838,7 +895,8 @@ class SessionServiceTest {
         when(sessions.findByOwner("alice")).thenReturn(List.of(inA));
 
         SessionService service =
-                new SessionService(sessions, agents, patterns, agentService, loader, tierRegistry);
+                new SessionService(
+                        sessions, agents, patterns, agentService, liveAgents, loader, tierRegistry);
 
         Optional<LlmConfig> cfg = service.resumeLastSession("term-1", "alice", projectB);
         assertTrue(
@@ -895,7 +953,8 @@ class SessionServiceTest {
                 .thenReturn(mock(Agent.class));
 
         SessionService service =
-                new SessionService(sessions, agents, patterns, agentService, loader, tierRegistry);
+                new SessionService(
+                        sessions, agents, patterns, agentService, liveAgents, loader, tierRegistry);
 
         Optional<LlmConfig> cfg = service.resumeLastSession("term-1", "alice", projectA);
         assertTrue(cfg.isPresent());
@@ -928,7 +987,8 @@ class SessionServiceTest {
         when(agents.save(any(AgentEntity.class))).thenAnswer(i -> i.getArgument(0));
 
         SessionService service =
-                new SessionService(sessions, agents, patterns, agentService, loader, tierRegistry);
+                new SessionService(
+                        sessions, agents, patterns, agentService, liveAgents, loader, tierRegistry);
 
         SessionEntity created = service.createSession("alice", "coder", null, projectB);
         assertTrue(
@@ -969,7 +1029,8 @@ class SessionServiceTest {
                 .thenReturn(Optional.of(existing));
 
         SessionService service =
-                new SessionService(sessions, agents, patterns, agentService, loader, tierRegistry);
+                new SessionService(
+                        sessions, agents, patterns, agentService, liveAgents, loader, tierRegistry);
 
         IllegalArgumentException ex =
                 assertThrows(
@@ -1010,7 +1071,8 @@ class SessionServiceTest {
         when(agents.save(any(AgentEntity.class))).thenAnswer(i -> i.getArgument(0));
 
         SessionService service =
-                new SessionService(sessions, agents, patterns, agentService, loader, tierRegistry);
+                new SessionService(
+                        sessions, agents, patterns, agentService, liveAgents, loader, tierRegistry);
 
         SessionEntity created = service.createSession("alice", "coder", null, projectA);
         assertTrue(
@@ -1054,7 +1116,8 @@ class SessionServiceTest {
                 .thenReturn(mock(Agent.class));
 
         SessionService service =
-                new SessionService(sessions, agents, patterns, agentService, loader, tierRegistry);
+                new SessionService(
+                        sessions, agents, patterns, agentService, liveAgents, loader, tierRegistry);
 
         Optional<LlmConfig> cfg = service.activate("term-1", "ds", "alice", projectA);
         assertTrue(cfg.isPresent());
@@ -1082,7 +1145,8 @@ class SessionServiceTest {
         when(sessions.findByOwner("alice")).thenReturn(List.of(inA, inB));
 
         SessionService service =
-                new SessionService(sessions, agents, patterns, agentService, loader, tierRegistry);
+                new SessionService(
+                        sessions, agents, patterns, agentService, liveAgents, loader, tierRegistry);
 
         assertTrue(service.delete("alice", "ds"));
         verify(sessions).delete(inA);

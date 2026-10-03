@@ -123,6 +123,11 @@ class AgentEndToEndTest {
      */
     private static @NonNull UniformLLMCaller scriptedWithCompactor(
             @NonNull VetoResponse @NonNull ... mainResponses) {
+        return scriptedWithCompactor(new ArrayList<>(), mainResponses);
+    }
+
+    private static @NonNull UniformLLMCaller scriptedWithCompactor(
+            @NonNull List<String> models, @NonNull VetoResponse @NonNull ... mainResponses) {
         ArrayDeque<VetoResponse> queue = new ArrayDeque<>(List.of(mainResponses));
         return (request, modelSessionId) -> {
             if (request.messages().stream()
@@ -130,6 +135,7 @@ class AgentEndToEndTest {
                     .anyMatch(source -> source.source().equals("runtime-compaction.mdc"))) {
                 return new VetoResponse(null, null, "{}");
             }
+            models.add(request.modelName());
             VetoResponse r = queue.poll();
             if (r == null) {
                 throw new IllegalStateException("scripted caller exhausted");
@@ -351,7 +357,7 @@ class AgentEndToEndTest {
     }
 
     @Test
-    void createGroupTransformsStandaloneIntoLeader() throws Exception {
+    void createGroupUsesLeaderConfigurationWithoutReplacingIdentity() throws Exception {
         // The Leader binding the transform adopts - distinct model so the swap is observable.
         LlmBinding leaderBinding =
                 new LlmBinding(
@@ -361,10 +367,12 @@ class AgentEndToEndTest {
                         LlmOptions.defaults(),
                         "leader base");
         TransformToolEngine engine = new TransformToolEngine(leaderBinding, Set.of());
+        var models = new ArrayList<String>();
         AgentService service =
                 serviceWith(
                         engine,
                         scriptedWithCompactor(
+                                models,
                                 thoughtOnWithCall(
                                         "I'll delegate this.",
                                         "Spawning a group.",
@@ -381,6 +389,8 @@ class AgentEndToEndTest {
                 null,
                 0,
                 ToolResultPresentationMode.BASIC);
+        VetoAgent agent = requireAgent(service.agent("transform-fwd"));
+        AgentPersona originalPersona = agent.persona();
         AgentResult result =
                 service.submit(
                         "transform-fwd",
@@ -389,19 +399,20 @@ class AgentEndToEndTest {
                         EPISODE_TIMEOUT);
 
         assertTrue(result.success(), "episode should finish after the forward transform");
-        VetoAgent agent = requireAgent(service.agent("transform-fwd"));
         AgentRunner runner =
                 assertInstanceOf(
                         AgentRunner.class,
                         requireField(ReflectionTestUtils.getField(agent, "runner")));
 
-        // The STANDALONE persona mutated to LEADER, the Leader binding applied, the group stamped.
-        AgentPersona persona =
-                assertInstanceOf(AgentPersona.class, requireField(runner.personaView()));
-        assertEquals(Role.LEADER, persona.role(), "persona role advanced to LEADER");
-        assertEquals(Role.LEADER, agent.persona().role());
+        assertSame(originalPersona, runner.personaView(), "Runner identity stays immutable");
+        assertSame(
+                originalPersona, agent.persona(), "Plugin configuration cannot replace identity");
+        assertEquals(Role.STANDALONE, agent.persona().role());
         assertEquals(runner.whitelistedToolsView(), agent.whitelistedTools());
-        assertEquals("leader-model", runner.binding().model(), "the Leader binding was applied");
+        assertEquals(
+                List.of("stub-model", "leader-model"),
+                models,
+                "Model calls use the plugin's execution profile at each transition");
 
         // The transform appended a REWIND + AGENT_INIT(leader) + USER_PROMPT(brief) sequence.
         List<TurnRecord> history = agent.history();
@@ -441,7 +452,7 @@ class AgentEndToEndTest {
     }
 
     @Test
-    void disbandGroupReversesTransformBackToStandalone() throws Exception {
+    void disbandGroupRestoresStandaloneConfigurationWithoutReplacingIdentity() throws Exception {
         LlmBinding leaderBinding =
                 new LlmBinding(
                         ProviderType.DEEPSEEK,
@@ -452,10 +463,12 @@ class AgentEndToEndTest {
         TransformToolEngine engine =
                 new TransformToolEngine(
                         leaderBinding, Set.of(transformDefinition("disband_group")));
+        var models = new ArrayList<String>();
         AgentService service =
                 serviceWith(
                         engine,
                         scriptedWithCompactor(
+                                models,
                                 thoughtOnWithCall(
                                         "I'll delegate this.",
                                         "Spawning a group.",
@@ -476,6 +489,8 @@ class AgentEndToEndTest {
                 null,
                 0,
                 ToolResultPresentationMode.BASIC);
+        VetoAgent agent = requireAgent(service.agent("transform-rev"));
+        AgentPersona originalPersona = agent.persona();
         AgentResult result =
                 service.submit(
                         "transform-rev",
@@ -484,22 +499,20 @@ class AgentEndToEndTest {
                         EPISODE_TIMEOUT);
 
         assertTrue(result.success(), "episode should finish after the reverse transform");
-        VetoAgent agent = requireAgent(service.agent("transform-rev"));
         AgentRunner runner =
                 assertInstanceOf(
                         AgentRunner.class,
                         requireField(ReflectionTestUtils.getField(agent, "runner")));
 
-        // The stashed STANDALONE persona + binding are restored and the group stamp cleared.
-        AgentPersona persona =
-                assertInstanceOf(AgentPersona.class, requireField(runner.personaView()));
-        assertEquals(Role.STANDALONE, persona.role(), "persona role restored to STANDALONE");
+        assertSame(originalPersona, runner.personaView(), "Runner identity stays immutable");
+        assertSame(
+                originalPersona, agent.persona(), "Plugin configuration cannot replace identity");
         assertEquals(Role.STANDALONE, agent.persona().role());
         assertEquals(runner.whitelistedToolsView(), agent.whitelistedTools());
         assertEquals(
-                "stub-model",
-                runner.binding().model(),
-                "the original STANDALONE binding was restored");
+                List.of("stub-model", "leader-model", "stub-model"),
+                models,
+                "Model calls use the plugin's execution profile at each transition");
 
         // The reverse transform appended AGENT_INIT(standalone) + USER_PROMPT(disband brief).
         List<TurnRecord> history = agent.history();
@@ -582,8 +595,8 @@ class AgentEndToEndTest {
                             requireField(ReflectionTestUtils.getField(mate, "runner")));
             assertEquals(sessionId, runner.sessionId());
             assertNotEquals(persona.id(), sessionId.toString());
-            mate.submit("Execute assigned work");
-            assertTrue(mate.await(EPISODE_TIMEOUT).success());
+            assertTrue(
+                    mate.submitRequest("Execute assigned work").await(EPISODE_TIMEOUT).success());
             assertFalse(mate.history().isEmpty());
             assertEquals(sessionId, runner.sessionId());
         } finally {

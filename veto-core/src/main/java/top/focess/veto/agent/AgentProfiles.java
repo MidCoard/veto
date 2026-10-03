@@ -29,7 +29,10 @@ public final class AgentProfiles {
                 source == null ? null : source.localId());
     }
 
-    /** A configuration intent resolved against host-owned persona, model binding and prompt. */
+    /**
+     * Authorized execution inputs. The persona is a prompt/tool profile or a construction template
+     * for a new agent, never a replacement for an existing agent identity.
+     */
     public record Resolved(
             @NonNull AgentPersona persona,
             @NonNull LlmBinding binding,

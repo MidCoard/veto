@@ -100,8 +100,8 @@ class PlanExecutionTest {
                         0,
                         ToolResultPresentationMode.BASIC);
         try {
-            agent.submit("Read the notes with a plan");
-            var result = agent.await(Duration.ofSeconds(10));
+            var result =
+                    agent.submitRequest("Read the notes with a plan").await(Duration.ofSeconds(10));
             assertTrue(result.success(), result.message());
             assertTrue(result.message().contains("Plan result"), result.message());
             assertEquals(
@@ -165,8 +165,8 @@ class PlanExecutionTest {
                         0,
                         ToolResultPresentationMode.BASIC);
         try {
-            agent.submit("Read the configuration");
-            var result = agent.await(Duration.ofSeconds(10));
+            var result =
+                    agent.submitRequest("Read the configuration").await(Duration.ofSeconds(10));
             assertTrue(result.success(), result.message());
             assertEquals("Reference received", result.message());
             assertEquals(2, calls.get());
