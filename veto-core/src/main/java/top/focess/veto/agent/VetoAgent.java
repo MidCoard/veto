@@ -49,7 +49,9 @@ public class VetoAgent implements Agent {
         this.id = persona.id();
         this.runner = runner;
         this.userInteractionEnabled = userInteractionEnabled;
-        executionThread = Thread.ofVirtual().name("agent-" + id).start(runner);
+        executionThread = Thread.ofVirtual().name("agent-" + id).unstarted(runner::run);
+        runner.attachExecutionThread(executionThread);
+        executionThread.start();
     }
 
     /** Whether the agent is running or has queued work still to process. */
@@ -67,7 +69,7 @@ public class VetoAgent implements Agent {
         if (!userInteractionEnabled) throw new IllegalStateException("Agent is read-only");
         if (state() == AgentState.TERMINATED)
             throw new IllegalStateException("Agent has terminated");
-        runner.enqueue(new AgentAction.UserPromptAction(prompt));
+        runner.startTask(null, new AgentAction.UserPromptAction(prompt));
     }
 
     /** Attaches the plugin work source the agent polls for autonomous observations. */
@@ -119,6 +121,16 @@ public class VetoAgent implements Agent {
     public @NonNull RequestHandle submitRequest(
             @NonNull String prompt, Consumer<AgentResult> callback) {
         return runner.startTask(callback, new AgentAction.UserPromptAction(prompt));
+    }
+
+    /** Submits a request with its own model binding and message locale. */
+    public @NonNull RequestHandle submitRequest(
+            @NonNull String prompt,
+            @NonNull LlmBinding binding,
+            @NonNull Locale locale,
+            Consumer<AgentResult> callback) {
+        return runner.startTask(
+                callback, new AgentAction.UserPromptAction(prompt), binding, locale);
     }
 
     /** Registers a callback run once when the agent's execution thread terminates. */
@@ -199,11 +211,6 @@ public class VetoAgent implements Agent {
     /** The model binding (provider/model/credential) currently in effect. */
     public @NonNull LlmBinding binding() {
         return runner.binding();
-    }
-
-    /** Enqueues a re-resolution of the agent's plugin-supplied configuration. */
-    public void refreshConfiguration() {
-        runner.refreshConfiguration();
     }
 
     /**

@@ -10,6 +10,8 @@ public final class LoopBreaker {
     private final long maxCallsPerEpisode;
     private long count;
     private long grantedCalls;
+    // The parent may query its isolated child while it runs; publish one consistent answer.
+    private volatile boolean exhausted;
 
     /**
      * @param maxCallsPerEpisode the model-call allowance per explicitly authorized segment; {@code
@@ -24,12 +26,14 @@ public final class LoopBreaker {
     public void newEpisode() {
         count = 0;
         grantedCalls = maxCallsPerEpisode < 0 ? -1 : maxCallsPerEpisode;
+        exhausted = grantedCalls >= 0 && count >= grantedCalls;
     }
 
     /** Explicit user authorization after exhaustion adds one segment without erasing usage. */
     public void grantContinuation() {
         if (!shouldTrip()) throw new IllegalStateException("Request budget is not exhausted");
         grantedCalls = maxCallsPerEpisode < 0 ? -1 : saturatedAdd(grantedCalls, maxCallsPerEpisode);
+        exhausted = grantedCalls >= 0 && count >= grantedCalls;
     }
 
     /** Legacy checkpoints carry only consumption and retain the original single-segment limit. */
@@ -43,6 +47,7 @@ public final class LoopBreaker {
             throw new IllegalArgumentException("Invalid model-call checkpoint");
         count = consumedCalls;
         grantedCalls = allowance;
+        exhausted = grantedCalls >= 0 && count >= grantedCalls;
     }
 
     private static long saturatedAdd(long first, long second) {
@@ -57,12 +62,13 @@ public final class LoopBreaker {
      * Whether the total request allowance has been reached (checked at the top of each iteration).
      */
     public boolean shouldTrip() {
-        return grantedCalls >= 0 && count >= grantedCalls;
+        return exhausted;
     }
 
     /** Records one model call (autonomous {@code VetoResponse} or plan {@code generate}). */
     public void recordModelCall() {
         count = saturatedAdd(count, 1);
+        exhausted = grantedCalls >= 0 && count >= grantedCalls;
     }
 
     public long count() {

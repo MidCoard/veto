@@ -3,6 +3,7 @@ package top.focess.veto.agent;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.BlockingQueue;
@@ -15,16 +16,16 @@ import top.focess.veto.agent.ExecutionControl.Wait;
 import top.focess.veto.agent.continuation.RequestContinuationStore;
 import top.focess.veto.api.agent.AgentAction;
 import top.focess.veto.api.agent.AgentResult;
+import top.focess.veto.api.llm.LlmBinding;
 import top.focess.veto.api.plugin.contract.AgentInbox;
 import top.focess.veto.integration.plugins.SessionPlugins;
 import top.focess.veto.util.Nullness;
 import top.focess.veto.vault.KeysteadVault;
 
 /**
- * Owns continuation budgets and observation acknowledgements. The runner serializes ledger/history
- * operations; work claiming and completion require the caller's request-transition monitor. This
- * component returns claimed work without publishing request/control transitions or invoking
- * listeners.
+ * Owns continuation budgets and observation acknowledgements. Ledger/history operations, work
+ * claiming and completion are confined to the Agent execution thread. This component returns
+ * claimed work without publishing request/control transitions or invoking listeners.
  */
 final class AgentContinuationExecution {
     private static final @NonNull Logger log =
@@ -35,7 +36,7 @@ final class AgentContinuationExecution {
     private final String owner;
     private final long maxCallsPerEpisode;
     private final @NonNull AgentOutput output;
-    private final @NonNull BlockingQueue<QueuedRequest> actionQueue;
+    private final @NonNull BlockingQueue<RunnerCommand> actionQueue;
     private final @NonNull Supplier<@Nullable SessionPlugins> sessionPlugins;
     private KeysteadVault executionVault;
     private RequestContinuationStore continuationStore;
@@ -58,7 +59,7 @@ final class AgentContinuationExecution {
             String owner,
             long maxCallsPerEpisode,
             @NonNull AgentOutput output,
-            @NonNull BlockingQueue<QueuedRequest> actionQueue,
+            @NonNull BlockingQueue<RunnerCommand> actionQueue,
             @NonNull Supplier<@Nullable SessionPlugins> sessionPlugins) {
         this.agentId = agentId;
         this.sessionId = sessionId;
@@ -221,8 +222,12 @@ final class AgentContinuationExecution {
         }
     }
 
-    /** Called under the caller's request-transition monitor with its current control snapshot. */
-    QueuedRequest claimWork(@NonNull ExecutionControl control, @NonNull Object requestOwner) {
+    /** Called on the Agent execution thread with its current control snapshot. */
+    QueuedRequest claimWork(
+            @NonNull ExecutionControl control,
+            @NonNull Object requestOwner,
+            @NonNull LlmBinding binding,
+            @NonNull Locale locale) {
         KeysteadVault vault = executionVault;
         if (vault != null && (owner == null || !vault.isUnlocked(owner))) return null;
         AgentInbox service = source();
@@ -234,7 +239,12 @@ final class AgentContinuationExecution {
             return new QueuedRequest(new AgentAction.WorkAction(), waiting);
         if (service == null) return null;
         // A newly submitted user task owns its own handoff future and goes first.
-        if (actionQueue.stream().anyMatch(a -> a.action() instanceof AgentAction.UserPromptAction))
+        if (actionQueue.stream()
+                .anyMatch(
+                        a ->
+                                a instanceof QueuedRequest request
+                                        && request.action()
+                                                instanceof AgentAction.UserPromptAction))
             return null;
         var events = pendingObservations(service, waiting);
         if (events.isEmpty()) return null;
@@ -276,7 +286,8 @@ final class AgentContinuationExecution {
         remember(episode);
         episode.observationId(origin == null ? first.id() : null);
         return new QueuedRequest(
-                new AgentAction.WorkAction(), new RequestHandle(requestOwner, episode));
+                new AgentAction.WorkAction(),
+                new RequestHandle(requestOwner, episode, binding, locale));
     }
 
     AgentInbox source() {

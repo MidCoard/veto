@@ -10,11 +10,7 @@ import org.jspecify.annotations.NonNull;
  * controls.
  */
 public sealed interface AgentAction
-        permits AgentAction.UserPromptAction,
-                AgentAction.WorkAvailableAction,
-                AgentAction.WorkAction,
-                AgentAction.CompactAction,
-                AgentAction.ConfigurationAction {
+        permits AgentAction.UserPromptAction, AgentAction.WorkAction, AgentAction.CompactAction {
 
     /**
      * Submit a prompt for the agent to work on. A fresh {@code UserPromptAction} starts a new
@@ -25,14 +21,8 @@ public sealed interface AgentAction
      */
     record UserPromptAction(@NonNull String prompt) implements AgentAction {}
 
-    /** A wake hint; sourced observations are read from plugin work sources by the same Runner. */
-    record WorkAvailableAction() implements AgentAction {}
-
     /** An admitted plugin continuation; processed by the same request loop as user input. */
     record WorkAction() implements AgentAction {}
-
-    /** Apply pending host configuration on the agent execution thread. */
-    record ConfigurationAction() implements AgentAction {}
 
     /** Perform history/context compaction. */
     record CompactAction() implements AgentAction {}

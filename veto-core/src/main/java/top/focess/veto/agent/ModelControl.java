@@ -12,7 +12,6 @@ import top.focess.veto.api.agent.control.SourceEvidence;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.agent.workflow.ModelFlow;
 import top.focess.veto.api.llm.VetoRequest;
-import top.focess.veto.api.llm.VetoResponse;
 
 /** One admitted model tool call; plugins choose feature policy, core verifies control and facts. */
 final class ModelControl implements ControlHost {
@@ -115,11 +114,9 @@ final class ModelControl implements ControlHost {
         if (message.isBlank())
             throw new IllegalArgumentException("Completion message must not be blank");
         if (receipt != null) evidence.finish(receipt);
-        var citations =
-                receipt == null ? null : RequestEvidence.citations(receipt, evidenceBoundary);
         ToolCallContextHolder.transfer(
                 new ToolCallContextHolder.ResponseDirective.Finish(
-                        new VetoResponse(null, null, message, citations),
+                        message,
                         receipt == null
                                 ? null
                                 : RequestEvidence.seal(receipt, evidenceBoundary, message)));

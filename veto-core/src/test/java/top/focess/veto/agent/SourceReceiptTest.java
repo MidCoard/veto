@@ -84,6 +84,12 @@ class SourceReceiptTest {
         assertThrows(
                 SecurityException.class,
                 () -> RequestEvidence.forRequest(sealed, task, "model-one", "different answer"));
+        var reconstructed =
+                RequestEvidence.response("[Launch](cite:launch)", sealed, task, "model-one");
+        assertEquals(evidence.inspect(declaration()).citations(), reconstructed.citations());
+        assertThrows(
+                SecurityException.class,
+                () -> RequestEvidence.response("changed", sealed, task, "model-one"));
         active.set(false);
         assertThrows(SecurityException.class, () -> evidence.finish(receipt));
     }
@@ -173,7 +179,8 @@ class SourceReceiptTest {
             if (!(outcome instanceof ToolCallContextHolder.ResponseDirective.Finish finish))
                 throw new AssertionError("No finish");
             assertNull(finish.citations());
-            assertNull(finish.response().citations());
+            assertEquals("[fake](cite:invented)", finish.message());
+            assertTrue(finish.publish());
             assertThrows(SecurityException.class, () -> control.finish("later", null));
         } finally {
             ToolCallContextHolder.clear();

@@ -44,7 +44,7 @@ class ToolArchitectureTest {
                 AgentRunner.class.getDeclaredField("control").getType());
         assertEquals(
                 BlockingQueue.class, AgentRunner.class.getDeclaredField("actionQueue").getType());
-        assertEquals(Thread.class, AgentRunner.class.getDeclaredField("runningThread").getType());
+        assertEquals(Thread.class, AgentRunner.class.getDeclaredField("executionThread").getType());
         assertEquals(
                 AgentRunner.class,
                 Class.forName("top.focess.veto.agent.AgentToolExecution")

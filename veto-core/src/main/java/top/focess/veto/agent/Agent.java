@@ -12,8 +12,10 @@ import top.focess.veto.api.agent.AgentState;
 
 /**
  * The identity + API surface of a Veto agent. Holds the persona, tool whitelist, turn history, and
- * a volatile state machine. Owns its {@code AgentRunner} internally; workflows/transports interact
- * only through this API — they never touch the virtual thread, state machine, or loop mechanics.
+ * safely published execution status. One dedicated virtual thread owns execution and consumes
+ * queued commands; callers may concurrently submit, query, cancel or stop. Cancellation/stop
+ * signals can interrupt blocked execution. Request results and execution settlement are distinct.
+ * Workflows/transports interact through this API rather than the execution thread.
  */
 public interface Agent {
 
@@ -24,7 +26,7 @@ public interface Agent {
     /** The persona's display name. */
     @NonNull String name();
 
-    /** The persona currently in effect (identity, role and authorized tools). */
+    /** The identity fixed at construction, independent of plugin execution profiles. */
     @NonNull AgentPersona persona();
 
     /** The tool names this agent is authorized to call. */

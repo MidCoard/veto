@@ -10,7 +10,6 @@ import top.focess.veto.api.agent.control.ControlHost;
 import top.focess.veto.api.agent.control.SourceEvidence;
 import top.focess.veto.api.agent.workflow.ModelFlow;
 import top.focess.veto.api.agent.workflow.PluginAwait;
-import top.focess.veto.api.llm.VetoResponse;
 import top.focess.veto.integration.plugins.IsolatedExecutions;
 
 /**
@@ -33,15 +32,14 @@ public final class ToolCallContextHolder {
         record Push(@NonNull ModelFlow flow) implements ResponseDirective {}
 
         /**
-         * Terminate the loop with a finished response. {@code publish} controls whether the result
-         * is surfaced as a normal model output.
+         * Terminate the loop with a final message. {@code publish} controls whether the result is
+         * surfaced as a normal model output.
          */
-        record Finish(
-                @NonNull VetoResponse response, SourceEvidence.Receipt citations, boolean publish)
+        record Finish(@NonNull String message, SourceEvidence.Receipt citations, boolean publish)
                 implements ResponseDirective {
-            /** Convenience constructor that publishes the finished response. */
-            public Finish(@NonNull VetoResponse response, SourceEvidence.Receipt citations) {
-                this(response, citations, true);
+            /** Convenience constructor that publishes the final message. */
+            public Finish(@NonNull String message, SourceEvidence.Receipt citations) {
+                this(message, citations, true);
             }
         }
     }
@@ -79,8 +77,7 @@ public final class ToolCallContextHolder {
         var current = state();
         if (current.response != null)
             throw new IllegalStateException("Only one control result per call");
-        current.response =
-                new ResponseDirective.Finish(new VetoResponse(null, null, result), null, false);
+        current.response = new ResponseDirective.Finish(result, null, false);
     }
 
     /** Rewraps a pending {@link ResponseDirective.Push} result, binding its flow to a runtime. */

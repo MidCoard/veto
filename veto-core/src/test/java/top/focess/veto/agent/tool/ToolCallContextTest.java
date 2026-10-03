@@ -44,7 +44,9 @@ class ToolCallContextTest {
                 if (!(ToolCallContextHolder.drainResponse()
                         instanceof ToolCallContextHolder.ResponseDirective.Finish result))
                     throw new AssertionError("Expected finish response");
-                assertEquals("parent-result", result.response().message());
+                assertEquals("parent-result", result.message());
+                assertFalse(result.publish());
+                assertNull(result.citations());
             } finally {
                 ToolCallContextHolder.clear();
             }

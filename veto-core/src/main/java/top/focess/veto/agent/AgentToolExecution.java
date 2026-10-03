@@ -535,18 +535,10 @@ final class AgentToolExecution {
     private @NonNull InterceptResolution awaitResolution(
             @NonNull String callId, @NonNull Invocation invocation) {
         InterceptResolution resolution = toolBoundary.await(callId);
-        synchronized (runner) {
-            // cancelTask must finish both declining the wait and interrupting this thread first.
-            RequestHandle cancellation = runner.control().request();
-            boolean restoreInterrupt =
-                    cancellation != null && cancellation.cancelled && Thread.interrupted();
-            try {
-                if (runner.control().open()) runner.clearWait(Wait.APPROVAL);
-            } finally {
-                if (restoreInterrupt) Thread.currentThread().interrupt();
-            }
-        }
+        // The cancellation gate waits for declineAll + interrupt, then clears the stale signal.
+        // Wait-state publication and its event callback belong to this execution thread.
         runner.checkTaskCancellation();
+        runner.clearWait(Wait.APPROVAL);
         invocation
                 .request()
                 .approvalReceipts

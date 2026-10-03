@@ -3,6 +3,7 @@ package top.focess.veto.agent;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -14,27 +15,29 @@ import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.intercept.ApprovalReceipt;
 import top.focess.veto.api.agent.AgentResult;
 import top.focess.veto.api.agent.workflow.PluginAwait;
+import top.focess.veto.api.llm.LlmBinding;
 
 /**
  * Caller-owned result and confirmation that execution can no longer produce effects.
  *
- * <p>Not independently thread-safe as a whole. Public result/settlement futures support concurrent
- * observation; internal request and approval state belongs to the runner and its runner monitor.
- * This instance's monitor separately guards plugin wait registration and consumption, while
- * cancellation is volatile. Future completion callbacks execute inline on the registering or
- * completing thread and can also run while this monitor is held; they must not block or acquire
- * locks in the reverse order of their caller.
+ * <p>Plugin waits, approval state and the episode ledger belong to the Agent execution thread.
+ * External cancellation publishes only the volatile intent under the Runner admission monitor.
+ * Result/settlement futures support concurrent observation. Queued cancellation can complete its
+ * future on the cancelling caller, and stop can reject an active result on the stopping caller
+ * before execution exits. Ordinary admitted completion callbacks execute on the Agent thread.
  */
 public final class RequestHandle {
     final @NonNull Object owner;
     final @NonNull RequestEpisode episode;
+    final LlmBinding binding;
+    final @NonNull Locale locale;
     final @NonNull CompletableFuture<AgentResult> result = new CompletableFuture<>();
     final @NonNull CompletableFuture<Boolean> settled = new CompletableFuture<>();
     final @NonNull Map<String, ApprovalReceipt> approvalReceipts = new HashMap<>();
     final @NonNull Set<String> declinedCallSignatures = new HashSet<>();
     private final @NonNull Map<String, CompletableFuture<Boolean>> waits = new HashMap<>();
 
-    synchronized void await(@NonNull PluginAwait signal, @NonNull Runnable wake) {
+    void await(@NonNull PluginAwait signal, @NonNull Runnable wake) {
         if (result.isDone() || cancelled) {
             signal.ready().cancel(false);
             return;
@@ -46,7 +49,7 @@ public final class RequestHandle {
         signal.ready().whenComplete((value, failure) -> wake.run());
     }
 
-    synchronized boolean awaiting() {
+    boolean awaiting() {
         var iterator = waits.values().iterator();
         while (iterator.hasNext()) {
             var signal = iterator.next();
@@ -58,11 +61,11 @@ public final class RequestHandle {
         return !waits.isEmpty();
     }
 
-    synchronized boolean readyToResume() {
+    boolean readyToResume() {
         return waits.values().stream().anyMatch(CompletableFuture::isDone);
     }
 
-    synchronized void releaseWaits() {
+    void releaseWaits() {
         for (var signal : waits.values()) signal.cancel(false);
         waits.clear();
     }
@@ -70,6 +73,8 @@ public final class RequestHandle {
     @NonNull String message = "";
     volatile boolean cancelled;
     boolean interruptSent;
+    // Guarded by the Runner admission/interrupt monitor, distinct from execution settlement.
+    boolean resultClaimed;
     // Resolved only by the runner for this request; never replaces the agent's identity.
     volatile AgentProfiles.Resolved configuration;
 
@@ -78,8 +83,18 @@ public final class RequestHandle {
     }
 
     RequestHandle(@NonNull Object owner, @NonNull RequestEpisode episode) {
+        this(owner, episode, null, Locale.ENGLISH);
+    }
+
+    RequestHandle(
+            @NonNull Object owner,
+            @NonNull RequestEpisode episode,
+            LlmBinding binding,
+            @NonNull Locale locale) {
         this.owner = owner;
         this.episode = episode;
+        this.binding = binding;
+        this.locale = locale;
     }
 
     /** The id of the episode this request drives. */

@@ -175,6 +175,20 @@ final class RequestEvidence implements SourceEvidence {
         return issued.bound();
     }
 
+    /** Rebuilds a terminal model result only after validating its request-bound source receipt. */
+    static @NonNull VetoResponse response(
+            @NonNull String message,
+            ModelFlow.Source receipt,
+            @NonNull Object requestIdentity,
+            String callId) {
+        var bound = forRequest(receipt, requestIdentity, callId, message);
+        return new VetoResponse(
+                null,
+                null,
+                message,
+                bound != null && receipt instanceof Issued issued ? issued.citations() : null);
+    }
+
     static String modelCallId(SourceEvidence.Receipt receipt, @NonNull Object boundary) {
         if (receipt == null) return null;
         bound(receipt, boundary);

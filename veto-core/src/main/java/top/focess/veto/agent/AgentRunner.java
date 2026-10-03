@@ -72,17 +72,18 @@ import top.focess.veto.vault.UserContext;
 /**
  * Owns agent execution state, request transitions and the single-thread action queue.
  *
- * <p>Supports concurrent request submission, cancellation and observation through the respective
- * entry points, but is not safe for arbitrary concurrent method calls. Exactly one thread may run
- * {@link #run()}; model/turn execution remains confined to that loop. Attach dependencies before
- * starting it. Runner-monitor transitions, the concurrent action queue and independently guarded
- * history/waits coordinate external callers. Event and completion callbacks execute inline on their
- * producer's thread; no global callback serialization is provided. Some event, inbox and future
- * callbacks execute under this runner's monitor and must not wait for work that needs it.
- * Termination callbacks normally execute outside the monitor; late registration invokes them inline
- * under it.
+ * <p>The VetoAgent virtual thread owns ordinary execution state, wait registration, continuation
+ * persistence and retirement. Thread.start publishes setup dependencies; the existing queue
+ * publishes immutable runtime commands. External callers publish cancellation/stop intent under the
+ * admission monitor, which also prevents an old cancellation interrupt reaching a new request. A
+ * queued request proven not admitted may be cancelled and completed on its caller. Stop may
+ * immediately reject an active result on the stopping caller without claiming settlement. Ordinary
+ * results, wait release and termination callbacks run on the execution thread; late termination
+ * registration invokes its callback on the registering caller. Result and execution-event callbacks
+ * run outside the admission monitor. Live control/configuration values are published for concurrent
+ * queries.
  */
-public final class AgentRunner implements Runnable {
+public final class AgentRunner {
     private static final @NonNull Logger log =
             LoggerFactory.getLogger("top.focess.veto.agent.AgentRunner");
     private final @NonNull String agentId;
@@ -118,10 +119,15 @@ public final class AgentRunner implements Runnable {
 
     private final @NonNull AgentPluginHooks hooks;
     private volatile @NonNull ExecutionControl control = new ExecutionControl.Idle();
-    private final @NonNull BlockingQueue<QueuedRequest> actionQueue;
+    private final @NonNull BlockingQueue<RunnerCommand> actionQueue;
     private final @NonNull List<QueuedRequest> deferredUserPrompts = new ArrayList<>();
     private final @NonNull AtomicBoolean workQueued = new AtomicBoolean();
-    private volatile Thread runningThread;
+    // Assigned once before Thread.start; never changed by execution or retirement.
+    private Thread executionThread;
+    // Stop intent is published by external callers; only the execution thread closes control.
+    private volatile ExecutionControl.CloseReason stopReason;
+    // Admission defaults are protected by this monitor; execution uses queued immutable inputs.
+    private RunnerCommand.@NonNull Inputs submissionInputs;
     private Runnable terminationCallback;
     private boolean terminationNotified;
     private EventManager eventManager;
@@ -204,6 +210,7 @@ public final class AgentRunner implements Runnable {
         this.objectMapper = objectMapper;
         this.persona = persona;
         this.baseBinding = binding;
+        this.submissionInputs = new RunnerCommand.Inputs(binding, Locale.ENGLISH);
         actionQueue = new LinkedBlockingQueue<>();
         output =
                 new AgentOutput(
@@ -267,6 +274,7 @@ public final class AgentRunner implements Runnable {
 
     /** Attaches the vault that gates autonomous plugin work on the owner's unlocked credentials. */
     public void attachExecutionVault(@NonNull KeysteadVault vault) {
+        requireSetup();
         continuations.attachExecutionVault(vault);
     }
 
@@ -278,6 +286,7 @@ public final class AgentRunner implements Runnable {
     }
 
     void configureModelTiers(ModelTierRegistry registry) {
+        requireSetup();
         modelTierRegistry = registry;
     }
 
@@ -289,27 +298,27 @@ public final class AgentRunner implements Runnable {
      */
     public boolean cancelTask(@NonNull RequestHandle task, @NonNull Duration timeout)
             throws InterruptedException {
+        boolean queuedCancellation = false;
         synchronized (this) {
             if (task.owner != this) return false;
-            if (!task.result.isDone()) task.cancelled = true;
-            if (task.cancelled && task != control.request()) {
-                actionQueue.removeIf(queued -> queued.handle() == task);
-                deferredUserPrompts.removeIf(queued -> queued.handle() == task);
-                task.result.complete(AgentResult.failure("Task cancelled", Map.of()));
-                task.settled.complete(true);
-            }
-            if (task.cancelled && task == control.request() && control.waiting(Wait.PLUGIN)) {
-                completeFailure("Task cancelled", true, task.requestId());
-                control = control.withRequest(null);
-                task.settled.complete(true);
-                notifyExecutionChanged();
-            }
-            if (task.cancelled && task == control.request() && !task.interruptSent) {
+            if (!task.resultClaimed && !task.result.isDone()) task.cancelled = true;
+            if (task.cancelled && !task.resultClaimed && task != control.request()) {
+                // Admission uses this same gate: this handle cannot start after this intent.
+                task.resultClaimed = true;
+                queuedCancellation = true;
+            } else if (task.cancelled
+                    && !task.resultClaimed
+                    && task == control.request()
+                    && !task.interruptSent) {
                 task.interruptSent = true;
                 toolBoundary.declineAll();
-                Thread thread = runningThread;
+                var thread = executionThread;
                 if (thread != null) thread.interrupt();
             }
+        }
+        if (queuedCancellation) {
+            task.result.complete(AgentResult.failure("Task cancelled", Map.of()));
+            task.settled.complete(true);
         }
         try {
             return task.settled.get(Math.max(0, timeout.toNanos()), TimeUnit.NANOSECONDS);
@@ -328,33 +337,36 @@ public final class AgentRunner implements Runnable {
     /** Sets how tool results are rendered to the model for subsequent turns. */
     public void setToolResultPresentation(
             @NonNull ToolResultPresentationMode toolResultPresentation) {
+        requireSetup();
         this.toolResultPresentation = toolResultPresentation;
     }
 
     /** Attaches the durable store used to reload request continuations across restarts. */
     public void attachContinuationStore(@NonNull RequestContinuationStore store) {
+        requireSetup();
         continuations.attachContinuationStore(store);
     }
 
     /** Attaches the plugin work source polled for autonomous observations. */
     public void attachWorkSource(@NonNull AgentInbox service) {
-        continuations.attachWorkSource(service);
+        handoff(new RunnerCommand.WorkSource(service));
     }
 
     /** Signals that plugin work may be available, waking the loop to claim it. */
     public void signalWork() {
-        if (control.open() && workQueued.compareAndSet(false, true))
-            actionQueue.add(
-                    new QueuedRequest(
-                            new AgentAction.WorkAvailableAction(), new RequestHandle(this)));
+        synchronized (this) {
+            if (stopReason == null && control.open() && workQueued.compareAndSet(false, true))
+                actionQueue.add(new RunnerCommand.Wake());
+        }
     }
 
     /**
      * The agent's execution loop: drains the action queue on this (virtual) thread, running one
      * episode per dequeued request until the agent is terminated or the thread is interrupted.
      */
-    public void run() {
-        runningThread = Thread.currentThread();
+    void run() {
+        if (Thread.currentThread() != executionThread)
+            throw new IllegalStateException("Runner must execute on its attached thread");
         // Stamp the session owner onto the agent's virtual thread so credential resolution on the
         // LLM-call path (CredentialResolver → KeysteadVault.currentHandle → UserContext.get) and
         // the embedder path resolve against the owner's vault rather than the single-active-handle
@@ -365,34 +377,30 @@ public final class AgentRunner implements Runnable {
             UserContext.set(currentOwner);
         }
         try {
-            while (control().open()) {
+            while (stopReason == null && control.open()) {
                 try {
-                    QueuedRequest queued = actionQueue.take();
-                    AgentAction action = queued.action();
-                    if (queued.handle().cancelled) {
-                        queued.handle().settled.complete(true);
+                    var parked = control.request();
+                    if (parked != null && parked.cancelled && control.waiting(Wait.PLUGIN)) {
+                        checkCancelledParked(parked);
                         continue;
                     }
-                    if (action instanceof AgentAction.WorkAvailableAction) {
-                        queued.handle().result.complete(AgentResult.success("", Map.of()));
-                        queued.handle().settled.complete(true);
-                        QueuedRequest work = claimWork();
+                    var command = actionQueue.take();
+                    QueuedRequest queued;
+                    if (command instanceof RunnerCommand.Wake) {
+                        var work = claimWork();
                         if (work == null) continue;
                         queued = work;
-                        action = work.action();
+                    } else if (command instanceof QueuedRequest request) {
+                        queued = request;
+                    } else {
+                        if (stopReason == null) applyCommand(command);
+                        continue;
                     }
-                    if (action instanceof AgentAction.ConfigurationAction) {
-                        try {
-                            resolveConfiguration();
-                            queued.handle().result.complete(AgentResult.success("", Map.of()));
-                        } catch (RuntimeException error) {
-                            queued.handle()
-                                    .result
-                                    .complete(AgentResult.failure(failureMessage(error), Map.of()));
-                            log.warn("Agent configuration was not applied", error);
-                        } finally {
-                            queued.handle().settled.complete(true);
-                        }
+                    AgentAction action = queued.action();
+                    if (queued.handle().cancelled) {
+                        if (control.request() == queued.handle())
+                            checkCancelledParked(queued.handle());
+                        else settleUnadmitted(queued.handle(), "Task cancelled");
                         continue;
                     }
                     if (!beginRequest(queued)) continue;
@@ -443,19 +451,28 @@ public final class AgentRunner implements Runnable {
                         finishTurn(taskCancellation, action instanceof AgentAction.CompactAction);
                     }
                 } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    break;
+                    if (stopReason != null) break;
+                    RequestHandle parked = control.request();
+                    if (parked == null || !parked.cancelled || !control.waiting(Wait.PLUGIN)) {
+                        Thread.currentThread().interrupt();
+                        break;
+                    }
+                    // The interrupt merely wakes this owner; persistence and wait release stay
+                    // here.
+                    checkCancelledParked(parked);
                 }
             }
         } catch (LinkageError error) {
             // The admitted request was failed before unwinding; a broken runtime must retire.
             log.error("Agent {} runtime linkage failed", agentId, error);
         } finally {
-            runningThread = null;
             // The stop signal ends execution; mandatory retirement still delivers its events.
             boolean interrupted = Thread.interrupted();
             try {
-                terminate();
+                retire(
+                        stopReason == null
+                                ? ExecutionControl.CloseReason.AGENT_DELETED
+                                : stopReason);
             } finally {
                 try {
                     UserContext.clear();
@@ -473,7 +490,6 @@ public final class AgentRunner implements Runnable {
     void runAutonomous(ModelSession.Prepared firstPrompt) {
         ToolCallContextHolder.ResponseDirective pending = null;
         String originatingCall = null;
-        ModelExchange.Result previousExchange = null;
         while (control().state() == AgentState.RUNNING) {
             checkTaskCancellation();
             // Mid-episode task lifecycle: a background task that ended (or that the user
@@ -512,25 +528,25 @@ public final class AgentRunner implements Runnable {
                 if (!flowStack.defaultSelected() && flowStack.top() == flow) return;
                 continue;
             }
-            ModelExchange.Result exchange;
             if (accepted instanceof ToolCallContextHolder.ResponseDirective.Finish answer) {
-                if (!answer.publish()) {
-                    String result = answer.response().message();
-                    currentRequest().message = result == null ? "" : result;
-                    return;
+                if (answer.publish()) {
+                    checkTaskCancellation();
+                    output.emitMessage(
+                            answer.message(),
+                            RequestEvidence.forRequest(
+                                    answer.citations(),
+                                    output.requestIdentity(),
+                                    originatingCall,
+                                    answer.message()),
+                            originatingCall,
+                            false);
+                } else {
+                    currentRequest().message = answer.message();
                 }
-                exchange =
-                        new ModelExchange.Result(
-                                Nullness.requireNonNull(previousExchange).request(),
-                                answer.response(),
-                                answer.citations(),
-                                originatingCall,
-                                true);
-            } else {
-                exchange = models.callModel(firstPrompt);
-                firstPrompt = null;
+                return;
             }
-            previousExchange = exchange;
+            var exchange = models.callModel(firstPrompt);
+            firstPrompt = null;
             VetoResponse response = exchange.response();
             originatingCall = exchange.modelCallId();
             checkTaskCancellation();
@@ -687,7 +703,11 @@ public final class AgentRunner implements Runnable {
             if (accepted instanceof ToolCallContextHolder.ResponseDirective.Finish answer)
                 return new ModelExchange.Result(
                         exchange.request(),
-                        answer.response(),
+                        RequestEvidence.response(
+                                answer.message(),
+                                answer.citations(),
+                                output.requestIdentity(),
+                                exchange.modelCallId()),
                         answer.citations(),
                         exchange.modelCallId(),
                         true);
@@ -701,28 +721,50 @@ public final class AgentRunner implements Runnable {
      * records an explicit continuation boundary.
      */
     public void seedHistory(@NonNull List<TurnRecord> replayed) {
-        if (output.seedHistory(replayed)) beginWait(Wait.INTERRUPTED);
+        handoff(new RunnerCommand.History(replayed));
     }
 
     /** Whether the agent is running or has queued work still to process. */
     public boolean hasPendingWork() {
-        if (!control.open()) return false;
+        if (stopReason != null || !control.open()) return false;
         return control.state() != AgentState.IDLE
                 || actionQueue.stream()
                         .anyMatch(
                                 action ->
-                                        action.action() instanceof AgentAction.UserPromptAction
-                                                || action.action()
-                                                        instanceof AgentAction.CompactAction);
+                                        action instanceof QueuedRequest request
+                                                && (request.action()
+                                                                instanceof
+                                                                AgentAction.UserPromptAction
+                                                        || request.action()
+                                                                instanceof
+                                                                AgentAction.CompactAction));
     }
 
     /** Enqueues a new episode for {@code action} and returns the handle that owns its result. */
     public @NonNull RequestHandle startTask(
             Consumer<AgentResult> callback, @NonNull AgentAction action) {
+        RunnerCommand.Inputs inputs;
         synchronized (this) {
-            if (!control.open()) throw new IllegalStateException("Agent has terminated");
-            if (action instanceof AgentAction.UserPromptAction prompt)
-                action = new AgentAction.UserPromptAction(hooks.captureUserPrompt(prompt.prompt()));
+            inputs = submissionInputs;
+        }
+        return startTask(callback, action, inputs.binding(), inputs.locale());
+    }
+
+    /**
+     * Admits explicit request inputs atomically with the prompt, independent of later submissions.
+     */
+    public @NonNull RequestHandle startTask(
+            Consumer<AgentResult> callback,
+            @NonNull AgentAction action,
+            @NonNull LlmBinding binding,
+            @NonNull Locale locale) {
+        RequestHandle handle;
+        synchronized (this) {
+            if (stopReason != null || !control.open())
+                throw new IllegalStateException("Agent has terminated");
+            var inputs = new RunnerCommand.Inputs(binding, locale);
+            if (!inputs.equals(submissionInputs)) actionQueue.add(inputs);
+            submissionInputs = inputs;
             RequestHandle previous = control.request();
             String promptText =
                     action instanceof AgentAction.UserPromptAction prompt ? prompt.prompt() : null;
@@ -730,25 +772,25 @@ public final class AgentRunner implements Runnable {
                     control.waiting(Wait.BREAKER)
                             && promptText != null
                             && "continue".equalsIgnoreCase(promptText.strip());
-            RequestHandle handle =
+            handle =
                     continuation && previous != null
-                            ? new RequestHandle(this, previous.episode)
-                            : new RequestHandle(this, continuations.newEpisode());
+                            ? new RequestHandle(this, previous.episode, binding, locale)
+                            : new RequestHandle(this, continuations.newEpisode(), binding, locale);
             if (callback != null) handle.result.thenAccept(callback);
             actionQueue.add(new QueuedRequest(action, handle));
-            notifyExecutionChanged();
-            return handle;
         }
-    }
-
-    /** Enqueues an action without retaining a result handle (fire-and-forget). */
-    public void enqueue(@NonNull AgentAction action) {
-        startTask(null, action);
+        notifyExecutionChanged();
+        return handle;
     }
 
     /** Replaces the base model binding used for subsequent configuration resolution. */
     public void bind(@NonNull LlmBinding binding) {
-        baseBinding = binding;
+        synchronized (this) {
+            if (stopReason != null || !control.open())
+                throw new IllegalStateException("Agent has terminated");
+            submissionInputs = new RunnerCommand.Inputs(binding, submissionInputs.locale());
+            actionQueue.add(submissionInputs);
+        }
     }
 
     /** The model binding currently in effect. */
@@ -763,7 +805,7 @@ public final class AgentRunner implements Runnable {
 
     /** The agent's current lifecycle state. */
     public @NonNull AgentState state() {
-        return control.state();
+        return stopReason == null ? control.state() : AgentState.TERMINATED;
     }
 
     /** The durable turn history, oldest first. */
@@ -788,7 +830,7 @@ public final class AgentRunner implements Runnable {
         var terminal = policy.terminal();
         if (terminal != null && !whitelistedToolsView().contains(terminal.tool()))
             throw new IllegalArgumentException("Terminal tool must be in the agent's whitelist");
-        executionPolicy = policy;
+        handoff(new RunnerCommand.Policy(policy));
     }
 
     /** Whether the current episode has consumed its model-call budget. */
@@ -802,20 +844,22 @@ public final class AgentRunner implements Runnable {
         return agentId;
     }
 
-    /** Enqueues a re-resolution of the agent's plugin-supplied configuration. */
-    public void refreshConfiguration() {
-        enqueue(new AgentAction.ConfigurationAction());
-    }
-
     /** Sets the locale used to render agent-thread messages (null resets to English). */
     public void setLocale(Locale locale) {
-        this.locale = locale != null ? locale : Locale.ENGLISH;
-        toolBoundary.locale(this.locale);
+        synchronized (this) {
+            if (stopReason != null || !control.open())
+                throw new IllegalStateException("Agent has terminated");
+            submissionInputs =
+                    new RunnerCommand.Inputs(
+                            submissionInputs.binding(), locale == null ? Locale.ENGLISH : locale);
+            actionQueue.add(submissionInputs);
+        }
     }
 
     /** The locale currently used for agent-thread messages. */
     public @NonNull Locale locale() {
-        return locale;
+        var request = control.request();
+        return request == null ? locale : request.locale;
     }
 
     /** The agent identity fixed at construction, independent of plugin execution profiles. */
@@ -825,27 +869,40 @@ public final class AgentRunner implements Runnable {
 
     /** Attaches the session's resolved plugin selection. */
     public void attachSessionPlugins(@NonNull SessionPlugins value) {
+        requireSetup();
         sessionPlugins = value;
+    }
+
+    /** Startup-only attachment. Thread.start publishes this write to the execution loop. */
+    private void requireSetup() {
+        if (executionThread != null)
+            throw new IllegalStateException("Attach dependencies before execution starts");
+    }
+
+    void attachExecutionThread(@NonNull Thread thread) {
+        if (executionThread != null)
+            throw new IllegalStateException("Execution thread already attached");
+        executionThread = thread;
     }
 
     void onTermination(@NonNull Runnable callback) {
         synchronized (this) {
-            if (terminationNotified) {
-                callback.run();
+            if (!terminationNotified) {
+                var previous = terminationCallback;
+                terminationCallback =
+                        previous == null
+                                ? callback
+                                : () -> {
+                                    try {
+                                        previous.run();
+                                    } finally {
+                                        callback.run();
+                                    }
+                                };
                 return;
             }
-            var previous = terminationCallback;
-            terminationCallback =
-                    previous == null
-                            ? callback
-                            : () -> {
-                                try {
-                                    previous.run();
-                                } finally {
-                                    callback.run();
-                                }
-                            };
         }
+        callback.run();
     }
 
     /** The session this runner belongs to. */
@@ -865,6 +922,7 @@ public final class AgentRunner implements Runnable {
 
     /** Attaches the host dispatcher used by agent workflow and lifecycle event producers. */
     public void attachEventManager(@NonNull EventManager events) {
+        requireSetup();
         eventManager = events;
     }
 
@@ -894,7 +952,10 @@ public final class AgentRunner implements Runnable {
         var request = control.request();
         var configuration = request == null ? null : request.configuration;
         return configuration == null
-                ? new AgentProfiles.Resolved(persona, baseBinding, null)
+                ? new AgentProfiles.Resolved(
+                        persona,
+                        request != null && request.binding != null ? request.binding : baseBinding,
+                        null)
                 : configuration;
     }
 
@@ -944,70 +1005,85 @@ public final class AgentRunner implements Runnable {
         } else completeSuccess();
     }
 
-    synchronized QueuedRequest claimWork() {
+    QueuedRequest claimWork() {
         workQueued.set(false);
-        var queued = continuations.claimWork(control, this);
+        var queued = continuations.claimWork(control, this, baseBinding, locale);
         if (queued == null) return null;
-        control = control.withRequest(queued.handle());
         return queued;
     }
 
-    synchronized boolean beginRequest(@NonNull QueuedRequest queued) {
-        if (!control.open()) {
-            queued.handle().result.complete(AgentResult.failure("Agent terminated", Map.of()));
-            queued.handle().settled.complete(true);
+    boolean beginRequest(@NonNull QueuedRequest queued) {
+        boolean rejected;
+        synchronized (this) {
+            rejected = stopReason != null || !control.open() || queued.handle().cancelled;
+            if (!rejected && !control.waiting(Wait.PLUGIN))
+                control = control.withRequest(queued.handle());
+            else if (!rejected && queued.action() instanceof AgentAction.WorkAction)
+                control = control.withRequest(queued.handle());
+        }
+        if (rejected) {
+            settleUnadmitted(
+                    queued.handle(),
+                    queued.handle().cancelled ? "Task cancelled" : "Agent terminated");
             return false;
         }
-        if (control.waiting(Wait.PLUGIN) && !(queued.action() instanceof AgentAction.WorkAction)) {
+        if (control.request() != queued.handle()) {
             deferredUserPrompts.add(queued);
             signalWork();
             return false;
         }
-        control = control.withRequest(queued.handle());
+        toolBoundary.locale(queued.handle().locale);
         return true;
     }
 
-    synchronized void finishTurn(@NonNull RequestHandle request, boolean compact) {
-        boolean parked = !compact && control.request() == request && control.waiting(Wait.PLUGIN);
-        if (control.request() == request
-                && (compact || !control.waiting(Wait.PLUGIN) && !control.waiting(Wait.BREAKER)))
-            control = control.withRequest(null);
-        // Plugin work resumes this same handle, so a parked turn is not execution settlement.
+    void finishTurn(@NonNull RequestHandle request, boolean compact) {
+        boolean parked;
+        synchronized (this) {
+            parked = !compact && control.request() == request && control.waiting(Wait.PLUGIN);
+            if (control.request() == request
+                    && (compact || !control.waiting(Wait.PLUGIN) && !control.waiting(Wait.BREAKER)))
+                control = control.withRequest(null);
+            // Exclude cancellation's one interrupt before clearing the old request's signal.
+            clearTaskInterrupt();
+        }
         if (!parked) request.settled.complete(true);
-        clearTaskInterrupt();
         notifyExecutionChanged();
     }
 
-    void beginWait(@NonNull Wait reason) {
+    private void checkCancelledParked(@NonNull RequestHandle request) {
         synchronized (this) {
-            if (!control.open()) return;
-            var activity =
-                    control instanceof ExecutionControl.Executing executing
-                            ? executing.activity()
-                            : control instanceof ExecutionControl.Suspended suspended
-                                    ? suspended.activity()
-                                    : ExecutionControl.Activity.MODEL;
-            control = new ExecutionControl.Suspended(control.request(), activity, reason);
+            clearTaskInterrupt();
         }
+        completeFailure("Task cancelled", true, request.requestId());
+        finishTurn(request, false);
+    }
+
+    void beginWait(@NonNull Wait reason) {
+        if (!control.open()) return;
+        var activity =
+                control instanceof ExecutionControl.Executing executing
+                        ? executing.activity()
+                        : control instanceof ExecutionControl.Suspended suspended
+                                ? suspended.activity()
+                                : ExecutionControl.Activity.MODEL;
+        control = new ExecutionControl.Suspended(control.request(), activity, reason);
         notifyExecutionChanged();
     }
 
     void clearWait(@NonNull Wait reason) {
-        synchronized (this) {
-            if (!(control instanceof ExecutionControl.Suspended suspended)
-                    || suspended.reason() != reason) return;
-            control =
-                    suspended.request() == null
-                            ? new ExecutionControl.Idle()
-                            : new ExecutionControl.Executing(
-                                    suspended.request(), suspended.activity());
-        }
+        if (!(control instanceof ExecutionControl.Suspended suspended)
+                || suspended.reason() != reason) return;
+        control =
+                suspended.request() == null
+                        ? new ExecutionControl.Idle()
+                        : new ExecutionControl.Executing(suspended.request(), suspended.activity());
         notifyExecutionChanged();
     }
 
     void checkExecutionBoundary() {
         executionPolicy.check().run();
-        if (!control.open()) throw new CancellationException("Agent terminated");
+        if (stopReason != null || !control.open())
+            throw new CancellationException("Agent terminated");
         checkTaskCancellation();
         RequestHandle request = control.request();
         if (request != null) request.awaiting();
@@ -1031,7 +1107,7 @@ public final class AgentRunner implements Runnable {
 
     ModelSession.@NonNull Prepared processUserPrompt(@NonNull String prompt) {
         continuations.remember(currentRequest().episode);
-        prompt = hooks.captureUserPrompt(hooks.beforeInput(prompt));
+        prompt = hooks.captureUserPrompt(hooks.beforeInput(hooks.captureUserPrompt(prompt)));
         if (control.waiting(Wait.INTERRUPTED)) {
             output.appendTurn(
                     new TurnRecord(
@@ -1070,10 +1146,7 @@ public final class AgentRunner implements Runnable {
                         ? TurnRecord.breakerContinuation(
                                 output.turnNumber() + 1, prompt, resumeContext)
                         : TurnRecord.userPrompt(output.turnNumber() + 1, prompt);
-        List<TurnRecord> prospectiveHistory;
-        synchronized (this) {
-            prospectiveHistory = new ArrayList<>(output.history());
-        }
+        List<TurnRecord> prospectiveHistory = new ArrayList<>(output.history());
         prospectiveUserTurn = withRequestId(prospectiveUserTurn);
         prospectiveHistory.add(prospectiveUserTurn);
         var firstPrompt = models.preparePrompt(prospectiveHistory, false);
@@ -1128,7 +1201,7 @@ public final class AgentRunner implements Runnable {
 
         List<TurnRecord> workTurns = new ArrayList<>();
         if (anchorIndex >= history.size() - 1) {
-            output.emitMessage(Msg.get(locale, "error.agent.compactNothing"));
+            output.emitMessage(Msg.get(locale(), "error.agent.compactNothing"));
             return;
         }
         for (int i = anchorIndex + 1; i < history.size(); i++) {
@@ -1146,7 +1219,7 @@ public final class AgentRunner implements Runnable {
         output.appendTurn(TurnRecord.rewind(output.nextTurn(), 0));
         models.appendAgentInit(models.linkCurrentSystemMessage());
         output.appendTurn(TurnRecord.compactionSummary(output.nextTurn(), finalSummary));
-        output.emitMessage(Msg.get(locale, "error.agent.compactDone", workTurns.size()));
+        output.emitMessage(Msg.get(locale(), "error.agent.compactDone", workTurns.size()));
         // Domain event: the session compacted. Subscribers can mark the ledger boundary without
         // inferring it from the message text.
         output.publishFrame(
@@ -1205,7 +1278,7 @@ public final class AgentRunner implements Runnable {
 
     void tripBreaker() {
         beginWait(Wait.BREAKER);
-        String notice = LoopBreaker.tripNotice(locale);
+        String notice = LoopBreaker.tripNotice(locale());
         output.emitMessage(notice);
         output.publishFrame(
                 DeltaFrame.builder()
@@ -1249,80 +1322,81 @@ public final class AgentRunner implements Runnable {
         // Pre-pass: a locked vault wins over any wrapper (CredentialException nests it).
         for (Throwable t = e; t != null; t = t.getCause()) {
             if (t instanceof KeysteadVault.VaultLockedException) {
-                return Msg.get(locale, "error.agent.vaultLocked");
+                return Msg.get(locale(), "error.agent.vaultLocked");
             }
         }
         for (Throwable t = e; t != null; t = t.getCause()) {
             if (t instanceof VetoRefusedException refused) {
                 return Msg.get(
-                        locale,
+                        locale(),
                         refused.approvalRequested
                                 ? "error.agent.approvalNotGranted"
                                 : "error.agent.vetoRefused");
             }
             if (t instanceof CredentialException) {
-                return Msg.get(locale, "error.agent.credentialMissing");
+                return Msg.get(locale(), "error.agent.credentialMissing");
             }
             if (t instanceof LlmTimeoutException) {
-                return Msg.get(locale, "error.agent.llmTimeout");
+                return Msg.get(locale(), "error.agent.llmTimeout");
             }
             if (t instanceof LlmRateLimitException) {
-                return Msg.get(locale, "error.agent.llmRateLimit");
+                return Msg.get(locale(), "error.agent.llmRateLimit");
             }
             if (t instanceof LlmAuthException) {
-                return Msg.get(locale, "error.agent.llmAuth");
+                return Msg.get(locale(), "error.agent.llmAuth");
             }
             if (t instanceof ModelSchemaException) {
-                return Msg.get(locale, "error.agent.llmSchema", String.valueOf(t.getMessage()));
+                return Msg.get(locale(), "error.agent.llmSchema", String.valueOf(t.getMessage()));
             }
             if (t instanceof ModelCapabilityException mce) {
                 // The same type covers transport call failures and unparseable responses
                 // (AbstractLlmProvider); discriminate on the fixed message prefix.
                 String detail = String.valueOf(mce.getMessage());
                 if (detail.contains("could not be parsed")) {
-                    return Msg.get(locale, "error.agent.llmParse");
+                    return Msg.get(locale(), "error.agent.llmParse");
                 }
-                return Msg.get(locale, "error.agent.llmCallFailed", detail);
+                return Msg.get(locale(), "error.agent.llmCallFailed", detail);
             }
             if (t instanceof IllegalStateException
                     && String.valueOf(t.getMessage()).contains("embed")) {
                 // ProviderEmbedder failures surface as IllegalStateException (best-effort memory).
-                return Msg.get(locale, "error.agent.embedFailed", String.valueOf(t.getMessage()));
+                return Msg.get(locale(), "error.agent.embedFailed", String.valueOf(t.getMessage()));
             }
         }
         String detail = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
-        return Msg.get(locale, "error.agent.taskFailed", detail);
+        return Msg.get(locale(), "error.agent.taskFailed", detail);
     }
 
     void complete(@NonNull AgentResult result) {
         RequestHandle task;
         synchronized (this) {
             task = control.request();
+            if (task != null) task.resultClaimed = true;
             if (task != null && task.cancelled)
                 result = AgentResult.failure("Task cancelled", Map.of());
-            clearWait(Wait.APPROVAL);
-            clearWait(Wait.QUESTION);
-            clearWait(Wait.PLUGIN);
-            if (task != null) continuations.complete(task, result);
-            // Domain event: the episode finished. Carries the authoritative success flag so
-            // subscribers
-            // (the web UI, the terminal adapter) can stop waiting on the episode without blocking
-            // on
-            // the
-            // submit call. Emitted before the future completes so a subscriber that also awaits the
-            // future sees the event first.
-            output.publishFrame(
-                    DeltaFrame.builder()
-                            .sessionId(sessionId)
-                            .kind(DeltaFrame.Kind.EPISODE_DONE)
-                            .attr("requestId", task == null ? "" : task.episode.id())
-                            .attr("turnNumber", output.turnNumber())
-                            .attr("success", result.success())
-                            .text(result.message())
-                            .build());
-            actionQueue.addAll(deferredUserPrompts);
-            deferredUserPrompts.clear();
         }
+        clearWait(Wait.APPROVAL);
+        clearWait(Wait.QUESTION);
+        clearWait(Wait.PLUGIN);
+        if (task != null) continuations.complete(task, result);
+        // Domain event: the episode finished. Carries the authoritative success flag so
+        // subscribers
+        // (the web UI, the terminal adapter) can stop waiting on the episode without blocking
+        // on
+        // the
+        // submit call. Emitted before the future completes so a subscriber that also awaits the
+        // future sees the event first.
+        output.publishFrame(
+                DeltaFrame.builder()
+                        .sessionId(sessionId)
+                        .kind(DeltaFrame.Kind.EPISODE_DONE)
+                        .attr("requestId", task == null ? "" : task.episode.id())
+                        .attr("turnNumber", output.turnNumber())
+                        .attr("success", result.success())
+                        .text(result.message())
+                        .build());
+        actionQueue.addAll(deferredUserPrompts);
+        deferredUserPrompts.clear();
         if (task != null) {
             continuations.settled(task.episode);
             task.releaseWaits();
@@ -1331,10 +1405,8 @@ public final class AgentRunner implements Runnable {
     }
 
     void setActivity(ExecutionControl.@NonNull Activity activity) {
-        synchronized (this) {
-            if (!control.open() || control instanceof ExecutionControl.Suspended) return;
-            control = new ExecutionControl.Executing(control.request(), activity);
-        }
+        if (!control.open() || control instanceof ExecutionControl.Suspended) return;
+        control = new ExecutionControl.Executing(control.request(), activity);
         notifyExecutionChanged();
     }
 
@@ -1353,10 +1425,11 @@ public final class AgentRunner implements Runnable {
     void resolveConfiguration() {
         var request = control.request();
         if (request == null) return;
+        var binding = request.binding == null ? baseBinding : request.binding;
         var selection = sessionPlugins;
         String currentOwner = owner;
         if (selection == null || currentOwner == null) {
-            request.configuration = new AgentProfiles.Resolved(persona, baseBinding, null);
+            request.configuration = new AgentProfiles.Resolved(persona, binding, null);
             return;
         }
         var available =
@@ -1387,8 +1460,7 @@ public final class AgentRunner implements Runnable {
         if (intent == null) {
             var tools = selection.tools(sessionId.toString(), persona.whitelistedTools());
             var resolved =
-                    new AgentProfiles.Resolved(
-                            persona.withWhitelistedTools(tools), baseBinding, null);
+                    new AgentProfiles.Resolved(persona.withWhitelistedTools(tools), binding, null);
             if (!executionConfiguration().equals(resolved)) configurationRevision++;
             request.configuration = resolved;
             return;
@@ -1397,8 +1469,7 @@ public final class AgentRunner implements Runnable {
         var tiers = modelTierRegistry;
         if (tiers == null) throw new IllegalStateException("Model tiers unavailable");
         var resolved =
-                AgentProfiles.resolve(
-                        agentId, currentOwner, profile, available, baseBinding, tiers);
+                AgentProfiles.resolve(agentId, currentOwner, profile, available, binding, tiers);
         var transition = intent.transition();
         boolean changing = transition != null && !transition.key().equals(configurationTransition);
         String summary = changing ? summarizeForConfigurationTransition() : "";
@@ -1462,29 +1533,90 @@ public final class AgentRunner implements Runnable {
     }
 
     void close(ExecutionControl.@NonNull CloseReason reason) {
+        RequestHandle stopped = null;
         synchronized (this) {
-            if (!control.open()) return;
-            AgentResult interrupted =
-                    AgentResult.failure(Msg.get(locale, "error.agent.interrupted"), Map.of());
+            if (stopReason != null || !control.open()) return;
+            stopReason = reason;
             RequestHandle active = control.request();
-            if (active != null) {
+            if (active != null && !active.resultClaimed) {
                 active.cancelled = true;
-                active.releaseWaits();
-                active.result.complete(interrupted);
-                if (control.waiting(Wait.PLUGIN)) active.settled.complete(true);
+                active.resultClaimed = true;
+                stopped = active;
             }
-            control = new ExecutionControl.Closed(reason);
-            List<QueuedRequest> queued = new ArrayList<>(deferredUserPrompts);
-            deferredUserPrompts.clear();
-            actionQueue.drainTo(queued);
-            for (QueuedRequest request : queued) {
-                request.handle().result.complete(interrupted);
-                request.handle().settled.complete(true);
-            }
+            toolBoundary.declineAll();
+            var thread = executionThread;
+            if (thread != null && thread != Thread.currentThread()) thread.interrupt();
         }
-        notifyExecutionChanged();
+        if (stopped != null) {
+            // Unblock a waiting parent even when its child provider ignores interruption.
+            // This announces rejection, not execution exit; only the owner releases waits/settles.
+            stopped.result.complete(
+                    AgentResult.failure(
+                            Msg.get(stopped.locale, "error.agent.interrupted"), Map.of()));
+        }
+    }
+
+    private void retire(ExecutionControl.@NonNull CloseReason reason) {
+        RequestHandle active;
+        Locale closingLocale = locale();
+        synchronized (this) {
+            if (stopReason == null) stopReason = reason;
+            active = control.request();
+            control = new ExecutionControl.Closed(reason);
+        }
+        String message = Msg.get(closingLocale, "error.agent.interrupted");
+        if (active != null) {
+            active.releaseWaits();
+            // A result claimant may have been interrupted before delivery; retirement cannot
+            // leave the active caller waiting after execution has actually stopped.
+            active.result.complete(AgentResult.failure(message, Map.of()));
+            active.settled.complete(true);
+        }
+        for (var request : deferredUserPrompts) settleUnadmitted(request.handle(), message);
+        deferredUserPrompts.clear();
+        RunnerCommand command;
+        while ((command = actionQueue.poll()) != null) {
+            if (command instanceof QueuedRequest queued) settleUnadmitted(queued.handle(), message);
+        }
         toolBoundary.clear();
-        Thread thread = runningThread;
-        if (thread != null && thread != Thread.currentThread()) thread.interrupt();
+        notifyExecutionChanged();
+    }
+
+    private void settleUnadmitted(@NonNull RequestHandle request, @NonNull String message) {
+        synchronized (this) {
+            if (request.resultClaimed) return;
+            request.resultClaimed = true;
+        }
+        request.result.complete(AgentResult.failure(message, Map.of()));
+        request.settled.complete(true);
+    }
+
+    private void handoff(@NonNull RunnerCommand command) {
+        boolean inline;
+        synchronized (this) {
+            if (stopReason != null || !control.open())
+                throw new IllegalStateException("Agent has terminated");
+            inline = executionThread == null || Thread.currentThread() == executionThread;
+            if (!inline) actionQueue.add(command);
+        }
+        if (inline) applyCommand(command);
+    }
+
+    private void applyCommand(@NonNull RunnerCommand command) {
+        switch (command) {
+            case RunnerCommand.Inputs inputs -> {
+                baseBinding = inputs.binding();
+                locale = inputs.locale();
+            }
+            case RunnerCommand.History history -> {
+                if (output.seedHistory(history.turns())) beginWait(Wait.INTERRUPTED);
+            }
+            case RunnerCommand.WorkSource source -> continuations.attachWorkSource(source.inbox());
+            case RunnerCommand.Policy policy -> executionPolicy = policy.policy();
+            case RunnerCommand.Wake ignored ->
+                    throw new IllegalArgumentException("Wake requires work claim");
+            case QueuedRequest ignored ->
+                    throw new IllegalArgumentException("Request requires admission");
+        }
     }
 }

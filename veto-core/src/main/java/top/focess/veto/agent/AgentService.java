@@ -115,11 +115,6 @@ public class AgentService {
         eventManager = events;
     }
 
-    private void bindForSubmission(@NonNull VetoAgent agent, @NonNull LlmBinding binding) {
-        agent.bind(binding);
-        agent.refreshConfiguration();
-    }
-
     private static final @NonNull Logger log =
             LoggerFactory.getLogger("top.focess.veto.agent.AgentService");
     private static final @NonNull Duration DEFAULT_AWAIT = Duration.ofMinutes(5);
@@ -260,18 +255,16 @@ public class AgentService {
             @NonNull String agentKey, @NonNull String prompt, @NonNull LlmBinding binding) {
         VetoAgent agent =
                 sessionAgents.getOrCreateTransport(agentKey, () -> createAgent(agentKey, binding));
-        bindForSubmission(agent, binding);
-        agent.setLocale(LocaleContextHolder.getLocale());
-        var request = agent.submitRequest(prompt);
+        var request = agent.submitRequest(prompt, binding, LocaleContextHolder.getLocale(), null);
         try {
             return request.await(DEFAULT_AWAIT);
         } catch (TimeoutException e) {
             log.warn("Agent {} await timed out", agentKey);
-            return AgentResult.failure(Msg.get(agent.locale(), "error.agent.timedOut"), Map.of());
+            return AgentResult.failure(Msg.get(request.locale, "error.agent.timedOut"), Map.of());
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             return AgentResult.failure(
-                    Msg.get(agent.locale(), "error.agent.interrupted"), Map.of());
+                    Msg.get(request.locale, "error.agent.interrupted"), Map.of());
         }
     }
 
@@ -287,9 +280,7 @@ public class AgentService {
             @NonNull String agentKey, @NonNull String prompt, @NonNull LlmBinding binding) {
         VetoAgent agent =
                 sessionAgents.getOrCreateTransport(agentKey, () -> createAgent(agentKey, binding));
-        bindForSubmission(agent, binding);
-        agent.setLocale(LocaleContextHolder.getLocale());
-        return agent.submitRequest(prompt);
+        return agent.submitRequest(prompt, binding, LocaleContextHolder.getLocale(), null);
     }
 
     /** Synchronous submit with a live result message (for the terminal path). */
@@ -301,9 +292,7 @@ public class AgentService {
             throws TimeoutException, InterruptedException {
         VetoAgent agent =
                 sessionAgents.getOrCreateTransport(agentKey, () -> createAgent(agentKey, binding));
-        bindForSubmission(agent, binding);
-        agent.setLocale(LocaleContextHolder.getLocale());
-        var request = agent.submitRequest(prompt);
+        var request = agent.submitRequest(prompt, binding, LocaleContextHolder.getLocale(), null);
         return request.await(timeout);
     }
 
@@ -384,8 +373,6 @@ public class AgentService {
             throws TimeoutException, InterruptedException {
         VetoAgent agent =
                 sessionAgents.getOrCreateTransport(agentKey, () -> createAgent(agentKey, binding));
-        bindForSubmission(agent, binding);
-        agent.setLocale(LocaleContextHolder.getLocale());
         if (messageSink != null) {
             agent.addMessageListener(messageSink);
         }
@@ -402,7 +389,8 @@ public class AgentService {
             agent.addToolResultListener(toolResultSink);
         }
         try {
-            var request = agent.submitRequest(prompt);
+            var request =
+                    agent.submitRequest(prompt, binding, LocaleContextHolder.getLocale(), null);
             return request.await(timeout);
         } finally {
             if (messageSink != null) {
@@ -445,9 +433,7 @@ public class AgentService {
         VetoAgent agent =
                 sessionAgents.getOrCreateTransport(
                         agentKey, () -> createAgent(agentKey, binding, userId));
-        bindForSubmission(agent, binding);
-        agent.setLocale(LocaleContextHolder.getLocale());
-        var request = agent.submitRequest(prompt);
+        var request = agent.submitRequest(prompt, binding, LocaleContextHolder.getLocale(), null);
         return request.await(timeout);
     }
 
@@ -576,26 +562,17 @@ public class AgentService {
         VetoAgent agent =
                 sessionAgents.getOrCreateTransport(
                         sessionId,
-                        () -> {
-                            var created =
-                                    createAgent(
-                                            sessionId,
-                                            primaryAgentId,
-                                            binding,
-                                            userId,
-                                            owner,
-                                            workspace,
-                                            toolResultPresentation);
-                            try {
-                                if (!history.isEmpty()) created.seedHistory(history);
-                            } catch (RuntimeException | Error failure) {
-                                sessionAgents.stopIfSame(created.id(), created);
-                                throw failure;
-                            }
-                            return created;
-                        });
+                        () ->
+                                createAgent(
+                                        sessionId,
+                                        primaryAgentId,
+                                        binding,
+                                        userId,
+                                        owner,
+                                        workspace,
+                                        toolResultPresentation,
+                                        history));
         agent.bind(binding);
-        agent.refreshConfiguration();
         return agent;
     }
 
@@ -651,7 +628,8 @@ public class AgentService {
                 DEFAULT_USER_ID,
                 null,
                 defaultWorkspace,
-                ToolResultPresentationMode.BASIC);
+                ToolResultPresentationMode.BASIC,
+                List.of());
     }
 
     private @NonNull VetoAgent createAgent(
@@ -663,7 +641,8 @@ public class AgentService {
                 userId,
                 null,
                 defaultWorkspace,
-                ToolResultPresentationMode.BASIC);
+                ToolResultPresentationMode.BASIC,
+                List.of());
     }
 
     // The DB-backed create path: agentKey is session.getId() (a UUID) and primaryAgentId is the
@@ -679,7 +658,8 @@ public class AgentService {
             @NonNull UUID userId,
             String owner,
             @NonNull Workspace workspace,
-            @NonNull ToolResultPresentationMode toolResultPresentation) {
+            @NonNull ToolResultPresentationMode toolResultPresentation,
+            @NonNull List<TurnRecord> history) {
         AgentPersona persona = buildPersona(agentKey, primaryAgentId);
         // Register this agent's workspace on the HITL registry under its persona id so grant
         // matching + path canonicalization scope to this session's workspace.
@@ -726,6 +706,7 @@ public class AgentService {
         runner.configureModelTiers(modelTierRegistry);
         runner.setToolResultPresentation(toolResultPresentation);
         configureContinuations(runner);
+        runner.seedHistory(history);
         return sessionAgents.start(persona, runner);
     }
 

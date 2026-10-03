@@ -553,14 +553,15 @@ class PlanExecutionTest {
     private static @NonNull AgentService service(
             @NonNull UniformLLMCaller caller, @NonNull HitlRegistry hitl, @NonNull Path root)
             throws IOException {
-        return service(caller, hitl, root, 1000);
+        return service(caller, hitl, root, 1000, null);
     }
 
     private static @NonNull AgentService service(
             @NonNull UniformLLMCaller caller,
             @NonNull HitlRegistry hitl,
             @NonNull Path root,
-            int maxSteps)
+            int maxSteps,
+            ModelTierRegistry tiers)
             throws IOException {
         ObjectMapper mapper = new ObjectMapper();
         SandboxManager sandbox = new SandboxManager(TestSandboxFactory.uncontainedSubprocesses());
@@ -648,6 +649,7 @@ class PlanExecutionTest {
         service.attachSessionPlugins(sessionPlugins);
         service.attachEventManager(eventManager);
         service.setConfiguredDefaultWorkspace(Workspace.single(root, PathMode.REAL));
+        if (tiers != null) service.setModelTierRegistry(tiers);
         for (String id :
                 List.of(
                         "read-plan",
@@ -869,7 +871,8 @@ class PlanExecutionTest {
                         },
                         new HitlRegistry(),
                         root,
-                        5);
+                        5,
+                        null);
         var result =
                 service.submit(
                         "bounded-plan", "Exercise bounded loop", binding(), Duration.ofSeconds(10));
@@ -983,6 +986,17 @@ class PlanExecutionTest {
              {"id":"finish","label":"Finish","type":"STOP","result_binding":"answer"}]
             """;
         AtomicInteger calls = new AtomicInteger();
+        var tiers = mock(ModelTierRegistry.class);
+        when(tiers.resolve("owner", ModelTier.LOW))
+                .thenReturn(
+                        new ModelBinding(
+                                ProviderType.DEEPSEEK,
+                                "tier-model",
+                                "tier-key",
+                                0.7,
+                                1234,
+                                "https://example.invalid"));
+
         var service =
                 service(
                         (request, modelSessionId) -> {
@@ -1014,26 +1028,12 @@ class PlanExecutionTest {
                             return message("original binding retained");
                         },
                         new HitlRegistry(),
-                        root);
-        var tiers = mock(ModelTierRegistry.class);
-        when(tiers.resolve("owner", ModelTier.LOW))
-                .thenReturn(
-                        new ModelBinding(
-                                ProviderType.DEEPSEEK,
-                                "tier-model",
-                                "tier-key",
-                                0.7,
-                                1234,
-                                "https://example.invalid"));
-        service.setModelTierRegistry(tiers);
+                        root,
+                        1000,
+                        tiers);
         service.getOrCreateAgent(
                 "tier-plan", null, binding(), List.of(), UUID.randomUUID(), "owner", null);
         service.submit("tier-plan", "Initialize", binding(), Duration.ofSeconds(10));
-        var agent = service.agent("tier-plan");
-        if (agent == null) throw new AssertionError("agent missing");
-        Object value = ReflectionTestUtils.getField(agent, "runner");
-        if (!(value instanceof AgentRunner runner)) throw new AssertionError("runner missing");
-        runner.configureModelTiers(tiers);
         var result = service.submit("tier-plan", "Summarize", binding(), Duration.ofSeconds(10));
         assertTrue(result.success(), result.message());
         assertEquals("scoped output", result.message());

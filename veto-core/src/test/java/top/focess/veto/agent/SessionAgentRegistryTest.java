@@ -169,9 +169,9 @@ class SessionAgentRegistryTest {
         assertTrue(mate.userInteractionEnabled());
         assertFalse(reader.userInteractionEnabled());
         assertThrows(IllegalStateException.class, () -> reader.submitUserPrompt("Change the task"));
-        verify(readerRunner, never()).enqueue(any());
+        verify(readerRunner, never()).startTask(any(), any());
         mate.submitUserPrompt("Review the result");
-        verify(mateRunner).enqueue(new AgentAction.UserPromptAction("Review the result"));
+        verify(mateRunner).startTask(null, new AgentAction.UserPromptAction("Review the result"));
         assertFalse(
                 registry.records(session).stream()
                         .filter(summary -> summary.id().equals("reader"))
