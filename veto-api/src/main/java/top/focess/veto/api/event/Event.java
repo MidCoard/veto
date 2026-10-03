@@ -2,7 +2,6 @@ package top.focess.veto.api.event;
 
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.plugin.Scope;
-import top.focess.veto.api.plugin.contract.Cancellation;
 
 /**
  * Base type for every host-dispatched plugin event.
@@ -37,16 +36,6 @@ public abstract class Event {
      * @return typed identity relevant to this event
      */
     public abstract @NonNull Scope scope();
-
-    /**
-     * Returns the read-only cooperative host stop signal, or null when none applies. This signal is
-     * independent of mutable per-event action cancellation through {@link Cancellable}.
-     *
-     * @return cooperative cancellation signal, or null
-     */
-    public Cancellation cancellation() {
-        return null;
-    }
 
     /**
      * Reports whether the event has been irreversibly prevented.

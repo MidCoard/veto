@@ -293,7 +293,7 @@ class CredentialImportIntegrationTest {
             @NonNull String label)
             throws Exception {
         var entry =
-                plugins.catalog().entries(StandardContributionPoints.TOOLS).stream()
+                plugins.registry().entries(StandardContributionPoints.TOOLS).stream()
                         .filter(
                                 value ->
                                         value.implementation() instanceof CapabilityTool<?> tool

@@ -34,7 +34,6 @@ import top.focess.veto.api.agent.tool.AgentTool;
 import top.focess.veto.api.agent.tool.CapabilityTool;
 import top.focess.veto.api.agent.tool.NativeTool;
 import top.focess.veto.api.agent.tool.RemoteTool;
-import top.focess.veto.api.agent.tool.Tool;
 import top.focess.veto.api.event.Listener;
 import top.focess.veto.api.event.ServiceDirectoryChangedEvent;
 import top.focess.veto.api.llm.LocalModelCompletion;
@@ -54,8 +53,6 @@ import top.focess.veto.api.plugin.contract.PluginFailure;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
 import top.focess.veto.api.plugin.contribution.Contribution;
 import top.focess.veto.api.plugin.contribution.ContributionCatalog;
-import top.focess.veto.api.plugin.contribution.ContributionEntry;
-import top.focess.veto.api.plugin.contribution.ContributionId;
 import top.focess.veto.api.plugin.contribution.ContributionPoint;
 import top.focess.veto.api.plugin.contribution.ContributionSource;
 import top.focess.veto.api.plugin.contribution.PluginContributionsDirectory;
@@ -77,14 +74,15 @@ import top.focess.veto.plugin.runtime.*;
  * the last published catalog. Installed Java and script packages are scanned from the plugin
  * directory.
  *
- * <p>Threading: startup construction is externally owned. After publication, readers use immutable
- * volatile immutable publications and concurrent host-service maps. Capture {@link #snapshot()}
- * when catalog entries and their owning activations must come from one publication; separate
- * getters need not observe the same publication. Active contribution registration serializes
- * validation and republication on the manager monitor. Desired activation writes and data-cleanup
- * claim counts use that same monitor. Point validators and metadata getters may run during
- * republication under it and must not block or wait for another management operation. Plugin
- * invocation/event bodies run through lifecycle admission outside the manager monitor. Shutdown is
+ * <p>Threading: startup construction is externally owned. After publication, readers use volatile
+ * immutable query registries and concurrent host-service maps. Capture {@link #registry()} when
+ * catalog entries and their owning activations must come from one publication; separate captures
+ * need not observe the same publication. Active contribution registration serializes validation and
+ * republication on the manager monitor. Desired activation writes and data-cleanup claim counts use
+ * that same monitor. Point validators and metadata getters may run during republication under it
+ * and must not block or wait for another management operation. Catalog-change listeners also run
+ * inline during republication and must follow that restriction. Ordinary plugin invocations and
+ * event submissions use lifecycle admission without taking the manager monitor. Shutdown is
  * externally coordinated and closes activations in reverse order before shutting down their serial
  * control executor.
  */
@@ -172,7 +170,7 @@ public final class PluginManager implements AutoCloseable {
     public void bindLifecycleInvalidations(
             @NonNull ObjectProvider<SessionRepository> sessions,
             @NonNull ObjectProvider<SessionInvalidations> invalidations) {
-        for (var plugin : published.plugins)
+        for (var plugin : published.plugins())
             plugin.ownResource(
                     () -> {
                         for (var session : sessions.getObject().findAll()) {
@@ -217,180 +215,27 @@ public final class PluginManager implements AutoCloseable {
 
     /** Service-registry view scoped to the plugin with the given identity. */
     public @NonNull PluginServices services(@NonNull String caller) {
-        return serviceRegistry.forPlugin(plugin(caller));
+        return serviceRegistry.forPlugin(published.plugin(caller));
     }
 
-    @SuppressWarnings(
-            "dereference.of.nullable") // The returned callback runs only after catalog and plugin
-    // fields are initialized.
+    // WHY: the returned callback runs only after registry publication initializes host views.
+    @SuppressWarnings("dereference.of.nullable")
     private @NonNull PluginContributionsDirectory contributionsFor(
-            @UnknownInitialization PluginManager this, @NonNull PluginLifecycle caller) {
-        return (pointId, major) -> {
-            var group = published.groups.get(pointId);
-            if (group == null || group.major() != major || caller.state() != PluginState.ACTIVE)
-                return List.of();
-            if (group.owner().state() != PluginState.ACTIVE
-                    || !serviceAccess.test(caller.identity().id(), group.owner().identity().id()))
-                return List.of();
-            var result = new ArrayList<PluginContributionsDirectory.Entry>();
-            for (var prepared : group.entries()) {
-                if (prepared.owner().state() == PluginState.ACTIVE
-                        && serviceAccess.test(
-                                caller.identity().id(), prepared.entry().providerId()))
-                    result.add(prepared.entry());
-            }
-            return List.copyOf(result);
-        };
-    }
-
-    private record DirectoryEntry(
-            PluginContributionsDirectory.@NonNull Entry entry, @NonNull PluginLifecycle owner) {}
-
-    private record DirectoryGroup(
-            int major,
-            @NonNull PluginLifecycle owner,
-            @NonNull List<@NonNull DirectoryEntry> entries) {}
-
-    private static @NonNull Map<@NonNull ContributionId, @NonNull DirectoryGroup> prepareDirectory(
-            @NonNull ContributionCatalog catalog, @NonNull List<PluginLifecycle> plugins) {
-        Map<String, PluginLifecycle> owners = new HashMap<>();
-        for (var plugin : plugins) owners.put(plugin.identity().id(), plugin);
-        Map<@NonNull ContributionId, @NonNull DirectoryGroup> groups = new HashMap<>();
-        for (var definition : catalog.entries(StandardContributionPoints.CONTRIBUTIONS)) {
-            var owner = owners.get(definition.source().namespace());
-            if (owner == null) throw new IllegalArgumentException("Contribution owner unavailable");
-            List<@NonNull DirectoryEntry> entries = new ArrayList<>();
-            for (var entry : catalog.entries(definition.implementation().point())) {
-                var provider = owners.get(entry.source().namespace());
-                if (provider == null)
-                    throw new IllegalArgumentException("Contribution provider unavailable");
-                entries.add(
-                        new DirectoryEntry(
-                                new PluginContributionsDirectory.Entry(
-                                        entry.id(),
-                                        entry.source().namespace(),
-                                        entry.implementation()),
-                                provider));
-            }
-            groups.put(
-                    definition.implementation().id(),
-                    new DirectoryGroup(
-                            definition.implementation().major(), owner, List.copyOf(entries)));
-        }
-        return Map.copyOf(groups);
+            @UnknownInitialization PluginManager this, @NonNull ManagedPlugin caller) {
+        return (pointId, major) -> published.contributions(pointId, major, caller, serviceAccess);
     }
 
     private final @NonNull ExecutorService lifecycle =
             Executors.newSingleThreadExecutor(
                     Thread.ofPlatform().daemon(true).name("veto-plugin-manager").factory());
-    private volatile @NonNull PublishedState published = emptyState();
-    private volatile @NonNull Map<String, String> aliases;
+    private volatile @NonNull PluginRegistry published = PluginRegistry.empty();
+    private @NonNull Map<String, String> aliases = Map.of();
+    private @NonNull List<Registration> stagedRegistrations = List.of();
     private volatile boolean ready;
 
-    /** One coherent immutable manager publication; lifecycle admission remains live. */
-    public static final class PublishedState {
-        private final @NonNull List<PluginLifecycle> plugins;
-        private final @NonNull Map<@NonNull String, @NonNull PluginLifecycle> owners;
-        private final @NonNull List<CompositeAgentInbox.@NonNull Entry> inboxes;
-        private final @NonNull List<Registration> registrations;
-        private final @NonNull List<InstalledPluginLoader.DisabledPackage> disabled;
-        private final @NonNull List<DeclinedPlugin> declined;
-        private final @NonNull ContributionCatalog catalog;
-        private final @NonNull EventListenerRegistry events;
-        private final @NonNull Map<@NonNull ContributionId, @NonNull DirectoryGroup> groups;
-
-        private PublishedState(
-                @NonNull List<PluginLifecycle> plugins,
-                @NonNull List<Registration> registrations,
-                @NonNull List<InstalledPluginLoader.DisabledPackage> disabled,
-                @NonNull List<DeclinedPlugin> declined,
-                @NonNull ContributionCatalog catalog,
-                @NonNull EventListenerRegistry events,
-                @NonNull Map<@NonNull ContributionId, @NonNull DirectoryGroup> groups) {
-            this.plugins = List.copyOf(plugins);
-            Map<@NonNull String, @NonNull PluginLifecycle> indexed = new HashMap<>();
-            for (var plugin : this.plugins) {
-                if (indexed.putIfAbsent(plugin.identity().id(), plugin) != null)
-                    throw new IllegalArgumentException("Duplicate plugin activation");
-            }
-            owners = Map.copyOf(indexed);
-            List<CompositeAgentInbox.@NonNull Entry> preparedInboxes = new ArrayList<>();
-            for (var entry : catalog.entries(StandardContributionPoints.AGENT_INBOX)) {
-                var owner = owners.get(entry.source().namespace());
-                if (owner == null)
-                    throw new IllegalArgumentException("Inbox activation is missing");
-                preparedInboxes.add(
-                        new CompositeAgentInbox.Entry(
-                                entry.id().value(), owner, entry.implementation()));
-            }
-            inboxes = List.copyOf(preparedInboxes);
-            this.registrations = List.copyOf(registrations);
-            this.disabled = List.copyOf(disabled);
-            this.declined = List.copyOf(declined);
-            this.catalog = catalog;
-            this.events = events;
-            this.groups = Map.copyOf(groups);
-        }
-
-        public @NonNull ContributionCatalog catalog() {
-            return catalog;
-        }
-
-        /** Prepared listener route from this same publication. */
-        public @NonNull EventListenerRegistry events() {
-            return events;
-        }
-
-        public @NonNull List<PluginLifecycle> plugins() {
-            return plugins;
-        }
-
-        public @NonNull List<Registration> registrations() {
-            return registrations;
-        }
-
-        public @NonNull List<DeclinedPlugin> declined() {
-            return declined;
-        }
-
-        public @NonNull List<InstalledPluginLoader.DisabledPackage> disabled() {
-            return disabled;
-        }
-
-        /** Prepared inbox sources and owners from this exact publication. */
-        public @NonNull List<CompositeAgentInbox.@NonNull Entry> inboxes() {
-            return inboxes;
-        }
-
-        /** Resolves a canonical namespace from this publication, never another generation. */
-        public @NonNull PluginLifecycle plugin(@NonNull String id) {
-            var plugin = owners.get(id);
-            if (plugin == null) throw new IllegalArgumentException("Plugin is unavailable");
-            return plugin;
-        }
-    }
-
-    private static @NonNull PublishedState emptyState() {
-        var catalog = emptyCatalog();
-        return new PublishedState(
-                List.of(),
-                List.of(),
-                List.of(),
-                List.of(),
-                catalog,
-                preparedEvents(catalog, List.of(), new EventListenerRegistry.Preparation()),
-                Map.of());
-    }
-
-    /** Captures one manager generation for consumers that need catalog and owner agreement. */
-    public @NonNull PublishedState snapshot() {
+    /** Captures a coherent immutable query registry; lifecycle admission remains live. */
+    public @NonNull PluginRegistry registry() {
         return published;
-    }
-
-    private static @NonNull ContributionCatalog emptyCatalog() {
-        var builder = new ContributionCatalog.Builder();
-        for (var point : StandardContributionPoints.ALL) builder.define(point, ignored -> {});
-        return builder.freeze();
     }
 
     private final EventListenerRegistry.@NonNull Preparation listenerPreparation =
@@ -422,16 +267,15 @@ public final class PluginManager implements AutoCloseable {
         llmProviders = providers;
     }
 
-    /** A plugin paired with host-owned registrations grouped by contribution point. */
-    public record Registration(
-            @NonNull PluginLifecycle plugin, @NonNull PointRegistrations points) {
+    /** Manager-owned mutable registration staging, never retained by a query registry. */
+    private record Registration(@NonNull ManagedPlugin plugin, @NonNull PointRegistrations points) {
         public @NonNull List<@NonNull Contribution<?>> entries() {
             return points.entries();
         }
     }
 
     /** Mutable only through the plugin's point handler; publication reads an immutable snapshot. */
-    public static final class PointRegistrations {
+    private static final class PointRegistrations {
         private final @NonNull
                 Map<
                         @NonNull ContributionPoint<?>,
@@ -485,7 +329,7 @@ public final class PluginManager implements AutoCloseable {
      *
      * @throws IOException when discovery, validation, or activation fails
      */
-    // WHY: staged PluginLifecycle handles are owned by this manager and closed in close(), and the
+    // WHY: staged ManagedPlugin handles are owned by this manager and closed in close(), and the
     // historical-ID null guards stay because third-party plugins can break the @NonNull contract.
     @SuppressWarnings({"resource", "ConstantValue"})
     public PluginManager(
@@ -529,7 +373,7 @@ public final class PluginManager implements AutoCloseable {
                 (source, data) -> PromptCompiler.compileDocument(source, data).text();
         services.put(PromptRenderer.class, renderer);
         baseServices = Map.copyOf(services);
-        List<PluginLifecycle> staged = new ArrayList<>();
+        List<ManagedPlugin> staged = new ArrayList<>();
         List<InstalledPluginLoader.DisabledPackage> disabledPackages = new ArrayList<>();
         try {
             if (!pluginDirectory.isBlank()) {
@@ -545,7 +389,7 @@ public final class PluginManager implements AutoCloseable {
                 disabledPackages.addAll(installed.disabled());
                 for (var plugin : installed.plugins()) {
                     installedIds.add(plugin.identity().id());
-                    staged.add(new PluginLifecycle(plugin, lifecycle));
+                    staged.add(new ManagedPlugin(plugin, lifecycle));
                 }
                 for (var plugin : installed.disabled()) installedIds.add(plugin.id());
             }
@@ -559,7 +403,7 @@ public final class PluginManager implements AutoCloseable {
                     throw new IllegalArgumentException("Duplicate plugin identity");
             List<Registration> registered = new ArrayList<>();
             List<DeclinedPlugin> declinedPlugins = new ArrayList<>();
-            Iterator<PluginLifecycle> pending = staged.iterator();
+            Iterator<ManagedPlugin> pending = staged.iterator();
             while (pending.hasNext()) {
                 var plugin = pending.next();
                 try {
@@ -591,32 +435,35 @@ public final class PluginManager implements AutoCloseable {
                 }
             }
             aliases = Map.copyOf(aliasLookup);
+            stagedRegistrations = List.copyOf(registered);
             var validatedCatalog = buildCatalog(registered);
             serviceRegistry.bind(validatedCatalog, staged);
             published =
-                    new PublishedState(
+                    new PluginRegistry(
                             staged,
-                            registered,
                             disabledPackages,
                             declinedPlugins,
                             validatedCatalog,
                             preparedEvents(validatedCatalog, staged, listenerPreparation),
-                            prepareDirectory(validatedCatalog, staged));
+                            aliases,
+                            toolNames,
+                            installedIds);
             for (var plugin : staged) plugin.start();
             validatedCatalog = buildCatalog(registered);
             serviceRegistry.bind(validatedCatalog, staged);
             published =
-                    new PublishedState(
+                    new PluginRegistry(
                             staged,
-                            registered,
                             disabledPackages,
                             declinedPlugins,
                             validatedCatalog,
                             preparedEvents(validatedCatalog, staged, listenerPreparation),
-                            prepareDirectory(validatedCatalog, staged));
+                            aliases,
+                            toolNames,
+                            installedIds);
             for (var entry : validatedCatalog.entries(StandardContributionPoints.DATA_LIFECYCLE))
                 dataLifecycleOwners.add(entry.source().namespace());
-            published.events.submit(new ServiceDirectoryChangedEvent());
+            published.events().submit(new ServiceDirectoryChangedEvent());
             ready = true;
         } catch (Exception | ServiceConfigurationError e) {
             definedPoints.clear();
@@ -631,7 +478,7 @@ public final class PluginManager implements AutoCloseable {
 
     private @NonNull Registration constructPlugin(
             @UnknownInitialization PluginManager this,
-            @NonNull PluginLifecycle plugin,
+            @NonNull ManagedPlugin plugin,
             @NonNull Map<Class<?>, Object> availableServices,
             @NonNull PluginConfigurations settings,
             @NonNull Map<@NonNull String, @NonNull String> names)
@@ -672,7 +519,7 @@ public final class PluginManager implements AutoCloseable {
                             storage,
                             factory,
                             local ->
-                                    resolveToolName(
+                                    PluginRegistry.resolveToolName(
                                             plugin.identity().id(),
                                             plugin.identity().id() + ":" + local,
                                             names,
@@ -706,7 +553,7 @@ public final class PluginManager implements AutoCloseable {
     private @NonNull Map<@NonNull ContributionPoint<?>, @NonNull Consumer<@NonNull Contribution<?>>>
             contributionHandlers(
                     @UnknownInitialization PluginManager this,
-                    @NonNull PluginLifecycle plugin,
+                    @NonNull ManagedPlugin plugin,
                     @NonNull PointRegistrations points) {
         Map<ContributionPoint<?>, Consumer<Contribution<?>>> handlers = new HashMap<>();
         for (ContributionPoint<?> point : StandardContributionPoints.ALL) {
@@ -799,11 +646,12 @@ public final class PluginManager implements AutoCloseable {
         };
     }
 
-    // WHY: ready becomes true only after constructor publication initializes all host views.
-    @SuppressWarnings("method.invocation")
+    // WHY: ready gates publication, but Checker still needs local guards for this construction
+    // callback.
+    @SuppressWarnings({"method.invocation", "ConstantValue"})
     private void registerContribution(
             @UnknownInitialization PluginManager this,
-            @NonNull PluginLifecycle plugin,
+            @NonNull ManagedPlugin plugin,
             @NonNull PointRegistrations points,
             @NonNull Contribution<?> contribution) {
         PluginState state = plugin.state();
@@ -820,11 +668,12 @@ public final class PluginManager implements AutoCloseable {
             if (closing) throw new IllegalStateException("Plugin manager is closing");
             points.add(contribution);
             var current = published;
+            var registrations = stagedRegistrations;
             if (current == null
-                    || current.registrations.stream().noneMatch(entry -> entry.plugin() == plugin))
-                return;
+                    || registrations == null
+                    || registrations.stream().noneMatch(entry -> entry.plugin() == plugin)) return;
             try {
-                publish(current.plugins, current.registrations, current.disabled, current.declined);
+                publish(current.plugins(), registrations, current.disabled(), current.declined());
             } catch (RuntimeException failure) {
                 points.remove(contribution);
                 throw failure;
@@ -907,13 +756,12 @@ public final class PluginManager implements AutoCloseable {
         return dataLifecycleOwners.stream()
                 .anyMatch(
                         id ->
-                                published.plugins.stream()
+                                published.plugins().stream()
                                         .noneMatch(plugin -> plugin.identity().id().equals(id)));
     }
 
     /** Retains the captured contributor until its transaction completes; shutdown drains claims. */
-    public synchronized @NonNull PluginLifecycle beginDataCleanup(
-            @NonNull PluginLifecycle runtime) {
+    public synchronized @NonNull ManagedPlugin beginDataCleanup(@NonNull ManagedPlugin runtime) {
         if (closing) throw new IllegalStateException("Plugin manager is closing");
         String id = runtime.identity().id();
         if (published.plugin(id) != runtime)
@@ -947,28 +795,28 @@ public final class PluginManager implements AutoCloseable {
     }
 
     private void publish(
-            @NonNull List<PluginLifecycle> nextPlugins,
+            @NonNull List<ManagedPlugin> nextPlugins,
             @NonNull List<Registration> nextRegistrations,
             @NonNull List<InstalledPluginLoader.DisabledPackage> nextDisabled,
             @NonNull List<DeclinedPlugin> nextDeclined) {
         ContributionCatalog nextCatalog = buildCatalog(nextRegistrations);
         EventListenerRegistry nextEvents =
                 preparedEvents(nextCatalog, nextPlugins, listenerPreparation);
-        var nextGroups = prepareDirectory(nextCatalog, nextPlugins);
         var previous = published;
         var next =
-                new PublishedState(
+                new PluginRegistry(
                         nextPlugins,
-                        nextRegistrations,
                         nextDisabled,
                         nextDeclined,
                         nextCatalog,
                         nextEvents,
-                        nextGroups);
+                        aliases,
+                        toolNames,
+                        installedIds);
         published = next;
         try {
             var tools = toolEngine;
-            if (tools != null) tools.getObject().reloadPlugins(this, next);
+            if (tools != null) tools.getObject().reloadPlugins(next);
             var providers = llmProviders;
             if (providers != null) providers.getObject().reload(next);
             serviceRegistry.bind(nextCatalog, nextPlugins);
@@ -976,45 +824,12 @@ public final class PluginManager implements AutoCloseable {
         } catch (RuntimeException failure) {
             published = previous;
             var tools = toolEngine;
-            if (tools != null) tools.getObject().reloadPlugins(this, previous);
+            if (tools != null) tools.getObject().reloadPlugins(previous);
             var providers = llmProviders;
             if (providers != null) providers.getObject().reload(previous);
-            serviceRegistry.bind(previous.catalog, previous.plugins);
+            serviceRegistry.bind(previous.catalog(), previous.plugins());
             throw failure;
         }
-    }
-
-    public @NonNull List<PluginLifecycle> plugins() {
-        return published.plugins;
-    }
-
-    /** Installed packages that deliberately declined initialization. */
-    public @NonNull List<DeclinedPlugin> declined() {
-        return published.declined;
-    }
-
-    /** Installed packages left inactive by a persisted operator choice or startup default. */
-    public @NonNull List<InstalledPluginLoader.DisabledPackage> disabled() {
-        return published.disabled;
-    }
-
-    /** Whether an inactive installed package claims this stable identity. */
-    public boolean isDeclined(@NonNull String id) {
-        return published.declined.stream().anyMatch(plugin -> plugin.id().equals(canonicalId(id)));
-    }
-
-    /** Whether an installed package is disabled and has no active entry instance. */
-    public boolean isDisabled(@NonNull String id) {
-        return published.disabled.stream().anyMatch(plugin -> plugin.id().equals(canonicalId(id)));
-    }
-
-    public @NonNull ContributionCatalog catalog() {
-        return published.catalog;
-    }
-
-    /** Returns the compiled event dispatch table built from the contributed listeners. */
-    public @NonNull EventListenerRegistry events() {
-        return published.events;
     }
 
     /**
@@ -1023,77 +838,16 @@ public final class PluginManager implements AutoCloseable {
      */
     private static @NonNull EventListenerRegistry preparedEvents(
             @NonNull ContributionCatalog catalog,
-            @NonNull List<PluginLifecycle> plugins,
+            @NonNull List<ManagedPlugin> plugins,
             EventListenerRegistry.@NonNull Preparation preparation) {
-        Map<@NonNull String, @NonNull PluginLifecycle> indexed = new HashMap<>();
+        Map<@NonNull String, @NonNull ManagedPlugin> indexed = new HashMap<>();
         for (var plugin : plugins) indexed.put(plugin.identity().id(), plugin);
         return EventListenerRegistry.build(catalog, Map.copyOf(indexed), preparation);
     }
 
-    public @NonNull List<Registration> registrations() {
-        return published.registrations;
-    }
-
-    /** Returns the loaded script-package plugins, excluding built-ins. */
-    public @NonNull List<ScriptPlugin> scriptPlugins() {
-        List<ScriptPlugin> scripts = new ArrayList<>();
-        for (var plugin : published.plugins)
-            if (plugin.implementation() instanceof ScriptPlugin script) scripts.add(script);
-        return List.copyOf(scripts);
-    }
-
-    /** Returns the managed plugin for the given (alias-resolved) id; throws when unknown. */
-    public @NonNull PluginLifecycle plugin(@NonNull String id) {
-        return published.plugins.stream()
-                .filter(plugin -> plugin.identity().id().equals(canonicalId(id)))
-                .findFirst()
-                .orElseThrow(() -> new IllegalArgumentException("Unknown plugin identity"));
-    }
-
     /** Maps a historical plugin id to its canonical identity; unknown ids pass through. */
-    public @NonNull String canonicalId(@NonNull String id) {
-        return aliases.getOrDefault(id, id);
-    }
-
-    /** Resolves the runtime tool name of the given contributed tool entry. */
-    public @NonNull String toolName(@NonNull ContributionEntry<Tool> entry) {
-        return toolName(entry.source().namespace(), entry.id().value());
-    }
-
-    /**
-     * Operator alias, plugin preference, or {@code plugin_<namespace>__<local>} fallback. Shared by
-     * schema and Java tools; names do not change provenance or authority.
-     */
-    public @NonNull String toolName(@NonNull String namespace, @NonNull String qualifiedId) {
-        return toolName(published, namespace, qualifiedId);
-    }
-
-    /** Resolves a name using the implementation retained by the captured publication. */
-    public @NonNull String toolName(
-            @NonNull PublishedState state, @NonNull String namespace, @NonNull String qualifiedId) {
-        return resolveToolName(
-                namespace,
-                qualifiedId,
-                toolNames,
-                state.plugin(namespace),
-                installedIds.contains(namespace));
-    }
-
-    private static @NonNull String resolveToolName(
-            @NonNull String namespace,
-            @NonNull String qualifiedId,
-            @NonNull Map<String, String> names,
-            @NonNull PluginLifecycle implementation,
-            boolean installed) {
-        String alias = names.get(qualifiedId);
-        if (alias != null) return alias;
-        String local = qualifiedId.substring(qualifiedId.indexOf(':') + 1);
-        String preferred = installed ? implementation.preferredToolName(local) : null;
-        if (preferred != null) {
-            if (preferred.isBlank()) throw new IllegalArgumentException("Blank plugin tool name");
-            return preferred;
-        }
-        return "plugin_" + namespace.replace('.', '_').replace('-', '_') + "__" + local;
+    private @NonNull String canonicalId(@NonNull String id) {
+        return published.canonicalId(id);
     }
 
     /**
@@ -1102,11 +856,11 @@ public final class PluginManager implements AutoCloseable {
      * With no contributor the text is returned unchanged.
      */
     @SuppressWarnings(
-            "resource") // WHY: PluginLifecycle handle is owned by this manager, closed in close()
+            "resource") // WHY: ManagedPlugin handle is owned by this manager, closed in close()
     public @NonNull String applyObservationMiddleware(@NonNull String text) {
         var state = published;
         String result = text;
-        for (var entry : state.catalog.entries(StandardContributionPoints.OBSERVATION)) {
+        for (var entry : state.entries(StandardContributionPoints.OBSERVATION)) {
             var plugin = state.plugin(entry.source().namespace());
             if (plugin.state() != PluginState.ACTIVE) continue;
             String input = result;
@@ -1151,7 +905,7 @@ public final class PluginManager implements AutoCloseable {
         }
         if (interrupted) Thread.currentThread().interrupt();
         try {
-            for (var plugin : published.plugins.reversed()) {
+            for (var plugin : published.plugins().reversed()) {
                 serviceRegistry.revoke(plugin.identity().id());
                 plugin.close();
             }

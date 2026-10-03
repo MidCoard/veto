@@ -16,7 +16,7 @@ import top.focess.veto.api.plugin.contribution.ContributionCatalog;
 import top.focess.veto.api.plugin.contribution.ContributionId;
 import top.focess.veto.api.plugin.contribution.ContributionPoint;
 import top.focess.veto.api.plugin.contribution.ContributionSource;
-import top.focess.veto.plugin.runtime.PluginLifecycle;
+import top.focess.veto.plugin.runtime.ManagedPlugin;
 import top.focess.veto.plugin.runtime.ScriptPlugin;
 
 /**
@@ -102,7 +102,7 @@ final class ToolCatalog {
             if (registration instanceof RegisteredTool.Plugin plugin
                     && !pluginAvailable(plugin.runtime())) continue;
             if (registration instanceof RegisteredTool.Local local) {
-                PluginLifecycle runtime = local.runtime();
+                ManagedPlugin runtime = local.runtime();
                 if (runtime != null && !pluginAvailable(runtime)) continue;
             }
             if (definition instanceof AgentToolDefinition
@@ -116,7 +116,7 @@ final class ToolCatalog {
      * A plugin tool is advertised only while its lifecycle state is ACTIVE and, for script plugins,
      * the backing host process is still alive — matching {@code PluginController}'s liveness view.
      */
-    private static boolean pluginAvailable(@NonNull PluginLifecycle runtime) {
+    private static boolean pluginAvailable(@NonNull ManagedPlugin runtime) {
         if (runtime.state() != PluginState.ACTIVE) return false;
         return !(runtime.implementation() instanceof ScriptPlugin script) || script.active();
     }

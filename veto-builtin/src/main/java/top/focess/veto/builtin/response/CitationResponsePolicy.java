@@ -7,7 +7,7 @@ import top.focess.veto.api.llm.VetoResponse;
 import top.focess.veto.api.plugin.contract.ModelResponsePolicy;
 
 /** Cited-answer validation and bounded repair policy belong to the feature. */
-public final class CitationResponsePolicy extends ModelResponsePolicy {
+public final class CitationResponsePolicy implements ModelResponsePolicy {
     public @NonNull Exchange open() {
         return new Exchange() {
             private int repairs;

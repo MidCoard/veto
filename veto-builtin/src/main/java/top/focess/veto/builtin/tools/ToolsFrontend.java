@@ -9,7 +9,7 @@ import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.contract.PluginFailure;
 
 /** Builtin presentation ships with the plugin and requires no backend actions. */
-public final class ToolsFrontend extends FrontendContribution {
+public final class ToolsFrontend implements FrontendContribution {
     /** Constructs the builtin tool presentation aspect. */
     public ToolsFrontend() {}
 

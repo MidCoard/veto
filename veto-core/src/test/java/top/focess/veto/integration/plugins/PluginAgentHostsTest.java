@@ -62,7 +62,7 @@ import top.focess.veto.model.SessionRepository;
 import top.focess.veto.model.tier.ModelBinding;
 import top.focess.veto.model.tier.ModelTier;
 import top.focess.veto.model.tier.ModelTierRegistry;
-import top.focess.veto.plugin.runtime.PluginLifecycle;
+import top.focess.veto.plugin.runtime.ManagedPlugin;
 import top.focess.veto.session.SessionHistoryLoader;
 import top.focess.veto.vault.KeysteadVault;
 
@@ -229,7 +229,7 @@ class PluginAgentHostsTest {
 
     static final class Fixture implements AutoCloseable {
         final @NonNull ExecutorService executor = Executors.newSingleThreadExecutor();
-        final @NonNull PluginLifecycle plugin;
+        final @NonNull ManagedPlugin plugin;
         final @NonNull SessionEntity session = new SessionEntity("owner", "test");
         final @NonNull String parent = UUID.randomUUID().toString();
         final @NonNull String childId = UUID.randomUUID().toString();
@@ -253,7 +253,7 @@ class PluginAgentHostsTest {
             VetoPlugin implementation = mock(VetoPlugin.class);
             var identity = new PluginIdentity("test.plugin", "1.0.0");
             when(implementation.identity()).thenReturn(identity);
-            plugin = new PluginLifecycle(implementation, executor);
+            plugin = new ManagedPlugin(implementation, executor);
             plugin.construct(
                     new PluginContext(
                             identity,
@@ -483,7 +483,7 @@ class PluginAgentHostsTest {
                                         UUID.fromString(fixture.session.getId()), fixture.agent);
                                 return fixture.agent;
                             });
-            var foreign = mock(PluginLifecycle.class);
+            var foreign = mock(ManagedPlugin.class);
             when(foreign.identity()).thenReturn(new PluginIdentity("foreign.plugin", "1.0.0"));
             var host = fixture.hosts.bind(foreign, fixture.storage);
             var first = callers.submit(fixture::open);

@@ -162,8 +162,7 @@ class SecretProtectionPluginTest {
             Scope.@NonNull AgentScope scope,
             @NonNull String text) {
         var event =
-                new BeforeTextCommitEvent(
-                        scope, () -> false, BeforeTextCommitEvent.Phase.INPUT, "user", text);
+                new BeforeTextCommitEvent(scope, BeforeTextCommitEvent.Phase.INPUT, "user", text);
         lifecycle.onTextCommit(event);
         return event.text();
     }

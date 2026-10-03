@@ -15,7 +15,7 @@ import top.focess.veto.api.plugin.contract.JsonValues;
 import top.focess.veto.api.plugin.contract.PluginFailure;
 
 /** Scoped process cards and bounded, explicitly paged access to retained output. */
-public final class TasksFrontend extends FrontendContribution {
+public final class TasksFrontend implements FrontendContribution {
     private final @NonNull BackgroundTasks tasks;
     private final @NonNull ObjectMapper mapper = new ObjectMapper();
 

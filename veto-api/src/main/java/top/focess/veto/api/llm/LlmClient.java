@@ -8,14 +8,10 @@ import org.jspecify.annotations.NonNull;
  * request construction, API calls, and response parsing; the host-facing {@link LlmProvider}
  * contract does not expose SDK request or response types.
  *
- * <p>A provider plugin may implement this class to wrap its own transport and call it from its
+ * <p>A provider plugin may implement this interface to wrap its own transport and call it from its
  * {@link LlmProvider} contribution.
  */
-public abstract class LlmClient {
-
-    /** Creates a provider adapter. */
-    public LlmClient() {}
-
+public interface LlmClient {
     /**
      * Sends the resolved request to the LLM API and returns the raw completion text plus a
      * secret-free summary for audit logging.
@@ -24,8 +20,7 @@ public abstract class LlmClient {
      * @return the raw completion from the provider
      * @throws Exception if the SDK call fails
      */
-    public abstract @NonNull RawCompletion complete(@NonNull ResolvedRequest request)
-            throws Exception;
+    @NonNull RawCompletion complete(@NonNull ResolvedRequest request) throws Exception;
 
     /**
      * Raw provider output plus a secret-free, audit-safe summary of the request that produced it.
@@ -36,7 +31,7 @@ public abstract class LlmClient {
      * @param nativeCalls native calls decoded by the adapter
      * @param reasoning optional provider-exposed reasoning text
      */
-    public record RawCompletion(
+    record RawCompletion(
             @NonNull String requestSummary,
             @NonNull String rawResponse,
             @NonNull List<@NonNull NativeToolState> nativeStates,

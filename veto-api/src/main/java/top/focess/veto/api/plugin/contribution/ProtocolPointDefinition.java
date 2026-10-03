@@ -5,7 +5,7 @@ import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.plugin.contract.JsonValue;
 
 /** Plugin-defined JSON contribution point registered through the standard meta-point. */
-public abstract class ProtocolPointDefinition {
+public final class ProtocolPointDefinition {
     private final @NonNull ContributionId id;
     private final int major;
     private final JsonValue.@NonNull ObjectValue entrySchema;
@@ -20,7 +20,7 @@ public abstract class ProtocolPointDefinition {
      * @param cardinality allowed number of visible entries
      * @throws IllegalArgumentException when major is not positive
      */
-    protected ProtocolPointDefinition(
+    public ProtocolPointDefinition(
             @NonNull ContributionId id,
             int major,
             JsonValue.@NonNull ObjectValue entrySchema,
@@ -37,7 +37,7 @@ public abstract class ProtocolPointDefinition {
      *
      * @return stable owner-qualified point identity
      */
-    public final @NonNull ContributionId id() {
+    public @NonNull ContributionId id() {
         return id;
     }
 
@@ -46,7 +46,7 @@ public abstract class ProtocolPointDefinition {
      *
      * @return positive major contract version
      */
-    public final int major() {
+    public int major() {
         return major;
     }
 
@@ -55,7 +55,7 @@ public abstract class ProtocolPointDefinition {
      *
      * @return bounded schema for each contributed JSON entry
      */
-    public final JsonValue.@NonNull ObjectValue entrySchema() {
+    public JsonValue.@NonNull ObjectValue entrySchema() {
         return entrySchema;
     }
 
@@ -64,7 +64,7 @@ public abstract class ProtocolPointDefinition {
      *
      * @return maximum visible entries allowed by this point
      */
-    public final ContributionPoint.@NonNull Cardinality cardinality() {
+    public ContributionPoint.@NonNull Cardinality cardinality() {
         return cardinality;
     }
 
@@ -73,7 +73,7 @@ public abstract class ProtocolPointDefinition {
      *
      * @return common API contract used by contributors for bounded JSON entries
      */
-    public final @NonNull ContributionPoint<JsonValue.@NonNull ObjectValue> point() {
+    public @NonNull ContributionPoint<JsonValue.@NonNull ObjectValue> point() {
         return new ContributionPoint<>(id, major, JsonValue.ObjectValue.class, cardinality);
     }
 }

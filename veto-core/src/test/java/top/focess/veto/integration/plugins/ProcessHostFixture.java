@@ -4,8 +4,10 @@ import static org.mockito.Mockito.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -30,6 +32,7 @@ import top.focess.veto.api.process.ProcessHost;
 import top.focess.veto.builtin.process.ProcessRuntime;
 import top.focess.veto.builtin.process.TaskEvents;
 import top.focess.veto.builtin.tools.*;
+import top.focess.veto.event.EventListenerRegistry;
 import top.focess.veto.integration.plugins.storage.ConfigurationStorageFixture;
 import top.focess.veto.integration.plugins.storage.PluginStorageFactory;
 import top.focess.veto.plugin.runtime.*;
@@ -43,7 +46,7 @@ public final class ProcessHostFixture implements AutoCloseable {
     public final @NonNull UUID user = UUID.randomUUID();
     public final @NonNull AtomicBoolean admitted = new AtomicBoolean(true);
     public final @NonNull SessionAgentRegistry agents = mock(SessionAgentRegistry.class);
-    public final @NonNull PluginLifecycle plugin;
+    public final @NonNull ManagedPlugin plugin;
     public final @NonNull ToolEngineImpl engine;
     public final @NonNull ProcessHost host;
     public final @NonNull ProcessRuntime feature;
@@ -65,7 +68,7 @@ public final class ProcessHostFixture implements AutoCloseable {
 
                         public void close() {}
                     };
-            plugin = new PluginLifecycle(implementation, lifecycle);
+            plugin = new ManagedPlugin(implementation, lifecycle);
             PluginStorage storage = mock(PluginStorage.class);
             PluginStorageFactory scopes = mock(PluginStorageFactory.class);
             var scope =
@@ -167,23 +170,23 @@ public final class ProcessHostFixture implements AutoCloseable {
                                     entries)
                             .freeze();
             PluginManager manager = mock(PluginManager.class);
-            var publication = mock(PluginManager.PublishedState.class);
-            when(publication.catalog()).thenReturn(catalog);
-            when(publication.plugins()).thenReturn(List.of(plugin));
-            when(publication.disabled()).thenReturn(List.of());
-            when(publication.declined()).thenReturn(List.of());
-            when(publication.plugin(plugin.identity().id())).thenReturn(plugin);
-            when(manager.snapshot()).thenReturn(publication);
-            when(manager.catalog()).thenReturn(catalog);
-            when(manager.plugins()).thenReturn(List.of(plugin));
-            when(manager.plugin(plugin.identity().id())).thenReturn(plugin);
-            when(manager.toolName(eq(publication), anyString(), anyString()))
-                    .thenAnswer(
-                            call -> {
-                                String id = call.getArgument(2);
-                                if (id == null) throw new AssertionError();
-                                return id.substring(id.indexOf(':') + 1);
-                            });
+            var names = new HashMap<String, String>();
+            for (var entry : catalog.entries(StandardContributionPoints.TOOLS))
+                names.put(entry.id().value(), entry.id().localId());
+            var publication =
+                    new PluginRegistry(
+                            List.of(plugin),
+                            List.of(),
+                            List.of(),
+                            catalog,
+                            EventListenerRegistry.build(
+                                    catalog,
+                                    Map.of(plugin.identity().id(), plugin),
+                                    new EventListenerRegistry.Preparation()),
+                            Map.of(),
+                            names,
+                            Set.of());
+            when(manager.registry()).thenReturn(publication);
             SessionPlugins selected = mock(SessionPlugins.class);
             when(selected.includes(anyString(), anyString())).thenAnswer(call -> admitted.get());
             ApplicationContext app = mock(ApplicationContext.class);

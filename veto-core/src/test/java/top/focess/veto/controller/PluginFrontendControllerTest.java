@@ -21,6 +21,7 @@ import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
 import top.focess.veto.api.plugin.contribution.Contribution;
 import top.focess.veto.integration.plugins.PluginManager;
+import top.focess.veto.integration.plugins.PluginRegistry;
 import top.focess.veto.integration.plugins.SessionPlugins;
 import top.focess.veto.integration.plugins.WorkflowPluginFixture;
 import top.focess.veto.model.SessionEntity;
@@ -55,9 +56,11 @@ class PluginFrontendControllerTest {
                                         StandardContributionPoints.FRONTEND, "panel", frontend),
                                 Contribution.of(
                                         StandardContributionPoints.TOOLS, "display", tool)))) {
-            var captured = fixture.manager.snapshot();
-            var replacement = mock(PluginManager.PublishedState.class);
-            when(replacement.catalog()).thenThrow(new AssertionError("Mixed manager publication"));
+            var captured = fixture.manager.registry();
+            var replacement = mock(PluginRegistry.class);
+            doThrow(new AssertionError("Mixed manager publication"))
+                    .when(replacement)
+                    .entries(StandardContributionPoints.FRONTEND);
             SessionRepository sessions = mock(SessionRepository.class);
             SessionPlugins selected = mock(SessionPlugins.class);
             SessionAgentRegistry agents = mock(SessionAgentRegistry.class);
@@ -89,14 +92,14 @@ class PluginFrontendControllerTest {
             clearInvocations(fixture.manager);
             UserContext.set("owner");
             try {
-                when(fixture.manager.snapshot()).thenReturn(captured, replacement);
+                when(fixture.manager.registry()).thenReturn(captured, replacement);
                 var modules = controller.list("private").getBody();
                 if (modules == null) throw new AssertionError("Missing frontend modules");
                 assertEquals(1, modules.size());
                 assertEquals(
                         Map.of("display", "plugin_fixture_workflow__display"),
                         modules.getFirst().tools());
-                when(fixture.manager.snapshot()).thenReturn(captured, replacement);
+                when(fixture.manager.registry()).thenReturn(captured, replacement);
                 var result =
                         controller
                                 .act(
@@ -110,9 +113,7 @@ class PluginFrontendControllerTest {
                 if (result == null) throw new AssertionError("Missing frontend action result");
                 assertEquals("saved", result.asText());
                 assertEquals(1, handled.get());
-                verify(fixture.manager, times(2)).snapshot();
-                verify(fixture.manager, never()).catalog();
-                verify(fixture.manager, never()).plugin(anyString());
+                verify(fixture.manager, times(2)).registry();
                 verifyNoInteractions(replacement);
             } finally {
                 UserContext.clear();

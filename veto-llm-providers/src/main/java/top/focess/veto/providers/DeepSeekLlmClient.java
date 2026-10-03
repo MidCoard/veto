@@ -31,7 +31,7 @@ import top.focess.veto.api.llm.exceptions.ModelCapabilityException;
 import top.focess.veto.api.llm.exceptions.ModelSchemaException;
 
 /** DeepSeek Responses API adapter with native reasoning, functions and matching tool results. */
-final class DeepSeekLlmClient extends LlmClient {
+final class DeepSeekLlmClient implements LlmClient {
 
     private static final @NonNull HttpClient HTTP =
             HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();

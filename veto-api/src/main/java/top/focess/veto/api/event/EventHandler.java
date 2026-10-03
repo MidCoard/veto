@@ -25,7 +25,7 @@ public @interface EventHandler {
      * When {@code true}, the handler is skipped for an event already {@link
      * Cancellable#isCancelled() cancelled}. Cancelled events are delivered by default, so later
      * handlers may reverse cancellation. This option has no effect on events that do not implement
-     * {@link Cancellable}, or on the separate host stop signal from {@link Event#cancellation()}.
+     * {@link Cancellable}, or on the separate cooperative host stop enforced by the execution path.
      *
      * @return whether to skip cancelled events
      */

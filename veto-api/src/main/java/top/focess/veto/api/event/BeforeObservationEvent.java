@@ -2,7 +2,6 @@ package top.focess.veto.api.event;
 
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.plugin.Scope;
-import top.focess.veto.api.plugin.contract.Cancellation;
 
 /**
  * Fired for an executed tool result after the after-tool transformation and before final ingress
@@ -18,14 +17,10 @@ public final class BeforeObservationEvent extends WorkflowEvent {
      * Creates the observation event.
      *
      * @param scope authenticated owner, session and agent identity
-     * @param cancellation cooperative cancellation signal
      * @param text protected observation text
      */
-    public BeforeObservationEvent(
-            Scope.@NonNull AgentScope scope,
-            @NonNull Cancellation cancellation,
-            @NonNull String text) {
-        super(scope, cancellation);
+    public BeforeObservationEvent(Scope.@NonNull AgentScope scope, @NonNull String text) {
+        super(scope);
         this.text = text;
     }
 

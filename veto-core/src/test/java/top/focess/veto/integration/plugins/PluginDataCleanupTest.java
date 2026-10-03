@@ -25,7 +25,7 @@ import top.focess.veto.api.plugin.contract.DataLifecycle;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
 import top.focess.veto.api.plugin.contribution.Contribution;
 import top.focess.veto.api.plugin.contribution.ContributionPoint;
-import top.focess.veto.plugin.runtime.PluginLifecycle;
+import top.focess.veto.plugin.runtime.ManagedPlugin;
 import top.focess.veto.vault.UserEntity;
 import top.focess.veto.vault.UserRegistry;
 
@@ -37,9 +37,8 @@ class PluginDataCleanupTest {
     void completionReceivesTransactionOutcomeAndReleasesContributorClaim(boolean committed)
             throws Exception {
         try (var manager = PluginTestSupport.manager()) {
-            var registration = manager.registrations().getFirst();
-            var plugin = registration.plugin();
-            var differentActivation = mock(PluginLifecycle.class);
+            var plugin = manager.registry().plugins().getFirst();
+            var differentActivation = mock(ManagedPlugin.class);
             when(differentActivation.identity()).thenReturn(plugin.identity());
             assertThrows(
                     IllegalStateException.class,
@@ -47,11 +46,6 @@ class PluginDataCleanupTest {
             assertThrows(
                     IllegalStateException.class,
                     () -> manager.endDataCleanup(plugin.identity().id()));
-            Map<@NonNull ContributionPoint<?>, @NonNull Consumer<@NonNull Contribution<?>>>
-                    handlers =
-                            ReflectionTestUtils.invokeMethod(
-                                    manager, "contributionHandlers", plugin, registration.points());
-            if (handlers == null) throw new AssertionError("Registration handlers must exist");
             var prepared = new AtomicInteger();
             List<@NonNull Boolean> outcomes = new ArrayList<>();
             var participant =
@@ -77,9 +71,7 @@ class PluginDataCleanupTest {
                             };
                         }
                     };
-            var context =
-                    new PluginContext(
-                            plugin.identity(), () -> {}, plugin::state, Map.of(), handlers);
+            var context = registrationContext(manager, plugin);
             context.register(
                     StandardContributionPoints.DATA_LIFECYCLE, "cleanup-probe", participant);
             var users = mock(UserRegistry.class);
@@ -169,7 +161,7 @@ class PluginDataCleanupTest {
                             throw failure;
                         }
                     });
-            var plugin = manager.registrations().getFirst().plugin();
+            var plugin = manager.registry().plugins().getFirst();
             var cleanup = cleanup(manager);
             TransactionSynchronizationManager.initSynchronization();
             TransactionSynchronizationManager.setActualTransactionActive(true);
@@ -215,15 +207,31 @@ class PluginDataCleanupTest {
 
     private static void register(
             @NonNull PluginManager manager, @NonNull DataLifecycle participant) {
-        var registration = manager.registrations().getFirst();
-        var plugin = registration.plugin();
-        Map<@NonNull ContributionPoint<?>, @NonNull Consumer<@NonNull Contribution<?>>> handlers =
-                ReflectionTestUtils.invokeMethod(
-                        manager, "contributionHandlers", plugin, registration.points());
-        if (handlers == null) throw new AssertionError("Registration handlers must exist");
-        var context =
-                new PluginContext(plugin.identity(), () -> {}, plugin::state, Map.of(), handlers);
+        var plugin = manager.registry().plugins().getFirst();
+        var context = registrationContext(manager, plugin);
         context.register(StandardContributionPoints.DATA_LIFECYCLE, "cleanup-probe", participant);
+    }
+
+    private static @NonNull PluginContext registrationContext(
+            @NonNull PluginManager manager, @NonNull ManagedPlugin plugin) {
+        // These tests deliberately mutate live registration staging to exercise cleanup claims.
+        var staged = ReflectionTestUtils.getField(manager, "stagedRegistrations");
+        if (!(staged instanceof List<?> registrations)) throw new AssertionError("Missing staging");
+        for (var registration : registrations) {
+            if (registration == null) throw new AssertionError("Missing registration");
+            var owner = ReflectionTestUtils.invokeMethod(registration, "plugin");
+            if (owner != plugin) continue;
+            var points = ReflectionTestUtils.invokeMethod(registration, "points");
+            if (points == null) throw new AssertionError("Missing registration points");
+            Map<@NonNull ContributionPoint<?>, @NonNull Consumer<@NonNull Contribution<?>>>
+                    handlers =
+                            ReflectionTestUtils.invokeMethod(
+                                    manager, "contributionHandlers", plugin, points);
+            if (handlers == null) throw new AssertionError("Registration handlers must exist");
+            return new PluginContext(
+                    plugin.identity(), () -> {}, plugin::state, Map.of(), handlers);
+        }
+        throw new AssertionError("Registration is missing");
     }
 
     private static @NonNull PluginDataCleanup cleanup(@NonNull PluginManager manager) {

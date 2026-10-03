@@ -43,11 +43,11 @@ public final class PluginServiceRegistry {
     private record Key(@NonNull String name, int version) {}
 
     private record Entry(
-            @NonNull PluginService service, @NonNull PluginLifecycle owner, long generation) {}
+            @NonNull PluginService service, @NonNull ManagedPlugin owner, long generation) {}
 
     private record Outcome(JsonValue value, ServiceException failure) {}
 
-    private record CallbackEntry(@NonNull ServiceHandler handler, @NonNull PluginLifecycle owner) {}
+    private record CallbackEntry(@NonNull ServiceHandler handler, @NonNull ManagedPlugin owner) {}
 
     private volatile @NonNull Map<Key, Entry> entries = Map.of();
     private final @NonNull ConcurrentHashMap<String, CallbackEntry> callbacks =
@@ -89,8 +89,8 @@ public final class PluginServiceRegistry {
 
     /** Atomically replaces the service directory after a plugin catalog transition. */
     public synchronized void bind(
-            @NonNull ContributionCatalog catalog, @NonNull List<PluginLifecycle> plugins) {
-        Map<String, PluginLifecycle> owners = new HashMap<>();
+            @NonNull ContributionCatalog catalog, @NonNull List<ManagedPlugin> plugins) {
+        Map<String, ManagedPlugin> owners = new HashMap<>();
         for (var plugin : plugins) owners.put(plugin.identity().id(), plugin);
         Map<Key, Entry> staged = new HashMap<>();
         for (var contribution : catalog.entries(StandardContributionPoints.SERVICES)) {
@@ -126,7 +126,7 @@ public final class PluginServiceRegistry {
     }
 
     /** Returns the service view authorized for the given calling plugin. */
-    public synchronized @NonNull PluginServices forPlugin(@NonNull PluginLifecycle caller) {
+    public synchronized @NonNull PluginServices forPlugin(@NonNull ManagedPlugin caller) {
         callbackOwners
                 .computeIfAbsent(caller.identity().id(), ignored -> new HashSet<>())
                 .add(caller.bindingId());
@@ -138,7 +138,7 @@ public final class PluginServiceRegistry {
         return view(null);
     }
 
-    private @NonNull PluginServices view(PluginLifecycle caller) {
+    private @NonNull PluginServices view(ManagedPlugin caller) {
         return new PluginServices() {
             // Owner handles are registered by bind() and closed by the host plugin lifecycle.
             @SuppressWarnings("resource")
@@ -300,7 +300,7 @@ public final class PluginServiceRegistry {
     // Owner handles are registered by bind() and closed by the host plugin lifecycle.
     @SuppressWarnings("resource")
     private static @NonNull JsonValue invokeService(
-            PluginLifecycle caller,
+            ManagedPlugin caller,
             @NonNull Entry entry,
             @NonNull ServiceCallContext context,
             @NonNull JsonValue request)
@@ -310,13 +310,13 @@ public final class PluginServiceRegistry {
     }
 
     private static @NonNull JsonValue invokeAdmitted(
-            PluginLifecycle caller,
-            @NonNull PluginLifecycle owner,
-            PluginLifecycle.@NonNull Operation<Outcome> body)
+            ManagedPlugin caller,
+            @NonNull ManagedPlugin owner,
+            ManagedPlugin.@NonNull Operation<Outcome> body)
             throws ServiceException {
         Outcome outcome;
         try {
-            PluginLifecycle.Operation<Outcome> operation = () -> owner.execute(body);
+            ManagedPlugin.Operation<Outcome> operation = () -> owner.execute(body);
             outcome = caller == null ? operation.run() : caller.execute(operation);
         } catch (PluginFailure failure) {
             throw new ServiceException(ServiceException.Code.UNAVAILABLE);

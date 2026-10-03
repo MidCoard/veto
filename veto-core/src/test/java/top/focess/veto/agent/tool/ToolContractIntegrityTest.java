@@ -42,7 +42,7 @@ class ToolContractIntegrityTest {
     void readProductionPluginCatalog() {
         var natives = new ArrayList<NativeTool<?>>();
         var contributed = new ArrayList<CapabilityTool<?>>();
-        for (var entry : plugins.catalog().entries(StandardContributionPoints.TOOLS)) {
+        for (var entry : plugins.registry().entries(StandardContributionPoints.TOOLS)) {
             var tool = entry.implementation();
             if (tool instanceof CapabilityTool<?> local) contributed.add(local);
             if (tool instanceof NativeTool<?> nativeTool) natives.add(nativeTool);
@@ -50,7 +50,7 @@ class ToolContractIntegrityTest {
         tools = List.copyOf(contributed);
         nativeTools = List.copyOf(natives);
         assertEquals(
-                plugins.catalog().entries(StandardContributionPoints.TOOLS).stream()
+                plugins.registry().entries(StandardContributionPoints.TOOLS).stream()
                         .filter(entry -> entry.implementation() instanceof CapabilityTool<?>)
                         .count(),
                 tools.size(),

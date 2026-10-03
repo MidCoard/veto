@@ -10,7 +10,7 @@ import java.util.stream.Collectors;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import top.focess.veto.agent.AgentLifecycle.BreakerTripException;
+import top.focess.veto.agent.AgentRunner.BreakerTripException;
 import top.focess.veto.agent.identity.AgentPersona;
 import top.focess.veto.agent.loop.CompiledPrompt;
 import top.focess.veto.agent.loop.LoopBreaker;

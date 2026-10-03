@@ -79,7 +79,7 @@ class PluginContractTest {
     void promptResourcesStayPackageRelative() {
         for (String path :
                 List.of("../secret.md", "/prompts/a.md", "prompts/../a.md", "prompts/a\\b.md"))
-            assertThrows(IllegalArgumentException.class, () -> new PromptContribution(path) {});
+            assertThrows(IllegalArgumentException.class, () -> new PromptContribution(path));
     }
 
     @Test
@@ -92,7 +92,7 @@ class PluginContractTest {
                         () -> PluginState.NEW,
                         Map.of(),
                         Map.of(StandardContributionPoints.CATEGORIES, received::add));
-        var category = new ToolCategory("Text", "Text tools") {};
+        var category = new ToolCategory("Text", "Text tools");
         context.register(StandardContributionPoints.CATEGORIES, "text", category);
         assertEquals(List.of("text"), received.stream().map(Contribution::localId).toList());
         assertTrue(category == received.getFirst().implementation());
@@ -122,7 +122,7 @@ class PluginContractTest {
                         context.register(
                                 StandardContributionPoints.CATEGORIES,
                                 "text",
-                                new ToolCategory("Text", "Text tools") {}));
+                                new ToolCategory("Text", "Text tools")));
         assertEquals(1, accepted.size());
     }
 

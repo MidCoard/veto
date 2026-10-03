@@ -377,7 +377,13 @@ class AgentEpisodeModelTest {
                             "verification",
                             "password=synthetic-token");
             String reference = extractReference(verification);
-            assertTrue(captured.contains(reference));
+            assertTrue(
+                    captured.contains(reference),
+                    () ->
+                            "Repeated capture should reuse the original reference: original="
+                                    + extractReference(captured)
+                                    + ", repeated="
+                                    + reference);
             assertEquals(2, requests.size());
             assertEquals(
                     "synthetic-token",

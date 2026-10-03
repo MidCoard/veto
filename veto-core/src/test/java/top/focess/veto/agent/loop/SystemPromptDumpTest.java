@@ -31,6 +31,7 @@ import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.llm.ToolDefinition;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
+import top.focess.veto.api.plugin.contract.StandardContributionPoints;
 import top.focess.veto.integration.plugins.PluginManager;
 
 /**
@@ -261,10 +262,12 @@ class SystemPromptDumpTest {
                 toolNames(flatTools).contains(builtinName("recall_memory")),
                 "the production catalog must expose the unified memory-recall tool");
         assertFalse(
-                toolNames(flatTools).contains(builtinName("recall_session")),
+                flatTools.stream()
+                        .anyMatch(tool -> localName(tool.name()).equals("recall_session")),
                 "the removed session-only recall tool must not remain registered");
         assertFalse(
-                toolNames(flatTools).contains(builtinName("recall_insights")),
+                flatTools.stream()
+                        .anyMatch(tool -> localName(tool.name()).equals("recall_insights")),
                 "the removed insight-only recall tool must not remain registered");
         assertTrue(
                 toolNames(flatTools).contains(builtinName("write_memory")),
@@ -273,10 +276,10 @@ class SystemPromptDumpTest {
                 toolNames(flatTools).contains(builtinName("forget_memory")),
                 "the production catalog must expose the consistently named memory-delete tool");
         assertFalse(
-                toolNames(flatTools).contains(builtinName("write_insight")),
+                flatTools.stream().anyMatch(tool -> localName(tool.name()).equals("write_insight")),
                 "the replaced insight-specific write name must not remain registered");
         assertFalse(
-                toolNames(flatTools).contains(builtinName("forget")),
+                flatTools.stream().anyMatch(tool -> localName(tool.name()).equals("forget")),
                 "the replaced generic forget name must not remain registered");
         assertFalse(
                 toolNames(flatTools).contains(builtinName("load_skill")),
@@ -710,7 +713,13 @@ class SystemPromptDumpTest {
     }
 
     private @NonNull String builtinName(@NonNull String local) {
-        return plugins.toolName("top.focess.builtin", "top.focess.builtin:" + local);
+        var registry = plugins.registry();
+        var entry =
+                registry.entries(StandardContributionPoints.TOOLS).stream()
+                        .filter(tool -> tool.id().value().equals("top.focess.builtin:" + local))
+                        .findFirst()
+                        .orElseThrow(() -> new AssertionError("Missing built-in: " + local));
+        return registry.toolName(entry);
     }
 
     private @NonNull String localName(@NonNull String name) {

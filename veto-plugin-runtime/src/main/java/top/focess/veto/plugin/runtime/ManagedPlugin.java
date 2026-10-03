@@ -23,21 +23,19 @@ import top.focess.veto.api.plugin.contribution.Contribution;
 import top.focess.veto.api.plugin.contribution.ContributionPoint;
 
 /**
- * Host-owned controller for one {@link VetoPlugin} instance: construction, activation, admission,
- * and cleanup are serialized on the control executor. The plugin implements the callbacks; this
- * class decides when to invoke them. A normal path is {@link #construct(PluginContext,
- * JsonValue.ObjectValue)}, {@link #start()}, then {@link #close()}. Closing signals the plugin's
- * stopping callback, drains admitted calls, invokes its close callback, closes contributed
- * resources, and finally releases the installed package loader. Failure can begin cleanup before
- * admitted calls drain. A constructor failure has no plugin instance to call back but still closes
- * host-owned partial resources.
+ * Host-owned plugin activation. Construction, start, stopping, and cleanup are serialized on the
+ * control executor; admitted operations run concurrently on their caller threads. The plugin
+ * implements the callbacks; this class decides when to invoke them. A normal path is {@link
+ * #construct(PluginContext, JsonValue.ObjectValue)}, {@link #start()}, then {@link #close()}.
+ * Closing signals the plugin's stopping callback, drains admitted calls, invokes its close
+ * callback, closes contributed resources, and finally releases the installed package loader.
+ * Failure can begin cleanup before admitted calls drain. A constructor failure has no plugin
+ * instance to call back but still closes host-owned partial resources.
  *
- * <p>This is the single-threaded lifecycle half of the plugin runtime. The concurrent invocation
- * counting and same-thread reentrancy guard live in {@link InvocationAdmission}; the two share one
- * monitor ({@link #lock}) so the compound "still active, take a slot" decision is atomic against
- * the {@code ACTIVE -> STOPPING/FAILED} transition performed here. Releasing a slot is routed back
- * through {@link #submit} so the close-completion re-check runs on the control thread, which is
- * what lets {@link #close()} block until every admitted call has drained.
+ * <p>State transitions and invocation counts share one monitor so checking ACTIVE and taking a slot
+ * is atomic against revocation. Same-thread nested calls reuse their activation's slot. Releasing a
+ * slot runs on the control executor, which also checks close completion after every admitted call
+ * drains.
  *
  * <p>Threading: external callers may admit operations and register resources concurrently. The
  * shared monitor guards admission counts and resource registration against revocation; plugin
@@ -46,17 +44,17 @@ import top.focess.veto.api.plugin.contribution.ContributionPoint;
  * monitor. That executor must remain available until close completes. Lifecycle methods reject
  * synchronous waits from control callbacks or admitted operations to prevent self-deadlock.
  */
-public final class PluginLifecycle implements AutoCloseable {
+public final class ManagedPlugin implements AutoCloseable {
     private VetoPlugin plugin;
     private final InstalledPlugin installed;
-    // Published for diagnostics and cooperative cancellation; never used to admit a call.
+    // Volatile for status readers; admission reads it under the same monitor as revocation.
     private volatile @NonNull PluginState state = PluginState.NEW;
-    private final @NonNull ExecutorService lifecycle;
+    private final @NonNull ExecutorService control;
     private static final @NonNull ThreadLocal<@Nullable Boolean> controlling =
             ThreadLocal.withInitial(() -> false);
     private final @NonNull CompletableFuture<Void> active = new CompletableFuture<>();
     private final @NonNull CompletableFuture<Void> closed = new CompletableFuture<>();
-    // Cleanup is owned by the lifecycle executor; admission/count changes use this monitor.
+    // Cleanup is owned by the control executor; invocation counts are guarded by lock.
     private boolean cleaned;
     private boolean stopping;
     private final @NonNull String activationId = UUID.randomUUID().toString();
@@ -81,7 +79,13 @@ public final class PluginLifecycle implements AutoCloseable {
 
     // Shared monitor: guards state transitions here together with the admission slot count.
     private final @NonNull Object lock = new Object();
-    private final @NonNull InvocationAdmission admission;
+    // Nested calls into this activation reuse the caller's existing admission slot.
+    private final @NonNull ThreadLocal<@Nullable Boolean> invoking =
+            ThreadLocal.withInitial(() -> false);
+    // Shared across activations so synchronous control operations reject every plugin callback.
+    private static final @NonNull ThreadLocal<@Nullable Boolean> inInvocation =
+            ThreadLocal.withInitial(() -> false);
+    private int activeCalls;
 
     /** Host cancellation signals that must run before waiting for admitted calls to drain. */
     public void ownStoppingResource(@NonNull Object identity, @NonNull Runnable release) {
@@ -132,7 +136,7 @@ public final class PluginLifecycle implements AutoCloseable {
         stoppingResources.remove(identity);
     }
 
-    /** Only the lifecycle callback may use a revoked handle for its final cleanup. */
+    /** Only the control callback may use a revoked handle for its final cleanup. */
     public boolean cleaningResources() {
         return (state == PluginState.STOPPING || state == PluginState.FAILED) && onControlThread();
     }
@@ -184,20 +188,18 @@ public final class PluginLifecycle implements AutoCloseable {
         return new PluginBinding(identity.id(), identity.version(), revision);
     }
 
-    /** Wraps an implementation whose lifecycle transitions will run on the given executor. */
-    public PluginLifecycle(@NonNull VetoPlugin plugin, @NonNull ExecutorService lifecycle) {
+    /** Manages an implementation whose state transitions run on the given control executor. */
+    public ManagedPlugin(@NonNull VetoPlugin plugin, @NonNull ExecutorService control) {
         this.plugin = plugin;
         this.installed = null;
-        this.lifecycle = lifecycle;
-        this.admission = new InvocationAdmission(lock);
+        this.control = control;
     }
 
-    /** Wraps a discovered package; its real plugin is constructed with the bound context. */
-    public PluginLifecycle(@NonNull InstalledPlugin installed, @NonNull ExecutorService lifecycle) {
+    /** Owns a discovered package and constructs its plugin with the bound context. */
+    public ManagedPlugin(@NonNull InstalledPlugin installed, @NonNull ExecutorService control) {
         this.plugin = null;
         this.installed = installed;
-        this.lifecycle = lifecycle;
-        this.admission = new InvocationAdmission(lock);
+        this.control = control;
     }
 
     public @NonNull VetoPlugin implementation() {
@@ -234,11 +236,11 @@ public final class PluginLifecycle implements AutoCloseable {
     }
 
     /** Whether this thread is currently running a control-executor lifecycle task. */
-    static boolean onControlThread() {
+    private static boolean onControlThread() {
         return Boolean.TRUE.equals(controlling.get());
     }
 
-    /** A unit of plugin work admitted only while the plugin lifecycle permits it. */
+    /** A unit of plugin work admitted only while its activation permits it. */
     @FunctionalInterface
     @SuppressWarnings("NullableProblems") // the @NonNull bound is required by the NullnessChecker
     public interface Operation<T extends @NonNull Object> {
@@ -340,18 +342,39 @@ public final class PluginLifecycle implements AutoCloseable {
     }
 
     /** Admission checks the stop state atomically; handlers run outside the control thread. */
+    @SuppressWarnings("NullableProblems") // the @NonNull bound is required by the NullnessChecker
     public <T extends @NonNull Object> @NonNull T execute(@NonNull Operation<T> operation)
             throws PluginFailure {
-        return admission.execute(operation, this::state, this::releaseSlot);
+        if (onControlThread()) throw new PluginFailure(PluginFailure.Code.NOT_READY);
+        if (Boolean.TRUE.equals(invoking.get())) return operation.run();
+        synchronized (lock) {
+            if (state != PluginState.ACTIVE) throw new PluginFailure(PluginFailure.Code.NOT_READY);
+            activeCalls++;
+        }
+        boolean nestedInvocation = Boolean.TRUE.equals(inInvocation.get());
+        inInvocation.set(true);
+        invoking.set(true);
+        T result;
+        try {
+            result = operation.run();
+        } finally {
+            invoking.remove();
+            if (nestedInvocation) inInvocation.set(true);
+            else inInvocation.remove();
+            // The executor stays available until every admitted call releases its slot.
+            releaseSlot();
+        }
+        if (state == PluginState.FAILED) throw new PluginFailure(PluginFailure.Code.NOT_READY);
+        return result;
     }
 
     /** Releases one admitted slot and re-checks close completion on the control executor. */
-    void releaseSlot() throws PluginFailure {
+    private void releaseSlot() throws PluginFailure {
         await(
                 submit(
                         () -> {
                             synchronized (lock) {
-                                admission.decrement();
+                                activeCalls--;
                             }
                             finishClose();
                             return true;
@@ -398,8 +421,8 @@ public final class PluginLifecycle implements AutoCloseable {
 
     private void finishClose() {
         synchronized (lock) {
-            if (admission.activeCalls() != 0
-                    || (state != PluginState.STOPPING && state != PluginState.FAILED)) return;
+            if (activeCalls != 0 || (state != PluginState.STOPPING && state != PluginState.FAILED))
+                return;
         }
         cleanup(null);
         if (state != PluginState.FAILED) state = PluginState.CLOSED;
@@ -497,7 +520,7 @@ public final class PluginLifecycle implements AutoCloseable {
     }
 
     private void requireExternalControl() {
-        if (onControlThread() || InvocationAdmission.inInvocation())
+        if (onControlThread() || Boolean.TRUE.equals(inInvocation.get()))
             throw new IllegalStateException(
                     "Lifecycle operations cannot wait from a plugin callback");
     }
@@ -506,7 +529,7 @@ public final class PluginLifecycle implements AutoCloseable {
             @NonNull Operation<T> operation) {
         CompletableFuture<T> result = new CompletableFuture<>();
         try {
-            lifecycle.execute(
+            control.execute(
                     () -> {
                         controlling.set(true);
                         try {

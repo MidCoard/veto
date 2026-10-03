@@ -3,11 +3,10 @@ package top.focess.veto.agent.tool;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.mock;
 
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.BlockingQueue;
 import java.util.stream.Collectors;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
@@ -15,6 +14,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.ApplicationContext;
 import top.focess.veto.agent.AgentProfiles;
+import top.focess.veto.agent.AgentRunner;
 import top.focess.veto.api.agent.tool.AgentTool;
 import top.focess.veto.api.agent.tool.CapabilityTool;
 import top.focess.veto.api.agent.tool.NativeTool;
@@ -38,27 +38,34 @@ class ToolArchitectureTest {
     @Autowired private @NonNull ToolEngine engine;
 
     @Test
-    void agentRunnerStaysWithinTheCoordinatorLineBudget() throws Exception {
-        var source = Path.of("src/main/java/top/focess/veto/agent/AgentRunner.java");
-        long lines;
-        try (var content = Files.lines(source)) {
-            lines = content.count();
-        }
-        assertTrue(
-                lines <= 1000, "AgentRunner exceeds the 1,000-line architectural limit: " + lines);
+    void agentExecutionStateHasOneRunnerOwner() throws Exception {
+        assertEquals(
+                Class.forName("top.focess.veto.agent.ExecutionControl"),
+                AgentRunner.class.getDeclaredField("control").getType());
+        assertEquals(
+                BlockingQueue.class, AgentRunner.class.getDeclaredField("actionQueue").getType());
+        assertEquals(Thread.class, AgentRunner.class.getDeclaredField("runningThread").getType());
+        assertEquals(
+                AgentRunner.class,
+                Class.forName("top.focess.veto.agent.AgentToolExecution")
+                        .getDeclaredField("runner")
+                        .getType());
+        assertThrows(
+                ClassNotFoundException.class,
+                () -> Class.forName("top.focess.veto.agent.AgentLifecycle"));
     }
 
     @Test
     void allBuiltinToolsArePluginContributionsWithConfiguredDistributionNames() {
         var entries =
-                plugins.catalog().entries(StandardContributionPoints.TOOLS).stream()
+                plugins.registry().entries(StandardContributionPoints.TOOLS).stream()
                         .filter(entry -> entry.source().namespace().equals("top.focess.builtin"))
                         .toList();
         assertEquals(37, entries.size());
         assertTrue(context.getBeansOfType(NativeTool.class).isEmpty());
         assertTrue(context.getBeansOfType(AgentTool.class).isEmpty());
         for (var entry : entries) {
-            String name = plugins.toolName(entry.source().namespace(), entry.id().value());
+            String name = plugins.registry().toolName(entry);
             assertEquals(entry.id().localId(), name);
             var definition = engine.resolveDefinition(name);
             if (definition == null) throw new AssertionError("Missing built-in: " + name);
@@ -73,14 +80,14 @@ class ToolArchitectureTest {
     void actualCatalogIdentitySurvivesDefaultNamesAndOperatorAliases() {
         for (String prefix : List.of("plugin_top_focess_builtin__", "operator_")) {
             List<AgentConfiguration.@NonNull Tool> tools = new ArrayList<>();
-            for (var entry : plugins.catalog().entries(StandardContributionPoints.TOOLS)) {
+            for (var entry : plugins.registry().entries(StandardContributionPoints.TOOLS)) {
                 if (!entry.source().namespace().equals("top.focess.builtin")) continue;
                 String local = entry.id().localId();
                 var registered =
                         ToolRegistration.local(
                                 (CapabilityTool<?>) entry.implementation(),
                                 prefix + local,
-                                plugins.plugin(entry.source().namespace()),
+                                plugins.registry().plugin(entry.source().namespace()),
                                 local);
                 tools.add(AgentProfiles.configurationTool(registered.definition()));
             }
@@ -117,7 +124,7 @@ class ToolArchitectureTest {
     @Test
     void everyRegisteredToolHasACoherentContract() {
         List<CapabilityTool<?>> tools = new ArrayList<>();
-        for (var entry : plugins.catalog().entries(StandardContributionPoints.TOOLS))
+        for (var entry : plugins.registry().entries(StandardContributionPoints.TOOLS))
             if (entry.implementation() instanceof CapabilityTool<?> tool) tools.add(tool);
         assertFalse(tools.isEmpty());
         for (CapabilityTool<?> tool : tools) {

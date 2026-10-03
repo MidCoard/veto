@@ -13,6 +13,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
@@ -143,7 +144,7 @@ public final class PluginTestSupport {
         SessionRepository sessions = mock(SessionRepository.class);
         var entity = new SessionEntity("owner", "session");
         entity.setPluginBindings(
-                manager.plugins().stream()
+                manager.registry().plugins().stream()
                         .map(
                                 plugin ->
                                         new PluginBinding(
@@ -171,16 +172,16 @@ public final class PluginTestSupport {
         var event =
                 new BeforeTextCommitEvent(
                         new Scope.AgentScope(scope.owner(), scope.session(), scope.agent()),
-                        () -> false,
                         phase,
                         sourceId,
                         text);
-        manager.events()
+        var registry = manager.registry();
+        registry.events()
                 .submit(
                         event,
-                        manager.plugins().stream()
+                        registry.plugins().stream()
                                 .map(plugin -> plugin.identity().id())
-                                .collect(java.util.stream.Collectors.toSet()));
+                                .collect(Collectors.toSet()));
         if (event.isCancelled()) throw new IllegalStateException("Text publication cancelled");
         return event.text();
     }
@@ -191,8 +192,9 @@ public final class PluginTestSupport {
             Scope.@NonNull AgentScope scope,
             @NonNull String reference)
             throws PluginFailure {
+        var registry = manager.registry();
         var entry =
-                manager.catalog().entries(StandardContributionPoints.FRONTEND).stream()
+                registry.entries(StandardContributionPoints.FRONTEND).stream()
                         .filter(
                                 candidate ->
                                         candidate
@@ -202,7 +204,7 @@ public final class PluginTestSupport {
                         .findFirst()
                         .orElseThrow();
         JsonValue result =
-                manager.plugin(entry.source().namespace())
+                registry.plugin(entry.source().namespace())
                         .execute(
                                 () ->
                                         entry.implementation()

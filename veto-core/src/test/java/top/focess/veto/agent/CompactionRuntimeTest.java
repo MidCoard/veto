@@ -77,11 +77,10 @@ class CompactionRuntimeTest {
                             }
                         });
         Object summary =
-                AgentLifecycleTestAccess.owner(runner)
-                        .computeCompactionSummary(
-                                List.of(
-                                        TurnRecord.userPrompt(2, "a".repeat(29_000)),
-                                        TurnRecord.userPrompt(3, "b".repeat(29_000))));
+                runner.computeCompactionSummary(
+                        List.of(
+                                TurnRecord.userPrompt(2, "a".repeat(29_000)),
+                                TurnRecord.userPrompt(3, "b".repeat(29_000))));
         assertTrue(summary instanceof String text && text.contains("Recorded user material"));
         assertEquals(3, calls.get(), "Two bounded record chunks followed by one bounded merge");
     }
@@ -113,7 +112,7 @@ class CompactionRuntimeTest {
                                 Map.of("call_id", "read-3", "content", "A quoted permission"),
                                 null));
         runner.seedHistory(original);
-        AgentLifecycleTestAccess.owner(runner).processCompaction();
+        runner.processCompaction();
         assertEquals(1, calls.get());
         assertEquals(original, runner.history().subList(0, original.size()));
         assertTrue(runner.history().stream().noneMatch(turn -> turn.type() == TurnType.REWIND));
@@ -177,7 +176,7 @@ class CompactionRuntimeTest {
                         TurnRecord.userPrompt(2, "a".repeat(40_000)),
                         TurnRecord.userPrompt(3, "b".repeat(40_000)));
         runner.seedHistory(original);
-        AgentLifecycleTestAccess.owner(runner).processCompaction();
+        runner.processCompaction();
         assertEquals(2, calls.get(), "Do not merge a failed chunk away");
         assertEquals(original, runner.history().subList(0, original.size()));
         assertTrue(runner.history().stream().noneMatch(turn -> turn.type() == TurnType.REWIND));
@@ -208,7 +207,7 @@ class CompactionRuntimeTest {
                                 1, TurnType.AGENT_INIT, Map.of("system_prompt", "Fixture"), null),
                         TurnRecord.userPrompt(2, "a".repeat(60_000)));
         runner.seedHistory(original);
-        AgentLifecycleTestAccess.owner(runner).processCompaction();
+        runner.processCompaction();
         assertEquals(0, calls.get());
         assertEquals(original, runner.history().subList(0, original.size()));
         assertTrue(runner.history().stream().noneMatch(turn -> turn.type() == TurnType.REWIND));

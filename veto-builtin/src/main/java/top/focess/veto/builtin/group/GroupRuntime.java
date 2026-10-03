@@ -41,8 +41,7 @@ import top.focess.veto.api.plugin.storage.PluginStorage;
  * group's members, and may wait under the runtime monitor. Host lifecycle admission must prevent
  * new calls once shutdown begins.
  */
-public final class GroupRuntime extends AgentConfiguration
-        implements GroupObservations, AutoCloseable {
+public final class GroupRuntime implements AgentConfiguration, GroupObservations, AutoCloseable {
     private final @NonNull Listener listener = new GroupListener();
 
     /** Event aspect for this group runtime. */
@@ -50,7 +49,7 @@ public final class GroupRuntime extends AgentConfiguration
         return listener;
     }
 
-    private final class GroupListener extends Listener {
+    private final class GroupListener implements Listener {
         @EventHandler
         public void onSessionDeleted(@NonNull SessionDeletedEvent event) {
             GroupRuntime.this.onSessionDeleted(event);

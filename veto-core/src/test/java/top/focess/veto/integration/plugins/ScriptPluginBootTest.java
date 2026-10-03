@@ -15,6 +15,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Stream;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -35,6 +36,7 @@ import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.model.SessionEntity;
 import top.focess.veto.model.SessionRepository;
 import top.focess.veto.plugin.runtime.*;
+import top.focess.veto.plugin.runtime.ScriptPlugin;
 
 /**
  * Starts the real Veto application and HTTP listener, then dispatches through its real tool engine.
@@ -126,8 +128,16 @@ class ScriptPluginBootTest {
 
     @Test
     void startedApplicationRegistersAndDispatchesApprovedPluginTool() throws Exception {
-        assertEquals(1, plugins.scriptPlugins().size());
-        assertTrue(plugins.scriptPlugins().getFirst().active());
+        var scripts =
+                plugins.registry().plugins().stream()
+                        .flatMap(
+                                plugin ->
+                                        plugin.implementation() instanceof ScriptPlugin script
+                                                ? Stream.of(script)
+                                                : Stream.<@NonNull ScriptPlugin>empty())
+                        .toList();
+        assertEquals(1, scripts.size());
+        assertTrue(scripts.getFirst().active());
         var definition =
                 assertInstanceOf(
                         RemoteToolDefinition.class,

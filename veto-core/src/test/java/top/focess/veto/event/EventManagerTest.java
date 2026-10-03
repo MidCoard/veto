@@ -11,6 +11,7 @@ import top.focess.veto.api.event.Event;
 import top.focess.veto.api.event.SessionDeletedEvent;
 import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.integration.plugins.PluginManager;
+import top.focess.veto.integration.plugins.PluginRegistry;
 import top.focess.veto.integration.plugins.SessionPlugins;
 import top.focess.veto.integration.plugins.storage.PluginInvocationContext;
 
@@ -19,17 +20,15 @@ class EventManagerTest {
     void emptyListenerPublicationDoesNotResolveAMissingSession() {
         var plugins = mock(PluginManager.class);
         var selections = mock(SessionPlugins.class);
-        var publication = mock(PluginManager.PublishedState.class);
+        var publication = mock(PluginRegistry.class);
         var routes = mock(EventListenerRegistry.class);
-        when(plugins.snapshot()).thenReturn(publication);
+        when(plugins.registry()).thenReturn(publication);
         when(publication.events()).thenReturn(routes);
         var events = new EventManager(plugins, selections);
 
         var event =
                 new BeforeInputEvent(
-                        new Scope.AgentScope("owner", "missing-session", "agent"),
-                        () -> false,
-                        "text");
+                        new Scope.AgentScope("owner", "missing-session", "agent"), "text");
         var context = new PluginInvocationContext("owner", "missing-session");
         try {
             events.submit(event);
@@ -46,9 +45,9 @@ class EventManagerTest {
     void routeRejectionOccursBeforeSessionSelection() {
         var plugins = mock(PluginManager.class);
         var selections = mock(SessionPlugins.class);
-        var publication = mock(PluginManager.PublishedState.class);
+        var publication = mock(PluginRegistry.class);
         var routes = mock(EventListenerRegistry.class);
-        when(plugins.snapshot()).thenReturn(publication);
+        when(plugins.registry()).thenReturn(publication);
         when(publication.events()).thenReturn(routes);
         var event = new SessionNotification(new Scope.SessionScope("owner", "session"));
         when(routes.hasHandlers(event))
@@ -71,18 +70,16 @@ class EventManagerTest {
     void selectionAndDeliveryUseTheSamePublicationDuringReplacement() {
         var plugins = mock(PluginManager.class);
         var selections = mock(SessionPlugins.class);
-        var captured = mock(PluginManager.PublishedState.class);
-        var replacement = mock(PluginManager.PublishedState.class);
+        var captured = mock(PluginRegistry.class);
+        var replacement = mock(PluginRegistry.class);
         var routes = mock(EventListenerRegistry.class);
-        when(plugins.snapshot()).thenReturn(captured, replacement);
+        when(plugins.registry()).thenReturn(captured, replacement);
         when(captured.events()).thenReturn(routes);
         when(routes.hasHandlers(any())).thenReturn(true);
         var selected = Set.of("selected.plugin");
         when(selections.selectedIds("session", captured)).thenReturn(selected);
         var events = new EventManager(plugins, selections);
-        var event =
-                new BeforeInputEvent(
-                        new Scope.AgentScope("owner", "session", "agent"), () -> false, "text");
+        var event = new BeforeInputEvent(new Scope.AgentScope("owner", "session", "agent"), "text");
 
         var context = new PluginInvocationContext("owner", "session");
         try {
@@ -91,7 +88,7 @@ class EventManagerTest {
             context.close();
         }
 
-        verify(plugins).snapshot();
+        verify(plugins).registry();
         verify(selections).selectedIds("session", captured);
         verify(routes).submit(event, selected);
         verifyNoInteractions(replacement);
@@ -101,9 +98,9 @@ class EventManagerTest {
     void lifecycleFactInsideSessionContextUsesTheSameSelectionRule() {
         var plugins = mock(PluginManager.class);
         var selections = mock(SessionPlugins.class);
-        var publication = mock(PluginManager.PublishedState.class);
+        var publication = mock(PluginRegistry.class);
         var routes = mock(EventListenerRegistry.class);
-        when(plugins.snapshot()).thenReturn(publication);
+        when(plugins.registry()).thenReturn(publication);
         when(publication.events()).thenReturn(routes);
         var event = new SessionDeletedEvent(new Scope.SessionScope("owner", "payload-session"));
         when(routes.hasHandlers(event)).thenReturn(true);
@@ -136,9 +133,9 @@ class EventManagerTest {
     void nonWorkflowNotificationUsesAmbientSessionRegardlessOfItsPayloadScope() {
         var plugins = mock(PluginManager.class);
         var selections = mock(SessionPlugins.class);
-        var publication = mock(PluginManager.PublishedState.class);
+        var publication = mock(PluginRegistry.class);
         var routes = mock(EventListenerRegistry.class);
-        when(plugins.snapshot()).thenReturn(publication);
+        when(plugins.registry()).thenReturn(publication);
         when(publication.events()).thenReturn(routes);
         when(routes.hasHandlers(any())).thenReturn(true);
         var selected = Set.of("selected.plugin");
@@ -160,9 +157,9 @@ class EventManagerTest {
     void sessionScopedPayloadOutsideSessionContextReachesAllActivePlugins() {
         var plugins = mock(PluginManager.class);
         var selections = mock(SessionPlugins.class);
-        var publication = mock(PluginManager.PublishedState.class);
+        var publication = mock(PluginRegistry.class);
         var routes = mock(EventListenerRegistry.class);
-        when(plugins.snapshot()).thenReturn(publication);
+        when(plugins.registry()).thenReturn(publication);
         when(publication.events()).thenReturn(routes);
         var event = new SessionDeletedEvent(new Scope.SessionScope("owner", "session"));
         when(routes.hasHandlers(event)).thenReturn(true);

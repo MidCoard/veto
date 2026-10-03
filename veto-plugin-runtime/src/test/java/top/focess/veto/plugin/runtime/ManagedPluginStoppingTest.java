@@ -22,7 +22,7 @@ import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.contract.PluginFailure;
 
 @Timeout(10)
-class PluginLifecycleStoppingTest {
+class ManagedPluginStoppingTest {
     @ParameterizedTest
     @ValueSource(booleans = {false, true})
     void stopSignalRunsOnceBeforeDrainAndFailureReleasesOwnedResources(boolean throwsOnStop)
@@ -51,7 +51,7 @@ class PluginLifecycleStoppingTest {
                 };
         try (var lifecycle = Executors.newSingleThreadExecutor();
                 var calls = Executors.newVirtualThreadPerTaskExecutor()) {
-            var managed = new PluginLifecycle(plugin, lifecycle);
+            var managed = new ManagedPlugin(plugin, lifecycle);
             managed.construct(
                     new PluginContext(
                             plugin.identity(),
@@ -116,7 +116,7 @@ class PluginLifecycleStoppingTest {
                 };
         try (var lifecycle = Executors.newSingleThreadExecutor();
                 var calls = Executors.newVirtualThreadPerTaskExecutor()) {
-            var managed = new PluginLifecycle(plugin, lifecycle);
+            var managed = new ManagedPlugin(plugin, lifecycle);
             managed.construct(
                     new PluginContext(
                             plugin.identity(),

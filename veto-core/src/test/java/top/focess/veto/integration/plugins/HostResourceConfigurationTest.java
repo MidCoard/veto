@@ -19,7 +19,7 @@ import top.focess.veto.api.plugin.PluginContext;
 import top.focess.veto.api.plugin.PluginIdentity;
 import top.focess.veto.api.plugin.VetoPlugin;
 import top.focess.veto.api.plugin.contract.JsonValue;
-import top.focess.veto.plugin.runtime.PluginLifecycle;
+import top.focess.veto.plugin.runtime.ManagedPlugin;
 import top.focess.veto.vault.KeysteadVault;
 import top.focess.veto.veto.LlamaCppBridge;
 
@@ -145,10 +145,10 @@ class HostResourceConfigurationTest {
         return new LocalModelCompletion.Request("classification", "compiled MDC", "array grammar");
     }
 
-    private static @NonNull PluginLifecycle active(@NonNull ExecutorService lifecycle)
+    private static @NonNull ManagedPlugin active(@NonNull ExecutorService lifecycle)
             throws Exception {
         var plugin =
-                new PluginLifecycle(
+                new ManagedPlugin(
                         new VetoPlugin() {
 
                             public @NonNull PluginIdentity identity() {

@@ -32,7 +32,7 @@ import top.focess.veto.integration.plugins.storage.PluginStorageFactory;
 import top.focess.veto.model.AgentEntity;
 import top.focess.veto.model.AgentInstanceRepository;
 import top.focess.veto.model.SessionRepository;
-import top.focess.veto.plugin.runtime.PluginLifecycle;
+import top.focess.veto.plugin.runtime.ManagedPlugin;
 import top.focess.veto.session.SessionHistoryLoader;
 import top.focess.veto.vault.KeysteadVault;
 import top.focess.veto.vault.UserContext;
@@ -97,8 +97,7 @@ public final class PluginAgentHosts implements PluginAgentHostFactory {
     }
 
     /** Returns the agent host for one plugin activation; every effect re-authorizes its session. */
-    public @NonNull AgentHost bind(
-            @NonNull PluginLifecycle plugin, @NonNull PluginStorage storage) {
+    public @NonNull AgentHost bind(@NonNull ManagedPlugin plugin, @NonNull PluginStorage storage) {
         return new AgentHost() {
             public @NonNull Session session(
                     PluginStorage.@NonNull Grant<Scope.@NonNull SessionScope> grant) {
@@ -161,7 +160,7 @@ public final class PluginAgentHosts implements PluginAgentHostFactory {
     }
 
     private AgentHost.@NonNull Child openChild(
-            @NonNull PluginLifecycle plugin,
+            @NonNull ManagedPlugin plugin,
             @NonNull PluginStorage storage,
             PluginStorage.@NonNull Grant<Scope.@NonNull SessionScope> grant,
             @NonNull String id,
@@ -230,14 +229,14 @@ public final class PluginAgentHosts implements PluginAgentHostFactory {
     }
 
     private void authorizeRelease(
-            @NonNull PluginLifecycle plugin,
+            @NonNull ManagedPlugin plugin,
             @NonNull PluginStorage storage,
             PluginStorage.@NonNull Grant<Scope.@NonNull SessionScope> grant) {
         if (!plugin.cleaningResources()) scopes.authorizeSession(storage, grant);
     }
 
     private AgentHost.@NonNull Child child(
-            @NonNull PluginLifecycle plugin,
+            @NonNull ManagedPlugin plugin,
             @NonNull PluginStorage storage,
             PluginStorage.@NonNull Grant<Scope.@NonNull SessionScope> grant,
             @NonNull VetoAgent agent) {

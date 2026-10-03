@@ -2,7 +2,6 @@ package top.focess.veto.api.event;
 
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.plugin.Scope;
-import top.focess.veto.api.plugin.contract.Cancellation;
 
 /**
  * Fired after a model response is produced. Handlers transform the response text in place; native
@@ -16,16 +15,12 @@ public final class AfterModelEvent extends WorkflowEvent {
      * Creates the model-output event.
      *
      * @param scope authenticated owner, session and agent identity
-     * @param cancellation cooperative cancellation signal
      * @param call selected model endpoint
      * @param message model text, or {@code null} when the response contains no text
      */
     public AfterModelEvent(
-            Scope.@NonNull AgentScope scope,
-            @NonNull Cancellation cancellation,
-            @NonNull ModelCall call,
-            String message) {
-        super(scope, cancellation);
+            Scope.@NonNull AgentScope scope, @NonNull ModelCall call, String message) {
+        super(scope);
         this.call = call;
         this.message = message;
     }

@@ -27,7 +27,7 @@ import top.focess.veto.builtin.memory.embedder.HashEmbedder;
  * completion callbacks reacquire this monitor. Backend and embedding implementations must not wait
  * for another operation on this runtime; slow I/O serializes callers by design.
  */
-public final class MemoryRuntime extends DataLifecycle {
+public final class MemoryRuntime implements DataLifecycle {
     private final @NonNull Set<String> deletingOwners = new HashSet<>();
     private final @NonNull Set<String> deletingSessions = new HashSet<>();
     private final @NonNull PluginContext context;

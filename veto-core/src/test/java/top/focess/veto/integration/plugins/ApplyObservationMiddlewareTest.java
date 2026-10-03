@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import org.jspecify.annotations.NonNull;
@@ -87,13 +88,11 @@ class ApplyObservationMiddlewareTest {
             throws Exception {
         var lifecycle = Executors.newSingleThreadExecutor();
         executor = lifecycle;
-        List<PluginLifecycle> managed = new ArrayList<>();
+        List<ManagedPlugin> managed = new ArrayList<>();
         var builder = new ContributionCatalog.Builder();
-        builder.define(StandardContributionPoints.OBSERVATION, ignored -> {});
-        builder.define(StandardContributionPoints.LISTENERS, ignored -> {});
-        builder.define(StandardContributionPoints.AGENT_INBOX, ignored -> {});
+        for (var point : StandardContributionPoints.ALL) builder.define(point, ignored -> {});
         for (var stub : stubs) {
-            var plugin = new PluginLifecycle(stub, lifecycle);
+            var plugin = new ManagedPlugin(stub, lifecycle);
             plugin.construct(
                     new PluginContext(
                             stub.identity(),
@@ -125,19 +124,10 @@ class ApplyObservationMiddlewareTest {
                         managed,
                         new EventListenerRegistry.Preparation());
         if (events == null) throw new AssertionError("Prepared event registry must exist");
-        var constructor =
-                PluginManager.PublishedState.class.getDeclaredConstructor(
-                        List.class,
-                        List.class,
-                        List.class,
-                        List.class,
-                        ContributionCatalog.class,
-                        EventListenerRegistry.class,
-                        Map.class);
-        constructor.setAccessible(true);
         var publication =
-                constructor.newInstance(
-                        managed, List.of(), List.of(), List.of(), catalog, events, Map.of());
+                new PluginRegistry(
+                        managed, List.of(), List.of(), catalog, events, Map.of(), Map.of(),
+                        Set.of());
         ReflectionTestUtils.setField(manager, "published", publication);
         return manager;
     }

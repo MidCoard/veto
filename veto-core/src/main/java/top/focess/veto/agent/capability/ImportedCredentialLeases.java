@@ -99,7 +99,7 @@ public final class ImportedCredentialLeases {
                 var selected = selections.getIfAvailable();
                 if (manager == null
                         || selected == null
-                        || manager.plugins().stream()
+                        || manager.registry().plugins().stream()
                                 .noneMatch(
                                         plugin ->
                                                 binding.equals(plugin.bindingId())

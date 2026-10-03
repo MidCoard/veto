@@ -19,13 +19,12 @@ import top.focess.veto.integration.plugins.storage.PluginInvocationContext;
 import top.focess.veto.plugin.runtime.*;
 
 class WorkflowHooksTest {
-    private static @NonNull BeforeInputEvent input(boolean cancelled, @NonNull String text) {
-        return new BeforeInputEvent(
-                new Scope.AgentScope("owner", "session", "agent"), () -> cancelled, text);
+    private static @NonNull BeforeInputEvent input(@NonNull String text) {
+        return new BeforeInputEvent(new Scope.AgentScope("owner", "session", "agent"), text);
     }
 
     /** Appends a fixed suffix; optionally counts how many times it ran. */
-    public static final class AppendListener extends Listener {
+    public static final class AppendListener implements Listener {
         private final AtomicInteger calls;
         private final @NonNull String suffix;
 
@@ -43,7 +42,7 @@ class WorkflowHooksTest {
     }
 
     /** Always throws, to verify a handler failure is contained while the chain continues. */
-    public static final class FailingListener extends Listener {
+    public static final class FailingListener implements Listener {
         private final @NonNull AtomicInteger calls;
 
         public FailingListener(@NonNull AtomicInteger calls) {
@@ -74,7 +73,7 @@ class WorkflowHooksTest {
                                         Set.of(),
                                         Set.of(new ContributionId("fixture.workflow:first"))),
                                 Contribution.of(point, "first", first)))) {
-            var event = input(false, "");
+            var event = input("");
             {
                 var invocation = new PluginInvocationContext("owner", "session");
                 try {
@@ -88,16 +87,17 @@ class WorkflowHooksTest {
             {
                 var invocation = new PluginInvocationContext("owner", "session");
                 try {
+                    Thread.currentThread().interrupt();
                     assertThrows(
-                            CancellationException.class,
-                            () -> fixture.events.submit(input(true, "")));
+                            CancellationException.class, () -> fixture.events.submit(input("")));
                 } finally {
+                    assertTrue(Thread.interrupted(), "Producer cleanup clears host interruption");
                     invocation.close();
                 }
             }
             assertEquals(1, calls.get());
             fixture.useUnselectedSession();
-            var unchanged = input(false, "unchanged");
+            var unchanged = input("unchanged");
             {
                 var invocation = new PluginInvocationContext("owner", "session");
                 try {
@@ -109,7 +109,7 @@ class WorkflowHooksTest {
             assertEquals("unchanged", unchanged.text());
             fixture.restoreSelectedSession();
             fixture.runtime.close();
-            var inactive = input(false, "inactive");
+            var inactive = input("inactive");
             {
                 var invocation = new PluginInvocationContext("owner", "session");
                 try {
@@ -140,7 +140,7 @@ class WorkflowHooksTest {
                                         following,
                                         Set.of(),
                                         Set.of(new ContributionId("fixture.workflow:bad")))))) {
-            var event = input(false, "");
+            var event = input("");
             {
                 var invocation = new PluginInvocationContext("owner", "session");
                 try {
@@ -193,7 +193,7 @@ class WorkflowHooksTest {
                                         Set.of(
                                                 new ContributionId(
                                                         "fixture.workflow:observer")))))) {
-            var event = input(false, "original");
+            var event = input("original");
             {
                 var invocation = new PluginInvocationContext("owner", "session");
                 try {

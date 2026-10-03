@@ -21,7 +21,7 @@ import top.focess.veto.api.plugin.contribution.ContributionPoint;
 import top.focess.veto.builtin.BuiltinPlugin;
 import top.focess.veto.plugin.runtime.*;
 
-class PluginLifecycleFlowTest {
+class ManagedPluginFlowTest {
     @Test
     void builtinRejectsConstructionWithoutHost() {
         var context =
@@ -56,12 +56,12 @@ class PluginLifecycleFlowTest {
                             Map.of(PluginHost.class, mock(requireNonNull(PluginHost.class))),
                             handlers);
             var configuration = new JsonValue.ObjectValue(Map.of());
-            var managed = new PluginLifecycle(new BuiltinPlugin(context, configuration), executor);
+            var managed = new ManagedPlugin(new BuiltinPlugin(context, configuration), executor);
             managed.construct(context, configuration);
             managed.start();
             var delegate = mock(requireNonNull(ModelFlow.class));
             var runtime = mock(requireNonNull(ModelFlow.Runtime.class));
-            var continuation = new PluginLifecycleFlow(managed, delegate);
+            var continuation = new ManagedPluginFlow(managed, delegate);
             var nested = mock(requireNonNull(ModelFlow.class));
             var child = continuation.child(nested);
             continuation.run(runtime);

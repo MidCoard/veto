@@ -30,7 +30,6 @@ class AgentToolCancellationTest {
         var event =
                 new BeforeToolEvent(
                         new Scope.AgentScope("owner", "session", "agent"),
-                        () -> false,
                         new BeforeToolEvent.Invocation(
                                 "fixture", call.callId(), new JsonValue.ObjectValue(Map.of())));
         event.cancel();
@@ -44,7 +43,7 @@ class AgentToolCancellationTest {
                         List.of(),
                         output,
                         hooks,
-                        mock(AgentLifecycle.class),
+                        mock(AgentRunner.class),
                         "agent",
                         UUID.randomUUID(),
                         "owner",

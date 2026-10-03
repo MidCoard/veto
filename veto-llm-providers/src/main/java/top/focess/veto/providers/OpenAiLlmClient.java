@@ -35,7 +35,7 @@ import top.focess.veto.api.llm.exceptions.ModelSchemaException;
  *
  * <p>All OpenAI SDK types are confined to this class. Providers never see them.
  */
-final class OpenAiLlmClient extends LlmClient {
+final class OpenAiLlmClient implements LlmClient {
 
     private final @NonNull OpenAIClient sdkClient;
     private final boolean supportsJsonSchema;

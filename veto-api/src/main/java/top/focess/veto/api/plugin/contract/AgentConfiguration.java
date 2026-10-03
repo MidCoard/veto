@@ -9,10 +9,7 @@ import top.focess.veto.api.plugin.agent.AgentProfile;
 import top.focess.veto.api.plugin.storage.PluginStorage;
 
 /** Activation, profile refresh and successful tool boundaries share the same feature policy. */
-public abstract class AgentConfiguration {
-    /** Constructs an agent configuration aspect. */
-    protected AgentConfiguration() {}
-
+public interface AgentConfiguration {
     /**
      * Host-authorized tool visible to configuration policy.
      *
@@ -21,7 +18,7 @@ public abstract class AgentConfiguration {
      * @param pluginId contributing plugin ID, or {@code null} for a host tool
      * @param localId source-local contribution ID, or {@code null} for a host tool
      */
-    public record Tool(
+    record Tool(
             @NonNull String name,
             @NonNull ToolCapability capability,
             String pluginId,
@@ -48,7 +45,7 @@ public abstract class AgentConfiguration {
      * @param authorizedTools tools already admitted by the host
      * @param activeTask current task text
      */
-    public record Context(
+    record Context(
             @NonNull String owner,
             PluginStorage.@NonNull Grant<Scope.@NonNull SessionScope> storageGrant,
             AgentHost.@NonNull Session agents,
@@ -69,7 +66,7 @@ public abstract class AgentConfiguration {
      * @param prompt transition prompt text
      * @param data structured transition data
      */
-    public record Transition(
+    record Transition(
             @NonNull String key, @NonNull String prompt, JsonValue.@NonNull ObjectValue data) {}
 
     /**
@@ -78,7 +75,7 @@ public abstract class AgentConfiguration {
      * @param profile requested profile, still subject to host authorization
      * @param transition optional transition metadata
      */
-    public record Intent(@NonNull AgentProfile profile, Transition transition) {}
+    record Intent(@NonNull AgentProfile profile, Transition transition) {}
 
     /**
      * Evaluates the effective profile for the current task.
@@ -86,5 +83,5 @@ public abstract class AgentConfiguration {
      * @param context immutable host-authorized configuration inputs
      * @return requested profile intent, or {@code null} to retain the host base configuration
      */
-    public abstract Intent configure(@NonNull Context context);
+    Intent configure(@NonNull Context context);
 }

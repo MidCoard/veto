@@ -37,22 +37,20 @@ public final class PluginDataCleanup {
 
     /** Required owner-deletion preparation; fails closed when a contributor is unavailable. */
     public void beforeOwnerDeleted(@NonNull String owner) {
-        var publication = manager.snapshot();
+        var publication = manager.registry();
         if (manager.hasInactiveDataLifecycle())
             throw new IllegalStateException("Plugin data cleanup is unavailable");
-        if (publication.catalog().entries(StandardContributionPoints.DATA_LIFECYCLE).isEmpty())
-            return;
+        if (publication.entries(StandardContributionPoints.DATA_LIFECYCLE).isEmpty()) return;
         String identity = userIdentity(owner);
         requiredDeletion(publication, lifecycle -> lifecycle.prepareOwnerDeletion(owner, identity));
     }
 
     /** Required session-deletion preparation; fails closed when a contributor is unavailable. */
     public void beforeSessionDeleted(@NonNull String owner, @NonNull String session) {
-        var publication = manager.snapshot();
+        var publication = manager.registry();
         if (manager.hasInactiveDataLifecycle())
             throw new IllegalStateException("Plugin data cleanup is unavailable");
-        if (publication.catalog().entries(StandardContributionPoints.DATA_LIFECYCLE).isEmpty())
-            return;
+        if (publication.entries(StandardContributionPoints.DATA_LIFECYCLE).isEmpty()) return;
         String identity = userIdentity(owner);
         requiredDeletion(
                 publication,
@@ -70,12 +68,12 @@ public final class PluginDataCleanup {
 
     @SuppressWarnings("removal") // ThreadDeath remains a fatal participant signal while supported.
     private void requiredDeletion(
-            PluginManager.@NonNull PublishedState publication,
+            @NonNull PluginRegistry publication,
             @NonNull Function<@NonNull DataLifecycle, DataLifecycle.@NonNull Completion> prepare) {
         if (!TransactionSynchronizationManager.isActualTransactionActive()
                 || !TransactionSynchronizationManager.isSynchronizationActive())
             throw new IllegalStateException("Permanent data deletion requires a transaction");
-        for (var entry : publication.catalog().entries(StandardContributionPoints.DATA_LIFECYCLE)) {
+        for (var entry : publication.entries(StandardContributionPoints.DATA_LIFECYCLE)) {
             String owner = entry.source().namespace();
             var plugin = manager.beginDataCleanup(publication.plugin(owner));
             boolean registered = false;

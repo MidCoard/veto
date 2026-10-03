@@ -52,11 +52,12 @@ import top.focess.veto.api.plugin.contract.StandardContributionPoints;
 import top.focess.veto.event.EventManager;
 import top.focess.veto.integration.plugins.IsolatedExecutions;
 import top.focess.veto.integration.plugins.PluginManager;
+import top.focess.veto.integration.plugins.PluginRegistry;
 import top.focess.veto.integration.plugins.SessionPlugins;
 import top.focess.veto.llm.config.LlmJacksonConfig;
+import top.focess.veto.plugin.runtime.ManagedPlugin;
+import top.focess.veto.plugin.runtime.ManagedPluginFlow;
 import top.focess.veto.plugin.runtime.PluginJson;
-import top.focess.veto.plugin.runtime.PluginLifecycle;
-import top.focess.veto.plugin.runtime.PluginLifecycleFlow;
 import top.focess.veto.plugin.runtime.PluginSchema;
 import top.focess.veto.sandbox.SandboxSubstrate;
 import top.focess.veto.util.Nullness;
@@ -164,7 +165,7 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
         }
         if (context != null) {
             for (var manager : context.getBeansOfType(PluginManager.class).values()) {
-                staged.addAll(pluginRegistrations(manager, manager.snapshot()));
+                staged.addAll(pluginRegistrations(manager.registry()));
             }
         }
         // Validation and construction complete before readers can observe any new registration.
@@ -174,23 +175,21 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
     }
 
     /** Atomically publishes the live plugin tool set after a lifecycle transition. */
-    public synchronized void reloadPlugins(
-            @NonNull PluginManager manager, PluginManager.@NonNull PublishedState state) {
+    public synchronized void reloadPlugins(@NonNull PluginRegistry state) {
         if (!initialized) return;
-        catalog = catalog.replacePlugins(pluginRegistrations(manager, state));
+        catalog = catalog.replacePlugins(pluginRegistrations(state));
     }
 
     private static @NonNull List<RegisteredTool> pluginRegistrations(
-            @NonNull PluginManager manager, PluginManager.@NonNull PublishedState state) {
+            @NonNull PluginRegistry state) {
         List<RegisteredTool> staged = new ArrayList<>();
-        for (var entry : state.catalog().entries(StandardContributionPoints.TOOLS)) {
+        for (var entry : state.entries(StandardContributionPoints.TOOLS)) {
             var plugin = state.plugin(entry.source().namespace());
             if (entry.implementation() instanceof RemoteTool descriptor) {
                 RemoteToolDefinition definition =
                         ToolSchemaCompiler.compilePluginScript(
                                 descriptor,
-                                manager.toolName(
-                                        state, entry.source().namespace(), entry.id().value()),
+                                state.toolName(entry),
                                 PluginJson.toNode(descriptor.inputSchema()),
                                 plugin.bindingId(),
                                 plugin.identity().id(),
@@ -199,11 +198,7 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
             } else if (entry.implementation() instanceof CapabilityTool<?> tool) {
                 staged.add(
                         ToolRegistration.local(
-                                tool,
-                                manager.toolName(
-                                        state, entry.source().namespace(), entry.id().value()),
-                                plugin,
-                                entry.id().localId()));
+                                tool, state.toolName(entry), plugin, entry.id().localId()));
             }
         }
         return List.copyOf(staged);
@@ -253,7 +248,7 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
 
     @Override
     @SuppressWarnings(
-            "resource") // WHY: PluginLifecycle handle is owned by the plugin catalog, closed
+            "resource") // WHY: ManagedPlugin handle is owned by the plugin catalog, closed
     // elsewhere
     public PreparedInvocation prepare(
             @NonNull ToolCall call,
@@ -295,7 +290,7 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
     private <T> @NonNull PreparedInvocation prepareTyped(
             @NonNull PreparedTool<T> tool,
             @NonNull JsonNode json,
-            @NonNull PluginLifecycle runtime,
+            @NonNull ManagedPlugin runtime,
             PluginHost.@NonNull Invocation invocation,
             @NonNull ToolCall call,
             @NonNull ToolCapability capability) {
@@ -388,7 +383,7 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
     // ── Flavour dispatch ───────────────────────────────────────────────────────
 
     @SuppressWarnings(
-            "resource") // WHY: PluginLifecycle handle is owned by the plugin catalog, closed
+            "resource") // WHY: ManagedPlugin handle is owned by the plugin catalog, closed
     // elsewhere
     private @NonNull ToolResult executePlugin(
             @NonNull ToolCall call, RegisteredTool.@NonNull Plugin registration) {
@@ -439,7 +434,7 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
     }
 
     @SuppressWarnings(
-            "resource") // WHY: PluginLifecycle handle is owned by the plugin catalog, closed
+            "resource") // WHY: ManagedPlugin handle is owned by the plugin catalog, closed
     // elsewhere
     private @NonNull ToolResult executeLocalCall(
             @NonNull ToolCall call, RegisteredTool.@NonNull Local registration) throws Exception {
@@ -473,7 +468,7 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
                                 String content =
                                         executeLocal(registration.handler(), jsonArgs, true);
                                 ToolCallContextHolder.guardFlow(
-                                        execution -> new PluginLifecycleFlow(runtime, execution));
+                                        execution -> new ManagedPluginFlow(runtime, execution));
                                 ToolCallContextHolder.guardAwait(runtime::ownAwait);
                                 return new LocalOutcome(content, null);
                             } catch (Exception failure) {
@@ -501,7 +496,7 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
     }
 
     private static void requirePluginProvenance(
-            @NonNull ToolDefinition definition, @NonNull PluginLifecycle runtime) {
+            @NonNull ToolDefinition definition, @NonNull ManagedPlugin runtime) {
         var provenance = definition.provenance();
         if (provenance == null
                 || !provenance.pluginId().equals(runtime.identity().id())

@@ -12,7 +12,7 @@ import top.focess.veto.api.plugin.PluginScope;
 import top.focess.veto.api.plugin.PluginState;
 import top.focess.veto.controller.RequestAuthorization;
 import top.focess.veto.integration.plugins.PluginManager;
-import top.focess.veto.plugin.runtime.PluginLifecycle;
+import top.focess.veto.plugin.runtime.ManagedPlugin;
 import top.focess.veto.plugin.runtime.ScriptPlugin;
 
 /** Host-owned, read-only view of opaque plugin records, independent of plugin decoders. */
@@ -139,15 +139,20 @@ public class RetainedPluginData {
     private @NonNull Metadata metadata(@NonNull PluginRecord row) {
         PluginScope kind = PluginScope.valueOf(row.kind);
         if (kind == null) throw new IllegalStateException("Unknown plugin record kind");
-        PluginLifecycle installed;
+        var registry = plugins.registry();
+        String canonical = registry.canonicalId(row.plugin);
+        ManagedPlugin installed;
         try {
-            installed = plugins.plugin(row.plugin);
+            installed = registry.plugin(canonical);
         } catch (IllegalArgumentException missing) {
             installed = null;
         }
         Presence presence =
                 installed == null
-                        ? plugins.isDeclined(row.plugin) || plugins.isDisabled(row.plugin)
+                        ? registry.declined().stream()
+                                                .anyMatch(plugin -> plugin.id().equals(canonical))
+                                        || registry.disabled().stream()
+                                                .anyMatch(plugin -> plugin.id().equals(canonical))
                                 ? Presence.INACTIVE
                                 : Presence.ABSENT
                         : installed.state() == PluginState.ACTIVE

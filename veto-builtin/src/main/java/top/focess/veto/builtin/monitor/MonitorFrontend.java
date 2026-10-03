@@ -14,7 +14,7 @@ import top.focess.veto.api.plugin.contract.JsonValues;
 import top.focess.veto.api.plugin.contract.PluginFailure;
 
 /** Monitor presentation and actions ship with the same plugin as their domain lifecycle. */
-public final class MonitorFrontend extends FrontendContribution {
+public final class MonitorFrontend implements FrontendContribution {
     private final @NonNull MonitorService service;
     private final @NonNull ObjectMapper mapper = new ObjectMapper().findAndRegisterModules();
 

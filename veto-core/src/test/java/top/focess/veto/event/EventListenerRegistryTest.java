@@ -32,7 +32,7 @@ import top.focess.veto.api.plugin.contract.StandardContributionPoints;
 import top.focess.veto.api.plugin.contribution.Contribution;
 import top.focess.veto.api.plugin.contribution.ContributionCatalog;
 import top.focess.veto.api.plugin.contribution.ContributionSource;
-import top.focess.veto.plugin.runtime.PluginLifecycle;
+import top.focess.veto.plugin.runtime.ManagedPlugin;
 
 class EventListenerRegistryTest {
     @Test
@@ -42,7 +42,6 @@ class EventListenerRegistryTest {
         var event =
                 new BeforeToolEvent(
                         new Scope.AgentScope("owner", "session", "agent"),
-                        () -> false,
                         new BeforeToolEvent.Invocation(
                                 "tool", "call", new JsonValue.ObjectValue(Map.of())));
         registry.submit(event);
@@ -58,7 +57,6 @@ class EventListenerRegistryTest {
         var event =
                 new BeforeToolEvent(
                         new Scope.AgentScope("owner", "session", "agent"),
-                        () -> false,
                         new BeforeToolEvent.Invocation(
                                 "tool", "call", new JsonValue.ObjectValue(Map.of())));
         ordinary.submit(event, Set.of("demo.listener"));
@@ -69,7 +67,7 @@ class EventListenerRegistryTest {
                 () -> fatal.submit(new UserLoggedInEvent(new Scope.UserScope("owner"))));
     }
 
-    private static final class ErrorProbe extends Listener {
+    private static final class ErrorProbe implements Listener {
         private final boolean fatal;
 
         private ErrorProbe(boolean fatal) {
@@ -136,7 +134,7 @@ class EventListenerRegistryTest {
         assertEquals(List.of("active"), calls);
     }
 
-    private static final class StaticProbe extends Listener {
+    private static final class StaticProbe implements Listener {
         @EventHandler
         public static void event(@NonNull UserLoggedInEvent event) {}
     }
@@ -159,7 +157,6 @@ class EventListenerRegistryTest {
         var event =
                 new BeforeToolEvent(
                         new Scope.AgentScope("owner", "session", "agent"),
-                        () -> false,
                         new BeforeToolEvent.Invocation(
                                 "tool", "call", new JsonValue.ObjectValue(Map.of())));
         registry.submit(event, Set.of("demo.listener"));
@@ -175,7 +172,6 @@ class EventListenerRegistryTest {
         var event =
                 new BeforeToolEvent(
                         new Scope.AgentScope("owner", "session", "agent"),
-                        () -> false,
                         new BeforeToolEvent.Invocation(
                                 "tool", "call", new JsonValue.ObjectValue(Map.of())));
         registry.submit(event, Set.of("demo.listener"));
@@ -195,8 +191,8 @@ class EventListenerRegistryTest {
                                 throw new PluginFailure(PluginFailure.Code.NOT_READY);
                             var operation =
                                     invocation
-                                            .<PluginLifecycle.Operation<@NonNull Boolean>>
-                                                    getArgument(0);
+                                            .<ManagedPlugin.Operation<@NonNull Boolean>>getArgument(
+                                                    0);
                             if (operation == null) throw new AssertionError("Missing operation");
                             return operation.run();
                         })
@@ -211,13 +207,12 @@ class EventListenerRegistryTest {
     @Test
     void hostCancellationBetweenHandlersStopsRemainingDelivery() {
         var calls = new ArrayList<String>();
-        var cancelled = new AtomicBoolean(false);
         var listener =
                 new Listener() {
                     @EventHandler(priority = EventPriority.HIGHEST)
                     public void first(@NonNull BeforeToolEvent event) {
                         calls.add("first");
-                        cancelled.set(true);
+                        Thread.currentThread().interrupt();
                     }
 
                     @EventHandler(priority = EventPriority.LOWEST)
@@ -228,11 +223,28 @@ class EventListenerRegistryTest {
         var event =
                 new BeforeToolEvent(
                         new Scope.AgentScope("owner", "session", "agent"),
-                        cancelled::get,
                         new BeforeToolEvent.Invocation(
                                 "tool", "call", new JsonValue.ObjectValue(Map.of())));
-        assertThrows(CancellationException.class, () -> registry(listener).submit(event));
-        assertEquals(List.of("first"), calls);
+        try {
+            assertThrows(CancellationException.class, () -> registry(listener).submit(event));
+            assertEquals(List.of("first"), calls);
+        } finally {
+            assertTrue(Thread.interrupted(), "Host interrupt remains set until producer cleanup");
+        }
+    }
+
+    @Test
+    void nativeHostInterruptionAlsoStopsLifecycleDelivery() {
+        var calls = new ArrayList<String>();
+        var registry = registry(new NormalProbe(calls, "listener"));
+        var event = new UserLoggedInEvent(new Scope.UserScope("owner"));
+        Thread.currentThread().interrupt();
+        try {
+            assertThrows(CancellationException.class, () -> registry.submit(event));
+            assertTrue(calls.isEmpty());
+        } finally {
+            assertTrue(Thread.interrupted(), "Host interruption is cleared by producer cleanup");
+        }
     }
 
     private static @NonNull EventListenerRegistry registry(
@@ -241,7 +253,7 @@ class EventListenerRegistryTest {
     }
 
     private static @NonNull EventListenerRegistry registry(
-            @NonNull PluginLifecycle owner, @NonNull Listener @NonNull ... listeners) {
+            @NonNull ManagedPlugin owner, @NonNull Listener @NonNull ... listeners) {
         var source =
                 new ContributionSource("demo.listener", "1.0.0", ContributionSource.Origin.PLUGIN);
         var contributions = new ArrayList<@NonNull Contribution<?>>();
@@ -261,15 +273,15 @@ class EventListenerRegistryTest {
                 catalog, Map.of("demo.listener", owner), new EventListenerRegistry.Preparation());
     }
 
-    private static @NonNull PluginLifecycle owner() {
-        var owner = mock(PluginLifecycle.class);
+    private static @NonNull ManagedPlugin owner() {
+        var owner = mock(ManagedPlugin.class);
         when(owner.state()).thenReturn(PluginState.ACTIVE);
         try {
             doAnswer(
                             invocation -> {
                                 var operation =
                                         invocation
-                                                .<PluginLifecycle.Operation<@NonNull Boolean>>
+                                                .<ManagedPlugin.Operation<@NonNull Boolean>>
                                                         getArgument(0);
                                 if (operation == null)
                                     throw new AssertionError("Admitted operation must exist");
@@ -290,7 +302,6 @@ class EventListenerRegistryTest {
         var event =
                 new BeforeToolEvent(
                         new Scope.AgentScope("owner", "session", "agent"),
-                        () -> false,
                         new BeforeToolEvent.Invocation(
                                 "tool", "call", new JsonValue.ObjectValue(Map.of())));
         registry.submit(event, Set.of());
@@ -329,15 +340,19 @@ class EventListenerRegistryTest {
         var event =
                 new BeforeToolEvent(
                         new Scope.AgentScope("owner", "session", "agent"),
-                        () -> true,
                         new BeforeToolEvent.Invocation(
                                 "tool", "call", new JsonValue.ObjectValue(Map.of())));
-        var failure =
-                assertThrows(
-                        CancellationException.class,
-                        () -> registry.submit(event, Set.of("demo.listener")));
-        assertEquals("Event delivery cancelled", failure.getMessage());
-        assertTrue(calls.isEmpty());
+        Thread.currentThread().interrupt();
+        try {
+            var failure =
+                    assertThrows(
+                            CancellationException.class,
+                            () -> registry.submit(event, Set.of("demo.listener")));
+            assertEquals("Event delivery cancelled", failure.getMessage());
+            assertTrue(calls.isEmpty());
+        } finally {
+            assertTrue(Thread.interrupted(), "Host interrupt remains set until producer cleanup");
+        }
     }
 
     @Test
@@ -367,7 +382,6 @@ class EventListenerRegistryTest {
         var event =
                 new BeforeToolEvent(
                         new Scope.AgentScope("owner", "session", "agent"),
-                        () -> false,
                         new BeforeToolEvent.Invocation(
                                 "tool", "call", new JsonValue.ObjectValue(Map.of())));
         registry(listener).submit(event, Set.of("demo.listener"));
@@ -408,7 +422,6 @@ class EventListenerRegistryTest {
         var event =
                 new BeforeToolEvent(
                         new Scope.AgentScope("owner", "session", "agent"),
-                        () -> false,
                         new BeforeToolEvent.Invocation(
                                 "tool", "call", new JsonValue.ObjectValue(Map.of())));
         registry(listener).submit(event, Set.of("demo.listener"));
@@ -452,7 +465,6 @@ class EventListenerRegistryTest {
         var event =
                 new BeforeToolEvent(
                         new Scope.AgentScope("owner", "session", "agent"),
-                        () -> false,
                         new BeforeToolEvent.Invocation(
                                 "tool", "call", new JsonValue.ObjectValue(Map.of())));
         registry(listener).submit(event, Set.of("demo.listener"));
@@ -502,7 +514,36 @@ class EventListenerRegistryTest {
         assertTrue(registry(listener).hasHandlers(event));
     }
 
-    private static final class NormalProbe extends Listener {
+    @Test
+    void listenerCanInheritHandlersFromItsImplementationSuperclass() {
+        var calls = new ArrayList<String>();
+        var routes = registry(new InheritedListener(calls));
+        var event = new UserLoggedInEvent(new Scope.UserScope("owner"));
+        assertTrue(routes.hasHandlers(event));
+        routes.submit(event);
+        assertEquals(List.of("inherited"), calls);
+    }
+
+    private static class HandlerBase {
+        private final @NonNull List<String> calls;
+
+        private HandlerBase(@NonNull List<String> calls) {
+            this.calls = calls;
+        }
+
+        @EventHandler
+        public void event(@NonNull UserLoggedInEvent event) {
+            calls.add("inherited");
+        }
+    }
+
+    private static final class InheritedListener extends HandlerBase implements Listener {
+        private InheritedListener(@NonNull List<String> calls) {
+            super(calls);
+        }
+    }
+
+    private static final class NormalProbe implements Listener {
         private final @NonNull List<String> calls;
         private final @NonNull String label;
 
@@ -522,7 +563,7 @@ class EventListenerRegistryTest {
         }
     }
 
-    private static final class HighProbe extends Listener {
+    private static final class HighProbe implements Listener {
         private final @NonNull List<String> calls;
 
         private HighProbe(@NonNull List<String> calls) {
@@ -535,7 +576,7 @@ class EventListenerRegistryTest {
         }
     }
 
-    private static final class LowProbe extends Listener {
+    private static final class LowProbe implements Listener {
         private final @NonNull List<String> calls;
 
         private LowProbe(@NonNull List<String> calls) {
@@ -548,7 +589,7 @@ class EventListenerRegistryTest {
         }
     }
 
-    private static final class RejectProbe extends Listener {
+    private static final class RejectProbe implements Listener {
         private final @NonNull List<String> calls;
 
         private RejectProbe(@NonNull List<String> calls) {
@@ -575,7 +616,7 @@ class EventListenerRegistryTest {
         }
     }
 
-    private static final class FailureProbe extends Listener {
+    private static final class FailureProbe implements Listener {
         @EventHandler
         public void failTool(@NonNull BeforeToolEvent event) {
             throw new IllegalStateException("private-input");
@@ -615,7 +656,7 @@ class EventListenerRegistryTest {
         assertEquals(List.of("logged-in", "authenticated", "lifecycle", "event"), calls);
     }
 
-    private static final class Probe extends Listener {
+    private static final class Probe implements Listener {
         private final @NonNull List<String> calls;
 
         private Probe(@NonNull List<String> calls) {

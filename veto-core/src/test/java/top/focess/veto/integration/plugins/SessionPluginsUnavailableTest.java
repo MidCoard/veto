@@ -4,7 +4,10 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.api.plugin.PluginBinding;
@@ -13,10 +16,11 @@ import top.focess.veto.api.plugin.PluginIdentity;
 import top.focess.veto.api.plugin.PluginState;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
 import top.focess.veto.api.plugin.contribution.ContributionCatalog;
+import top.focess.veto.event.EventListenerRegistry;
 import top.focess.veto.model.SessionEntity;
 import top.focess.veto.model.SessionRepository;
 import top.focess.veto.plugin.runtime.InstalledPluginLoader;
-import top.focess.veto.plugin.runtime.PluginLifecycle;
+import top.focess.veto.plugin.runtime.ManagedPlugin;
 
 class SessionPluginsUnavailableTest {
     @Test
@@ -53,7 +57,7 @@ class SessionPluginsUnavailableTest {
         var changed = new PluginBinding("changed.plugin", "1.0.0", "old-revision");
         session.setPluginBindings(List.of(disabled, declined, changed));
         when(sessions.findById(session.getId())).thenReturn(Optional.of(session));
-        var runtime = mock(PluginLifecycle.class);
+        var runtime = mock(ManagedPlugin.class);
         when(runtime.state()).thenReturn(PluginState.ACTIVE);
         when(runtime.identity()).thenReturn(new PluginIdentity("changed.plugin", "1.0.0"));
         when(runtime.binding()).thenReturn(new PluginBinding("changed.plugin", "1.0.0", "1.0.0"));
@@ -120,27 +124,29 @@ class SessionPluginsUnavailableTest {
         verifyNoMoreInteractions(sessions);
     }
 
-    private static PluginManager.@NonNull PublishedState publication(
-            @NonNull PluginManager manager, @NonNull List<PluginLifecycle> plugins) {
+    private static @NonNull PluginRegistry publication(
+            @NonNull PluginManager manager, @NonNull List<ManagedPlugin> plugins) {
         var builder = new ContributionCatalog.Builder();
         for (var point : StandardContributionPoints.ALL) builder.define(point, ignored -> {});
-        var publication = mock(PluginManager.PublishedState.class);
-        when(publication.catalog()).thenReturn(builder.freeze());
-        when(publication.plugins()).thenReturn(plugins);
-        when(publication.disabled()).thenReturn(List.of());
-        when(publication.declined()).thenReturn(List.of());
-        when(publication.plugin(anyString()))
-                .thenAnswer(
-                        invocation -> {
-                            String id = invocation.getArgument(0);
-                            return plugins.stream()
-                                    .filter(plugin -> plugin.identity().id().equals(id))
-                                    .findFirst()
-                                    .orElseThrow(
-                                            () -> new IllegalArgumentException("Plugin is absent"));
-                        });
-        when(manager.canonicalId(anyString())).thenAnswer(invocation -> invocation.getArgument(0));
-        when(manager.snapshot()).thenReturn(publication);
+        var catalog = builder.freeze();
+        var owners =
+                plugins.stream()
+                        .collect(
+                                Collectors.toMap(
+                                        plugin -> plugin.identity().id(), plugin -> plugin));
+        var publication =
+                spy(
+                        new PluginRegistry(
+                                plugins,
+                                List.of(),
+                                List.of(),
+                                catalog,
+                                EventListenerRegistry.build(
+                                        catalog, owners, new EventListenerRegistry.Preparation()),
+                                Map.of(),
+                                Map.of(),
+                                Set.of()));
+        when(manager.registry()).thenReturn(publication);
         return publication;
     }
 }

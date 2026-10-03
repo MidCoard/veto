@@ -83,9 +83,9 @@ class ZeroPluginBootTest {
         }
         assertFalse(environment.containsProperty("veto.plan.max-steps"));
         assertFalse(environment.containsProperty("veto.skills.project-dir"));
-        assertTrue(plugins.plugins().isEmpty());
-        assertTrue(plugins.catalog().entries(StandardContributionPoints.TOOLS).isEmpty());
-        assertTrue(plugins.catalog().entries(StandardContributionPoints.FRONTEND).isEmpty());
+        assertTrue(plugins.registry().plugins().isEmpty());
+        assertTrue(plugins.registry().entries(StandardContributionPoints.TOOLS).isEmpty());
+        assertTrue(plugins.registry().entries(StandardContributionPoints.FRONTEND).isEmpty());
         var session = new SessionEntity("owner", "zero-plugin-" + oldBuiltinSession);
         session.setPluginBindings(
                 oldBuiltinSession

@@ -36,7 +36,7 @@ public final class InstalledPointPlugin extends VetoPlugin {
                                                                                 "string"))))),
                                         "additionalProperties",
                                         new JsonValue.BooleanValue(false))),
-                        ContributionPoint.Cardinality.MULTIPLE) {});
+                        ContributionPoint.Cardinality.MULTIPLE));
     }
 
     @Override

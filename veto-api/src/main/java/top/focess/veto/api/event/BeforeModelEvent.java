@@ -2,7 +2,6 @@ package top.focess.veto.api.event;
 
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.plugin.Scope;
-import top.focess.veto.api.plugin.contract.Cancellation;
 
 /**
  * Fired before the selected model is invoked. A handler may cancel the producer's model call;
@@ -16,14 +15,10 @@ public final class BeforeModelEvent extends WorkflowEvent implements Cancellable
      * Creates the model-observation event.
      *
      * @param scope authenticated owner, session and agent identity
-     * @param cancellation cooperative cancellation signal
      * @param call selected model endpoint
      */
-    public BeforeModelEvent(
-            Scope.@NonNull AgentScope scope,
-            @NonNull Cancellation cancellation,
-            @NonNull ModelCall call) {
-        super(scope, cancellation);
+    public BeforeModelEvent(Scope.@NonNull AgentScope scope, @NonNull ModelCall call) {
+        super(scope);
         this.call = call;
     }
 

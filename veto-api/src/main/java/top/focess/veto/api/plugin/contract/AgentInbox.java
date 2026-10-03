@@ -9,10 +9,7 @@ import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 
 /** Plugin-owned inbox and completion policy; the host only executes admitted continuations. */
-public abstract class AgentInbox {
-    /** Constructs an agent inbox aspect. */
-    protected AgentInbox() {}
-
+public interface AgentInbox {
     /**
      * Host-selected inbox scope.
      *
@@ -20,8 +17,7 @@ public abstract class AgentInbox {
      * @param agentId selected agent
      * @param requestId active durable request, or {@code null} when polling outside a request
      */
-    public record InboxContext(
-            @NonNull String sessionId, @NonNull String agentId, String requestId) {}
+    record InboxContext(@NonNull String sessionId, @NonNull String agentId, String requestId) {}
 
     /**
      * continuationId is an opaque plugin-local durable key; the host namespaces it. Null uses the
@@ -36,7 +32,7 @@ public abstract class AgentInbox {
      *     represent JSON null
      * @param continuationId optional plugin-local continuation key
      */
-    public record Observation(
+    record Observation(
             @NonNull String id,
             String requestId,
             @NonNull String content,
@@ -56,7 +52,7 @@ public abstract class AgentInbox {
      * @param scope host-selected inbox scope
      * @return immutable pending observations
      */
-    public abstract @NonNull List<Observation> pending(@NonNull InboxContext scope);
+    @NonNull List<Observation> pending(@NonNull InboxContext scope);
 
     /**
      * Records that the host admitted and began the observation.
@@ -64,7 +60,7 @@ public abstract class AgentInbox {
      * @param scope host-selected inbox scope
      * @param observation admitted observation
      */
-    public abstract void started(@NonNull InboxContext scope, @NonNull Observation observation);
+    void started(@NonNull InboxContext scope, @NonNull Observation observation);
 
     /**
      * Records terminal completion with the actual host success outcome.
@@ -73,8 +69,7 @@ public abstract class AgentInbox {
      * @param observation completed observation
      * @param success actual host execution outcome
      */
-    public abstract void completed(
-            @NonNull InboxContext scope, @NonNull Observation observation, boolean success);
+    void completed(@NonNull InboxContext scope, @NonNull Observation observation, boolean success);
 
     /**
      * Records cancellation before terminal completion.
@@ -82,5 +77,5 @@ public abstract class AgentInbox {
      * @param scope host-selected inbox scope
      * @param observation cancelled observation
      */
-    public abstract void cancelled(@NonNull InboxContext scope, @NonNull Observation observation);
+    void cancelled(@NonNull InboxContext scope, @NonNull Observation observation);
 }

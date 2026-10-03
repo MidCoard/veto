@@ -27,7 +27,7 @@ import top.focess.veto.api.plugin.contribution.Contribution;
 import top.focess.veto.api.plugin.contribution.ContributionCatalog;
 import top.focess.veto.api.plugin.contribution.ContributionSource;
 import top.focess.veto.event.EventListenerRegistry;
-import top.focess.veto.plugin.runtime.PluginLifecycle;
+import top.focess.veto.plugin.runtime.ManagedPlugin;
 
 class EventActivationBindingTest {
     @Test
@@ -36,7 +36,7 @@ class EventActivationBindingTest {
         var replacementProbe = new Probe(false);
         try (var original = new Activation(originalProbe);
                 var replacement = new Activation(replacementProbe)) {
-            var owners = new HashMap<@NonNull String, @NonNull PluginLifecycle>();
+            var owners = new HashMap<@NonNull String, @NonNull ManagedPlugin>();
             owners.put("fixture.activation", original.runtime);
             var routes =
                     EventListenerRegistry.build(
@@ -95,11 +95,10 @@ class EventActivationBindingTest {
     }
 
     private static @NonNull BeforeInputEvent input() {
-        return new BeforeInputEvent(
-                new Scope.AgentScope("owner", "session", "agent"), () -> false, "input");
+        return new BeforeInputEvent(new Scope.AgentScope("owner", "session", "agent"), "input");
     }
 
-    private static final class Probe extends Listener {
+    private static final class Probe implements Listener {
         private final @NonNull AtomicInteger calls = new AtomicInteger();
         private final boolean failWorkflow;
 
@@ -121,7 +120,7 @@ class EventActivationBindingTest {
 
     private static final class Activation implements AutoCloseable {
         private final @NonNull ExecutorService control = Executors.newSingleThreadExecutor();
-        private final @NonNull PluginLifecycle runtime;
+        private final @NonNull ManagedPlugin runtime;
         private final @NonNull ContributionCatalog catalog;
         private final @NonNull EventListenerRegistry events;
 
@@ -139,7 +138,7 @@ class EventActivationBindingTest {
                         @Override
                         public void close() {}
                     };
-            runtime = new PluginLifecycle(implementation, control);
+            runtime = new ManagedPlugin(implementation, control);
             runtime.construct(
                     new PluginContext(
                             runtime.identity(), () -> {}, runtime::state, Map.of(), Map.of()),

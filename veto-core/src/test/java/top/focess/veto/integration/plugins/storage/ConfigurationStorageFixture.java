@@ -11,11 +11,11 @@ import top.focess.veto.agent.tool.ToolCallContextHolder;
 import top.focess.veto.api.plugin.PluginScope;
 import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.api.plugin.storage.PluginStorage;
-import top.focess.veto.plugin.runtime.PluginLifecycle;
+import top.focess.veto.plugin.runtime.ManagedPlugin;
 
 /** In-memory configuration fixture; each bound plugin has independent stores and scope tokens. */
 public final class ConfigurationStorageFixture implements PluginStorageFactory {
-    public @NonNull PluginStorage bind(@NonNull PluginLifecycle plugin) {
+    public @NonNull PluginStorage bind(@NonNull ManagedPlugin plugin) {
         return new Storage();
     }
 

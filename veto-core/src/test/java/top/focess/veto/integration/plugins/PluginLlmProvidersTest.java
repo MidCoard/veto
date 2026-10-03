@@ -121,11 +121,11 @@ class PluginLlmProvidersTest {
             var selections =
                     Objects.requireNonNull(mock(SessionPlugins.class), "Mockito returned null");
             var source =
-                    manager.catalog()
+                    manager.registry()
                             .entries(StandardContributionPoints.LLM_PROVIDERS)
                             .get(0)
                             .source();
-            var runtime = manager.plugin(source.namespace());
+            var runtime = manager.registry().plugin(source.namespace());
             var exact =
                     new PluginBinding(
                             runtime.identity().id(),

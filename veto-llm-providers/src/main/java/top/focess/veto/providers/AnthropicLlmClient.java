@@ -45,7 +45,7 @@ import top.focess.veto.api.llm.exceptions.ModelSchemaException;
  *
  * <p>All Anthropic SDK types are confined to this class.
  */
-final class AnthropicLlmClient extends LlmClient {
+final class AnthropicLlmClient implements LlmClient {
 
     private static final @NonNull Logger log =
             LoggerFactory.getLogger("top.focess.veto.providers.AnthropicLlmClient");

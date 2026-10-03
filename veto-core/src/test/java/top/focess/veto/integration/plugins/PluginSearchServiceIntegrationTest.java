@@ -115,10 +115,11 @@ class PluginSearchServiceIntegrationTest {
                         5000,
                         PluginTestSupport.providerOf(PluginTestSupport.configurationServices(null)),
                         config)) {
-            assertEquals(PluginState.ACTIVE, manager.plugin("top.focess.builtin").state());
+            assertEquals(
+                    PluginState.ACTIVE, manager.registry().plugin("top.focess.builtin").state());
             assertEquals(
                     List.of(SearchProtocol.NAME),
-                    manager.catalog().entries(StandardContributionPoints.SERVICES).stream()
+                    manager.registry().entries(StandardContributionPoints.SERVICES).stream()
                             .map(e -> e.implementation().name())
                             .sorted()
                             .toList());
@@ -173,7 +174,7 @@ class PluginSearchServiceIntegrationTest {
                                     && selected.includes(session.toString(), provider)
                                     && selected.includes(session.toString(), caller);
                         });
-        registry.bind(fixture.manager.catalog(), List.of(fixture.runtime));
+        registry.bind(fixture.manager.registry().catalog(), List.of(fixture.runtime));
         var host = mock(PluginHost.class);
         when(host.invocation(anyString()))
                 .thenAnswer(

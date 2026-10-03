@@ -22,7 +22,6 @@ import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.api.llm.VetoRequest;
 import top.focess.veto.api.llm.VetoResponse;
 import top.focess.veto.api.plugin.Scope;
-import top.focess.veto.api.plugin.contract.Cancellation;
 import top.focess.veto.api.plugin.contract.ModelResponsePolicy;
 import top.focess.veto.event.EventManager;
 import top.focess.veto.integration.plugins.SessionPlugins;
@@ -36,7 +35,6 @@ import top.focess.veto.plugin.runtime.PluginJson;
 final class AgentPluginHooks {
     private final Scope.AgentScope scope;
     private final @NonNull String sessionId;
-    private final @NonNull Cancellation cancellation;
     private final @NonNull ObjectMapper mapper;
     private final @NonNull UniformLLMCaller caller;
     private final @NonNull Supplier<@Nullable SessionPlugins> plugins;
@@ -48,7 +46,6 @@ final class AgentPluginHooks {
             String owner,
             @NonNull String sessionId,
             @NonNull String agentId,
-            @NonNull Cancellation cancellation,
             @NonNull ObjectMapper mapper,
             @NonNull UniformLLMCaller caller,
             @NonNull Supplier<@Nullable SessionPlugins> plugins,
@@ -60,7 +57,6 @@ final class AgentPluginHooks {
                         ? null
                         : new Scope.AgentScope(owner, sessionId, agentId);
         this.sessionId = sessionId;
-        this.cancellation = cancellation;
         this.mapper = mapper;
         this.caller = caller;
         this.plugins = plugins;
@@ -72,7 +68,7 @@ final class AgentPluginHooks {
     private void checkCancellation() {
         if (cancelled.getAsBoolean()) {
             // Clear any pending interrupt so cleanup does not inherit the cancellation signal.
-            AgentLifecycle.clearTaskInterrupt();
+            AgentRunner.clearTaskInterrupt();
             throw new CancellationException("Task cancelled");
         }
     }
@@ -108,7 +104,7 @@ final class AgentPluginHooks {
     @NonNull String beforeInput(@NonNull String text) {
         var manager = events.get();
         if (manager == null) return text;
-        var event = new BeforeInputEvent(requireScope(), cancellation, text);
+        var event = new BeforeInputEvent(requireScope(), text);
         dispatch(manager, event);
         return event.text();
     }
@@ -117,7 +113,7 @@ final class AgentPluginHooks {
     BeforeToolEvent beforeTool(@NonNull ToolCall call) {
         var manager = events.get();
         if (manager == null) return null;
-        var event = new BeforeToolEvent(requireScope(), cancellation, invocation(call));
+        var event = new BeforeToolEvent(requireScope(), invocation(call));
         dispatch(manager, event);
         return event;
     }
@@ -131,12 +127,12 @@ final class AgentPluginHooks {
         }
         var identity = requireScope();
         var model = new ModelCall(request.providerType().name(), request.modelName());
-        var before = new BeforeModelEvent(identity, cancellation, model);
+        var before = new BeforeModelEvent(identity, model);
         dispatch(manager, before);
         if (before.isCancelled())
             throw new IllegalStateException("Model call cancelled by plugin listener");
         VetoResponse response = caller.call(request, sessionId);
-        var after = new AfterModelEvent(identity, cancellation, model, response.message());
+        var after = new AfterModelEvent(identity, model, response.message());
         dispatch(manager, after);
         return new VetoResponse(
                 response.thought(), response.calls(), after.message(), response.citations());
@@ -149,7 +145,6 @@ final class AgentPluginHooks {
         var event =
                 new AfterToolEvent(
                         requireScope(),
-                        cancellation,
                         invocation(call),
                         new AfterToolEvent.Output(result.format(), result.success()),
                         result.content());
@@ -161,7 +156,7 @@ final class AgentPluginHooks {
     @NonNull String beforeObservation(@NonNull String text) {
         var manager = events.get();
         if (manager == null) return text;
-        var event = new BeforeObservationEvent(requireScope(), cancellation, text);
+        var event = new BeforeObservationEvent(requireScope(), text);
         dispatch(manager, event);
         return event.text();
     }
@@ -179,7 +174,6 @@ final class AgentPluginHooks {
             var event =
                     new BeforeTextCommitEvent(
                             requireScope(),
-                            cancellation,
                             BeforeTextCommitEvent.Phase.INPUT,
                             UUID.randomUUID().toString(),
                             prompt);

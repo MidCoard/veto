@@ -37,7 +37,7 @@ import top.focess.veto.api.plugin.contract.PluginFailure;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
 import top.focess.veto.api.plugin.contribution.ContributionCatalog;
 import top.focess.veto.api.plugin.contribution.ContributionEntry;
-import top.focess.veto.plugin.runtime.PluginLifecycle;
+import top.focess.veto.plugin.runtime.ManagedPlugin;
 import top.focess.veto.util.Nullness;
 
 /**
@@ -114,14 +114,14 @@ public final class EventListenerRegistry {
     /** Builds concrete routes bound to their exact contributing lifecycle and listener instance. */
     public static @NonNull EventListenerRegistry build(
             @NonNull ContributionCatalog catalog,
-            @NonNull Map<@NonNull String, @NonNull PluginLifecycle> owners,
+            @NonNull Map<@NonNull String, @NonNull ManagedPlugin> owners,
             @NonNull Preparation preparation) {
         Map<Class<?>, List<RegisteredHandler>> grouped = new HashMap<>();
         var listeners = catalog.entries(StandardContributionPoints.LISTENERS);
         for (ContributionEntry<Listener> entry : listeners) {
             Listener listener = entry.implementation();
             String namespace = entry.source().namespace();
-            PluginLifecycle owner = owners.get(namespace);
+            ManagedPlugin owner = owners.get(namespace);
             if (owner == null) throw new IllegalArgumentException("Listener activation is missing");
             List<Compiled> compiled = preparation.compiled(listener);
             for (Compiled handler : compiled) {
@@ -179,8 +179,7 @@ public final class EventListenerRegistry {
                     && event instanceof Cancellable cancellable
                     && cancellable.isCancelled()) continue;
             if (handler.owner().state() != PluginState.ACTIVE) continue;
-            var cancellation = event.cancellation();
-            if (cancellation != null && cancellation.isCancelled())
+            if (Thread.currentThread().isInterrupted())
                 throw new CancellationException("Event delivery cancelled");
             try {
                 handler.invoke(event);
@@ -248,7 +247,7 @@ public final class EventListenerRegistry {
 
     private record RegisteredHandler(
             @NonNull String namespace,
-            @NonNull PluginLifecycle owner,
+            @NonNull ManagedPlugin owner,
             @NonNull MethodHandle handle,
             int weight,
             boolean notCallIfPrevented,

@@ -5,12 +5,12 @@
  * submitter reads the result after dispatch returns. {@link Event#prevent()} irreversibly marks the
  * event and skips later handlers by default; opt-in observers cannot clear that mark. Prevention
  * controls propagation only. Reversible producer-action cancellation is independently opt-in
- * through {@link CancellableEvent} or {@link Cancellable}; the producer reads its final flag after
- * delivery. Neither propagation nor action cancellation can relax a separate monotonic host
- * security decision. {@link Event#cancellation()} supplies a distinct read-only host stop signal.
- * The host invokes each contributed {@link Listener} under its plugin's lifecycle admission,
- * resolving recipients from the submitting thread's host session context. Ordinary listener
- * failures are contained and logged; host cancellation and fatal JVM failures remain distinct.
+ * through {@link Cancellable}; the producer reads its final flag after delivery. Neither
+ * propagation nor action cancellation can relax a separate monotonic host security decision.
+ * Cooperative host stop belongs to the host execution path. The host invokes each contributed
+ * {@link Listener} under its plugin's lifecycle admission, resolving recipients from the submitting
+ * thread's host session context. Ordinary listener failures are contained and logged; host
+ * cancellation and fatal JVM failures remain distinct.
  */
 @DefaultQualifier(
         value = Nullable.class,

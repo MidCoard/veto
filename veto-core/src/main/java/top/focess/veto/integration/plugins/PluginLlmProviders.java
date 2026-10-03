@@ -34,20 +34,20 @@ public final class PluginLlmProviders {
         this.mapper = mapper;
         this.audit = audit;
         this.selections = selections;
-        providers = build(manager.snapshot(), mapper, audit);
+        providers = build(manager.registry(), mapper, audit);
     }
 
     /** Rebuilds provider adapters from the currently published plugin catalog. */
-    public synchronized void reload(PluginManager.@NonNull PublishedState state) {
+    public synchronized void reload(@NonNull PluginRegistry state) {
         providers = build(state, mapper, audit);
     }
 
     private static @NonNull Map<ProviderType, RegisteredProvider> build(
-            PluginManager.@NonNull PublishedState state,
+            @NonNull PluginRegistry state,
             @NonNull ObjectMapper mapper,
             @NonNull AuditLogger audit) {
         Map<ProviderType, RegisteredProvider> values = new HashMap<>();
-        for (var entry : state.catalog().entries(StandardContributionPoints.LLM_PROVIDERS)) {
+        for (var entry : state.entries(StandardContributionPoints.LLM_PROVIDERS)) {
             var implementation = entry.implementation();
             var runtime = state.plugin(entry.source().namespace());
             var type = implementation.type();
@@ -104,11 +104,12 @@ public final class PluginLlmProviders {
             @NonNull ProviderType type, @NonNull String sessionId) {
         var provider = providers.get(type);
         if (provider == null) throw unavailable(type, "its provider plugin is not loaded");
+        var publication = manager.registry();
         var selected = selections.bindings(sessionId);
         PluginBinding required = provider.plugin();
         var pinned =
                 selected.stream()
-                        .filter(value -> manager.canonicalId(value.id()).equals(required.id()))
+                        .filter(value -> publication.canonicalId(value.id()).equals(required.id()))
                         .findFirst()
                         .orElse(null);
         if (pinned == null)

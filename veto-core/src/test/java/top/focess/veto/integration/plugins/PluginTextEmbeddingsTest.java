@@ -21,7 +21,7 @@ import top.focess.veto.api.llm.TextEmbedding;
 import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.api.plugin.PluginState;
-import top.focess.veto.plugin.runtime.PluginLifecycle;
+import top.focess.veto.plugin.runtime.ManagedPlugin;
 
 class PluginTextEmbeddingsTest {
     @AfterEach
@@ -61,7 +61,7 @@ class PluginTextEmbeddingsTest {
 
     @Test
     void requiresSameActivePluginCallerAndExactCall() {
-        var plugin = mock(PluginLifecycle.class);
+        var plugin = mock(ManagedPlugin.class);
         var model = mock(TextEmbedding.class);
         when(plugin.state()).thenReturn(PluginState.ACTIVE);
         when(plugin.bindingId()).thenReturn("instance");
@@ -85,7 +85,7 @@ class PluginTextEmbeddingsTest {
 
     @Test
     void rejectsOversizeAndCancellationBeforeModelAccess() {
-        var plugin = mock(PluginLifecycle.class);
+        var plugin = mock(ManagedPlugin.class);
         var model = mock(TextEmbedding.class);
         when(plugin.state()).thenReturn(PluginState.ACTIVE);
         when(plugin.bindingId()).thenReturn("instance");

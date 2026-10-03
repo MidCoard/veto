@@ -27,9 +27,10 @@ class SessionPublicationTest {
                         List.of(
                                 Contribution.of(
                                         StandardContributionPoints.AGENT_INBOX, "inbox", inbox)))) {
-            var publication = fixture.manager.snapshot();
-            when(publication.catalog())
-                    .thenThrow(new AssertionError("Runtime contribution discovery"));
+            var publication = fixture.manager.registry();
+            doThrow(new AssertionError("Runtime contribution discovery"))
+                    .when(publication)
+                    .entries(StandardContributionPoints.AGENT_INBOX);
             var source = fixture.sessions.workSource("session");
             var scope = new AgentInbox.InboxContext("session", "agent", null);
             var value = source.pending(scope).getFirst();
@@ -59,11 +60,10 @@ class SessionPublicationTest {
                                         policy),
                                 Contribution.of(
                                         StandardContributionPoints.AGENT_INBOX, "inbox", inbox)))) {
-            // Mixing current-manager reads with captured entries would reach these traps.
-            when(fixture.manager.plugin(anyString()))
-                    .thenThrow(new IllegalStateException("A different manager generation"));
-            when(fixture.manager.catalog())
-                    .thenThrow(new IllegalStateException("A different manager generation"));
+            var publication = fixture.manager.registry();
+            doThrow(new AssertionError("Runtime inbox contribution discovery"))
+                    .when(publication)
+                    .entries(StandardContributionPoints.AGENT_INBOX);
             var policies = fixture.sessions.responsePolicies("session");
             assertEquals(1, policies.size());
             verify(policy).open();

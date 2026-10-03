@@ -44,10 +44,11 @@ import top.focess.veto.api.plugin.storage.PluginStorage;
 import top.focess.veto.controller.PluginFrontendController;
 import top.focess.veto.controller.RequestAuthorization;
 import top.focess.veto.integration.plugins.PluginManager;
+import top.focess.veto.integration.plugins.PluginRegistry;
 import top.focess.veto.integration.plugins.SessionPlugins;
 import top.focess.veto.model.SessionEntity;
 import top.focess.veto.model.SessionRepository;
-import top.focess.veto.plugin.runtime.PluginLifecycle;
+import top.focess.veto.plugin.runtime.ManagedPlugin;
 import top.focess.veto.util.Nullness;
 import top.focess.veto.vault.UserContext;
 import top.focess.veto.vault.UserEntity;
@@ -58,7 +59,7 @@ class ScopedPluginStorageTest {
     private @NonNull EntityManager database = mock();
     private @NonNull TransactionTemplate transactions = new TransactionTemplate();
     private @NonNull ScopedPluginStorage host = mock();
-    private @NonNull PluginLifecycle plugin = mock();
+    private @NonNull ManagedPlugin plugin = mock();
     private @NonNull PluginStorage first = mock();
     private @NonNull PluginStorage second = mock();
     private @NonNull String session = UUID.randomUUID().toString();
@@ -98,8 +99,8 @@ class ScopedPluginStorageTest {
                 });
     }
 
-    private @NonNull PluginLifecycle plugin(@NonNull String id) {
-        PluginLifecycle result = mock(PluginLifecycle.class);
+    private @NonNull ManagedPlugin plugin(@NonNull String id) {
+        ManagedPlugin result = mock(ManagedPlugin.class);
         VetoPlugin implementation = mock(VetoPlugin.class);
         when(result.identity()).thenReturn(new PluginIdentity(id, "1.0.0"));
         when(result.implementation()).thenReturn(implementation);
@@ -139,6 +140,14 @@ class ScopedPluginStorageTest {
             first.application().put("retained-application", null, VALUE);
 
             var manager = mock(PluginManager.class);
+            var registry = mock(PluginRegistry.class);
+            when(manager.registry()).thenReturn(registry);
+            when(registry.canonicalId(anyString()))
+                    .thenAnswer(invocation -> invocation.getArgument(0, String.class));
+            when(registry.plugin(anyString()))
+                    .thenThrow(new IllegalArgumentException("Unknown plugin identity"));
+            when(registry.disabled()).thenReturn(List.of());
+            when(registry.declined()).thenReturn(List.of());
             var data =
                     new RetainedPluginData(
                             database, manager, new RequestAuthorization("admin"::equals));
@@ -286,14 +295,15 @@ class ScopedPluginStorageTest {
                                         "1.0.0",
                                         true,
                                         SessionPlugins.BoundPluginAvailability.AVAILABLE)));
-        var publication = mock(PluginManager.PublishedState.class);
-        when(publication.catalog()).thenReturn(catalog);
+        var publication = mock(PluginRegistry.class);
+        when(publication.entries(StandardContributionPoints.FRONTEND))
+                .thenReturn(catalog.entries(StandardContributionPoints.FRONTEND));
         when(publication.plugin("one")).thenReturn(plugin);
-        when(plugins.snapshot()).thenReturn(publication);
+        when(plugins.registry()).thenReturn(publication);
         when(plugin.execute(any()))
                 .thenAnswer(
                         invocation -> {
-                            PluginLifecycle.Operation<?> operation = invocation.getArgument(0);
+                            ManagedPlugin.Operation<?> operation = invocation.getArgument(0);
                             if (operation == null) throw new AssertionError("Missing operation");
                             return operation.run();
                         });

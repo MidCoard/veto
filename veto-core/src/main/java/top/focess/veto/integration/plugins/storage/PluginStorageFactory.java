@@ -3,12 +3,12 @@ package top.focess.veto.integration.plugins.storage;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.api.plugin.storage.PluginStorage;
-import top.focess.veto.plugin.runtime.PluginLifecycle;
+import top.focess.veto.plugin.runtime.ManagedPlugin;
 
 /** Host-only binding factory; never included in plugin-visible host services. */
 public interface PluginStorageFactory {
     /** Returns the storage bound to the given plugin activation. */
-    @NonNull PluginStorage bind(@NonNull PluginLifecycle plugin);
+    @NonNull PluginStorage bind(@NonNull ManagedPlugin plugin);
 
     /** Validates the grant against its issuing binding and returns the session owner. */
     @NonNull String authorizeSession(

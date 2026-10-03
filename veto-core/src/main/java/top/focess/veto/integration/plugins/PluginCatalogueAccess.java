@@ -11,16 +11,16 @@ import top.focess.veto.api.plugin.PluginState;
 import top.focess.veto.api.plugin.storage.PluginStorage;
 import top.focess.veto.api.resources.CatalogueAccess;
 import top.focess.veto.api.resources.CatalogueTree;
-import top.focess.veto.plugin.runtime.PluginLifecycle;
+import top.focess.veto.plugin.runtime.ManagedPlugin;
 
 /** Explicit operator roots and a live permit's workspace, bound to one plugin activation. */
 final class PluginCatalogueAccess implements CatalogueAccess {
-    private final @NonNull PluginLifecycle plugin;
+    private final @NonNull ManagedPlugin plugin;
     private final @NonNull PluginStorage storage;
     private final @NonNull Map<@NonNull String, @NonNull String> roots;
 
     PluginCatalogueAccess(
-            @NonNull PluginLifecycle plugin,
+            @NonNull ManagedPlugin plugin,
             @NonNull PluginStorage storage,
             @NonNull Map<@NonNull String, @NonNull String> roots) {
         this.plugin = plugin;

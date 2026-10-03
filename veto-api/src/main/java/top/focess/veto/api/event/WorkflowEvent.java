@@ -2,14 +2,13 @@ package top.focess.veto.api.event;
 
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.plugin.Scope;
-import top.focess.veto.api.plugin.contract.Cancellation;
 
 /**
- * Base for workflow payloads carrying agent identity and a cooperative host stop signal.
+ * Base for workflow payloads carrying agent identity.
  *
- * <p>Carries the workflow identity and the cooperative cancellation signal. Subclasses add the
- * mutable payload their handlers transform. Observing an event never grants authority, and a
- * handler cannot relax a decision another handler already tightened.
+ * <p>Carries the workflow identity. Subclasses add the mutable payload their handlers transform.
+ * Observing an event never grants authority. Host authorization remains enforced independently of
+ * handler changes; cancellable subclasses retain their reversible action-cancellation flag.
  *
  * <p>The caller may be an agent worker, an input-submitting thread, or an admitted tool caller.
  * Handlers complete before the producer reads the transformed event; no event executor or
@@ -17,17 +16,14 @@ import top.focess.veto.api.plugin.contract.Cancellation;
  */
 public abstract class WorkflowEvent extends Event {
     private final Scope.@NonNull AgentScope scope;
-    private final @NonNull Cancellation cancellation;
 
     /**
      * Creates a workflow payload; the host invocation context determines delivery recipients.
      *
      * @param scope authenticated owner, session and agent identity
-     * @param cancellation cooperative cancellation signal
      */
-    protected WorkflowEvent(Scope.@NonNull AgentScope scope, @NonNull Cancellation cancellation) {
+    protected WorkflowEvent(Scope.@NonNull AgentScope scope) {
         this.scope = scope;
-        this.cancellation = cancellation;
     }
 
     /**
@@ -38,15 +34,5 @@ public abstract class WorkflowEvent extends Event {
     @Override
     public Scope.@NonNull AgentScope scope() {
         return scope;
-    }
-
-    /**
-     * Returns the cooperative cancellation signal.
-     *
-     * @return workflow cancellation signal
-     */
-    @Override
-    public @NonNull Cancellation cancellation() {
-        return cancellation;
     }
 }

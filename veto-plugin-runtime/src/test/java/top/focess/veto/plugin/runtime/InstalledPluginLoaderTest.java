@@ -35,7 +35,7 @@ class InstalledPluginLoaderTest {
                         Path.of(""), Duration.ofSeconds(5), false, ScriptExecutionMode.TRUSTED);
         var closed = new AtomicInteger();
         try (var control = Executors.newSingleThreadExecutor()) {
-            var managed = new PluginLifecycle(loader.load(root).getFirst(), control);
+            var managed = new ManagedPlugin(loader.load(root).getFirst(), control);
             try {
                 var failure =
                         assertThrows(

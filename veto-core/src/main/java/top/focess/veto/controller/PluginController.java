@@ -65,10 +65,10 @@ public class PluginController {
     /** Admin-only catalog of installed plugins with their state and contributed point/tool ids. */
     @GetMapping
     @SuppressWarnings(
-            "resource") // WHY: PluginLifecycle handles are owned by PluginManager, closed elsewhere
+            "resource") // WHY: ManagedPlugin handles are owned by PluginManager, closed elsewhere
     public @NonNull List<PluginResponse> list() {
         authorization.requireAdmin();
-        var publication = plugins.snapshot();
+        var publication = plugins.registry();
         List<PluginResponse> active =
                 publication.plugins().stream()
                         .map(
@@ -84,16 +84,11 @@ public class PluginController {
                                             script == null ? null : script.digest(),
                                             plugin.state() == PluginState.ACTIVE
                                                     && (script == null || script.active()),
-                                            publication.registrations().stream()
-                                                    .filter(r -> r.plugin() == plugin)
-                                                    .flatMap(r -> r.entries().stream())
-                                                    .map(e -> e.point().id().value())
+                                            publication.pointIds(plugin.identity().id()).stream()
                                                     .filter(id -> !id.equals("veto:tools"))
-                                                    .distinct()
                                                     .sorted()
                                                     .toList(),
                                             publication
-                                                    .catalog()
                                                     .entries(StandardContributionPoints.TOOLS)
                                                     .stream()
                                                     .filter(
@@ -103,13 +98,7 @@ public class PluginController {
                                                                             .equals(
                                                                                     plugin.identity()
                                                                                             .id()))
-                                                    .map(
-                                                            entry ->
-                                                                    plugins.toolName(
-                                                                            publication,
-                                                                            entry.source()
-                                                                                    .namespace(),
-                                                                            entry.id().value()))
+                                                    .map(publication::toolName)
                                                     .distinct()
                                                     .sorted()
                                                     .toList(),

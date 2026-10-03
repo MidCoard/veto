@@ -3,7 +3,7 @@ package top.focess.veto.agent;
 import java.util.ArrayDeque;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.agent.workflow.ModelFlow;
-import top.focess.veto.plugin.runtime.PluginLifecycleFlow;
+import top.focess.veto.plugin.runtime.ManagedPluginFlow;
 
 /** Runner-thread-owned flow selection; an empty stack selects the core default flow. */
 final class ModelFlowStack {
@@ -28,7 +28,7 @@ final class ModelFlowStack {
 
     void pushNested(@NonNull ModelFlow parent, @NonNull ModelFlow child) {
         requireTop(parent);
-        push(parent instanceof PluginLifecycleFlow owned ? owned.child(child) : child);
+        push(parent instanceof ManagedPluginFlow owned ? owned.child(child) : child);
     }
 
     void pop(@NonNull ModelFlow flow) {

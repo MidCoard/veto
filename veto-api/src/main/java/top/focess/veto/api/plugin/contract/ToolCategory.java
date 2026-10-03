@@ -3,7 +3,7 @@ package top.focess.veto.api.plugin.contract;
 import org.jspecify.annotations.NonNull;
 
 /** Tool grouping aspect; category membership grants no execution authority. */
-public abstract class ToolCategory {
+public final class ToolCategory {
     private final @NonNull String label;
     private final @NonNull String description;
 
@@ -14,7 +14,7 @@ public abstract class ToolCategory {
      * @param description category purpose shown to users and models
      * @throws IllegalArgumentException when metadata exceeds its bounds
      */
-    protected ToolCategory(@NonNull String label, @NonNull String description) {
+    public ToolCategory(@NonNull String label, @NonNull String description) {
         if (label.isBlank() || label.length() > 128 || description.length() > 4096)
             throw new IllegalArgumentException("Invalid category metadata");
         this.label = label;
@@ -26,7 +26,7 @@ public abstract class ToolCategory {
      *
      * @return short category label
      */
-    public final @NonNull String label() {
+    public @NonNull String label() {
         return label;
     }
 
@@ -35,7 +35,7 @@ public abstract class ToolCategory {
      *
      * @return category purpose shown to users and models
      */
-    public final @NonNull String description() {
+    public @NonNull String description() {
         return description;
     }
 }

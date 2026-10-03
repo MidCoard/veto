@@ -2,7 +2,6 @@ package top.focess.veto.controller;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -15,20 +14,19 @@ import top.focess.veto.api.plugin.PluginIdentity;
 import top.focess.veto.api.plugin.PluginState;
 import top.focess.veto.api.plugin.VetoPlugin;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
-import top.focess.veto.api.plugin.contribution.ContributionCatalog;
 import top.focess.veto.api.plugin.contribution.ContributionEntry;
 import top.focess.veto.api.plugin.contribution.ContributionSource;
 import top.focess.veto.integration.plugins.PluginManager;
-import top.focess.veto.plugin.runtime.PluginLifecycle;
+import top.focess.veto.integration.plugins.PluginRegistry;
+import top.focess.veto.plugin.runtime.ManagedPlugin;
 import top.focess.veto.vault.UserContext;
 
 class PluginControllerTest {
     @Test
     void listsHumanNameAndBothToolKinds() {
         var manager = mock(PluginManager.class);
-        var catalog = mock(ContributionCatalog.class);
-        var publication = mock(PluginManager.PublishedState.class);
-        var lifecycle = mock(PluginLifecycle.class);
+        var publication = mock(PluginRegistry.class);
+        var lifecycle = mock(ManagedPlugin.class);
         var implementation = mock(VetoPlugin.class);
         var identity = new PluginIdentity("example.tools", "1.0.0");
         var source =
@@ -41,22 +39,19 @@ class PluginControllerTest {
         NativeTool<?> nativeImplementation = mock(NativeTool.class);
         ContributionEntry<Tool> nativeEntry =
                 new ContributionEntry<>(nativeTool, source, nativeImplementation);
-        when(manager.snapshot()).thenReturn(publication);
+        when(manager.registry()).thenReturn(publication);
         when(publication.plugins()).thenReturn(List.of(lifecycle));
-        when(publication.registrations()).thenReturn(List.of());
+        when(publication.pointIds(identity.id())).thenReturn(List.of());
         when(publication.declined()).thenReturn(List.of());
         when(publication.disabled()).thenReturn(List.of());
-        when(publication.catalog()).thenReturn(catalog);
         when(lifecycle.identity()).thenReturn(identity);
         when(lifecycle.state()).thenReturn(PluginState.ACTIVE);
         when(lifecycle.implementation()).thenReturn(implementation);
         when(lifecycle.displayName()).thenReturn("Example Tools");
-        when(catalog.entries(StandardContributionPoints.TOOLS))
+        when(publication.entries(StandardContributionPoints.TOOLS))
                 .thenReturn(List.of(portableEntry, nativeEntry));
-        when(manager.toolName(publication, identity.id(), portable.value()))
-                .thenReturn("portable_alias");
-        when(manager.toolName(publication, identity.id(), nativeTool.value()))
-                .thenReturn("native_alias");
+        when(publication.toolName(portableEntry)).thenReturn("portable_alias");
+        when(publication.toolName(nativeEntry)).thenReturn("native_alias");
 
         UserContext.set("admin");
         try {
@@ -65,9 +60,7 @@ class PluginControllerTest {
             assertEquals(1, response.size());
             assertEquals("Example Tools", response.getFirst().name());
             assertEquals(List.of("native_alias", "portable_alias"), response.getFirst().tools());
-            verify(manager).snapshot();
-            verify(manager, never()).catalog();
-            verify(manager, never()).plugins();
+            verify(manager).registry();
         } finally {
             UserContext.clear();
         }

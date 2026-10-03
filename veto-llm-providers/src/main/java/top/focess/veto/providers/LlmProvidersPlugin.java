@@ -46,7 +46,7 @@ public final class LlmProvidersPlugin extends VetoPlugin {
         return new LlmClientFactory(new ObjectMapper(), prompts);
     }
 
-    private static final class Provider extends LlmProvider {
+    private static final class Provider implements LlmProvider {
         private final @NonNull ProviderType type;
         private final @NonNull LlmClientFactory factory;
 

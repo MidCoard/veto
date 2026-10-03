@@ -5,22 +5,22 @@ import top.focess.veto.api.agent.workflow.ModelFlow;
 import top.focess.veto.api.plugin.contract.PluginFailure;
 
 /** A selected model flow retains the submitting plugin's lifecycle admission. */
-public final class PluginLifecycleFlow implements ModelFlow {
-    private final @NonNull PluginLifecycle plugin;
+public final class ManagedPluginFlow implements ModelFlow {
+    private final @NonNull ManagedPlugin plugin;
     private final @NonNull ModelFlow delegate;
 
     /**
      * Binds a selected flow to its submitting plugin so execution re-acquires that plugin's
      * admission.
      */
-    public PluginLifecycleFlow(@NonNull PluginLifecycle plugin, @NonNull ModelFlow delegate) {
+    public ManagedPluginFlow(@NonNull ManagedPlugin plugin, @NonNull ModelFlow delegate) {
         this.plugin = plugin;
         this.delegate = delegate;
     }
 
     /** Binds a nested flow to the same plugin activation as its parent. */
-    public @NonNull PluginLifecycleFlow child(@NonNull ModelFlow work) {
-        return new PluginLifecycleFlow(plugin, work);
+    public @NonNull ManagedPluginFlow child(@NonNull ModelFlow work) {
+        return new ManagedPluginFlow(plugin, work);
     }
 
     @Override

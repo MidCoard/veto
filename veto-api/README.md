@@ -78,8 +78,9 @@ by another thread. Each submission uses one captured publication and exact lifec
 admission. Inactive owners skip, and ordinary handler/admission failures are logged and
 contained so remaining eligible handlers continue. Host cooperative cancellation and
 fatal JVM failures remain separate from plugin failure containment.
-All events expose typed `scope()` payload identity. Cooperative `cancellation()` is
-optional. Adding a concrete host event requires its prepared catalog entry. There are
+All events expose typed `scope()` payload identity. Host cooperative stop is enforced
+by producer request checks and native thread interruption before eligible handlers.
+Adding a concrete host event requires its prepared catalog entry. There are
 no scalar workflow identity accessors or per-event delivery-policy constructors.
 
 | Family | Concrete events | Host boundary |
@@ -101,8 +102,9 @@ before history publication. `FILE_CAPTURE` runs earlier, inside an admitted work
 `INPUT` protects user text before recording it. These boundaries do not emit events for arbitrary
 asynchronous observations or every file operation. `ToolCallEvent` and `ToolResultEvent` in
 `api.agent` are agent-output records delivered through their own listeners, not subclasses of
-`api.event.Event` and not registrations in this plugin event table. `CancellableEvent` is an
-available base type, but none of the concrete host events above extends it.
+`api.event.Event` and not registrations in this plugin event table. Cancellable host events
+implement `Cancellable` directly and own their action-cancellation state. Plugin listeners
+implement the `Listener` registration interface.
 
 The host checks the prepared route for the submitted concrete event before resolving
 session selection. Empty or unrelated listener contributions do not trigger session
@@ -390,4 +392,9 @@ code and keep host implementation types out of plugin artifacts.
 
 Class literals can be passed directly as `Foo.class`. The build-time Veto nullness checker treats the class-literal expression as non-null while keeping the usual nullable defaults for other expressions. `ToolDocs` contains only tool documentation helpers.
 
-Standard contribution points accept the complete instance of their abstract aspect class. Tools extend `Tool` through `AgentTool`, `NativeTool`, or `RemoteTool`; services extend `PluginService`. Frontend modules, providers, prompts, listeners, policies, and other standard aspects likewise extend their respective API class and are registered as those objects. A component providing multiple aspects registers a separate object for each role.
+Standard contribution points accept an object implementing their exact API contract.
+Stateless contracts such as listeners, frontend modules, providers and policies use
+interfaces. A component may implement several contracts and register at each relevant
+point. `PromptContribution`, `ToolCategory` and `ProtocolPointDefinition` are validated
+metadata classes that can be instantiated directly. Tools extend `Tool` through
+`AgentTool`, `NativeTool` or `RemoteTool`; services extend the stateful `PluginService`.

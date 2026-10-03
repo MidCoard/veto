@@ -23,7 +23,7 @@ import top.focess.veto.api.llm.exceptions.ModelSchemaException;
 /**
  * GenerateContent native functions with JSON calls/guide compatibility and durable signed parts.
  */
-final class GeminiLlmClient extends LlmClient {
+final class GeminiLlmClient implements LlmClient {
     private final @NonNull Client sdkClient;
     private final @NonNull ObjectMapper objectMapper;
     private final @NonNull PromptRenderer prompts;

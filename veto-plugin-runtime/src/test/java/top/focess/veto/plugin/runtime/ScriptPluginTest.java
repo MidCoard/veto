@@ -75,10 +75,10 @@ class ScriptPluginTest {
     private static @NonNull LoadedScript load(
             @NonNull Path root, @NonNull Path node, @NonNull Duration timeout) throws IOException {
         var executor = Executors.newSingleThreadExecutor();
-        PluginLifecycle managed = null;
+        ManagedPlugin managed = null;
         try {
             var script = new ScriptPluginLoader(node, timeout).load(root);
-            managed = new PluginLifecycle(script, executor);
+            managed = new ManagedPlugin(script, executor);
             managed.construct(context(script.identity()), new JsonValue.ObjectValue(Map.of()));
             managed.start();
             return new LoadedScript(script, managed, executor);
@@ -92,7 +92,7 @@ class ScriptPluginTest {
 
     private record LoadedScript(
             @NonNull ScriptPlugin script,
-            @NonNull PluginLifecycle managed,
+            @NonNull ManagedPlugin managed,
             @NonNull ExecutorService executor)
             implements AutoCloseable {
         public void close() {
@@ -117,7 +117,7 @@ class ScriptPluginTest {
         }
 
         <T extends @NonNull Object> @NonNull T execute(
-                PluginLifecycle.@NonNull Operation<T> operation) throws PluginFailure {
+                ManagedPlugin.@NonNull Operation<T> operation) throws PluginFailure {
             return managed.execute(operation);
         }
 
@@ -166,9 +166,9 @@ class ScriptPluginTest {
         copy(secondDir);
         var executor = Executors.newSingleThreadExecutor();
         var loader = new ScriptPluginLoader(node(), Duration.ofSeconds(3));
-        var first = new PluginLifecycle(loader.load(firstDir), executor);
+        var first = new ManagedPlugin(loader.load(firstDir), executor);
         var secondScript = loader.load(secondDir);
-        var second = new PluginLifecycle(secondScript, executor);
+        var second = new ManagedPlugin(secondScript, executor);
         try {
             for (var managed : List.of(first, second)) {
                 managed.construct(context(managed.identity()), new JsonValue.ObjectValue(Map.of()));

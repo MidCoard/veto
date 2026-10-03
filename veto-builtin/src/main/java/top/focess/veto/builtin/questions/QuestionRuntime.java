@@ -26,7 +26,7 @@ import top.focess.veto.api.plugin.Scope;
  * not block waiting for another thread to register or close on the same monitor. Pending views are
  * weakly consistent snapshots rather than a transaction across all batches.
  */
-public final class QuestionRuntime extends Listener implements AutoCloseable {
+public final class QuestionRuntime implements Listener, AutoCloseable {
     private final @NonNull PluginHost host;
     private final @NonNull ConcurrentHashMap<Key, Pending> pending = new ConcurrentHashMap<>();
     private boolean closed;

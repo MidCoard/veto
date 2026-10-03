@@ -45,12 +45,12 @@ public class SessionPlugins {
      * duplicates and unknown or inactive plugins are rejected.
      */
     public @NonNull List<PluginBinding> selection(List<String> requested) {
-        var publication = manager.snapshot();
+        var publication = manager.registry();
         var available = publication.plugins();
         var ids =
                 requested == null
                         ? available.stream().map(p -> p.identity().id()).toList()
-                        : requested.stream().map(manager::canonicalId).toList();
+                        : requested.stream().map(publication::canonicalId).toList();
         if (ids.size() != Set.copyOf(ids).size())
             throw new IllegalArgumentException("Duplicate plugin selection");
         return ids.stream()
@@ -90,8 +90,8 @@ public class SessionPlugins {
             @NonNull AgentProfile base,
             @NonNull List<AgentConfiguration.Tool> tools,
             @NonNull String activeTask) {
-        var publication = manager.snapshot();
-        var entries = publication.catalog().entries(StandardContributionPoints.AGENT_CONFIGURATION);
+        var publication = manager.registry();
+        var entries = publication.entries(StandardContributionPoints.AGENT_CONFIGURATION);
         if (entries.isEmpty()) return null;
         var selected = selectedIds(session, publication);
         AgentConfiguration.Intent result = null;
@@ -135,10 +135,10 @@ public class SessionPlugins {
 
     /** Opens the model-response policies of the session's selected plugins in catalog order. */
     public @NonNull List<ModelResponsePolicy.Exchange> responsePolicies(@NonNull String sessionId) {
-        var publication = manager.snapshot();
+        var publication = manager.registry();
         var ids = selectedIds(sessionId, publication);
         List<ModelResponsePolicy.Exchange> result = new ArrayList<>();
-        for (var entry : publication.catalog().entries(StandardContributionPoints.MODEL_RESPONSE)) {
+        for (var entry : publication.entries(StandardContributionPoints.MODEL_RESPONSE)) {
             if (!ids.contains(entry.source().namespace())) continue;
             var plugin = publication.plugin(entry.source().namespace());
             try {
@@ -180,7 +180,7 @@ public class SessionPlugins {
     public @NonNull AgentInbox workSource(@NonNull String sessionId) {
         return new CompositeAgentInbox(
                 () -> {
-                    var publication = manager.snapshot();
+                    var publication = manager.registry();
                     var entries = publication.inboxes();
                     if (entries.isEmpty()) return List.of();
                     var ids = selectedIds(sessionId, publication);
@@ -192,16 +192,17 @@ public class SessionPlugins {
 
     /** True when a plugin selected by the session contributes to the given point. */
     public boolean has(@NonNull String sessionId, @NonNull ContributionPoint<?> point) {
-        var publication = manager.snapshot();
+        var publication = manager.registry();
         var ids = selectedIds(sessionId, publication);
-        return publication.catalog().entries(point).stream()
+        return publication.entries(point).stream()
                 .anyMatch(entry -> ids.contains(entry.source().namespace()));
     }
 
     /** True when the session selects the given plugin, resolved through configured aliases. */
     public boolean includes(@NonNull String sessionId, @NonNull String pluginId) {
-        String canonical = manager.canonicalId(pluginId);
-        return selectedIds(sessionId).contains(canonical);
+        var publication = manager.registry();
+        String canonical = publication.canonicalId(pluginId);
+        return selectedIds(sessionId, publication).contains(canonical);
     }
 
     /** Keeps only the tool definitions whose provenance plugin is selected by the session. */
@@ -218,18 +219,18 @@ public class SessionPlugins {
     }
 
     private @NonNull Set<String> selectedIds(@NonNull String sessionId) {
-        return selectedIds(sessionId, manager.snapshot());
+        return selectedIds(sessionId, manager.registry());
     }
 
     /** Resolves available session pins against the supplied publication without replacing it. */
     public @NonNull Set<String> selectedIds(
-            @NonNull String sessionId, PluginManager.@NonNull PublishedState publication) {
+            @NonNull String sessionId, @NonNull PluginRegistry publication) {
         return bindings(sessionId).stream()
                 .filter(
                         binding ->
                                 availability(binding, publication)
                                         == BoundPluginAvailability.AVAILABLE)
-                .map(binding -> manager.canonicalId(binding.id()))
+                .map(binding -> publication.canonicalId(binding.id()))
                 .collect(Collectors.toSet());
     }
 
@@ -240,12 +241,12 @@ public class SessionPlugins {
 
     /** Explains why an exact pinned plugin can or cannot serve the session now. */
     public @NonNull BoundPluginAvailability availability(@NonNull PluginBinding selected) {
-        return availability(selected, manager.snapshot());
+        return availability(selected, manager.registry());
     }
 
     private @NonNull BoundPluginAvailability availability(
-            @NonNull PluginBinding selected, PluginManager.@NonNull PublishedState publication) {
-        String canonical = manager.canonicalId(selected.id());
+            @NonNull PluginBinding selected, @NonNull PluginRegistry publication) {
+        String canonical = publication.canonicalId(selected.id());
         if (publication.disabled().stream().anyMatch(plugin -> plugin.id().equals(canonical)))
             return BoundPluginAvailability.DISABLED;
         if (publication.declined().stream().anyMatch(plugin -> plugin.id().equals(canonical)))
@@ -282,7 +283,7 @@ public class SessionPlugins {
 
     /** Reports unavailable pins without mutating or locking the session. */
     public @NonNull List<BoundPluginStatus> status(@NonNull String sessionId) {
-        var publication = manager.snapshot();
+        var publication = manager.registry();
         return bindings(sessionId).stream()
                 .map(
                         binding -> {

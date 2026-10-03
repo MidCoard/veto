@@ -17,7 +17,7 @@ import top.focess.veto.api.plugin.contract.JsonValues;
 import top.focess.veto.api.plugin.contract.PluginFailure;
 
 /** Bounded wire pages; complete durable history remains readable through text chunks. */
-public final class GroupFrontend extends FrontendContribution {
+public final class GroupFrontend implements FrontendContribution {
     private final @NonNull GroupRuntime runtime;
     private final @NonNull ObjectMapper mapper = new ObjectMapper().findAndRegisterModules();
 

@@ -13,7 +13,7 @@ import top.focess.veto.api.plugin.contract.JsonValues;
 import top.focess.veto.api.plugin.contract.PluginFailure;
 
 /** Authenticated frontend actions share the exact tool invocation scope. */
-public final class QuestionsFrontend extends FrontendContribution {
+public final class QuestionsFrontend implements FrontendContribution {
     private final @NonNull QuestionRuntime runtime;
     private final @NonNull ObjectMapper mapper = new ObjectMapper();
 

@@ -39,14 +39,22 @@ class InstalledPluginIntegrationTest {
                         5000,
                         PluginTestSupport.providerOf(PluginTestSupport.configurationServices(null)),
                         configuration)) {
-            assertEquals(PluginState.ACTIVE, manager.plugin("sample.installed").state());
-            assertEquals(1, manager.declined().size());
-            assertEquals("sample.declined", manager.declined().getFirst().id());
-            assertEquals("UNSUPPORTED_ENVIRONMENT", manager.declined().getFirst().reason().name());
-            assertTrue(manager.isDeclined("sample.declined"));
-            assertEquals(1, manager.disabled().size());
-            assertTrue(manager.isDisabled("sample.disabled"));
-            assertEquals("Installed service", manager.plugin("sample.installed").displayName());
+            assertEquals(PluginState.ACTIVE, manager.registry().plugin("sample.installed").state());
+            assertEquals(1, manager.registry().declined().size());
+            assertEquals("sample.declined", manager.registry().declined().getFirst().id());
+            assertEquals(
+                    "UNSUPPORTED_ENVIRONMENT",
+                    manager.registry().declined().getFirst().reason().name());
+            assertTrue(
+                    manager.registry().declined().stream()
+                            .anyMatch(plugin -> plugin.id().equals("sample.declined")));
+            assertEquals(1, manager.registry().disabled().size());
+            assertTrue(
+                    manager.registry().disabled().stream()
+                            .anyMatch(plugin -> plugin.id().equals("sample.disabled")));
+            assertEquals(
+                    "Installed service",
+                    manager.registry().plugin("sample.installed").displayName());
             var request = new JsonValue.StringValue("hello");
             assertEquals(
                     request,
@@ -70,9 +78,13 @@ class InstalledPluginIntegrationTest {
                         PluginTestSupport.providerOf(PluginTestSupport.configurationServices(null)),
                         configuration,
                         choices)) {
-            assertTrue(first.isDisabled("sample.installed"));
+            assertTrue(
+                    first.registry().disabled().stream()
+                            .anyMatch(plugin -> plugin.id().equals("sample.installed")));
             first.setEnabledOnNextStart("sample.installed", true);
-            assertTrue(first.isDisabled("sample.installed"));
+            assertTrue(
+                    first.registry().disabled().stream()
+                            .anyMatch(plugin -> plugin.id().equals("sample.installed")));
             assertTrue(first.desiredEnabled("sample.installed"));
         }
         try (var second =
@@ -84,11 +96,11 @@ class InstalledPluginIntegrationTest {
                         PluginTestSupport.providerOf(PluginTestSupport.configurationServices(null)),
                         configuration,
                         choices)) {
-            assertEquals(PluginState.ACTIVE, second.plugin("sample.installed").state());
+            assertEquals(PluginState.ACTIVE, second.registry().plugin("sample.installed").state());
             var service = second.services().find("sample:echo", 1).orElseThrow();
             second.setEnabledOnNextStart("sample.installed", false);
             assertFalse(second.desiredEnabled("sample.installed"));
-            assertEquals(PluginState.ACTIVE, second.plugin("sample.installed").state());
+            assertEquals(PluginState.ACTIVE, second.registry().plugin("sample.installed").state());
             assertEquals(
                     new JsonValue.StringValue("running"),
                     service.invoke(new JsonValue.StringValue("running")));
@@ -102,9 +114,13 @@ class InstalledPluginIntegrationTest {
                         PluginTestSupport.providerOf(PluginTestSupport.configurationServices(null)),
                         new PluginConfigurations(),
                         choices)) {
-            assertTrue(third.isDisabled("sample.installed"));
+            assertTrue(
+                    third.registry().disabled().stream()
+                            .anyMatch(plugin -> plugin.id().equals("sample.installed")));
             third.setEnabledOnNextStart("sample.installed", true);
-            assertTrue(third.isDisabled("sample.installed"));
+            assertTrue(
+                    third.registry().disabled().stream()
+                            .anyMatch(plugin -> plugin.id().equals("sample.installed")));
         }
         try (var fourth =
                 new PluginManager(
@@ -115,7 +131,7 @@ class InstalledPluginIntegrationTest {
                         PluginTestSupport.providerOf(PluginTestSupport.configurationServices(null)),
                         new PluginConfigurations(),
                         choices)) {
-            assertEquals(PluginState.ACTIVE, fourth.plugin("sample.installed").state());
+            assertEquals(PluginState.ACTIVE, fourth.registry().plugin("sample.installed").state());
         }
     }
 
@@ -144,21 +160,23 @@ class InstalledPluginIntegrationTest {
                         5000,
                         PluginTestSupport.providerOf(PluginTestSupport.configurationServices(null)),
                         new PluginConfigurations())) {
-            var entries = manager.catalog().entries(point);
+            var entries = manager.registry().entries(point);
             assertEquals(1, entries.size());
             assertEquals("sample.consumer", entries.getFirst().source().namespace());
             manager.setEnabledOnNextStart("sample.point", false);
             assertFalse(manager.desiredEnabled("sample.point"));
-            assertEquals(1, manager.catalog().entries(point).size());
+            assertEquals(1, manager.registry().entries(point).size());
             PluginContributionsDirectory directory =
                     ReflectionTestUtils.invokeMethod(
-                            manager, "contributionsFor", manager.plugin("sample.consumer"));
+                            manager,
+                            "contributionsFor",
+                            manager.registry().plugin("sample.consumer"));
             if (directory == null) throw new AssertionError("Missing contribution directory");
             var visible = directory.entries(point.id(), 1);
             assertEquals(1, visible.size());
             assertSame(visible.getFirst(), directory.entries(point.id(), 1).getFirst());
             assertTrue(directory.entries(point.id(), 2).isEmpty());
-            manager.plugin("sample.point").close();
+            manager.registry().plugin("sample.point").close();
             assertTrue(directory.entries(point.id(), 1).isEmpty());
         }
     }
@@ -176,8 +194,10 @@ class InstalledPluginIntegrationTest {
                         PluginTestSupport.providerOf(PluginTestSupport.configurationServices(null)),
                         new PluginConfigurations())) {
             manager.setEnabledOnNextStart("sample.installed", false);
-            assertEquals(PluginState.ACTIVE, manager.plugin("sample.installed").state());
-            assertFalse(manager.isDisabled("sample.installed"));
+            assertEquals(PluginState.ACTIVE, manager.registry().plugin("sample.installed").state());
+            assertFalse(
+                    manager.registry().disabled().stream()
+                            .anyMatch(plugin -> plugin.id().equals("sample.installed")));
             assertFalse(manager.desiredEnabled("sample.installed"));
             assertTrue(manager.services().find("sample:echo", 1).isPresent());
         }
@@ -224,7 +244,7 @@ class InstalledPluginIntegrationTest {
                         PluginTestSupport.providerOf(PluginTestSupport.configurationServices(null)),
                         new PluginConfigurations())) {
             ClassLoader candidate =
-                    manager.catalog()
+                    manager.registry()
                             .entries(StandardContributionPoints.SERVICES)
                             .getFirst()
                             .implementation()
@@ -235,7 +255,7 @@ class InstalledPluginIntegrationTest {
             loader = pluginLoader;
             manager.setEnabledOnNextStart("sample.installed", false);
             assertFalse(loader.isClosed());
-            assertEquals(PluginState.ACTIVE, manager.plugin("sample.installed").state());
+            assertEquals(PluginState.ACTIVE, manager.registry().plugin("sample.installed").state());
         }
         assertTrue(loader.isClosed());
     }

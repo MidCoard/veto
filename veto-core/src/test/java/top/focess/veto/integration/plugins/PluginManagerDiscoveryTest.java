@@ -37,20 +37,20 @@ class PluginManagerDiscoveryTest {
                         5000,
                         PluginTestSupport.providerOf(PluginTestSupport.configurationServices(null)),
                         new PluginConfigurations())) {
-            assertTrue(plugins.plugins().isEmpty());
+            assertTrue(plugins.registry().plugins().isEmpty());
         }
     }
 
     @Test
     void manifestDiscoversTheSecretProtectionPlugin() throws Exception {
         try (var plugins = PluginTestSupport.manager()) {
-            var plugin = plugins.plugin("top.focess.secret-protection");
-            assertSame(plugin, plugins.plugin("org.veto.secret-protection"));
+            var plugin = plugins.registry().plugin("top.focess.secret-protection");
+            assertSame(plugin, plugins.registry().plugin("org.veto.secret-protection"));
             assertEquals(PluginState.ACTIVE, plugin.state());
             assertFalse(
-                    plugins.catalog().entries(StandardContributionPoints.OBSERVATION).isEmpty());
-            assertFalse(plugins.catalog().entries(StandardContributionPoints.LISTENERS).isEmpty());
-            assertFalse(plugins.catalog().entries(StandardContributionPoints.TOOLS).isEmpty());
+                    plugins.registry().entries(StandardContributionPoints.OBSERVATION).isEmpty());
+            assertFalse(plugins.registry().entries(StandardContributionPoints.LISTENERS).isEmpty());
+            assertFalse(plugins.registry().entries(StandardContributionPoints.TOOLS).isEmpty());
         }
     }
 
@@ -170,7 +170,7 @@ class PluginManagerDiscoveryTest {
             @NonNull String label)
             throws Exception {
         var entry =
-                plugins.catalog().entries(StandardContributionPoints.TOOLS).stream()
+                plugins.registry().entries(StandardContributionPoints.TOOLS).stream()
                         .filter(
                                 value ->
                                         value.implementation() instanceof CapabilityTool<?> tool

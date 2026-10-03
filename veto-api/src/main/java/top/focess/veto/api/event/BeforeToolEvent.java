@@ -2,7 +2,6 @@ package top.focess.veto.api.event;
 
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.plugin.Scope;
-import top.focess.veto.api.plugin.contract.Cancellation;
 import top.focess.veto.api.plugin.contract.JsonValue;
 
 /**
@@ -12,8 +11,8 @@ import top.focess.veto.api.plugin.contract.JsonValue;
  * Decision#REJECT} also calls {@link Event#prevent()} to stop propagation to later handlers by
  * default. The host enforces that security decision independently of the reversible {@link
  * Cancellable} action flag. Clearing action cancellation cannot relax approval requirements or undo
- * rejection. The producer reads the final action flag after delivery; {@link #cancellation()}
- * remains the separate read-only host stop signal.
+ * rejection. The producer reads the final action flag after delivery. Cooperative host stop remains
+ * independently enforced by the producer and dispatch execution path.
  */
 public final class BeforeToolEvent extends WorkflowEvent implements Cancellable {
     /** Approval decision a handler can tighten but never relax. */
@@ -46,14 +45,10 @@ public final class BeforeToolEvent extends WorkflowEvent implements Cancellable 
      * Creates the tool-approval event.
      *
      * @param scope authenticated owner, session and agent identity
-     * @param cancellation cooperative cancellation signal
      * @param invocation immutable tool invocation under evaluation
      */
-    public BeforeToolEvent(
-            Scope.@NonNull AgentScope scope,
-            @NonNull Cancellation cancellation,
-            @NonNull Invocation invocation) {
-        super(scope, cancellation);
+    public BeforeToolEvent(Scope.@NonNull AgentScope scope, @NonNull Invocation invocation) {
+        super(scope);
         this.invocation = invocation;
     }
 

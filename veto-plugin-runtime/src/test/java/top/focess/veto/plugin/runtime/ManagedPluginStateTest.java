@@ -10,7 +10,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
-import top.focess.veto.api.plugin.*;
 import top.focess.veto.api.plugin.PluginContext;
 import top.focess.veto.api.plugin.PluginIdentity;
 import top.focess.veto.api.plugin.PluginState;
@@ -18,13 +17,13 @@ import top.focess.veto.api.plugin.VetoPlugin;
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.contract.PluginFailure;
 
-class PluginLifecycleStateTest {
+class ManagedPluginStateTest {
     @Test
     void closeDrainsActiveCallsAndRejectsNewAdmission() throws Exception {
         try (var control = Executors.newSingleThreadExecutor();
                 var callers = Executors.newVirtualThreadPerTaskExecutor()) {
             var observer = new Observer(false);
-            var managed = new PluginLifecycle(observer, control);
+            var managed = new ManagedPlugin(observer, control);
             observer.lifecycle = managed;
             managed.construct(
                     new PluginContext(
@@ -79,7 +78,7 @@ class PluginLifecycleStateTest {
     void nestedCallsReuseAdmissionButCannotCloseTheirOwnPlugin() throws Exception {
         try (var control = Executors.newSingleThreadExecutor()) {
             var observer = new Observer(false);
-            try (var managed = new PluginLifecycle(observer, control)) {
+            try (var managed = new ManagedPlugin(observer, control)) {
                 observer.lifecycle = managed;
                 managed.construct(
                         new PluginContext(
@@ -104,8 +103,70 @@ class PluginLifecycleStateTest {
         }
     }
 
+    @Test
+    void crossPluginNestingRestoresInvocationGuardAndReleasesSlotsAfterFailure() throws Exception {
+        try (var control = Executors.newSingleThreadExecutor()) {
+            var firstPlugin = new Observer(false);
+            var secondPlugin = new Observer(false);
+            var first = new ManagedPlugin(firstPlugin, control);
+            var second = new ManagedPlugin(secondPlugin, control);
+            try {
+                firstPlugin.lifecycle = first;
+                secondPlugin.lifecycle = second;
+                for (var managed : List.of(first, second)) {
+                    managed.construct(
+                            new PluginContext(
+                                    managed.identity(),
+                                    () -> {},
+                                    managed::state,
+                                    Map.of(),
+                                    Map.of()),
+                            new JsonValue.ObjectValue(Map.of()));
+                    managed.start();
+                }
+                assertThrows(
+                        PluginFailure.class,
+                        () ->
+                                first.execute(
+                                        () -> {
+                                            assertEquals(
+                                                    "nested",
+                                                    second.execute(
+                                                            () -> {
+                                                                assertThrows(
+                                                                        IllegalStateException.class,
+                                                                        first::close);
+                                                                assertThrows(
+                                                                        IllegalStateException.class,
+                                                                        second::close);
+                                                                return first.execute(
+                                                                        () -> "nested");
+                                                            }));
+                                            // Returning from the second activation must retain the
+                                            // first's guard.
+                                            assertThrows(
+                                                    IllegalStateException.class, second::close);
+                                            throw new PluginFailure(
+                                                    PluginFailure.Code.INTERNAL_FAILURE);
+                                        }));
+                // The thrown operation must release both slots and clear the caller-thread guard.
+                assertEquals("ready", first.execute(() -> "ready"));
+                second.close();
+                first.close();
+                assertEquals(PluginState.CLOSED, first.state());
+                assertEquals(PluginState.CLOSED, second.state());
+            } finally {
+                try {
+                    second.close();
+                } finally {
+                    first.close();
+                }
+            }
+        }
+    }
+
     private static final class Observer extends VetoPlugin {
-        private PluginLifecycle lifecycle;
+        private ManagedPlugin lifecycle;
         private final @NonNull List<PluginState> callbacks = new ArrayList<>();
         private final @NonNull List<String> releases = new ArrayList<>();
         private final boolean failStart;
@@ -118,7 +179,7 @@ class PluginLifecycleStateTest {
             return new PluginIdentity("test.observer", "1.0.0");
         }
 
-        @NonNull PluginLifecycle lifecycle() {
+        @NonNull ManagedPlugin lifecycle() {
             var current = lifecycle;
             if (current == null) throw new IllegalStateException("Not bound");
             return current;
@@ -138,7 +199,7 @@ class PluginLifecycleStateTest {
     void lifecycleObservesCallbacksAndSubsequentTransitions() throws Exception {
         try (var executor = Executors.newSingleThreadExecutor()) {
             var observer = new Observer(false);
-            var managed = new PluginLifecycle(observer, executor);
+            var managed = new ManagedPlugin(observer, executor);
             observer.lifecycle = managed;
             try {
                 assertEquals(PluginState.NEW, managed.state());
@@ -171,7 +232,7 @@ class PluginLifecycleStateTest {
     void failureCleanupSeesTheOwnersFailedState() throws Exception {
         try (var executor = Executors.newSingleThreadExecutor()) {
             var observer = new Observer(true);
-            var managed = new PluginLifecycle(observer, executor);
+            var managed = new ManagedPlugin(observer, executor);
             observer.lifecycle = managed;
             try {
                 managed.construct(

@@ -40,6 +40,27 @@ public final class ContributionCatalog {
         return (List<ContributionEntry<T>>) (List<?>) definition.entries();
     }
 
+    /**
+     * Returns the sorted point identities contributed by the exact source namespace.
+     *
+     * @param namespace host-attributed contribution namespace
+     * @return immutable point identities; empty when the source has no contributions
+     */
+    public @NonNull List<ContributionId> points(@NonNull String namespace) {
+        return definitions.values().stream()
+                .filter(
+                        definition ->
+                                definition.entries().stream()
+                                        .anyMatch(
+                                                entry ->
+                                                        entry.source()
+                                                                .namespace()
+                                                                .equals(namespace)))
+                .map(definition -> definition.point().id())
+                .sorted((left, right) -> left.value().compareTo(right.value()))
+                .toList();
+    }
+
     private record Definition<T>(
             @NonNull ContributionPoint<T> point, @NonNull List<ContributionEntry<T>> entries) {}
 

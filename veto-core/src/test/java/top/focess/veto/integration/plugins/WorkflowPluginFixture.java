@@ -4,8 +4,8 @@ import static org.mockito.Mockito.*;
 
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import org.jspecify.annotations.NonNull;
@@ -22,7 +22,7 @@ import top.focess.veto.plugin.runtime.*;
 /** Real lifecycle and catalog behind a test discovery adapter. */
 public final class WorkflowPluginFixture implements AutoCloseable {
     private final @NonNull ExecutorService lifecycle = Executors.newSingleThreadExecutor();
-    public final @NonNull PluginLifecycle runtime;
+    public final @NonNull ManagedPlugin runtime;
     public final @NonNull PluginManager manager;
     public final @NonNull SessionPlugins sessions;
     public final @NonNull EventManager events;
@@ -44,7 +44,7 @@ public final class WorkflowPluginFixture implements AutoCloseable {
                     @Override
                     public void close() {}
                 };
-        runtime = new PluginLifecycle(implementation, lifecycle);
+        runtime = new ManagedPlugin(implementation, lifecycle);
         runtime.construct(
                 new PluginContext(
                         runtime.identity(),
@@ -68,46 +68,23 @@ public final class WorkflowPluginFixture implements AutoCloseable {
                                 contributions)
                         .freeze();
         manager = mock(PluginManager.class);
-        var publication = mock(PluginManager.PublishedState.class);
-        when(publication.catalog()).thenReturn(catalog);
-        when(publication.inboxes())
-                .thenReturn(
-                        catalog.entries(StandardContributionPoints.AGENT_INBOX).stream()
-                                .map(
-                                        entry ->
-                                                new CompositeAgentInbox.Entry(
-                                                        entry.id().value(),
-                                                        runtime,
-                                                        entry.implementation()))
-                                .toList());
-        when(publication.plugins()).thenReturn(List.of(runtime));
-        when(publication.disabled()).thenReturn(List.of());
-        when(publication.declined()).thenReturn(List.of());
-        when(publication.plugin("fixture.workflow")).thenReturn(runtime);
-        when(manager.snapshot()).thenReturn(publication);
-        when(manager.catalog()).thenReturn(catalog);
-        when(manager.plugins()).thenReturn(List.of(runtime));
-        when(manager.plugin("fixture.workflow")).thenReturn(runtime);
-        when(manager.canonicalId(anyString())).thenAnswer(invocation -> invocation.getArgument(0));
-        when(manager.toolName(anyString(), anyString()))
-                .thenAnswer(
-                        invocation -> {
-                            String id = Objects.requireNonNull(invocation.<String>getArgument(1));
-                            return "plugin_fixture_workflow__" + id.substring(id.indexOf(':') + 1);
-                        });
-        when(manager.toolName(eq(publication), anyString(), anyString()))
-                .thenAnswer(
-                        invocation -> {
-                            String id = Objects.requireNonNull(invocation.<String>getArgument(2));
-                            return "plugin_fixture_workflow__" + id.substring(id.indexOf(':') + 1);
-                        });
         var events =
                 EventListenerRegistry.build(
                         catalog,
                         Map.of(runtime.identity().id(), runtime),
                         new EventListenerRegistry.Preparation());
-        when(manager.events()).thenReturn(events);
-        when(publication.events()).thenReturn(events);
+        var publication =
+                spy(
+                        new PluginRegistry(
+                                List.of(runtime),
+                                List.of(),
+                                List.of(),
+                                catalog,
+                                events,
+                                Map.of(),
+                                Map.of(),
+                                Set.of()));
+        when(manager.registry()).thenReturn(publication);
         session.setPluginBindings(
                 List.of(
                         new PluginBinding(

@@ -189,7 +189,7 @@ public final class SecretProtectionPlugin extends VetoPlugin {
             @NonNull String label,
             @NonNull String status) {}
 
-    private final class SecretFrontend extends FrontendContribution {
+    private final class SecretFrontend implements FrontendContribution {
         @Override
         public @NonNull String module() {
             return frontendModule();
@@ -211,7 +211,7 @@ public final class SecretProtectionPlugin extends VetoPlugin {
         }
     }
 
-    private static final class SecretObservation extends ObservationMiddleware {
+    private static final class SecretObservation implements ObservationMiddleware {
         private final @NonNull SlmSecretDetector detector;
 
         private SecretObservation(@NonNull SlmSecretDetector detector) {
@@ -292,7 +292,7 @@ public final class SecretProtectionPlugin extends VetoPlugin {
      * broadcasts. A closed scope makes its captured references unrecoverable, so capture fails
      * closed until the owner is opened again.
      */
-    public static final class SecretLifecycle extends Listener {
+    public static final class SecretLifecycle implements Listener {
         private final @NonNull SecretCandidateStore candidates;
         private final @NonNull SlmSecretDetector detector;
 

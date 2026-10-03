@@ -102,7 +102,7 @@ class PluginServiceRegistryTest {
                                     CallbackPlugin.class.getConstructor(
                                             PluginContext.class, JsonValue.ObjectValue.class)),
                             new PluginClassLoader(identity.id(), List.of()));
-            var managed = new PluginLifecycle(descriptor, executor);
+            var managed = new ManagedPlugin(descriptor, executor);
             var services = registry.forPlugin(managed);
             try {
                 managed.construct(
@@ -481,9 +481,9 @@ class PluginServiceRegistryTest {
                             throw new ServiceException(ServiceException.Code.UNAVAILABLE);
                         });
         final @NonNull TestPlugin consumer = new TestPlugin("demo.consumer");
-        final @NonNull PluginLifecycle consumerRuntime = new PluginLifecycle(consumer, executor);
-        final @NonNull PluginLifecycle providerRuntime =
-                new PluginLifecycle(new TestPlugin("demo.provider"), executor);
+        final @NonNull ManagedPlugin consumerRuntime = new ManagedPlugin(consumer, executor);
+        final @NonNull ManagedPlugin providerRuntime =
+                new ManagedPlugin(new TestPlugin("demo.provider"), executor);
 
         Pair() throws Exception {
             var builder =

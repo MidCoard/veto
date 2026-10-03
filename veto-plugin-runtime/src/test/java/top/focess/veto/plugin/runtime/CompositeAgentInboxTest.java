@@ -26,7 +26,7 @@ import top.focess.veto.plugin.runtime.CompositeAgentInbox.Entry;
 class CompositeAgentInboxTest {
     private static final class Owner implements AutoCloseable {
         private final @NonNull ExecutorService executor = Executors.newSingleThreadExecutor();
-        private final @NonNull PluginLifecycle plugin;
+        private final @NonNull ManagedPlugin plugin;
 
         private Owner() throws Exception {
             var implementation =
@@ -39,7 +39,7 @@ class CompositeAgentInboxTest {
                             return new PluginIdentity("example.reminders", "1.0.0");
                         }
                     };
-            plugin = new PluginLifecycle(implementation, executor);
+            plugin = new ManagedPlugin(implementation, executor);
             plugin.construct(
                     new PluginContext(
                             implementation.identity(),
@@ -63,7 +63,7 @@ class CompositeAgentInboxTest {
         }
     }
 
-    private static final class Source extends AgentInbox {
+    private static final class Source implements AgentInbox {
         private final @NonNull Observation observation;
         private final @NonNull AtomicInteger completions = new AtomicInteger();
         private final CountDownLatch entered;
@@ -238,7 +238,7 @@ class CompositeAgentInboxTest {
                     }
                 };
         try (var executor = Executors.newSingleThreadExecutor()) {
-            var managed = new PluginLifecycle(plugin, executor);
+            var managed = new ManagedPlugin(plugin, executor);
             try {
                 managed.construct(
                         new PluginContext(

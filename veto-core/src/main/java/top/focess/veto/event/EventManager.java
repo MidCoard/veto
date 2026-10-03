@@ -31,7 +31,7 @@ public final class EventManager {
 
     /** Delivers the event inline using the submitting thread's host invocation context. */
     public void submit(@NonNull Event event) {
-        var publication = plugins.snapshot();
+        var publication = plugins.registry();
         var routes = publication.events();
         if (!routes.hasHandlers(event)) return;
         Set<String> selected = null;

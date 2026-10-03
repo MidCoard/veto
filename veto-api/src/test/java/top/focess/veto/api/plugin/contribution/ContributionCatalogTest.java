@@ -70,7 +70,7 @@ class ContributionCatalogTest {
                         new ContributionId("example.plugin:processors"),
                         1,
                         schema,
-                        ContributionPoint.Cardinality.MULTIPLE) {};
+                        ContributionPoint.Cardinality.MULTIPLE);
         var payload =
                 new JsonValue.ObjectValue(
                         Map.of("service", new JsonValue.StringValue("example:process")));
@@ -365,7 +365,7 @@ class ContributionCatalogTest {
                         Contribution.of(
                                 StandardContributionPoints.CATEGORIES,
                                 "missing",
-                                new ToolCategory("Example", "Example tools") {})));
+                                new ToolCategory("Example", "Example tools"))));
         assertEquals(1, builder.freeze().entries(StandardContributionPoints.TOOLS).size());
     }
 }

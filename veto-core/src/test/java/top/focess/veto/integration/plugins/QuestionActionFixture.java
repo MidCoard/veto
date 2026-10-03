@@ -28,7 +28,7 @@ import top.focess.veto.integration.plugins.storage.PluginInvocationContext;
 import top.focess.veto.integration.plugins.storage.PluginStorageFactory;
 import top.focess.veto.model.SessionEntity;
 import top.focess.veto.model.SessionRepository;
-import top.focess.veto.plugin.runtime.PluginLifecycle;
+import top.focess.veto.plugin.runtime.ManagedPlugin;
 import top.focess.veto.util.Nullness;
 import top.focess.veto.vault.UserContext;
 
@@ -65,7 +65,7 @@ public final class QuestionActionFixture implements AutoCloseable {
         var backing = new ConfigurationStorageFixture();
         PluginStorageFactory storageFactory =
                 new PluginStorageFactory() {
-                    public @NonNull PluginStorage bind(@NonNull PluginLifecycle plugin) {
+                    public @NonNull PluginStorage bind(@NonNull ManagedPlugin plugin) {
                         var storage = backing.bind(plugin);
                         var invocation = new PluginInvocationContext("alice", session.getId());
                         try {
@@ -117,7 +117,7 @@ public final class QuestionActionFixture implements AutoCloseable {
                                         new PluginHostServices(granted))),
                         configuration);
         runtime =
-                manager.catalog().entries(StandardContributionPoints.LISTENERS).stream()
+                manager.registry().entries(StandardContributionPoints.LISTENERS).stream()
                         .map(entry -> entry.implementation())
                         .filter(
                                 value ->

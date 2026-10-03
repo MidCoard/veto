@@ -22,7 +22,7 @@ import top.focess.veto.api.process.CommandResult;
 import top.focess.veto.api.process.ProcessHost;
 
 /** Builtin policy and views around host-authorized process effects. */
-public final class ProcessRuntime extends Listener {
+public final class ProcessRuntime implements Listener {
     private final @NonNull PluginContext context;
     private final @NonNull BackgroundTasks tasks;
     private final @NonNull TaskEvents events;

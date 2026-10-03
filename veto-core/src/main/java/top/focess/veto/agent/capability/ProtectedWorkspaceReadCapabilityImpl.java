@@ -53,7 +53,6 @@ public final class ProtectedWorkspaceReadCapabilityImpl implements WorkspaceRead
             var event =
                     new BeforeTextCommitEvent(
                             new Scope.AgentScope(owner, session.toString(), context.agentId()),
-                            () -> Thread.currentThread().isInterrupted(),
                             BeforeTextCommitEvent.Phase.FILE_CAPTURE,
                             UUID.randomUUID().toString(),
                             input);

@@ -4,16 +4,13 @@ import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.plugin.Scope;
 
 /** A plugin-owned browser module and its scoped backend actions. */
-public abstract class FrontendContribution {
-    /** Constructs a frontend aspect. */
-    protected FrontendContribution() {}
-
+public interface FrontendContribution {
     /**
      * Returns the complete browser ESM source.
      *
      * @return the complete browser ESM source
      */
-    public abstract @NonNull String module();
+    @NonNull String module();
 
     /**
      * Handles a host-authorized action from this module.
@@ -24,7 +21,7 @@ public abstract class FrontendContribution {
      * @return bounded JSON response
      * @throws PluginFailure when the action cannot be completed
      */
-    public abstract @NonNull JsonValue handle(
+    @NonNull JsonValue handle(
             Scope.@NonNull AgentScope scope,
             @NonNull String action,
             JsonValue.@NonNull ObjectValue arguments)

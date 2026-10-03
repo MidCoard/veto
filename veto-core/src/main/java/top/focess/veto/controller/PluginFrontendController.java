@@ -14,6 +14,7 @@ import top.focess.veto.api.plugin.PluginState;
 import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.api.plugin.contract.*;
 import top.focess.veto.integration.plugins.PluginManager;
+import top.focess.veto.integration.plugins.PluginRegistry;
 import top.focess.veto.integration.plugins.SessionPlugins;
 import top.focess.veto.integration.plugins.storage.PluginInvocationContext;
 import top.focess.veto.model.SessionEntity;
@@ -78,9 +79,9 @@ public final class PluginFrontendController {
     @GetMapping
     public @NonNull ResponseEntity<List<Module>> list(@PathVariable @NonNull String name) {
         var ids = ids(session(name));
-        var publication = plugins.snapshot();
+        var publication = plugins.registry();
         var modules =
-                publication.catalog().entries(StandardContributionPoints.FRONTEND).stream()
+                publication.entries(StandardContributionPoints.FRONTEND).stream()
                         .filter(
                                 e ->
                                         ids.contains(e.source().namespace())
@@ -101,13 +102,11 @@ public final class PluginFrontendController {
     }
 
     private @NonNull Map<String, String> toolNames(
-            PluginManager.@NonNull PublishedState publication, @NonNull String pluginId) {
+            @NonNull PluginRegistry publication, @NonNull String pluginId) {
         Map<String, String> names = new LinkedHashMap<>();
-        for (var entry : publication.catalog().entries(StandardContributionPoints.TOOLS)) {
+        for (var entry : publication.entries(StandardContributionPoints.TOOLS)) {
             if (pluginId.equals(entry.source().namespace()))
-                names.put(
-                        entry.id().localId(),
-                        plugins.toolName(publication, pluginId, entry.id().value()));
+                names.put(entry.id().localId(), publication.toolName(entry));
         }
         return Map.copyOf(names);
     }
@@ -135,9 +134,9 @@ public final class PluginFrontendController {
         if (agents.records(UUID.fromString(session.getId())).stream()
                 .noneMatch(agent -> agent.id().equals(request.agentId())))
             throw new ResponseStatusException(HttpStatus.NOT_FOUND);
-        var publication = plugins.snapshot();
+        var publication = plugins.registry();
         var entry =
-                publication.catalog().entries(StandardContributionPoints.FRONTEND).stream()
+                publication.entries(StandardContributionPoints.FRONTEND).stream()
                         .filter(
                                 e ->
                                         ids.contains(e.source().namespace())

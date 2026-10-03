@@ -1413,7 +1413,7 @@ class PlanExecutionTest {
         if (agent == null) throw new AssertionError("Missing agent");
         if (!(ReflectionTestUtils.getField(agent, "runner") instanceof AgentRunner runner))
             throw new AssertionError("Missing runner");
-        if (!(ReflectionTestUtils.getField(AgentLifecycleTestAccess.owner(runner), "toolBoundary")
+        if (!(ReflectionTestUtils.getField(runner, "toolBoundary")
                 instanceof ToolExecutionBoundary boundary))
             throw new AssertionError("Missing tool execution boundary");
         if (!(ReflectionTestUtils.getField(boundary, "gateway") instanceof Gateway original))

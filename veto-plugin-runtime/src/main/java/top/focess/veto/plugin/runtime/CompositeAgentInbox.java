@@ -19,10 +19,10 @@ import top.focess.veto.api.plugin.contract.PluginFailure;
  * callbacks may overlap; source implementations own their concurrency contract. Only weak-route
  * bookkeeping is locked, never source callbacks or selection resolution.
  */
-public final class CompositeAgentInbox extends AgentInbox {
+public final class CompositeAgentInbox implements AgentInbox {
     /** An inbox source paired with its owning plugin and identity namespace. */
     public record Entry(
-            @NonNull String id, @NonNull PluginLifecycle plugin, @NonNull AgentInbox source) {}
+            @NonNull String id, @NonNull ManagedPlugin plugin, @NonNull AgentInbox source) {}
 
     private final @NonNull Supplier<@NonNull List<@NonNull Entry>> entries;
     private final @NonNull ReferenceQueue<Observation> abandoned = new ReferenceQueue<>();
@@ -115,7 +115,7 @@ public final class CompositeAgentInbox extends AgentInbox {
     // The @NonNull bound is required so T satisfies Operation<T>.
     @SuppressWarnings({"resource", "NullableProblems"})
     private static <T extends @NonNull Object> T invoke(
-            @NonNull Entry entry, PluginLifecycle.@NonNull Operation<T> action) {
+            @NonNull Entry entry, ManagedPlugin.@NonNull Operation<T> action) {
         try {
             return entry.plugin().execute(action);
         } catch (PluginFailure failure) {

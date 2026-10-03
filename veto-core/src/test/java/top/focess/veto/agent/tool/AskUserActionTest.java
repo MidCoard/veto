@@ -105,7 +105,10 @@ class AskUserActionTest {
                     new ToolExecutionPermit(
                                     call,
                                     ToolCapability.USER_INTERACTION,
-                                    fixture.manager.plugin("top.focess.builtin").bindingId(),
+                                    fixture.manager
+                                            .registry()
+                                            .plugin("top.focess.builtin")
+                                            .bindingId(),
                                     null,
                                     Map.of(),
                                     List.of(),
@@ -151,10 +154,14 @@ class AskUserActionTest {
                 if (stop) {
                     if (fail)
                         ReflectionTestUtils.invokeMethod(
-                                fixture.manager.plugin("top.focess.builtin"), "fail");
+                                fixture.manager.registry().plugin("top.focess.builtin"), "fail");
                     var closed =
                             executor.submit(
-                                    () -> fixture.manager.plugin("top.focess.builtin").close());
+                                    () ->
+                                            fixture.manager
+                                                    .registry()
+                                                    .plugin("top.focess.builtin")
+                                                    .close());
                     closed.get(3, TimeUnit.SECONDS);
                 } else if (cancel) {
                     mvc.perform(
