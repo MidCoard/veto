@@ -225,8 +225,8 @@ public final class PluginManager implements AutoCloseable {
     @SuppressWarnings("UnusedAssignment")
     private volatile @NonNull PluginRegistry published = PluginRegistry.empty();
 
-    private @NonNull Map<String, String> aliases;
-    private @NonNull List<Registration> stagedRegistrations;
+    private final @NonNull Map<String, String> aliases;
+    private final @NonNull List<Registration> stagedRegistrations;
 
     // WHY: volatile publishes the completed constructor to deferred plugin registration callbacks.
     @SuppressWarnings("FieldMayBeFinal")
