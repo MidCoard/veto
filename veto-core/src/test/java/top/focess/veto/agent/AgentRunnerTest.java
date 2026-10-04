@@ -30,7 +30,8 @@ import top.focess.veto.agent.continuation.RequestContinuationRepository;
 import top.focess.veto.agent.continuation.RequestContinuationStore;
 import top.focess.veto.agent.identity.SystemPromptResolver;
 import top.focess.veto.agent.intercept.HitlRegistry;
-import top.focess.veto.agent.intercept.IngressDefense;
+import top.focess.veto.agent.intercept.IngressDefenseTestSupport;
+import top.focess.veto.agent.loop.ContextBudgetConfiguration;
 import top.focess.veto.agent.loop.PromptCompiler;
 import top.focess.veto.agent.tool.AgentToolDefinition;
 import top.focess.veto.agent.tool.NativeToolDefinition;
@@ -59,7 +60,11 @@ import top.focess.veto.builtin.monitor.MonitorService;
 import top.focess.veto.builtin.questions.QuestionRuntime;
 import top.focess.veto.builtin.tools.AskUserTool;
 import top.focess.veto.builtin.tools.RunTaskTool;
+import top.focess.veto.bus.SessionInvalidations;
+import top.focess.veto.event.EventManager;
 import top.focess.veto.integration.plugins.QuestionTestSupport;
+import top.focess.veto.integration.plugins.SessionPlugins;
+import top.focess.veto.llm.core.ToolResultPresenter;
 import top.focess.veto.llm.core.UniformLLMCaller;
 import top.focess.veto.memory.TurnLogService;
 import top.focess.veto.util.Nullness;
@@ -70,7 +75,13 @@ class AgentRunnerTest {
         ApplicationContext spring = Mockito.mock(ApplicationContext.class);
         var tool = new AskUserTool(questions);
         Mockito.when(spring.getBeansOfType(AgentTool.class)).thenReturn(Map.of("askUser", tool));
-        var engine = new ToolEngineImpl(new ObjectMapper(), List.of(), spring);
+        var engine =
+                new ToolEngineImpl(
+                        new ObjectMapper(),
+                        List.of(),
+                        spring,
+                        Mockito.mock(SessionPlugins.class),
+                        Mockito.mock(EventManager.class));
         ReflectionTestUtils.invokeMethod(engine, "init");
         return engine;
     }
@@ -109,8 +120,17 @@ class AgentRunnerTest {
             throws Exception {
         var questions = new QuestionRuntime(QuestionTestSupport.host());
         AtomicInteger calls = new AtomicInteger();
+        var dependencies = new AgentServiceTestSupport.Dependencies();
+        if (action.equals("HISTORY_FAIL")) {
+            TurnLogService turns = Mockito.mock(TurnLogService.class);
+            Mockito.doThrow(new IllegalStateException("Answer log unavailable"))
+                    .when(turns)
+                    .logRequired(Mockito.any(), Mockito.any(), Mockito.any(), Mockito.anyString());
+            dependencies.history(turns);
+        }
         var service =
                 serviceWith(
+                        dependencies,
                         (request, modelSessionId) -> {
                             if (calls.getAndIncrement() == 0)
                                 return new VetoResponse(
@@ -119,14 +139,8 @@ class AgentRunnerTest {
                         },
                         5,
                         questionEngine(questions),
-                        new HitlRegistry());
-        if (action.equals("HISTORY_FAIL")) {
-            TurnLogService turns = Mockito.mock(TurnLogService.class);
-            Mockito.doThrow(new IllegalStateException("Answer log unavailable"))
-                    .when(turns)
-                    .logRequired(Mockito.any(), Mockito.any(), Mockito.any(), Mockito.anyString());
-            ReflectionTestUtils.setField(service, "turnLogService", turns);
-        }
+                        new HitlRegistry(null, Mockito.mock(SessionInvalidations.class)));
+
         var questionRequest =
                 service.submitNow("question-wait", "Ask for a format", binding("System"));
         var agent = requireAgent(service.agent("question-wait"));
@@ -313,12 +327,7 @@ class AgentRunnerTest {
     @Test
     void restoredCancellationPreventsLateProcessReasoningButAllowsNewWork() throws Exception {
         AtomicInteger calls = new AtomicInteger();
-        var service =
-                serviceWith(
-                        (request, modelSessionId) -> {
-                            calls.incrementAndGet();
-                            return new VetoResponse(null, null, "New task done");
-                        });
+
         UUID session = UUID.randomUUID();
         String agentId = UUID.randomUUID().toString();
         String oldRequest = "cancelled-request";
@@ -327,7 +336,14 @@ class AgentRunnerTest {
                 .thenReturn(
                         Optional.of(
                                 new RequestContinuationStore.Checkpoint("Old cancelled task", 1)));
-        service.attachContinuationStore(store);
+
+        var service =
+                serviceWith(
+                        new AgentServiceTestSupport.Dependencies().continuations(store),
+                        (request, modelSessionId) -> {
+                            calls.incrementAndGet();
+                            return new VetoResponse(null, null, "New task done");
+                        });
         List<TurnRecord> restored =
                 List.of(
                         new TurnRecord(
@@ -774,7 +790,7 @@ class AgentRunnerTest {
                         },
                         50,
                         engine,
-                        new HitlRegistry());
+                        new HitlRegistry(null, Mockito.mock(SessionInvalidations.class)));
         try {
             service.submit("active-wait-failure", "Initialize", binding("System"), EPISODE_TIMEOUT);
             var agent = requireAgent(service.agent("active-wait-failure"));
@@ -1233,15 +1249,47 @@ class AgentRunnerTest {
 
     /** Builds an {@link AgentService} wired with the default stubs + a capturing caller. */
     static @NonNull AgentService serviceWith(@NonNull UniformLLMCaller caller) {
-        return serviceWith(caller, 50L);
+        return serviceWith(new AgentServiceTestSupport.Dependencies(), caller);
+    }
+
+    static @NonNull AgentService serviceWith(
+            AgentServiceTestSupport.@NonNull Dependencies dependencies,
+            @NonNull UniformLLMCaller caller) {
+        return serviceWith(dependencies, caller, 50L);
     }
 
     static @NonNull AgentService serviceWith(
             @NonNull UniformLLMCaller caller, long maxCallsPerEpisode) {
-        return serviceWith(caller, maxCallsPerEpisode, new TestToolEngine(), new HitlRegistry());
+        return serviceWith(new AgentServiceTestSupport.Dependencies(), caller, maxCallsPerEpisode);
     }
 
     static @NonNull AgentService serviceWith(
+            AgentServiceTestSupport.@NonNull Dependencies dependencies,
+            @NonNull UniformLLMCaller caller,
+            long maxCallsPerEpisode) {
+        return serviceWith(
+                dependencies,
+                caller,
+                maxCallsPerEpisode,
+                new TestToolEngine(),
+                new HitlRegistry(null, Mockito.mock(SessionInvalidations.class)));
+    }
+
+    static @NonNull AgentService serviceWith(
+            @NonNull UniformLLMCaller caller,
+            long maxCallsPerEpisode,
+            @NonNull ToolEngine engine,
+            @NonNull HitlRegistry hitl) {
+        return serviceWith(
+                new AgentServiceTestSupport.Dependencies(),
+                caller,
+                maxCallsPerEpisode,
+                engine,
+                hitl);
+    }
+
+    static @NonNull AgentService serviceWith(
+            AgentServiceTestSupport.@NonNull Dependencies dependencies,
             @NonNull UniformLLMCaller caller,
             long maxCallsPerEpisode,
             @NonNull ToolEngine engine,
@@ -1252,14 +1300,16 @@ class AgentRunnerTest {
                         new VetoCapabilityTranslator(),
                         new SystemPromptResolver(),
                         mapper,
-                        "FULL_ACCESS");
-        // Spring injects configuration in production; the unit test supplies explicit budgets.
-        ReflectionTestUtils.setField(compiler, "maxInputTokens", 32000);
-        ReflectionTestUtils.setField(compiler, "contextFillRatio", 0.9);
-        return new AgentService(
+                        new ToolResultPresenter(mapper),
+                        "FULL_ACCESS",
+                        new ContextBudgetConfiguration(),
+                        32000,
+                        0.9);
+        return AgentServiceTestSupport.create(
+                dependencies,
                 engine,
                 hitl,
-                new IngressDefense(),
+                IngressDefenseTestSupport.inMemory(),
                 compiler,
                 caller,
                 mapper,
@@ -1279,14 +1329,15 @@ class AgentRunnerTest {
         String agentId = UUID.randomUUID().toString();
         RequestContinuationStore store = Mockito.mock(RequestContinuationStore.class);
         var calls = new AtomicInteger();
+
         var service =
                 serviceWith(
+                        new AgentServiceTestSupport.Dependencies().continuations(store),
                         (request, modelSessionId) -> {
                             calls.incrementAndGet();
                             return new VetoResponse(null, null, "done");
                         },
                         1L);
-        service.attachContinuationStore(store);
         var history =
                 List.of(
                         new TurnRecord(
@@ -1350,8 +1401,10 @@ class AgentRunnerTest {
                         });
         var store = new RequestContinuationStore(repository);
         var calls = new AtomicInteger();
+
         var service =
                 serviceWith(
+                        new AgentServiceTestSupport.Dependencies().continuations(store),
                         (request, modelSessionId) -> {
                             int current = calls.incrementAndGet();
                             assertEquals(
@@ -1374,7 +1427,6 @@ class AgentRunnerTest {
                                     : new VetoResponse(null, null, "Done");
                         },
                         1L);
-        service.attachContinuationStore(store);
         String session = UUID.randomUUID().toString();
         try {
             assertFalse(
@@ -1490,7 +1542,7 @@ class AgentRunnerTest {
                         Map.of());
         Mockito.when(engine.getActiveTools(Mockito.any())).thenReturn(List.of(definition));
         Mockito.when(engine.resolveDefinition("run_task")).thenReturn(definition);
-        var hitl = new HitlRegistry();
+        var hitl = new HitlRegistry(null, Mockito.mock(SessionInvalidations.class));
         AtomicInteger attempts = new AtomicInteger();
         var service =
                 serviceWith(

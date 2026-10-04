@@ -7,7 +7,6 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import org.jspecify.annotations.NonNull;
 import org.springframework.beans.factory.ObjectProvider;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -30,11 +29,10 @@ import top.focess.veto.vault.UserContext;
 /** Generic effects; feature interpretation and scheduling belong to their plugins. */
 @Configuration(proxyBeanMethods = false)
 public class PluginHostConfiguration {
-    private DeltaBroker broker;
+    private final @NonNull DeltaBroker broker;
 
-    /** Attaches the delta broker used to publish plugin events to sessions. */
-    @Autowired
-    public void attachBroker(@NonNull DeltaBroker broker) {
+    /** Creates the host adapters with their session event transport. */
+    public PluginHostConfiguration(@NonNull DeltaBroker broker) {
         this.broker = broker;
     }
 
@@ -85,9 +83,6 @@ public class PluginHostConfiguration {
                             @NonNull String session,
                             @NonNull String topic,
                             JsonValue.@NonNull ObjectValue facts) {
-                        var publisher = broker;
-                        if (publisher == null)
-                            throw new IllegalStateException("Plugin transport unavailable");
                         var mapper = new ObjectMapper();
                         Map<String, JsonNode> attrs =
                                 Map.of(
@@ -95,7 +90,7 @@ public class PluginHostConfiguration {
                                         mapper.valueToTree(topic),
                                         "data",
                                         mapper.valueToTree(JsonValues.toMap(facts)));
-                        publisher.publish(
+                        broker.publish(
                                 new DeltaFrame(
                                         UUID.fromString(session),
                                         0,

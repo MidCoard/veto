@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.BeforeEach;
@@ -24,15 +25,25 @@ import top.focess.veto.agent.SessionAgentRegistry;
 import top.focess.veto.agent.TurnRecord;
 import top.focess.veto.agent.TurnType;
 import top.focess.veto.agent.VetoAgent;
+import top.focess.veto.agent.continuation.RequestContinuationStore;
+import top.focess.veto.agent.identity.AgentPersona;
+import top.focess.veto.agent.identity.Role;
+import top.focess.veto.agent.intercept.HitlRecordRepository;
+import top.focess.veto.agent.screening.DeployerPolicy;
+import top.focess.veto.agent.workspace.WorkspaceAdmissionPolicy;
 import top.focess.veto.api.agent.AgentState;
 import top.focess.veto.api.event.BeforeTextCommitEvent;
 import top.focess.veto.api.event.SessionDeletedEvent;
 import top.focess.veto.api.llm.ProviderType;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.api.plugin.Scope;
+import top.focess.veto.bus.SessionInvalidations;
 import top.focess.veto.event.EventManager;
 import top.focess.veto.integration.plugins.PluginDataCleanup;
 import top.focess.veto.integration.plugins.PluginTestSupport;
+import top.focess.veto.integration.plugins.SessionPlugins;
+import top.focess.veto.integration.plugins.storage.ScopedPluginStorage;
+import top.focess.veto.memory.TurnRecordRepository;
 import top.focess.veto.model.AgentEntity;
 import top.focess.veto.model.AgentInstanceRepository;
 import top.focess.veto.model.AgentPatternEntity;
@@ -53,12 +64,26 @@ class SessionServiceTest {
         var session = new SessionEntity("alice", "coder");
         var sessionId = UUID.fromString(session.getId());
         when(sessions.findByOwner("alice")).thenReturn(List.of(session));
-        try (var registry = new SessionAgentRegistry()) {
+        try (var registry =
+                new SessionAgentRegistry(
+                        mock(AgentInstanceRepository.class),
+                        mock(TurnRecordRepository.class),
+                        mock(SessionInvalidations.class))) {
             var primary = mock(VetoAgent.class);
             when(primary.id()).thenReturn("primary");
+            when(primary.name()).thenReturn("primary");
+            when(primary.persona())
+                    .thenReturn(
+                            new AgentPersona(
+                                    "primary", "primary", "Test agent", Set.of(), Role.STANDALONE));
             when(primary.state()).thenReturn(AgentState.IDLE);
             var peer = mock(VetoAgent.class);
             when(peer.id()).thenReturn("peer");
+            when(peer.name()).thenReturn("peer");
+            when(peer.persona())
+                    .thenReturn(
+                            new AgentPersona(
+                                    "peer", "peer", "Test agent", Set.of(), Role.STANDALONE));
             when(peer.state()).thenReturn(AgentState.IDLE);
             registry.register(sessionId, primary);
             registry.register(sessionId, peer);
@@ -72,7 +97,14 @@ class SessionServiceTest {
                             mock(AgentService.class),
                             registry,
                             mock(SessionHistoryLoader.class),
-                            mock(ModelTierRegistry.class));
+                            mock(ModelTierRegistry.class),
+                            new WorkspaceAdmissionPolicy(List.of(), DeployerPolicy.FULL_ACCESS),
+                            mock(ScopedPluginStorage.class),
+                            mock(HitlRecordRepository.class),
+                            mock(SessionPlugins.class),
+                            mock(EventManager.class),
+                            mock(PluginDataCleanup.class),
+                            mock(RequestContinuationStore.class));
             assertTrue(service.delete("alice", "coder"));
             assertTrue(registry.agents(sessionId).isEmpty());
             verify(peer).terminate();
@@ -85,6 +117,7 @@ class SessionServiceTest {
         var agentService = mock(AgentService.class);
         var session = new SessionEntity("alice", "coder");
         when(sessions.findByOwner("alice")).thenReturn(List.of(session));
+        var events = mock(EventManager.class);
         var service =
                 new SessionService(
                         sessions,
@@ -93,9 +126,15 @@ class SessionServiceTest {
                         agentService,
                         liveAgents,
                         mock(SessionHistoryLoader.class),
-                        mock(ModelTierRegistry.class));
-        var events = mock(EventManager.class);
-        service.attachEventManager(events);
+                        mock(ModelTierRegistry.class),
+                        new WorkspaceAdmissionPolicy(List.of(), DeployerPolicy.FULL_ACCESS),
+                        mock(ScopedPluginStorage.class),
+                        mock(HitlRecordRepository.class),
+                        mock(SessionPlugins.class),
+                        events,
+                        mock(PluginDataCleanup.class),
+                        mock(RequestContinuationStore.class));
+
         TransactionSynchronizationManager.initSynchronization();
         TransactionSynchronizationManager.setActualTransactionActive(true);
         try {
@@ -138,7 +177,20 @@ class SessionServiceTest {
         when(runtime.userIdForOwner("alice")).thenReturn(user);
         var service =
                 new SessionService(
-                        sessions, agents, patterns, runtime, liveAgents, history, tierRegistry);
+                        sessions,
+                        agents,
+                        patterns,
+                        runtime,
+                        liveAgents,
+                        history,
+                        tierRegistry,
+                        new WorkspaceAdmissionPolicy(List.of(), DeployerPolicy.FULL_ACCESS),
+                        mock(ScopedPluginStorage.class),
+                        mock(HitlRecordRepository.class),
+                        mock(SessionPlugins.class),
+                        mock(EventManager.class),
+                        mock(PluginDataCleanup.class),
+                        mock(RequestContinuationStore.class));
         UUID id = UUID.fromString(session.getId());
         assertFalse(service.activateForObservation(id, "bob", primary.getId()));
         assertFalse(service.activateForObservation(id, "alice", primary.getId()));
@@ -216,7 +268,20 @@ class SessionServiceTest {
 
         SessionService service =
                 new SessionService(
-                        sessions, agents, patterns, agentService, liveAgents, loader, tierRegistry);
+                        sessions,
+                        agents,
+                        patterns,
+                        agentService,
+                        liveAgents,
+                        loader,
+                        tierRegistry,
+                        new WorkspaceAdmissionPolicy(List.of(), DeployerPolicy.FULL_ACCESS),
+                        mock(ScopedPluginStorage.class),
+                        mock(HitlRecordRepository.class),
+                        mock(SessionPlugins.class),
+                        mock(EventManager.class),
+                        mock(PluginDataCleanup.class),
+                        mock(RequestContinuationStore.class));
 
         SessionEntity session = service.createSession("alice", "coder");
         assertEquals(ToolResultPresentationMode.BASIC, session.getToolResultPresentation());
@@ -243,7 +308,20 @@ class SessionServiceTest {
 
         SessionService service =
                 new SessionService(
-                        sessions, agents, patterns, agentService, liveAgents, loader, tierRegistry);
+                        sessions,
+                        agents,
+                        patterns,
+                        agentService,
+                        liveAgents,
+                        loader,
+                        tierRegistry,
+                        new WorkspaceAdmissionPolicy(List.of(), DeployerPolicy.FULL_ACCESS),
+                        mock(ScopedPluginStorage.class),
+                        mock(HitlRecordRepository.class),
+                        mock(SessionPlugins.class),
+                        mock(EventManager.class),
+                        mock(PluginDataCleanup.class),
+                        mock(RequestContinuationStore.class));
 
         SessionEntity session =
                 service.createSession(
@@ -274,7 +352,20 @@ class SessionServiceTest {
 
         SessionService service =
                 new SessionService(
-                        sessions, agents, patterns, agentService, liveAgents, loader, tierRegistry);
+                        sessions,
+                        agents,
+                        patterns,
+                        agentService,
+                        liveAgents,
+                        loader,
+                        tierRegistry,
+                        new WorkspaceAdmissionPolicy(List.of(), DeployerPolicy.FULL_ACCESS),
+                        mock(ScopedPluginStorage.class),
+                        mock(HitlRecordRepository.class),
+                        mock(SessionPlugins.class),
+                        mock(EventManager.class),
+                        mock(PluginDataCleanup.class),
+                        mock(RequestContinuationStore.class));
 
         SessionEntity session = service.createSession("alice", "coder", null, CWD);
         assertTrue(
@@ -316,7 +407,20 @@ class SessionServiceTest {
 
         SessionService service =
                 new SessionService(
-                        sessions, agents, patterns, agentService, liveAgents, loader, tierRegistry);
+                        sessions,
+                        agents,
+                        patterns,
+                        agentService,
+                        liveAgents,
+                        loader,
+                        tierRegistry,
+                        new WorkspaceAdmissionPolicy(List.of(), DeployerPolicy.FULL_ACCESS),
+                        mock(ScopedPluginStorage.class),
+                        mock(HitlRecordRepository.class),
+                        mock(SessionPlugins.class),
+                        mock(EventManager.class),
+                        mock(PluginDataCleanup.class),
+                        mock(RequestContinuationStore.class));
 
         Optional<LlmConfig> cfg = service.activate("term-1", "coder", "alice", CWD);
         assertTrue(cfg.isPresent());
@@ -359,7 +463,20 @@ class SessionServiceTest {
 
         SessionService service =
                 new SessionService(
-                        sessions, agents, patterns, agentService, liveAgents, loader, tierRegistry);
+                        sessions,
+                        agents,
+                        patterns,
+                        agentService,
+                        liveAgents,
+                        loader,
+                        tierRegistry,
+                        new WorkspaceAdmissionPolicy(List.of(), DeployerPolicy.FULL_ACCESS),
+                        mock(ScopedPluginStorage.class),
+                        mock(HitlRecordRepository.class),
+                        mock(SessionPlugins.class),
+                        mock(EventManager.class),
+                        mock(PluginDataCleanup.class),
+                        mock(RequestContinuationStore.class));
         service.activate("term-1", "coder", "alice", CWD);
         service.deactivate("term-1");
         assertTrue(service.activeSession("term-1").isEmpty());
@@ -396,7 +513,20 @@ class SessionServiceTest {
 
         SessionService service =
                 new SessionService(
-                        sessions, agents, patterns, agentService, liveAgents, loader, tierRegistry);
+                        sessions,
+                        agents,
+                        patterns,
+                        agentService,
+                        liveAgents,
+                        loader,
+                        tierRegistry,
+                        new WorkspaceAdmissionPolicy(List.of(), DeployerPolicy.FULL_ACCESS),
+                        mock(ScopedPluginStorage.class),
+                        mock(HitlRecordRepository.class),
+                        mock(SessionPlugins.class),
+                        mock(EventManager.class),
+                        mock(PluginDataCleanup.class),
+                        mock(RequestContinuationStore.class));
         service.activate("term-1", "coder", "alice", CWD);
         assertTrue(service.activeSession("term-1").isPresent());
 
@@ -437,7 +567,20 @@ class SessionServiceTest {
 
         SessionService service =
                 new SessionService(
-                        sessions, agents, patterns, agentService, liveAgents, loader, tierRegistry);
+                        sessions,
+                        agents,
+                        patterns,
+                        agentService,
+                        liveAgents,
+                        loader,
+                        tierRegistry,
+                        new WorkspaceAdmissionPolicy(List.of(), DeployerPolicy.FULL_ACCESS),
+                        mock(ScopedPluginStorage.class),
+                        mock(HitlRecordRepository.class),
+                        mock(SessionPlugins.class),
+                        mock(EventManager.class),
+                        mock(PluginDataCleanup.class),
+                        mock(RequestContinuationStore.class));
 
         Optional<LlmConfig> cfg = service.resumeLastSession("term-1", "alice", CWD);
         assertTrue(cfg.isPresent(), "last session auto-resumed");
@@ -455,7 +598,20 @@ class SessionServiceTest {
 
         SessionService service =
                 new SessionService(
-                        sessions, agents, patterns, agentService, liveAgents, loader, tierRegistry);
+                        sessions,
+                        agents,
+                        patterns,
+                        agentService,
+                        liveAgents,
+                        loader,
+                        tierRegistry,
+                        new WorkspaceAdmissionPolicy(List.of(), DeployerPolicy.FULL_ACCESS),
+                        mock(ScopedPluginStorage.class),
+                        mock(HitlRecordRepository.class),
+                        mock(SessionPlugins.class),
+                        mock(EventManager.class),
+                        mock(PluginDataCleanup.class),
+                        mock(RequestContinuationStore.class));
         assertTrue(service.resumeLastSession("term-1", "alice", CWD).isEmpty());
         assertTrue(service.activeSession("term-1").isEmpty());
     }
@@ -471,7 +627,20 @@ class SessionServiceTest {
 
         SessionService service =
                 new SessionService(
-                        sessions, agents, patterns, agentService, liveAgents, loader, tierRegistry);
+                        sessions,
+                        agents,
+                        patterns,
+                        agentService,
+                        liveAgents,
+                        loader,
+                        tierRegistry,
+                        new WorkspaceAdmissionPolicy(List.of(), DeployerPolicy.FULL_ACCESS),
+                        mock(ScopedPluginStorage.class),
+                        mock(HitlRecordRepository.class),
+                        mock(SessionPlugins.class),
+                        mock(EventManager.class),
+                        mock(PluginDataCleanup.class),
+                        mock(RequestContinuationStore.class));
         assertThrows(IllegalArgumentException.class, () -> service.createSession("alice", "nope"));
     }
 
@@ -504,12 +673,6 @@ class SessionServiceTest {
                         anyString(), any(), any(), anyList(), any(), any(), any(), anyInt(), any()))
                 .thenReturn(mock(Agent.class));
 
-        SessionService service =
-                new SessionService(
-                        sessions, agents, patterns, agentService, liveAgents, loader, tierRegistry);
-        service.activate("term-1", "coder", "alice", CWD);
-        assertTrue(service.activeSession("term-1").isPresent());
-
         boolean removed;
         var scope = new Scope.AgentScope("alice", session.getId(), agent.getId());
         try (var plugins = PluginTestSupport.manager()) {
@@ -518,10 +681,25 @@ class SessionServiceTest {
             var user = mock(UserEntity.class);
             when(user.storageIdentity()).thenReturn("alice-storage-identity");
             when(users.findByUsername("alice")).thenReturn(Optional.of(user));
-            var cleanup = new PluginDataCleanup(plugins);
-            cleanup.attachUsers(users);
-            service.attachPluginDataCleanup(cleanup);
-            service.attachEventManager(events);
+            var cleanup = new PluginDataCleanup(plugins, users);
+            SessionService service =
+                    new SessionService(
+                            sessions,
+                            agents,
+                            patterns,
+                            agentService,
+                            liveAgents,
+                            loader,
+                            tierRegistry,
+                            new WorkspaceAdmissionPolicy(List.of(), DeployerPolicy.FULL_ACCESS),
+                            mock(ScopedPluginStorage.class),
+                            mock(HitlRecordRepository.class),
+                            mock(SessionPlugins.class),
+                            events,
+                            cleanup,
+                            mock(RequestContinuationStore.class));
+            service.activate("term-1", "coder", "alice", CWD);
+            assertTrue(service.activeSession("term-1").isPresent());
             String captured =
                     PluginTestSupport.protect(
                             plugins,
@@ -556,6 +734,7 @@ class SessionServiceTest {
             } finally {
                 TransactionSynchronizationManager.clear();
             }
+            assertTrue(service.activeSession("term-1").isEmpty(), "terminal detached on delete");
             assertTrue(PluginTestSupport.reveal(plugins, scope, secret).isEmpty());
             // The retired session cannot capture new references. Its listener failure is
             // contained by event delivery, leaving the submitted text unchanged.
@@ -573,7 +752,6 @@ class SessionServiceTest {
         verify(liveAgents).stopSession(UUID.fromString(session.getId()));
         verify(agents).deleteBySessionId(session.getId());
         verify(sessions).delete(session);
-        assertTrue(service.activeSession("term-1").isEmpty(), "terminal detached on delete");
     }
 
     @Test
@@ -589,7 +767,20 @@ class SessionServiceTest {
 
         SessionService service =
                 new SessionService(
-                        sessions, agents, patterns, agentService, liveAgents, loader, tierRegistry);
+                        sessions,
+                        agents,
+                        patterns,
+                        agentService,
+                        liveAgents,
+                        loader,
+                        tierRegistry,
+                        new WorkspaceAdmissionPolicy(List.of(), DeployerPolicy.FULL_ACCESS),
+                        mock(ScopedPluginStorage.class),
+                        mock(HitlRecordRepository.class),
+                        mock(SessionPlugins.class),
+                        mock(EventManager.class),
+                        mock(PluginDataCleanup.class),
+                        mock(RequestContinuationStore.class));
         assertFalse(service.delete("alice", "nope"));
         verify(liveAgents, never()).stopSession(any());
     }
@@ -635,7 +826,20 @@ class SessionServiceTest {
 
         SessionService service =
                 new SessionService(
-                        sessions, agents, patterns, agentService, liveAgents, loader, tierRegistry);
+                        sessions,
+                        agents,
+                        patterns,
+                        agentService,
+                        liveAgents,
+                        loader,
+                        tierRegistry,
+                        new WorkspaceAdmissionPolicy(List.of(), DeployerPolicy.FULL_ACCESS),
+                        mock(ScopedPluginStorage.class),
+                        mock(HitlRecordRepository.class),
+                        mock(SessionPlugins.class),
+                        mock(EventManager.class),
+                        mock(PluginDataCleanup.class),
+                        mock(RequestContinuationStore.class));
         service.activate("term-1", "coder", "alice", CWD);
 
         // The replayed history loaded from the durable log is threaded into getOrCreateAgent so the
@@ -673,7 +877,20 @@ class SessionServiceTest {
                 .thenAnswer(invocation -> invocation.getArgument(0));
         SessionService service =
                 new SessionService(
-                        sessions, agents, patterns, agentService, liveAgents, loader, tierRegistry);
+                        sessions,
+                        agents,
+                        patterns,
+                        agentService,
+                        liveAgents,
+                        loader,
+                        tierRegistry,
+                        new WorkspaceAdmissionPolicy(List.of(), DeployerPolicy.FULL_ACCESS),
+                        mock(ScopedPluginStorage.class),
+                        mock(HitlRecordRepository.class),
+                        mock(SessionPlugins.class),
+                        mock(EventManager.class),
+                        mock(PluginDataCleanup.class),
+                        mock(RequestContinuationStore.class));
 
         SessionEntity created =
                 service.createSession(
@@ -696,7 +913,20 @@ class SessionServiceTest {
         when(patterns.findByNameAndOwner("coder", "alice")).thenReturn(Optional.of(pattern));
         SessionService service =
                 new SessionService(
-                        sessions, agents, patterns, agentService, liveAgents, loader, tierRegistry);
+                        sessions,
+                        agents,
+                        patterns,
+                        agentService,
+                        liveAgents,
+                        loader,
+                        tierRegistry,
+                        new WorkspaceAdmissionPolicy(List.of(), DeployerPolicy.FULL_ACCESS),
+                        mock(ScopedPluginStorage.class),
+                        mock(HitlRecordRepository.class),
+                        mock(SessionPlugins.class),
+                        mock(EventManager.class),
+                        mock(PluginDataCleanup.class),
+                        mock(RequestContinuationStore.class));
 
         IllegalArgumentException failure =
                 assertThrows(
@@ -755,7 +985,20 @@ class SessionServiceTest {
 
         SessionService service =
                 new SessionService(
-                        sessions, agents, patterns, agentService, liveAgents, loader, tierRegistry);
+                        sessions,
+                        agents,
+                        patterns,
+                        agentService,
+                        liveAgents,
+                        loader,
+                        tierRegistry,
+                        new WorkspaceAdmissionPolicy(List.of(), DeployerPolicy.FULL_ACCESS),
+                        mock(ScopedPluginStorage.class),
+                        mock(HitlRecordRepository.class),
+                        mock(SessionPlugins.class),
+                        mock(EventManager.class),
+                        mock(PluginDataCleanup.class),
+                        mock(RequestContinuationStore.class));
 
         // Terminal in projectA: sees inA (exact) + legacy (null = any) — NOT inB.
         List<SessionEntity> seenInA = service.listSessions("alice", projectA);
@@ -791,7 +1034,20 @@ class SessionServiceTest {
 
         SessionService service =
                 new SessionService(
-                        sessions, agents, patterns, agentService, liveAgents, loader, tierRegistry);
+                        sessions,
+                        agents,
+                        patterns,
+                        agentService,
+                        liveAgents,
+                        loader,
+                        tierRegistry,
+                        new WorkspaceAdmissionPolicy(List.of(), DeployerPolicy.FULL_ACCESS),
+                        mock(ScopedPluginStorage.class),
+                        mock(HitlRecordRepository.class),
+                        mock(SessionPlugins.class),
+                        mock(EventManager.class),
+                        mock(PluginDataCleanup.class),
+                        mock(RequestContinuationStore.class));
 
         // Single-arg REST-style list returns every session regardless of binding.
         assertEquals(2, service.listSessions("alice").size());
@@ -813,7 +1069,20 @@ class SessionServiceTest {
 
         SessionService service =
                 new SessionService(
-                        sessions, agents, patterns, agentService, liveAgents, loader, tierRegistry);
+                        sessions,
+                        agents,
+                        patterns,
+                        agentService,
+                        liveAgents,
+                        loader,
+                        tierRegistry,
+                        new WorkspaceAdmissionPolicy(List.of(), DeployerPolicy.FULL_ACCESS),
+                        mock(ScopedPluginStorage.class),
+                        mock(HitlRecordRepository.class),
+                        mock(SessionPlugins.class),
+                        mock(EventManager.class),
+                        mock(PluginDataCleanup.class),
+                        mock(RequestContinuationStore.class));
 
         IllegalArgumentException ex =
                 assertThrows(
@@ -865,7 +1134,20 @@ class SessionServiceTest {
 
         SessionService service =
                 new SessionService(
-                        sessions, agents, patterns, agentService, liveAgents, loader, tierRegistry);
+                        sessions,
+                        agents,
+                        patterns,
+                        agentService,
+                        liveAgents,
+                        loader,
+                        tierRegistry,
+                        new WorkspaceAdmissionPolicy(List.of(), DeployerPolicy.FULL_ACCESS),
+                        mock(ScopedPluginStorage.class),
+                        mock(HitlRecordRepository.class),
+                        mock(SessionPlugins.class),
+                        mock(EventManager.class),
+                        mock(PluginDataCleanup.class),
+                        mock(RequestContinuationStore.class));
 
         // Subdirectory of the bound workspace: still in-scope.
         Optional<LlmConfig> cfg = service.activate("term-1", "alpha", "alice", projectASub);
@@ -896,7 +1178,20 @@ class SessionServiceTest {
 
         SessionService service =
                 new SessionService(
-                        sessions, agents, patterns, agentService, liveAgents, loader, tierRegistry);
+                        sessions,
+                        agents,
+                        patterns,
+                        agentService,
+                        liveAgents,
+                        loader,
+                        tierRegistry,
+                        new WorkspaceAdmissionPolicy(List.of(), DeployerPolicy.FULL_ACCESS),
+                        mock(ScopedPluginStorage.class),
+                        mock(HitlRecordRepository.class),
+                        mock(SessionPlugins.class),
+                        mock(EventManager.class),
+                        mock(PluginDataCleanup.class),
+                        mock(RequestContinuationStore.class));
 
         Optional<LlmConfig> cfg = service.resumeLastSession("term-1", "alice", projectB);
         assertTrue(
@@ -954,7 +1249,20 @@ class SessionServiceTest {
 
         SessionService service =
                 new SessionService(
-                        sessions, agents, patterns, agentService, liveAgents, loader, tierRegistry);
+                        sessions,
+                        agents,
+                        patterns,
+                        agentService,
+                        liveAgents,
+                        loader,
+                        tierRegistry,
+                        new WorkspaceAdmissionPolicy(List.of(), DeployerPolicy.FULL_ACCESS),
+                        mock(ScopedPluginStorage.class),
+                        mock(HitlRecordRepository.class),
+                        mock(SessionPlugins.class),
+                        mock(EventManager.class),
+                        mock(PluginDataCleanup.class),
+                        mock(RequestContinuationStore.class));
 
         Optional<LlmConfig> cfg = service.resumeLastSession("term-1", "alice", projectA);
         assertTrue(cfg.isPresent());
@@ -988,7 +1296,20 @@ class SessionServiceTest {
 
         SessionService service =
                 new SessionService(
-                        sessions, agents, patterns, agentService, liveAgents, loader, tierRegistry);
+                        sessions,
+                        agents,
+                        patterns,
+                        agentService,
+                        liveAgents,
+                        loader,
+                        tierRegistry,
+                        new WorkspaceAdmissionPolicy(List.of(), DeployerPolicy.FULL_ACCESS),
+                        mock(ScopedPluginStorage.class),
+                        mock(HitlRecordRepository.class),
+                        mock(SessionPlugins.class),
+                        mock(EventManager.class),
+                        mock(PluginDataCleanup.class),
+                        mock(RequestContinuationStore.class));
 
         SessionEntity created = service.createSession("alice", "coder", null, projectB);
         assertTrue(
@@ -1030,7 +1351,20 @@ class SessionServiceTest {
 
         SessionService service =
                 new SessionService(
-                        sessions, agents, patterns, agentService, liveAgents, loader, tierRegistry);
+                        sessions,
+                        agents,
+                        patterns,
+                        agentService,
+                        liveAgents,
+                        loader,
+                        tierRegistry,
+                        new WorkspaceAdmissionPolicy(List.of(), DeployerPolicy.FULL_ACCESS),
+                        mock(ScopedPluginStorage.class),
+                        mock(HitlRecordRepository.class),
+                        mock(SessionPlugins.class),
+                        mock(EventManager.class),
+                        mock(PluginDataCleanup.class),
+                        mock(RequestContinuationStore.class));
 
         IllegalArgumentException ex =
                 assertThrows(
@@ -1072,7 +1406,20 @@ class SessionServiceTest {
 
         SessionService service =
                 new SessionService(
-                        sessions, agents, patterns, agentService, liveAgents, loader, tierRegistry);
+                        sessions,
+                        agents,
+                        patterns,
+                        agentService,
+                        liveAgents,
+                        loader,
+                        tierRegistry,
+                        new WorkspaceAdmissionPolicy(List.of(), DeployerPolicy.FULL_ACCESS),
+                        mock(ScopedPluginStorage.class),
+                        mock(HitlRecordRepository.class),
+                        mock(SessionPlugins.class),
+                        mock(EventManager.class),
+                        mock(PluginDataCleanup.class),
+                        mock(RequestContinuationStore.class));
 
         SessionEntity created = service.createSession("alice", "coder", null, projectA);
         assertTrue(
@@ -1117,7 +1464,20 @@ class SessionServiceTest {
 
         SessionService service =
                 new SessionService(
-                        sessions, agents, patterns, agentService, liveAgents, loader, tierRegistry);
+                        sessions,
+                        agents,
+                        patterns,
+                        agentService,
+                        liveAgents,
+                        loader,
+                        tierRegistry,
+                        new WorkspaceAdmissionPolicy(List.of(), DeployerPolicy.FULL_ACCESS),
+                        mock(ScopedPluginStorage.class),
+                        mock(HitlRecordRepository.class),
+                        mock(SessionPlugins.class),
+                        mock(EventManager.class),
+                        mock(PluginDataCleanup.class),
+                        mock(RequestContinuationStore.class));
 
         Optional<LlmConfig> cfg = service.activate("term-1", "ds", "alice", projectA);
         assertTrue(cfg.isPresent());
@@ -1146,7 +1506,20 @@ class SessionServiceTest {
 
         SessionService service =
                 new SessionService(
-                        sessions, agents, patterns, agentService, liveAgents, loader, tierRegistry);
+                        sessions,
+                        agents,
+                        patterns,
+                        agentService,
+                        liveAgents,
+                        loader,
+                        tierRegistry,
+                        new WorkspaceAdmissionPolicy(List.of(), DeployerPolicy.FULL_ACCESS),
+                        mock(ScopedPluginStorage.class),
+                        mock(HitlRecordRepository.class),
+                        mock(SessionPlugins.class),
+                        mock(EventManager.class),
+                        mock(PluginDataCleanup.class),
+                        mock(RequestContinuationStore.class));
 
         assertTrue(service.delete("alice", "ds"));
         verify(sessions).delete(inA);

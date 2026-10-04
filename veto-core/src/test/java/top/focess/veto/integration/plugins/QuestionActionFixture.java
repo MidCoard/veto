@@ -21,8 +21,9 @@ import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
 import top.focess.veto.api.plugin.storage.PluginStorage;
 import top.focess.veto.builtin.questions.Question;
+import top.focess.veto.bus.DeltaBroker;
+import top.focess.veto.controller.AuthorizationTestSupport;
 import top.focess.veto.controller.PluginFrontendController;
-import top.focess.veto.controller.RequestAuthorization;
 import top.focess.veto.integration.plugins.storage.ConfigurationStorageFixture;
 import top.focess.veto.integration.plugins.storage.PluginInvocationContext;
 import top.focess.veto.integration.plugins.storage.PluginStorageFactory;
@@ -54,7 +55,7 @@ public final class QuestionActionFixture implements AutoCloseable {
     }
 
     public QuestionActionFixture() throws IOException {
-        var config = new PluginHostConfiguration();
+        var config = new PluginHostConfiguration(new DeltaBroker());
         var services =
                 config.runtimeHostServices(
                         PluginTestSupport.providerOf(null),
@@ -107,7 +108,7 @@ public final class QuestionActionFixture implements AutoCloseable {
         var configuration = new PluginConfigurations();
         configuration.setToolNames(Map.of("top.focess.builtin:ask_user", "ask_user"));
         manager =
-                new PluginManager(
+                PluginTestSupport.manager(
                         PluginTestSupport.pluginPackages(),
                         "",
                         false,
@@ -144,7 +145,7 @@ public final class QuestionActionFixture implements AutoCloseable {
         mvc =
                 MockMvcBuilders.standaloneSetup(
                                 new PluginFrontendController(
-                                        new RequestAuthorization(user -> false),
+                                        AuthorizationTestSupport.authorizer(user -> false),
                                         sessions,
                                         selected,
                                         manager,

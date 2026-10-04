@@ -18,10 +18,11 @@ import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import org.springframework.test.util.ReflectionTestUtils;
+import org.mockito.Mockito;
 import top.focess.veto.agent.identity.SystemPromptResolver;
 import top.focess.veto.agent.intercept.HitlRegistry;
-import top.focess.veto.agent.intercept.IngressDefense;
+import top.focess.veto.agent.intercept.IngressDefenseTestSupport;
+import top.focess.veto.agent.loop.ContextBudgetConfiguration;
 import top.focess.veto.agent.loop.PromptCompiler;
 import top.focess.veto.agent.screening.DangerComputation;
 import top.focess.veto.agent.screening.DeployerPolicy;
@@ -45,6 +46,8 @@ import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.api.llm.VetoResponse;
 import top.focess.veto.api.llm.exceptions.LlmException;
 import top.focess.veto.api.process.Command;
+import top.focess.veto.bus.SessionInvalidations;
+import top.focess.veto.llm.core.ToolResultPresenter;
 import top.focess.veto.llm.core.UniformLLMCaller;
 
 @SuppressWarnings("initialization.field.uninitialized")
@@ -129,7 +132,8 @@ class NewRequirementsTest {
         mcpEngine.register(readDef());
 
         AtomicReference<String> streamedMessage = new AtomicReference<>();
-        HitlRegistry hitlRegistry = new HitlRegistry();
+        HitlRegistry hitlRegistry =
+                new HitlRegistry(null, Mockito.mock(SessionInvalidations.class));
 
         ToolCall ncCall =
                 new ToolCall(
@@ -160,15 +164,18 @@ class NewRequirementsTest {
                         new VetoCapabilityTranslator(),
                         new SystemPromptResolver(),
                         mapper,
-                        "FULL_ACCESS");
-        ReflectionTestUtils.setField(compiler, "maxInputTokens", 32000);
-        ReflectionTestUtils.setField(compiler, "contextFillRatio", 0.9);
+                        new ToolResultPresenter(mapper),
+                        "FULL_ACCESS",
+                        new ContextBudgetConfiguration(),
+                        32000,
+                        0.9);
 
         AgentService service =
-                new AgentService(
+                AgentServiceTestSupport.create(
+                        new AgentServiceTestSupport.Dependencies(),
                         mcpEngine,
                         hitlRegistry,
-                        new IngressDefense(),
+                        IngressDefenseTestSupport.inMemory(),
                         compiler,
                         caller,
                         mapper,
@@ -289,15 +296,18 @@ class NewRequirementsTest {
                         new VetoCapabilityTranslator(),
                         new SystemPromptResolver(),
                         mapper,
-                        "FULL_ACCESS");
-        ReflectionTestUtils.setField(compiler, "maxInputTokens", 32000);
-        ReflectionTestUtils.setField(compiler, "contextFillRatio", 0.9);
+                        new ToolResultPresenter(mapper),
+                        "FULL_ACCESS",
+                        new ContextBudgetConfiguration(),
+                        32000,
+                        0.9);
 
         AgentService service =
-                new AgentService(
+                AgentServiceTestSupport.create(
+                        new AgentServiceTestSupport.Dependencies(),
                         mcpEngine,
-                        new HitlRegistry(),
-                        new IngressDefense(),
+                        new HitlRegistry(null, Mockito.mock(SessionInvalidations.class)),
+                        IngressDefenseTestSupport.inMemory(),
                         compiler,
                         caller,
                         mapper,

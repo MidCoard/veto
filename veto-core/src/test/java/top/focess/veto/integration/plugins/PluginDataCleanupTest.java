@@ -78,8 +78,7 @@ class PluginDataCleanupTest {
             var user = mock(UserEntity.class);
             when(user.storageIdentity()).thenReturn("immutable-user");
             when(users.findByUsername("login")).thenReturn(Optional.of(user));
-            var cleanup = new PluginDataCleanup(manager);
-            cleanup.attachUsers(users);
+            var cleanup = new PluginDataCleanup(manager, users);
             assertThrows(
                     IllegalStateException.class,
                     () -> cleanup.beforeSessionDeleted("login", "session"));
@@ -239,8 +238,6 @@ class PluginDataCleanupTest {
         var user = mock(UserEntity.class);
         when(user.storageIdentity()).thenReturn("immutable-user");
         when(users.findByUsername("login")).thenReturn(Optional.of(user));
-        var cleanup = new PluginDataCleanup(manager);
-        cleanup.attachUsers(users);
-        return cleanup;
+        return new PluginDataCleanup(manager, users);
     }
 }

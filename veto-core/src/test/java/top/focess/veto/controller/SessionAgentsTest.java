@@ -25,7 +25,8 @@ class SessionAgentsTest {
     private final @NonNull SessionHistoryLoader history = mock();
     private final @NonNull MockMvc mvc =
             MockMvcBuilders.standaloneSetup(
-                            new SessionController(sessions, vault, history, mock(), registry))
+                            new SessionController(
+                                    sessions, vault, history, mock(), registry, mock()))
                     .build();
 
     @Test

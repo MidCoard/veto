@@ -1,6 +1,8 @@
 package top.focess.veto.integration.plugins;
 
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -19,6 +21,7 @@ import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.NoSuchBeanDefinitionException;
 import org.springframework.beans.factory.ObjectProvider;
+import top.focess.veto.agent.tool.ToolEngineImpl;
 import top.focess.veto.api.event.BeforeTextCommitEvent;
 import top.focess.veto.api.plugin.PluginBinding;
 import top.focess.veto.api.plugin.PluginHost;
@@ -28,6 +31,7 @@ import top.focess.veto.api.plugin.agent.AgentProfile;
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.contract.PluginFailure;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
+import top.focess.veto.bus.SessionInvalidations;
 import top.focess.veto.event.EventManager;
 import top.focess.veto.integration.plugins.storage.ConfigurationStorageFixture;
 import top.focess.veto.integration.plugins.storage.PluginStorageFactory;
@@ -84,13 +88,67 @@ public final class PluginTestSupport {
     }
 
     public static @NonNull PluginManager manager(PluginHostServices services) throws IOException {
-        return new PluginManager(
+        return manager(
                 pluginPackages(),
                 "",
                 false,
                 5000,
                 providerOf(configurationServices(services)),
                 new PluginConfigurations());
+    }
+
+    /** Assembles a manager with isolated catalog consumers and deletion notifications. */
+    public static @NonNull PluginManager manager(
+            @NonNull String directory,
+            @NonNull String nodeCommand,
+            boolean trustedCode,
+            long timeoutMillis,
+            @NonNull ObjectProvider<PluginHostServices> services,
+            @NonNull PluginConfigurations configuration)
+            throws IOException {
+        return manager(
+                directory,
+                nodeCommand,
+                trustedCode,
+                timeoutMillis,
+                services,
+                configuration,
+                activationStore(directory));
+    }
+
+    /** Isolates database writes while retaining the production saved-state validation. */
+    public static @NonNull PluginActivationStore activationStore(@NonNull String directory)
+            throws IOException {
+        var repository = mock(PluginActivationRepository.class);
+        // Managers that only discover plugins never write an administrator activation choice.
+        lenient()
+                .when(repository.saveAndFlush(any(PluginActivationEntity.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        return new PluginActivationStore(repository, directory);
+    }
+
+    public static @NonNull PluginManager manager(
+            @NonNull String directory,
+            @NonNull String nodeCommand,
+            boolean trustedCode,
+            long timeoutMillis,
+            @NonNull ObjectProvider<PluginHostServices> services,
+            @NonNull PluginConfigurations configuration,
+            @NonNull PluginActivationStore activationStore)
+            throws IOException {
+        return new PluginManager(
+                directory,
+                nodeCommand,
+                trustedCode,
+                timeoutMillis,
+                services,
+                configuration,
+                activationStore,
+                providerOf(mock(SessionPlugins.class)),
+                providerOf(mock(SessionRepository.class)),
+                providerOf(mock(SessionInvalidations.class)),
+                providerOf(mock(ToolEngineImpl.class)),
+                providerOf(mock(PluginLlmProviders.class)));
     }
 
     /** Only configuration storage is provided; accidental child execution fails visibly. */

@@ -24,14 +24,15 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
+import org.mockito.Mockito;
 import org.springframework.context.ApplicationContext;
-import org.springframework.test.util.ReflectionTestUtils;
 import top.focess.veto.agent.capability.DestinationTestGrants;
 import top.focess.veto.agent.capability.NetworkEgressCapabilityImpl;
 import top.focess.veto.agent.identity.SystemPromptResolver;
 import top.focess.veto.agent.intercept.HitlRegistry;
-import top.focess.veto.agent.intercept.IngressDefense;
+import top.focess.veto.agent.intercept.IngressDefenseTestSupport;
 import top.focess.veto.agent.intercept.VetoOption;
+import top.focess.veto.agent.loop.ContextBudgetConfiguration;
 import top.focess.veto.agent.loop.PromptCompiler;
 import top.focess.veto.agent.tool.ToolEngineImpl;
 import top.focess.veto.agent.translation.VetoCapabilityTranslator;
@@ -48,10 +49,16 @@ import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.api.llm.VetoRequest;
 import top.focess.veto.api.llm.VetoResponse;
 import top.focess.veto.builtin.web.WebFetchTool;
+import top.focess.veto.bus.DeltaBroker;
+import top.focess.veto.bus.SessionInvalidations;
+import top.focess.veto.event.EventManager;
+import top.focess.veto.integration.plugins.SessionPlugins;
+import top.focess.veto.llm.core.ToolResultPresenter;
 import top.focess.veto.llm.core.UniformLLMCaller;
 import top.focess.veto.memory.TurnLogService;
 import top.focess.veto.memory.TurnRecordEntity;
 import top.focess.veto.memory.TurnRecordRepository;
+import top.focess.veto.model.AgentInstanceRepository;
 import top.focess.veto.model.tier.ModelBinding;
 import top.focess.veto.model.tier.ModelTier;
 import top.focess.veto.model.tier.ModelTierRegistry;
@@ -73,7 +80,11 @@ class WebReadAgentIntegrationTest {
             throws Exception {
         ObjectMapper mapper = new ObjectMapper();
         mapper.registerModule(new JavaTimeModule());
-        SessionAgentRegistry registry = new SessionAgentRegistry();
+        SessionAgentRegistry registry =
+                new SessionAgentRegistry(
+                        Mockito.mock(AgentInstanceRepository.class),
+                        Mockito.mock(TurnRecordRepository.class),
+                        Mockito.mock(SessionInvalidations.class));
         UUID sessionId = UUID.randomUUID();
         List<VetoRequest> childRequests = new ArrayList<>();
         List<VetoAgent> childAgents = new ArrayList<>();
@@ -146,7 +157,7 @@ class WebReadAgentIntegrationTest {
                         models,
                         new VetoCapabilityTranslator(),
                         registry,
-                        new TurnLogService(turnRepository, mapper),
+                        new TurnLogService(turnRepository, mapper, new DeltaBroker()),
                         maxRounds,
                         15,
                         32000,
@@ -174,7 +185,12 @@ class WebReadAgentIntegrationTest {
                                 "submit_plan",
                                 new top.focess.veto.builtin.planning.SubmitPlanTool()));
         ToolEngineImpl engine =
-                new ToolEngineImpl(mapper, List.of(new WebFetchTool(reader, network)), context);
+                new ToolEngineImpl(
+                        mapper,
+                        List.of(new WebFetchTool(reader, network)),
+                        context,
+                        Mockito.mock(SessionPlugins.class),
+                        Mockito.mock(EventManager.class));
         engine.afterSingletonsInstantiated();
         List<VetoRequest> parentRequests = new ArrayList<>();
         AtomicInteger parentTurn = new AtomicInteger();
@@ -214,8 +230,14 @@ class WebReadAgentIntegrationTest {
                         throw new AssertionError(error);
                     }
                 };
-        HitlRegistry hitl = new HitlRegistry();
-        AgentService service = service(engine, parentCaller, mapper, hitl);
+        HitlRegistry hitl = new HitlRegistry(null, Mockito.mock(SessionInvalidations.class));
+        AgentService service =
+                service(
+                        engine,
+                        parentCaller,
+                        mapper,
+                        hitl,
+                        new AgentServiceTestSupport.Dependencies().registry(registry));
         var binding =
                 new LlmBinding(
                         ProviderType.DEEPSEEK,
@@ -223,7 +245,6 @@ class WebReadAgentIntegrationTest {
                         "parent-key",
                         LlmOptions.defaults(),
                         null);
-        ReflectionTestUtils.setField(service, "sessionAgents", registry);
         String session = sessionId.toString();
         UUID user = UUID.randomUUID();
         service.getOrCreateAgent(
@@ -360,7 +381,13 @@ class WebReadAgentIntegrationTest {
         var history = agent.history();
         assertFalse(mapper.writeValueAsString(history).contains("RAW_CHILD_PAGE_SENTINEL"));
 
-        AgentService resumed = service(engine, parentCaller, mapper, new HitlRegistry());
+        AgentService resumed =
+                service(
+                        engine,
+                        parentCaller,
+                        mapper,
+                        new HitlRegistry(null, Mockito.mock(SessionInvalidations.class)),
+                        new AgentServiceTestSupport.Dependencies());
         String resumedSession = UUID.randomUUID().toString();
         resumed.getOrCreateAgent(
                 resumedSession,
@@ -396,7 +423,12 @@ class WebReadAgentIntegrationTest {
     void cancellationClosesReaderAndPreservesParentWhenRequested(@NonNull String mode)
             throws Exception {
         ObjectMapper mapper = new ObjectMapper();
-        SessionAgentRegistry registry = spy(new SessionAgentRegistry());
+        SessionAgentRegistry registry =
+                spy(
+                        new SessionAgentRegistry(
+                                Mockito.mock(AgentInstanceRepository.class),
+                                Mockito.mock(TurnRecordRepository.class),
+                                Mockito.mock(SessionInvalidations.class)));
         doAnswer(
                         invocation -> {
                             assertFalse(
@@ -441,7 +473,7 @@ class WebReadAgentIntegrationTest {
                         models,
                         new VetoCapabilityTranslator(),
                         registry,
-                        new TurnLogService(turnRepository, mapper),
+                        new TurnLogService(turnRepository, mapper, new DeltaBroker()),
                         5,
                         30,
                         32000,
@@ -465,7 +497,12 @@ class WebReadAgentIntegrationTest {
                                 "submit_plan",
                                 new top.focess.veto.builtin.planning.SubmitPlanTool()));
         ToolEngineImpl engine =
-                new ToolEngineImpl(mapper, List.of(new WebFetchTool(reader, network)), context);
+                new ToolEngineImpl(
+                        mapper,
+                        List.of(new WebFetchTool(reader, network)),
+                        context,
+                        Mockito.mock(SessionPlugins.class),
+                        Mockito.mock(EventManager.class));
         engine.afterSingletonsInstantiated();
         AtomicInteger parentCalls = new AtomicInteger();
         UniformLLMCaller parentCaller =
@@ -479,9 +516,7 @@ class WebReadAgentIntegrationTest {
                                                 "https://example.com/docs",
                                                 "objective",
                                                 "Find timeout."));
-        HitlRegistry hitl = new HitlRegistry();
-        AgentService service = service(engine, parentCaller, mapper, hitl);
-        ReflectionTestUtils.setField(service, "sessionAgents", registry);
+        HitlRegistry hitl = new HitlRegistry(null, Mockito.mock(SessionInvalidations.class));
         AtomicInteger persistedCancellations = new AtomicInteger();
         TurnLogService parentLog = mock(TurnLogService.class);
         doAnswer(
@@ -498,7 +533,15 @@ class WebReadAgentIntegrationTest {
                         })
                 .when(parentLog)
                 .log(any(), any(), any(), anyString());
-        ReflectionTestUtils.setField(service, "turnLogService", parentLog);
+        AgentService service =
+                service(
+                        engine,
+                        parentCaller,
+                        mapper,
+                        hitl,
+                        new AgentServiceTestSupport.Dependencies()
+                                .registry(registry)
+                                .history(parentLog));
         UUID sessionId = UUID.randomUUID();
         String session = sessionId.toString();
         LlmBinding binding =
@@ -597,19 +640,23 @@ class WebReadAgentIntegrationTest {
             @NonNull ToolEngineImpl engine,
             @NonNull UniformLLMCaller caller,
             @NonNull ObjectMapper mapper,
-            @NonNull HitlRegistry hitl) {
+            @NonNull HitlRegistry hitl,
+            AgentServiceTestSupport.@NonNull Dependencies dependencies) {
         PromptCompiler compiler =
                 new PromptCompiler(
                         new VetoCapabilityTranslator(),
                         new SystemPromptResolver(),
                         mapper,
-                        "FULL_ACCESS");
-        ReflectionTestUtils.setField(compiler, "maxInputTokens", 32000);
-        ReflectionTestUtils.setField(compiler, "contextFillRatio", 0.9);
-        return new AgentService(
+                        new ToolResultPresenter(mapper),
+                        "FULL_ACCESS",
+                        new ContextBudgetConfiguration(),
+                        32000,
+                        0.9);
+        return AgentServiceTestSupport.create(
+                dependencies,
                 engine,
                 hitl,
-                new IngressDefense(),
+                IngressDefenseTestSupport.inMemory(),
                 compiler,
                 caller,
                 mapper,

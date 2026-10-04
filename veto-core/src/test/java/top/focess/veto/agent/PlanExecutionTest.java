@@ -18,11 +18,14 @@ import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
+import org.mockito.Mockito;
 import org.springframework.context.ApplicationContext;
 import org.springframework.test.util.ReflectionTestUtils;
 import top.focess.veto.agent.capability.ProtectedWorkspaceReadCapabilityImpl;
 import top.focess.veto.agent.identity.*;
 import top.focess.veto.agent.intercept.*;
+import top.focess.veto.agent.intercept.IngressDefenseTestSupport;
+import top.focess.veto.agent.loop.ContextBudgetConfiguration;
 import top.focess.veto.agent.loop.PromptCompiler;
 import top.focess.veto.agent.tool.*;
 import top.focess.veto.agent.tool.builtin.*;
@@ -45,11 +48,13 @@ import top.focess.veto.builtin.planning.PlanConfig;
 import top.focess.veto.builtin.planning.SubmitPlanTool;
 import top.focess.veto.builtin.response.AnswerWithCitationsTool;
 import top.focess.veto.builtin.workspace.ViewFileTool;
+import top.focess.veto.bus.SessionInvalidations;
 import top.focess.veto.integration.plugins.PluginConfigurations;
 import top.focess.veto.integration.plugins.PluginManager;
 import top.focess.veto.integration.plugins.PluginTestSupport;
 import top.focess.veto.integration.plugins.ProcessHostFixture;
 import top.focess.veto.llm.core.*;
+import top.focess.veto.llm.core.ToolResultPresenter;
 import top.focess.veto.model.tier.ModelBinding;
 import top.focess.veto.model.tier.ModelTier;
 import top.focess.veto.model.tier.ModelTierRegistry;
@@ -85,7 +90,7 @@ class PlanExecutionTest {
                 """
                                             .replace("PATH", pathJson));
                         },
-                        new HitlRegistry(),
+                        new HitlRegistry(null, Mockito.mock(SessionInvalidations.class)),
                         root);
         String session = UUID.randomUUID().toString();
         var agent =
@@ -150,7 +155,7 @@ class PlanExecutionTest {
                                             .anyMatch(m -> m.content().contains("[SECRET_REF:s_")));
                             return message("Reference received");
                         },
-                        new HitlRegistry(),
+                        new HitlRegistry(null, Mockito.mock(SessionInvalidations.class)),
                         root);
         String session = UUID.randomUUID().toString();
         var agent =
@@ -237,7 +242,7 @@ class PlanExecutionTest {
                     """);
                             return message("new answer");
                         },
-                        new HitlRegistry(),
+                        new HitlRegistry(null, Mockito.mock(SessionInvalidations.class)),
                         root);
         try {
             String session = "recovered-plan";
@@ -313,7 +318,7 @@ class PlanExecutionTest {
                                                                                             "14:30"))))))),
                                     null);
                         },
-                        new HitlRegistry(),
+                        new HitlRegistry(null, Mockito.mock(SessionInvalidations.class)),
                         root);
         var result =
                 service.submit(
@@ -384,7 +389,7 @@ class PlanExecutionTest {
                                                                                                     : "Friday"))))))),
                                     null);
                         },
-                        new HitlRegistry(),
+                        new HitlRegistry(null, Mockito.mock(SessionInvalidations.class)),
                         root);
         try {
             var result =
@@ -441,7 +446,7 @@ class PlanExecutionTest {
                                                                                     + " executed")));
                             return message("Corrected");
                         },
-                        new HitlRegistry(),
+                        new HitlRegistry(null, Mockito.mock(SessionInvalidations.class)),
                         root);
         try {
             var result =
@@ -475,7 +480,7 @@ class PlanExecutionTest {
                                 calls.getAndIncrement() == 0
                                         ? actions(program)
                                         : message("Plan rejected; no file read."),
-                        new HitlRegistry(),
+                        new HitlRegistry(null, Mockito.mock(SessionInvalidations.class)),
                         root);
         try {
             List<ToolCallEvent> events = new ArrayList<>();
@@ -532,7 +537,7 @@ class PlanExecutionTest {
                             }
                             return message("Hello");
                         },
-                        new HitlRegistry(),
+                        new HitlRegistry(null, Mockito.mock(SessionInvalidations.class)),
                         root);
         try {
             var result =
@@ -574,7 +579,7 @@ class PlanExecutionTest {
                         "top.focess.builtin:answer_with_citations",
                                 "builtin_answer_with_citations"));
         var plugins =
-                new PluginManager(
+                PluginTestSupport.manager(
                         PluginTestSupport.pluginPackages(),
                         "",
                         false,
@@ -602,9 +607,10 @@ class PlanExecutionTest {
                         mapper,
                         List.of(
                                 new ViewFileTool(
-                                        new ProtectedWorkspaceReadCapabilityImpl(
-                                                PluginTestSupport.providerOf(eventManager)))),
-                        context) {
+                                        new ProtectedWorkspaceReadCapabilityImpl(eventManager))),
+                        context,
+                        sessionPlugins,
+                        eventManager) {
                     @Override
                     public @NonNull List<ToolDefinition> getActiveTools(Set<String> whitelist) {
                         return super.getActiveTools(whitelist).stream()
@@ -620,22 +626,29 @@ class PlanExecutionTest {
                                 .toList();
                     }
                 };
-        engine.attachSessionPlugins(sessionPlugins);
-        engine.attachEventManager(eventManager);
         ReflectionTestUtils.invokeMethod(engine, "init");
         PromptCompiler compiler =
-                new PromptCompiler(
-                        new VetoCapabilityTranslator(),
-                        new SystemPromptResolver(),
-                        mapper,
-                        "FULL_ACCESS");
-        ReflectionTestUtils.setField(compiler, "maxInputTokens", 32000);
-        ReflectionTestUtils.setField(compiler, "contextFillRatio", 0.9);
+                spy(
+                        new PromptCompiler(
+                                new VetoCapabilityTranslator(),
+                                new SystemPromptResolver(),
+                                mapper,
+                                new ToolResultPresenter(mapper),
+                                "FULL_ACCESS",
+                                new ContextBudgetConfiguration(),
+                                32000,
+                                0.9));
+
         AgentService service =
-                new AgentService(
+                AgentServiceTestSupport.create(
+                        new AgentServiceTestSupport.Dependencies()
+                                .plugins(sessionPlugins)
+                                .events(eventManager)
+                                .workspace(Workspace.single(root, PathMode.REAL))
+                                .tiers(tiers == null ? mock(ModelTierRegistry.class) : tiers),
                         engine,
                         hitl,
-                        new IngressDefense(),
+                        IngressDefenseTestSupport.inMemory(),
                         compiler,
                         caller,
                         mapper,
@@ -646,10 +659,7 @@ class PlanExecutionTest {
                         "STRICT",
                         null,
                         null);
-        service.attachSessionPlugins(sessionPlugins);
-        service.attachEventManager(eventManager);
-        service.setConfiguredDefaultWorkspace(Workspace.single(root, PathMode.REAL));
-        if (tiers != null) service.setModelTierRegistry(tiers);
+
         for (String id :
                 List.of(
                         "read-plan",
@@ -755,7 +765,11 @@ class PlanExecutionTest {
                             assertFalse(request.userPrompt().contains("$document"));
                             return message("Migration summary");
                         };
-        var service = service(caller, new HitlRegistry(), root);
+        var service =
+                service(
+                        caller,
+                        new HitlRegistry(null, Mockito.mock(SessionInvalidations.class)),
+                        root);
         var result =
                 service.submit("read-plan", "Read the notes", binding(), Duration.ofSeconds(15));
         assertTrue(result.success(), result.message());
@@ -811,7 +825,7 @@ class PlanExecutionTest {
             """
                         .replace("JAVA", executable);
         AtomicInteger calls = new AtomicInteger();
-        HitlRegistry hitl = new HitlRegistry();
+        HitlRegistry hitl = new HitlRegistry(null, Mockito.mock(SessionInvalidations.class));
         AtomicInteger approvals = new AtomicInteger();
         var service =
                 service(
@@ -869,7 +883,7 @@ class PlanExecutionTest {
                             calls.incrementAndGet();
                             return actions(program);
                         },
-                        new HitlRegistry(),
+                        new HitlRegistry(null, Mockito.mock(SessionInvalidations.class)),
                         root,
                         5,
                         null);
@@ -897,7 +911,7 @@ class PlanExecutionTest {
                                     calls.incrementAndGet();
                                     return actions(program);
                                 },
-                                new HitlRegistry(),
+                                new HitlRegistry(null, Mockito.mock(SessionInvalidations.class)),
                                 root)
                         .submit(
                                 "failed-plan",
@@ -951,9 +965,64 @@ class PlanExecutionTest {
                                         "The full plan/tool catalog materially exceeds the"
                                                 + " generation catalog");
                                 budget.set(Math.toIntExact(fullSize - 1));
-                                ReflectionTestUtils.setField(
-                                        compiler, "maxInputTokens", budget.get());
-                                ReflectionTestUtils.setField(compiler, "contextFillRatio", 1.0);
+                                // Apply the measured generation limit through the real compilation
+                                // methods, without changing the compiler's immutable configuration.
+                                var mapper = new ObjectMapper();
+                                var bounded =
+                                        new PromptCompiler(
+                                                new VetoCapabilityTranslator(),
+                                                new SystemPromptResolver(),
+                                                mapper,
+                                                new ToolResultPresenter(mapper),
+                                                "FULL_ACCESS",
+                                                new ContextBudgetConfiguration(),
+                                                budget.get(),
+                                                1.0);
+                                doAnswer(
+                                                invocation -> {
+                                                    var scopedRequest =
+                                                            invocation.<VetoRequest>getArgument(0);
+                                                    if (scopedRequest == null)
+                                                        throw new AssertionError("Missing request");
+                                                    return bounded.fitRequest(
+                                                            scopedRequest,
+                                                            invocation.<Double>getArgument(1));
+                                                })
+                                        .when(compiler)
+                                        .fitRequest(any(), anyDouble());
+                                doAnswer(
+                                                invocation -> {
+                                                    var persona =
+                                                            invocation.<AgentPersona>getArgument(0);
+                                                    var workspace =
+                                                            invocation.<Workspace>getArgument(1);
+                                                    var presentation =
+                                                            invocation
+                                                                    .<ToolResultPresentationMode>
+                                                                            getArgument(5);
+                                                    if (persona == null
+                                                            || workspace == null
+                                                            || presentation == null)
+                                                        throw new AssertionError(
+                                                                "Missing compilation context");
+                                                    return bounded.compileProfile(
+                                                            persona,
+                                                            workspace,
+                                                            invocation.getArgument(2),
+                                                            invocation.getArgument(3),
+                                                            invocation.<Double>getArgument(4),
+                                                            presentation,
+                                                            invocation.getArgument(6));
+                                                })
+                                        .when(compiler)
+                                        .compileProfile(
+                                                any(),
+                                                any(),
+                                                any(),
+                                                any(),
+                                                anyDouble(),
+                                                any(),
+                                                any());
                                 return actions(
                                         """
                         [{"id":"generate","label":"Compose","type":"generate","prompt":"Say hello","outputs":{"answer":"message"}},
@@ -966,7 +1035,7 @@ class PlanExecutionTest {
                             assertTrue(compiler.estimateRequest(request, 1) <= budget.get());
                             return message("Hello");
                         },
-                        new HitlRegistry(),
+                        new HitlRegistry(null, Mockito.mock(SessionInvalidations.class)),
                         root);
         serviceRef.set(service);
         var result =
@@ -1027,7 +1096,7 @@ class PlanExecutionTest {
                                     request.responseContract().mode());
                             return message("original binding retained");
                         },
-                        new HitlRegistry(),
+                        new HitlRegistry(null, Mockito.mock(SessionInvalidations.class)),
                         root,
                         1000,
                         tiers);
@@ -1064,7 +1133,7 @@ class PlanExecutionTest {
                                     return message(
                                             "The file is missing; provide an existing path.");
                                 },
-                                new HitlRegistry(),
+                                new HitlRegistry(null, Mockito.mock(SessionInvalidations.class)),
                                 root)
                         .submit(
                                 "recover-plan",
@@ -1104,7 +1173,7 @@ class PlanExecutionTest {
                             assertTrue(request.userPrompt().contains("version=42"));
                             return message("Stable release, version 42.");
                         },
-                        new HitlRegistry(),
+                        new HitlRegistry(null, Mockito.mock(SessionInvalidations.class)),
                         root);
         List<VetoRequest> ordinaryRequests = new ArrayList<>();
         var ordinary =
@@ -1140,7 +1209,7 @@ class PlanExecutionTest {
                                             .anyMatch(m -> m.content().contains("version=42")));
                             return message("Stable release, version 42.");
                         },
-                        new HitlRegistry(),
+                        new HitlRegistry(null, Mockito.mock(SessionInvalidations.class)),
                         root);
         String task = "Read release.txt, then version.txt, and report the release and version.";
         List<ToolCallEvent> planTools = new ArrayList<>();
@@ -1246,7 +1315,7 @@ class PlanExecutionTest {
                                     request.responseContract().mode());
                             return actions(program);
                         },
-                        new HitlRegistry(),
+                        new HitlRegistry(null, Mockito.mock(SessionInvalidations.class)),
                         root);
         var result =
                 service.submit(
@@ -1306,7 +1375,7 @@ class PlanExecutionTest {
                             assertTrue(request.tools().isEmpty());
                             return message("Release reminder");
                         },
-                        new HitlRegistry(),
+                        new HitlRegistry(null, Mockito.mock(SessionInvalidations.class)),
                         root);
         try {
             var result =
@@ -1364,7 +1433,7 @@ class PlanExecutionTest {
                                         null);
                             return message("safe answer");
                         },
-                        new HitlRegistry(),
+                        new HitlRegistry(null, Mockito.mock(SessionInvalidations.class)),
                         root);
         List<ToolCallEvent> executed = new ArrayList<>();
         try {
@@ -1407,7 +1476,7 @@ class PlanExecutionTest {
                 """);
                             return message(file.toString());
                         },
-                        new HitlRegistry(),
+                        new HitlRegistry(null, Mockito.mock(SessionInvalidations.class)),
                         root);
         var agent = service.agent("read-plan");
         if (agent == null) throw new AssertionError("Missing agent");

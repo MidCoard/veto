@@ -13,7 +13,6 @@ import java.util.Set;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
-import org.springframework.test.util.ReflectionTestUtils;
 import top.focess.veto.agent.TurnRecord;
 import top.focess.veto.agent.TurnType;
 import top.focess.veto.agent.identity.AgentPersona;
@@ -32,6 +31,7 @@ import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.api.llm.VetoRequest;
 import top.focess.veto.llm.core.*;
+import top.focess.veto.llm.core.ToolResultPresenter;
 
 class PromptCompilerContextBudgetTest {
     @Test
@@ -371,10 +371,9 @@ class PromptCompilerContextBudgetTest {
 
     @Test
     void compilationKeepsThePriorTopicWithTheConfiguredModelBudget() {
-        var compiler = compiler(32000);
         var config = new ContextBudgetConfiguration();
         config.setModelInputTokens(Map.of("DEEPSEEK/test-model", 128000));
-        compiler.configureContextBudgets(config);
+        var compiler = compiler(32000, config);
         var history =
                 List.of(
                         TurnRecord.agentInit(
@@ -397,14 +396,21 @@ class PromptCompilerContextBudgetTest {
     }
 
     private @NonNull PromptCompiler compiler(int limit) {
+        return compiler(limit, new ContextBudgetConfiguration());
+    }
+
+    private @NonNull PromptCompiler compiler(
+            int limit, @NonNull ContextBudgetConfiguration configuration) {
         var compiler =
                 new PromptCompiler(
                         new VetoCapabilityTranslator(),
                         new SystemPromptResolver(),
                         mapper,
-                        "FULL_ACCESS");
-        ReflectionTestUtils.setField(compiler, "maxInputTokens", limit);
-        ReflectionTestUtils.setField(compiler, "contextFillRatio", 0.9);
+                        new ToolResultPresenter(mapper),
+                        "FULL_ACCESS",
+                        configuration,
+                        limit,
+                        0.9);
         return compiler;
     }
 
@@ -463,10 +469,9 @@ class PromptCompilerContextBudgetTest {
 
     @Test
     void explicitModelBudgetDoesNotRaiseUnknownModelsFallback() {
-        var compiler = compiler(1000);
         var config = new ContextBudgetConfiguration();
         config.setModelInputTokens(Map.of("DEEPSEEK/test-model", 8000));
-        compiler.configureContextBudgets(config);
+        var compiler = compiler(1000, config);
         var request = request("x".repeat(4000), List.of(ChatMessage.user("hello")));
         assertSame(request, compiler.fitRequest(request));
         var other =

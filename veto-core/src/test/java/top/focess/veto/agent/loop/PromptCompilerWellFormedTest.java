@@ -10,7 +10,6 @@ import java.util.Map;
 import java.util.Set;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
-import org.springframework.test.util.ReflectionTestUtils;
 import top.focess.veto.agent.TurnRecord;
 import top.focess.veto.agent.identity.AgentPersona;
 import top.focess.veto.agent.identity.SystemPromptResolver;
@@ -20,6 +19,7 @@ import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.api.llm.ChatMessage;
 import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
+import top.focess.veto.llm.core.ToolResultPresenter;
 
 /**
  * Contract tests for {@link PromptCompiler#wellFormed} — the provider-agnostic conversation shape
@@ -59,9 +59,15 @@ class PromptCompilerWellFormedTest {
         ObjectMapper mapper = new ObjectMapper();
         var translator = new VetoCapabilityTranslator();
         var standard =
-                new PromptCompiler(translator, new SystemPromptResolver(), mapper, "PROTECTED");
-        ReflectionTestUtils.setField(standard, "maxInputTokens", 100000);
-        ReflectionTestUtils.setField(standard, "contextFillRatio", 1.0);
+                new PromptCompiler(
+                        translator,
+                        new SystemPromptResolver(),
+                        mapper,
+                        new ToolResultPresenter(mapper),
+                        "PROTECTED",
+                        new ContextBudgetConfiguration(),
+                        100000,
+                        1.0);
         var isolated = PromptCompiler.isolated(translator, mapper, "Task instructions", 100000);
         var persona = new AgentPersona("test", "Veto", "Test", Set.of());
         var workspace =

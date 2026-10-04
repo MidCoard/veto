@@ -6,13 +6,11 @@ import java.util.List;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import top.focess.veto.api.llm.ResolvedRequest;
 import top.focess.veto.api.llm.VetoRequest;
 import top.focess.veto.api.llm.VetoResponse;
 import top.focess.veto.api.llm.exceptions.LlmException;
-import top.focess.veto.api.llm.exceptions.ModelCapabilityException;
 import top.focess.veto.integration.plugins.PluginLlmProviders;
 import top.focess.veto.llm.egress.EgressEndpoint;
 import top.focess.veto.llm.egress.LlmEgress;
@@ -36,13 +34,7 @@ public class DefaultUniformLLMCaller implements UniformLLMCaller {
     private static final long BASE_BACKOFF_MILLIS = 250L;
     private final @NonNull List<LLMProviderStrategy> strategies;
     private final @NonNull LlmEgress egress;
-    private PluginLlmProviders plugins;
-
-    /** Setter-injects the plugin LLM providers used when no built-in strategy matches. */
-    @Autowired
-    public void attachPluginProviders(@NonNull PluginLlmProviders value) {
-        plugins = value;
-    }
+    private final @NonNull PluginLlmProviders plugins;
 
     /**
      * Constructs a new DefaultUniformLLMCaller with the specified strategies and egress.
@@ -51,9 +43,12 @@ public class DefaultUniformLLMCaller implements UniformLLMCaller {
      * @param egress the egress strategy for outgoing calls
      */
     public DefaultUniformLLMCaller(
-            @NonNull List<LLMProviderStrategy> strategies, @NonNull LlmEgress egress) {
+            @NonNull List<LLMProviderStrategy> strategies,
+            @NonNull LlmEgress egress,
+            @NonNull PluginLlmProviders plugins) {
         this.strategies = strategies;
         this.egress = egress;
+        this.plugins = plugins;
     }
 
     @Override
@@ -64,9 +59,6 @@ public class DefaultUniformLLMCaller implements UniformLLMCaller {
                         .findFirst()
                         .orElse(null);
         if (provider == null) {
-            if (plugins == null)
-                throw new ModelCapabilityException(
-                        "No provider registered for type: " + request.providerType());
             provider =
                     sessionId == null
                             ? plugins.require(request.providerType())

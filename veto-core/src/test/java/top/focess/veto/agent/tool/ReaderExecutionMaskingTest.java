@@ -41,7 +41,7 @@ class ReaderExecutionMaskingTest {
         var call = new ToolCall(toolName, Map.of(), "reader-call");
         var mapper = new ObjectMapper();
         try (var plugins = PluginTestSupport.manager()) {
-            var defense = new IngressDefense(null, PluginTestSupport.providerOf(plugins));
+            var defense = new IngressDefense(null, plugins);
             String body =
                     mapper.writeValueAsString(Map.of("execution", Map.of("id", id), "answer", id));
             try {

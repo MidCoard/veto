@@ -65,10 +65,7 @@ class IngressDefenseMaskingTest {
         when(bridge.isAvailable()).thenReturn(true);
         when(bridge.infer(anyString(), anyString()))
                 .thenReturn(CompletableFuture.completedFuture("{\"risk\":\"high\"}"));
-        var defense =
-                new IngressDefense(
-                        new SemanticMasker(bridge, PluginTestSupport.providerOf(plugins)),
-                        PluginTestSupport.providerOf(plugins));
+        var defense = new IngressDefense(new SemanticMasker(bridge, plugins), plugins);
         String observed =
                 PluginTestSupport.protect(
                         plugins,
@@ -132,8 +129,8 @@ class IngressDefenseMaskingTest {
         when(bridge.isAvailable()).thenReturn(true);
         when(bridge.infer(anyString(), anyString()))
                 .thenReturn(CompletableFuture.completedFuture("{\"risk\":\"high\"}"));
-        SemanticMasker masker = new SemanticMasker(bridge, PluginTestSupport.providerOf(plugins));
-        IngressDefense defense = new IngressDefense(masker, PluginTestSupport.providerOf(plugins));
+        SemanticMasker masker = new SemanticMasker(bridge, plugins);
+        IngressDefense defense = new IngressDefense(masker, plugins);
 
         String framed =
                 defense.maskAndFrame(
@@ -153,7 +150,7 @@ class IngressDefenseMaskingTest {
     @Test
     void noSlmStillAppliesDeterministicMasking() {
         // Without the SLM semantic layer the plugin-provided deterministic floor still applies.
-        IngressDefense defense = new IngressDefense(null, PluginTestSupport.providerOf(plugins));
+        IngressDefense defense = new IngressDefense(null, plugins);
 
         String framed =
                 defense.maskAndFrame(

@@ -41,8 +41,8 @@ import top.focess.veto.api.plugin.contribution.Contribution;
 import top.focess.veto.api.plugin.contribution.ContributionCatalog;
 import top.focess.veto.api.plugin.contribution.ContributionSource;
 import top.focess.veto.api.plugin.storage.PluginStorage;
+import top.focess.veto.controller.AuthorizationTestSupport;
 import top.focess.veto.controller.PluginFrontendController;
-import top.focess.veto.controller.RequestAuthorization;
 import top.focess.veto.integration.plugins.PluginManager;
 import top.focess.veto.integration.plugins.PluginRegistry;
 import top.focess.veto.integration.plugins.SessionPlugins;
@@ -150,7 +150,9 @@ class ScopedPluginStorageTest {
             when(registry.declined()).thenReturn(List.of());
             var data =
                     new RetainedPluginData(
-                            database, manager, new RequestAuthorization("admin"::equals));
+                            database,
+                            manager,
+                            AuthorizationTestSupport.authorizer("admin"::equals));
             var userPage =
                     required(
                             transactions.execute(
@@ -328,7 +330,7 @@ class ScopedPluginStorageTest {
                                         null)));
         var controller =
                 new PluginFrontendController(
-                        new RequestAuthorization(user -> false),
+                        AuthorizationTestSupport.authorizer(user -> false),
                         sessions,
                         selected,
                         plugins,

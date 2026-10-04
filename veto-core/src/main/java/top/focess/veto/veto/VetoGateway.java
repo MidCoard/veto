@@ -6,8 +6,6 @@ import java.util.concurrent.atomic.AtomicLong;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.ObjectProvider;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import top.focess.veto.agent.loop.PromptCompiler;
 import top.focess.veto.integration.plugins.PluginManager;
@@ -32,27 +30,18 @@ public class VetoGateway {
 
     private final @NonNull VetoGatewayConfiguration config;
     private final @NonNull LlamaCppBridge llamaCppBridge;
-    private final PluginManager plugins;
+    private final @NonNull PluginManager plugins;
     private final @NonNull AuditLogger auditLogger;
 
     private final @NonNull AtomicLong totalVetoes = new AtomicLong(0);
     private final @NonNull AtomicLong totalPasses = new AtomicLong(0);
     private final @NonNull AtomicLong totalRedactions = new AtomicLong(0);
 
-    /** Spring entry point; the plugin manager is optional (masking is skipped without it). */
-    @Autowired
+    /** Creates the gateway with its configuration, local model, plugins and audit sink. */
     public VetoGateway(
             @NonNull VetoGatewayConfiguration config,
             @NonNull LlamaCppBridge llamaCppBridge,
-            @NonNull ObjectProvider<PluginManager> plugins,
-            @NonNull AuditLogger auditLogger) {
-        this(config, llamaCppBridge, plugins.getIfAvailable(), auditLogger);
-    }
-
-    VetoGateway(
-            @NonNull VetoGatewayConfiguration config,
-            @NonNull LlamaCppBridge llamaCppBridge,
-            PluginManager plugins,
+            @NonNull PluginManager plugins,
             @NonNull AuditLogger auditLogger) {
         this.config = config;
         this.llamaCppBridge = llamaCppBridge;
@@ -108,9 +97,8 @@ public class VetoGateway {
 
         try {
             // Step 1-2: sensitive-data masking through the plugin observation-middleware chain.
-            // The plugins own the redaction rules; without a plugin the payload passes unmasked.
-            var manager = plugins;
-            String masked = manager == null ? payload : manager.applyObservationMiddleware(payload);
+            // The plugins own the redaction rules; an empty catalog leaves the payload unchanged.
+            String masked = plugins.applyObservationMiddleware(payload);
 
             // SLM structural-compliance analysis; only the block decision signal is consumed.
             String slmAnalysis = "";

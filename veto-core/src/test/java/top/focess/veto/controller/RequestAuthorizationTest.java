@@ -53,7 +53,7 @@ class RequestAuthorizationTest {
 
     @Test
     void requestMustBeAuthenticated() {
-        RequestAuthorization authorization = new RequestAuthorization(name -> true);
+        RequestAuthorization authorization = AuthorizationTestSupport.authorizer(name -> true);
 
         ResponseStatusException error =
                 assertThrows(ResponseStatusException.class, authorization::requireAdmin);
@@ -64,7 +64,7 @@ class RequestAuthorizationTest {
     @Test
     void authenticatedUserMustBeAdministrator() {
         UserContext.set("member");
-        RequestAuthorization authorization = new RequestAuthorization(name -> false);
+        RequestAuthorization authorization = AuthorizationTestSupport.authorizer(name -> false);
 
         ResponseStatusException error =
                 assertThrows(ResponseStatusException.class, authorization::requireAdmin);
@@ -75,7 +75,7 @@ class RequestAuthorizationTest {
     @Test
     void authenticatedAdministratorPasses() {
         UserContext.set("admin");
-        RequestAuthorization authorization = new RequestAuthorization("admin"::equals);
+        RequestAuthorization authorization = AuthorizationTestSupport.authorizer("admin"::equals);
 
         assertDoesNotThrow(authorization::requireAdmin);
     }

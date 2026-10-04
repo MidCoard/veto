@@ -56,7 +56,9 @@ class PluginControllerTest {
         UserContext.set("admin");
         try {
             var response =
-                    new PluginController(manager, new RequestAuthorization("admin"::equals)).list();
+                    new PluginController(
+                                    manager, AuthorizationTestSupport.authorizer("admin"::equals))
+                            .list();
             assertEquals(1, response.size());
             assertEquals("Example Tools", response.getFirst().name());
             assertEquals(List.of("native_alias", "portable_alias"), response.getFirst().tools());

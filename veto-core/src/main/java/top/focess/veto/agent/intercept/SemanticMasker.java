@@ -10,8 +10,6 @@ import java.util.regex.Pattern;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.ObjectProvider;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.loop.PromptCompiler;
 import top.focess.veto.agent.tool.ToolDefinition;
@@ -54,26 +52,15 @@ public class SemanticMasker {
                     "(?i)\\b(secret|token|password|api[_-]?key|credential|private[_-]?key)\\b");
 
     private final LlamaCppBridge bridge;
-    private final PluginManager plugins;
-
-    /** No-dependency constructor — no SLM bridge and an identity mask floor. */
-    public SemanticMasker() {
-        this(null, (PluginManager) null);
-    }
+    private final @NonNull PluginManager plugins;
 
     /**
-     * Spring-injected constructor; the SLM bridge is optional and the observation-middleware floor
-     * degrades to identity when no plugin manager is bound.
+     * Creates advisory semantic analysis over the required plugin masking floor.
+     *
+     * @param bridge local SLM, or null when unavailable
+     * @param plugins installed masking contributions; an empty catalog preserves the input
      */
-    @Autowired
-    public SemanticMasker(
-            @Autowired(required = false) LlamaCppBridge bridge,
-            @NonNull ObjectProvider<PluginManager> plugins) {
-        this.bridge = bridge;
-        this.plugins = plugins.getIfAvailable();
-    }
-
-    private SemanticMasker(LlamaCppBridge bridge, PluginManager plugins) {
+    public SemanticMasker(LlamaCppBridge bridge, @NonNull PluginManager plugins) {
         this.bridge = bridge;
         this.plugins = plugins;
     }
@@ -93,8 +80,7 @@ public class SemanticMasker {
     }
 
     private @NonNull String maskFloor(@NonNull String text) {
-        var manager = plugins;
-        return manager == null ? text : manager.applyObservationMiddleware(text);
+        return plugins.applyObservationMiddleware(text);
     }
 
     @NonNull MaskResult maskWithSignal(

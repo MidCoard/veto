@@ -1,8 +1,6 @@
 package top.focess.veto.controller;
 
-import java.util.function.Predicate;
 import org.jspecify.annotations.NonNull;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 import org.springframework.web.server.ResponseStatusException;
@@ -16,17 +14,11 @@ import top.focess.veto.vault.UserRegistry;
 @Component
 public class RequestAuthorization {
 
-    private final @NonNull Predicate<@NonNull String> administrator;
+    private final @NonNull UserRegistry users;
 
     /** Creates the authorizer using the user registry's admin check. */
-    @Autowired
     public RequestAuthorization(@NonNull UserRegistry users) {
-        this(users::isAdmin);
-    }
-
-    /** Creates the authorizer with an explicit administrator predicate. */
-    public RequestAuthorization(@NonNull Predicate<@NonNull String> administrator) {
-        this.administrator = administrator;
+        this.users = users;
     }
 
     /** Returns the request-scoped username, or throws 401 if the request is unauthenticated. */
@@ -41,7 +33,7 @@ public class RequestAuthorization {
     /** Requires an authenticated administrator; throws 401 or 403 otherwise. */
     public void requireAdmin() {
         String username = requireUser();
-        if (!administrator.test(username)) {
+        if (!users.isAdmin(username)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Administrator role required");
         }
     }

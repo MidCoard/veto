@@ -13,7 +13,6 @@ import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.SmartInitializingSingleton;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.ApplicationContext;
 import org.springframework.stereotype.Service;
@@ -97,47 +96,31 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
     // One volatile publication binds every definition and implementation in a complete snapshot.
     private volatile @NonNull ToolCatalog catalog = ToolCatalog.empty();
     private boolean initialized;
-    // Injected after construction and read from worker threads; volatile for safe publication.
-    private volatile SessionPlugins sessionPlugins;
-    private volatile EventManager eventManager;
-
-    /** Injects shared host event delivery for captured workspace text. */
-    @Autowired
-    public void attachEventManager(@NonNull EventManager value) {
-        eventManager = value;
-    }
-
-    /**
-     * Injects the session-plugin selection after construction; volatile for worker-thread reads.
-     */
-    @Autowired
-    public void attachSessionPlugins(@NonNull SessionPlugins value) {
-        sessionPlugins = value;
-    }
+    private final @NonNull SessionPlugins sessionPlugins;
+    private final @NonNull EventManager eventManager;
 
     /** Spring constructor wiring the LLM object mapper, native tool beans, and bean context. */
-    @Autowired
     public ToolEngineImpl(
             @Qualifier(LlmJacksonConfig.LLM_OBJECT_MAPPER) @NonNull ObjectMapper mapper,
             @NonNull List<NativeTool<?>> nativeToolBeans,
-            @NonNull ApplicationContext applicationContext) {
+            ApplicationContext applicationContext,
+            @NonNull SessionPlugins sessionPlugins,
+            @NonNull EventManager eventManager) {
         this.mapper = mapper;
         this.remoteClient = new McpJsonRpcClient(mapper);
         this.nativeToolBeans = nativeToolBeans;
         this.applicationContext = applicationContext;
-    }
-
-    private ToolEngineImpl(@NonNull ObjectMapper mapper, @NonNull List<NativeTool<?>> tools) {
-        this.mapper = mapper;
-        this.remoteClient = new McpJsonRpcClient(mapper);
-        this.nativeToolBeans = List.copyOf(tools);
-        this.applicationContext = null;
+        this.sessionPlugins = sessionPlugins;
+        this.eventManager = eventManager;
     }
 
     /** Registers only the supplied handlers through the normal contract validation path. */
     public static @NonNull ToolEngineImpl isolated(
-            @NonNull ObjectMapper mapper, @NonNull List<NativeTool<?>> tools) {
-        ToolEngineImpl engine = new ToolEngineImpl(mapper, tools);
+            @NonNull ObjectMapper mapper,
+            @NonNull List<NativeTool<?>> tools,
+            @NonNull SessionPlugins sessionPlugins,
+            @NonNull EventManager events) {
+        ToolEngineImpl engine = new ToolEngineImpl(mapper, tools, null, sessionPlugins, events);
         engine.init();
         return engine;
     }
@@ -260,11 +243,9 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
         if (!(registered instanceof RegisteredTool.Local local)
                 || !(local.handler() instanceof PreparedTool<?> prepared)) return null;
         var runtime = local.runtime();
-        var selected = sessionPlugins;
         if (runtime == null
                 || runtime.state() != PluginState.ACTIVE
-                || selected == null
-                || !selected.includes(invocation.sessionId(), runtime.identity().id()))
+                || !sessionPlugins.includes(invocation.sessionId(), runtime.identity().id()))
             throw new SecurityException("Preparation requires the selected active contribution");
         JsonNode json = mapper.valueToTree(call.args());
         NativeToolArgumentValidator.validate(
@@ -390,15 +371,12 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
         RemoteToolDefinition definition = registration.definition();
         requirePermit(call, definition);
         requirePluginProvenance(definition, registration.runtime());
-        var selection = sessionPlugins;
-        if (selection != null) {
-            var context = ToolCallContextHolder.get();
-            var session = context == null ? null : context.sessionId();
-            if (session == null
-                    || !selection.includes(
-                            session.toString(), registration.runtime().identity().id()))
-                throw new SecurityException("Plugin is not selected for this session");
-        }
+        var context = ToolCallContextHolder.get();
+        var session = context == null ? null : context.sessionId();
+        if (session == null
+                || !sessionPlugins.includes(
+                        session.toString(), registration.runtime().identity().id()))
+            throw new SecurityException("Plugin is not selected for this session");
         try {
             var descriptor = registration.descriptor();
             JsonNode arguments = mapper.valueToTree(call.args());
@@ -444,14 +422,11 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
             requirePluginProvenance(definition, runtime);
             if (runtime.state() != PluginState.ACTIVE)
                 throw new SecurityException("Plugin is not active for this session");
-            var selection = sessionPlugins;
-            if (selection != null) {
-                var context = ToolCallContextHolder.get();
-                var session = context == null ? null : context.sessionId();
-                if (session == null
-                        || !selection.includes(session.toString(), runtime.identity().id()))
-                    throw new SecurityException("Plugin is not selected for this session");
-            }
+            var context = ToolCallContextHolder.get();
+            var session = context == null ? null : context.sessionId();
+            if (session == null
+                    || !sessionPlugins.includes(session.toString(), runtime.identity().id()))
+                throw new SecurityException("Plugin is not selected for this session");
         }
         JsonNode jsonArgs = mapper.valueToTree(call.args());
         NativeToolArgumentValidator.validate(definition.name(), jsonArgs, definition.argsClass());

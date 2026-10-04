@@ -20,7 +20,6 @@ import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import org.jspecify.annotations.NonNull;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.web.WebProxySelector;
@@ -48,13 +47,15 @@ public final class NetworkEgressCapabilityImpl implements NetworkEgressCapabilit
     private final int timeoutSeconds;
     private final int maxChars;
     private final boolean allowPrivateAddresses;
+    private final @NonNull ImportedCredentialLeases credentials;
 
     /** Creates the capability with its configured timeout, body cap, and address policy. */
-    @Autowired
     public NetworkEgressCapabilityImpl(
             @Value("${veto.http.timeout-seconds:30}") int timeoutSeconds,
             @Value("${veto.http.max-chars:524288}") int maxChars,
-            @Value("${veto.http.allow-private-addresses:false}") boolean allowPrivateAddresses) {
+            @Value("${veto.http.allow-private-addresses:false}") boolean allowPrivateAddresses,
+            @NonNull ImportedCredentialLeases credentials) {
+        this.credentials = credentials;
         this.timeoutSeconds = timeoutSeconds;
         this.maxChars = maxChars;
         if (timeoutSeconds <= 0 || maxChars <= 0) {
@@ -73,20 +74,10 @@ public final class NetworkEgressCapabilityImpl implements NetworkEgressCapabilit
         this.httpClient = builder.build();
     }
 
-    private ImportedCredentialLeases credentials;
-
-    /** Attaches the host credential-lease authority used for imported credentials. */
-    @Autowired
-    public void attachCredentials(@NonNull ImportedCredentialLeases value) {
-        credentials = value;
-    }
-
     @Override
     public @NonNull ImportedCredentialLease openImportedCredential(
             @NonNull String argument, @NonNull String service) {
-        var leases = credentials;
-        if (leases == null) throw new SecurityException("Credential access is unavailable");
-        return leases.open(argument, service);
+        return credentials.open(argument, service);
     }
 
     @Override

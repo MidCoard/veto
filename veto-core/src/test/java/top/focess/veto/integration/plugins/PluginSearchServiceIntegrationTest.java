@@ -108,7 +108,7 @@ class PluginSearchServiceIntegrationTest {
                 config.forPlugin("top.focess.builtin").values());
         assertTrue(config.forPlugin("absent").values().isEmpty());
         try (var manager =
-                new PluginManager(
+                PluginTestSupport.manager(
                         PluginTestSupport.pluginPackages(),
                         "",
                         false,

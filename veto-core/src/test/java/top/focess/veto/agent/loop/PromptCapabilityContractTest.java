@@ -30,6 +30,7 @@ import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.builtin.planning.SubmitPlanTool;
 import top.focess.veto.builtin.response.AnswerWithCitationsTool;
 import top.focess.veto.builtin.tools.AskUserTool;
+import top.focess.veto.llm.core.ToolResultPresenter;
 
 class PromptCapabilityContractTest {
     @Test
@@ -71,7 +72,11 @@ class PromptCapabilityContractTest {
                             new VetoCapabilityTranslator(),
                             new SystemPromptResolver(),
                             new ObjectMapper(),
-                            "FULL_ACCESS");
+                            new ToolResultPresenter(new ObjectMapper()),
+                            "FULL_ACCESS",
+                            new ContextBudgetConfiguration(),
+                            32000,
+                            0.9);
             var linked =
                     compiler.linkSystemSource(
                             persona,

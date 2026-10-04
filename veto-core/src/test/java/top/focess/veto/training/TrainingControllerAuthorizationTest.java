@@ -14,6 +14,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
+import top.focess.veto.controller.AuthorizationTestSupport;
 import top.focess.veto.controller.RequestAuthorization;
 import top.focess.veto.vault.UserContext;
 
@@ -26,7 +27,8 @@ class TrainingControllerAuthorizationTest {
 
     @Test
     void everyEndpointRejectsUnauthenticatedRequests() {
-        TrainingController controller = controller(new RequestAuthorization(name -> true));
+        TrainingController controller =
+                controller(AuthorizationTestSupport.authorizer(name -> true));
 
         assertUnauthorized(() -> controller.startTraining(null));
         assertUnauthorized(controller::cancelTraining);
@@ -40,7 +42,8 @@ class TrainingControllerAuthorizationTest {
     @Test
     void everyEndpointRejectsNonAdminUsers() {
         UserContext.set("member");
-        TrainingController controller = controller(new RequestAuthorization(name -> false));
+        TrainingController controller =
+                controller(AuthorizationTestSupport.authorizer(name -> false));
 
         assertForbidden(() -> controller.startTraining(null));
         assertForbidden(controller::cancelTraining);
@@ -54,7 +57,8 @@ class TrainingControllerAuthorizationTest {
     @Test
     void adminCanReadTrainingState() {
         UserContext.set("admin");
-        TrainingController controller = controller(new RequestAuthorization(name -> true));
+        TrainingController controller =
+                controller(AuthorizationTestSupport.authorizer(name -> true));
 
         assertDoesNotThrow(controller::getProgress);
         assertDoesNotThrow(controller::getStatus);
@@ -77,7 +81,8 @@ class TrainingControllerAuthorizationTest {
                         new byte[] {1, 2});
         manager.completeTraining(converted);
         TrainingController controller =
-                new TrainingController(manager, config, new RequestAuthorization(name -> true));
+                new TrainingController(
+                        manager, config, AuthorizationTestSupport.authorizer(name -> true));
         assertEquals(
                 HttpStatus.OK,
                 controller.deployModel(new DeployModelRequest(null)).getStatusCode());

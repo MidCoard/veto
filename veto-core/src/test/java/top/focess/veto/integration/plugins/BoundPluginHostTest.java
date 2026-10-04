@@ -29,6 +29,7 @@ import top.focess.veto.api.plugin.PluginScope;
 import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.storage.PluginStorage;
+import top.focess.veto.bus.DeltaBroker;
 
 class BoundPluginHostTest {
     @Test
@@ -64,7 +65,7 @@ class BoundPluginHostTest {
     void invocationAndAwaitResolveLocalNamesWithoutExpandingThePermit() throws Exception {
         for (String name : List.of("plugin_test_plugin__operation", "custom_operation")) {
             try (var fixture = new PluginAgentHostsTest.Fixture()) {
-                var configuration = new PluginHostConfiguration();
+                var configuration = new PluginHostConfiguration(new DeltaBroker());
                 var services =
                         configuration.runtimeHostServices(
                                 PluginTestSupport.providerOf(null),
@@ -186,7 +187,7 @@ class BoundPluginHostTest {
     @Test
     void readinessWaitsForApplicationAndRunsOnceWhilePluginIsActive() throws Exception {
         try (var fixture = new PluginAgentHostsTest.Fixture()) {
-            var configuration = new PluginHostConfiguration();
+            var configuration = new PluginHostConfiguration(new DeltaBroker());
             var services =
                     configuration.runtimeHostServices(
                             PluginTestSupport.providerOf(null),
@@ -218,7 +219,7 @@ class BoundPluginHostTest {
     @Test
     void stopBeforeApplicationReadyRevokesPendingCallback() throws Exception {
         try (var fixture = new PluginAgentHostsTest.Fixture()) {
-            var configuration = new PluginHostConfiguration();
+            var configuration = new PluginHostConfiguration(new DeltaBroker());
             var services =
                     configuration.runtimeHostServices(
                             PluginTestSupport.providerOf(null),

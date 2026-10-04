@@ -104,35 +104,13 @@ public class PromptCompiler {
     private final @NonNull ObjectMapper objectMapper;
     private final @NonNull ToolResultPresenter toolResultPresenter;
 
-    @Value("${veto.context.max_input_tokens}")
-    private int maxInputTokens;
-
-    @Value("${veto.context.context_fill_ratio}")
-    private double contextFillRatio;
+    private final int maxInputTokens;
+    private final double contextFillRatio;
 
     private final @NonNull DeployerPolicy deployerPolicy;
     private final String isolatedInstructions;
 
-    private @NonNull Map<String, Integer> modelInputTokens = Map.of();
-
-    @Autowired
-    void configureContextBudgets(@NonNull ContextBudgetConfiguration configuration) {
-        modelInputTokens = configuration.getModelInputTokens();
-    }
-
-    /** Convenience constructor with a default {@link ToolResultPresenter} over the given mapper. */
-    public PromptCompiler(
-            @NonNull CapabilityTranslator translator,
-            @NonNull SystemPromptResolver systemPromptResolver,
-            @NonNull ObjectMapper objectMapper,
-            @NonNull String deployerPolicyRaw) {
-        this(
-                translator,
-                systemPromptResolver,
-                objectMapper,
-                new ToolResultPresenter(objectMapper),
-                deployerPolicyRaw);
-    }
+    private final @NonNull Map<String, Integer> modelInputTokens;
 
     /** Spring constructor; the raw deployer-policy setting is parsed into the bound policy. */
     @Autowired
@@ -141,13 +119,19 @@ public class PromptCompiler {
             @NonNull SystemPromptResolver systemPromptResolver,
             @NonNull ObjectMapper objectMapper,
             @NonNull ToolResultPresenter toolResultPresenter,
-            @Value("${veto.security.deployer-policy}") @NonNull String deployerPolicyRaw) {
+            @Value("${veto.security.deployer-policy}") @NonNull String deployerPolicyRaw,
+            @NonNull ContextBudgetConfiguration configuration,
+            @Value("${veto.context.max_input_tokens}") int maxInputTokens,
+            @Value("${veto.context.context_fill_ratio}") double contextFillRatio) {
         this.translator = translator;
         this.systemPromptResolver = systemPromptResolver;
         this.objectMapper = objectMapper;
         this.toolResultPresenter = toolResultPresenter;
         this.deployerPolicy = DeployerPolicy.parse(deployerPolicyRaw);
         this.isolatedInstructions = null;
+        this.modelInputTokens = configuration.getModelInputTokens();
+        this.maxInputTokens = maxInputTokens;
+        this.contextFillRatio = contextFillRatio;
     }
 
     private PromptCompiler(
@@ -166,6 +150,7 @@ public class PromptCompiler {
         this.isolatedInstructions = instructions;
         this.maxInputTokens = maxInputTokens;
         this.contextFillRatio = 1;
+        this.modelInputTokens = Map.of();
     }
 
     /**

@@ -5,14 +5,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
-import java.util.function.Supplier;
 import java.util.stream.IntStream;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.AgentService;
@@ -57,6 +54,8 @@ public final class PluginAgentHosts implements PluginAgentHostFactory {
     private final @NonNull PluginStorageFactory scopes;
     private final @NonNull SessionHistoryLoader history;
     private final @NonNull KeysteadVault vault;
+    // Deferred because plugin discovery binds this host before its AgentService/tool engine exists.
+    private final @NonNull ObjectProvider<IsolatedExecutions> isolated;
     private final @NonNull List<@NonNull Object> childLocks =
             IntStream.range(0, 64).mapToObj(index -> new Object()).toList();
 
@@ -68,7 +67,8 @@ public final class PluginAgentHosts implements PluginAgentHostFactory {
             @NonNull SessionAgentRegistry registry,
             @NonNull PluginStorageFactory scopes,
             @NonNull SessionHistoryLoader history,
-            @NonNull KeysteadVault vault) {
+            @NonNull KeysteadVault vault,
+            @NonNull ObjectProvider<IsolatedExecutions> isolated) {
         this.service = service;
         this.sessions = sessions;
         this.identities = identities;
@@ -76,18 +76,7 @@ public final class PluginAgentHosts implements PluginAgentHostFactory {
         this.scopes = scopes;
         this.history = history;
         this.vault = vault;
-    }
-
-    private @NonNull Supplier<@Nullable IsolatedExecutions> isolated = () -> null;
-
-    /** Attaches the optional isolated-execution engine used by {@code AgentHost.isolate}. */
-    @Autowired
-    public void attachIsolatedProvider(@NonNull ObjectProvider<IsolatedExecutions> value) {
-        isolated = value::getIfAvailable;
-    }
-
-    void attachIsolated(@NonNull IsolatedExecutions value) {
-        isolated = () -> value;
+        this.isolated = isolated;
     }
 
     /** Exposes this factory as a host service so the manager can bind it per plugin. */
@@ -118,9 +107,7 @@ public final class PluginAgentHosts implements PluginAgentHostFactory {
 
             public @NonNull IsolatedAgent isolate(
                     IsolatedAgent.@NonNull Spec spec, IsolatedAgent.@NonNull Factory factory) {
-                var engine = isolated.get();
-                if (engine == null)
-                    throw new IllegalStateException("Isolated execution unavailable");
+                var engine = isolated.getObject();
                 var call = ToolCallContextHolder.get();
                 if (call == null
                         || !plugin.bindingId().equals(call.executionPermit().remoteServerName()))

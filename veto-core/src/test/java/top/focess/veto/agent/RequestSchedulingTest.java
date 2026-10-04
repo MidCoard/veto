@@ -18,12 +18,13 @@ import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
+import org.mockito.Mockito;
 import top.focess.veto.agent.ExecutionControl.Wait;
 import top.focess.veto.agent.drift.ReadHistory;
 import top.focess.veto.agent.identity.AgentPersona;
 import top.focess.veto.agent.intercept.Gateway;
 import top.focess.veto.agent.intercept.HitlRegistry;
-import top.focess.veto.agent.intercept.IngressDefense;
+import top.focess.veto.agent.intercept.IngressDefenseTestSupport;
 import top.focess.veto.agent.loop.PromptCompiler;
 import top.focess.veto.agent.tool.ToolEngine;
 import top.focess.veto.api.agent.AgentAction;
@@ -33,6 +34,7 @@ import top.focess.veto.api.llm.LlmBinding;
 import top.focess.veto.api.llm.LlmOptions;
 import top.focess.veto.api.llm.ProviderType;
 import top.focess.veto.api.llm.VetoResponse;
+import top.focess.veto.bus.SessionInvalidations;
 
 class RequestSchedulingTest {
     @ParameterizedTest
@@ -179,8 +181,8 @@ class RequestSchedulingTest {
                         null,
                         tools,
                         gateway,
-                        new HitlRegistry(),
-                        new IngressDefense()),
+                        new HitlRegistry(null, Mockito.mock(SessionInvalidations.class)),
+                        IngressDefenseTestSupport.inMemory()),
                 List.of(),
                 compiler,
                 (request, session) -> new VetoResponse(null, null, "done"),

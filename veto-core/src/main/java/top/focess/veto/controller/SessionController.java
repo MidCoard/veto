@@ -4,7 +4,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -45,13 +44,7 @@ public class SessionController {
     private final @NonNull SessionHistoryLoader historyLoader;
     private final @NonNull SessionRecordService recordService;
     private final @NonNull SessionAgentRegistry agentRegistry;
-    private SessionPlugins sessionPlugins;
-
-    /** Binds plugin availability reporting after session services are constructed. */
-    @Autowired
-    public void bindSessionPlugins(@NonNull SessionPlugins plugins) {
-        sessionPlugins = plugins;
-    }
+    private final @NonNull SessionPlugins sessionPlugins;
 
     /** Creates the controller with session, vault, history, record, and agent-registry services. */
     public SessionController(
@@ -59,12 +52,14 @@ public class SessionController {
             @NonNull KeysteadVault vault,
             @NonNull SessionHistoryLoader historyLoader,
             @NonNull SessionRecordService recordService,
-            @NonNull SessionAgentRegistry agentRegistry) {
+            @NonNull SessionAgentRegistry agentRegistry,
+            @NonNull SessionPlugins sessionPlugins) {
         this.service = service;
         this.vault = vault;
         this.historyLoader = historyLoader;
         this.recordService = recordService;
         this.agentRegistry = agentRegistry;
+        this.sessionPlugins = sessionPlugins;
     }
 
     /** Lists the current user's sessions; empty when not logged in. */
@@ -200,9 +195,7 @@ public class SessionController {
     public @NonNull List<SessionPlugins.BoundPluginStatus> plugins(
             @PathVariable @NonNull String name) {
         SessionConfig cfg = requireOwnedSession(name);
-        var selected = sessionPlugins;
-        if (selected == null) throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE);
-        return selected.status(cfg.sessionId());
+        return sessionPlugins.status(cfg.sessionId());
     }
 
     private @NonNull SessionConfig requireOwnedSession(@NonNull String name) {

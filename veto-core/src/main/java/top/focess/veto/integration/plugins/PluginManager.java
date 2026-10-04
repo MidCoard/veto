@@ -19,10 +19,10 @@ import java.util.concurrent.Executors;
 import java.util.function.BiPredicate;
 import java.util.function.Consumer;
 import org.checkerframework.checker.initialization.qual.UnknownInitialization;
+import org.checkerframework.checker.nullness.qual.RequiresNonNull;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.ObjectProvider;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
@@ -97,12 +97,9 @@ public final class PluginManager implements AutoCloseable {
         return value == null ? null : type.cast(value);
     }
 
-    private final @NonNull ServiceAccess serviceAccess = new ServiceAccess();
+    private final @NonNull ServiceAccess serviceAccess;
 
-    @SuppressWarnings(
-            "methodref.receiver.bound") // Registry callbacks run after manager construction.
-    private final @NonNull PluginServiceRegistry serviceRegistry =
-            new PluginServiceRegistry(serviceAccess, this::resolvePluginScope);
+    private final @NonNull PluginServiceRegistry serviceRegistry;
 
     private @NonNull ServiceCallContext resolvePluginScope(
             @NonNull String callerId,
@@ -130,8 +127,7 @@ public final class PluginManager implements AutoCloseable {
                     && grant.scope() instanceof Scope.SessionScope identity) {
                 var session = new PluginStorage.Grant<>(grant.token(), identity);
                 var available = serviceAccess.sessions;
-                if (available == null
-                        || !available.getObject().includes(identity.session(), callerId)
+                if (!available.getObject().includes(identity.session(), callerId)
                         || !available.getObject().includes(identity.session(), providerId))
                     throw new ServiceException(ServiceException.Code.UNAVAILABLE);
                 var agent =
@@ -156,20 +152,11 @@ public final class PluginManager implements AutoCloseable {
         throw new ServiceException(ServiceException.Code.INVALID_REQUEST);
     }
 
-    /** Binds the session-selection provider used to gate cross-plugin service access. */
-    @Autowired
-    public void bindServiceSessions(@NonNull ObjectProvider<SessionPlugins> sessions) {
-        serviceAccess.sessions = sessions;
-    }
-
     /**
      * Owns, per plugin, a release action that invalidates the plugin frontend of every session
      * selecting it when the plugin shuts down.
      */
-    @Autowired
-    public void bindLifecycleInvalidations(
-            @NonNull ObjectProvider<SessionRepository> sessions,
-            @NonNull ObjectProvider<SessionInvalidations> invalidations) {
+    private void registerFrontendInvalidations() {
         for (var plugin : published.plugins())
             plugin.ownResource(
                     () -> {
@@ -194,14 +181,18 @@ public final class PluginManager implements AutoCloseable {
 
     private static final class ServiceAccess
             implements BiPredicate<@NonNull String, @NonNull String> {
-        private ObjectProvider<SessionPlugins> sessions;
+        private final @NonNull ObjectProvider<SessionPlugins> sessions;
+
+        private ServiceAccess(@NonNull ObjectProvider<SessionPlugins> sessions) {
+            this.sessions = sessions;
+        }
 
         public boolean test(@NonNull String caller, @NonNull String provider) {
             var call = ToolCallContextHolder.get();
             if (call == null) return true;
             var available = sessions;
             var id = call.sessionId();
-            if (available == null || id == null) return false;
+            if (id == null) return false;
             var selected = available.getObject();
             return (caller.isEmpty() || selected.includes(id.toString(), caller))
                     && selected.includes(id.toString(), provider);
@@ -220,6 +211,7 @@ public final class PluginManager implements AutoCloseable {
 
     // WHY: the returned callback runs only after registry publication initializes host views.
     @SuppressWarnings("dereference.of.nullable")
+    @RequiresNonNull("serviceAccess")
     private @NonNull PluginContributionsDirectory contributionsFor(
             @UnknownInitialization PluginManager this, @NonNull ManagedPlugin caller) {
         return (pointId, major) -> published.contributions(pointId, major, caller, serviceAccess);
@@ -248,8 +240,10 @@ public final class PluginManager implements AutoCloseable {
     private final @NonNull String nodeCommand;
     private final boolean trustedCode;
     private final long timeoutMillis;
-    private ObjectProvider<ToolEngineImpl> toolEngine;
-    private ObjectProvider<PluginLlmProviders> llmProviders;
+    private final @NonNull ObjectProvider<ToolEngineImpl> toolEngine;
+    private final @NonNull ObjectProvider<PluginLlmProviders> llmProviders;
+    private final @NonNull ObjectProvider<SessionRepository> sessions;
+    private final @NonNull ObjectProvider<SessionInvalidations> invalidations;
     private final @NonNull Set<String> installedIds = new HashSet<>();
     private final @NonNull Set<String> dataLifecycleOwners = ConcurrentHashMap.newKeySet();
     private final @NonNull Map<ContributionPoint<?>, PointDefinition> definedPoints =
@@ -257,15 +251,6 @@ public final class PluginManager implements AutoCloseable {
     private final @NonNull Map<String, Integer> pendingDataCleanups = new HashMap<>();
     // Guarded by this monitor; close rejects new deletion claims before draining existing ones.
     private boolean closing;
-
-    /** Attaches catalog consumers after their Spring initialization completes. */
-    @Autowired
-    public void bindCatalogConsumers(
-            @NonNull ObjectProvider<ToolEngineImpl> tools,
-            @NonNull ObjectProvider<PluginLlmProviders> providers) {
-        toolEngine = tools;
-        llmProviders = providers;
-    }
 
     /** Manager-owned mutable registration staging, never retained by a query registry. */
     private record Registration(@NonNull ManagedPlugin plugin, @NonNull PointRegistrations points) {
@@ -331,26 +316,7 @@ public final class PluginManager implements AutoCloseable {
      */
     // WHY: staged ManagedPlugin handles are owned by this manager and closed in close(), and the
     // historical-ID null guards stay because third-party plugins can break the @NonNull contract.
-    @SuppressWarnings({"resource", "ConstantValue"})
-    public PluginManager(
-            @Value("${veto.plugins.directory:plugins}") @NonNull String pluginDirectory,
-            @Value("${veto.plugins.node-command:}") @NonNull String nodeCommand,
-            @Value("${veto.plugins.trusted-code:false}") boolean trustedCode,
-            @Value("${veto.plugins.timeout-ms:5000}") long timeoutMillis,
-            @NonNull ObjectProvider<PluginHostServices> hostServices,
-            @NonNull PluginConfigurations configurations)
-            throws IOException {
-        this(
-                pluginDirectory,
-                nodeCommand,
-                trustedCode,
-                timeoutMillis,
-                hostServices,
-                configurations,
-                new PluginActivationStore());
-    }
-
-    @Autowired
+    @SuppressWarnings({"resource", "ConstantValue", "methodref.receiver.bound"})
     public PluginManager(
             @Value("${veto.plugins.directory:plugins}") @NonNull String pluginDirectory,
             @Value("${veto.plugins.node-command:}") @NonNull String nodeCommand,
@@ -358,8 +324,19 @@ public final class PluginManager implements AutoCloseable {
             @Value("${veto.plugins.timeout-ms:5000}") long timeoutMillis,
             @NonNull ObjectProvider<PluginHostServices> hostServices,
             @NonNull PluginConfigurations configurations,
-            @NonNull PluginActivationStore activationStore)
+            @NonNull PluginActivationStore activationStore,
+            @NonNull ObjectProvider<SessionPlugins> sessionPlugins,
+            @NonNull ObjectProvider<SessionRepository> sessions,
+            @NonNull ObjectProvider<SessionInvalidations> invalidations,
+            @NonNull ObjectProvider<ToolEngineImpl> tools,
+            @NonNull ObjectProvider<PluginLlmProviders> providers)
             throws IOException {
+        serviceAccess = new ServiceAccess(sessionPlugins);
+        serviceRegistry = new PluginServiceRegistry(serviceAccess, this::resolvePluginScope);
+        this.sessions = sessions;
+        this.invalidations = invalidations;
+        toolEngine = tools;
+        llmProviders = providers;
         this.configurations = configurations;
         this.pluginDirectory = pluginDirectory;
         this.activationStore = activationStore;
@@ -464,6 +441,7 @@ public final class PluginManager implements AutoCloseable {
             for (var entry : validatedCatalog.entries(StandardContributionPoints.DATA_LIFECYCLE))
                 dataLifecycleOwners.add(entry.source().namespace());
             published.events().submit(new ServiceDirectoryChangedEvent());
+            registerFrontendInvalidations();
             ready = true;
         } catch (Exception | ServiceConfigurationError e) {
             definedPoints.clear();
@@ -476,6 +454,7 @@ public final class PluginManager implements AutoCloseable {
         }
     }
 
+    @RequiresNonNull({"serviceRegistry", "serviceAccess"})
     private @NonNull Registration constructPlugin(
             @UnknownInitialization PluginManager this,
             @NonNull ManagedPlugin plugin,
@@ -815,18 +794,14 @@ public final class PluginManager implements AutoCloseable {
                         installedIds);
         published = next;
         try {
-            var tools = toolEngine;
-            if (tools != null) tools.getObject().reloadPlugins(next);
-            var providers = llmProviders;
-            if (providers != null) providers.getObject().reload(next);
+            toolEngine.getObject().reloadPlugins(next);
+            llmProviders.getObject().reload(next);
             serviceRegistry.bind(nextCatalog, nextPlugins);
             nextEvents.submit(new ServiceDirectoryChangedEvent());
         } catch (RuntimeException failure) {
             published = previous;
-            var tools = toolEngine;
-            if (tools != null) tools.getObject().reloadPlugins(previous);
-            var providers = llmProviders;
-            if (providers != null) providers.getObject().reload(previous);
+            toolEngine.getObject().reloadPlugins(previous);
+            llmProviders.getObject().reload(previous);
             serviceRegistry.bind(previous.catalog(), previous.plugins());
             throw failure;
         }

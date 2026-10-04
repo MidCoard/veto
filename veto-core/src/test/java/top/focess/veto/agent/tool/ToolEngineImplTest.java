@@ -25,6 +25,7 @@ import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.mockito.Mockito;
 import org.springframework.context.ApplicationContext;
 import top.focess.veto.agent.intercept.ToolExecutionPermit;
 import top.focess.veto.agent.mcp.transport.McpTransport;
@@ -50,8 +51,10 @@ import top.focess.veto.builtin.workspace.ListDirTool;
 import top.focess.veto.builtin.workspace.ReplaceFileContentTool;
 import top.focess.veto.builtin.workspace.ViewFileTool;
 import top.focess.veto.builtin.workspace.WriteToFileTool;
+import top.focess.veto.event.EventManager;
 import top.focess.veto.integration.plugins.PluginManager;
 import top.focess.veto.integration.plugins.ProcessHostFixture;
+import top.focess.veto.integration.plugins.SessionPlugins;
 import top.focess.veto.integration.plugins.WorkflowPluginFixture;
 import top.focess.veto.sandbox.TestSandboxFactory;
 
@@ -78,10 +81,10 @@ class ToolEngineImplTest {
             var context = mock(ApplicationContext.class);
             when(context.getBeansOfType(PluginManager.class))
                     .thenReturn(Map.of("plugins", fixture.manager));
-            var engine = new ToolEngineImpl(new ObjectMapper(), List.of(), context);
-            engine.attachSessionPlugins(fixture.sessions);
+            var selected = spy(fixture.sessions);
             var events = spy(fixture.events);
-            engine.attachEventManager(events);
+            var engine =
+                    new ToolEngineImpl(new ObjectMapper(), List.of(), context, selected, events);
             engine.init();
             String name = "plugin_fixture_workflow__view_file";
             var definition = definition(engine, name);
@@ -95,9 +98,7 @@ class ToolEngineImplTest {
             assertTrue(approved.success(), approved.content());
             assertTrue(approved.content().contains("plugin read through workspace permit"));
             verify(events).submit(isA(BeforeTextCommitEvent.class));
-            var none = spy(fixture.sessions);
-            doReturn(false).when(none).includes(anyString(), anyString());
-            engine.attachSessionPlugins(none);
+            doReturn(false).when(selected).includes(anyString(), anyString());
             assertFalse(executeAuthorized(engine, call, definition, root).success());
             fixture.runtime.close();
             assertTrue(engine.getActiveTools(null).isEmpty());
@@ -289,7 +290,13 @@ class ToolEngineImplTest {
             @NonNull AgentTool<?> tool) {
         var context = mock(ApplicationContext.class);
         when(context.getBeansOfType(AgentTool.class)).thenReturn(Map.of("invalid", tool));
-        var engine = new ToolEngineImpl(new ObjectMapper(), List.of(), context);
+        var engine =
+                new ToolEngineImpl(
+                        new ObjectMapper(),
+                        List.of(),
+                        context,
+                        Mockito.mock(SessionPlugins.class),
+                        Mockito.mock(EventManager.class));
         return assertThrows(IllegalArgumentException.class, engine::init);
     }
 
@@ -310,7 +317,13 @@ class ToolEngineImplTest {
         ApplicationContext appCtx = mock(ApplicationContext.class);
         var tool = new JsonAgentTool();
         when(appCtx.getBeansOfType(AgentTool.class)).thenReturn(Map.of("jsonAgentTool", tool));
-        ToolEngineImpl engine = new ToolEngineImpl(new ObjectMapper(), List.of(), appCtx);
+        ToolEngineImpl engine =
+                new ToolEngineImpl(
+                        new ObjectMapper(),
+                        List.of(),
+                        appCtx,
+                        Mockito.mock(SessionPlugins.class),
+                        Mockito.mock(EventManager.class));
         engine.init();
         ToolDefinition definition = definition(engine, "json_agent");
         ToolCall screened = new ToolCall("json_agent", Map.of("output", "{}"), "screened-call");
@@ -368,7 +381,13 @@ class ToolEngineImplTest {
         ApplicationContext appCtx = mock(ApplicationContext.class);
         when(appCtx.getBeansOfType(AgentTool.class))
                 .thenReturn(Map.of("jsonAgentTool", new JsonAgentTool()));
-        ToolEngineImpl engine = new ToolEngineImpl(mapper, List.of(), appCtx);
+        ToolEngineImpl engine =
+                new ToolEngineImpl(
+                        mapper,
+                        List.of(),
+                        appCtx,
+                        Mockito.mock(SessionPlugins.class),
+                        Mockito.mock(EventManager.class));
         engine.init();
         ToolResult result =
                 executeAuthorized(
@@ -613,7 +632,13 @@ class ToolEngineImplTest {
         ApplicationContext appCtx = mock(ApplicationContext.class);
         when(appCtx.getBeansOfType(AgentTool.class))
                 .thenReturn(Map.of("failingAgentTool", new FailingAgentTool()));
-        ToolEngineImpl engine = new ToolEngineImpl(mapper, List.of(), appCtx);
+        ToolEngineImpl engine =
+                new ToolEngineImpl(
+                        mapper,
+                        List.of(),
+                        appCtx,
+                        Mockito.mock(SessionPlugins.class),
+                        Mockito.mock(EventManager.class));
         engine.init();
 
         ToolResult result =
@@ -637,7 +662,13 @@ class ToolEngineImplTest {
         FailingAgentTool tool = spy(new FailingAgentTool());
         ApplicationContext appCtx = mock(ApplicationContext.class);
         when(appCtx.getBeansOfType(AgentTool.class)).thenReturn(Map.of("failingAgentTool", tool));
-        ToolEngineImpl engine = new ToolEngineImpl(mapper, List.of(), appCtx);
+        ToolEngineImpl engine =
+                new ToolEngineImpl(
+                        mapper,
+                        List.of(),
+                        appCtx,
+                        Mockito.mock(SessionPlugins.class),
+                        Mockito.mock(EventManager.class));
         engine.init();
 
         ToolResult result =
@@ -1340,7 +1371,13 @@ class ToolEngineImplTest {
     @Test
     void failedBuiltinInitializationPublishesNoPartialCatalog() {
         var context = mock(ApplicationContext.class);
-        var engine = new ToolEngineImpl(new ObjectMapper(), List.of(new ViewFileTool()), context);
+        var engine =
+                new ToolEngineImpl(
+                        new ObjectMapper(),
+                        List.of(new ViewFileTool()),
+                        context,
+                        Mockito.mock(SessionPlugins.class),
+                        Mockito.mock(EventManager.class));
         when(context.getBeansOfType(AgentTool.class))
                 .thenAnswer(
                         invocation -> {
@@ -1366,7 +1403,9 @@ class ToolEngineImplTest {
                 new ToolEngineImpl(
                         new ObjectMapper(),
                         List.of(new ViewFileTool(), new ViewFileTool()),
-                        context);
+                        context,
+                        Mockito.mock(SessionPlugins.class),
+                        Mockito.mock(EventManager.class));
         assertThrows(IllegalArgumentException.class, engine::init);
         assertNull(engine.resolveDefinition("view_file"));
         assertEquals(0, engine.catalogGeneration());

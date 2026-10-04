@@ -6,7 +6,6 @@ import java.util.List;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -37,44 +36,11 @@ import top.focess.veto.vault.UserRegistry;
  */
 @Service
 public class UserAdminService {
-    private EventManager eventManager;
-    private PluginDataCleanup pluginDataCleanup;
-
-    /** Attaches required transactional cleanup independently of notification delivery. */
-    @Autowired
-    public void attachPluginDataCleanup(@NonNull PluginDataCleanup cleanup) {
-        pluginDataCleanup = cleanup;
-    }
-
-    /** Attaches the shared event manager notified after session deletion commits. */
-    @Autowired
-    public void attachEventManager(@NonNull EventManager events) {
-        eventManager = events;
-    }
-
-    private ScopedPluginStorage pluginStorage;
-
-    /** Setter-injects the scoped plugin storage purged on user deletion. */
-    @Autowired
-    public void attachPluginStorage(@NonNull ScopedPluginStorage storage) {
-        pluginStorage = storage;
-    }
-
-    private HitlRecordRepository hitlRecords;
-
-    /** Setter-injects the HITL record repository purged on user deletion. */
-    @Autowired
-    public void attachHitlRecords(@NonNull HitlRecordRepository records) {
-        hitlRecords = records;
-    }
-
-    private RequestContinuationStore continuations;
-
-    /** Setter-injects the request-continuation store purged on user deletion. */
-    @Autowired
-    public void attachContinuations(@NonNull RequestContinuationStore store) {
-        continuations = store;
-    }
+    private final @NonNull EventManager eventManager;
+    private final @NonNull PluginDataCleanup pluginDataCleanup;
+    private final @NonNull ScopedPluginStorage pluginStorage;
+    private final @NonNull HitlRecordRepository hitlRecords;
+    private final @NonNull RequestContinuationStore continuations;
 
     private static final @NonNull Logger log =
             LoggerFactory.getLogger("top.focess.veto.security.UserAdminService");
@@ -86,20 +52,30 @@ public class UserAdminService {
     private final @NonNull KeysteadVault vault;
     private final @NonNull AuthLifecycleManager auth;
 
-    /** Creates the service over the user, pattern, session, agent, vault, and auth stores. */
+    /** Creates the service with account stores, transactional cleanup, and event delivery. */
     public UserAdminService(
             @NonNull UserRegistry users,
             @NonNull AgentPatternRepository patterns,
             @NonNull SessionRepository sessions,
             @NonNull AgentInstanceRepository agents,
             @NonNull KeysteadVault vault,
-            @NonNull AuthLifecycleManager auth) {
+            @NonNull AuthLifecycleManager auth,
+            @NonNull EventManager eventManager,
+            @NonNull PluginDataCleanup pluginDataCleanup,
+            @NonNull ScopedPluginStorage pluginStorage,
+            @NonNull HitlRecordRepository hitlRecords,
+            @NonNull RequestContinuationStore continuations) {
         this.users = users;
         this.patterns = patterns;
         this.sessions = sessions;
         this.agents = agents;
         this.vault = vault;
         this.auth = auth;
+        this.eventManager = eventManager;
+        this.pluginDataCleanup = pluginDataCleanup;
+        this.pluginStorage = pluginStorage;
+        this.hitlRecords = hitlRecords;
+        this.continuations = continuations;
     }
 
     /**
@@ -119,8 +95,7 @@ public class UserAdminService {
      */
     @Transactional
     public void deleteUser(@NonNull String username) {
-        var dataEvents = pluginDataCleanup;
-        if (dataEvents != null) dataEvents.beforeOwnerDeleted(username);
+        pluginDataCleanup.beforeOwnerDeleted(username);
         try {
             auth.logout(username);
         } catch (Exception e) {
@@ -131,13 +106,10 @@ public class UserAdminService {
         }
         for (SessionEntity s : sessions.findByOwner(username)) {
             Runnable notifyDeleted =
-                    () -> {
-                        var events = eventManager;
-                        if (events != null)
-                            events.submit(
+                    () ->
+                            eventManager.submit(
                                     new SessionDeletedEvent(
                                             new Scope.SessionScope(username, s.getId())));
-                    };
             if (TransactionSynchronizationManager.isSynchronizationActive())
                 TransactionSynchronizationManager.registerSynchronization(
                         new TransactionSynchronization() {
@@ -147,12 +119,11 @@ public class UserAdminService {
                             }
                         });
             else notifyDeleted.run();
-            RequestContinuationStore store = continuations;
-            if (store != null) store.deleteSession(s.getId());
-            if (hitlRecords != null) hitlRecords.deleteBySessionId(s.getId());
+            continuations.deleteSession(s.getId());
+            hitlRecords.deleteBySessionId(s.getId());
             agents.deleteBySessionId(s.getId());
         }
-        if (pluginStorage != null) pluginStorage.deleteUser(username);
+        pluginStorage.deleteUser(username);
         sessions.deleteByOwner(username);
         patterns.deleteByOwner(username);
         users.deleteByUsername(username);

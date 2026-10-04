@@ -27,7 +27,7 @@ import top.focess.veto.VetoApplication;
 import top.focess.veto.agent.tool.ToolEngine;
 import top.focess.veto.agent.tool.ToolEngineImpl;
 import top.focess.veto.bus.DeltaBroker;
-import top.focess.veto.integration.plugins.PluginTestSupport;
+import top.focess.veto.integration.plugins.PluginManager;
 import top.focess.veto.memory.TurnLogService;
 import top.focess.veto.observability.AuditLogger;
 import top.focess.veto.vault.SessionManager;
@@ -154,7 +154,7 @@ class VetoApplicationTests {
                 new VetoGateway(
                         disabledConfig,
                         context.getBean(LlamaCppBridge.class),
-                        PluginTestSupport.providerOf(null),
+                        context.getBean(PluginManager.class),
                         context.getBean(AuditLogger.class));
 
         String sensitive = "Secret: my-api-key";

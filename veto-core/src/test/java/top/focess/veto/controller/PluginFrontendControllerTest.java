@@ -84,7 +84,7 @@ class PluginFrontendControllerTest {
                                             null, null, null, true, null, null)));
             var controller =
                     new PluginFrontendController(
-                            new RequestAuthorization(user -> false),
+                            AuthorizationTestSupport.authorizer(user -> false),
                             sessions,
                             selected,
                             fixture.manager,
@@ -139,7 +139,7 @@ class PluginFrontendControllerTest {
                                         null, null, true, null, null)));
         var controller =
                 new PluginFrontendController(
-                        new RequestAuthorization(user -> false),
+                        AuthorizationTestSupport.authorizer(user -> false),
                         sessions,
                         selected,
                         plugins,
@@ -177,7 +177,7 @@ class PluginFrontendControllerTest {
         PluginManager plugins = mock(PluginManager.class);
         var controller =
                 new PluginFrontendController(
-                        new RequestAuthorization(user -> false),
+                        AuthorizationTestSupport.authorizer(user -> false),
                         sessions,
                         selected,
                         plugins,
@@ -211,7 +211,7 @@ class PluginFrontendControllerTest {
                 .thenReturn(Optional.empty());
         var controller =
                 new PluginFrontendController(
-                        new RequestAuthorization(user -> false),
+                        AuthorizationTestSupport.authorizer(user -> false),
                         sessions,
                         selected,
                         plugins,

@@ -12,11 +12,12 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
 import top.focess.veto.agent.drift.ReadHistory;
 import top.focess.veto.agent.identity.AgentPersona;
 import top.focess.veto.agent.intercept.Gateway;
 import top.focess.veto.agent.intercept.HitlRegistry;
-import top.focess.veto.agent.intercept.IngressDefense;
+import top.focess.veto.agent.intercept.IngressDefenseTestSupport;
 import top.focess.veto.agent.loop.CompactionSupport;
 import top.focess.veto.agent.loop.PromptCompiler;
 import top.focess.veto.agent.loop.PromptLibrary;
@@ -25,6 +26,7 @@ import top.focess.veto.api.llm.LlmBinding;
 import top.focess.veto.api.llm.LlmOptions;
 import top.focess.veto.api.llm.ProviderType;
 import top.focess.veto.api.llm.VetoResponse;
+import top.focess.veto.bus.SessionInvalidations;
 import top.focess.veto.llm.core.*;
 
 class CompactionRuntimeTest {
@@ -140,8 +142,8 @@ class CompactionRuntimeTest {
                         null,
                         tools,
                         gateway,
-                        new HitlRegistry(),
-                        new IngressDefense()),
+                        new HitlRegistry(null, Mockito.mock(SessionInvalidations.class)),
+                        IngressDefenseTestSupport.inMemory()),
                 List.of(),
                 compiler,
                 caller,

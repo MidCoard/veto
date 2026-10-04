@@ -14,7 +14,6 @@ import java.util.function.Supplier;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.identity.AgentPersona;
 import top.focess.veto.agent.identity.Role;
@@ -27,21 +26,14 @@ import top.focess.veto.model.AgentInstanceRepository;
 /**
  * Owns live agents and invocation dependencies independently of group membership.
  *
- * <p>Thread-safe for membership operations after dependency injection: this instance's monitor
- * serializes registration, parent/child validation, removal and shutdown. Returned lists are
- * snapshots of membership, not frozen agent state. Persistence, invalidation and agent lifecycle
- * calls currently run under the monitor; those collaborators must not block waiting for another
- * thread to enter this registry. Dependency attachment is a startup operation.
+ * <p>Thread-safe for membership operations: this instance's monitor serializes registration,
+ * parent/child validation, removal and shutdown. Returned lists are snapshots of membership, not
+ * frozen agent state. Persistence, invalidation and agent lifecycle calls currently run under the
+ * monitor; those collaborators must not block waiting for another thread to enter this registry.
  */
 @Component
 public final class SessionAgentRegistry implements AutoCloseable {
-    private SessionInvalidations invalidations;
-
-    /** Injects the invalidation bus used to notify subscribers when session agents change. */
-    @Autowired
-    public void attachInvalidations(@NonNull SessionInvalidations invalidations) {
-        this.invalidations = invalidations;
-    }
+    private final @NonNull SessionInvalidations invalidations;
 
     private static final @NonNull Logger log =
             LoggerFactory.getLogger("top.focess.veto.agent.SessionAgentRegistry");
@@ -70,8 +62,8 @@ public final class SessionAgentRegistry implements AutoCloseable {
     // Transport/session keys identify their primary agent; live alone owns agent instances.
     private final @NonNull Map<@NonNull String, @NonNull String> transportIds = new HashMap<>();
     private boolean closed;
-    private final AgentInstanceRepository repository;
-    private final TurnRecordRepository turns;
+    private final @NonNull AgentInstanceRepository repository;
+    private final @NonNull TurnRecordRepository turns;
 
     /**
      * Resolves a transport key, creating its primary agent atomically with registration. The host
@@ -122,18 +114,14 @@ public final class SessionAgentRegistry implements AutoCloseable {
         if (agent != null) stopSession(agent.sessionId());
     }
 
-    /** Embedded runners without a database still have runtime lifecycle ownership. */
-    public SessionAgentRegistry() {
-        repository = null;
-        turns = null;
-    }
-
-    /** Database-backed registry that persists agent lifecycle alongside runtime ownership. */
-    @Autowired
+    /** Creates the registry with durable lifecycle storage and session invalidation delivery. */
     public SessionAgentRegistry(
-            @NonNull AgentInstanceRepository repository, @NonNull TurnRecordRepository turns) {
+            @NonNull AgentInstanceRepository repository,
+            @NonNull TurnRecordRepository turns,
+            @NonNull SessionInvalidations invalidations) {
         this.repository = repository;
         this.turns = turns;
+        this.invalidations = invalidations;
     }
 
     /** A session agent's inspectable state, merging durable records with any live runtime. */
@@ -157,41 +145,37 @@ public final class SessionAgentRegistry implements AutoCloseable {
     public synchronized @NonNull List<@NonNull AgentSummary> records(@NonNull UUID sessionId) {
         Map<@NonNull String, @NonNull AgentSummary> result = new LinkedHashMap<>();
         Set<String> excluded = new HashSet<>();
-        if (repository != null) {
-            for (AgentEntity entity : repository.findBySessionId(sessionId.toString())) {
-                if (entity.isEphemeral()) {
-                    excluded.add(entity.getId());
-                    continue;
-                }
-                String role = entity.getRuntimeRole();
-                result.put(
-                        entity.getId(),
-                        new AgentSummary(
-                                entity.getId(),
-                                entity.getName(),
-                                role == null ? null : Role.valueOf(role),
-                                entity.getEndedAt() == null ? null : AgentState.TERMINATED,
-                                entity.getParentAgentId(),
-                                entity.getParentCallId(),
-                                false,
-                                entity.getCreatedAt(),
-                                entity.getStartedAt(),
-                                entity.getEndedAt(),
-                                entity.getResponsibility(),
-                                entity.isUserInteractionEnabled(),
-                                null,
-                                null));
+        for (AgentEntity entity : repository.findBySessionId(sessionId.toString())) {
+            if (entity.isEphemeral()) {
+                excluded.add(entity.getId());
+                continue;
             }
+            String role = entity.getRuntimeRole();
+            result.put(
+                    entity.getId(),
+                    new AgentSummary(
+                            entity.getId(),
+                            entity.getName(),
+                            role == null ? null : Role.valueOf(role),
+                            entity.getEndedAt() == null ? null : AgentState.TERMINATED,
+                            entity.getParentAgentId(),
+                            entity.getParentCallId(),
+                            false,
+                            entity.getCreatedAt(),
+                            entity.getStartedAt(),
+                            entity.getEndedAt(),
+                            entity.getResponsibility(),
+                            entity.isUserInteractionEnabled(),
+                            null,
+                            null));
         }
-        if (turns != null) {
-            for (String id : turns.findAgentIdsBySessionId(sessionId.toString())) {
-                if (id != null && !id.isBlank() && !"legacy".equals(id) && !excluded.contains(id)) {
-                    result.putIfAbsent(
-                            id,
-                            new AgentSummary(
-                                    id, id, null, null, null, null, false, null, null, null, null,
-                                    false, null, null));
-                }
+        for (String id : turns.findAgentIdsBySessionId(sessionId.toString())) {
+            if (id != null && !id.isBlank() && !"legacy".equals(id) && !excluded.contains(id)) {
+                result.putIfAbsent(
+                        id,
+                        new AgentSummary(
+                                id, id, null, null, null, null, false, null, null, null, null,
+                                false, null, null));
             }
         }
         for (Entry entry : agents(sessionId)) {
@@ -256,33 +240,30 @@ public final class SessionAgentRegistry implements AutoCloseable {
             throw new IllegalStateException(
                     "Agent registry is closed or agent is already registered");
         }
-        if (repository != null) {
-            try {
-                AgentEntity entity =
-                        repository
-                                .findById(entry.agent().id())
-                                .orElseGet(
-                                        () ->
-                                                AgentEntity.spawned(
-                                                        entry.agent().id(),
-                                                        entry.sessionId().toString(),
-                                                        entry.agent().name()));
-                if (!entity.getSessionId().equals(entry.sessionId().toString())) {
-                    throw new IllegalStateException("Agent belongs to another session");
-                }
-                entity.started(
-                        entry.agent().persona(), entry.parentAgentId(), entry.parentCallId());
-                entity.setUserInteractionEnabled(entry.agent().userInteractionEnabled());
-                if (entry.ephemeral()) entity.markEphemeral();
-                repository.save(entity);
-            } catch (RuntimeException error) {
-                if (closed) entry.agent().shutdown();
-                else entry.agent().terminate();
-                throw error;
+        try {
+            AgentEntity entity =
+                    repository
+                            .findById(entry.agent().id())
+                            .orElseGet(
+                                    () ->
+                                            AgentEntity.spawned(
+                                                    entry.agent().id(),
+                                                    entry.sessionId().toString(),
+                                                    entry.agent().name()));
+            if (!entity.getSessionId().equals(entry.sessionId().toString())) {
+                throw new IllegalStateException("Agent belongs to another session");
             }
+            entity.started(entry.agent().persona(), entry.parentAgentId(), entry.parentCallId());
+            entity.setUserInteractionEnabled(entry.agent().userInteractionEnabled());
+            if (entry.ephemeral()) entity.markEphemeral();
+            repository.save(entity);
+        } catch (RuntimeException error) {
+            if (closed) entry.agent().shutdown();
+            else entry.agent().terminate();
+            throw error;
         }
         live.put(entry.agent().id(), entry);
-        if (invalidations != null) invalidations.changed(entry.sessionId(), "agents", "execution");
+        invalidations.changed(entry.sessionId(), "agents", "execution");
         entry.agent().onTermination(() -> stopIfSame(entry.agent().id(), entry.agent()));
         if (entry.agent().state() == AgentState.TERMINATED)
             stopIfSame(entry.agent().id(), entry.agent());
@@ -367,7 +348,7 @@ public final class SessionAgentRegistry implements AutoCloseable {
         Entry entry = live.remove(agentId);
         if (entry == null) return;
         transportIds.values().removeIf(agentId::equals);
-        if (invalidations != null) invalidations.changed(entry.sessionId(), "agents", "execution");
+        invalidations.changed(entry.sessionId(), "agents", "execution");
         var children =
                 live.values().stream()
                         .filter(child -> agentId.equals(child.parentAgentId()))
@@ -376,20 +357,17 @@ public final class SessionAgentRegistry implements AutoCloseable {
         children.forEach(this::stop);
         if (closed) entry.agent().shutdown();
         else entry.agent().terminate();
-        var store = repository;
-        if (store != null) {
-            try {
-                AgentEntity entity = store.findById(agentId).orElse(null);
-                if (entity != null) {
-                    entity.ended(entry.agent().persona());
-                    store.save(entity);
-                }
-            } catch (RuntimeException error) {
-                log.warn(
-                        "Could not save stop time for agent {}; its identity remains recorded",
-                        agentId,
-                        error);
+        try {
+            AgentEntity entity = repository.findById(agentId).orElse(null);
+            if (entity != null) {
+                entity.ended(entry.agent().persona());
+                repository.save(entity);
             }
+        } catch (RuntimeException error) {
+            log.warn(
+                    "Could not save stop time for agent {}; its identity remains recorded",
+                    agentId,
+                    error);
         }
     }
 

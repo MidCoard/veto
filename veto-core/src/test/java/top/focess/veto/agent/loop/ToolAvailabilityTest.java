@@ -24,6 +24,7 @@ import top.focess.veto.api.agent.tool.ToolPresentation;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.api.resources.CatalogueTree;
 import top.focess.veto.builtin.tools.LoadSkillTool;
+import top.focess.veto.llm.core.ToolResultPresenter;
 
 class ToolAvailabilityTest {
     @Test
@@ -54,7 +55,11 @@ class ToolAvailabilityTest {
                         new VetoCapabilityTranslator(),
                         new SystemPromptResolver(),
                         new ObjectMapper(),
-                        "FULL_ACCESS");
+                        new ToolResultPresenter(new ObjectMapper()),
+                        "FULL_ACCESS",
+                        new ContextBudgetConfiguration(),
+                        32000,
+                        0.9);
         var rendered =
                 compiler.linkSystemSource(
                         new AgentPersona("id", "name", "", Set.of(definition)),

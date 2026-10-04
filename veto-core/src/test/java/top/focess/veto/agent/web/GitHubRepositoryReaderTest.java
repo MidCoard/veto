@@ -17,6 +17,7 @@ import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.mockito.Mockito;
 import top.focess.veto.agent.capability.ImportedCredentialLeases;
 import top.focess.veto.agent.capability.NetworkEgressCapabilityImpl;
 import top.focess.veto.agent.intercept.ToolExecutionPermit;
@@ -25,7 +26,9 @@ import top.focess.veto.agent.workspace.*;
 import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.builtin.tools.ReadGitHubRepositoryTool;
+import top.focess.veto.event.EventManager;
 import top.focess.veto.integration.plugins.PluginTestSupport;
+import top.focess.veto.integration.plugins.SessionPlugins;
 import top.focess.veto.llm.core.*;
 import top.focess.veto.model.SessionEntity;
 import top.focess.veto.model.SessionRepository;
@@ -84,8 +87,7 @@ class GitHubRepositoryReaderTest {
                             sessions,
                             PluginTestSupport.providerOf(plugins),
                             PluginTestSupport.providerOf(null));
-            var capability = new NetworkEgressCapabilityImpl(15, 1000000, false);
-            capability.attachCredentials(leases);
+            var capability = new NetworkEgressCapabilityImpl(15, 1000000, false, leases);
             var tool = new ReadGitHubRepositoryTool(capability, client);
             var args =
                     Map.<String, Object>of(
@@ -112,7 +114,12 @@ class GitHubRepositoryReaderTest {
                             session,
                             ToolResultPresentationMode.BASIC,
                             permit));
-            var engine = ToolEngineImpl.isolated(new ObjectMapper(), List.of(tool));
+            var engine =
+                    ToolEngineImpl.isolated(
+                            new ObjectMapper(),
+                            List.of(tool),
+                            Mockito.mock(SessionPlugins.class),
+                            Mockito.mock(EventManager.class));
             var definition = engine.getActiveTools(null).getFirst();
             String result = engine.execute(call, definition).content();
             assertTrue(result.contains("[REDACTED_CREDENTIAL]"), result);

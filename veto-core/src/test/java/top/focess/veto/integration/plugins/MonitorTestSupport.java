@@ -19,6 +19,7 @@ import top.focess.veto.builtin.group.GroupObservations;
 import top.focess.veto.builtin.group.GroupRegistry;
 import top.focess.veto.builtin.monitor.MonitorRecord;
 import top.focess.veto.builtin.monitor.MonitorService;
+import top.focess.veto.bus.DeltaBroker;
 import top.focess.veto.bus.SessionInvalidations;
 import top.focess.veto.session.SessionService;
 import top.focess.veto.util.Nullness;
@@ -103,7 +104,7 @@ public final class MonitorTestSupport {
         factory.addBean("invalidations", invalidations);
         return (PluginHost)
                 Nullness.requireNonNull(
-                        new PluginHostConfiguration()
+                        new PluginHostConfiguration(new DeltaBroker())
                                 .runtimeHostServices(
                                         factory.getBeanProvider(SessionAgentRegistry.class),
                                         factory.getBeanProvider(SessionService.class),

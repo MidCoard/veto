@@ -1,11 +1,17 @@
 package top.focess.veto.integration.plugins;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
+import top.focess.veto.agent.tool.ToolEngineImpl;
 import top.focess.veto.api.agent.tool.CapabilityTool;
 import top.focess.veto.api.credentials.VaultAccess;
 import top.focess.veto.api.event.AgentTerminatedEvent;
@@ -17,6 +23,9 @@ import top.focess.veto.api.plugin.PluginState;
 import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.api.plugin.contract.PluginFailure;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
+import top.focess.veto.bus.SessionInvalidations;
+import top.focess.veto.model.SessionEntity;
+import top.focess.veto.model.SessionRepository;
 import top.focess.veto.plugin.runtime.*;
 import top.focess.veto.util.Nullness;
 
@@ -28,9 +37,35 @@ import top.focess.veto.util.Nullness;
  */
 class PluginManagerDiscoveryTest {
     @Test
-    void classpathDoesNotInstallPluginsWithoutManifests() throws Exception {
+    void constructorOwnsFrontendInvalidationOnPluginShutdown() throws Exception {
+        var sessions = mock(SessionRepository.class);
+        var invalidations = mock(SessionInvalidations.class);
+        var session = new SessionEntity("owner", "session");
         try (var plugins =
                 new PluginManager(
+                        PluginTestSupport.pluginPackages(),
+                        "",
+                        false,
+                        5000,
+                        PluginTestSupport.providerOf(PluginTestSupport.configurationServices(null)),
+                        new PluginConfigurations(),
+                        PluginTestSupport.activationStore(PluginTestSupport.pluginPackages()),
+                        PluginTestSupport.providerOf(mock(SessionPlugins.class)),
+                        PluginTestSupport.providerOf(sessions),
+                        PluginTestSupport.providerOf(invalidations),
+                        PluginTestSupport.providerOf(mock(ToolEngineImpl.class)),
+                        PluginTestSupport.providerOf(mock(PluginLlmProviders.class)))) {
+            session.setPluginBindings(
+                    List.of(plugins.registry().plugin("top.focess.builtin").binding()));
+            when(sessions.findAll()).thenReturn(List.of(session));
+        }
+        verify(invalidations).changed(UUID.fromString(session.getId()), "plugin-frontend");
+    }
+
+    @Test
+    void classpathDoesNotInstallPluginsWithoutManifests() throws Exception {
+        try (var plugins =
+                PluginTestSupport.manager(
                         "",
                         "",
                         false,

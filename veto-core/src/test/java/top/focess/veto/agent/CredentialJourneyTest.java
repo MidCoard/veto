@@ -18,10 +18,12 @@ import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
-import org.springframework.test.util.ReflectionTestUtils;
+import org.mockito.Mockito;
 import top.focess.veto.agent.capability.*;
+import top.focess.veto.agent.capability.ImportedCredentialLeases;
 import top.focess.veto.agent.identity.*;
 import top.focess.veto.agent.intercept.*;
+import top.focess.veto.agent.loop.ContextBudgetConfiguration;
 import top.focess.veto.agent.loop.PromptCompiler;
 import top.focess.veto.agent.tool.*;
 import top.focess.veto.agent.tool.ToolDefinition;
@@ -37,11 +39,13 @@ import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.api.llm.VetoResponse;
 import top.focess.veto.builtin.tools.ReadGitHubRepositoryTool;
+import top.focess.veto.bus.SessionInvalidations;
 import top.focess.veto.integration.plugins.HostResourceConfiguration;
 import top.focess.veto.integration.plugins.PluginConfigurations;
 import top.focess.veto.integration.plugins.PluginManager;
 import top.focess.veto.integration.plugins.PluginTestSupport;
 import top.focess.veto.llm.core.*;
+import top.focess.veto.llm.core.ToolResultPresenter;
 import top.focess.veto.model.SessionEntity;
 import top.focess.veto.model.SessionRepository;
 import top.focess.veto.sandbox.*;
@@ -76,7 +80,7 @@ class CredentialJourneyTest {
                                 "builtin_read_github_repository",
                         "top.focess.builtin:submit_plan", "builtin_submit_plan"));
         var plugins =
-                new PluginManager(
+                PluginTestSupport.manager(
                         PluginTestSupport.pluginPackages(),
                         "",
                         false,
@@ -112,14 +116,17 @@ class CredentialJourneyTest {
                                     request.headers().firstValue("Authorization").orElseThrow());
                             return response;
                         });
-        var network = new NetworkEgressCapabilityImpl(15, 1000000, false);
         SessionRepository credentialSessions = mock(SessionRepository.class);
-        network.attachCredentials(
-                new ImportedCredentialLeases(
-                        vault,
-                        credentialSessions,
-                        PluginTestSupport.providerOf(plugins),
-                        PluginTestSupport.providerOf(sessionPlugins)));
+        var network =
+                new NetworkEgressCapabilityImpl(
+                        15,
+                        1000000,
+                        false,
+                        new ImportedCredentialLeases(
+                                vault,
+                                credentialSessions,
+                                PluginTestSupport.providerOf(plugins),
+                                PluginTestSupport.providerOf(sessionPlugins)));
         var toolContext = mock(org.springframework.context.ApplicationContext.class);
         when(toolContext.getBeansOfType(top.focess.veto.api.agent.tool.AgentTool.class))
                 .thenReturn(
@@ -132,7 +139,9 @@ class CredentialJourneyTest {
                 new ToolEngineImpl(
                         mapper,
                         List.of(new ReadGitHubRepositoryTool(network, client)),
-                        toolContext) {
+                        toolContext,
+                        sessionPlugins,
+                        eventManager) {
                     @Override
                     public @NonNull List<ToolDefinition> getActiveTools(Set<String> whitelist) {
                         return super.getActiveTools(whitelist).stream()
@@ -147,17 +156,17 @@ class CredentialJourneyTest {
                                 .toList();
                     }
                 };
-        engine.attachSessionPlugins(sessionPlugins);
-        engine.attachEventManager(eventManager);
         engine.afterSingletonsInstantiated();
         var compiler =
                 new PromptCompiler(
                         new VetoCapabilityTranslator(),
                         new SystemPromptResolver(),
                         mapper,
-                        "FULL_ACCESS");
-        ReflectionTestUtils.setField(compiler, "maxInputTokens", 32000);
-        ReflectionTestUtils.setField(compiler, "contextFillRatio", 0.9);
+                        new ToolResultPresenter(mapper),
+                        "FULL_ACCESS",
+                        new ContextBudgetConfiguration(),
+                        32000,
+                        0.9);
         AtomicInteger calls = new AtomicInteger();
         var importedReferences = new ArrayList<String>();
         UniformLLMCaller caller =
@@ -240,7 +249,7 @@ class CredentialJourneyTest {
                     return message("Private repository read successfully");
                 };
         var sandbox = new SandboxManager(TestSandboxFactory.uncontainedSubprocesses());
-        var hitl = new HitlRegistry();
+        var hitl = new HitlRegistry(null, Mockito.mock(SessionInvalidations.class));
         var approvals = new ArrayList<String>();
         AtomicInteger protectedFileObservations = new AtomicInteger();
         AtomicInteger protectedNetworkObservations = new AtomicInteger();
@@ -274,11 +283,16 @@ class CredentialJourneyTest {
                         return rawObservation + "\nPlugin diagnostic: token=" + pluginToken;
                     }
                 };
+
         var service =
-                new AgentService(
+                AgentServiceTestSupport.create(
+                        new AgentServiceTestSupport.Dependencies()
+                                .plugins(sessionPlugins)
+                                .events(eventManager)
+                                .workspace(Workspace.single(root, PathMode.REAL)),
                         engine,
                         hitl,
-                        new IngressDefense(null, PluginTestSupport.providerOf(plugins)),
+                        new IngressDefense(null, plugins),
                         compiler,
                         caller,
                         mapper,
@@ -289,9 +303,7 @@ class CredentialJourneyTest {
                         "STRICT",
                         null,
                         null);
-        service.attachSessionPlugins(sessionPlugins);
-        service.attachEventManager(eventManager);
-        service.setConfiguredDefaultWorkspace(Workspace.single(root, PathMode.REAL));
+
         var credentialSession = new SessionEntity("owner", "test");
         String session = credentialSession.getId();
         when(credentialSessions.findById(session)).thenReturn(Optional.of(credentialSession));

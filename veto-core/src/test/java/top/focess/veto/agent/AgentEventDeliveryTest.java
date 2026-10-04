@@ -37,6 +37,7 @@ import top.focess.veto.api.llm.VetoRequest;
 import top.focess.veto.api.llm.VetoResponse;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
 import top.focess.veto.api.plugin.contribution.Contribution;
+import top.focess.veto.bus.SessionInvalidations;
 import top.focess.veto.integration.plugins.WorkflowPluginFixture;
 import top.focess.veto.llm.core.UniformLLMCaller;
 
@@ -68,7 +69,7 @@ class AgentEventDeliveryTest {
                     requests.add(request);
                     return new VetoResponse(null, null, "completed successfully");
                 };
-        AgentService service = serviceWith(caller);
+
         String session = UUID.randomUUID().toString();
         try (WorkflowPluginFixture fixture =
                 new WorkflowPluginFixture(
@@ -77,8 +78,14 @@ class AgentEventDeliveryTest {
                                         StandardContributionPoints.LISTENERS,
                                         "failure-continuation",
                                         hook)))) {
-            service.attachSessionPlugins(fixture.sessions);
-            service.attachEventManager(fixture.events);
+
+            AgentService service =
+                    serviceWith(
+                            new AgentServiceTestSupport.Dependencies()
+                                    .plugins(fixture.sessions)
+                                    .events(fixture.events),
+                            caller);
+
             Agent agent =
                     service.getOrCreateAgent(
                             session,
@@ -137,12 +144,7 @@ class AgentEventDeliveryTest {
                         event.setMessage("hook supplied answer");
                     }
                 };
-        var service =
-                serviceWith(
-                        (request, modelSessionId) -> {
-                            requests.add(request);
-                            return new VetoResponse(null, null, "original answer");
-                        });
+
         String session = UUID.randomUUID().toString();
         try (var fixture =
                 new WorkflowPluginFixture(
@@ -151,8 +153,17 @@ class AgentEventDeliveryTest {
                                         StandardContributionPoints.LISTENERS,
                                         "callbacks",
                                         hook)))) {
-            service.attachSessionPlugins(fixture.sessions);
-            service.attachEventManager(fixture.events);
+
+            var service =
+                    serviceWith(
+                            new AgentServiceTestSupport.Dependencies()
+                                    .plugins(fixture.sessions)
+                                    .events(fixture.events),
+                            (request, modelSessionId) -> {
+                                requests.add(request);
+                                return new VetoResponse(null, null, "original answer");
+                            });
+
             var agent =
                     service.getOrCreateAgent(
                             session,
@@ -229,22 +240,7 @@ class AgentEventDeliveryTest {
                                     call.toolName(), call.callId(), "executed fixture");
                         });
         var requests = new CopyOnWriteArrayList<VetoRequest>();
-        var service =
-                serviceWith(
-                        (request, modelSessionId) -> {
-                            requests.add(request);
-                            if (requests.size() == 1) {
-                                var calls = new ArrayList<ToolCall>();
-                                calls.add(new ToolCall("fixture_one", Map.of()));
-                                if (toolCount == 2)
-                                    calls.add(new ToolCall("fixture_two", Map.of()));
-                                return new VetoResponse(null, calls, null);
-                            }
-                            return new VetoResponse(null, null, "finished");
-                        },
-                        50,
-                        engine,
-                        new HitlRegistry());
+
         String session = UUID.randomUUID().toString();
         try (var fixture =
                 new WorkflowPluginFixture(
@@ -253,8 +249,27 @@ class AgentEventDeliveryTest {
                                         StandardContributionPoints.LISTENERS,
                                         "tool-cancellation",
                                         callbacks)))) {
-            service.attachSessionPlugins(fixture.sessions);
-            service.attachEventManager(fixture.events);
+
+            var service =
+                    serviceWith(
+                            new AgentServiceTestSupport.Dependencies()
+                                    .plugins(fixture.sessions)
+                                    .events(fixture.events),
+                            (request, modelSessionId) -> {
+                                requests.add(request);
+                                if (requests.size() == 1) {
+                                    var calls = new ArrayList<ToolCall>();
+                                    calls.add(new ToolCall("fixture_one", Map.of()));
+                                    if (toolCount == 2)
+                                        calls.add(new ToolCall("fixture_two", Map.of()));
+                                    return new VetoResponse(null, calls, null);
+                                }
+                                return new VetoResponse(null, null, "finished");
+                            },
+                            50,
+                            engine,
+                            new HitlRegistry(null, Mockito.mock(SessionInvalidations.class)));
+
             var agent =
                     service.getOrCreateAgent(
                             session,
@@ -306,12 +321,7 @@ class AgentEventDeliveryTest {
                         event.prevent();
                     }
                 };
-        var service =
-                serviceWith(
-                        (request, modelSessionId) -> {
-                            calls.incrementAndGet();
-                            return new VetoResponse(null, null, "unreachable");
-                        });
+
         String session = UUID.randomUUID().toString();
         try (var fixture =
                 new WorkflowPluginFixture(
@@ -320,8 +330,17 @@ class AgentEventDeliveryTest {
                                         StandardContributionPoints.LISTENERS,
                                         "model-veto",
                                         veto)))) {
-            service.attachSessionPlugins(fixture.sessions);
-            service.attachEventManager(fixture.events);
+
+            var service =
+                    serviceWith(
+                            new AgentServiceTestSupport.Dependencies()
+                                    .plugins(fixture.sessions)
+                                    .events(fixture.events),
+                            (request, modelSessionId) -> {
+                                calls.incrementAndGet();
+                                return new VetoResponse(null, null, "unreachable");
+                            });
+
             var agent =
                     service.getOrCreateAgent(
                             session,

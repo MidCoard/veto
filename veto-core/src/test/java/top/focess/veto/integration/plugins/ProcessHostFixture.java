@@ -13,6 +13,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.jspecify.annotations.NonNull;
+import org.mockito.Mockito;
 import org.springframework.context.ApplicationContext;
 import org.springframework.test.util.ReflectionTestUtils;
 import top.focess.veto.agent.SessionAgentRegistry;
@@ -32,9 +33,13 @@ import top.focess.veto.api.process.ProcessHost;
 import top.focess.veto.builtin.process.ProcessRuntime;
 import top.focess.veto.builtin.process.TaskEvents;
 import top.focess.veto.builtin.tools.*;
+import top.focess.veto.bus.SessionInvalidations;
 import top.focess.veto.event.EventListenerRegistry;
+import top.focess.veto.event.EventManager;
 import top.focess.veto.integration.plugins.storage.ConfigurationStorageFixture;
 import top.focess.veto.integration.plugins.storage.PluginStorageFactory;
+import top.focess.veto.memory.TurnRecordRepository;
+import top.focess.veto.model.AgentInstanceRepository;
 import top.focess.veto.plugin.runtime.*;
 import top.focess.veto.sandbox.*;
 
@@ -192,8 +197,13 @@ public final class ProcessHostFixture implements AutoCloseable {
             ApplicationContext app = mock(ApplicationContext.class);
             when(app.getBeansOfType(PluginManager.class)).thenReturn(Map.of("plugins", manager));
             when(app.getBeansOfType(AgentTool.class)).thenReturn(Map.of());
-            engine = new ToolEngineImpl(new ObjectMapper(), extra, app);
-            engine.attachSessionPlugins(selected);
+            engine =
+                    new ToolEngineImpl(
+                            new ObjectMapper(),
+                            extra,
+                            app,
+                            selected,
+                            Mockito.mock(EventManager.class));
             ReflectionTestUtils.invokeMethod(engine, "init");
         } catch (Exception failure) {
             lifecycle.shutdown();
@@ -233,7 +243,13 @@ public final class ProcessHostFixture implements AutoCloseable {
                         PluginStorageFactory.class,
                         scopes,
                         PluginProcessHostFactory.class,
-                        new PluginProcessHosts(sandbox, scopes, new SessionAgentRegistry()),
+                        new PluginProcessHosts(
+                                sandbox,
+                                scopes,
+                                new SessionAgentRegistry(
+                                        Mockito.mock(AgentInstanceRepository.class),
+                                        Mockito.mock(TurnRecordRepository.class),
+                                        Mockito.mock(SessionInvalidations.class))),
                         PluginHost.class,
                         effects));
     }

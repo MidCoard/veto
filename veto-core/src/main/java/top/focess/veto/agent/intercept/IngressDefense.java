@@ -4,12 +4,9 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.Map;
-import java.util.function.UnaryOperator;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.ObjectProvider;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.drift.ReadHistory;
 import top.focess.veto.agent.tool.AgentToolDefinition;
@@ -42,44 +39,20 @@ public class IngressDefense {
     private static final @NonNull Logger log =
             LoggerFactory.getLogger("top.focess.veto.agent.intercept.IngressDefense");
 
-    /**
-     * The advisory semantic masker, layered over the session-less {@code
-     * veto:observation-middleware} floor. It consults the local SLM to flag likely-exfiltration
-     * observations while always applying the plugin's redaction regardless of SLM availability.
-     * Nullable so the no-arg construction path (existing tests, no SLM configured) degrades to the
-     * floor only.
-     */
+    /** Optional advisory SLM analysis; deterministic framing and plugin masking always apply. */
     private final SemanticMasker semanticMasker;
 
-    /**
-     * The session-less observation-masking floor ({@link
-     * PluginManager#applyObservationMiddleware}); identity when no plugin manager is bound
-     * (detached construction). The floor is provided by the secret-protection plugin, which ships
-     * on the runtime classpath by default.
-     */
-    private final @NonNull UnaryOperator<@NonNull String> observationFloor;
-
-    /** Spring-injected constructor — the SLM-backed masker is optional (degrades if absent). */
-    @Autowired
-    public IngressDefense(
-            @Autowired(required = false) SemanticMasker semanticMasker,
-            @NonNull ObjectProvider<PluginManager> plugins) {
-        this(semanticMasker, plugins.getIfAvailable());
-    }
+    private final @NonNull PluginManager plugins;
 
     /**
-     * No-arg constructor — degrades to deterministic-only masking (the SLM semantic layer is
-     * absent) with an identity floor. Kept so existing non-Spring callers and tests compile
-     * unchanged.
+     * Creates ingress protection with the required plugin masking floor and optional SLM layer.
+     *
+     * @param semanticMasker advisory semantic analysis, or null when unavailable
+     * @param plugins installed masking contributions; an empty catalog preserves the input
      */
-    public IngressDefense() {
-        this(new SemanticMasker(), (PluginManager) null);
-    }
-
-    private IngressDefense(SemanticMasker semanticMasker, PluginManager plugins) {
+    public IngressDefense(SemanticMasker semanticMasker, @NonNull PluginManager plugins) {
         this.semanticMasker = semanticMasker;
-        this.observationFloor =
-                plugins == null ? UnaryOperator.identity() : plugins::applyObservationMiddleware;
+        this.plugins = plugins;
     }
 
     /**
@@ -144,7 +117,7 @@ public class IngressDefense {
                     reportHighRisk(highRisk);
                 }
             } else {
-                body = observationFloor.apply(body);
+                body = plugins.applyObservationMiddleware(body);
             }
         }
 

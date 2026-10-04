@@ -34,11 +34,14 @@ import org.springframework.test.util.ReflectionTestUtils;
 import top.focess.veto.agent.continuation.RequestContinuationEntity;
 import top.focess.veto.agent.continuation.RequestContinuationRepository;
 import top.focess.veto.agent.continuation.RequestContinuationStore;
+import top.focess.veto.agent.intercept.HitlRecordRepository;
 import top.focess.veto.agent.intercept.HitlRegistry;
+import top.focess.veto.agent.screening.DeployerPolicy;
 import top.focess.veto.agent.tool.AgentToolDefinition;
 import top.focess.veto.agent.tool.ToolCallContextHolder;
 import top.focess.veto.agent.tool.ToolEngine;
 import top.focess.veto.agent.tool.builtin.FixtureLoopTool;
+import top.focess.veto.agent.workspace.WorkspaceAdmissionPolicy;
 import top.focess.veto.api.agent.AgentResult;
 import top.focess.veto.api.agent.AgentState;
 import top.focess.veto.api.agent.tool.ToolCapability;
@@ -67,9 +70,13 @@ import top.focess.veto.builtin.monitor.MonitorRecord.ActivationState;
 import top.focess.veto.builtin.monitor.MonitorRepository;
 import top.focess.veto.builtin.monitor.MonitorService;
 import top.focess.veto.builtin.response.CitationResponsePolicy;
+import top.focess.veto.bus.DeltaBroker;
+import top.focess.veto.bus.SessionInvalidations;
 import top.focess.veto.event.EventManager;
+import top.focess.veto.integration.plugins.PluginDataCleanup;
 import top.focess.veto.integration.plugins.PluginTestSupport;
 import top.focess.veto.integration.plugins.SessionPlugins;
+import top.focess.veto.integration.plugins.storage.ScopedPluginStorage;
 import top.focess.veto.llm.core.UniformLLMCaller;
 import top.focess.veto.memory.TurnLogService;
 import top.focess.veto.memory.TurnRecordEntity;
@@ -150,7 +157,7 @@ class AgentEpisodeModelTest {
                         },
                         limit,
                         engine,
-                        new HitlRegistry());
+                        new HitlRegistry(null, Mockito.mock(SessionInvalidations.class)));
         String session = UUID.randomUUID().toString();
         var agent =
                 service.getOrCreateAgent(
@@ -325,81 +332,92 @@ class AgentEpisodeModelTest {
     @Test
     void protectedUserInputIsCapturedBeforeHistoryAndProvider() throws Exception {
         List<VetoRequest> requests = new CopyOnWriteArrayList<>();
-        AgentService service =
-                serviceWith(
-                        (request, modelSessionId) -> {
-                            requests.add(request);
-                            return new VetoResponse("Processed the safe context.", null, "Done.");
-                        });
+
         String session = UUID.randomUUID().toString();
         String agentId = UUID.randomUUID().toString();
         try (var plugins = PluginTestSupport.manager()) {
-            service.attachSessionPlugins(PluginTestSupport.sessionPlugins(plugins));
-            service.attachEventManager(PluginTestSupport.eventManager(plugins));
-            var agent =
-                    service.getOrCreateAgent(
-                            session,
-                            agentId,
-                            binding("You are a helpful assistant."),
-                            List.of(),
-                            UUID.randomUUID(),
-                            "alice",
-                            null,
-                            0,
-                            ToolResultPresentationMode.BASIC);
-            var scope = new Scope.AgentScope("alice", session, agentId);
-            assertTrue(
-                    agent.submitRequest("Inspect password=synthetic-token")
-                            .await(EPISODE_TIMEOUT)
-                            .success());
-            var userTurn =
-                    agent.history().stream()
-                            .filter(turn -> turn.type() == TurnType.USER_PROMPT)
-                            .findFirst()
-                            .orElseThrow();
-            if (!(userTurn.payload().get("content") instanceof String captured))
-                throw new AssertionError("Expected captured user content");
-            assertTrue(captured.contains("[SECRET_REF:s_"), captured);
-            assertFalse(captured.contains("synthetic-token"));
-            assertEquals(1, requests.size());
-            assertTrue(
-                    requests.getFirst().messages().stream()
-                            .anyMatch(message -> message.content().contains(captured)));
-            assertTrue(
-                    requests.getFirst().messages().stream()
-                            .noneMatch(message -> message.content().contains("synthetic-token")));
-            assertTrue(
-                    agent.history().stream()
-                            .noneMatch(
-                                    turn -> turn.payload().toString().contains("synthetic-token")));
-            assertTrue(
-                    agent.submitRequest("Repeat password=synthetic-token")
-                            .await(EPISODE_TIMEOUT)
-                            .success());
-            String verification =
-                    PluginTestSupport.protect(
-                            plugins,
-                            BeforeTextCommitEvent.Phase.INPUT,
-                            scope,
-                            "verification",
-                            "password=synthetic-token");
-            String reference = extractReference(verification);
-            assertTrue(
-                    captured.contains(reference),
-                    () ->
-                            "Repeated capture should reuse the original reference: original="
-                                    + extractReference(captured)
-                                    + ", repeated="
-                                    + reference);
-            assertEquals(2, requests.size());
-            assertEquals(
-                    "synthetic-token",
-                    PluginTestSupport.reveal(plugins, scope, reference).orElseThrow());
-            agent.terminate();
-            assertTrue(agent.awaitTermination(EPISODE_TIMEOUT));
-            assertTrue(PluginTestSupport.reveal(plugins, scope, reference).isEmpty());
-        } finally {
-            service.remove(session);
+
+            AgentService service =
+                    serviceWith(
+                            new AgentServiceTestSupport.Dependencies()
+                                    .plugins(PluginTestSupport.sessionPlugins(plugins))
+                                    .events(PluginTestSupport.eventManager(plugins)),
+                            (request, modelSessionId) -> {
+                                requests.add(request);
+                                return new VetoResponse(
+                                        "Processed the safe context.", null, "Done.");
+                            });
+
+            try {
+                var agent =
+                        service.getOrCreateAgent(
+                                session,
+                                agentId,
+                                binding("You are a helpful assistant."),
+                                List.of(),
+                                UUID.randomUUID(),
+                                "alice",
+                                null,
+                                0,
+                                ToolResultPresentationMode.BASIC);
+                var scope = new Scope.AgentScope("alice", session, agentId);
+                assertTrue(
+                        agent.submitRequest("Inspect password=synthetic-token")
+                                .await(EPISODE_TIMEOUT)
+                                .success());
+                var userTurn =
+                        agent.history().stream()
+                                .filter(turn -> turn.type() == TurnType.USER_PROMPT)
+                                .findFirst()
+                                .orElseThrow();
+                if (!(userTurn.payload().get("content") instanceof String captured))
+                    throw new AssertionError("Expected captured user content");
+                assertTrue(captured.contains("[SECRET_REF:s_"), captured);
+                assertFalse(captured.contains("synthetic-token"));
+                assertEquals(1, requests.size());
+                assertTrue(
+                        requests.getFirst().messages().stream()
+                                .anyMatch(message -> message.content().contains(captured)));
+                assertTrue(
+                        requests.getFirst().messages().stream()
+                                .noneMatch(
+                                        message -> message.content().contains("synthetic-token")));
+                assertTrue(
+                        agent.history().stream()
+                                .noneMatch(
+                                        turn ->
+                                                turn.payload()
+                                                        .toString()
+                                                        .contains("synthetic-token")));
+                assertTrue(
+                        agent.submitRequest("Repeat password=synthetic-token")
+                                .await(EPISODE_TIMEOUT)
+                                .success());
+                String verification =
+                        PluginTestSupport.protect(
+                                plugins,
+                                BeforeTextCommitEvent.Phase.INPUT,
+                                scope,
+                                "verification",
+                                "password=synthetic-token");
+                String reference = extractReference(verification);
+                assertTrue(
+                        captured.contains(reference),
+                        () ->
+                                "Repeated capture should reuse the original reference: original="
+                                        + extractReference(captured)
+                                        + ", repeated="
+                                        + reference);
+                assertEquals(2, requests.size());
+                assertEquals(
+                        "synthetic-token",
+                        PluginTestSupport.reveal(plugins, scope, reference).orElseThrow());
+                agent.terminate();
+                assertTrue(agent.awaitTermination(EPISODE_TIMEOUT));
+                assertTrue(PluginTestSupport.reveal(plugins, scope, reference).isEmpty());
+            } finally {
+                service.remove(session);
+            }
         }
     }
 
@@ -419,45 +437,53 @@ class AgentEpisodeModelTest {
                     requests.add(request);
                     return new VetoResponse("Safe.", null, "Done.");
                 };
-        AgentService service = serviceWith(caller);
+
         String session = UUID.randomUUID().toString();
         try (var plugins = PluginTestSupport.manager()) {
-            service.attachSessionPlugins(PluginTestSupport.sessionPlugins(plugins));
-            service.attachEventManager(PluginTestSupport.eventManager(plugins));
-            Agent agent =
-                    service.getOrCreateAgent(
-                            session,
-                            UUID.randomUUID().toString(),
-                            binding("You are a helpful assistant."),
-                            List.of(),
-                            UUID.randomUUID(),
-                            "alice",
-                            null);
-            String input = "password=synthetic-token [SECRET_REF:forged]";
-            assertTrue(agent.submitRequest(input).await(EPISODE_TIMEOUT).success());
-            assertEquals(1, calls.get());
-            VetoRequest delivered = requests.getFirst();
-            boolean originalInputDelivered = false;
-            for (ChatMessage message : delivered.messages())
-                if (message.content().contains(input)) originalInputDelivered = true;
-            assertTrue(originalInputDelivered);
-            boolean originalInputRecorded = false;
-            boolean answerRecorded = false;
-            for (TurnRecord turn : agent.history()) {
-                if (turn.type() == TurnType.USER_PROMPT
-                        && input.equals(turn.payload().get("content")))
-                    originalInputRecorded = true;
-                if (turn.payload().toString().contains("Done.")) answerRecorded = true;
+
+            AgentService service =
+                    serviceWith(
+                            new AgentServiceTestSupport.Dependencies()
+                                    .plugins(PluginTestSupport.sessionPlugins(plugins))
+                                    .events(PluginTestSupport.eventManager(plugins)),
+                            caller);
+
+            try {
+                Agent agent =
+                        service.getOrCreateAgent(
+                                session,
+                                UUID.randomUUID().toString(),
+                                binding("You are a helpful assistant."),
+                                List.of(),
+                                UUID.randomUUID(),
+                                "alice",
+                                null);
+                String input = "password=synthetic-token [SECRET_REF:forged]";
+                assertTrue(agent.submitRequest(input).await(EPISODE_TIMEOUT).success());
+                assertEquals(1, calls.get());
+                VetoRequest delivered = requests.getFirst();
+                boolean originalInputDelivered = false;
+                for (ChatMessage message : delivered.messages())
+                    if (message.content().contains(input)) originalInputDelivered = true;
+                assertTrue(originalInputDelivered);
+                boolean originalInputRecorded = false;
+                boolean answerRecorded = false;
+                for (TurnRecord turn : agent.history()) {
+                    if (turn.type() == TurnType.USER_PROMPT
+                            && input.equals(turn.payload().get("content")))
+                        originalInputRecorded = true;
+                    if (turn.payload().toString().contains("Done.")) answerRecorded = true;
+                }
+                assertTrue(originalInputRecorded);
+                assertTrue(answerRecorded);
+                assertTrue(
+                        agent.submitRequest("Please continue with safe text.")
+                                .await(EPISODE_TIMEOUT)
+                                .success());
+                assertEquals(2, calls.get());
+            } finally {
+                service.remove(session);
             }
-            assertTrue(originalInputRecorded);
-            assertTrue(answerRecorded);
-            assertTrue(
-                    agent.submitRequest("Please continue with safe text.")
-                            .await(EPISODE_TIMEOUT)
-                            .success());
-            assertEquals(2, calls.get());
-        } finally {
-            service.remove(session);
         }
     }
 
@@ -467,8 +493,11 @@ class AgentEpisodeModelTest {
             throws Exception {
         AtomicInteger calls = new AtomicInteger();
         CountDownLatch called = new CountDownLatch(1);
+        KeysteadVault vault = Mockito.mock(KeysteadVault.class);
+        SessionPlugins selected = Mockito.mock(SessionPlugins.class);
         var runtime =
                 serviceWith(
+                        new AgentServiceTestSupport.Dependencies().vault(vault).plugins(selected),
                         (request, modelSessionId) -> {
                             assertEquals("alice", UserContext.get());
                             assertTrue(
@@ -477,8 +506,7 @@ class AgentEpisodeModelTest {
                             called.countDown();
                             return new VetoResponse(null, null, "Notification handled");
                         });
-        KeysteadVault vault = Mockito.mock(KeysteadVault.class);
-        runtime.attachExecutionVault(vault);
+
         var registry =
                 (SessionAgentRegistry)
                         Nullness.requireNonNull(
@@ -517,7 +545,21 @@ class AgentEpisodeModelTest {
                 .thenReturn(
                         new ModelBinding(ProviderType.DEEPSEEK, "model", "key", 0.7, 4096, null));
         var sessionService =
-                new SessionService(sessions, agents, patterns, runtime, registry, history, tiers);
+                new SessionService(
+                        sessions,
+                        agents,
+                        patterns,
+                        runtime,
+                        registry,
+                        history,
+                        tiers,
+                        new WorkspaceAdmissionPolicy(List.of(), DeployerPolicy.FULL_ACCESS),
+                        Mockito.mock(ScopedPluginStorage.class),
+                        Mockito.mock(HitlRecordRepository.class),
+                        Mockito.mock(SessionPlugins.class),
+                        Mockito.mock(EventManager.class),
+                        Mockito.mock(PluginDataCleanup.class),
+                        Mockito.mock(RequestContinuationStore.class));
         MonitorRepository repository = Mockito.mock(MonitorRepository.class);
         var groups = new GroupRegistry();
         var monitors =
@@ -526,10 +568,7 @@ class AgentEpisodeModelTest {
                         new ObjectMapper().findAndRegisterModules(),
                         groups(groups),
                         host(sessionService, registry, vault));
-        SessionPlugins selected = Mockito.mock(SessionPlugins.class);
         Mockito.when(selected.workSource(Mockito.anyString())).thenReturn(work(monitors));
-        runtime.attachSessionPlugins(selected);
-        runtime.attachEventManager(Mockito.mock(EventManager.class));
         var due = Instant.now().plusSeconds(10);
         monitors.createTimer("alice", session.getId(), identity.getId(), "Review", due);
         try {
@@ -767,8 +806,12 @@ class AgentEpisodeModelTest {
                     return new VetoResponse(null, null, "done");
                 };
         UUID session = UUID.randomUUID();
-        var first = serviceWith(caller, maxCalls);
-        first.attachContinuationStore(store);
+
+        var first =
+                serviceWith(
+                        new AgentServiceTestSupport.Dependencies().continuations(store),
+                        caller,
+                        maxCalls);
         first.getOrCreateAgent(
                 session.toString(),
                 UUID.randomUUID().toString(),
@@ -789,8 +832,12 @@ class AgentEpisodeModelTest {
         // A checkpoint from an explicitly extended request must survive a new runtime whose
         // configured single-segment limit is smaller than that saved total allowance.
         if (maxCalls == 2) store.save(session, agentId, requestId, "Review apples", 3, 4L);
-        var restarted = serviceWith(caller, maxCalls);
-        restarted.attachContinuationStore(store);
+
+        var restarted =
+                serviceWith(
+                        new AgentServiceTestSupport.Dependencies().continuations(store),
+                        caller,
+                        maxCalls);
         try {
             var agent =
                     (VetoAgent)
@@ -855,12 +902,7 @@ class AgentEpisodeModelTest {
     @Test
     void failedBudgetReservationDoesNotCallProvider() throws Exception {
         AtomicInteger calls = new AtomicInteger();
-        var service =
-                serviceWith(
-                        (request, modelSessionId) -> {
-                            calls.incrementAndGet();
-                            return new VetoResponse(null, null, "unexpected");
-                        });
+
         RequestContinuationStore store = Mockito.mock(RequestContinuationStore.class);
         Mockito.doThrow(new IllegalStateException("Checkpoint unavailable"))
                 .when(store)
@@ -871,7 +913,14 @@ class AgentEpisodeModelTest {
                         Mockito.anyString(),
                         Mockito.anyLong(),
                         Mockito.anyLong());
-        service.attachContinuationStore(store);
+
+        var service =
+                serviceWith(
+                        new AgentServiceTestSupport.Dependencies().continuations(store),
+                        (request, modelSessionId) -> {
+                            calls.incrementAndGet();
+                            return new VetoResponse(null, null, "unexpected");
+                        });
         TurnRecordRepository records = Mockito.mock(TurnRecordRepository.class);
         var logged = new ArrayList<String>();
         Mockito.when(records.save(Mockito.any()))
@@ -883,7 +932,9 @@ class AgentEpisodeModelTest {
                             return record;
                         });
         ReflectionTestUtils.setField(
-                service, "turnLogService", new TurnLogService(records, new ObjectMapper()));
+                service,
+                "turnLogService",
+                new TurnLogService(records, new ObjectMapper(), new DeltaBroker()));
         try {
             assertFalse(
                     service.submit("checkpoint-failure", "Work", binding("System"), EPISODE_TIMEOUT)
@@ -906,13 +957,7 @@ class AgentEpisodeModelTest {
     @ValueSource(longs = {1L, 3L})
     void restoredTimerOccurrenceCannotAcquireAnotherBudget(long consumed) throws Exception {
         AtomicInteger calls = new AtomicInteger();
-        var service =
-                serviceWith(
-                        (request, modelSessionId) -> {
-                            calls.incrementAndGet();
-                            return new VetoResponse(null, null, "unexpected");
-                        },
-                        1L);
+
         UUID session = UUID.randomUUID();
         String agentId = UUID.randomUUID().toString();
         RequestContinuationStore store = Mockito.mock(RequestContinuationStore.class);
@@ -923,7 +968,15 @@ class AgentEpisodeModelTest {
                                         "Original timer purpose",
                                         consumed,
                                         consumed == 1 ? null : consumed)));
-        service.attachContinuationStore(store);
+
+        var service =
+                serviceWith(
+                        new AgentServiceTestSupport.Dependencies().continuations(store),
+                        (request, modelSessionId) -> {
+                            calls.incrementAndGet();
+                            return new VetoResponse(null, null, "unexpected");
+                        },
+                        1L);
         try {
             var agent =
                     (VetoAgent)
@@ -975,12 +1028,7 @@ class AgentEpisodeModelTest {
     @Test
     void restoredHistoryPrecedesSafeConfigurationTransition() throws Exception {
         List<VetoRequest> requests = new CopyOnWriteArrayList<>();
-        var service =
-                serviceWith(
-                        (request, modelSessionId) -> {
-                            requests.add(request);
-                            return new VetoResponse(null, null, "done");
-                        });
+
         var plugins = Mockito.mock(SessionPlugins.class);
         Mockito.when(plugins.tools(Mockito.anyString(), Mockito.any()))
                 .thenAnswer(call -> call.getArgument(1));
@@ -1004,9 +1052,18 @@ class AgentEpisodeModelTest {
                                 Mockito.any(),
                                 Mockito.anyString()))
                 .thenAnswer(call -> new AgentConfiguration.Intent(call.getArgument(4), transition));
-        service.attachSessionPlugins(plugins);
-        service.attachEventManager(Mockito.mock(EventManager.class));
-        service.setModelTierRegistry(Mockito.mock(ModelTierRegistry.class));
+
+        var service =
+                serviceWith(
+                        new AgentServiceTestSupport.Dependencies()
+                                .plugins(plugins)
+                                .events(Mockito.mock(EventManager.class))
+                                .tiers(Mockito.mock(ModelTierRegistry.class)),
+                        (request, modelSessionId) -> {
+                            requests.add(request);
+                            return new VetoResponse(null, null, "done");
+                        });
+
         String session = UUID.randomUUID().toString();
         try {
             var agent =
@@ -1312,15 +1369,21 @@ class AgentEpisodeModelTest {
     /** Only citation-policy scenarios select the builtin response contribution. */
     private static @NonNull AgentService serviceWithCitationPolicy(
             @NonNull String agentKey, @NonNull UniformLLMCaller caller) {
-        var service = serviceWith(caller);
+
         SessionPlugins selected = Mockito.mock(SessionPlugins.class);
         Mockito.when(selected.responsePolicies(Mockito.anyString()))
                 .thenAnswer(call -> List.of(new CitationResponsePolicy().open()));
         Mockito.when(selected.tools(Mockito.anyString(), Mockito.any()))
                 .thenAnswer(call -> call.getArgument(1));
         // configure defaults to null: this fixture selects a response policy, not an agent profile.
-        service.attachSessionPlugins(selected);
-        service.attachEventManager(Mockito.mock(EventManager.class));
+
+        var service =
+                serviceWith(
+                        new AgentServiceTestSupport.Dependencies()
+                                .plugins(selected)
+                                .events(Mockito.mock(EventManager.class)),
+                        caller);
+
         service.getOrCreateAgent(
                 agentKey,
                 null,

@@ -35,6 +35,7 @@ import top.focess.veto.builtin.group.GroupRegistry;
 import top.focess.veto.builtin.group.GroupRuntime;
 import top.focess.veto.builtin.group.GroupState;
 import top.focess.veto.builtin.group.GroupTools;
+import top.focess.veto.bus.DeltaBroker;
 import top.focess.veto.bus.SessionInvalidations;
 
 class GroupToolAdmissionTest {
@@ -51,7 +52,7 @@ class GroupToolAdmissionTest {
                 when(fixture.storage.scopes(PluginScope.SESSION, null, 200))
                         .thenReturn(new PluginStorage.Page<>(List.of(grant), null));
                 when(fixture.scopes.authorizeSession(fixture.storage, grant)).thenReturn("owner");
-                var configuration = new PluginHostConfiguration();
+                var configuration = new PluginHostConfiguration(new DeltaBroker());
                 var delegate =
                         (PluginHost)
                                 configuration

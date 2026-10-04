@@ -28,14 +28,12 @@ public final class WorkspaceAdmissionPolicy {
 
     private final @NonNull List<@NonNull Path> deployerRoots;
     private final @NonNull DeployerPolicy deployerPolicy;
-    private final boolean canonicalize;
 
     /** Builds the policy from deployer configuration, canonicalizing the configured roots. */
     @Autowired
     public WorkspaceAdmissionPolicy(@NonNull DeployerPolicyConfiguration configuration) {
         DeployerPolicy policy = configuration.getDeployerPolicy();
         this.deployerPolicy = policy;
-        this.canonicalize = true;
         this.deployerRoots =
                 configuredRoots(policy, configuration).stream()
                         .map(path -> canonicalForCreation(path, "configured policy root"))
@@ -45,24 +43,11 @@ public final class WorkspaceAdmissionPolicy {
     /** Creates the policy over explicit deployer roots with canonicalization enabled. */
     public WorkspaceAdmissionPolicy(
             @NonNull List<@NonNull Path> deployerRoots, @NonNull DeployerPolicy deployerPolicy) {
-        this(deployerRoots, deployerPolicy, true);
-    }
-
-    private WorkspaceAdmissionPolicy(
-            @NonNull List<@NonNull Path> deployerRoots,
-            @NonNull DeployerPolicy deployerPolicy,
-            boolean canonicalize) {
         this.deployerRoots =
                 deployerRoots.stream()
                         .map(path -> canonicalForCreation(path, "configured workspace root"))
                         .toList();
         this.deployerPolicy = deployerPolicy;
-        this.canonicalize = canonicalize;
-    }
-
-    /** Unrestricted admission for unit tests and legacy embedded callers. */
-    public static @NonNull WorkspaceAdmissionPolicy unrestricted() {
-        return new WorkspaceAdmissionPolicy(List.of(), DeployerPolicy.FULL_ACCESS, false);
     }
 
     /** Validates and canonicalizes a CSV declaration without mutating the filesystem. */
@@ -73,11 +58,7 @@ public final class WorkspaceAdmissionPolicy {
                         .map(String::trim)
                         .filter(root -> !root.isEmpty())
                         .map(root -> HostPathInput.absoluteNormalized(root, "workspace root"))
-                        .map(
-                                path ->
-                                        canonicalize
-                                                ? canonicalForCreation(path, "workspace root")
-                                                : path)
+                        .map(path -> canonicalForCreation(path, "workspace root"))
                         .toList();
         if (supplied.isEmpty()) {
             throw new IllegalArgumentException("no workspace roots declared");

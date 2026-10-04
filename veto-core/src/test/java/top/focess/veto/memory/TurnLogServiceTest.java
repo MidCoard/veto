@@ -25,8 +25,7 @@ class TurnLogServiceTest {
     void publishesOnlyAfterCommitAndNotOnRollback() {
         TurnRecordRepository repo = mock(TurnRecordRepository.class);
         DeltaBroker broker = mock(DeltaBroker.class);
-        var service = new TurnLogService(repo, new ObjectMapper());
-        service.setDeltaBroker(broker);
+        var service = new TurnLogService(repo, new ObjectMapper(), broker);
         TransactionSynchronizationManager.initSynchronization();
         TransactionSynchronizationManager.setActualTransactionActive(true);
         try {
@@ -63,8 +62,7 @@ class TurnLogServiceTest {
     void failedWritesAndUnchangedMetadataDoNotNotify() {
         TurnRecordRepository repo = mock(TurnRecordRepository.class);
         DeltaBroker broker = mock(DeltaBroker.class);
-        var service = new TurnLogService(repo, new ObjectMapper());
-        service.setDeltaBroker(broker);
+        var service = new TurnLogService(repo, new ObjectMapper(), broker);
         when(repo.save(any())).thenThrow(new IllegalStateException("offline"));
         service.log(
                 TurnRecord.userPrompt(1, "hello"), UUID.randomUUID(), UUID.randomUUID(), "agent");
@@ -82,7 +80,7 @@ class TurnLogServiceTest {
     @Test
     void requiredLoggingPropagatesStorageFailure() {
         TurnRecordRepository repo = mock(TurnRecordRepository.class);
-        var service = new TurnLogService(repo, new ObjectMapper());
+        var service = new TurnLogService(repo, new ObjectMapper(), new DeltaBroker());
         when(repo.save(any())).thenThrow(new IllegalStateException("database unavailable"));
         assertThrows(
                 IllegalStateException.class,
@@ -106,7 +104,7 @@ class TurnLogServiceTest {
     @Test
     void logWritesRawTurnLog() {
         TurnRecordRepository repo = mock(TurnRecordRepository.class);
-        TurnLogService service = new TurnLogService(repo, new ObjectMapper());
+        TurnLogService service = new TurnLogService(repo, new ObjectMapper(), new DeltaBroker());
 
         UUID session = UUID.randomUUID();
         UUID user = UUID.randomUUID();
@@ -119,7 +117,7 @@ class TurnLogServiceTest {
     @Test
     void rawTurnLogCarriesTenantAndPayload() {
         TurnRecordRepository repo = mock(TurnRecordRepository.class);
-        TurnLogService service = new TurnLogService(repo, new ObjectMapper());
+        TurnLogService service = new TurnLogService(repo, new ObjectMapper(), new DeltaBroker());
 
         UUID session = UUID.randomUUID();
         UUID user = UUID.randomUUID();
@@ -140,7 +138,7 @@ class TurnLogServiceTest {
     @Test
     void toolCallIsLoggedForCoherentReplay() {
         TurnRecordRepository repo = mock(TurnRecordRepository.class);
-        TurnLogService service = new TurnLogService(repo, new ObjectMapper());
+        TurnLogService service = new TurnLogService(repo, new ObjectMapper(), new DeltaBroker());
 
         UUID session = UUID.randomUUID();
         UUID user = UUID.randomUUID();
@@ -153,14 +151,25 @@ class TurnLogServiceTest {
     }
 
     @Test
-    void absentRepositoryIsANoOp() {
-        TurnLogService service = new TurnLogService(null, new ObjectMapper());
-        // Must not throw - deployments without durability simply skip logging.
+    void disabledLoggingSkipsOptionalWritesAndRejectsRequiredWrites() {
+        var repo = mock(TurnRecordRepository.class);
+        var broker = mock(DeltaBroker.class);
+        TurnLogService service = new TurnLogService(repo, new ObjectMapper(), broker);
+        service.setEnabled(false);
         service.log(
                 TurnRecord.userPrompt(1, "hello"),
                 UUID.randomUUID(),
                 UUID.randomUUID(),
                 UUID.randomUUID().toString());
+        assertThrows(
+                IllegalStateException.class,
+                () ->
+                        service.logRequired(
+                                TurnRecord.userPrompt(2, "required"),
+                                UUID.randomUUID(),
+                                UUID.randomUUID(),
+                                UUID.randomUUID().toString()));
+        verifyNoInteractions(repo, broker);
     }
 
     private static <T extends @NonNull Object> @NonNull T requireValue(T value, String message) {

@@ -21,6 +21,7 @@ import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
+import org.mockito.Mockito;
 import org.springframework.context.ApplicationContext;
 import org.springframework.http.MediaType;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -32,6 +33,7 @@ import top.focess.veto.api.agent.tool.ToolResultFormat;
 import top.focess.veto.api.agent.tool.ToolResultStatus;
 import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
+import top.focess.veto.event.EventManager;
 import top.focess.veto.integration.plugins.PluginManager;
 import top.focess.veto.integration.plugins.QuestionActionFixture;
 import top.focess.veto.util.Nullness;
@@ -76,7 +78,13 @@ class AskUserActionTest {
             ApplicationContext spring = mock(ApplicationContext.class);
             when(spring.getBeansOfType(PluginManager.class))
                     .thenReturn(Map.of("plugins", fixture.manager));
-            ToolEngineImpl engine = new ToolEngineImpl(mapper, List.of(), spring);
+            ToolEngineImpl engine =
+                    new ToolEngineImpl(
+                            mapper,
+                            List.of(),
+                            spring,
+                            fixture.selected,
+                            Mockito.mock(EventManager.class));
             engine.init();
             ToolDefinition definition =
                     Nullness.requireNonNull(engine.resolveDefinition("ask_user"));

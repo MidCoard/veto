@@ -40,7 +40,7 @@ class SemanticMaskerTimeoutTest {
     }
 
     private static @NonNull SemanticMasker masker(@NonNull LlamaCppBridge bridge) {
-        return new SemanticMasker(bridge, PluginTestSupport.providerOf(plugins));
+        return new SemanticMasker(bridge, plugins);
     }
 
     @SuppressWarnings("type.arguments.not.inferred")

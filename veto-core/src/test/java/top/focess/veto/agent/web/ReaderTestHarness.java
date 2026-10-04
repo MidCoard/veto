@@ -4,8 +4,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
+import org.mockito.Mockito;
 import top.focess.veto.agent.SessionAgentRegistry;
-import top.focess.veto.agent.intercept.IngressDefense;
+import top.focess.veto.agent.intercept.IngressDefenseTestSupport;
 import top.focess.veto.agent.translation.CapabilityTranslator;
 import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.api.plugin.agent.AgentHost;
@@ -14,7 +15,10 @@ import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.storage.PluginStorage;
 import top.focess.veto.builtin.web.ReaderConfig;
 import top.focess.veto.builtin.web.WebReader;
+import top.focess.veto.bus.SessionInvalidations;
+import top.focess.veto.event.EventManager;
 import top.focess.veto.integration.plugins.IsolatedExecutions;
+import top.focess.veto.integration.plugins.SessionPlugins;
 import top.focess.veto.llm.core.UniformLLMCaller;
 import top.focess.veto.memory.TurnLogService;
 import top.focess.veto.model.tier.ModelTierRegistry;
@@ -43,11 +47,14 @@ public final class ReaderTestHarness {
                         translator,
                         registry,
                         history,
-                        new IngressDefense(),
+                        IngressDefenseTestSupport.inMemory(),
                         128,
                         600,
                         1048576,
-                        65536);
+                        65536,
+                        Mockito.mock(SessionPlugins.class),
+                        Mockito.mock(EventManager.class),
+                        Mockito.mock(SessionInvalidations.class));
         AgentHost host =
                 new AgentHost() {
                     public @NonNull Session session(

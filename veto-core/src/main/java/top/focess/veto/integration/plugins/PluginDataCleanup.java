@@ -2,7 +2,6 @@ package top.focess.veto.integration.plugins;
 
 import java.util.function.Function;
 import org.jspecify.annotations.NonNull;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
@@ -22,16 +21,10 @@ import top.focess.veto.vault.UserRegistry;
 @Service
 public final class PluginDataCleanup {
     private final @NonNull PluginManager manager;
+    private final @NonNull UserRegistry users;
 
-    public PluginDataCleanup(@NonNull PluginManager manager) {
+    public PluginDataCleanup(@NonNull PluginManager manager, @NonNull UserRegistry users) {
         this.manager = manager;
-    }
-
-    private UserRegistry users;
-
-    /** Attaches the user registry used to resolve permanent-deletion identities. */
-    @Autowired
-    public void attachUsers(@NonNull UserRegistry users) {
         this.users = users;
     }
 
@@ -58,10 +51,7 @@ public final class PluginDataCleanup {
     }
 
     private @NonNull String userIdentity(@NonNull String owner) {
-        var registry = users;
-        if (registry == null)
-            throw new IllegalStateException("Deletion identity service unavailable");
-        return registry.findByUsername(owner)
+        return users.findByUsername(owner)
                 .orElseThrow(() -> new IllegalStateException("Account no longer exists"))
                 .storageIdentity();
     }

@@ -21,6 +21,7 @@ import top.focess.veto.api.llm.ToolDefinition;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.api.llm.VetoRequest;
 import top.focess.veto.llm.core.*;
+import top.focess.veto.llm.core.ToolResultPresenter;
 
 class ScopedPromptTest {
     @Test
@@ -28,7 +29,15 @@ class ScopedPromptTest {
         var mapper = new ObjectMapper();
         var translator = new VetoCapabilityTranslator();
         var compiler =
-                new PromptCompiler(translator, new SystemPromptResolver(), mapper, "PROTECTED");
+                new PromptCompiler(
+                        translator,
+                        new SystemPromptResolver(),
+                        mapper,
+                        new ToolResultPresenter(mapper),
+                        "PROTECTED",
+                        new ContextBudgetConfiguration(),
+                        32000,
+                        0.9);
         var schema = mapper.createObjectNode().put("type", "object");
         var read = new RemoteToolDefinition("view_file", "Read a file", "fixture", schema);
         var cite =

@@ -12,7 +12,6 @@ import java.util.function.Consumer;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.i18n.LocaleContextHolder;
@@ -54,9 +53,7 @@ import top.focess.veto.llm.core.UniformLLMCaller;
 import top.focess.veto.memory.TurnLogService;
 import top.focess.veto.model.SessionEntity;
 import top.focess.veto.model.tier.ModelTierRegistry;
-import top.focess.veto.observability.ObservabilityConfiguration;
 import top.focess.veto.util.Nullness;
-import top.focess.veto.vault.CredentialVaultConfiguration;
 import top.focess.veto.vault.KeysteadVault;
 
 /**
@@ -73,46 +70,19 @@ import top.focess.veto.vault.KeysteadVault;
 @SuppressWarnings(
         "DuplicatedCode") // Standalone and group-agent factories intentionally mirror setup.
 public class AgentService {
-    private SessionPlugins sessionPlugins;
+    private final @NonNull SessionPlugins sessionPlugins;
+    private final @NonNull RequestContinuationStore continuationStore;
+    private final @NonNull KeysteadVault executionVault;
+    private final @NonNull EventManager eventManager;
 
-    /** Injects the shared service that resolves session plugin selection. */
-    @Autowired
-    public void attachSessionPlugins(@NonNull SessionPlugins value) {
-        sessionPlugins = value;
-    }
-
-    private RequestContinuationStore continuationStore;
-    private KeysteadVault executionVault;
-
-    /** Injects the vault that gates autonomous plugin work on the owner's credentials. */
-    @Autowired
-    public void attachExecutionVault(@NonNull KeysteadVault vault) {
-        executionVault = vault;
-    }
-
-    /** Injects the durable store used to reload request continuations across restarts. */
-    @Autowired
-    public void attachContinuationStore(@NonNull RequestContinuationStore store) {
-        continuationStore = store;
-    }
-
-    private void configureContinuations(@NonNull AgentRunner runner) {
-        var plugins = sessionPlugins;
-        if (plugins != null) runner.attachSessionPlugins(plugins);
-        var events = eventManager;
-        if (events != null) runner.attachEventManager(events);
-        KeysteadVault vault = executionVault;
-        if (vault != null) runner.attachExecutionVault(vault);
-        RequestContinuationStore store = continuationStore;
-        if (store != null) runner.attachContinuationStore(store);
-    }
-
-    private EventManager eventManager;
-
-    /** Injects the host dispatcher threaded into every created runner. */
-    @Autowired
-    public void attachEventManager(@NonNull EventManager events) {
-        eventManager = events;
+    private void configureContinuations(@NonNull AgentRunner runner, String owner) {
+        // Session contributions require an authenticated owner; embedded agents have none.
+        if (owner != null && !owner.isBlank()) {
+            runner.attachSessionPlugins(sessionPlugins);
+            runner.attachEventManager(eventManager);
+            runner.attachExecutionVault(executionVault);
+        }
+        runner.attachContinuationStore(continuationStore);
     }
 
     private static final @NonNull Logger log =
@@ -121,12 +91,7 @@ public class AgentService {
 
     private final @NonNull SessionAgentRegistry sessionAgents;
 
-    private ModelTierRegistry modelTierRegistry;
-
-    @Autowired
-    void setModelTierRegistry(@NonNull ModelTierRegistry registry) {
-        modelTierRegistry = registry;
-    }
+    private final @NonNull ModelTierRegistry modelTierRegistry;
 
     private final @NonNull ToolEngine toolEngine;
     private final @NonNull HitlRegistry hitlRegistry;
@@ -135,14 +100,14 @@ public class AgentService {
     private final @NonNull UniformLLMCaller caller;
     private final @NonNull ObjectMapper objectMapper;
     private final @NonNull List<@NonNull LoopInterceptor> interceptors;
-    private @NonNull Workspace defaultWorkspace;
+    private final @NonNull Workspace defaultWorkspace;
     private final @NonNull String pathMode;
     private final long maxCallsPerEpisode;
     private final @NonNull DeployerPolicy deployerPolicy;
-    // Optional event-stream sink shared by created AgentRunners.
-    private final DeltaBroker deltaBroker;
-    // Optional durable turn log shared by created AgentRunners.
-    private final TurnLogService turnLogService;
+    // Event-stream sink shared by created AgentRunners.
+    private final @NonNull DeltaBroker deltaBroker;
+    // Durable turn log shared by created AgentRunners.
+    private final @NonNull TurnLogService turnLogService;
     private final @NonNull ProtectedSetResolver protectedSetResolver;
     private final @NonNull SlmScreeningProvider slmScreeningProvider;
 
@@ -156,7 +121,6 @@ public class AgentService {
             UUID.fromString("00000000-0000-0000-0000-000000000000");
 
     /** Spring-wired constructor: assembles the shared service from its collaborators and config. */
-    @Autowired
     public AgentService(
             @NonNull ToolEngine toolEngine,
             @NonNull HitlRegistry hitlRegistry,
@@ -169,11 +133,17 @@ public class AgentService {
             @Value("${veto.breaker.max_calls_per_episode}") long maxCallsPerEpisode,
             @NonNull DeployerPolicyConfiguration deployerPolicyConfiguration,
             @Value("${veto.security.screening-mode}") @NonNull String screeningModeRaw,
-            DeltaBroker deltaBroker,
-            TurnLogService turnLogService,
+            @NonNull DeltaBroker deltaBroker,
+            @NonNull TurnLogService turnLogService,
             @NonNull ProtectedSetResolver protectedSetResolver,
             @NonNull SlmScreeningProvider slmScreeningProvider,
-            @NonNull SessionAgentRegistry sessionAgents) {
+            @NonNull SessionAgentRegistry sessionAgents,
+            @NonNull Workspace defaultWorkspace,
+            @NonNull SessionPlugins sessionPlugins,
+            @NonNull RequestContinuationStore continuationStore,
+            @NonNull KeysteadVault executionVault,
+            @NonNull EventManager eventManager,
+            @NonNull ModelTierRegistry modelTierRegistry) {
         this.sessionAgents = sessionAgents;
         this.toolEngine = toolEngine;
         this.hitlRegistry = hitlRegistry;
@@ -183,7 +153,12 @@ public class AgentService {
         this.objectMapper = objectMapper;
         this.interceptors = interceptors == null ? List.of() : interceptors;
         this.pathMode = pathMode;
-        this.defaultWorkspace = Workspace.fromConfig("", "", pathMode);
+        this.defaultWorkspace = defaultWorkspace;
+        this.sessionPlugins = sessionPlugins;
+        this.continuationStore = continuationStore;
+        this.executionVault = executionVault;
+        this.eventManager = eventManager;
+        this.modelTierRegistry = modelTierRegistry;
         this.maxCallsPerEpisode = maxCallsPerEpisode;
         this.deployerPolicy = deployerPolicyConfiguration.getDeployerPolicy();
         if (this.deployerPolicy == DeployerPolicy.FULL_ACCESS) {
@@ -201,50 +176,6 @@ public class AgentService {
         this.turnLogService = turnLogService;
         this.protectedSetResolver = protectedSetResolver;
         this.slmScreeningProvider = slmScreeningProvider;
-    }
-
-    /** Creates a service without optional event-stream and durable-history integrations. */
-    AgentService(
-            @NonNull ToolEngine toolEngine,
-            @NonNull HitlRegistry hitlRegistry,
-            @NonNull IngressDefense ingressDefense,
-            @NonNull PromptCompiler promptCompiler,
-            @NonNull UniformLLMCaller caller,
-            @NonNull ObjectMapper objectMapper,
-            List<LoopInterceptor> interceptors,
-            @NonNull String pathMode,
-            long maxCallsPerEpisode,
-            @NonNull String deployerPolicyRaw,
-            @NonNull String screeningModeRaw,
-            DeltaBroker deltaBroker,
-            TurnLogService turnLogService) {
-        this(
-                toolEngine,
-                hitlRegistry,
-                ingressDefense,
-                promptCompiler,
-                caller,
-                objectMapper,
-                interceptors,
-                pathMode,
-                maxCallsPerEpisode,
-                policyConfigurationFor(deployerPolicyRaw),
-                screeningModeRaw,
-                deltaBroker,
-                turnLogService,
-                new ProtectedSetResolver(
-                        policyConfigurationFor(deployerPolicyRaw),
-                        new ObservabilityConfiguration(),
-                        new CredentialVaultConfiguration()),
-                SlmScreeningProvider.unavailable(),
-                new SessionAgentRegistry());
-    }
-
-    /** Replaces the constructor's test fallback with the deployer-configured Workspace bean. */
-    @Autowired
-    void setConfiguredDefaultWorkspace(@NonNull Workspace workspace) {
-        this.defaultWorkspace = workspace;
-        this.hitlRegistry.setDefaultWorkspace(workspace);
     }
 
     /**
@@ -705,7 +636,7 @@ public class AgentService {
                         sessionId);
         runner.configureModelTiers(modelTierRegistry);
         runner.setToolResultPresentation(toolResultPresentation);
-        configureContinuations(runner);
+        configureContinuations(runner, owner);
         runner.seedHistory(history);
         return sessionAgents.start(persona, runner);
     }
@@ -723,7 +654,6 @@ public class AgentService {
         UUID sessionId = UUID.fromString(session.getId());
         Workspace workspace =
                 buildWorkspace(session.getWorkspaceRoots(), session.getCurrentWorkspaceRootIndex());
-        var tiers = Nullness.requireNonNull(modelTierRegistry, "Model tiers unavailable");
         var parent =
                 sessionAgents.agents(sessionId).stream()
                         .filter(entry -> entry.agent().id().equals(parentId))
@@ -733,11 +663,10 @@ public class AgentService {
                                         new IllegalStateException(
                                                 "Parent must be active before opening a child"));
         var base = parent.agent().binding();
-        var selection =
-                Nullness.requireNonNull(sessionPlugins, "Session plugin selection unavailable");
         var authorized =
-                selection.tools(session.getId(), Set.copyOf(toolEngine.getActiveTools(null)));
-        var resolved = AgentProfiles.resolve(id, owner, profile, authorized, base, tiers);
+                sessionPlugins.tools(session.getId(), Set.copyOf(toolEngine.getActiveTools(null)));
+        var resolved =
+                AgentProfiles.resolve(id, owner, profile, authorized, base, modelTierRegistry);
         var intentPersona = resolved.persona();
         AgentPersona scoped =
                 new AgentPersona(
@@ -787,7 +716,7 @@ public class AgentService {
                         turnLogService,
                         owner,
                         sessionId);
-        configureContinuations(runner);
+        configureContinuations(runner, owner);
         runner.configureModelTiers(modelTierRegistry);
         runner.setToolResultPresentation(toolResultPresentation);
         runner.seedHistory(history);
@@ -802,8 +731,7 @@ public class AgentService {
     // that (legacy/test path) we mint a fresh UUID just as before.
     private @NonNull AgentPersona buildPersona(@NonNull String agentKey, String primaryAgentId) {
         Set<ToolDefinition> tools = Set.copyOf(toolEngine.getActiveTools(null));
-        var selection = sessionPlugins;
-        if (selection != null && primaryAgentId != null) tools = selection.tools(agentKey, tools);
+        if (primaryAgentId != null) tools = sessionPlugins.tools(agentKey, tools);
         String personaId = primaryAgentId != null ? primaryAgentId : UUID.randomUUID().toString();
         return new AgentPersona(
                 personaId, SystemPromptResolver.NAME, SystemPromptResolver.DESCRIPTION, tools);
@@ -858,13 +786,6 @@ public class AgentService {
     private @NonNull ProtectedSet protectedSetFor(
             @NonNull String vetoUserId, @NonNull Workspace workspace) {
         return protectedSetResolver.resolve(this.deployerPolicy, vetoUserId, workspace);
-    }
-
-    private static @NonNull DeployerPolicyConfiguration policyConfigurationFor(
-            @NonNull String raw) {
-        DeployerPolicyConfiguration configuration = new DeployerPolicyConfiguration();
-        configuration.setDeployerPolicy(DeployerPolicy.parse(raw));
-        return configuration;
     }
 
     /** Parses the screening mode (case-insensitive; defaults to STRICT on blank/unknown). */

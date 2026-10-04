@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.Map;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
+import org.mockito.Mockito;
 import top.focess.veto.agent.capability.CapabilityResolver;
 import top.focess.veto.agent.capability.ProtectedWorkspaceReadCapabilityImpl;
 import top.focess.veto.agent.intercept.ToolExecutionPermit;
@@ -16,6 +17,7 @@ import top.focess.veto.api.agent.tool.WorkspaceReadTool;
 import top.focess.veto.api.agent.tool.WorkspaceWriteTool;
 import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
+import top.focess.veto.event.EventManager;
 
 /** Creates an exact approved-call scope for direct capability integration tests. */
 public final class CapabilityTestCalls {
@@ -81,7 +83,10 @@ public final class CapabilityTestCalls {
         try {
             if (tool instanceof WorkspaceReadTool<?> read)
                 return ((WorkspaceReadTool<T>) read)
-                        .execute(args, new ProtectedWorkspaceReadCapabilityImpl());
+                        .execute(
+                                args,
+                                new ProtectedWorkspaceReadCapabilityImpl(
+                                        Mockito.mock(EventManager.class)));
             if (tool instanceof WorkspaceWriteTool<?> write)
                 return ((WorkspaceWriteTool<T>) write)
                         .execute(args, CapabilityResolver.require(WorkspaceWriteCapability.class));

@@ -24,12 +24,21 @@ import top.focess.veto.llm.egress.LlmEgress;
 import top.focess.veto.llm.provider.LLMProviderStrategy;
 
 class DefaultUniformLLMCallerTest {
+    private static @NonNull PluginLlmProviders emptyPluginProviders() {
+        var plugins = mock(PluginLlmProviders.class);
+        when(plugins.require(any()))
+                .thenThrow(new ModelCapabilityException("No provider registered"));
+        return plugins;
+    }
+
     @Test
     void plainTextIsAcceptedWithoutCorrectionOrRetry() {
         LLMProviderStrategy provider = mock(LLMProviderStrategy.class);
         when(provider.supports(ProviderType.DEEPSEEK)).thenReturn(true);
         when(provider.execute(any())).thenReturn(new VetoResponse(null, null, "Answer"));
-        var caller = new DefaultUniformLLMCaller(List.of(provider), egressReturning("secret"));
+        var caller =
+                new DefaultUniformLLMCaller(
+                        List.of(provider), egressReturning("secret"), emptyPluginProviders());
         assertEquals("Answer", caller.call(request(ProviderType.DEEPSEEK)).message());
         verify(provider, times(1)).execute(any());
     }
@@ -67,8 +76,8 @@ class DefaultUniformLLMCallerTest {
         when(provider.execute(any())).thenReturn(expected);
         when(plugins.require(ProviderType.OPENAI)).thenReturn(provider);
         when(plugins.require(ProviderType.OPENAI, "session-1")).thenReturn(provider);
-        var implementation = new DefaultUniformLLMCaller(List.of(), egressReturning("secret"));
-        implementation.attachPluginProviders(plugins);
+        var implementation =
+                new DefaultUniformLLMCaller(List.of(), egressReturning("secret"), plugins);
         UniformLLMCaller caller = implementation;
         var request = request(ProviderType.OPENAI);
 
@@ -111,7 +120,8 @@ class DefaultUniformLLMCallerTest {
         VetoResponse expected = new VetoResponse("thought", null, null);
         when(s2.execute(any(ResolvedRequest.class))).thenReturn(expected);
         DefaultUniformLLMCaller caller =
-                new DefaultUniformLLMCaller(List.of(s1, s2), egressReturning("secret"));
+                new DefaultUniformLLMCaller(
+                        List.of(s1, s2), egressReturning("secret"), emptyPluginProviders());
         assertEquals(expected, caller.call(request(ProviderType.OPENAI)));
         verify(s2).execute(any(ResolvedRequest.class));
         verify(s1, never()).execute(any());
@@ -122,7 +132,8 @@ class DefaultUniformLLMCallerTest {
         LLMProviderStrategy s1 = mock(LLMProviderStrategy.class);
         when(s1.supports(any())).thenReturn(false);
         DefaultUniformLLMCaller caller =
-                new DefaultUniformLLMCaller(List.of(s1), egressReturning("secret"));
+                new DefaultUniformLLMCaller(
+                        List.of(s1), egressReturning("secret"), emptyPluginProviders());
         assertThrows(
                 ModelCapabilityException.class, () -> caller.call(request(ProviderType.ANTHROPIC)));
     }
@@ -136,7 +147,8 @@ class DefaultUniformLLMCallerTest {
                 .thenThrow(new LlmRateLimitException("429", null))
                 .thenReturn(expected);
         DefaultUniformLLMCaller caller =
-                new DefaultUniformLLMCaller(List.of(s), egressReturning("secret"));
+                new DefaultUniformLLMCaller(
+                        List.of(s), egressReturning("secret"), emptyPluginProviders());
         assertEquals(expected, caller.call(request(ProviderType.OPENAI)));
         verify(s, times(2)).execute(any(ResolvedRequest.class));
     }
@@ -148,7 +160,8 @@ class DefaultUniformLLMCallerTest {
         when(s.execute(any(ResolvedRequest.class)))
                 .thenThrow(new ModelCapabilityException("permanent"));
         DefaultUniformLLMCaller caller =
-                new DefaultUniformLLMCaller(List.of(s), egressReturning("secret"));
+                new DefaultUniformLLMCaller(
+                        List.of(s), egressReturning("secret"), emptyPluginProviders());
         assertThrows(LlmException.class, () -> caller.call(request(ProviderType.OPENAI)));
         verify(s, times(1)).execute(any(ResolvedRequest.class));
     }

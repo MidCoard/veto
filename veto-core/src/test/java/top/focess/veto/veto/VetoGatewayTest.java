@@ -1,6 +1,8 @@
 package top.focess.veto.veto;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.*;
 
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.BeforeEach;
@@ -8,6 +10,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import top.focess.veto.integration.plugins.PluginManager;
 import top.focess.veto.integration.plugins.PluginTestSupport;
 import top.focess.veto.observability.AuditLogger;
 
@@ -17,6 +20,7 @@ class VetoGatewayTest {
 
     @Mock private @NonNull LlamaCppBridge llamaCppBridge;
     @Mock private @NonNull AuditLogger auditLogger;
+    @Mock private @NonNull PluginManager emptyPlugins;
 
     private @NonNull VetoGatewayConfiguration config;
     private @NonNull VetoGateway vetoGateway;
@@ -27,10 +31,11 @@ class VetoGatewayTest {
         config.setEnabled(true);
         config.setEnforceStructuralConstraints(true);
 
-        // No plugin manager bound: masking degrades to identity.
-        vetoGateway =
-                new VetoGateway(
-                        config, llamaCppBridge, PluginTestSupport.providerOf(null), auditLogger);
+        // An empty plugin catalog preserves the payload.
+        lenient()
+                .when(emptyPlugins.applyObservationMiddleware(anyString()))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        vetoGateway = new VetoGateway(config, llamaCppBridge, emptyPlugins, auditLogger);
     }
 
     @Test
@@ -106,11 +111,7 @@ class VetoGatewayTest {
         disabledConfig.setEnabled(false);
 
         VetoGateway disabledGateway =
-                new VetoGateway(
-                        disabledConfig,
-                        llamaCppBridge,
-                        PluginTestSupport.providerOf(null),
-                        auditLogger);
+                new VetoGateway(disabledConfig, llamaCppBridge, emptyPlugins, auditLogger);
 
         String sensitivePayload = "Secret: my-api-key-12345";
         VetoGateway.VetoResult result =

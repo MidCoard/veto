@@ -10,7 +10,6 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
 import org.jspecify.annotations.NonNull;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -55,52 +54,12 @@ import top.focess.veto.security.UserAdminService;
  */
 @Service
 public class SessionService {
-    private ScopedPluginStorage pluginStorage;
-
-    /** Setter-injects the scoped plugin storage (avoids a constructor dependency cycle). */
-    @Autowired
-    public void attachPluginStorage(@NonNull ScopedPluginStorage storage) {
-        pluginStorage = storage;
-    }
-
-    private HitlRecordRepository hitlRecords;
-
-    /** Setter-injects the HITL record repository used when deleting sessions. */
-    @Autowired
-    public void attachHitlRecords(@NonNull HitlRecordRepository records) {
-        hitlRecords = records;
-    }
-
-    private SessionPlugins sessionPlugins;
-
-    /** Setter-injects the plugin selection source applied to newly created sessions. */
-    @Autowired
-    public void attachSessionPlugins(@NonNull SessionPlugins value) {
-        sessionPlugins = value;
-    }
-
-    private EventManager eventManager;
-    private PluginDataCleanup pluginDataCleanup;
-
-    /** Attaches required transactional plugin cleanup separately from event notifications. */
-    @Autowired
-    public void attachPluginDataCleanup(@NonNull PluginDataCleanup cleanup) {
-        pluginDataCleanup = cleanup;
-    }
-
-    /** Setter-injects the event manager notified after committed session deletion. */
-    @Autowired
-    public void attachEventManager(@NonNull EventManager events) {
-        eventManager = events;
-    }
-
-    private RequestContinuationStore continuations;
-
-    /** Setter-injects the request-continuation store purged when a session is deleted. */
-    @Autowired
-    public void attachContinuations(@NonNull RequestContinuationStore store) {
-        continuations = store;
-    }
+    private final @NonNull ScopedPluginStorage pluginStorage;
+    private final @NonNull HitlRecordRepository hitlRecords;
+    private final @NonNull SessionPlugins sessionPlugins;
+    private final @NonNull EventManager eventManager;
+    private final @NonNull PluginDataCleanup pluginDataCleanup;
+    private final @NonNull RequestContinuationStore continuations;
 
     private final @NonNull SessionRepository sessions;
     private final @NonNull AgentInstanceRepository agents;
@@ -115,8 +74,7 @@ public class SessionService {
     private final @NonNull ConcurrentHashMap<String, String> activeSessions =
             new ConcurrentHashMap<>();
 
-    /** Full constructor used by Spring, including the workspace admission policy. */
-    @Autowired
+    /** Creates the service with its persistence, execution, admission and cleanup dependencies. */
     public SessionService(
             @NonNull SessionRepository sessions,
             @NonNull AgentInstanceRepository agents,
@@ -125,7 +83,13 @@ public class SessionService {
             @NonNull SessionAgentRegistry sessionAgents,
             @NonNull SessionHistoryLoader historyLoader,
             @NonNull ModelTierRegistry tierRegistry,
-            @NonNull WorkspaceAdmissionPolicy workspaceAdmissionPolicy) {
+            @NonNull WorkspaceAdmissionPolicy workspaceAdmissionPolicy,
+            @NonNull ScopedPluginStorage pluginStorage,
+            @NonNull HitlRecordRepository hitlRecords,
+            @NonNull SessionPlugins sessionPlugins,
+            @NonNull EventManager eventManager,
+            @NonNull PluginDataCleanup pluginDataCleanup,
+            @NonNull RequestContinuationStore continuations) {
         this.sessions = sessions;
         this.agents = agents;
         this.patterns = patterns;
@@ -134,26 +98,12 @@ public class SessionService {
         this.historyLoader = historyLoader;
         this.tierRegistry = tierRegistry;
         this.workspaceAdmissionPolicy = workspaceAdmissionPolicy;
-    }
-
-    /** Test/embedded compatibility constructor; Spring always supplies the admission policy. */
-    public SessionService(
-            @NonNull SessionRepository sessions,
-            @NonNull AgentInstanceRepository agents,
-            @NonNull AgentPatternRepository patterns,
-            @NonNull AgentService agentService,
-            @NonNull SessionAgentRegistry sessionAgents,
-            @NonNull SessionHistoryLoader historyLoader,
-            @NonNull ModelTierRegistry tierRegistry) {
-        this(
-                sessions,
-                agents,
-                patterns,
-                agentService,
-                sessionAgents,
-                historyLoader,
-                tierRegistry,
-                WorkspaceAdmissionPolicy.unrestricted());
+        this.pluginStorage = pluginStorage;
+        this.hitlRecords = hitlRecords;
+        this.sessionPlugins = sessionPlugins;
+        this.eventManager = eventManager;
+        this.pluginDataCleanup = pluginDataCleanup;
+        this.continuations = continuations;
     }
 
     /**
@@ -350,9 +300,7 @@ public class SessionService {
                         admittedWorkspaceRoots,
                         currentWorkspaceRootIndex,
                         toolResultPresentation);
-        var pluginSelection = sessionPlugins;
-        session.setPluginBindings(
-                pluginSelection == null ? List.of() : pluginSelection.selection(pluginIds));
+        session.setPluginBindings(sessionPlugins.selection(pluginIds));
         session = sessions.save(session);
         ModelBinding cache = tierRegistry.resolve(owner, pattern.getTier());
         AgentEntity agent =
@@ -544,16 +492,12 @@ public class SessionService {
         }
         for (SessionEntity session : matches) {
             String sessionId = session.getId();
-            var dataEvents = pluginDataCleanup;
-            if (dataEvents != null) dataEvents.beforeSessionDeleted(owner, sessionId);
+            pluginDataCleanup.beforeSessionDeleted(owner, sessionId);
             Runnable stop =
                     () -> {
                         activeSessions.entrySet().removeIf(e -> sessionId.equals(e.getValue()));
-                        var events = eventManager;
-                        if (events != null)
-                            events.submit(
-                                    new SessionDeletedEvent(
-                                            new Scope.SessionScope(owner, sessionId)));
+                        eventManager.submit(
+                                new SessionDeletedEvent(new Scope.SessionScope(owner, sessionId)));
                         sessionAgents.stopSession(UUID.fromString(sessionId));
                     };
             if (TransactionSynchronizationManager.isSynchronizationActive())
@@ -565,11 +509,10 @@ public class SessionService {
                             }
                         });
             else stop.run();
-            RequestContinuationStore store = continuations;
-            if (store != null) store.deleteSession(sessionId);
-            if (hitlRecords != null) hitlRecords.deleteBySessionId(sessionId);
+            continuations.deleteSession(sessionId);
+            hitlRecords.deleteBySessionId(sessionId);
             agents.deleteBySessionId(sessionId);
-            if (pluginStorage != null) pluginStorage.deleteSession(sessionId);
+            pluginStorage.deleteSession(sessionId);
             sessions.delete(session);
         }
         return true;

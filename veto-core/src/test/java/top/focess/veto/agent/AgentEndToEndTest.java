@@ -24,7 +24,8 @@ import top.focess.veto.agent.identity.AgentPersona;
 import top.focess.veto.agent.identity.Role;
 import top.focess.veto.agent.identity.SystemPromptResolver;
 import top.focess.veto.agent.intercept.HitlRegistry;
-import top.focess.veto.agent.intercept.IngressDefense;
+import top.focess.veto.agent.intercept.IngressDefenseTestSupport;
+import top.focess.veto.agent.loop.ContextBudgetConfiguration;
 import top.focess.veto.agent.loop.PromptCompiler;
 import top.focess.veto.agent.tool.AgentToolDefinition;
 import top.focess.veto.agent.tool.ToolCallContextHolder;
@@ -50,8 +51,10 @@ import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.builtin.planning.ActionsProgramParser;
 import top.focess.veto.builtin.planning.PlanProgram;
 import top.focess.veto.builtin.planning.ProgramValidator;
+import top.focess.veto.bus.SessionInvalidations;
 import top.focess.veto.event.EventManager;
 import top.focess.veto.integration.plugins.SessionPlugins;
+import top.focess.veto.llm.core.ToolResultPresenter;
 import top.focess.veto.llm.core.UniformLLMCaller;
 import top.focess.veto.model.SessionEntity;
 import top.focess.veto.model.tier.ModelBinding;
@@ -70,20 +73,28 @@ class AgentEndToEndTest {
 
     /** Builds an {@link AgentService} wired with the default stubs + a scripted caller. */
     private static @NonNull AgentService serviceWith(@NonNull UniformLLMCaller caller) {
+        return serviceWith(new AgentServiceTestSupport.Dependencies(), caller);
+    }
+
+    private static @NonNull AgentService serviceWith(
+            AgentServiceTestSupport.@NonNull Dependencies dependencies,
+            @NonNull UniformLLMCaller caller) {
         ObjectMapper mapper = new ObjectMapper();
         PromptCompiler compiler =
                 new PromptCompiler(
                         new VetoCapabilityTranslator(),
                         new SystemPromptResolver(),
                         mapper,
-                        "FULL_ACCESS");
-        // Spring injects configuration in production; the unit test supplies explicit budgets.
-        ReflectionTestUtils.setField(compiler, "maxInputTokens", 32000);
-        ReflectionTestUtils.setField(compiler, "contextFillRatio", 0.9);
-        return new AgentService(
+                        new ToolResultPresenter(mapper),
+                        "FULL_ACCESS",
+                        new ContextBudgetConfiguration(),
+                        32000,
+                        0.9);
+        return AgentServiceTestSupport.create(
+                dependencies,
                 new TestToolEngine(),
-                new HitlRegistry(),
-                new IngressDefense(),
+                new HitlRegistry(null, Mockito.mock(SessionInvalidations.class)),
+                IngressDefenseTestSupport.inMemory(),
                 compiler,
                 caller,
                 mapper,
@@ -149,30 +160,24 @@ class AgentEndToEndTest {
      */
     private static @NonNull AgentService serviceWith(
             @NonNull ToolEngine engine, @NonNull UniformLLMCaller caller) {
+        return serviceWith(new AgentServiceTestSupport.Dependencies(), engine, caller);
+    }
+
+    private static @NonNull AgentService serviceWith(
+            AgentServiceTestSupport.@NonNull Dependencies dependencies,
+            @NonNull ToolEngine engine,
+            @NonNull UniformLLMCaller caller) {
         ObjectMapper mapper = new ObjectMapper();
         PromptCompiler compiler =
                 new PromptCompiler(
                         new VetoCapabilityTranslator(),
                         new SystemPromptResolver(),
                         mapper,
-                        "FULL_ACCESS");
-        ReflectionTestUtils.setField(compiler, "maxInputTokens", 32000);
-        ReflectionTestUtils.setField(compiler, "contextFillRatio", 0.9);
-        var service =
-                new AgentService(
-                        engine,
-                        new HitlRegistry(),
-                        new IngressDefense(),
-                        compiler,
-                        caller,
-                        mapper,
-                        List.of(),
-                        "REAL",
-                        50L,
+                        new ToolResultPresenter(mapper),
                         "FULL_ACCESS",
-                        "STRICT",
-                        null,
-                        null);
+                        new ContextBudgetConfiguration(),
+                        32000,
+                        0.9);
         if (engine instanceof TransformToolEngine transforms) {
             var selection = Mockito.mock(SessionPlugins.class);
             Mockito.when(selection.tools(Mockito.anyString(), Mockito.any()))
@@ -188,8 +193,7 @@ class AgentEndToEndTest {
                                     Mockito.anyString()))
                     .thenAnswer(
                             call -> transforms.intent(call.getArgument(4), call.getArgument(6)));
-            service.attachSessionPlugins(selection);
-            service.attachEventManager(Mockito.mock(EventManager.class));
+            dependencies.plugins(selection).events(Mockito.mock(EventManager.class));
             var tiers = Mockito.mock(ModelTierRegistry.class);
             var model = transforms.leaderBinding;
             Mockito.when(tiers.resolve(Mockito.anyString(), Mockito.any()))
@@ -200,9 +204,23 @@ class AgentEndToEndTest {
                                     model.credentialKey(),
                                     0,
                                     4096));
-            service.setModelTierRegistry(tiers);
+            dependencies.tiers(tiers);
         }
-        return service;
+        return AgentServiceTestSupport.create(
+                dependencies,
+                engine,
+                new HitlRegistry(null, Mockito.mock(SessionInvalidations.class)),
+                IngressDefenseTestSupport.inMemory(),
+                compiler,
+                caller,
+                mapper,
+                List.of(),
+                "REAL",
+                50L,
+                "FULL_ACCESS",
+                "STRICT",
+                null,
+                null);
     }
 
     private static @NonNull VetoResponse thoughtOn(String thought, String message) {
@@ -554,7 +572,13 @@ class AgentEndToEndTest {
     void mateUsesParentSessionBeforeItsFirstTurn() throws Exception {
         UUID sessionId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
-        var service = serviceWith(scripted(thoughtOn("Report", "Mate finished.")));
+        var selection = Mockito.mock(SessionPlugins.class);
+        Mockito.when(selection.tools(Mockito.anyString(), Mockito.any()))
+                .thenAnswer(call -> call.getArgument(1));
+        var service =
+                serviceWith(
+                        new AgentServiceTestSupport.Dependencies().plugins(selection),
+                        scripted(thoughtOn("Report", "Mate finished.")));
         service.getOrCreateAgent(
                 sessionId.toString(),
                 UUID.randomUUID().toString(),
@@ -568,12 +592,7 @@ class AgentEndToEndTest {
         var persona =
                 new AgentPersona(
                         UUID.randomUUID().toString(), "Mate", "Worker", Set.of(), Role.MATE);
-        var selection = Mockito.mock(SessionPlugins.class);
-        Mockito.when(selection.tools(Mockito.anyString(), Mockito.any()))
-                .thenAnswer(call -> call.getArgument(1));
-        service.attachSessionPlugins(selection);
-        service.attachEventManager(Mockito.mock(EventManager.class));
-        service.setModelTierRegistry(Mockito.mock(ModelTierRegistry.class));
+
         var session = Mockito.mock(SessionEntity.class);
         Mockito.when(session.getId()).thenReturn(sessionId.toString());
         Mockito.when(session.getOwner()).thenReturn("owner");

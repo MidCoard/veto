@@ -53,6 +53,8 @@ import top.focess.veto.api.plugin.agent.AgentHost;
 import top.focess.veto.api.plugin.agent.AgentProfile;
 import top.focess.veto.api.plugin.agent.IsolatedAgent;
 import top.focess.veto.api.plugin.contract.JsonValues;
+import top.focess.veto.bus.SessionInvalidations;
+import top.focess.veto.event.EventManager;
 import top.focess.veto.llm.config.LlmJacksonConfig;
 import top.focess.veto.llm.core.UniformLLMCaller;
 import top.focess.veto.memory.TurnLogService;
@@ -110,6 +112,9 @@ public final class IsolatedExecutions {
     private final @NonNull SessionAgentRegistry registry;
     private final @NonNull TurnLogService history;
     private final @NonNull IngressDefense ingress;
+    private final @NonNull SessionPlugins sessionPlugins;
+    private final @NonNull EventManager events;
+    private final @NonNull SessionInvalidations invalidations;
     private final int callCeiling;
     private final int secondsCeiling;
     private final int inputCeiling;
@@ -127,7 +132,10 @@ public final class IsolatedExecutions {
             @Value("${veto.isolated.max-calls:128}") int callCeiling,
             @Value("${veto.isolated.max-seconds:600}") int secondsCeiling,
             @Value("${veto.isolated.max-input-tokens:1048576}") int inputCeiling,
-            @Value("${veto.isolated.max-output-tokens:65536}") int outputCeiling) {
+            @Value("${veto.isolated.max-output-tokens:65536}") int outputCeiling,
+            @NonNull SessionPlugins sessionPlugins,
+            @NonNull EventManager events,
+            @NonNull SessionInvalidations invalidations) {
         this.mapper = mapper;
         this.caller = caller;
         this.models = models;
@@ -139,6 +147,9 @@ public final class IsolatedExecutions {
         this.secondsCeiling = secondsCeiling;
         this.inputCeiling = inputCeiling;
         this.outputCeiling = outputCeiling;
+        this.sessionPlugins = sessionPlugins;
+        this.events = events;
+        this.invalidations = invalidations;
         if (callCeiling < 1 || secondsCeiling < 1 || inputCeiling < 1 || outputCeiling < 1)
             throw new IllegalArgumentException("Invalid isolated execution ceiling");
     }
@@ -178,7 +189,7 @@ public final class IsolatedExecutions {
         scope.checkTools = tools::check;
         PRIVATE_CONTEXTS.put(scope.id(), scope);
         try {
-            var engine = ToolEngineImpl.isolated(mapper, tools.tools());
+            var engine = ToolEngineImpl.isolated(mapper, tools.tools(), sessionPlugins, events);
             if (engine.getActiveTools(null).stream()
                     .anyMatch(tool -> tool.capability() != parent.executionPermit().capability()))
                 throw new SecurityException(
@@ -269,7 +280,7 @@ public final class IsolatedExecutions {
                                     owner,
                                     engine,
                                     gateway,
-                                    new HitlRegistry(),
+                                    new HitlRegistry(null, invalidations),
                                     ingress),
                             List.of(),
                             compiler,

@@ -12,6 +12,7 @@ import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.mockito.Mockito;
 import org.springframework.context.ApplicationContext;
 import top.focess.veto.agent.drift.ReadHistory;
 import top.focess.veto.agent.intercept.*;
@@ -25,6 +26,7 @@ import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.api.plugin.contract.PluginFailure;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
+import top.focess.veto.bus.SessionInvalidations;
 import top.focess.veto.integration.plugins.HostResourceConfiguration;
 import top.focess.veto.integration.plugins.PluginHostServices;
 import top.focess.veto.integration.plugins.PluginManager;
@@ -88,7 +90,8 @@ class CredentialImportIntegrationTest {
                             GatewayResult.Screened.class, gateway.screen(call, definition));
             assertInstanceOf(
                     ApprovalDecision.Prompt.class,
-                    new HitlRegistry().decide("agent", call, definition, screened));
+                    new HitlRegistry(null, Mockito.mock(SessionInvalidations.class))
+                            .decide("agent", call, definition, screened));
             assertFalse(engine.execute(call, definition).success());
             verifyNoInteractions(vault);
             var permit =
@@ -168,7 +171,13 @@ class CredentialImportIntegrationTest {
             @NonNull ObjectMapper mapper, @NonNull PluginManager plugins) {
         var context = mock(ApplicationContext.class);
         when(context.getBeansOfType(PluginManager.class)).thenReturn(Map.of("plugins", plugins));
-        var engine = new ToolEngineImpl(mapper, List.of(), context);
+        var engine =
+                new ToolEngineImpl(
+                        mapper,
+                        List.of(),
+                        context,
+                        PluginTestSupport.sessionPlugins(plugins),
+                        PluginTestSupport.eventManager(plugins));
         engine.afterSingletonsInstantiated();
         return engine;
     }

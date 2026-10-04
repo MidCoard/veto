@@ -10,6 +10,7 @@ import java.util.Set;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.transaction.annotation.Propagation;
@@ -23,6 +24,8 @@ import top.focess.veto.agent.VetoAgent;
 import top.focess.veto.agent.identity.AgentPersona;
 import top.focess.veto.agent.identity.Role;
 import top.focess.veto.api.agent.AgentState;
+import top.focess.veto.bus.DeltaBroker;
+import top.focess.veto.bus.SessionInvalidations;
 import top.focess.veto.memory.TurnLogService;
 import top.focess.veto.memory.TurnRecordEntity;
 import top.focess.veto.memory.TurnRecordRepository;
@@ -43,7 +46,7 @@ class SessionAgentHistoryTest {
         String primary = UUID.randomUUID().toString();
         String mate = UUID.randomUUID().toString();
         var mapper = new ObjectMapper();
-        var writer = new TurnLogService(turns, mapper);
+        var writer = new TurnLogService(turns, mapper, new DeltaBroker());
         try {
             writer.log(TurnRecord.userPrompt(1, "Original request"), session, owner, primary);
             writer.log(
@@ -112,7 +115,9 @@ class SessionAgentHistoryTest {
                         UUID.randomUUID(),
                         "older-agent",
                         new ObjectMapper()));
-        var registry = new SessionAgentRegistry(repository, turns);
+        var registry =
+                new SessionAgentRegistry(
+                        repository, turns, Mockito.mock(SessionInvalidations.class));
         var history = registry.records(sessionId);
         assertEquals(1, history.size());
         assertEquals("older-agent", history.getFirst().id());
@@ -134,7 +139,9 @@ class SessionAgentHistoryTest {
                                 "DEEPSEEK",
                                 "model",
                                 "key"));
-        var registry = new SessionAgentRegistry(repository, turns);
+        var registry =
+                new SessionAgentRegistry(
+                        repository, turns, Mockito.mock(SessionInvalidations.class));
         VetoAgent parent = mock(VetoAgent.class);
         when(parent.id()).thenReturn(primary.getId());
         when(parent.persona()).thenReturn(new AgentPersona(primary.getId(), "Main", "", Set.of()));
@@ -166,7 +173,9 @@ class SessionAgentHistoryTest {
         assertEquals("parent-call", audit.getParentCallId());
         assertTrue(audit.getEndedAt() != null);
         registry.close();
-        var restarted = new SessionAgentRegistry(repository, turns);
+        var restarted =
+                new SessionAgentRegistry(
+                        repository, turns, Mockito.mock(SessionInvalidations.class));
         assertEquals(
                 List.of(primary.getId()),
                 restarted.records(session).stream()
@@ -189,7 +198,9 @@ class SessionAgentHistoryTest {
                                 "DEEPSEEK",
                                 "model",
                                 "key"));
-        SessionAgentRegistry registry = new SessionAgentRegistry(repository, turns);
+        SessionAgentRegistry registry =
+                new SessionAgentRegistry(
+                        repository, turns, Mockito.mock(SessionInvalidations.class));
         assertEquals(1, registry.records(sessionId).size());
         assertFalse(registry.records(sessionId).getFirst().live());
 
@@ -227,7 +238,9 @@ class SessionAgentHistoryTest {
 
         registry.close();
         repository.flush();
-        SessionAgentRegistry restarted = new SessionAgentRegistry(repository, turns);
+        SessionAgentRegistry restarted =
+                new SessionAgentRegistry(
+                        repository, turns, Mockito.mock(SessionInvalidations.class));
         assertEquals(2, restarted.records(sessionId).size());
         assertTrue(
                 restarted.records(sessionId).stream()

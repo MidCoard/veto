@@ -18,6 +18,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
 import org.springframework.test.util.ReflectionTestUtils;
 import top.focess.veto.agent.intercept.ToolExecutionPermit;
 import top.focess.veto.agent.tool.ToolCallContext;
@@ -308,7 +309,11 @@ class NetworkWebReadCapabilityTest {
                             ToolExecutionException.class,
                             () ->
                                     fetch(
-                                            new NetworkEgressCapabilityImpl(1, 1000, true),
+                                            new NetworkEgressCapabilityImpl(
+                                                    1,
+                                                    1000,
+                                                    true,
+                                                    Mockito.mock(ImportedCredentialLeases.class)),
                                             url(server, "/slow")));
             assertTrue(error.content().contains("timed out"));
             assertTrue(Duration.ofNanos(System.nanoTime() - started).toSeconds() < 5);
@@ -330,7 +335,11 @@ class NetworkWebReadCapabilityTest {
                     url(server, "/start"),
                     () -> {
                         try (var grant =
-                                new NetworkEgressCapabilityImpl(5, 10, true)
+                                new NetworkEgressCapabilityImpl(
+                                                5,
+                                                10,
+                                                true,
+                                                Mockito.mock(ImportedCredentialLeases.class))
                                         .openApprovedDestination("url")) {
                             var page = grant.fetch();
                             assertEquals(url(server, "/document"), page.uri());
@@ -346,7 +355,8 @@ class NetworkWebReadCapabilityTest {
     }
 
     private static @NonNull NetworkEgressCapabilityImpl network(boolean allowPrivate) {
-        return new NetworkEgressCapabilityImpl(5, 10000, allowPrivate);
+        return new NetworkEgressCapabilityImpl(
+                5, 10000, allowPrivate, Mockito.mock(ImportedCredentialLeases.class));
     }
 
     private static @NonNull String fetch(

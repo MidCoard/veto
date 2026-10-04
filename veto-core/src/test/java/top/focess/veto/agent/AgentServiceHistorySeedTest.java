@@ -10,10 +10,12 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
 import org.springframework.test.util.ReflectionTestUtils;
 import top.focess.veto.agent.identity.SystemPromptResolver;
 import top.focess.veto.agent.intercept.HitlRegistry;
-import top.focess.veto.agent.intercept.IngressDefense;
+import top.focess.veto.agent.intercept.IngressDefenseTestSupport;
+import top.focess.veto.agent.loop.ContextBudgetConfiguration;
 import top.focess.veto.agent.loop.PromptCompiler;
 import top.focess.veto.agent.translation.VetoCapabilityTranslator;
 import top.focess.veto.api.llm.LlmBinding;
@@ -21,8 +23,12 @@ import top.focess.veto.api.llm.LlmOptions;
 import top.focess.veto.api.llm.ProviderType;
 import top.focess.veto.api.llm.VetoRequest;
 import top.focess.veto.api.llm.VetoResponse;
+import top.focess.veto.bus.DeltaBroker;
+import top.focess.veto.bus.SessionInvalidations;
+import top.focess.veto.llm.core.ToolResultPresenter;
 import top.focess.veto.llm.core.UniformLLMCaller;
 import top.focess.veto.memory.TurnLogService;
+import top.focess.veto.memory.TurnRecordRepository;
 
 /**
  * Verifies {@link AgentService#getOrCreateAgent} seeds replayed history on first creation (so a
@@ -171,13 +177,16 @@ class AgentServiceHistorySeedTest {
                         new VetoCapabilityTranslator(),
                         new SystemPromptResolver(),
                         mapper,
-                        "FULL_ACCESS");
-        ReflectionTestUtils.setField(compiler, "maxInputTokens", 32000);
-        ReflectionTestUtils.setField(compiler, "contextFillRatio", 0.9);
-        return new AgentService(
+                        new ToolResultPresenter(mapper),
+                        "FULL_ACCESS",
+                        new ContextBudgetConfiguration(),
+                        32000,
+                        0.9);
+        return AgentServiceTestSupport.create(
+                new AgentServiceTestSupport.Dependencies(),
                 new TestToolEngine(),
-                new HitlRegistry(),
-                new IngressDefense(),
+                new HitlRegistry(null, Mockito.mock(SessionInvalidations.class)),
+                IngressDefenseTestSupport.inMemory(),
                 compiler,
                 caller,
                 mapper,
@@ -187,7 +196,8 @@ class AgentServiceHistorySeedTest {
                 "FULL_ACCESS",
                 "STRICT",
                 null,
-                new TurnLogService(null, mapper));
+                new TurnLogService(
+                        Mockito.mock(TurnRecordRepository.class), mapper, new DeltaBroker()));
     }
 
     private static @NonNull LlmBinding binding() {

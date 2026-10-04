@@ -262,7 +262,7 @@ class ScriptPluginBootTest {
         assertThrows(
                 IOException.class,
                 () ->
-                        new PluginManager(
+                        PluginTestSupport.manager(
                                 installedPackages(),
                                 node(),
                                 false,

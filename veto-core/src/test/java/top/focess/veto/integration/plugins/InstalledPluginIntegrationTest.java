@@ -32,7 +32,7 @@ class InstalledPluginIntegrationTest {
         var configuration = new PluginConfigurations();
         configuration.setDisabled(Set.of("sample.disabled"));
         try (var manager =
-                new PluginManager(
+                PluginTestSupport.manager(
                         root.toString(),
                         "",
                         false,
@@ -66,11 +66,11 @@ class InstalledPluginIntegrationTest {
     void administratorChoiceTakesEffectOnlyAfterRestart(@TempDir @NonNull Path root)
             throws Exception {
         writePackage(Files.createDirectory(root.resolve("service-provider")));
-        var choices = new PluginActivationStore();
+        var choices = PluginTestSupport.activationStore(root.toString());
         var configuration = new PluginConfigurations();
         configuration.setDisabled(Set.of("sample.installed"));
         try (var first =
-                new PluginManager(
+                PluginTestSupport.manager(
                         root.toString(),
                         "",
                         false,
@@ -88,7 +88,7 @@ class InstalledPluginIntegrationTest {
             assertTrue(first.desiredEnabled("sample.installed"));
         }
         try (var second =
-                new PluginManager(
+                PluginTestSupport.manager(
                         root.toString(),
                         "",
                         false,
@@ -106,7 +106,7 @@ class InstalledPluginIntegrationTest {
                     service.invoke(new JsonValue.StringValue("running")));
         }
         try (var third =
-                new PluginManager(
+                PluginTestSupport.manager(
                         root.toString(),
                         "",
                         false,
@@ -123,7 +123,7 @@ class InstalledPluginIntegrationTest {
                             .anyMatch(plugin -> plugin.id().equals("sample.installed")));
         }
         try (var fourth =
-                new PluginManager(
+                PluginTestSupport.manager(
                         root.toString(),
                         "",
                         false,
@@ -153,7 +153,7 @@ class InstalledPluginIntegrationTest {
                         JsonValue.ObjectValue.class,
                         ContributionPoint.Cardinality.MULTIPLE);
         try (var manager =
-                new PluginManager(
+                PluginTestSupport.manager(
                         root.toString(),
                         "",
                         false,
@@ -186,7 +186,7 @@ class InstalledPluginIntegrationTest {
             throws Exception {
         writePackage(Files.createDirectory(root.resolve("service-provider")));
         try (var manager =
-                new PluginManager(
+                PluginTestSupport.manager(
                         root.toString(),
                         "",
                         false,
@@ -208,7 +208,7 @@ class InstalledPluginIntegrationTest {
             throws Exception {
         writePackage(Files.createDirectory(root.resolve("service-provider")));
         try (var manager =
-                new PluginManager(
+                PluginTestSupport.manager(
                         root.toString(),
                         "",
                         false,
@@ -236,7 +236,7 @@ class InstalledPluginIntegrationTest {
         writePackage(Files.createDirectory(root.resolve("service-provider")));
         PluginClassLoader loader;
         try (var manager =
-                new PluginManager(
+                PluginTestSupport.manager(
                         root.toString(),
                         "",
                         false,

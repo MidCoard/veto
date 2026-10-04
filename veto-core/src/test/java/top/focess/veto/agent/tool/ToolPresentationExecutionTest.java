@@ -11,6 +11,7 @@ import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.mockito.Mockito;
 import org.springframework.context.ApplicationContext;
 import top.focess.veto.agent.intercept.ToolExecutionPermit;
 import top.focess.veto.agent.workspace.PathMode;
@@ -19,6 +20,8 @@ import top.focess.veto.api.agent.tool.*;
 import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.api.resources.CatalogueTree;
+import top.focess.veto.event.EventManager;
+import top.focess.veto.integration.plugins.SessionPlugins;
 
 class ToolPresentationExecutionTest {
     @Test
@@ -26,7 +29,13 @@ class ToolPresentationExecutionTest {
         var tool = new ConditionalTool();
         var app = mock(ApplicationContext.class);
         when(app.getBeansOfType(AgentTool.class)).thenReturn(Map.of("conditional", tool));
-        var engine = new ToolEngineImpl(new ObjectMapper(), List.of(), app);
+        var engine =
+                new ToolEngineImpl(
+                        new ObjectMapper(),
+                        List.of(),
+                        app,
+                        Mockito.mock(SessionPlugins.class),
+                        Mockito.mock(EventManager.class));
         engine.init();
         ToolDefinition definition = engine.resolveDefinition("conditional");
         if (definition == null) throw new AssertionError("Conditional tool was not registered");

@@ -12,7 +12,6 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import org.jspecify.annotations.NonNull;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.AgentService;
 import top.focess.veto.agent.screening.Relevance;
@@ -58,11 +57,18 @@ import top.focess.veto.util.Nullness;
  */
 @Component
 public class HitlRegistry {
-    private SessionInvalidations invalidations;
+    private final @NonNull SessionInvalidations invalidations;
+    private final HitlHistory durableHistory;
 
-    /** Binds the invalidation bus so transports are notified when pending vetoes change. */
-    @Autowired
-    public void attachInvalidations(@NonNull SessionInvalidations invalidations) {
+    /**
+     * Creates the registry with invalidation delivery and optional durable approval history.
+     * Isolated ephemeral executions omit history so their grants remain private to the child.
+     *
+     * @param history durable decisions and grants, or null for an isolated ephemeral execution
+     * @param invalidations session resource notifications
+     */
+    public HitlRegistry(HitlHistory history, @NonNull SessionInvalidations invalidations) {
+        this.durableHistory = history;
         this.invalidations = invalidations;
     }
 
@@ -124,9 +130,7 @@ public class HitlRegistry {
         }
     }
 
-    private HitlHistory durableHistory;
-
-    /** The agent's durable decision history; empty when persistence is not attached. */
+    /** The agent's durable decision history; empty for isolated ephemeral executions. */
     public @NonNull List<HitlHistory.Decision> decisions(@NonNull String agent) {
         HitlHistory history = durableHistory;
         return history == null ? List.of() : history.decisions(agent);
@@ -137,12 +141,6 @@ public class HitlRegistry {
         record(agent, call.callId(), "AUTO", "APPROVE", "AGENT_TOOL_CAPABILITY", null);
     }
 
-    /** Wires the durable approval-history store (absent in embedded runners). */
-    @Autowired
-    public void attachHistory(@NonNull HitlHistory history) {
-        durableHistory = history;
-    }
-
     private void record(
             @NonNull String agent,
             @NonNull String call,
@@ -151,7 +149,7 @@ public class HitlRegistry {
             @NonNull String source,
             PermissionGrant grant) {
         HitlHistory history = durableHistory;
-        if (history == null) return; // Embedded runners without persistence.
+        if (history == null) return; // Isolated ephemeral executions keep approvals private.
         UUID session = sessions.get(agent);
         if (session == null) throw new IllegalStateException("Approval session is unavailable");
         history.append(session, agent, call, event, decision, source, grant);
@@ -474,11 +472,9 @@ public class HitlRegistry {
         record(agentId, callId, "OPENED", "", "SCREENING", null);
         pending.put(
                 key(agentId, callId), new Pending(future, call, def, options, danger, relevance));
-        if (invalidations != null) invalidations.agentChanged(agentId, "interactions");
+        invalidations.agentChanged(agentId, "interactions");
         future.whenComplete(
-                (ignored, error) -> {
-                    if (invalidations != null) invalidations.agentChanged(agentId, "interactions");
-                });
+                (ignored, error) -> invalidations.agentChanged(agentId, "interactions"));
         return future;
     }
 

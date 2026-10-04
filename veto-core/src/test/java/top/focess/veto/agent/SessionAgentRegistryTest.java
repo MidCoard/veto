@@ -12,18 +12,27 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
 import top.focess.veto.agent.identity.AgentPersona;
 import top.focess.veto.agent.identity.Role;
 import top.focess.veto.api.agent.AgentAction;
 import top.focess.veto.api.agent.AgentState;
+import top.focess.veto.bus.SessionInvalidations;
+import top.focess.veto.memory.TurnRecordRepository;
+import top.focess.veto.model.AgentInstanceRepository;
 
 class SessionAgentRegistryTest {
     @Test
     void arbitraryTransportKeyRecreatesTerminatedPrimaryAndIgnoresOldCallback() {
-        try (var registry = new SessionAgentRegistry()) {
+        try (var registry =
+                new SessionAgentRegistry(
+                        Mockito.mock(AgentInstanceRepository.class),
+                        Mockito.mock(TurnRecordRepository.class),
+                        Mockito.mock(SessionInvalidations.class))) {
             UUID session = UUID.randomUUID();
             var primary = persona("primary", Role.STANDALONE);
-            var oldRunner = runner(primary);
+            AtomicReference<@NonNull AgentState> oldState = new AtomicReference<>(AgentState.IDLE);
+            var oldRunner = runner(primary, oldState);
             when(oldRunner.sessionId()).thenReturn(session);
             AtomicReference<Runnable> oldCallback = new AtomicReference<>();
             doAnswer(
@@ -44,7 +53,7 @@ class SessionAgentRegistryTest {
                             () -> {
                                 throw new AssertionError("Live primary must be reused");
                             }));
-            when(oldRunner.state()).thenReturn(AgentState.TERMINATED);
+            oldState.set(AgentState.TERMINATED);
             var replacementRunner = runner(primary);
             when(replacementRunner.sessionId()).thenReturn(session);
             var replacement =
@@ -65,7 +74,11 @@ class SessionAgentRegistryTest {
 
     @Test
     void independentTopLevelPeerDoesNotReplaceTransportPrimary() {
-        try (var registry = new SessionAgentRegistry()) {
+        try (var registry =
+                new SessionAgentRegistry(
+                        Mockito.mock(AgentInstanceRepository.class),
+                        Mockito.mock(TurnRecordRepository.class),
+                        Mockito.mock(SessionInvalidations.class))) {
             UUID session = UUID.randomUUID();
             var primary = persona("primary", Role.STANDALONE);
             var primaryRunner = runner(primary);
@@ -91,7 +104,11 @@ class SessionAgentRegistryTest {
 
     @Test
     void independentAgentJoinsActiveSessionButCannotRestartRemovedSession() {
-        SessionAgentRegistry registry = new SessionAgentRegistry();
+        SessionAgentRegistry registry =
+                new SessionAgentRegistry(
+                        Mockito.mock(AgentInstanceRepository.class),
+                        Mockito.mock(TurnRecordRepository.class),
+                        Mockito.mock(SessionInvalidations.class));
         UUID session = UUID.randomUUID();
         AgentRunner rootRunner = runner(persona("root", Role.STANDALONE));
         registry.register(session, new VetoAgent(persona("root", Role.STANDALONE), rootRunner));
@@ -124,7 +141,11 @@ class SessionAgentRegistryTest {
 
     @Test
     void parentTerminationCancelsDescendantsWithoutAffectingSessionPeers() {
-        SessionAgentRegistry registry = new SessionAgentRegistry();
+        SessionAgentRegistry registry =
+                new SessionAgentRegistry(
+                        Mockito.mock(AgentInstanceRepository.class),
+                        Mockito.mock(TurnRecordRepository.class),
+                        Mockito.mock(SessionInvalidations.class));
         UUID session = UUID.randomUUID();
         UUID otherSession = UUID.randomUUID();
         AgentRunner parentRunner = runner(persona("main", Role.STANDALONE));
@@ -201,7 +222,11 @@ class SessionAgentRegistryTest {
 
     @Test
     void completingOneChildKeepsItsParentAndSiblingAlive() {
-        SessionAgentRegistry registry = new SessionAgentRegistry();
+        SessionAgentRegistry registry =
+                new SessionAgentRegistry(
+                        Mockito.mock(AgentInstanceRepository.class),
+                        Mockito.mock(TurnRecordRepository.class),
+                        Mockito.mock(SessionInvalidations.class));
         UUID session = UUID.randomUUID();
         AgentRunner parentRunner = runner(persona("parent", Role.STANDALONE));
         registry.register(session, new VetoAgent(persona("parent", Role.STANDALONE), parentRunner));
@@ -224,7 +249,11 @@ class SessionAgentRegistryTest {
 
     @Test
     void rejectsMissingCrossSessionTerminatedAndDuplicateParentsOrChildren() {
-        SessionAgentRegistry registry = new SessionAgentRegistry();
+        SessionAgentRegistry registry =
+                new SessionAgentRegistry(
+                        Mockito.mock(AgentInstanceRepository.class),
+                        Mockito.mock(TurnRecordRepository.class),
+                        Mockito.mock(SessionInvalidations.class));
         UUID session = UUID.randomUUID();
         AgentRunner parentRunner = runner(persona("parent", Role.STANDALONE));
         VetoAgent parent = new VetoAgent(persona("parent", Role.STANDALONE), parentRunner);
@@ -285,7 +314,11 @@ class SessionAgentRegistryTest {
 
     @Test
     void sessionStopRejectsAChildAlreadyWaitingToRegister() throws Exception {
-        SessionAgentRegistry registry = new SessionAgentRegistry();
+        SessionAgentRegistry registry =
+                new SessionAgentRegistry(
+                        Mockito.mock(AgentInstanceRepository.class),
+                        Mockito.mock(TurnRecordRepository.class),
+                        Mockito.mock(SessionInvalidations.class));
         UUID session = UUID.randomUUID();
         AgentRunner parentRunner = runner(persona("parent", Role.STANDALONE));
         registry.register(session, new VetoAgent(persona("parent", Role.STANDALONE), parentRunner));
@@ -332,8 +365,12 @@ class SessionAgentRegistryTest {
     }
 
     private static @NonNull AgentRunner runner(@NonNull AgentPersona persona) {
+        return runner(persona, new AtomicReference<>(AgentState.IDLE));
+    }
+
+    private static @NonNull AgentRunner runner(
+            @NonNull AgentPersona persona, @NonNull AtomicReference<@NonNull AgentState> state) {
         AgentRunner runner = AgentRunnerFixture.mockedRunner(persona.id(), UUID.randomUUID());
-        AtomicReference<AgentState> state = new AtomicReference<>(AgentState.IDLE);
         when(runner.state()).thenAnswer(invocation -> state.get());
         when(runner.personaView()).thenReturn(persona);
         AtomicReference<Runnable> termination = new AtomicReference<>();

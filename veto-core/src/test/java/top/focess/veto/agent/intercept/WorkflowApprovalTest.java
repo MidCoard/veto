@@ -5,16 +5,18 @@ import static org.junit.jupiter.api.Assertions.*;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
 import top.focess.veto.agent.screening.Relevance;
 import top.focess.veto.agent.screening.Screening;
 import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.event.BeforeToolEvent;
 import top.focess.veto.api.llm.ToolCall;
+import top.focess.veto.bus.SessionInvalidations;
 
 class WorkflowApprovalTest {
     @Test
     void hooksCanRequireApprovalForAnInternalCallOrRejectIt() {
-        var hitl = new HitlRegistry();
+        var hitl = new HitlRegistry(null, Mockito.mock(SessionInvalidations.class));
         var call = new ToolCall("internal", Map.of());
         var prompt =
                 assertInstanceOf(
@@ -47,7 +49,7 @@ class WorkflowApprovalTest {
 
     @Test
     void approvalCannotOverrideHostRefusal() {
-        var hitl = new HitlRegistry();
+        var hitl = new HitlRegistry(null, Mockito.mock(SessionInvalidations.class));
         var critical =
                 new GatewayResult.Screened(
                         new Screening(

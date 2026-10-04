@@ -23,8 +23,7 @@ class AuthLifecycleManagerTest {
         var vault = mock(KeysteadVault.class);
         var prompts = mock(PromptHandler.class);
         var events = mock(EventManager.class);
-        var lifecycle = new AuthLifecycleManager(vault, prompts);
-        lifecycle.attachEventManager(events);
+        var lifecycle = new AuthLifecycleManager(vault, prompts, events);
         doThrow(new IllegalArgumentException("Signup failed"))
                 .when(vault)
                 .signup("alice", "invalid");
@@ -39,8 +38,7 @@ class AuthLifecycleManagerTest {
         var vault = mock(KeysteadVault.class);
         var prompts = mock(PromptHandler.class);
         var events = mock(EventManager.class);
-        var lifecycle = new AuthLifecycleManager(vault, prompts);
-        lifecycle.attachEventManager(events);
+        var lifecycle = new AuthLifecycleManager(vault, prompts, events);
         lifecycle.logout("alice");
         var ordered = inOrder(events, prompts, vault);
         ordered.verify(events)
@@ -59,8 +57,7 @@ class AuthLifecycleManagerTest {
         KeysteadVault vault = mock(KeysteadVault.class);
         PromptHandler prompts = mock(PromptHandler.class);
         EventManager events = mock(EventManager.class);
-        var lifecycle = new AuthLifecycleManager(vault, prompts);
-        lifecycle.attachEventManager(events);
+        var lifecycle = new AuthLifecycleManager(vault, prompts, events);
 
         lifecycle.signup("alice", "password");
         verify(events)
@@ -97,8 +94,9 @@ class AuthLifecycleManagerTest {
             var other = new Scope.AgentScope("bob", "session", "agent");
             String reference = capture(plugins, scope, "password=alpha");
             String otherReference = capture(plugins, other, "password=beta");
-            var lifecycle = new AuthLifecycleManager(vault, prompts);
-            lifecycle.attachEventManager(PluginTestSupport.eventManager(plugins));
+            var lifecycle =
+                    new AuthLifecycleManager(
+                            vault, prompts, PluginTestSupport.eventManager(plugins));
             doThrow(new IllegalStateException("Detach failed"))
                     .when(prompts)
                     .deactivateUser("alice");
@@ -125,8 +123,9 @@ class AuthLifecycleManagerTest {
         try (var plugins = PluginTestSupport.manager()) {
             var scope = new Scope.AgentScope("alice", "session", "agent");
             String old = capture(plugins, scope, "password=alpha");
-            var lifecycle = new AuthLifecycleManager(vault, prompts);
-            lifecycle.attachEventManager(PluginTestSupport.eventManager(plugins));
+            var lifecycle =
+                    new AuthLifecycleManager(
+                            vault, prompts, PluginTestSupport.eventManager(plugins));
             lifecycle.logout("alice");
             doThrow(new IllegalArgumentException("Login failed"))
                     .when(vault)

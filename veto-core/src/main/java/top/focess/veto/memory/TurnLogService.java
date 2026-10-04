@@ -5,7 +5,6 @@ import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
@@ -20,9 +19,8 @@ import top.focess.veto.bus.DeltaFrame;
  * nothing here feeds LTM (long-term memory is agent-written only, via {@code write_memory}).
  *
  * <p>Logging is silent/background and never blocks the loop — a failure is logged and swallowed so
- * the agent loop is unaffected. The repository may be absent (tests / deployments without
- * durability); logging is then a no-op. The {@code veto.memory.capture.enabled} flag (default
- * {@code true}) controls whether turns are logged.
+ * the agent loop is unaffected. Turn persistence and committed-update transport are required
+ * dependencies; logging can be disabled explicitly through {@link #setEnabled(boolean)}.
  */
 @Component
 public class TurnLogService {
@@ -31,23 +29,15 @@ public class TurnLogService {
             LoggerFactory.getLogger("top.focess.veto.memory.TurnLogService");
 
     private final @NonNull ObjectMapper mapper;
-    private final TurnRecordRepository turnRecordRepository;
+    private final @NonNull TurnRecordRepository turnRecordRepository;
     private volatile boolean enabled = true;
-    private DeltaBroker deltaBroker;
-
-    /** Optional setter injection: publishes record-update deltas when a broker is present. */
-    @Autowired(required = false)
-    public void setDeltaBroker(@NonNull DeltaBroker deltaBroker) {
-        this.deltaBroker = deltaBroker;
-    }
+    private final @NonNull DeltaBroker deltaBroker;
 
     private void notifyChanged(@NonNull UUID sessionId, int turnNumber) {
-        DeltaBroker broker = deltaBroker;
-        if (broker == null) return;
         Runnable publish =
                 () -> {
                     try {
-                        broker.publish(
+                        deltaBroker.publish(
                                 DeltaFrame.builder()
                                         .sessionId(sessionId)
                                         .kind(DeltaFrame.Kind.RECORD_UPDATED)
@@ -71,16 +61,17 @@ public class TurnLogService {
         }
     }
 
-    /** Creates the service; the repository is optional (logging is a no-op without it). */
-    @Autowired
+    /** Creates the durable turn log and its committed-update transport. */
     public TurnLogService(
-            @Autowired(required = false) TurnRecordRepository turnRecordRepository,
-            @NonNull ObjectMapper mapper) {
+            @NonNull TurnRecordRepository turnRecordRepository,
+            @NonNull ObjectMapper mapper,
+            @NonNull DeltaBroker deltaBroker) {
         this.turnRecordRepository = turnRecordRepository;
         this.mapper = mapper;
+        this.deltaBroker = deltaBroker;
     }
 
-    /** Disable logging (e.g. for tests that want a clean repository). */
+    /** Enables or disables turn logging. */
     public void setEnabled(boolean enabled) {
         this.enabled = enabled;
     }
@@ -95,7 +86,7 @@ public class TurnLogService {
             @NonNull UUID sessionId,
             @NonNull UUID userId,
             @NonNull String agentId) {
-        if (!enabled || turnRecordRepository == null) return;
+        if (!enabled) return;
         try {
             int changed =
                     turnRecordRepository.updateRecordMetadata(
@@ -123,9 +114,6 @@ public class TurnLogService {
         if (!enabled) {
             return;
         }
-        if (turnRecordRepository == null) {
-            return;
-        }
         try {
             turnRecordRepository.save(
                     TurnRecordEntity.of(turn, sessionId, userId, agentId, mapper));
@@ -141,7 +129,7 @@ public class TurnLogService {
             @NonNull UUID sessionId,
             @NonNull UUID userId,
             @NonNull String agentId) {
-        if (!enabled || turnRecordRepository == null) {
+        if (!enabled) {
             throw new IllegalStateException("Durable turn logging is unavailable");
         }
         turnRecordRepository.save(TurnRecordEntity.of(turn, sessionId, userId, agentId, mapper));

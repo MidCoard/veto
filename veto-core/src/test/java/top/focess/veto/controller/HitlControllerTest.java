@@ -10,6 +10,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import top.focess.veto.agent.AgentService;
@@ -17,13 +18,14 @@ import top.focess.veto.agent.intercept.HitlRegistry;
 import top.focess.veto.agent.intercept.VetoOption;
 import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.llm.ToolCall;
+import top.focess.veto.bus.SessionInvalidations;
 import top.focess.veto.session.SessionService;
 import top.focess.veto.vault.KeysteadVault;
 
 class HitlControllerTest {
     @Test
     void parentSessionCanListResolveAndCancelMateVetoesWithoutCrossingSessions() throws Exception {
-        var registry = new HitlRegistry();
+        var registry = new HitlRegistry(null, Mockito.mock(SessionInvalidations.class));
         var sessions = mock(SessionService.class);
         var service = mock(AgentService.class);
         var vault = mock(KeysteadVault.class);

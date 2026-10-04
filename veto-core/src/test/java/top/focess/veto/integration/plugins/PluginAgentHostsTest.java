@@ -25,12 +25,16 @@ import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.mockito.Mockito;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.test.util.ReflectionTestUtils;
 import top.focess.veto.agent.AgentService;
 import top.focess.veto.agent.RequestHandle;
 import top.focess.veto.agent.SessionAgentRegistry;
 import top.focess.veto.agent.VetoAgent;
-import top.focess.veto.agent.intercept.IngressDefense;
+import top.focess.veto.agent.identity.AgentPersona;
+import top.focess.veto.agent.identity.Role;
+import top.focess.veto.agent.intercept.IngressDefenseTestSupport;
 import top.focess.veto.agent.intercept.ToolExecutionPermit;
 import top.focess.veto.agent.tool.ToolCallContext;
 import top.focess.veto.agent.tool.ToolCallContextHolder;
@@ -53,8 +57,12 @@ import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.storage.PluginStorage;
 import top.focess.veto.builtin.web.ReaderConfig;
 import top.focess.veto.builtin.web.WebReadSession;
+import top.focess.veto.bus.DeltaBroker;
+import top.focess.veto.bus.SessionInvalidations;
+import top.focess.veto.event.EventManager;
 import top.focess.veto.integration.plugins.storage.PluginStorageFactory;
 import top.focess.veto.memory.TurnLogService;
+import top.focess.veto.memory.TurnRecordRepository;
 import top.focess.veto.model.AgentEntity;
 import top.focess.veto.model.AgentInstanceRepository;
 import top.focess.veto.model.SessionEntity;
@@ -79,6 +87,15 @@ class PluginAgentHostsTest {
             when(fixture.storage.currentSession()).thenReturn(fixture.scope);
             VetoAgent parent = mock(VetoAgent.class);
             when(parent.id()).thenReturn(fixture.parent);
+            when(parent.name()).thenReturn(fixture.parent);
+            when(parent.persona())
+                    .thenReturn(
+                            new AgentPersona(
+                                    fixture.parent,
+                                    fixture.parent,
+                                    "Test agent",
+                                    Set.of(),
+                                    Role.STANDALONE));
             when(parent.state()).thenReturn(AgentState.RUNNING);
             fixture.registry.register(UUID.fromString(fixture.session.getId()), parent);
             var entered = new CountDownLatch(1);
@@ -109,13 +126,19 @@ class PluginAgentHostsTest {
                                 models,
                                 new VetoCapabilityTranslator(),
                                 fixture.registry,
-                                new TurnLogService(null, mapper),
-                                new IngressDefense(),
+                                new TurnLogService(
+                                        Mockito.mock(TurnRecordRepository.class),
+                                        mapper,
+                                        new DeltaBroker()),
+                                IngressDefenseTestSupport.inMemory(),
                                 128,
                                 600,
                                 1048576,
-                                65536);
-                fixture.hosts.attachIsolated(executions);
+                                65536,
+                                Mockito.mock(SessionPlugins.class),
+                                Mockito.mock(EventManager.class),
+                                Mockito.mock(SessionInvalidations.class));
+                when(fixture.isolated.getObject()).thenReturn(executions);
                 var base = ToolExecutionPermit.empty();
                 var call = new ToolCall("reader_alias", Map.of(), "parent-call");
                 var user = UUID.randomUUID();
@@ -237,7 +260,11 @@ class PluginAgentHostsTest {
         final @NonNull PluginStorageFactory scopes = mock(PluginStorageFactory.class);
         final @NonNull SessionRepository sessions = mock(SessionRepository.class);
         final @NonNull AgentInstanceRepository identities = mock(AgentInstanceRepository.class);
-        final @NonNull SessionAgentRegistry registry = new SessionAgentRegistry();
+        final @NonNull SessionAgentRegistry registry =
+                new SessionAgentRegistry(
+                        Mockito.mock(AgentInstanceRepository.class),
+                        Mockito.mock(TurnRecordRepository.class),
+                        Mockito.mock(SessionInvalidations.class));
         final @NonNull KeysteadVault vault = mock(KeysteadVault.class);
         final @NonNull AgentService service = mock(AgentService.class);
         final @NonNull SessionHistoryLoader history = mock(SessionHistoryLoader.class);
@@ -246,6 +273,7 @@ class PluginAgentHostsTest {
         final PluginStorage.@NonNull Grant<Scope.@NonNull SessionScope> scope;
         final @NonNull AgentHost host;
         final @NonNull PluginAgentHosts hosts;
+        final @NonNull ObjectProvider<IsolatedExecutions> isolated = mock();
         final @NonNull AgentProfile profile =
                 new AgentProfile("member", "work", "worker", Set.of(), null, null, Map.of());
 
@@ -279,6 +307,11 @@ class PluginAgentHostsTest {
             row.claimPlugin("test.plugin", parent);
             when(identities.findById(childId)).thenReturn(Optional.of(row));
             when(agent.id()).thenReturn(childId);
+            when(agent.name()).thenReturn(childId);
+            when(agent.persona())
+                    .thenReturn(
+                            new AgentPersona(
+                                    childId, childId, "Test agent", Set.of(), Role.STANDALONE));
             when(agent.state()).thenReturn(AgentState.IDLE);
             registry.register(UUID.fromString(session.getId()), agent);
             hosts =
@@ -289,7 +322,8 @@ class PluginAgentHostsTest {
                             registry,
                             scopes,
                             history,
-                            vault);
+                            vault,
+                            isolated);
             when(history.load(anyString(), anyString())).thenReturn(List.of());
             host = hosts.bind(plugin, storage);
         }
@@ -414,6 +448,11 @@ class PluginAgentHostsTest {
             when(fixture.identities.findById(otherId)).thenReturn(Optional.empty());
             var other = mock(VetoAgent.class);
             when(other.id()).thenReturn(otherId);
+            when(other.name()).thenReturn(otherId);
+            when(other.persona())
+                    .thenReturn(
+                            new AgentPersona(
+                                    otherId, otherId, "Test agent", Set.of(), Role.STANDALONE));
             when(other.state()).thenReturn(AgentState.IDLE);
             var entered = new CountDownLatch(2);
             var release = new CountDownLatch(1);
@@ -525,6 +564,15 @@ class PluginAgentHostsTest {
             clearInvocations(fixture.agent);
             var replacement = mock(VetoAgent.class);
             when(replacement.id()).thenReturn(fixture.childId);
+            when(replacement.name()).thenReturn(fixture.childId);
+            when(replacement.persona())
+                    .thenReturn(
+                            new AgentPersona(
+                                    fixture.childId,
+                                    fixture.childId,
+                                    "Test agent",
+                                    Set.of(),
+                                    Role.STANDALONE));
             when(replacement.state()).thenReturn(AgentState.IDLE);
             when(fixture.service.openPluginAgent(
                             any(), anyString(), anyString(), anyString(), any(), any()))
@@ -555,6 +603,15 @@ class PluginAgentHostsTest {
             clearInvocations(fixture.agent);
             VetoAgent replacement = mock(VetoAgent.class);
             when(replacement.id()).thenReturn(fixture.childId);
+            when(replacement.name()).thenReturn(fixture.childId);
+            when(replacement.persona())
+                    .thenReturn(
+                            new AgentPersona(
+                                    fixture.childId,
+                                    fixture.childId,
+                                    "Test agent",
+                                    Set.of(),
+                                    Role.STANDALONE));
             when(replacement.state()).thenReturn(AgentState.IDLE);
             fixture.registry.register(UUID.fromString(fixture.session.getId()), replacement);
             first.close();

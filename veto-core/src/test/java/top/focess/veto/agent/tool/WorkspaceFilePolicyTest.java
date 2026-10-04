@@ -119,8 +119,7 @@ class WorkspaceFilePolicyTest {
             var tool =
                     new ViewFileTool(
                             new ProtectedWorkspaceReadCapabilityImpl(
-                                    PluginTestSupport.providerOf(
-                                            PluginTestSupport.eventManager(plugins))));
+                                    PluginTestSupport.eventManager(plugins)));
             bind(tool, Map.of("absolutePath", file.toString()), root, Set.of());
             var capability = CapabilityResolver.require(WorkspaceReadCapability.class);
             String result =

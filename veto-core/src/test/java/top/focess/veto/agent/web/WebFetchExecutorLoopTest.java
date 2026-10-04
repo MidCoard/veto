@@ -21,12 +21,15 @@ import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.mockito.Mockito;
 import top.focess.veto.agent.SessionAgentRegistry;
 import top.focess.veto.agent.TurnRecord;
 import top.focess.veto.agent.TurnType;
 import top.focess.veto.agent.VetoAgent;
 import top.focess.veto.agent.capability.DestinationTestGrants;
 import top.focess.veto.agent.capability.NetworkEgressCapabilityImpl;
+import top.focess.veto.agent.identity.AgentPersona;
+import top.focess.veto.agent.identity.Role;
 import top.focess.veto.agent.tool.CapabilityTestCalls;
 import top.focess.veto.agent.tool.ToolCallContextHolder;
 import top.focess.veto.agent.translation.VetoCapabilityTranslator;
@@ -42,8 +45,12 @@ import top.focess.veto.api.llm.ToolDefinition;
 import top.focess.veto.api.llm.VetoRequest;
 import top.focess.veto.api.llm.VetoResponse;
 import top.focess.veto.builtin.web.WebFetchTool;
+import top.focess.veto.bus.DeltaBroker;
+import top.focess.veto.bus.SessionInvalidations;
 import top.focess.veto.llm.core.UniformLLMCaller;
 import top.focess.veto.memory.TurnLogService;
+import top.focess.veto.memory.TurnRecordRepository;
+import top.focess.veto.model.AgentInstanceRepository;
 import top.focess.veto.model.tier.ModelBinding;
 import top.focess.veto.model.tier.ModelTier;
 import top.focess.veto.model.tier.ModelTierConfigException;
@@ -53,7 +60,10 @@ import top.focess.veto.vault.UserContext;
 
 class WebFetchExecutorLoopTest {
     private final @NonNull ObjectMapper mapper = new ObjectMapper();
-    private final @NonNull TurnLogService turnLog = spy(new TurnLogService(null, mapper));
+    private final @NonNull TurnLogService turnLog =
+            spy(
+                    new TurnLogService(
+                            Mockito.mock(TurnRecordRepository.class), mapper, new DeltaBroker()));
     private final @NonNull ApprovedHttpDestination access = mock(ApprovedHttpDestination.class);
     private final @NonNull List<@NonNull VetoRequest> requests = new ArrayList<>();
     private final @NonNull ModelTierRegistry models = mock();
@@ -560,7 +570,11 @@ class WebFetchExecutorLoopTest {
                                 "reader-credential",
                                 0,
                                 2048));
-        SessionAgentRegistry registry = new SessionAgentRegistry();
+        SessionAgentRegistry registry =
+                new SessionAgentRegistry(
+                        Mockito.mock(AgentInstanceRepository.class),
+                        Mockito.mock(TurnRecordRepository.class),
+                        Mockito.mock(SessionInvalidations.class));
         var reader =
                 ReaderTestHarness.create(
                         mapper,
@@ -581,6 +595,15 @@ class WebFetchExecutorLoopTest {
                             if (sessionId == null) throw new AssertionError("Missing session");
                             var parent = mock(VetoAgent.class);
                             when(parent.id()).thenReturn(context.agentId());
+                            when(parent.name()).thenReturn(context.agentId());
+                            when(parent.persona())
+                                    .thenReturn(
+                                            new AgentPersona(
+                                                    context.agentId(),
+                                                    context.agentId(),
+                                                    "Test agent",
+                                                    Set.of(),
+                                                    Role.STANDALONE));
                             when(parent.state()).thenReturn(AgentState.RUNNING);
                             registry.register(sessionId, parent);
                         });

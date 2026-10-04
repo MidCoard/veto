@@ -28,7 +28,7 @@ class IsolatedScriptConfigurationTest {
                     assertThrows(
                             IOException.class,
                             () ->
-                                    new PluginManager(
+                                    PluginTestSupport.manager(
                                             root.toString(),
                                             "missing-node",
                                             trusted,

@@ -10,19 +10,17 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import org.jspecify.annotations.NonNull;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 /** Database-backed administrator choices applied when the backend next starts. */
 @Component
 public final class PluginActivationStore {
-    private final PluginActivationRepository repository;
+    private final @NonNull PluginActivationRepository repository;
     private final @NonNull Map<@NonNull String, @NonNull Boolean> overrides =
             new ConcurrentHashMap<>();
 
     /** Loads saved choices before plugin package discovery. */
-    @Autowired
     public PluginActivationStore(
             @NonNull PluginActivationRepository repository,
             @Value("${veto.plugins.directory:plugins}") @NonNull String pluginDirectory)
@@ -44,11 +42,6 @@ public final class PluginActivationStore {
             }
     }
 
-    /** Isolated in-memory instance for direct lifecycle tests without a Spring database. */
-    PluginActivationStore() {
-        repository = null;
-    }
-
     @NonNull Set<String> disabledIds(@NonNull Set<String> configured) {
         Set<String> result = new HashSet<>(configured);
         overrides.forEach(
@@ -66,10 +59,6 @@ public final class PluginActivationStore {
 
     /** Saves a choice without changing any running plugin instance. */
     public synchronized void setEnabled(@NonNull String id, boolean enabled) {
-        if (repository == null) {
-            overrides.put(id, enabled);
-            return;
-        }
         PluginActivationEntity saved =
                 repository.saveAndFlush(new PluginActivationEntity(id, enabled));
         if (saved == null || !saved.getId().equals(id) || saved.isEnabled() != enabled)
