@@ -7,6 +7,8 @@ import java.nio.file.LinkOption;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.util.Collection;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -46,7 +48,8 @@ public record ToolExecutionPermit(
         @NonNull DeployerPolicy deployerPolicy,
         @NonNull Set<@NonNull Path> protectedPaths,
         @NonNull Map<@NonNull String, @NonNull URI> httpDestinations,
-        PreparedInvocation preparation) {
+        PreparedInvocation preparation,
+        @NonNull List<@NonNull Path> accessRoots) {
 
     private static final @NonNull ToolExecutionPermit EMPTY =
             new ToolExecutionPermit(
@@ -114,7 +117,56 @@ public record ToolExecutionPermit(
                 deployerPolicy,
                 protectedPaths,
                 httpDestinations,
-                preparation);
+                preparation,
+                workspaceRoots);
+    }
+
+    /** Session roots remain distinct from the deployment scope available to filesystem tools. */
+    public ToolExecutionPermit(
+            @NonNull ToolCall call,
+            @NonNull ToolCapability capability,
+            String remoteServerName,
+            CallerBinding caller,
+            @NonNull Map<@NonNull String, @NonNull AuthorizedPath> filesystemPaths,
+            @NonNull List<@NonNull Path> workspaceRoots,
+            Path executionRoot,
+            @NonNull DeployerPolicy deployerPolicy,
+            @NonNull Set<@NonNull Path> protectedPaths,
+            @NonNull Map<@NonNull String, @NonNull URI> httpDestinations,
+            PreparedInvocation preparation) {
+        this(
+                call,
+                capability,
+                remoteServerName,
+                caller,
+                filesystemPaths,
+                workspaceRoots,
+                executionRoot,
+                deployerPolicy,
+                protectedPaths,
+                httpDestinations,
+                preparation,
+                workspaceRoots);
+    }
+
+    /** Projects current deployment scope and occupied workspace claims into this invocation. */
+    public @NonNull ToolExecutionPermit withAccessScope(
+            @NonNull Collection<@NonNull Path> roots, @NonNull Collection<@NonNull Path> occupied) {
+        Set<Path> denied = new HashSet<>(protectedPaths);
+        denied.addAll(occupied);
+        return new ToolExecutionPermit(
+                call,
+                capability,
+                remoteServerName,
+                caller,
+                filesystemPaths,
+                workspaceRoots,
+                executionRoot,
+                deployerPolicy,
+                denied,
+                httpDestinations,
+                preparation,
+                List.copyOf(roots));
     }
 
     /** Returns a copy of this permit bound to the given prepared invocation. */
@@ -130,12 +182,14 @@ public record ToolExecutionPermit(
                 deployerPolicy,
                 protectedPaths,
                 httpDestinations,
-                prepared);
+                prepared,
+                accessRoots);
     }
 
     /** Normalizes collections to immutable copies and canonicalizes all captured paths. */
     public ToolExecutionPermit {
         httpDestinations = Map.copyOf(httpDestinations);
+        accessRoots = accessRoots.stream().map(path -> path.toAbsolutePath().normalize()).toList();
         filesystemPaths = Map.copyOf(filesystemPaths);
         workspaceRoots =
                 workspaceRoots.stream().map(path -> path.toAbsolutePath().normalize()).toList();
@@ -259,7 +313,8 @@ public record ToolExecutionPermit(
                 deployerPolicy,
                 protectedPaths,
                 httpDestinations,
-                preparation);
+                preparation,
+                accessRoots);
     }
 
     private static String externalBinding(@NonNull ToolDefinition definition) {
@@ -311,7 +366,8 @@ public record ToolExecutionPermit(
         if (!filesystemPaths.keySet().equals(current.filesystemPaths.keySet())) {
             return false;
         }
-        if (!workspaceRoots.equals(current.workspaceRoots)
+        if (!accessRoots.equals(current.accessRoots)
+                || !workspaceRoots.equals(current.workspaceRoots)
                 || !Objects.equals(executionRoot, current.executionRoot)
                 || deployerPolicy != current.deployerPolicy
                 || !protectedPaths.equals(current.protectedPaths)

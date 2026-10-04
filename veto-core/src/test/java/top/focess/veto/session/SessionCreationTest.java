@@ -8,6 +8,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
@@ -28,12 +29,14 @@ import top.focess.veto.agent.SessionAgentRegistry;
 import top.focess.veto.agent.continuation.RequestContinuationStore;
 import top.focess.veto.agent.intercept.HitlRecordRepository;
 import top.focess.veto.agent.screening.DeployerPolicy;
+import top.focess.veto.agent.screening.DeployerPolicyConfiguration;
+import top.focess.veto.agent.screening.ProtectedSet;
 import top.focess.veto.agent.screening.ProtectedSetResolver;
 import top.focess.veto.agent.workspace.WorkspaceAdmissionPolicy;
 import top.focess.veto.api.llm.ProviderType;
 import top.focess.veto.event.EventManager;
 import top.focess.veto.integration.plugins.PluginDataCleanup;
-import top.focess.veto.integration.plugins.SessionPlugins;
+import top.focess.veto.integration.plugins.PluginManager;
 import top.focess.veto.integration.plugins.storage.ScopedPluginStorage;
 import top.focess.veto.model.AgentEntity;
 import top.focess.veto.model.AgentInstanceRepository;
@@ -48,8 +51,11 @@ class SessionCreationTest {
     private final @NonNull SessionRepository sessions = mock();
     private final @NonNull AgentInstanceRepository agents = mock();
     private final @NonNull AgentPatternRepository patterns = mock();
-    private final @NonNull SessionPlugins plugins = mock();
+    private final @NonNull PluginManager plugins = mock();
     private final @NonNull ModelTierRegistry tiers = mock();
+    private final @NonNull DeployerPolicyConfiguration configuration =
+            new DeployerPolicyConfiguration();
+    private final @NonNull ProtectedSetResolver protectedSets = mock();
     private final @NonNull SessionService service =
             new SessionService(
                     sessions,
@@ -59,10 +65,7 @@ class SessionCreationTest {
                     mock(SessionAgentRegistry.class),
                     mock(SessionHistoryLoader.class),
                     tiers,
-                    new WorkspaceAdmissionPolicy(
-                            List.of(),
-                            DeployerPolicy.FULL_ACCESS,
-                            mock(ProtectedSetResolver.class)),
+                    new WorkspaceAdmissionPolicy(configuration, protectedSets),
                     mock(ScopedPluginStorage.class),
                     mock(HitlRecordRepository.class),
                     plugins,
@@ -70,8 +73,28 @@ class SessionCreationTest {
                     mock(PluginDataCleanup.class),
                     mock(RequestContinuationStore.class));
 
+    @Test
+    void tenantFilesystemFailureDoesNotRevealHostMapping(@TempDir @NonNull Path base)
+            throws Exception {
+        configuration.setDeployerPolicy(DeployerPolicy.TENANT);
+        configuration.getTenant().setRoots(List.of(base.toString()));
+        when(protectedSets.resolve(any(), anyString(), any()))
+                .thenReturn(new ProtectedSet(Set.of()));
+        var ownerRoot = Files.createDirectory(base.resolve("alice"));
+        Files.writeString(ownerRoot.resolve("project"), "existing file");
+        var failure =
+                assertThrows(
+                        IllegalArgumentException.class,
+                        () -> service.createSession("alice", "coder", null, "/0/project"));
+        var message = failure.getMessage();
+        if (message == null) throw new AssertionError("missing failure message");
+        assertTrue(message.contains("/0/project"));
+        assertFalse(message.contains(base.toString()));
+    }
+
     @BeforeEach
     void persistence() {
+        when(sessions.claimedRootsExcept(anyString())).thenCallRealMethod();
         when(patterns.findByNameAndOwner(eq("coder"), anyString()))
                 .thenAnswer(
                         call ->
@@ -88,6 +111,25 @@ class SessionCreationTest {
                                 ProviderType.DEEPSEEK, "model", "profile", 0.7, 4096, null));
         when(sessions.save(any(SessionEntity.class))).thenAnswer(call -> call.getArgument(0));
         when(agents.save(any(AgentEntity.class))).thenAnswer(call -> call.getArgument(0));
+    }
+
+    @Test
+    void directoryCreationRejectsOtherOwnersClaimAndUnsafeNames(@TempDir @NonNull Path tempDir)
+            throws IOException {
+        var occupied = tempDir.resolve("occupied");
+        when(sessions.findByOwnerNot("alice"))
+                .thenReturn(List.of(new SessionEntity("bob", "existing", occupied.toString())));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> service.createWorkspaceDirectory("alice", tempDir, "occupied"));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> service.createWorkspaceDirectory("alice", tempDir, "../escaped"));
+        assertFalse(Files.exists(occupied));
+        var created = service.createWorkspaceDirectory("alice", tempDir, "available");
+        assertEquals(tempDir.resolve("available").toRealPath(), created);
+        assertTrue(Files.isDirectory(created));
+        verify(sessions, never()).save(any(SessionEntity.class));
     }
 
     @Test

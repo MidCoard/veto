@@ -1,5 +1,6 @@
 package top.focess.veto.session;
 
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
@@ -32,7 +33,7 @@ import top.focess.veto.controller.SessionController;
 import top.focess.veto.event.EventManager;
 import top.focess.veto.i18n.Msg;
 import top.focess.veto.integration.plugins.PluginDataCleanup;
-import top.focess.veto.integration.plugins.SessionPlugins;
+import top.focess.veto.integration.plugins.PluginManager;
 import top.focess.veto.integration.plugins.storage.ScopedPluginStorage;
 import top.focess.veto.model.AgentEntity;
 import top.focess.veto.model.AgentInstanceRepository;
@@ -42,6 +43,7 @@ import top.focess.veto.model.SessionEntity;
 import top.focess.veto.model.SessionRepository;
 import top.focess.veto.model.tier.ModelBinding;
 import top.focess.veto.model.tier.ModelTierRegistry;
+import top.focess.veto.security.HostPathInput;
 import top.focess.veto.security.UserAdminService;
 
 /**
@@ -61,7 +63,7 @@ import top.focess.veto.security.UserAdminService;
 public class SessionService {
     private final @NonNull ScopedPluginStorage pluginStorage;
     private final @NonNull HitlRecordRepository hitlRecords;
-    private final @NonNull SessionPlugins sessionPlugins;
+    private final @NonNull PluginManager pluginManager;
     private final @NonNull EventManager eventManager;
     private final @NonNull PluginDataCleanup pluginDataCleanup;
     private final @NonNull RequestContinuationStore continuations;
@@ -94,7 +96,7 @@ public class SessionService {
             @NonNull WorkspaceAdmissionPolicy workspaceAdmissionPolicy,
             @NonNull ScopedPluginStorage pluginStorage,
             @NonNull HitlRecordRepository hitlRecords,
-            @NonNull SessionPlugins sessionPlugins,
+            @NonNull PluginManager pluginManager,
             @NonNull EventManager eventManager,
             @NonNull PluginDataCleanup pluginDataCleanup,
             @NonNull RequestContinuationStore continuations) {
@@ -108,7 +110,7 @@ public class SessionService {
         this.workspaceAdmissionPolicy = workspaceAdmissionPolicy;
         this.pluginStorage = pluginStorage;
         this.hitlRecords = hitlRecords;
-        this.sessionPlugins = sessionPlugins;
+        this.pluginManager = pluginManager;
         this.eventManager = eventManager;
         this.pluginDataCleanup = pluginDataCleanup;
         this.continuations = continuations;
@@ -268,7 +270,7 @@ public class SessionService {
         String admittedWorkspaceRoots =
                 String.join(",", declaredRoots.stream().map(Path::toString).toList());
 
-        var selectedPlugins = sessionPlugins.selection(pluginIds);
+        var selectedPlugins = pluginManager.selection(pluginIds);
         ModelBinding cache = tierRegistry.resolve(owner, pattern.getTier());
         sessionCreation.lock();
         boolean releaseHere = true;
@@ -305,10 +307,7 @@ public class SessionService {
                                 owner, resolvedName, admittedWorkspaceRoots)
                         .isPresent()) {
                     throw new IllegalArgumentException(
-                            Msg.get(
-                                    "error.session.nameExists",
-                                    resolvedName,
-                                    admittedWorkspaceRoots));
+                            Msg.get("error.session.nameExists", resolvedName, workspaceRoots));
                 }
             }
 
@@ -319,10 +318,12 @@ public class SessionService {
                     throw new IllegalArgumentException(
                             Msg.get(
                                     "error.session.workspaceInvalid",
-                                    admittedRoot,
-                                    e.getMessage() == null
-                                            ? e.getClass().getSimpleName()
-                                            : e.getMessage()),
+                                    workspaceAdmissionPolicy.toClientPath(owner, admittedRoot),
+                                    workspaceAdmissionPolicy.tenant()
+                                            ? "directory cannot be created"
+                                            : e.getMessage() == null
+                                                    ? e.getClass().getSimpleName()
+                                                    : e.getMessage()),
                             e);
                 }
             }
@@ -355,20 +356,41 @@ public class SessionService {
     /** Checks canonical overlap with persisted claims while the creation lock is held. */
     private void requireWorkspaceAvailable(
             @NonNull String owner, @NonNull List<@NonNull Path> roots) {
-        for (var session : sessions.findByOwnerNot(owner)) {
-            String configuredRoots = session.getWorkspaceRoots();
-            var occupied =
-                    WorkspaceAdmissionPolicy.canonicalRoots(
-                            configuredRoots == null || configuredRoots.isBlank()
-                                    ? System.getProperty("user.dir", ".")
-                                    : configuredRoots);
-            for (Path root : roots) {
-                if (occupied.stream()
-                        .anyMatch(path -> root.startsWith(path) || path.startsWith(root))) {
-                    throw new IllegalArgumentException(
-                            "workspace overlaps another owner's session");
-                }
+        var occupied = sessions.claimedRootsExcept(owner);
+        for (Path root : roots) {
+            if (occupied.stream()
+                    .anyMatch(path -> root.startsWith(path) || path.startsWith(root))) {
+                throw new IllegalArgumentException("workspace overlaps another owner's session");
             }
+        }
+    }
+
+    /** Creates a directory without racing a session's persisted workspace claim on this host. */
+    public @NonNull Path createWorkspaceDirectory(
+            @NonNull String owner, @NonNull Path parent, @NonNull String name) throws IOException {
+        if (name.isBlank() || name.contains("/") || name.contains("\\")) {
+            throw new IllegalArgumentException("directory name must be a single path segment");
+        }
+        sessionCreation.lock();
+        try {
+            var canonicalParent = HostPathInput.canonicalForCreation(parent, "directory parent");
+            var target =
+                    HostPathInput.canonicalForCreation(
+                            canonicalParent.resolve(name), "directory target");
+            if (!canonicalParent.equals(target.getParent())) {
+                throw new IllegalArgumentException(
+                        "directory must be a direct child of its parent");
+            }
+            var occupied = sessions.claimedRootsExcept(owner);
+            if (!workspaceAdmissionPolicy.canBrowse(owner, canonicalParent, occupied)
+                    || !workspaceAdmissionPolicy.canSelect(owner, target, occupied)) {
+                throw new IllegalArgumentException(
+                        "directory is outside the available workspace scope");
+            }
+            if (workspaceAdmissionPolicy.tenant()) Files.createDirectories(canonicalParent);
+            return Files.createDirectory(target);
+        } finally {
+            sessionCreation.unlock();
         }
     }
 

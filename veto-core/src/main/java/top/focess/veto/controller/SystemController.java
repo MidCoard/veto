@@ -5,6 +5,8 @@ import org.jspecify.annotations.NonNull;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import top.focess.veto.agent.screening.DeployerPolicy;
+import top.focess.veto.agent.screening.DeployerPolicyConfiguration;
 import top.focess.veto.controller.dto.*;
 
 /**
@@ -15,17 +17,23 @@ import top.focess.veto.controller.dto.*;
 @RestController
 @RequestMapping("/api/system")
 public class SystemController {
+    private final @NonNull DeployerPolicyConfiguration configuration;
+
+    public SystemController(@NonNull DeployerPolicyConfiguration configuration) {
+        this.configuration = configuration;
+    }
 
     /** Returns the host OS name/arch, path syntax family, separator, and an example root path. */
     @GetMapping("/info")
     public @NonNull SystemInfoResponse info() {
         String osName = System.getProperty("os.name", "unknown");
         boolean windows = osName.toLowerCase(Locale.ROOT).contains("win");
+        boolean mapped = configuration.getDeployerPolicy() == DeployerPolicy.TENANT;
         return new SystemInfoResponse(
                 osName,
                 System.getProperty("os.arch", "unknown"),
                 windows ? "windows" : "posix",
-                windows ? "\\" : "/",
-                windows ? "D:\\projects\\one" : "/home/user/projects/one");
+                mapped ? "/" : windows ? "\\" : "/",
+                mapped ? "/0/project" : windows ? "D:\\projects\\one" : "/home/user/projects/one");
     }
 }

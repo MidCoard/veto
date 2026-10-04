@@ -3,12 +3,14 @@ package top.focess.veto.sandbox;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.NonNull;
@@ -37,6 +39,23 @@ class MacOsSeatbeltSandboxTest {
         assertFalse(profile.contains("(allow network"));
         assertFalse(profile.contains("(allow file-read*)"));
         assertFalse(profile.contains("(allow sysctl-read)"));
+    }
+
+    @Test
+    void protectedPathsOverrideWorkspaceReadWriteIncludingAbsentEntries(@TempDir @NonNull Path root)
+            throws Exception {
+        Path workspace = root.toRealPath();
+        Path absent = workspace.resolve(".env");
+        String profile = MacOsSeatbeltSandbox.profile(workspace, "", Set.of(absent));
+        assertTrue(profile.contains("(deny file-read* file-write* (literal "));
+        assertTrue(profile.contains(".env"));
+        assertTrue(
+                profile.lastIndexOf("(deny file-read* file-write*")
+                        > profile.indexOf("(allow file-write* (subpath"));
+        assertThrows(
+                SecurityException.class,
+                () -> MacOsSeatbeltSandbox.profile(workspace, "", Set.of(workspace)));
+        assertTrue(Files.notExists(absent));
     }
 
     @Test

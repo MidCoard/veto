@@ -5,11 +5,13 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.security.HostPathInput;
 
 /** Codex-aligned Linux launcher: Bubblewrap filesystem/namespaces plus an inner seccomp stage. */
 final class LinuxBubblewrapSandbox {
@@ -74,6 +76,7 @@ final class LinuxBubblewrapSandbox {
         command.add(workspace.toString());
         command.add(workspace.toString());
         appendProtectedMetadataMounts(command, workspace);
+        appendDeniedMounts(command, profile, workspace, workdir);
         command.add("--chdir");
         command.add(workdir.toString());
         command.add("--cap-drop");
@@ -107,6 +110,61 @@ final class LinuxBubblewrapSandbox {
             command.add("--ro-bind");
             command.add(real.toString());
             command.add(real.toString());
+        }
+    }
+
+    /** Denials are mounted last so broad host/workspace binds cannot expose their contents. */
+    private static void appendDeniedMounts(
+            @NonNull List<@NonNull String> command,
+            @NonNull SandboxProfile profile,
+            @NonNull Path workspace,
+            @NonNull Path cwd) {
+        List<Path> masked = new ArrayList<>();
+        for (Path denied :
+                profile.deniedPaths().stream()
+                        .map(
+                                path ->
+                                        HostPathInput.canonicalForCreation(
+                                                path, "denied sandbox path"))
+                        .sorted(Comparator.comparingInt(Path::getNameCount))
+                        .toList()) {
+            if (cwd.startsWith(denied))
+                throw new SecurityException("Sandbox working directory is protected");
+            if (masked.stream().anyMatch(denied::startsWith)) continue;
+            if (!Files.exists(denied)) {
+                Path ancestor = denied.getParent();
+                while (ancestor != null && !Files.isDirectory(ancestor)) {
+                    ancestor = ancestor.getParent();
+                }
+                if (ancestor == null
+                        || workspace.startsWith(ancestor)
+                        || Path.of("/").equals(ancestor)
+                        || Path.of("/tmp").startsWith(ancestor)
+                        || Path.of("/dev").startsWith(ancestor)
+                        || Path.of("/proc").startsWith(ancestor))
+                    throw new SecurityException(
+                            "Cannot safely mask the ancestor of an absent protected path");
+                // Mask an existing ancestor so host-side creation cannot expose a future entry.
+                command.add("--tmpfs");
+                command.add(ancestor.toString());
+                command.add("--remount-ro");
+                command.add(ancestor.toString());
+                masked.add(ancestor);
+                continue;
+            }
+            if (Files.isDirectory(denied)) {
+                command.add("--tmpfs");
+                command.add(denied.toString());
+                command.add("--remount-ro");
+                command.add(denied.toString());
+            } else if (Files.isRegularFile(denied)) {
+                command.add("--ro-bind");
+                command.add("/dev/null");
+                command.add(denied.toString());
+            } else {
+                throw new SecurityException("Cannot safely mask protected special file");
+            }
+            masked.add(denied);
         }
     }
 

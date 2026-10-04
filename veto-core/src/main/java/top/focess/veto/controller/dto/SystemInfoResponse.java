@@ -3,7 +3,7 @@ package top.focess.veto.controller.dto;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import org.jspecify.annotations.*;
 
-/** Payload reporting basic operating-system details of the server host. */
+/** Host operating-system details and client workspace-path syntax. */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record SystemInfoResponse(
         @NonNull String os,

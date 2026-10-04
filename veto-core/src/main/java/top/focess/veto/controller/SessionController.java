@@ -1,8 +1,12 @@
 package top.focess.veto.controller;
 
+import jakarta.validation.Valid;
+import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.jspecify.annotations.NonNull;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -13,6 +17,7 @@ import top.focess.veto.agent.RecordTokenCounter;
 import top.focess.veto.agent.RecordUsage;
 import top.focess.veto.agent.SessionAgentRegistry;
 import top.focess.veto.agent.TurnRecord;
+import top.focess.veto.agent.workspace.WorkspaceAdmissionPolicy;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.contract.IpcFrame;
 import top.focess.veto.controller.dto.*;
@@ -45,6 +50,7 @@ public class SessionController {
     private final @NonNull SessionRecordService recordService;
     private final @NonNull SessionAgentRegistry agentRegistry;
     private final @NonNull SessionPlugins sessionPlugins;
+    private final @NonNull WorkspaceAdmissionPolicy workspaceAdmission;
 
     /** Creates the controller with session, vault, history, record, and agent-registry services. */
     public SessionController(
@@ -53,20 +59,23 @@ public class SessionController {
             @NonNull SessionHistoryLoader historyLoader,
             @NonNull SessionRecordService recordService,
             @NonNull SessionAgentRegistry agentRegistry,
-            @NonNull SessionPlugins sessionPlugins) {
+            @NonNull SessionPlugins sessionPlugins,
+            @NonNull WorkspaceAdmissionPolicy workspaceAdmission) {
         this.service = service;
         this.vault = vault;
         this.historyLoader = historyLoader;
         this.recordService = recordService;
         this.agentRegistry = agentRegistry;
         this.sessionPlugins = sessionPlugins;
+        this.workspaceAdmission = workspaceAdmission;
     }
 
     /** Lists the current user's sessions; empty when not logged in. */
     @GetMapping
-    public @NonNull List<SessionEntity> list() {
+    public @NonNull List<SessionResponse> list() {
         String user = vault.currentUser();
-        return user != null ? service.listSessions(user) : List.of();
+        if (user == null) return List.of();
+        return service.listSessions(user).stream().map(session -> response(user, session)).toList();
     }
 
     /**
@@ -80,24 +89,40 @@ public class SessionController {
     @PostMapping
     @SuppressWarnings(
             "JvmTaintAnalysis") // SessionService validates every root as normalized absolute input.
-    public @NonNull SessionEntity create(@RequestBody @NonNull CreateSessionRequest body) {
+    public @NonNull SessionResponse create(@RequestBody @Valid @NonNull CreateSessionRequest body) {
         String user = vault.currentUser();
         if (user == null) throw new IllegalStateException(Msg.get("error.auth.notLoggedIn"));
         String pattern = body.pattern();
         String roots = body.workspaceRoots();
-        if (pattern == null || pattern.isBlank() || roots == null || roots.isBlank()) {
-            throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST, Msg.get("error.session.missingFields"));
-        }
         Integer rootIndex = body.currentWorkspaceRootIndex();
-        return service.createSession(
-                user,
-                pattern,
-                body.name(),
-                roots,
-                rootIndex == null ? 0 : rootIndex,
-                ToolResultPresentationMode.canonicalize(body.toolResultPresentation()),
-                body.pluginIds());
+        var created =
+                service.createSession(
+                        user,
+                        pattern,
+                        body.name(),
+                        roots,
+                        rootIndex == null ? 0 : rootIndex,
+                        ToolResultPresentationMode.canonicalize(body.toolResultPresentation()),
+                        body.pluginIds());
+        return response(user, created);
+    }
+
+    private @NonNull SessionResponse response(
+            @NonNull String owner, @NonNull SessionEntity session) {
+        var roots = session.getWorkspaceRoots();
+        String rendered = null;
+        if (roots != null && !roots.isBlank()) {
+            try {
+                rendered =
+                        Arrays.stream(roots.split(","))
+                                .map(String::trim)
+                                .map(root -> workspaceAdmission.toClientPath(owner, Path.of(root)))
+                                .collect(Collectors.joining(","));
+            } catch (IllegalArgumentException | IllegalStateException unavailable) {
+                // Historic roots outside current policy have no client-visible representation.
+            }
+        }
+        return SessionResponse.from(session, rendered);
     }
 
     /** Deletes an owned session by name; 404 when the user has no such session. */

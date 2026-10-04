@@ -1,12 +1,16 @@
 package top.focess.veto.agent.screening;
 
 import jakarta.annotation.PostConstruct;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
+import java.util.stream.Collectors;
 import org.jspecify.annotations.NonNull;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Configuration;
+import top.focess.veto.security.HostPathInput;
 
 /** All deployer-policy configuration, kept in one binding object. */
 @Configuration
@@ -83,6 +87,15 @@ public class DeployerPolicyConfiguration {
             case SANDBOXED -> sandboxed.roots;
             case TENANT -> tenant.roots;
         };
+    }
+
+    /** Canonical deployment bases, deduplicated independently of workspace ordering. */
+    public @NonNull Set<@NonNull Path> canonicalRoots() {
+        return rootsFor(deployerPolicy).stream()
+                .filter(root -> !root.isBlank())
+                .map(root -> HostPathInput.absoluteNormalized(root, "configured policy root"))
+                .map(root -> HostPathInput.canonicalForCreation(root, "configured policy root"))
+                .collect(Collectors.toUnmodifiableSet());
     }
 
     private static void requireRoots(

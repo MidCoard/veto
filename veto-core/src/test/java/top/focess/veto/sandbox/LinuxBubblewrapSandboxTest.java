@@ -8,6 +8,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
+import java.util.Set;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -49,6 +50,57 @@ class LinuxBubblewrapSandboxTest {
         assertContainsSequence(command, "--cap-drop", "ALL");
         assertTrue(command.contains(SandboxBootstrap.LINUX_CHILD_MARKER));
         assertContainsSequence(command, "/usr/bin/printf", "ok");
+    }
+
+    @Test
+    void deniedPathsMaskHostDirectoriesAndWorkspaceFilesAfterBroadBinds(@TempDir @NonNull Path root)
+            throws Exception {
+        Path workspace = Files.createDirectory(root.resolve("workspace")).toRealPath();
+        Path foreign = Files.createDirectory(root.resolve("foreign")).toRealPath();
+        Path secret = Files.writeString(workspace.resolve(".env"), "secret").toRealPath();
+        var profile =
+                new SandboxProfile(
+                        workspace, 512, 100, 16, Duration.ofSeconds(30), Set.of(foreign, secret));
+        var command =
+                new LinuxBubblewrapSandbox(currentJavaExecutable())
+                        .wrap(List.of("python", "-c", "print('ok')"), profile, workspace);
+        assertContainsSequence(
+                command, "--tmpfs", foreign.toString(), "--remount-ro", foreign.toString());
+        assertContainsSequence(command, "--ro-bind", "/dev/null", secret.toString());
+        assertTrue(command.indexOf(foreign.toString()) > command.indexOf("--bind"));
+        assertTrue(command.indexOf(secret.toString()) > command.indexOf("--bind"));
+        assertEquals("secret", Files.readString(secret));
+    }
+
+    @Test
+    void absentForeignPathMasksExistingAncestorAgainstLaterHostCreation(@TempDir @NonNull Path root)
+            throws Exception {
+        Path workspace = Files.createDirectory(root.resolve("workspace")).toRealPath();
+        Path foreign = Files.createDirectory(root.resolve("foreign")).toRealPath();
+        Path absent = foreign.resolve("future/secret.txt");
+        var profile =
+                new SandboxProfile(workspace, 512, 100, 16, Duration.ofSeconds(30), Set.of(absent));
+        var command =
+                new LinuxBubblewrapSandbox(currentJavaExecutable())
+                        .wrap(List.of("python"), profile, workspace);
+        assertContainsSequence(
+                command, "--tmpfs", foreign.toString(), "--remount-ro", foreign.toString());
+        assertTrue(Files.notExists(absent));
+    }
+
+    @Test
+    void absentDeniedPathInWritableWorkspaceFailsClosedWithoutCreatingAPlaceholder(
+            @TempDir @NonNull Path root) throws Exception {
+        Path workspace = root.toRealPath();
+        Path secret = workspace.resolve(".env");
+        var profile =
+                new SandboxProfile(workspace, 512, 100, 16, Duration.ofSeconds(30), Set.of(secret));
+        assertThrows(
+                SecurityException.class,
+                () ->
+                        new LinuxBubblewrapSandbox(currentJavaExecutable())
+                                .wrap(List.of("python"), profile, workspace));
+        assertTrue(Files.notExists(secret));
     }
 
     @Test

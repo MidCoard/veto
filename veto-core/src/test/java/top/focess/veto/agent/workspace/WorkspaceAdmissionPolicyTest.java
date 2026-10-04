@@ -11,8 +11,10 @@ import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import top.focess.veto.agent.screening.DeployerPolicy;
+import top.focess.veto.agent.screening.DeployerPolicyConfiguration;
 import top.focess.veto.agent.screening.ProtectedSet;
 import top.focess.veto.agent.screening.ProtectedSetResolver;
+import top.focess.veto.security.HostPathInput;
 
 class WorkspaceAdmissionPolicyTest {
 
@@ -21,12 +23,11 @@ class WorkspaceAdmissionPolicyTest {
         Path mount = tempDir.resolve("mount");
         WorkspaceAdmissionPolicy policy =
                 new WorkspaceAdmissionPolicy(
-                        List.of(mount), DeployerPolicy.SANDBOXED, emptyProtection());
+                        configuration(mount, DeployerPolicy.SANDBOXED), emptyProtection());
 
         Path admitted = policy.admit("alice", mount.resolve("project").toString()).getFirst();
         assertEquals(
-                WorkspaceAdmissionPolicy.canonicalForCreation(
-                        mount.resolve("project"), "workspace root"),
+                HostPathInput.canonicalForCreation(mount.resolve("project"), "workspace root"),
                 admitted);
         assertThrows(
                 IllegalArgumentException.class,
@@ -38,16 +39,15 @@ class WorkspaceAdmissionPolicyTest {
         Path mount = tempDir.resolve("mount");
         WorkspaceAdmissionPolicy policy =
                 new WorkspaceAdmissionPolicy(
-                        List.of(mount), DeployerPolicy.TENANT, emptyProtection());
+                        configuration(mount, DeployerPolicy.TENANT), emptyProtection());
 
-        Path admitted = policy.admit("alice", mount.resolve("alice/project").toString()).getFirst();
+        Path admitted = policy.admit("alice", "/0/project").getFirst();
         assertEquals(
-                WorkspaceAdmissionPolicy.canonicalForCreation(
+                HostPathInput.canonicalForCreation(
                         mount.resolve("alice/project"), "workspace root"),
                 admitted);
         assertThrows(
-                IllegalArgumentException.class,
-                () -> policy.admit("alice", mount.resolve("bob/project").toString()));
+                IllegalArgumentException.class, () -> policy.admit("alice", "/0/project/nested"));
     }
 
     @Test
@@ -55,11 +55,11 @@ class WorkspaceAdmissionPolicyTest {
             @TempDir @NonNull Path tempDir) {
         WorkspaceAdmissionPolicy policy =
                 new WorkspaceAdmissionPolicy(
-                        List.of(), DeployerPolicy.FULL_ACCESS, mock(ProtectedSetResolver.class));
+                        new DeployerPolicyConfiguration(), mock(ProtectedSetResolver.class));
         Path target = tempDir.resolve("arbitrary/project");
 
         assertEquals(
-                WorkspaceAdmissionPolicy.canonicalForCreation(target, "workspace root"),
+                HostPathInput.canonicalForCreation(target, "workspace root"),
                 policy.admit("alice", target.toString()).getFirst());
     }
 
@@ -75,16 +75,28 @@ class WorkspaceAdmissionPolicyTest {
                         DeployerPolicy.PROTECTED,
                         DeployerPolicy.SANDBOXED,
                         DeployerPolicy.TENANT)) {
-            var policy = new WorkspaceAdmissionPolicy(List.of(tempDir), mode, resolver);
+            var policy = new WorkspaceAdmissionPolicy(configuration(tempDir, mode), resolver);
             String owner = "secrets";
             assertThrows(
                     IllegalArgumentException.class,
-                    () -> policy.admit(owner, protectedPath.toString()));
+                    () ->
+                            policy.admit(
+                                    owner,
+                                    mode == DeployerPolicy.TENANT
+                                            ? "/0/project"
+                                            : protectedPath.toString()));
             assertThrows(
                     IllegalArgumentException.class,
-                    () -> policy.admit(owner, protectedPath.resolve("project").toString()));
+                    () ->
+                            policy.admit(
+                                    owner,
+                                    mode == DeployerPolicy.TENANT
+                                            ? "/0/child"
+                                            : protectedPath.resolve("project").toString()));
         }
-        var policy = new WorkspaceAdmissionPolicy(List.of(), DeployerPolicy.PROTECTED, resolver);
+        var policy =
+                new WorkspaceAdmissionPolicy(
+                        configuration(tempDir, DeployerPolicy.PROTECTED), resolver);
         assertEquals(tempDir.toRealPath(), policy.admit("alice", tempDir.toString()).getFirst());
     }
 
@@ -92,11 +104,41 @@ class WorkspaceAdmissionPolicyTest {
     void filesystemRootIsValidButBlankIsNot(@TempDir @NonNull Path tempDir) throws Exception {
         var policy =
                 new WorkspaceAdmissionPolicy(
-                        List.of(), DeployerPolicy.FULL_ACCESS, mock(ProtectedSetResolver.class));
+                        new DeployerPolicyConfiguration(), mock(ProtectedSetResolver.class));
         var root = tempDir.toAbsolutePath().getRoot();
         if (root == null) throw new AssertionError("absolute path must have a filesystem root");
         assertEquals(root.toRealPath(), policy.admit("alice", root.toString()).getFirst());
         assertThrows(IllegalArgumentException.class, () -> policy.admit("alice", " "));
+    }
+
+    private static @NonNull DeployerPolicyConfiguration configuration(
+            @NonNull Path base, @NonNull DeployerPolicy mode) {
+        var configuration = new DeployerPolicyConfiguration();
+        configuration.setDeployerPolicy(mode);
+        configuration.getSandboxed().setRoots(List.of(base.toString()));
+        configuration.getTenant().setRoots(List.of(base.toString()));
+        return configuration;
+    }
+
+    @Test
+    void tenantUsesLogicalDirectChildSelectionAndHidesHostMapping(@TempDir @NonNull Path base) {
+        var policy =
+                new WorkspaceAdmissionPolicy(
+                        configuration(base, DeployerPolicy.TENANT), emptyProtection());
+        var selected = policy.admit("alice", "/0/project").getFirst();
+        assertEquals(base.resolve("alice/project"), selected);
+        assertEquals("/0/project", policy.toClientPath("alice", selected));
+        assertThrows(IllegalArgumentException.class, () -> policy.admit("alice", "/0"));
+        assertThrows(
+                IllegalArgumentException.class, () -> policy.admit("alice", "/0/project/nested"));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> policy.admit("alice", base.resolve("alice/project").toString()));
+        assertThrows(
+                IllegalArgumentException.class, () -> policy.fromClientPath("alice", "/0/../bob"));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> policy.fromClientPath("alice", "/0/project/"));
     }
 
     private static @NonNull ProtectedSetResolver emptyProtection() {

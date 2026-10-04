@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -72,6 +73,34 @@ class GatewayScreeningTest {
                 Object.class,
                 String.class,
                 Map.of("path", ParamCategory.FILESYSTEM_PATH));
+    }
+
+    @Test
+    void workspaceClaimAddedDuringApprovalInvalidatesThePermit() throws Exception {
+        Path selected = Files.createDirectory(root.resolve("selected"));
+        Path sibling = Files.createDirectory(root.resolve("sibling"));
+        AtomicBoolean claimed = new AtomicBoolean();
+        var gateway =
+                new Gateway(
+                        Workspace.single(selected, PathMode.REAL),
+                        new DangerComputation(),
+                        SlmScreeningProvider.unavailable(),
+                        DeployerPolicy.SANDBOXED,
+                        ProtectedSet.empty(),
+                        new ReadHistory(),
+                        permit ->
+                                permit.withAccessScope(
+                                        List.of(root),
+                                        claimed.get() ? List.of(sibling) : List.of()));
+        var definition = readDef();
+        var call = new ToolCall("view_file", Map.of("path", sibling.toString()));
+        var result =
+                assertInstanceOf(GatewayResult.Screened.class, gateway.screen(call, definition));
+        assertEquals(Danger.ELEVATED, result.screening().danger());
+        claimed.set(true);
+        assertThrows(
+                SecurityException.class,
+                () -> gateway.revalidateExecution(call, definition, result.executionPermit()));
     }
 
     @Test

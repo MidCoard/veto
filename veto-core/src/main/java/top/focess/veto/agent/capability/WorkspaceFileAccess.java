@@ -66,8 +66,9 @@ final class WorkspaceFileAccess {
                 continue;
             }
             if ((permit.deployerPolicy() == DeployerPolicy.SANDBOXED
-                            || permit.deployerPolicy() == DeployerPolicy.TENANT)
-                    && !authorized.inScope()) {
+                            && permit.accessRoots().stream().noneMatch(host::startsWith))
+                    || (permit.deployerPolicy() == DeployerPolicy.TENANT
+                            && !authorized.inScope())) {
                 throw new SecurityException("Path is outside the configured policy scope");
             }
             Path normalized = host.toAbsolutePath().normalize();

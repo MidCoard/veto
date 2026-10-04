@@ -39,6 +39,7 @@ import top.focess.veto.api.event.ServiceDirectoryChangedEvent;
 import top.focess.veto.api.llm.LocalModelCompletion;
 import top.focess.veto.api.llm.PromptRenderer;
 import top.focess.veto.api.llm.TextEmbedding;
+import top.focess.veto.api.plugin.PluginBinding;
 import top.focess.veto.api.plugin.PluginContext;
 import top.focess.veto.api.plugin.PluginDeclinedException;
 import top.focess.veto.api.plugin.PluginHost;
@@ -228,6 +229,26 @@ public final class PluginManager implements AutoCloseable {
     /** Captures a coherent immutable query registry; lifecycle admission remains live. */
     public @NonNull PluginRegistry registry() {
         return published;
+    }
+
+    /**
+     * Resolves explicit requested ids to pinned bindings; an empty list selects no plugins.
+     * Duplicates and unknown or inactive plugins are rejected.
+     */
+    public @NonNull List<PluginBinding> selection(@NonNull List<@NonNull String> requested) {
+        var publication = registry();
+        var ids = requested.stream().map(publication::canonicalId).toList();
+        if (ids.size() != Set.copyOf(ids).size())
+            throw new IllegalArgumentException("Duplicate plugin selection");
+        return ids.stream()
+                .map(
+                        id -> {
+                            var plugin = publication.plugin(id);
+                            if (plugin.state() != PluginState.ACTIVE)
+                                throw new IllegalArgumentException("Plugin is unavailable: " + id);
+                            return plugin.binding();
+                        })
+                .toList();
     }
 
     private final EventListenerRegistry.@NonNull Preparation listenerPreparation =

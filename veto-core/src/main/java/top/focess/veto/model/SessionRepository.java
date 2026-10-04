@@ -1,10 +1,12 @@
 package top.focess.veto.model;
 
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
 import org.jspecify.annotations.NonNull;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
+import top.focess.veto.agent.workspace.WorkspaceAdmissionPolicy;
 
 /** Spring Data JPA access to {@link SessionEntity} (per-user conversation sessions). */
 @Repository
@@ -15,6 +17,22 @@ public interface SessionRepository extends JpaRepository<SessionEntity, String> 
 
     /** Existing sessions whose filesystem roots belong to another owner. */
     @NonNull List<@NonNull SessionEntity> findByOwnerNot(@NonNull String owner);
+
+    /** Canonical persisted claims, including the backend default used by older sessions. */
+    default @NonNull List<@NonNull Path> claimedRootsExcept(@NonNull String owner) {
+        return findByOwnerNot(owner).stream()
+                .flatMap(
+                        session -> {
+                            String roots = session.getWorkspaceRoots();
+                            return WorkspaceAdmissionPolicy.canonicalRoots(
+                                    roots == null || roots.isBlank()
+                                            ? System.getProperty("user.dir", ".")
+                                            : roots)
+                                    .stream();
+                        })
+                .distinct()
+                .toList();
+    }
 
     /**
      * The owner's most-recently-active session (max lastActiveAt); used to auto-resume on

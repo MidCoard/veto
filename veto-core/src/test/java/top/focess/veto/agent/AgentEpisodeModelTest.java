@@ -37,7 +37,7 @@ import top.focess.veto.agent.continuation.RequestContinuationRepository;
 import top.focess.veto.agent.continuation.RequestContinuationStore;
 import top.focess.veto.agent.intercept.HitlRecordRepository;
 import top.focess.veto.agent.intercept.HitlRegistry;
-import top.focess.veto.agent.screening.DeployerPolicy;
+import top.focess.veto.agent.screening.DeployerPolicyConfiguration;
 import top.focess.veto.agent.screening.ProtectedSetResolver;
 import top.focess.veto.agent.tool.AgentToolDefinition;
 import top.focess.veto.agent.tool.ToolCallContextHolder;
@@ -76,6 +76,7 @@ import top.focess.veto.bus.DeltaBroker;
 import top.focess.veto.bus.SessionInvalidations;
 import top.focess.veto.event.EventManager;
 import top.focess.veto.integration.plugins.PluginDataCleanup;
+import top.focess.veto.integration.plugins.PluginManager;
 import top.focess.veto.integration.plugins.PluginTestSupport;
 import top.focess.veto.integration.plugins.SessionPlugins;
 import top.focess.veto.integration.plugins.storage.ScopedPluginStorage;
@@ -556,12 +557,11 @@ class AgentEpisodeModelTest {
                         history,
                         tiers,
                         new WorkspaceAdmissionPolicy(
-                                List.of(),
-                                DeployerPolicy.FULL_ACCESS,
+                                new DeployerPolicyConfiguration(),
                                 mock(ProtectedSetResolver.class)),
                         Mockito.mock(ScopedPluginStorage.class),
                         Mockito.mock(HitlRecordRepository.class),
-                        Mockito.mock(SessionPlugins.class),
+                        Mockito.mock(PluginManager.class),
                         Mockito.mock(EventManager.class),
                         Mockito.mock(PluginDataCleanup.class),
                         Mockito.mock(RequestContinuationStore.class));

@@ -52,6 +52,7 @@ import top.focess.veto.llm.config.LlmJacksonConfig;
 import top.focess.veto.llm.core.UniformLLMCaller;
 import top.focess.veto.memory.TurnLogService;
 import top.focess.veto.model.SessionEntity;
+import top.focess.veto.model.SessionRepository;
 import top.focess.veto.model.tier.ModelTierRegistry;
 import top.focess.veto.util.Nullness;
 import top.focess.veto.vault.KeysteadVault;
@@ -103,7 +104,8 @@ public class AgentService {
     private final @NonNull Workspace defaultWorkspace;
     private final @NonNull String pathMode;
     private final long maxCallsPerEpisode;
-    private final @NonNull DeployerPolicy deployerPolicy;
+    private final @NonNull DeployerPolicyConfiguration configuration;
+    private final @NonNull SessionRepository sessions;
     // Event-stream sink shared by created AgentRunners.
     private final @NonNull DeltaBroker deltaBroker;
     // Durable turn log shared by created AgentRunners.
@@ -143,7 +145,8 @@ public class AgentService {
             @NonNull RequestContinuationStore continuationStore,
             @NonNull KeysteadVault executionVault,
             @NonNull EventManager eventManager,
-            @NonNull ModelTierRegistry modelTierRegistry) {
+            @NonNull ModelTierRegistry modelTierRegistry,
+            @NonNull SessionRepository sessions) {
         this.sessionAgents = sessionAgents;
         this.toolEngine = toolEngine;
         this.hitlRegistry = hitlRegistry;
@@ -160,8 +163,9 @@ public class AgentService {
         this.eventManager = eventManager;
         this.modelTierRegistry = modelTierRegistry;
         this.maxCallsPerEpisode = maxCallsPerEpisode;
-        this.deployerPolicy = deployerPolicyConfiguration.getDeployerPolicy();
-        if (this.deployerPolicy == DeployerPolicy.FULL_ACCESS) {
+        this.configuration = deployerPolicyConfiguration;
+        this.sessions = sessions;
+        if (configuration.getDeployerPolicy() == DeployerPolicy.FULL_ACCESS) {
             log.info(
                     "deployer-policy=FULL_ACCESS: workspace roots are context rather than path"
                             + " fences; Gateway screening and HITL remain active. Use PROTECTED for"
@@ -603,9 +607,18 @@ public class AgentService {
                         workspace,
                         new DangerComputation(),
                         slmScreeningProvider,
-                        deployerPolicy,
+                        configuration.getDeployerPolicy(),
                         userProtectedSet,
-                        readHistory);
+                        readHistory,
+                        permit ->
+                                permit.withAccessScope(
+                                        configuration.getDeployerPolicy()
+                                                        == DeployerPolicy.SANDBOXED
+                                                ? configuration.canonicalRoots()
+                                                : permit.workspaceRoots(),
+                                        owner == null
+                                                ? List.of()
+                                                : sessions.claimedRootsExcept(protectionOwner)));
         UUID sessionId =
                 primaryAgentId == null ? UUID.fromString(persona.id()) : UUID.fromString(agentKey);
         ToolExecutionBoundary toolBoundary =
@@ -687,9 +700,16 @@ public class AgentService {
                         workspace,
                         new DangerComputation(),
                         slmScreeningProvider,
-                        deployerPolicy,
+                        configuration.getDeployerPolicy(),
                         scopedProtectedSet,
-                        readHistory);
+                        readHistory,
+                        permit ->
+                                permit.withAccessScope(
+                                        configuration.getDeployerPolicy()
+                                                        == DeployerPolicy.SANDBOXED
+                                                ? configuration.canonicalRoots()
+                                                : permit.workspaceRoots(),
+                                        sessions.claimedRootsExcept(protectionOwner)));
         ToolExecutionBoundary toolBoundary =
                 new ToolExecutionBoundary(
                         scoped.id(),
@@ -785,7 +805,8 @@ public class AgentService {
     /** Resolves the deployer-configured hard path exclusions for this user and workspace. */
     private @NonNull ProtectedSet protectedSetFor(
             @NonNull String vetoUserId, @NonNull Workspace workspace) {
-        return protectedSetResolver.resolve(this.deployerPolicy, vetoUserId, workspace);
+        return protectedSetResolver.resolve(
+                configuration.getDeployerPolicy(), vetoUserId, workspace);
     }
 
     /** Parses the screening mode (case-insensitive; defaults to STRICT on blank/unknown). */

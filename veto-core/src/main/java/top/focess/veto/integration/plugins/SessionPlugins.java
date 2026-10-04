@@ -41,26 +41,6 @@ public class SessionPlugins {
     }
 
     /**
-     * Resolves explicit requested ids to pinned bindings; an empty list selects no plugins.
-     * Duplicates and unknown or inactive plugins are rejected.
-     */
-    public @NonNull List<PluginBinding> selection(@NonNull List<@NonNull String> requested) {
-        var publication = manager.registry();
-        var ids = requested.stream().map(publication::canonicalId).toList();
-        if (ids.size() != Set.copyOf(ids).size())
-            throw new IllegalArgumentException("Duplicate plugin selection");
-        return ids.stream()
-                .map(
-                        id -> {
-                            var plugin = publication.plugin(id);
-                            if (plugin.state() != PluginState.ACTIVE)
-                                throw new IllegalArgumentException("Plugin is unavailable: " + id);
-                            return plugin.binding();
-                        })
-                .toList();
-    }
-
-    /**
      * Returns explicit persisted bindings. An empty selection is valid; missing bindings are
      * invalid. Missing or changed plugins remain pinned and are reported through availability.
      */

@@ -10,6 +10,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -44,6 +45,48 @@ import top.focess.veto.integration.plugins.PluginTestSupport;
 class WorkspaceFilePolicyTest {
     private static final @NonNull UUID USER = UUID.randomUUID();
     private static final @NonNull UUID SESSION = UUID.randomUUID();
+
+    @Test
+    void sandboxFileCapabilityCanReadUnclaimedSiblingButRejectsForeignClaim(
+            @TempDir @NonNull Path root) throws Exception {
+        Path base = root.toRealPath();
+        Path selected = Files.createDirectory(base.resolve("selected"));
+        Path sibling = Files.createDirectory(base.resolve("sibling"));
+        Path file = Files.writeString(sibling.resolve("note.txt"), "sibling contents");
+        var tool = new ViewFileTool();
+        var permit =
+                ToolExecutionPermit.capture(
+                                new ToolCall(
+                                        tool.getName(),
+                                        Map.of("absolutePath", file.toString()),
+                                        "resource-call"),
+                                ToolSchemaCompiler.compileNative(tool),
+                                Workspace.single(selected, PathMode.REAL),
+                                DeployerPolicy.SANDBOXED,
+                                ProtectedSet.empty())
+                        .withAccessScope(List.of(base), List.of())
+                        .withCaller("agent", USER, "owner", SESSION);
+        ToolCallContextHolder.set(
+                new ToolCallContext(
+                        "agent", USER, "owner", SESSION, ToolResultPresentationMode.BASIC, permit));
+        ToolCallContextHolder.setCurrentCallId(permit.callId());
+        var capability = CapabilityResolver.require(WorkspaceReadCapability.class);
+        try (var input = capability.file(file.toString()).openRead()) {
+            assertEquals(
+                    "sibling contents", new String(input.readAllBytes(), StandardCharsets.UTF_8));
+        }
+        var occupied = permit.withAccessScope(List.of(base), List.of(sibling));
+        ToolCallContextHolder.set(
+                new ToolCallContext(
+                        "agent",
+                        USER,
+                        "owner",
+                        SESSION,
+                        ToolResultPresentationMode.BASIC,
+                        occupied));
+        var occupiedCapability = CapabilityResolver.require(WorkspaceReadCapability.class);
+        assertThrows(ToolExecutionException.class, () -> occupiedCapability.file(file.toString()));
+    }
 
     @Test
     void grepStopsAtOversizedInputLineAndRetainsExplicitIncompleteEvidence(

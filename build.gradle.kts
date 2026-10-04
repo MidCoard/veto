@@ -104,9 +104,20 @@ val localRelease by tasks.registering {
     dependsOn(generateReleaseReadme)
     val versionStr = project.version.toString()
     val outDir = layout.projectDirectory.dir("release/veto-$versionStr")
+    val workspace = rootProject.projectDir.canonicalFile
+    val releaseRoot = layout.projectDirectory.dir("release").asFile.canonicalFile
+    val bootJar =
+            project(":veto-core")
+                    .layout
+                    .buildDirectory
+                    .file("libs/veto-core-$versionStr.jar")
+    val distZip =
+            project(":veto-terminal")
+                    .layout
+                    .buildDirectory
+                    .file("distributions/veto-terminal-$versionStr.zip")
+    val license = layout.projectDirectory.file("LICENSE")
     doLast {
-        val workspace = rootProject.projectDir.canonicalFile
-        val releaseRoot = layout.projectDirectory.dir("release").asFile.canonicalFile
         val out = outDir.asFile.canonicalFile
         require(releaseRoot.path.startsWith(workspace.path + File.separator))
         require(out.parentFile == releaseRoot)
@@ -114,23 +125,10 @@ val localRelease by tasks.registering {
         out.deleteRecursively()
         val coreDir = File(out, "core").apply { mkdirs() }
         val terminalDir = File(out, "terminal").apply { mkdirs() }
-        val bootJar =
-                project(":veto-core")
-                        .layout
-                        .buildDirectory
-                        .file("libs/veto-core-$versionStr.jar")
-                        .get()
-                        .asFile
-        bootJar.copyTo(File(coreDir, "veto-core.jar"))
-        val distZip =
-                project(":veto-terminal")
-                        .layout
-                        .buildDirectory
-                        .file("distributions/veto-terminal-$versionStr.zip")
-                        .get()
-                        .asFile
-        distZip.copyTo(File(terminalDir, distZip.name))
-        layout.projectDirectory.file("LICENSE").asFile.copyTo(File(out, "LICENSE"))
+        bootJar.get().asFile.copyTo(File(coreDir, "veto-core.jar"))
+        val terminalZip = distZip.get().asFile
+        terminalZip.copyTo(File(terminalDir, terminalZip.name))
+        license.asFile.copyTo(File(out, "LICENSE"))
         val dollar = "$"
         File(out, "start-core.bat")
                 .writeText(
@@ -172,24 +170,32 @@ val localPluginPackages by tasks.registering {
                             "top.focess.secret-protection",
                             "top.focess.veto.secret.SecretProtectionPlugin"),
             )
+    val versionStr = project.version.toString()
+    val workspace = rootProject.projectDir.canonicalFile
+    val root = layout.projectDirectory.dir("release/plugin-packages/$versionStr").asFile.canonicalFile
+    val packageInputs =
+            packages.associate { (module, _, _) ->
+                val pluginProject = project(":$module")
+                module to
+                        Pair(
+                                pluginProject.layout.buildDirectory.file("libs/$module-$versionStr.jar"),
+                                pluginProject.configurations.getByName("runtimeClasspath"),
+                        )
+            }
     doLast {
-        val versionStr = project.version.toString()
-        val workspace = rootProject.projectDir.canonicalFile
-        val root = layout.projectDirectory.dir("release/plugin-packages/$versionStr").asFile.canonicalFile
         require(root.path.startsWith(workspace.path + File.separator))
         root.mkdirs()
         for ((module, id, entryPoint) in packages) {
-            val subproject = project(":$module")
             val folder = File(root, id).canonicalFile
             require(folder.parentFile == root)
             folder.mkdirs()
-            val artifact = "$module-$versionStr.jar"
-            val sourceJar = subproject.layout.buildDirectory.file("libs/$artifact").get().asFile
+            val (artifact, runtimeClasspath) = packageInputs.getValue(module)
+            val sourceJar = artifact.get().asFile
             val packageJar = File(folder, "plugin.jar")
             if (!packageJar.isFile || Files.mismatch(sourceJar.toPath(), packageJar.toPath()) != -1L)
                 sourceJar.copyTo(packageJar, overwrite = true)
             val libraries = File(folder, "lib").apply { mkdirs() }
-            val dependencies = subproject.configurations.getByName("runtimeClasspath").files
+            val dependencies = runtimeClasspath.files
             for (dependency in dependencies) {
                 if (!dependency.isFile || !dependency.name.endsWith(".jar")) continue
                 if (dependency.name.startsWith("veto-api-")) continue

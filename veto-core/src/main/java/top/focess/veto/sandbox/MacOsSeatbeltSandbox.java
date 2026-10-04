@@ -6,7 +6,9 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.security.HostPathInput;
 
 /**
  * Veto-owned macOS Seatbelt profile generator and launcher.
@@ -56,7 +58,7 @@ final class MacOsSeatbeltSandbox {
         command.add(SANDBOX_EXEC.toString());
         command.add("-p");
         command.add(
-                profile(workspace, targetCommand.getFirst())
+                profile(workspace, targetCommand.getFirst(), profile.deniedPaths())
                         + "\n"
                         + ancestorMetadataRules(
                                 profile.workspaceRoot().toAbsolutePath().normalize()));
@@ -69,11 +71,13 @@ final class MacOsSeatbeltSandbox {
      * writable subtree, external network and cross-sandbox process control remain denied.
      */
     static @NonNull String profile(@NonNull Path workspaceRoot) {
-        return profile(workspaceRoot, "");
+        return profile(workspaceRoot, "", Set.of());
     }
 
-    private static @NonNull String profile(
-            @NonNull Path workspaceRoot, @NonNull String executable) {
+    static @NonNull String profile(
+            @NonNull Path workspaceRoot,
+            @NonNull String executable,
+            @NonNull Set<@NonNull Path> deniedPaths) {
         Path normalizedWorkspace = workspaceRoot.toAbsolutePath().normalize();
         String workspace = seatbeltString(normalizedWorkspace.toString());
         String executableRule = executableReadRule(executable);
@@ -137,6 +141,7 @@ final class MacOsSeatbeltSandbox {
                 "; workspace is the only writable subtree",
                 "(allow file-write* (subpath \"" + workspace + "\"))",
                 protectedMetadataRules,
+                deniedPathRules(normalizedWorkspace, deniedPaths),
                 "",
                 "; bounded runtime discovery; network remains denied by default",
                 "(allow sysctl-read",
@@ -164,6 +169,24 @@ final class MacOsSeatbeltSandbox {
                 "(allow system-socket",
                 "  (require-all (socket-domain AF_SYSTEM) (socket-protocol 2)))",
                 "");
+    }
+
+    private static @NonNull String deniedPathRules(
+            @NonNull Path workspace, @NonNull Set<@NonNull Path> deniedPaths) {
+        List<String> rules = new ArrayList<>();
+        for (Path path : deniedPaths) {
+            Path canonical = HostPathInput.canonicalForCreation(path, "denied sandbox path");
+            if (workspace.startsWith(canonical))
+                throw new SecurityException("Sandbox working directory is protected");
+            String escaped = seatbeltString(canonical.toString());
+            rules.add(
+                    "(deny file-read* file-write* (literal \""
+                            + escaped
+                            + "\") (subpath \""
+                            + escaped
+                            + "\"))");
+        }
+        return String.join("\n", rules);
     }
 
     /** Permit path traversal/stat without granting directory listings or file content reads. */
