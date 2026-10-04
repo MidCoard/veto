@@ -199,21 +199,22 @@ public final class SessionAgentRegistry implements AutoCloseable {
             VetoAgent agent = entry.agent();
             result.compute(
                     agent.id(),
-                    (k, saved) -> new AgentSummary(
-                            agent.id(),
-                            saved == null ? agent.name() : saved.name(),
-                            agent.persona().role(),
-                            agent.state(),
-                            entry.parentAgentId(),
-                            entry.parentCallId(),
-                            true,
-                            saved == null ? null : saved.createdAt(),
-                            saved == null ? null : saved.startedAt(),
-                            null,
-                            agent.persona().description(),
-                            agent.userInteractionEnabled(),
-                            agent.executionWaitReason(),
-                            agent.pluginContext()));
+                    (k, saved) ->
+                            new AgentSummary(
+                                    agent.id(),
+                                    saved == null ? agent.name() : saved.name(),
+                                    agent.persona().role(),
+                                    agent.state(),
+                                    entry.parentAgentId(),
+                                    entry.parentCallId(),
+                                    true,
+                                    saved == null ? null : saved.createdAt(),
+                                    saved == null ? null : saved.startedAt(),
+                                    null,
+                                    agent.persona().description(),
+                                    agent.userInteractionEnabled(),
+                                    agent.executionWaitReason(),
+                                    agent.pluginContext()));
         }
         return result.values().stream().sorted(Comparator.comparing(AgentSummary::id)).toList();
     }
