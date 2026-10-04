@@ -3,6 +3,7 @@ package top.focess.veto.command.commands;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
+import java.util.List;
 import java.util.Optional;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
@@ -32,7 +33,7 @@ class SessionCommandTest {
     void createAutoActivatesWhenIdle() {
         SessionService service = mock(SessionService.class);
         SessionEntity session = new SessionEntity("alice", "coder");
-        when(service.createSession("alice", "coder", null, CWD)).thenReturn(session);
+        when(service.createSession("alice", "coder", null, List.of(CWD))).thenReturn(session);
         when(service.activeSession("term-1")).thenReturn(Optional.empty());
         when(service.activate("term-1", "coder", "alice", CWD))
                 .thenReturn(Optional.of(new LlmConfig(ProviderType.DEEPSEEK, "deepseek-v4", "k")));
@@ -51,7 +52,7 @@ class SessionCommandTest {
         ExecutionResult result = manager.dispatch(sender, "session create coder");
 
         assertEquals(CommandResult.ALLOW, result.result());
-        verify(service).createSession("alice", "coder", null, CWD);
+        verify(service).createSession("alice", "coder", null, List.of(CWD));
         verify(service).activate("term-1", "coder", "alice", CWD);
     }
 
@@ -59,7 +60,7 @@ class SessionCommandTest {
     void createDoesNotAutoActivateWhenBusy() {
         SessionService service = mock(SessionService.class);
         SessionEntity session = new SessionEntity("alice", "coder");
-        when(service.createSession("alice", "coder", null, CWD)).thenReturn(session);
+        when(service.createSession("alice", "coder", null, List.of(CWD))).thenReturn(session);
         // A session is already active on this terminal -> do not auto-activate.
         when(service.activeSession("term-1")).thenReturn(Optional.of("existing-session-id"));
 
@@ -77,14 +78,14 @@ class SessionCommandTest {
         ExecutionResult result = manager.dispatch(sender, "session create coder");
 
         assertEquals(CommandResult.ALLOW, result.result());
-        verify(service).createSession("alice", "coder", null, CWD);
+        verify(service).createSession("alice", "coder", null, List.of(CWD));
         verify(service, never()).activate(anyString(), anyString(), anyString(), anyString());
     }
 
     @Test
     void createRefusesUnknownPattern() {
         SessionService service = mock(SessionService.class);
-        when(service.createSession("alice", "nope", null, CWD))
+        when(service.createSession("alice", "nope", null, List.of(CWD)))
                 .thenThrow(new IllegalArgumentException("Pattern not found: nope"));
 
         VetoCommandSender sender = mock(VetoCommandSender.class);
@@ -107,7 +108,8 @@ class SessionCommandTest {
     void createWithCustomNamePersistsAndActivates() {
         SessionService service = mock(SessionService.class);
         SessionEntity session = new SessionEntity("alice", "mysession");
-        when(service.createSession("alice", "coder", "mysession", CWD)).thenReturn(session);
+        when(service.createSession("alice", "coder", "mysession", List.of(CWD)))
+                .thenReturn(session);
         when(service.activeSession("term-1")).thenReturn(Optional.empty());
         when(service.activate("term-1", "mysession", "alice", CWD))
                 .thenReturn(Optional.of(new LlmConfig(ProviderType.DEEPSEEK, "deepseek-v4", "k")));
@@ -126,7 +128,7 @@ class SessionCommandTest {
         ExecutionResult result = manager.dispatch(sender, "session create coder mysession");
 
         assertEquals(CommandResult.ALLOW, result.result());
-        verify(service).createSession("alice", "coder", "mysession", CWD);
+        verify(service).createSession("alice", "coder", "mysession", List.of(CWD));
         verify(service).activate("term-1", "mysession", "alice", CWD);
     }
 }

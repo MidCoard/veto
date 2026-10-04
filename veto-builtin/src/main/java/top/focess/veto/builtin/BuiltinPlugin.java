@@ -37,25 +37,20 @@ import top.focess.veto.builtin.workspace.*;
 
 /** Built-in tool implementations registered through the same API as third-party plugins. */
 public final class BuiltinPlugin extends VetoPlugin {
-    private final @NonNull ReadGitHubRepositoryTool github;
-    private final @NonNull DuckDuckGoSearchProvider duckduckgo;
     private final @NonNull PluginHost host;
     private final @NonNull QuestionRuntime questions;
     private final @NonNull GroupRuntime groups;
     private final @NonNull MonitorRuntime monitors;
     private final @NonNull ProcessRuntime processes;
     private final @NonNull TaskEvents taskEvents;
-    private final @NonNull MemoryRuntime memory;
-    private final @NonNull SkillRuntime skills;
-    private final @NonNull BraveSearchProvider brave;
 
     /** Constructs all builtin-owned features using the host-bound context. */
     public BuiltinPlugin(
             @NonNull PluginContext context, JsonValue.@NonNull ObjectValue configuration) {
         host = context.host();
-        github = new ReadGitHubRepositoryTool();
+        var github = new ReadGitHubRepositoryTool();
         context.register(StandardContributionPoints.RESOURCES, "github", github);
-        duckduckgo = new DuckDuckGoSearchProvider();
+        var duckduckgo = new DuckDuckGoSearchProvider();
         context.register(StandardContributionPoints.RESOURCES, "duckduckgo", duckduckgo);
         questions = new QuestionRuntime(host);
         context.register(StandardContributionPoints.RESOURCES, "questions", questions);
@@ -68,11 +63,11 @@ public final class BuiltinPlugin extends VetoPlugin {
         context.register(StandardContributionPoints.RESOURCES, "task-events", taskEvents);
         processes = new ProcessRuntime(context, taskEvents);
         context.register(StandardContributionPoints.RESOURCES, "tasks", processes.tasks());
-        memory = new MemoryRuntime(context, configuration);
-        skills = new SkillRuntime(context, configuration);
+        var memory = new MemoryRuntime(context, configuration);
+        var skills = new SkillRuntime(context, configuration);
         context.register(StandardContributionPoints.RESOURCES, "skills", skills);
         var key = configuration.values().get("brave-api-key");
-        brave =
+        var brave =
                 new BraveSearchProvider(
                         key instanceof JsonValue.StringValue(String value) ? value : "");
         context.register(StandardContributionPoints.RESOURCES, "brave", brave);

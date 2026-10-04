@@ -158,6 +158,10 @@ class RequestSchedulingTest {
             assertTrue(stopper.join(Duration.ofSeconds(5)));
             var agent = new VetoAgent(runner.personaView(), runner);
             assertTrue(agent.awaitTermination(Duration.ofSeconds(5)));
+            assertTrue(
+                    runner.control() instanceof ExecutionControl.Closed retired
+                            && retired.reason() == ExecutionControl.CloseReason.SHUTDOWN,
+                    "Retirement retains the accepted shutdown reason");
             if (accepted != null) {
                 assertFalse(accepted.await(Duration.ofSeconds(5)).success());
                 assertTrue(accepted.settled().get(5, TimeUnit.SECONDS));

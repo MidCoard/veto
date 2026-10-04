@@ -99,12 +99,14 @@ public final class ContributionCatalog {
             }
         }
 
-        private final Map<ContributionId, Registration<?>> definitions = new LinkedHashMap<>();
-        private final Map<ContributionId, Staged> staged = new LinkedHashMap<>();
-        private final Set<String> sources = new HashSet<>();
-        private final Set<ContributionId> required = new HashSet<>();
+        private final @NonNull Map<ContributionId, Registration<?>> definitions =
+                new LinkedHashMap<>();
+        private final @NonNull Map<ContributionId, Staged> staged = new LinkedHashMap<>();
+        private final @NonNull Set<String> sources = new HashSet<>();
+        private final @NonNull Set<ContributionId> required = new HashSet<>();
         private boolean frozen;
-        private final List<Consumer<ContributionCatalog>> catalogValidators = new ArrayList<>();
+        private final @NonNull List<Consumer<ContributionCatalog>> catalogValidators =
+                new ArrayList<>();
 
         /** Creates an empty mutable catalog builder for single-threaded host bootstrap. */
         public Builder() {}

@@ -40,7 +40,10 @@ public class SessionCommand extends VetoCommand {
                     try {
                         SessionEntity session =
                                 service.createSession(
-                                        s.requireUsername(), pattern, requestedName, s.cwd());
+                                        s.requireUsername(),
+                                        pattern,
+                                        requestedName,
+                                        List.of(s.cwd()));
                         s.output(
                                 "Session '"
                                         + session.getName()

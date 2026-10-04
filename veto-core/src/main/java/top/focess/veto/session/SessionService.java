@@ -119,7 +119,7 @@ public class SessionService {
     /**
      * Creates a session + its primary agent from a pattern, with an auto-generated unique name.
      * Does NOT auto-activate. Equivalent to {@code createSession(owner, patternName, null,
-     * System.getProperty("user.dir"))} - the session's workspace defaults to the JVM working dir.
+     * List.of(System.getProperty("user.dir")))} - the workspace defaults to the JVM working dir.
      */
     @Transactional
     public @NonNull SessionEntity createSession(
@@ -128,7 +128,7 @@ public class SessionService {
                 owner,
                 patternName,
                 null,
-                System.getProperty("user.dir"),
+                List.of(System.getProperty("user.dir")),
                 0,
                 ToolResultPresentationMode.BASIC,
                 List.of());
@@ -150,7 +150,7 @@ public class SessionService {
                 owner,
                 patternName,
                 sessionName,
-                System.getProperty("user.dir"),
+                List.of(System.getProperty("user.dir")),
                 0,
                 ToolResultPresentationMode.BASIC,
                 List.of());
@@ -158,7 +158,7 @@ public class SessionService {
 
     /**
      * Creates a session + its primary agent from a pattern with the session's workspace. Does NOT
-     * auto-activate. The {@code workspaceRoots} (CSV of host paths) is persisted on the session so
+     * auto-activate. The {@code workspaceRoots} list is validated and persisted on the session so
      * every agent the session spawns resolves paths against these roots. Never {@code null} - the
      * terminal path supplies its cwd and a remote UI must declare roots explicitly; blank
      * declarations are rejected.
@@ -168,14 +168,14 @@ public class SessionService {
      * @param sessionName the desired session name; null/empty triggers an auto-generated name of
      *     the form {@code <patternName>-xxxxxxxx} (8 lowercase hex digits) that is unique within
      *     this workspace. An explicit name is still validated for workspace-scoped uniqueness.
-     * @param workspaceRoots CSV of host paths backing the session's workspace; never {@code null}
+     * @param workspaceRoots nonempty list of client paths backing the session workspace
      */
     @Transactional
     public @NonNull SessionEntity createSession(
             @NonNull String owner,
             @NonNull String patternName,
             String sessionName,
-            @NonNull String workspaceRoots) {
+            @NonNull List<@NonNull String> workspaceRoots) {
         return createSession(
                 owner,
                 patternName,
@@ -192,7 +192,7 @@ public class SessionService {
             @NonNull String owner,
             @NonNull String patternName,
             String sessionName,
-            @NonNull String workspaceRoots,
+            @NonNull List<@NonNull String> workspaceRoots,
             @NonNull ToolResultPresentationMode toolResultPresentation) {
         return createSession(
                 owner,
@@ -210,7 +210,7 @@ public class SessionService {
             @NonNull String owner,
             @NonNull String patternName,
             String sessionName,
-            @NonNull String workspaceRoots,
+            @NonNull List<@NonNull String> workspaceRoots,
             int currentWorkspaceRootIndex,
             @NonNull ToolResultPresentationMode toolResultPresentation) {
         return createSession(
@@ -224,10 +224,11 @@ public class SessionService {
     }
 
     /**
-     * Full session-creation path. Admits and materializes the workspace roots, resolves the session
-     * name (auto-generated and workspace-unique when null/empty, otherwise uniqueness-checked),
-     * applies the explicit plugin selection, and persists the session with its primary agent
-     * instantiated from the pattern. Does NOT auto-activate.
+     * Full session-creation path. Validates, checks ownership availability and materializes the
+     * workspace roots, resolves the session name (auto-generated and workspace-unique when
+     * null/empty, otherwise uniqueness-checked), applies the explicit plugin selection, and
+     * persists the session with its primary agent instantiated from the pattern. Does NOT
+     * auto-activate.
      *
      * @throws IllegalArgumentException if the pattern is unknown, the workspace is rejected, the
      *     root index is out of range, or the name is already taken in this workspace
@@ -237,7 +238,7 @@ public class SessionService {
             @NonNull String owner,
             @NonNull String patternName,
             String sessionName,
-            @NonNull String workspaceRoots,
+            @NonNull List<@NonNull String> workspaceRoots,
             int currentWorkspaceRootIndex,
             @NonNull ToolResultPresentationMode toolResultPresentation,
             @NonNull List<@NonNull String> pluginIds) {
@@ -250,10 +251,11 @@ public class SessionService {
                                                         "error.session.patternNotFound",
                                                         patternName)));
 
-        // Validate every declaration before materializing the agent's working directories.
+        // Validate scope and protected paths before the locked ownership check and directory
+        // creation.
         List<@NonNull Path> declaredRoots;
         try {
-            declaredRoots = workspaceAdmissionPolicy.admit(owner, workspaceRoots);
+            declaredRoots = workspaceAdmissionPolicy.validateRoots(owner, workspaceRoots);
         } catch (RuntimeException e) {
             throw new IllegalArgumentException(
                     Msg.get(

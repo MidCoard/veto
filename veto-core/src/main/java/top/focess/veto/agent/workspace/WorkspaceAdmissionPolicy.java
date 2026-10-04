@@ -35,16 +35,26 @@ public final class WorkspaceAdmissionPolicy {
         this.protectedSets = protectedSets;
     }
 
-    /** Validates and canonicalizes a CSV declaration without mutating the filesystem. */
-    public @NonNull List<@NonNull Path> admit(
-            @NonNull String owner, @NonNull String workspaceRoots) {
+    /**
+     * Canonicalizes nonempty roots and validates deployment scope and protected paths without
+     * filesystem mutation. SessionService checks ownership availability under its creation lock.
+     */
+    public @NonNull List<@NonNull Path> validateRoots(
+            @NonNull String owner, @NonNull List<@NonNull String> workspaceRoots) {
+        if (workspaceRoots.isEmpty()) {
+            throw new IllegalArgumentException("no workspace roots declared");
+        }
         var supplied =
-                configuration.getDeployerPolicy() == DeployerPolicy.TENANT
-                        ? Arrays.stream(workspaceRoots.split(","))
-                                .map(String::trim)
-                                .map(root -> fromClientPath(owner, root))
-                                .toList()
-                        : canonicalRoots(workspaceRoots);
+                workspaceRoots.stream()
+                        .map(
+                                root -> {
+                                    if (root.isBlank() || root.contains(",")) {
+                                        throw new IllegalArgumentException(
+                                                "workspace root must be nonblank and contain no comma");
+                                    }
+                                    return fromClientPath(owner, root);
+                                })
+                        .toList();
         var deployerPolicy = configuration.getDeployerPolicy();
         var deployerRoots = configuration.canonicalRoots();
         if (deployerPolicy == DeployerPolicy.SANDBOXED || deployerPolicy == DeployerPolicy.TENANT) {

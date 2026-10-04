@@ -198,28 +198,7 @@ public final class NativeToolArgumentValidator {
                                     conditional.field(),
                                     List.of(conditional.values()),
                                     conditional.rejectBlank());
-            UniqueBy uniqueBy = component.getAnnotation(UniqueBy.class);
-            UniqueRule unique =
-                    uniqueBy == null
-                            ? null
-                            : new UniqueRule(
-                                    uniqueBy.field(), uniqueBy.ignoreCase(), uniqueBy.strip());
-            if (unique != null) {
-                if (!(component.getGenericType() instanceof ParameterizedType collection)
-                        || !(collection.getRawType() instanceof Class<?> raw)
-                        || !Collection.class.isAssignableFrom(raw)
-                        || !(collection.getActualTypeArguments()[0] instanceof Class<?> element)
-                        || !element.isRecord())
-                    throw new IllegalArgumentException(
-                            "@UniqueBy requires a collection of records: " + component.getName());
-                boolean found = false;
-                for (RecordComponent member : element.getRecordComponents())
-                    if (member.getName().equals(unique.field()) && member.getType() == String.class)
-                        found = true;
-                if (!found)
-                    throw new IllegalArgumentException(
-                            "@UniqueBy requires a string field '" + unique.field() + "'");
-            }
+            UniqueRule unique = uniqueRule(component);
             fields.add(
                     new FieldRule(
                             component.getName(),
@@ -250,17 +229,40 @@ public final class NativeToolArgumentValidator {
                 && Collection.class.isAssignableFrom(raw)) {
             element = valueRule(parameterized.getAnnotatedActualTypeArguments()[0]);
         }
+        return new ValueRule(
+                type.isAnnotationPresent(NonNull.class),
+                fields,
+                element,
+                stringRule(type, componentConstraint));
+    }
+
+    private static UniqueRule uniqueRule(@NonNull RecordComponent component) {
+        UniqueBy annotation = component.getAnnotation(UniqueBy.class);
+        if (annotation == null) return null;
+        var rule = new UniqueRule(annotation.field(), annotation.ignoreCase(), annotation.strip());
+        if (!(component.getGenericType() instanceof ParameterizedType collection)
+                || !(collection.getRawType() instanceof Class<?> raw)
+                || !Collection.class.isAssignableFrom(raw)
+                || !(collection.getActualTypeArguments()[0] instanceof Class<?> element)
+                || !element.isRecord())
+            throw new IllegalArgumentException(
+                    "@UniqueBy requires a collection of records: " + component.getName());
+        for (RecordComponent member : element.getRecordComponents())
+            if (member.getName().equals(rule.field()) && member.getType() == String.class)
+                return rule;
+        throw new IllegalArgumentException(
+                "@UniqueBy requires a string field '" + rule.field() + "'");
+    }
+
+    private static StringRule stringRule(
+            @NonNull AnnotatedType type, StringConstraint componentConstraint) {
         StringConstraint text = type.getAnnotation(StringConstraint.class);
-        // Legacy plugin records expose the constraint only through RecordComponent.
+        // Plugin records can expose the constraint only through RecordComponent.
         if (text == null) text = componentConstraint;
-        StringRule string =
-                text == null
-                        ? null
-                        : new StringRule(
-                                text.rejectBlank(),
-                                List.of(text.forbidden()),
-                                text.forbiddenIgnoreCase());
-        return new ValueRule(type.isAnnotationPresent(NonNull.class), fields, element, string);
+        return text == null
+                ? null
+                : new StringRule(
+                        text.rejectBlank(), List.of(text.forbidden()), text.forbiddenIgnoreCase());
     }
 
     private static void validateRecordRules(

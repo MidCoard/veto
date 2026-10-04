@@ -68,7 +68,6 @@ public final class AgentRunner {
     private final @NonNull UUID sessionId;
     private final @NonNull ToolEngine toolEngine;
     final @NonNull ToolExecutionBoundary toolBoundary;
-    private final @NonNull ObjectMapper objectMapper;
     private final @NonNull AgentPersona persona;
     // The execution thread applies queued inputs; volatile publishes them to external queries.
     private volatile @NonNull LlmBinding baseBinding;
@@ -145,7 +144,6 @@ public final class AgentRunner {
         this.owner = owner;
         this.toolEngine = toolEngine;
         this.toolBoundary = toolBoundary;
-        this.objectMapper = objectMapper;
         this.persona = persona;
         this.baseBinding = binding;
         this.submissionInputs = new RunnerCommand.Inputs(binding, Locale.ENGLISH);
@@ -416,10 +414,7 @@ public final class AgentRunner {
             // The stop signal ends execution; mandatory retirement still delivers its events.
             boolean interrupted = Thread.interrupted();
             try {
-                retire(
-                        stopReason == null
-                                ? ExecutionControl.CloseReason.AGENT_DELETED
-                                : stopReason);
+                retire();
             } finally {
                 try {
                     UserContext.clear();
@@ -733,14 +728,15 @@ public final class AgentRunner {
     }
 
     void beginWait(@NonNull Wait reason) {
-        if (!control.open()) return;
+        var current = control;
+        if (!current.open()) return;
         var activity =
-                control instanceof ExecutionControl.Executing executing
+                current instanceof ExecutionControl.Executing executing
                         ? executing.activity()
-                        : control instanceof ExecutionControl.Suspended suspended
+                        : current instanceof ExecutionControl.Suspended suspended
                                 ? suspended.activity()
                                 : ExecutionControl.Activity.MODEL;
-        control = new ExecutionControl.Suspended(control.request(), activity, reason);
+        control = new ExecutionControl.Suspended(current.request(), activity, reason);
         output.events.executionChanged();
     }
 
@@ -822,8 +818,9 @@ public final class AgentRunner {
     }
 
     void setActivity(ExecutionControl.@NonNull Activity activity) {
-        if (!control.open() || control instanceof ExecutionControl.Suspended) return;
-        control = new ExecutionControl.Executing(control.request(), activity);
+        var current = control;
+        if (!current.open() || current instanceof ExecutionControl.Suspended) return;
+        control = new ExecutionControl.Executing(current.request(), activity);
         output.events.executionChanged();
     }
 
@@ -905,11 +902,15 @@ public final class AgentRunner {
         }
     }
 
-    private void retire(ExecutionControl.@NonNull CloseReason reason) {
+    private void retire() {
         RequestHandle active;
         Locale closingLocale = locale();
         synchronized (this) {
-            if (stopReason == null) stopReason = reason;
+            var reason = stopReason;
+            if (reason == null) {
+                reason = ExecutionControl.CloseReason.AGENT_DELETED;
+                stopReason = reason;
+            }
             active = control.request();
             control = new ExecutionControl.Closed(reason);
         }

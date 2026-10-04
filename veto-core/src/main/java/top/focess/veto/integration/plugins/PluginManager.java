@@ -191,10 +191,9 @@ public final class PluginManager implements AutoCloseable {
         public boolean test(@NonNull String caller, @NonNull String provider) {
             var call = ToolCallContextHolder.get();
             if (call == null) return true;
-            var available = sessions;
             var id = call.sessionId();
             if (id == null) return false;
-            var selected = available.getObject();
+            var selected = sessions.getObject();
             return (caller.isEmpty() || selected.includes(id.toString(), caller))
                     && selected.includes(id.toString(), provider);
         }
@@ -221,9 +220,16 @@ public final class PluginManager implements AutoCloseable {
     private final @NonNull ExecutorService lifecycle =
             Executors.newSingleThreadExecutor(
                     Thread.ofPlatform().daemon(true).name("veto-plugin-manager").factory());
+
+    // WHY: construction-time plugin callbacks query the empty registry before first publication.
+    @SuppressWarnings("UnusedAssignment")
     private volatile @NonNull PluginRegistry published = PluginRegistry.empty();
-    private @NonNull Map<String, String> aliases = Map.of();
-    private @NonNull List<Registration> stagedRegistrations = List.of();
+
+    private @NonNull Map<String, String> aliases;
+    private @NonNull List<Registration> stagedRegistrations;
+
+    // WHY: volatile publishes the completed constructor to deferred plugin registration callbacks.
+    @SuppressWarnings("FieldMayBeFinal")
     private volatile boolean ready;
 
     /** Captures a coherent immutable query registry; lifecycle admission remains live. */
@@ -235,6 +241,8 @@ public final class PluginManager implements AutoCloseable {
      * Resolves explicit requested ids to pinned bindings; an empty list selects no plugins.
      * Duplicates and unknown or inactive plugins are rejected.
      */
+    // WHY: these plugin handles belong to this manager and are closed by manager shutdown.
+    @SuppressWarnings("resource")
     public @NonNull List<PluginBinding> selection(@NonNull List<@NonNull String> requested) {
         var publication = registry();
         var ids = requested.stream().map(publication::canonicalId).toList();
@@ -257,10 +265,6 @@ public final class PluginManager implements AutoCloseable {
     private final @NonNull Map<Class<?>, Object> baseServices;
     private final @NonNull PluginConfigurations configurations;
     private final @NonNull PluginActivationStore activationStore;
-    private final @NonNull String pluginDirectory;
-    private final @NonNull String nodeCommand;
-    private final boolean trustedCode;
-    private final long timeoutMillis;
     private final @NonNull ObjectProvider<ToolEngineImpl> toolEngine;
     private final @NonNull ObjectProvider<PluginLlmProviders> llmProviders;
     private final @NonNull ObjectProvider<SessionRepository> sessions;
@@ -359,11 +363,7 @@ public final class PluginManager implements AutoCloseable {
         toolEngine = tools;
         llmProviders = providers;
         this.configurations = configurations;
-        this.pluginDirectory = pluginDirectory;
         this.activationStore = activationStore;
-        this.nodeCommand = nodeCommand;
-        this.trustedCode = trustedCode;
-        this.timeoutMillis = timeoutMillis;
         toolNames = Map.copyOf(configurations.getToolNames());
         var services = new HashMap<Class<?>, Object>();
         hostServices.orderedStream().forEach(granted -> services.putAll(granted.services()));
@@ -647,8 +647,8 @@ public final class PluginManager implements AutoCloseable {
     }
 
     // WHY: ready gates publication, but Checker still needs local guards for this construction
-    // callback.
-    @SuppressWarnings({"method.invocation", "ConstantValue"})
+    // callback. Plugin handles read here remain manager-owned.
+    @SuppressWarnings({"method.invocation", "ConstantValue", "resource"})
     private void registerContribution(
             @UnknownInitialization PluginManager this,
             @NonNull ManagedPlugin plugin,
@@ -699,6 +699,8 @@ public final class PluginManager implements AutoCloseable {
             throw new IllegalArgumentException("Invalid frontend module size");
     }
 
+    // WHY: these plugin handles belong to this manager and are closed by manager shutdown.
+    @SuppressWarnings("resource")
     private static @NonNull ContributionCatalog buildCatalog(
             @NonNull List<Registration> registered) {
         var builder = new ContributionCatalog.Builder();
@@ -761,6 +763,8 @@ public final class PluginManager implements AutoCloseable {
     }
 
     /** Retains the captured contributor until its transaction completes; shutdown drains claims. */
+    // WHY: these plugin handles belong to this manager and are closed by manager shutdown.
+    @SuppressWarnings("resource")
     public synchronized @NonNull ManagedPlugin beginDataCleanup(@NonNull ManagedPlugin runtime) {
         if (closing) throw new IllegalStateException("Plugin manager is closing");
         String id = runtime.identity().id();

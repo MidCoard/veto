@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonSetter;
 import com.fasterxml.jackson.annotation.Nulls;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.PositiveOrZero;
 import java.util.List;
@@ -17,7 +18,10 @@ import top.focess.veto.api.llm.ToolResultPresentationMode;
 public record CreateSessionRequest(
         @NotBlank @NonNull String pattern,
         String name,
-        @NotBlank @NonNull String workspaceRoots,
+        @JsonProperty(required = true)
+                @JsonSetter(nulls = Nulls.FAIL, contentNulls = Nulls.FAIL)
+                @NotEmpty
+                @NonNull List<@NotBlank @NonNull String> workspaceRoots,
         @PositiveOrZero Integer currentWorkspaceRootIndex,
         ToolResultPresentationMode toolResultPresentation,
         @JsonProperty(required = true)

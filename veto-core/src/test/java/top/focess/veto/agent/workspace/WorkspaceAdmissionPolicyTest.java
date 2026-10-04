@@ -25,13 +25,17 @@ class WorkspaceAdmissionPolicyTest {
                 new WorkspaceAdmissionPolicy(
                         configuration(mount, DeployerPolicy.SANDBOXED), emptyProtection());
 
-        Path admitted = policy.admit("alice", mount.resolve("project").toString()).getFirst();
+        Path admitted =
+                policy.validateRoots("alice", List.of(mount.resolve("project").toString()))
+                        .getFirst();
         assertEquals(
                 HostPathInput.canonicalForCreation(mount.resolve("project"), "workspace root"),
                 admitted);
         assertThrows(
                 IllegalArgumentException.class,
-                () -> policy.admit("alice", tempDir.resolve("outside").toString()));
+                () ->
+                        policy.validateRoots(
+                                "alice", List.of(tempDir.resolve("outside").toString())));
     }
 
     @Test
@@ -41,13 +45,14 @@ class WorkspaceAdmissionPolicyTest {
                 new WorkspaceAdmissionPolicy(
                         configuration(mount, DeployerPolicy.TENANT), emptyProtection());
 
-        Path admitted = policy.admit("alice", "/0/project").getFirst();
+        Path admitted = policy.validateRoots("alice", List.of("/0/project")).getFirst();
         assertEquals(
                 HostPathInput.canonicalForCreation(
                         mount.resolve("alice/project"), "workspace root"),
                 admitted);
         assertThrows(
-                IllegalArgumentException.class, () -> policy.admit("alice", "/0/project/nested"));
+                IllegalArgumentException.class,
+                () -> policy.validateRoots("alice", List.of("/0/project/nested")));
     }
 
     @Test
@@ -60,7 +65,7 @@ class WorkspaceAdmissionPolicyTest {
 
         assertEquals(
                 HostPathInput.canonicalForCreation(target, "workspace root"),
-                policy.admit("alice", target.toString()).getFirst());
+                policy.validateRoots("alice", List.of(target.toString())).getFirst());
     }
 
     @Test
@@ -80,24 +85,30 @@ class WorkspaceAdmissionPolicyTest {
             assertThrows(
                     IllegalArgumentException.class,
                     () ->
-                            policy.admit(
+                            policy.validateRoots(
                                     owner,
-                                    mode == DeployerPolicy.TENANT
-                                            ? "/0/project"
-                                            : protectedPath.toString()));
+                                    List.of(
+                                            mode == DeployerPolicy.TENANT
+                                                    ? "/0/project"
+                                                    : protectedPath.toString())));
             assertThrows(
                     IllegalArgumentException.class,
                     () ->
-                            policy.admit(
+                            policy.validateRoots(
                                     owner,
-                                    mode == DeployerPolicy.TENANT
-                                            ? "/0/child"
-                                            : protectedPath.resolve("project").toString()));
+                                    List.of(
+                                            mode == DeployerPolicy.TENANT
+                                                    ? "/0/child"
+                                                    : protectedPath
+                                                            .resolve("project")
+                                                            .toString())));
         }
         var policy =
                 new WorkspaceAdmissionPolicy(
                         configuration(tempDir, DeployerPolicy.PROTECTED), resolver);
-        assertEquals(tempDir.toRealPath(), policy.admit("alice", tempDir.toString()).getFirst());
+        assertEquals(
+                tempDir.toRealPath(),
+                policy.validateRoots("alice", List.of(tempDir.toString())).getFirst());
     }
 
     @Test
@@ -107,8 +118,18 @@ class WorkspaceAdmissionPolicyTest {
                         new DeployerPolicyConfiguration(), mock(ProtectedSetResolver.class));
         var root = tempDir.toAbsolutePath().getRoot();
         if (root == null) throw new AssertionError("absolute path must have a filesystem root");
-        assertEquals(root.toRealPath(), policy.admit("alice", root.toString()).getFirst());
-        assertThrows(IllegalArgumentException.class, () -> policy.admit("alice", " "));
+        assertEquals(
+                root.toRealPath(),
+                policy.validateRoots("alice", List.of(root.toString())).getFirst());
+        assertThrows(
+                IllegalArgumentException.class, () -> policy.validateRoots("alice", List.of(" ")));
+        assertThrows(
+                IllegalArgumentException.class, () -> policy.validateRoots("alice", List.of()));
+        assertThrows(
+                IllegalArgumentException.class,
+                () ->
+                        policy.validateRoots(
+                                "alice", List.of(tempDir.resolve("comma,name").toString())));
     }
 
     private static @NonNull DeployerPolicyConfiguration configuration(
@@ -125,15 +146,19 @@ class WorkspaceAdmissionPolicyTest {
         var policy =
                 new WorkspaceAdmissionPolicy(
                         configuration(base, DeployerPolicy.TENANT), emptyProtection());
-        var selected = policy.admit("alice", "/0/project").getFirst();
+        var selected = policy.validateRoots("alice", List.of("/0/project")).getFirst();
         assertEquals(base.resolve("alice/project"), selected);
         assertEquals("/0/project", policy.toClientPath("alice", selected));
-        assertThrows(IllegalArgumentException.class, () -> policy.admit("alice", "/0"));
         assertThrows(
-                IllegalArgumentException.class, () -> policy.admit("alice", "/0/project/nested"));
+                IllegalArgumentException.class, () -> policy.validateRoots("alice", List.of("/0")));
         assertThrows(
                 IllegalArgumentException.class,
-                () -> policy.admit("alice", base.resolve("alice/project").toString()));
+                () -> policy.validateRoots("alice", List.of("/0/project/nested")));
+        assertThrows(
+                IllegalArgumentException.class,
+                () ->
+                        policy.validateRoots(
+                                "alice", List.of(base.resolve("alice/project").toString())));
         assertThrows(
                 IllegalArgumentException.class, () -> policy.fromClientPath("alice", "/0/../bob"));
         assertThrows(

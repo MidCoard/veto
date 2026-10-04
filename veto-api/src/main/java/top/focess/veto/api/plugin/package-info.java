@@ -1,10 +1,12 @@
+// WHY: Spotless removes same-package imports needed to resolve these package Javadoc links.
 /**
  * Trusted in-process plugin lifecycle and host binding contracts.
  *
  * <p>Contributions publish implementations but grant no authority. {@link
- * PluginContext#service(Class)} exposes optional host-granted Java capabilities, while {@link
- * PluginContext#services()} exposes named JSON protocols implemented by plugins. Neither boundary
- * sandboxes arbitrary Java code.
+ * top.focess.veto.api.plugin.PluginContext#service(Class) PluginContext.service(Class)} exposes
+ * optional host-granted Java capabilities, while {@link
+ * top.focess.veto.api.plugin.PluginContext#services() PluginContext.services()} exposes named JSON
+ * protocols implemented by plugins. Neither boundary sandboxes arbitrary Java code.
  */
 @DefaultQualifier(
         value = Nullable.class,

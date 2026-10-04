@@ -110,6 +110,8 @@ public class SessionPlugins {
     }
 
     /** Opens the model-response policies of the session's selected plugins in catalog order. */
+    // WHY: selected activation handles belong to PluginManager, not this query or adapter.
+    @SuppressWarnings("resource")
     public @NonNull List<ModelResponsePolicy.Exchange> responsePolicies(@NonNull String sessionId) {
         var publication = manager.registry();
         var ids = selectedIds(sessionId, publication);
@@ -153,6 +155,8 @@ public class SessionPlugins {
     }
 
     /** Returns a lazily resolved composite work source of the session's selected plugins. */
+    // WHY: selected activation handles belong to PluginManager, not this query or adapter.
+    @SuppressWarnings("resource")
     public @NonNull AgentInbox workSource(@NonNull String sessionId) {
         return new CompositeAgentInbox(
                 () -> {
@@ -220,6 +224,8 @@ public class SessionPlugins {
         return availability(selected, manager.registry());
     }
 
+    // WHY: selected activation handles belong to PluginManager, not this query or adapter.
+    @SuppressWarnings("resource")
     private @NonNull BoundPluginAvailability availability(
             @NonNull PluginBinding selected, @NonNull PluginRegistry publication) {
         String canonical = publication.canonicalId(selected.id());

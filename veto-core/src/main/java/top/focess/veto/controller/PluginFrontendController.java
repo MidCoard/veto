@@ -77,6 +77,8 @@ public final class PluginFrontendController {
 
     /** Lists the frontend modules contributed by the session's active bound plugins. */
     @GetMapping
+    // WHY: registry plugin handles are borrowed; PluginManager owns their lifetime.
+    @SuppressWarnings("resource")
     public @NonNull ResponseEntity<List<Module>> list(@PathVariable @NonNull String name) {
         var ids = ids(session(name));
         var publication = plugins.registry();
@@ -116,8 +118,8 @@ public final class PluginFrontendController {
      * malformed requests, 404 on unknown session/agent/module, 503 on plugin failure.
      */
     @PostMapping("/actions")
-    @SuppressWarnings(
-            "ConstantValue") // WHY: Jackson may deserialize missing fields as null despite @NonNull
+    // WHY: Jackson may omit fields despite @NonNull; registry handles remain PluginManager-owned.
+    @SuppressWarnings({"ConstantValue", "resource"})
     public @NonNull ResponseEntity<JsonNode> act(
             @PathVariable @NonNull String name, @RequestBody @NonNull ActionRequest request) {
         var session = session(name);

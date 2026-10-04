@@ -213,7 +213,8 @@ val localPluginPackages by tasks.registering {
                     }
             File(folder, "plugin.json")
                     .writeText(
-                            """{"schemaVersion":1,"id":"$id","name":"$displayName","version":"$versionStr","type":"java","entryPoint":"$entryPoint","artifact":"plugin.jar"}""" + "\n")
+                            """{"schemaVersion":1,"id":"$id","name":"$displayName","version":"$versionStr","type":"java","entryPoint":"$entryPoint","artifact":"plugin.jar"}
+""")
         }
         println("Optional plugin packages assembled: ${root.absolutePath}")
     }

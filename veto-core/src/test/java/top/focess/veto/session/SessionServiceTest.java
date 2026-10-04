@@ -336,7 +336,11 @@ class SessionServiceTest {
 
         SessionEntity session =
                 service.createSession(
-                        "alice", "coder", "mysession", CWD, ToolResultPresentationMode.DETAILED);
+                        "alice",
+                        "coder",
+                        "mysession",
+                        List.of(CWD),
+                        ToolResultPresentationMode.DETAILED);
         assertEquals("mysession", session.getName());
         assertEquals(ToolResultPresentationMode.DETAILED, session.getToolResultPresentation());
 
@@ -380,7 +384,7 @@ class SessionServiceTest {
                         mock(PluginDataCleanup.class),
                         mock(RequestContinuationStore.class));
 
-        SessionEntity session = service.createSession("alice", "coder", null, CWD);
+        SessionEntity session = service.createSession("alice", "coder", null, List.of(CWD));
         assertTrue(
                 session.getName().startsWith("coder-"),
                 "an implicit session name must be derived from the pattern name");
@@ -898,9 +902,10 @@ class SessionServiceTest {
         AgentPatternEntity pattern =
                 new AgentPatternEntity(
                         "coder", "DEEPSEEK", "deepseek-v4", "pattern-coder", "alice");
-        String roots = fakeDir("root-a") + "," + fakeDir("root-b");
+        var roots = List.of(fakeDir("root-a"), fakeDir("root-b"));
         when(patterns.findByNameAndOwner("coder", "alice")).thenReturn(Optional.of(pattern));
-        when(sessions.findByOwnerAndNameAndWorkspaceRoots("alice", "selected", roots))
+        when(sessions.findByOwnerAndNameAndWorkspaceRoots(
+                        "alice", "selected", String.join(",", roots)))
                 .thenReturn(Optional.empty());
         when(sessions.save(any(SessionEntity.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
@@ -971,7 +976,7 @@ class SessionServiceTest {
                                         "alice",
                                         "coder",
                                         "invalid-root",
-                                        roots,
+                                        List.of(roots),
                                         1,
                                         ToolResultPresentationMode.BASIC));
 
@@ -1360,7 +1365,7 @@ class SessionServiceTest {
                         mock(PluginDataCleanup.class),
                         mock(RequestContinuationStore.class));
 
-        SessionEntity created = service.createSession("alice", "coder", null, projectB);
+        SessionEntity created = service.createSession("alice", "coder", null, List.of(projectB));
         assertTrue(
                 created.getName().startsWith("coder-"),
                 "implicit name must use the pattern as a prefix even in a different workspace");
@@ -1420,7 +1425,7 @@ class SessionServiceTest {
         IllegalArgumentException ex =
                 assertThrows(
                         IllegalArgumentException.class,
-                        () -> service.createSession("alice", "coder", "ds", projectA));
+                        () -> service.createSession("alice", "coder", "ds", List.of(projectA)));
         assertTrue(
                 String.valueOf(ex.getMessage()).contains("ds"),
                 "error names the session so the user can identify it");
@@ -1474,7 +1479,7 @@ class SessionServiceTest {
                         mock(PluginDataCleanup.class),
                         mock(RequestContinuationStore.class));
 
-        SessionEntity created = service.createSession("alice", "coder", null, projectA);
+        SessionEntity created = service.createSession("alice", "coder", null, List.of(projectA));
         assertTrue(
                 created.getName().matches("coder-[0-9a-f]{8}"),
                 "must generate coder-xxxxxxxx when bare 'coder' is taken, got: "

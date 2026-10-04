@@ -58,7 +58,7 @@ class SessionAgentsTest {
                         eq("owner"),
                         eq("coder"),
                         isNull(),
-                        eq("/0/project"),
+                        eq(List.of("/0/project")),
                         eq(0),
                         any(),
                         eq(List.of())))
@@ -74,7 +74,7 @@ class SessionAgentsTest {
                         post("/api/sessions")
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content(
-                                        "{\"pattern\":\"coder\",\"workspaceRoots\":\"/0/project\",\"pluginIds\":[]}"))
+                                        "{\"pattern\":\"coder\",\"workspaceRoots\":[\"/0/project\"],\"pluginIds\":[]}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.workspaceRoots").value("/0/project"))
                 .andExpect(jsonPath("$.name").value("generated"));
@@ -87,14 +87,18 @@ class SessionAgentsTest {
                 .thenReturn("/workspace");
         for (String body :
                 List.of(
-                        "{\"pattern\":\"coder\",\"workspaceRoots\":\"/workspace\"}",
-                        "{\"pattern\":\"coder\",\"workspaceRoots\":\"/workspace\",\"pluginIds\":null}",
-                        "{\"pattern\":\"coder\",\"workspaceRoots\":\"/workspace\",\"pluginIds\":[null]}",
-                        "{\"workspaceRoots\":\"/workspace\",\"pluginIds\":[]}",
-                        "{\"pattern\":\" \",\"workspaceRoots\":\"/workspace\",\"pluginIds\":[]}",
+                        "{\"pattern\":\"coder\",\"workspaceRoots\":[\"/workspace\"]}",
+                        "{\"pattern\":\"coder\",\"workspaceRoots\":[\"/workspace\"],\"pluginIds\":null}",
+                        "{\"pattern\":\"coder\",\"workspaceRoots\":[\"/workspace\"],\"pluginIds\":[null]}",
+                        "{\"workspaceRoots\":[\"/workspace\"],\"pluginIds\":[]}",
+                        "{\"pattern\":\" \",\"workspaceRoots\":[\"/workspace\"],\"pluginIds\":[]}",
                         "{\"pattern\":\"coder\",\"pluginIds\":[]}",
-                        "{\"pattern\":\"coder\",\"workspaceRoots\":\" \",\"pluginIds\":[]}",
-                        "{\"pattern\":\"coder\",\"workspaceRoots\":\"/workspace\",\"currentWorkspaceRootIndex\":-1,\"pluginIds\":[]}")) {
+                        "{\"pattern\":\"coder\",\"workspaceRoots\":null,\"pluginIds\":[]}",
+                        "{\"pattern\":\"coder\",\"workspaceRoots\":[],\"pluginIds\":[]}",
+                        "{\"pattern\":\"coder\",\"workspaceRoots\":[null],\"pluginIds\":[]}",
+                        "{\"pattern\":\"coder\",\"workspaceRoots\":\"/workspace\",\"pluginIds\":[]}",
+                        "{\"pattern\":\"coder\",\"workspaceRoots\":[\" \"],\"pluginIds\":[]}",
+                        "{\"pattern\":\"coder\",\"workspaceRoots\":[\"/workspace\"],\"currentWorkspaceRootIndex\":-1,\"pluginIds\":[]}")) {
             mvc.perform(post("/api/sessions").contentType(MediaType.APPLICATION_JSON).content(body))
                     .andExpect(status().isBadRequest());
         }
@@ -104,7 +108,7 @@ class SessionAgentsTest {
                         eq("owner"),
                         eq("coder"),
                         isNull(),
-                        eq("/workspace"),
+                        eq(List.of("/workspace", "/second")),
                         eq(0),
                         any(),
                         eq(List.of())))
@@ -113,7 +117,7 @@ class SessionAgentsTest {
                         post("/api/sessions")
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content(
-                                        "{\"pattern\":\"coder\",\"workspaceRoots\":\"/workspace\",\"pluginIds\":[]}"))
+                                        "{\"pattern\":\"coder\",\"workspaceRoots\":[\"/workspace\",\"/second\"],\"pluginIds\":[]}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.name").value("generated"));
         verify(sessions)
@@ -121,7 +125,7 @@ class SessionAgentsTest {
                         eq("owner"),
                         eq("coder"),
                         isNull(),
-                        eq("/workspace"),
+                        eq(List.of("/workspace", "/second")),
                         eq(0),
                         any(),
                         eq(List.of()));

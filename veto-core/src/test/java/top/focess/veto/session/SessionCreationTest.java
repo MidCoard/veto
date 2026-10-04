@@ -85,7 +85,7 @@ class SessionCreationTest {
         var failure =
                 assertThrows(
                         IllegalArgumentException.class,
-                        () -> service.createSession("alice", "coder", null, "/0/project"));
+                        () -> service.createSession("alice", "coder", null, List.of("/0/project")));
         var message = failure.getMessage();
         if (message == null) throw new AssertionError("missing failure message");
         assertTrue(message.contains("/0/project"));
@@ -140,7 +140,7 @@ class SessionCreationTest {
         for (var root : List.of(existingRoot, tempDir, existingRoot.resolve("child"))) {
             assertThrows(
                     IllegalArgumentException.class,
-                    () -> service.createSession("alice", "coder", null, root.toString()));
+                    () -> service.createSession("alice", "coder", null, List.of(root.toString())));
         }
         assertFalse(Files.exists(existingRoot));
         verify(sessions, never()).save(any(SessionEntity.class));
@@ -150,8 +150,8 @@ class SessionCreationTest {
     @Test
     void ownerCanReuseWorkspaceAndDefaultsSelectNoPlugins(@TempDir @NonNull Path tempDir) {
         var root = tempDir.resolve("project");
-        var first = service.createSession("alice", "coder", null, root.toString());
-        var second = service.createSession("alice", "coder", null, root.toString());
+        var first = service.createSession("alice", "coder", null, List.of(root.toString()));
+        var second = service.createSession("alice", "coder", null, List.of(root.toString()));
         assertEquals(first.getWorkspaceRoots(), second.getWorkspaceRoots());
         assertTrue(Files.isDirectory(root));
         assertEquals(List.of(), second.getPluginBindings());
@@ -166,7 +166,7 @@ class SessionCreationTest {
                 .thenThrow(new IllegalArgumentException("unavailable plugin"));
         assertThrows(
                 IllegalArgumentException.class,
-                () -> service.createSession("alice", "coder", null, root.toString()));
+                () -> service.createSession("alice", "coder", null, List.of(root.toString())));
         assertFalse(Files.exists(root));
         verify(sessions, never()).save(any(SessionEntity.class));
         verifyNoInteractions(agents);
@@ -189,7 +189,10 @@ class SessionCreationTest {
                 IllegalArgumentException.class,
                 () ->
                         service.createSession(
-                                "alice", "coder", null, alias.resolve("child").toString()));
+                                "alice",
+                                "coder",
+                                null,
+                                List.of(alias.resolve("child").toString())));
         assertFalse(Files.exists(existingRoot.resolve("child")));
         verify(sessions, never()).save(any(SessionEntity.class));
     }
@@ -228,10 +231,12 @@ class SessionCreationTest {
         TransactionSynchronizationManager.initSynchronization();
         TransactionSynchronizationManager.setActualTransactionActive(true);
         try {
-            var first = service.createSession("alice", "coder", null, root.toString());
+            var first = service.createSession("alice", "coder", null, List.of(root.toString()));
             var second =
                     executor.submit(
-                            () -> service.createSession("bob", "coder", null, root.toString()));
+                            () ->
+                                    service.createSession(
+                                            "bob", "coder", null, List.of(root.toString())));
             assertTrue(secondValidated.await(5, TimeUnit.SECONDS));
             assertThrows(TimeoutException.class, () -> second.get(100, TimeUnit.MILLISECONDS));
             if (committed) persisted.set(first);

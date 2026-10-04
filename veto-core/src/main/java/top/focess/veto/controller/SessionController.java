@@ -81,7 +81,7 @@ public class SessionController {
     /**
      * Creates a session from a pattern, declaring its workspace roots.
      *
-     * @param body {@code pattern} and {@code workspaceRoots} (CSV, multi-root) are both required;
+     * @param body {@code pattern} and {@code workspaceRoots} (a nonempty list) are both required;
      *     {@code pluginIds} is required and may be empty; {@code name} is optional. {@code
      *     currentWorkspaceRootIndex} selects the root used for relative paths and process execution
      *     and defaults to zero.
@@ -93,7 +93,7 @@ public class SessionController {
         String user = vault.currentUser();
         if (user == null) throw new IllegalStateException(Msg.get("error.auth.notLoggedIn"));
         String pattern = body.pattern();
-        String roots = body.workspaceRoots();
+        var roots = body.workspaceRoots();
         Integer rootIndex = body.currentWorkspaceRootIndex();
         var created =
                 service.createSession(

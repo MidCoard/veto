@@ -249,10 +249,9 @@ final class AgentContinuationExecution {
         var events = pendingObservations(service, waiting);
         if (events.isEmpty()) return null;
         if (control.waiting(Wait.PLUGIN)) {
-            if (events.stream().noneMatch(event -> belongsToActiveRequest(event, waiting)))
+            if (waiting == null
+                    || events.stream().noneMatch(event -> belongsToActiveRequest(event, waiting)))
                 return null;
-            if (waiting == null)
-                throw new IllegalStateException("Plugin work has no request owner");
             return new QueuedRequest(new AgentAction.WorkAction(), waiting);
         }
         AgentInbox.Observation first = null;
