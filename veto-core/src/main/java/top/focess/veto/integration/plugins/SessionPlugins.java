@@ -41,16 +41,12 @@ public class SessionPlugins {
     }
 
     /**
-     * Resolves the requested ids (null selects every installed plugin) to pinned bindings;
-     * duplicates and unknown or inactive plugins are rejected.
+     * Resolves explicit requested ids to pinned bindings; an empty list selects no plugins.
+     * Duplicates and unknown or inactive plugins are rejected.
      */
-    public @NonNull List<PluginBinding> selection(List<String> requested) {
+    public @NonNull List<PluginBinding> selection(@NonNull List<@NonNull String> requested) {
         var publication = manager.registry();
-        var available = publication.plugins();
-        var ids =
-                requested == null
-                        ? available.stream().map(p -> p.identity().id()).toList()
-                        : requested.stream().map(publication::canonicalId).toList();
+        var ids = requested.stream().map(publication::canonicalId).toList();
         if (ids.size() != Set.copyOf(ids).size())
             throw new IllegalArgumentException("Duplicate plugin selection");
         return ids.stream()

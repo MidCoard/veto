@@ -13,6 +13,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.screening.DeployerPolicy;
 import top.focess.veto.agent.screening.DeployerPolicyConfiguration;
+import top.focess.veto.agent.screening.ProtectedSetResolver;
 import top.focess.veto.security.HostPathInput;
 
 /**
@@ -28,10 +29,14 @@ public final class WorkspaceAdmissionPolicy {
 
     private final @NonNull List<@NonNull Path> deployerRoots;
     private final @NonNull DeployerPolicy deployerPolicy;
+    private final @NonNull ProtectedSetResolver protectedSets;
 
     /** Builds the policy from deployer configuration, canonicalizing the configured roots. */
     @Autowired
-    public WorkspaceAdmissionPolicy(@NonNull DeployerPolicyConfiguration configuration) {
+    public WorkspaceAdmissionPolicy(
+            @NonNull DeployerPolicyConfiguration configuration,
+            @NonNull ProtectedSetResolver protectedSets) {
+        this.protectedSets = protectedSets;
         DeployerPolicy policy = configuration.getDeployerPolicy();
         this.deployerPolicy = policy;
         this.deployerRoots =
@@ -42,7 +47,10 @@ public final class WorkspaceAdmissionPolicy {
 
     /** Creates the policy over explicit deployer roots with canonicalization enabled. */
     public WorkspaceAdmissionPolicy(
-            @NonNull List<@NonNull Path> deployerRoots, @NonNull DeployerPolicy deployerPolicy) {
+            @NonNull List<@NonNull Path> deployerRoots,
+            @NonNull DeployerPolicy deployerPolicy,
+            @NonNull ProtectedSetResolver protectedSets) {
+        this.protectedSets = protectedSets;
         this.deployerRoots =
                 deployerRoots.stream()
                         .map(path -> canonicalForCreation(path, "configured workspace root"))
@@ -53,7 +61,43 @@ public final class WorkspaceAdmissionPolicy {
     /** Validates and canonicalizes a CSV declaration without mutating the filesystem. */
     public @NonNull List<@NonNull Path> admit(
             @NonNull String owner, @NonNull String workspaceRoots) {
-        List<Path> supplied =
+        var supplied = canonicalRoots(workspaceRoots);
+        if (deployerPolicy == DeployerPolicy.SANDBOXED || deployerPolicy == DeployerPolicy.TENANT) {
+            if (deployerRoots.isEmpty()) {
+                throw new IllegalStateException(
+                        deployerPolicy + " requires at least one configured policy root");
+            }
+            var authorizedBases =
+                    deployerPolicy == DeployerPolicy.TENANT ? tenantBases(owner) : deployerRoots;
+            for (Path path : supplied) {
+                if (authorizedBases.stream().noneMatch(path::startsWith)) {
+                    throw new IllegalArgumentException(
+                            "workspace root is outside the deployer-authorized scope: " + path);
+                }
+            }
+        }
+        if (deployerPolicy != DeployerPolicy.FULL_ACCESS) {
+            var workspace =
+                    new Workspace(
+                            supplied.stream()
+                                    .map(path -> WorkspaceRoot.of(path, TrustMarker.OWNED))
+                                    .toList(),
+                            PathMode.REAL,
+                            0);
+            for (Path protectedPath :
+                    protectedSets.resolve(deployerPolicy, owner, workspace).paths()) {
+                var canonicalProtected = canonicalForCreation(protectedPath, "protected path");
+                if (supplied.stream().anyMatch(root -> root.startsWith(canonicalProtected))) {
+                    throw new IllegalArgumentException("workspace root is inside a protected path");
+                }
+            }
+        }
+        return supplied;
+    }
+
+    /** Canonicalizes declared roots, including filesystem roots, without creating directories. */
+    public static @NonNull List<@NonNull Path> canonicalRoots(@NonNull String workspaceRoots) {
+        var supplied =
                 Arrays.stream(workspaceRoots.split(","))
                         .map(String::trim)
                         .filter(root -> !root.isEmpty())
@@ -62,22 +106,6 @@ public final class WorkspaceAdmissionPolicy {
                         .toList();
         if (supplied.isEmpty()) {
             throw new IllegalArgumentException("no workspace roots declared");
-        }
-        if (deployerPolicy != DeployerPolicy.SANDBOXED && deployerPolicy != DeployerPolicy.TENANT) {
-            return supplied;
-        }
-        if (deployerRoots.isEmpty()) {
-            throw new IllegalStateException(
-                    deployerPolicy + " requires at least one configured policy root");
-        }
-
-        List<Path> authorizedBases =
-                deployerPolicy == DeployerPolicy.TENANT ? tenantBases(owner) : deployerRoots;
-        for (Path path : supplied) {
-            if (authorizedBases.stream().noneMatch(path::startsWith)) {
-                throw new IllegalArgumentException(
-                        "workspace root is outside the deployer-authorized scope: " + path);
-            }
         }
         return supplied;
     }

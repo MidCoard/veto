@@ -111,13 +111,16 @@ class SessionPluginsUnavailableTest {
     @Test
     void explicitEmptySelectionRemainsEmptyAndReadsDoNotWrite() {
         var manager = mock(PluginManager.class);
-        publication(manager, List.of());
+        var installed = mock(ManagedPlugin.class);
+        when(installed.identity()).thenReturn(new PluginIdentity("installed.plugin", "1.0.0"));
+        publication(manager, List.of(installed));
         var sessions = mock(SessionRepository.class);
         var session = new SessionEntity("owner", "plugin-free");
         session.setPluginBindings(List.of());
         when(sessions.findById(session.getId())).thenReturn(Optional.of(session));
         var selected = new SessionPlugins(manager, sessions);
 
+        assertEquals(List.of(), selected.selection(List.of()));
         assertEquals(List.of(), selected.bindings(session.getId()));
         assertEquals(List.of(), selected.status(session.getId()));
         verify(sessions, times(2)).findById(session.getId());

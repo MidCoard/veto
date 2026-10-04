@@ -9,6 +9,7 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.locks.ReentrantLock;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -51,6 +52,10 @@ import top.focess.veto.security.UserAdminService;
  *
  * <p>Plugin-owned data uses host-issued storage scopes. The scope carries the account's persisted,
  * incarnation-specific storage identity rather than a username-derived identifier.
+ *
+ * <p>Concurrent create requests are serialized through commit or rollback so workspace ownership
+ * checks observe the previous committed claim. This protects one backend host; independent hosts
+ * require database-level coordination. Active-terminal mappings support concurrent access.
  */
 @Service
 public class SessionService {
@@ -69,6 +74,9 @@ public class SessionService {
     private final @NonNull SessionHistoryLoader historyLoader;
     private final @NonNull ModelTierRegistry tierRegistry;
     private final @NonNull WorkspaceAdmissionPolicy workspaceAdmissionPolicy;
+
+    /** Serializes workspace claims through transaction completion on this backend host. */
+    private final @NonNull ReentrantLock sessionCreation = new ReentrantLock();
 
     /** Per-terminal active session id. Key = terminal id, value = session id. */
     private final @NonNull ConcurrentHashMap<String, String> activeSessions =
@@ -121,7 +129,7 @@ public class SessionService {
                 System.getProperty("user.dir"),
                 0,
                 ToolResultPresentationMode.BASIC,
-                null);
+                List.of());
     }
 
     /**
@@ -143,15 +151,15 @@ public class SessionService {
                 System.getProperty("user.dir"),
                 0,
                 ToolResultPresentationMode.BASIC,
-                null);
+                List.of());
     }
 
     /**
      * Creates a session + its primary agent from a pattern with the session's workspace. Does NOT
      * auto-activate. The {@code workspaceRoots} (CSV of host paths) is persisted on the session so
      * every agent the session spawns resolves paths against these roots. Never {@code null} - the
-     * terminal path supplies its cwd and a remote UI must declare roots explicitly; a blank value
-     * falls back to the JVM working dir at activation.
+     * terminal path supplies its cwd and a remote UI must declare roots explicitly; blank
+     * declarations are rejected.
      *
      * @param owner the session owner
      * @param patternName the pattern to instantiate the primary agent from
@@ -173,7 +181,7 @@ public class SessionService {
                 workspaceRoots,
                 0,
                 ToolResultPresentationMode.BASIC,
-                null);
+                List.of());
     }
 
     /** Creates a session with an explicit tool-result presentation mode; the root index is 0. */
@@ -185,13 +193,16 @@ public class SessionService {
             @NonNull String workspaceRoots,
             @NonNull ToolResultPresentationMode toolResultPresentation) {
         return createSession(
-                owner, patternName, sessionName, workspaceRoots, 0, toolResultPresentation, null);
+                owner,
+                patternName,
+                sessionName,
+                workspaceRoots,
+                0,
+                toolResultPresentation,
+                List.of());
     }
 
-    /**
-     * Creates a session with an explicit current workspace-root index and the default installed
-     * plugin selection.
-     */
+    /** Creates a session with an explicit current workspace-root index and no plugins selected. */
     @Transactional
     public @NonNull SessionEntity createSession(
             @NonNull String owner,
@@ -207,13 +218,13 @@ public class SessionService {
                 workspaceRoots,
                 currentWorkspaceRootIndex,
                 toolResultPresentation,
-                null);
+                List.of());
     }
 
     /**
      * Full session-creation path. Admits and materializes the workspace roots, resolves the session
      * name (auto-generated and workspace-unique when null/empty, otherwise uniqueness-checked),
-     * applies the optional plugin selection, and persists the session with its primary agent
+     * applies the explicit plugin selection, and persists the session with its primary agent
      * instantiated from the pattern. Does NOT auto-activate.
      *
      * @throws IllegalArgumentException if the pattern is unknown, the workspace is rejected, the
@@ -227,7 +238,7 @@ public class SessionService {
             @NonNull String workspaceRoots,
             int currentWorkspaceRootIndex,
             @NonNull ToolResultPresentationMode toolResultPresentation,
-            List<String> pluginIds) {
+            @NonNull List<@NonNull String> pluginIds) {
         AgentPatternEntity pattern =
                 patterns.findByNameAndOwner(patternName, owner)
                         .orElseThrow(
@@ -237,10 +248,8 @@ public class SessionService {
                                                         "error.session.patternNotFound",
                                                         patternName)));
 
-        // The workspace roots must exist before the agent can operate in them - create missing
-        // directories up front so the model never has to mkdir its own workspace (observed live:
-        // a model burning a turn on `cmd /c if not exist ... mkdir ...` for a fresh root).
-        List<Path> declaredRoots;
+        // Validate every declaration before materializing the agent's working directories.
+        List<@NonNull Path> declaredRoots;
         try {
             declaredRoots = workspaceAdmissionPolicy.admit(owner, workspaceRoots);
         } catch (RuntimeException e) {
@@ -256,64 +265,111 @@ public class SessionService {
                     "currentWorkspaceRootIndex must be between 0 and "
                             + (declaredRoots.size() - 1));
         }
-        for (Path admittedRoot : declaredRoots) {
-            try {
-                Files.createDirectories(admittedRoot);
-            } catch (Exception e) {
-                throw new IllegalArgumentException(
-                        Msg.get(
-                                "error.session.workspaceInvalid",
-                                admittedRoot,
-                                e.getMessage() == null
-                                        ? e.getClass().getSimpleName()
-                                        : e.getMessage()),
-                        e);
-            }
-        }
         String admittedWorkspaceRoots =
                 String.join(",", declaredRoots.stream().map(Path::toString).toList());
 
-        String resolvedName;
-        if (sessionName == null || sessionName.isEmpty()) {
-            // Implicit session name: always produce a workspace-unique name so `/session create ds`
-            // succeeds even when another `ds` session exists in this workspace. The generated name
-            // keeps the pattern name as a human-readable prefix.
-            resolvedName = generateUniqueSessionName(owner, patternName, admittedWorkspaceRoots);
-        } else {
-            resolvedName = sessionName;
-            // Uniqueness is scoped to (owner, name, workspaceRoots): the same name is allowed in a
-            // different workspace. The match is an exact CSV-string compare; a legacy row with
-            // workspace_roots = NULL is a distinct workspace from any new row (SQL NULL != 'X'), so
-            // it does not block creation in a concrete workspace.
-            if (sessions.findByOwnerAndNameAndWorkspaceRoots(
-                            owner, resolvedName, admittedWorkspaceRoots)
-                    .isPresent()) {
-                throw new IllegalArgumentException(
-                        Msg.get("error.session.nameExists", resolvedName, admittedWorkspaceRoots));
+        var selectedPlugins = sessionPlugins.selection(pluginIds);
+        ModelBinding cache = tierRegistry.resolve(owner, pattern.getTier());
+        sessionCreation.lock();
+        boolean releaseHere = true;
+        try {
+            if (TransactionSynchronizationManager.isActualTransactionActive()) {
+                TransactionSynchronizationManager.registerSynchronization(
+                        new TransactionSynchronization() {
+                            @Override
+                            public void afterCompletion(int status) {
+                                sessionCreation.unlock();
+                            }
+                        });
+                releaseHere = false;
+            }
+            requireWorkspaceAvailable(owner, declaredRoots);
+            String resolvedName;
+            if (sessionName == null || sessionName.isEmpty()) {
+                // Implicit session name: always produce a workspace-unique name so `/session create
+                // ds`
+                // succeeds even when another `ds` session exists in this workspace. The generated
+                // name
+                // keeps the pattern name as a human-readable prefix.
+                resolvedName =
+                        generateUniqueSessionName(owner, patternName, admittedWorkspaceRoots);
+            } else {
+                resolvedName = sessionName;
+                // Uniqueness is scoped to (owner, name, workspaceRoots): the same name is allowed
+                // in a
+                // different workspace. The match is an exact CSV-string compare; a legacy row with
+                // workspace_roots = NULL is a distinct workspace from any new row (SQL NULL !=
+                // 'X'), so
+                // it does not block creation in a concrete workspace.
+                if (sessions.findByOwnerAndNameAndWorkspaceRoots(
+                                owner, resolvedName, admittedWorkspaceRoots)
+                        .isPresent()) {
+                    throw new IllegalArgumentException(
+                            Msg.get(
+                                    "error.session.nameExists",
+                                    resolvedName,
+                                    admittedWorkspaceRoots));
+                }
+            }
+
+            for (Path admittedRoot : declaredRoots) {
+                try {
+                    Files.createDirectories(admittedRoot);
+                } catch (Exception e) {
+                    throw new IllegalArgumentException(
+                            Msg.get(
+                                    "error.session.workspaceInvalid",
+                                    admittedRoot,
+                                    e.getMessage() == null
+                                            ? e.getClass().getSimpleName()
+                                            : e.getMessage()),
+                            e);
+                }
+            }
+
+            SessionEntity session =
+                    new SessionEntity(
+                            owner,
+                            resolvedName,
+                            admittedWorkspaceRoots,
+                            currentWorkspaceRootIndex,
+                            toolResultPresentation);
+            session.setPluginBindings(selectedPlugins);
+            session = sessions.save(session);
+            AgentEntity agent =
+                    new AgentEntity(
+                            session.getId(),
+                            pattern.getId(),
+                            AgentEntity.Role.PRIMARY,
+                            resolvedName,
+                            pattern.getTier(),
+                            cache);
+            agent = agents.save(agent);
+            session.setPrimaryAgentId(agent.getId());
+            return sessions.save(session);
+        } finally {
+            if (releaseHere) sessionCreation.unlock();
+        }
+    }
+
+    /** Checks canonical overlap with persisted claims while the creation lock is held. */
+    private void requireWorkspaceAvailable(
+            @NonNull String owner, @NonNull List<@NonNull Path> roots) {
+        for (var session : sessions.findByOwnerNot(owner)) {
+            String configuredRoots = session.getWorkspaceRoots();
+            var occupied =
+                    WorkspaceAdmissionPolicy.canonicalRoots(
+                            configuredRoots == null || configuredRoots.isBlank()
+                                    ? System.getProperty("user.dir", ".")
+                                    : configuredRoots);
+            for (Path root : roots) {
+                if (occupied.stream()
+                        .anyMatch(path -> root.startsWith(path) || path.startsWith(root))) {
+                    throw new IllegalArgumentException(
+                            "workspace overlaps another owner's session");
+                }
             }
         }
-
-        SessionEntity session =
-                new SessionEntity(
-                        owner,
-                        resolvedName,
-                        admittedWorkspaceRoots,
-                        currentWorkspaceRootIndex,
-                        toolResultPresentation);
-        session.setPluginBindings(sessionPlugins.selection(pluginIds));
-        session = sessions.save(session);
-        ModelBinding cache = tierRegistry.resolve(owner, pattern.getTier());
-        AgentEntity agent =
-                new AgentEntity(
-                        session.getId(),
-                        pattern.getId(),
-                        AgentEntity.Role.PRIMARY,
-                        resolvedName,
-                        pattern.getTier(),
-                        cache);
-        agent = agents.save(agent);
-        session.setPrimaryAgentId(agent.getId());
-        return sessions.save(session);
     }
 
     /**

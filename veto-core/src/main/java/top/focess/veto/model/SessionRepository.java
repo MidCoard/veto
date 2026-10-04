@@ -13,6 +13,9 @@ public interface SessionRepository extends JpaRepository<SessionEntity, String> 
     /** All sessions owned by {@code owner}. */
     @NonNull List<SessionEntity> findByOwner(@NonNull String owner);
 
+    /** Existing sessions whose filesystem roots belong to another owner. */
+    @NonNull List<@NonNull SessionEntity> findByOwnerNot(@NonNull String owner);
+
     /**
      * The owner's most-recently-active session (max lastActiveAt); used to auto-resume on
      * reconnect.
@@ -47,8 +50,8 @@ public interface SessionRepository extends JpaRepository<SessionEntity, String> 
      * <p>A DB-level unique constraint on {@code (owner, name, workspace_roots)} would be the
      * defense-in-depth complement; it is not added here because JPA's {@code ddl-auto=update} does
      * not introduce new constraints on an existing table, so it would require a hand-written
-     * migration. The application-layer check is sufficient under single-writer semantics (JPA
-     * within a transaction).
+     * migration. SessionService serializes creation through transaction completion on a single
+     * backend host.
      */
     @NonNull Optional<SessionEntity> findByOwnerAndNameAndWorkspaceRoots(
             @NonNull String owner, @NonNull String name, @NonNull String workspaceRoots);

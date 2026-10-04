@@ -73,8 +73,9 @@ public class SessionController {
      * Creates a session from a pattern, declaring its workspace roots.
      *
      * @param body {@code pattern} and {@code workspaceRoots} (CSV, multi-root) are both required;
-     *     {@code name} is optional. {@code currentWorkspaceRootIndex} selects the root used for
-     *     relative paths and process execution and defaults to zero.
+     *     {@code pluginIds} is required and may be empty; {@code name} is optional. {@code
+     *     currentWorkspaceRootIndex} selects the root used for relative paths and process execution
+     *     and defaults to zero.
      */
     @PostMapping
     @SuppressWarnings(

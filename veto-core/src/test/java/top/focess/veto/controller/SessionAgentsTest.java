@@ -2,6 +2,7 @@ package top.focess.veto.controller;
 
 import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 import java.util.List;
@@ -9,11 +10,13 @@ import java.util.Optional;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import top.focess.veto.agent.SessionAgentRegistry;
 import top.focess.veto.agent.identity.Role;
 import top.focess.veto.api.agent.AgentState;
+import top.focess.veto.model.SessionEntity;
 import top.focess.veto.session.SessionHistoryLoader;
 import top.focess.veto.session.SessionService;
 import top.focess.veto.vault.KeysteadVault;
@@ -28,6 +31,46 @@ class SessionAgentsTest {
                             new SessionController(
                                     sessions, vault, history, mock(), registry, mock()))
                     .build();
+
+    @Test
+    void creationRequiresAnExplicitPluginArrayAndAllowsBackendNaming() throws Exception {
+        when(vault.currentUser()).thenReturn("owner");
+        for (String body :
+                List.of(
+                        "{\"pattern\":\"coder\",\"workspaceRoots\":\"/workspace\"}",
+                        "{\"pattern\":\"coder\",\"workspaceRoots\":\"/workspace\",\"pluginIds\":null}",
+                        "{\"pattern\":\"coder\",\"workspaceRoots\":\"/workspace\",\"pluginIds\":[null]}")) {
+            mvc.perform(post("/api/sessions").contentType(MediaType.APPLICATION_JSON).content(body))
+                    .andExpect(status().isBadRequest());
+        }
+        verifyNoInteractions(sessions);
+        var created = new SessionEntity("owner", "generated", "/workspace");
+        when(sessions.createSession(
+                        eq("owner"),
+                        eq("coder"),
+                        isNull(),
+                        eq("/workspace"),
+                        eq(0),
+                        any(),
+                        eq(List.of())))
+                .thenReturn(created);
+        mvc.perform(
+                        post("/api/sessions")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(
+                                        "{\"pattern\":\"coder\",\"workspaceRoots\":\"/workspace\",\"pluginIds\":[]}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.name").value("generated"));
+        verify(sessions)
+                .createSession(
+                        eq("owner"),
+                        eq("coder"),
+                        isNull(),
+                        eq("/workspace"),
+                        eq(0),
+                        any(),
+                        eq(List.of()));
+    }
 
     @Test
     void conversationHistoryOnlyLoadsThePrimaryStream() throws Exception {

@@ -1,6 +1,7 @@
 package top.focess.veto.agent;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.mock;
 import static top.focess.veto.agent.AgentRunnerTest.EPISODE_TIMEOUT;
 import static top.focess.veto.agent.AgentRunnerTest.awaitCondition;
 import static top.focess.veto.agent.AgentRunnerTest.binding;
@@ -37,6 +38,7 @@ import top.focess.veto.agent.continuation.RequestContinuationStore;
 import top.focess.veto.agent.intercept.HitlRecordRepository;
 import top.focess.veto.agent.intercept.HitlRegistry;
 import top.focess.veto.agent.screening.DeployerPolicy;
+import top.focess.veto.agent.screening.ProtectedSetResolver;
 import top.focess.veto.agent.tool.AgentToolDefinition;
 import top.focess.veto.agent.tool.ToolCallContextHolder;
 import top.focess.veto.agent.tool.ToolEngine;
@@ -553,7 +555,10 @@ class AgentEpisodeModelTest {
                         registry,
                         history,
                         tiers,
-                        new WorkspaceAdmissionPolicy(List.of(), DeployerPolicy.FULL_ACCESS),
+                        new WorkspaceAdmissionPolicy(
+                                List.of(),
+                                DeployerPolicy.FULL_ACCESS,
+                                mock(ProtectedSetResolver.class)),
                         Mockito.mock(ScopedPluginStorage.class),
                         Mockito.mock(HitlRecordRepository.class),
                         Mockito.mock(SessionPlugins.class),
