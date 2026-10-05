@@ -11,6 +11,9 @@ import top.focess.command.CommandManager;
 import top.focess.command.CommandPermission;
 import top.focess.command.CommandResult;
 import top.focess.command.ExecutionResult;
+import top.focess.veto.agent.screening.DeployerPolicyConfiguration;
+import top.focess.veto.agent.screening.ProtectedSetResolver;
+import top.focess.veto.agent.workspace.WorkspaceAdmissionPolicy;
 import top.focess.veto.api.llm.ProviderType;
 import top.focess.veto.command.VetoCommandSender;
 import top.focess.veto.model.SessionEntity;
@@ -23,6 +26,10 @@ import top.focess.veto.session.SessionService;
 class SessionCommandTest {
 
     private static final @NonNull String CWD = currentDir();
+
+    private final @NonNull WorkspaceAdmissionPolicy workspaceAdmission =
+            new WorkspaceAdmissionPolicy(
+                    new DeployerPolicyConfiguration(), mock(ProtectedSetResolver.class));
 
     private static @NonNull String currentDir() {
         String value = System.getProperty("user.dir");
@@ -47,7 +54,7 @@ class SessionCommandTest {
         when(sender.cwd()).thenReturn(CWD);
 
         CommandManager manager = new CommandManager();
-        manager.register(new SessionCommand(service));
+        manager.register(new SessionCommand(service, workspaceAdmission));
 
         ExecutionResult result = manager.dispatch(sender, "session create coder");
 
@@ -73,7 +80,7 @@ class SessionCommandTest {
         when(sender.cwd()).thenReturn(CWD);
 
         CommandManager manager = new CommandManager();
-        manager.register(new SessionCommand(service));
+        manager.register(new SessionCommand(service, workspaceAdmission));
 
         ExecutionResult result = manager.dispatch(sender, "session create coder");
 
@@ -97,7 +104,7 @@ class SessionCommandTest {
         when(sender.cwd()).thenReturn(CWD);
 
         CommandManager manager = new CommandManager();
-        manager.register(new SessionCommand(service));
+        manager.register(new SessionCommand(service, workspaceAdmission));
 
         ExecutionResult result = manager.dispatch(sender, "session create nope");
         assertEquals(CommandResult.REFUSE, result.result());
@@ -123,7 +130,7 @@ class SessionCommandTest {
         when(sender.cwd()).thenReturn(CWD);
 
         CommandManager manager = new CommandManager();
-        manager.register(new SessionCommand(service));
+        manager.register(new SessionCommand(service, workspaceAdmission));
 
         ExecutionResult result = manager.dispatch(sender, "session create coder mysession");
 

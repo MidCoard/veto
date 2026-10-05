@@ -8,9 +8,11 @@ import top.focess.command.Command;
 import top.focess.command.CommandCompletion;
 import top.focess.command.CommandResult;
 import top.focess.command.CommandSender;
+import top.focess.veto.agent.workspace.WorkspaceAdmissionPolicy;
 import top.focess.veto.command.VetoCommand;
 import top.focess.veto.command.VetoCommandSender;
 import top.focess.veto.model.SessionEntity;
+import top.focess.veto.security.HostPathInput;
 import top.focess.veto.session.LlmConfig;
 import top.focess.veto.session.SessionService;
 
@@ -18,11 +20,14 @@ import top.focess.veto.session.SessionService;
 public class SessionCommand extends VetoCommand {
 
     private final @NonNull SessionService service;
+    private final @NonNull WorkspaceAdmissionPolicy workspaceAdmission;
 
     /** Constructs the {@code /session} command over the given session service. */
-    public SessionCommand(@NonNull SessionService service) {
+    public SessionCommand(
+            @NonNull SessionService service, @NonNull WorkspaceAdmissionPolicy workspaceAdmission) {
         super("session", "Manage sessions", "ses");
         this.service = service;
+        this.workspaceAdmission = workspaceAdmission;
     }
 
     @Override
@@ -38,12 +43,15 @@ public class SessionCommand extends VetoCommand {
                     String pattern = requiredArg(args.get("pattern"), "pattern");
                     String requestedName = args.get("name");
                     try {
+                        var owner = s.requireUsername();
+                        var cwd =
+                                HostPathInput.canonicalForCreation(
+                                        HostPathInput.absoluteNormalized(s.cwd(), "terminal cwd"),
+                                        "terminal cwd");
+                        var workspace = workspaceAdmission.toClientPath(owner, cwd);
                         SessionEntity session =
                                 service.createSession(
-                                        s.requireUsername(),
-                                        pattern,
-                                        requestedName,
-                                        List.of(s.cwd()));
+                                        owner, pattern, requestedName, List.of(workspace));
                         s.output(
                                 "Session '"
                                         + session.getName()
@@ -62,7 +70,7 @@ public class SessionCommand extends VetoCommand {
                             s.output("Activated session '" + session.getName() + "'.");
                         }
                         return CommandResult.ALLOW;
-                    } catch (IllegalArgumentException e) {
+                    } catch (IllegalArgumentException | IllegalStateException e) {
                         s.output(e.getMessage());
                         return CommandResult.REFUSE;
                     }

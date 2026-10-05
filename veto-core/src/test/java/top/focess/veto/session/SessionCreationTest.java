@@ -24,6 +24,9 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
+import top.focess.command.CommandManager;
+import top.focess.command.CommandPermission;
+import top.focess.command.CommandResult;
 import top.focess.veto.agent.AgentService;
 import top.focess.veto.agent.SessionAgentRegistry;
 import top.focess.veto.agent.continuation.RequestContinuationStore;
@@ -34,6 +37,8 @@ import top.focess.veto.agent.screening.ProtectedSet;
 import top.focess.veto.agent.screening.ProtectedSetResolver;
 import top.focess.veto.agent.workspace.WorkspaceAdmissionPolicy;
 import top.focess.veto.api.llm.ProviderType;
+import top.focess.veto.command.VetoCommandSender;
+import top.focess.veto.command.commands.SessionCommand;
 import top.focess.veto.event.EventManager;
 import top.focess.veto.integration.plugins.PluginDataCleanup;
 import top.focess.veto.integration.plugins.PluginManager;
@@ -203,6 +208,73 @@ class SessionCreationTest {
                 .thenReturn(List.of(new SessionEntity("bob", "existing")));
         assertThrows(IllegalArgumentException.class, () -> service.createSession("alice", "coder"));
         verify(sessions, never()).save(any(SessionEntity.class));
+    }
+
+    @Test
+    void tenantBackendCwdConvenienceCreationUsesMappedWorkspace() throws Exception {
+        var cwd = Path.of(System.getProperty("user.dir", ".")).toRealPath();
+        var ownerBase = cwd.getParent();
+        if (ownerBase == null)
+            throw new AssertionError("test checkout must have an owner and deployment parent");
+        var deploymentBase = ownerBase.getParent();
+        var ownerName = ownerBase.getFileName();
+        if (deploymentBase == null || ownerName == null)
+            throw new AssertionError("test checkout must have an owner and deployment parent");
+        var owner = ownerName.toString();
+        configuration.setDeployerPolicy(DeployerPolicy.TENANT);
+        configuration.getTenant().setRoots(List.of(deploymentBase.toString()));
+        when(protectedSets.resolve(any(), anyString(), any())).thenReturn(ProtectedSet.empty());
+
+        var created = service.createSession(owner, "coder");
+
+        assertEquals(cwd.toString(), created.getWorkspaceRoots());
+        assertEquals(owner, created.getOwner());
+        verify(sessions, times(2)).save(created);
+    }
+
+    @Test
+    void tenantTerminalPersistsNativeCwdAndRetainsItForActivation(@TempDir @NonNull Path base)
+            throws Exception {
+        var cwd = Files.createDirectories(base.resolve("alice/project")).toRealPath().toString();
+        configuration.setDeployerPolicy(DeployerPolicy.TENANT);
+        configuration.getTenant().setRoots(List.of(base.toString()));
+        when(protectedSets.resolve(any(), anyString(), any())).thenReturn(ProtectedSet.empty());
+        var terminalService = spy(service);
+        doReturn(Optional.of(new LlmConfig(ProviderType.DEEPSEEK, "model", "profile")))
+                .when(terminalService)
+                .activate("term-1", "terminal", "alice", cwd);
+        VetoCommandSender sender = mock(VetoCommandSender.class);
+        when(sender.hasPermission(any(CommandPermission.class))).thenReturn(true);
+        when(sender.isLoggedIn()).thenReturn(true);
+        when(sender.requireUsername()).thenReturn("alice");
+        when(sender.terminalId()).thenReturn("term-1");
+        when(sender.cwd()).thenReturn(cwd);
+        var manager = new CommandManager();
+        manager.register(
+                new SessionCommand(
+                        terminalService,
+                        new WorkspaceAdmissionPolicy(configuration, protectedSets)));
+
+        assertEquals(
+                CommandResult.ALLOW,
+                manager.dispatch(sender, "session create coder terminal").result());
+        verify(terminalService).createSession("alice", "coder", "terminal", List.of("/0/project"));
+        verify(sessions, times(2))
+                .save(
+                        argThat(
+                                created ->
+                                        created != null
+                                                && cwd.equals(created.getWorkspaceRoots())
+                                                && "alice".equals(created.getOwner())));
+        verify(terminalService).activate("term-1", "terminal", "alice", cwd);
+
+        when(sender.cwd())
+                .thenReturn(Files.createDirectories(base.resolve("bob/project")).toString());
+        clearInvocations(terminalService, sessions);
+        assertEquals(
+                CommandResult.REFUSE,
+                manager.dispatch(sender, "session create coder terminal").result());
+        verifyNoInteractions(terminalService, sessions);
     }
 
     @ParameterizedTest

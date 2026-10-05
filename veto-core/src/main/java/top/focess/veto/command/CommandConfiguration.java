@@ -4,6 +4,7 @@ import org.jspecify.annotations.NonNull;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import top.focess.veto.agent.AgentService;
+import top.focess.veto.agent.workspace.WorkspaceAdmissionPolicy;
 import top.focess.veto.command.commands.*;
 import top.focess.veto.model.AgentPatternRepository;
 import top.focess.veto.model.tier.ModelTierProfileService;
@@ -72,6 +73,7 @@ public class CommandConfiguration {
      * @param userAdminService manages administrative user operations
      * @param tierRegistry the model-tier registry used to resolve pattern tiers
      * @param profileService manages model-tier profiles and bindings
+     * @param workspaceAdmission maps native terminal roots to the session request representation
      * @return the fully-configured {@link CommandRegistry} singleton
      */
     @Bean
@@ -85,7 +87,8 @@ public class CommandConfiguration {
             @NonNull SignupPolicy signupPolicy,
             @NonNull UserAdminService userAdminService,
             @NonNull ModelTierRegistry tierRegistry,
-            @NonNull ModelTierProfileService profileService) {
+            @NonNull ModelTierProfileService profileService,
+            @NonNull WorkspaceAdmissionPolicy workspaceAdmission) {
 
         CommandRegistry registry = new CommandRegistry(promptHandler);
 
@@ -98,7 +101,7 @@ public class CommandConfiguration {
         registry.register(new PatternCommand(patternRepo, tierRegistry));
         registry.register(new ModelTierCommand(profileService, tierRegistry));
         registry.register(new CredentialCommand(keysteadVault));
-        registry.register(new SessionCommand(sessionService));
+        registry.register(new SessionCommand(sessionService, workspaceAdmission));
         registry.register(new CompactCommand(promptHandler));
         registry.register(new UserAdminCommand(userAdminService, signupPolicy));
         registry.register(new HelpCommand(registry));

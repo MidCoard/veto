@@ -118,25 +118,18 @@ public class SessionService {
 
     /**
      * Creates a session + its primary agent from a pattern, with an auto-generated unique name.
-     * Does NOT auto-activate. Equivalent to {@code createSession(owner, patternName, null,
-     * List.of(System.getProperty("user.dir")))} - the workspace defaults to the JVM working dir.
+     * Does NOT auto-activate. The workspace defaults to the JVM working dir, translated to the
+     * owner's logical path under TENANT.
      */
     @Transactional
     public @NonNull SessionEntity createSession(
             @NonNull String owner, @NonNull String patternName) {
-        return createSession(
-                owner,
-                patternName,
-                null,
-                List.of(System.getProperty("user.dir")),
-                0,
-                ToolResultPresentationMode.BASIC,
-                List.of());
+        return createSession(owner, patternName, null);
     }
 
     /**
      * Creates a session + its primary agent from a pattern. Does NOT auto-activate. The session's
-     * workspace defaults to the JVM working dir.
+     * workspace defaults to the JVM working dir, mapped to a client path before admission.
      *
      * @param owner the session owner
      * @param patternName the pattern to instantiate the primary agent from
@@ -150,7 +143,12 @@ public class SessionService {
                 owner,
                 patternName,
                 sessionName,
-                List.of(System.getProperty("user.dir")),
+                List.of(
+                        workspaceAdmissionPolicy.toClientPath(
+                                owner,
+                                HostPathInput.canonicalForCreation(
+                                        Path.of(System.getProperty("user.dir", ".")),
+                                        "backend cwd"))),
                 0,
                 ToolResultPresentationMode.BASIC,
                 List.of());
