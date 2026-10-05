@@ -168,7 +168,7 @@ public class DangerComputation {
 
         // 1. Check policies that make certain paths CRITICAL
         if ((policy != DeployerPolicy.FULL_ACCESS && protectedSet.covers(host))
-                || permit.protectedPaths().stream().anyMatch(host::startsWith)) {
+                || permit.deniedPaths().stream().anyMatch(host::startsWith)) {
             return Danger.CRITICAL;
         }
         if (policy == DeployerPolicy.SANDBOXED) {

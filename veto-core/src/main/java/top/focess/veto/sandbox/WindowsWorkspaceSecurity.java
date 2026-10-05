@@ -1,5 +1,6 @@
 package top.focess.veto.sandbox;
 
+import com.sun.jna.Memory;
 import com.sun.jna.Native;
 import com.sun.jna.Pointer;
 import com.sun.jna.Structure;
@@ -13,22 +14,32 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.FileAlreadyExistsException;
+import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.AclEntry;
 import java.nio.file.attribute.AclFileAttributeView;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Map.Entry;
+import java.util.Objects;
 import java.util.Set;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import top.focess.veto.security.HostPathInput;
 
 /** Windows AppContainer identity and inheritable workspace ACL provisioner. */
 final class WindowsWorkspaceSecurity {
@@ -53,6 +64,12 @@ final class WindowsWorkspaceSecurity {
     private final @NonNull WindowsAppContainerApi appContainerApi;
     private final @NonNull Map<@NonNull Path, @NonNull SyntheticMask> syntheticMasks =
             new HashMap<>();
+
+    private final @NonNull Map<@NonNull Path, @NonNull AclSuppression> suppressedAcls =
+            new HashMap<>();
+    private final @NonNull
+            Map<@NonNull SandboxProfile, @NonNull ArrayDeque<@NonNull List<@NonNull Path>>>
+            projectedPaths = new HashMap<>();
 
     WindowsWorkspaceSecurity() {
         api = Native.load("advapi32", WindowsAclApi.class);
@@ -105,19 +122,32 @@ final class WindowsWorkspaceSecurity {
                             + Kernel32.INSTANCE.GetLastError()
                             + ")");
         }
-        List<Path> acquiredMasks = acquireCreationMasks(profile);
+        List<Path> acquiredMasks = List.of();
+        List<@NonNull Path> projected = new ArrayList<>();
+        List<@NonNull ByteBuffer> targets = List.of();
         boolean completed = false;
         try {
+            acquiredMasks = acquireCreationMasks(profile);
+            targets = projectionTargets(profile, Objects.requireNonNull(sid.getValue()));
             // Read/execute compatibility is projected lazily for the executable selected by this
             // invocation. Eagerly touching every PATH entry is both unnecessarily broad and very
             // expensive on developer machines with large toolchains.
             for (Path root : profile.readWriteExecuteRoots()) {
-                tryGrantCompatibilityRoot(root, sid.getValue(), FILE_ALL_ACCESS);
+                Path canonical =
+                        HostPathInput.canonicalForCreation(root, "sandbox compatibility root");
+                if (overlapsDeniedRoot(canonical, profile)) continue;
+                tryGrantCompatibilityRoot(canonical, sid.getValue(), FILE_ALL_ACCESS);
             }
-            grantAccess(
-                    workspace, sid.getValue(), FILE_ALL_ACCESS, SUB_CONTAINERS_AND_OBJECTS_INHERIT);
-            String appContainerSid = sidString(sid.getValue());
-            for (Path deniedPath : profile.deniedPaths()) {
+            var nativeSid = Objects.requireNonNull(sid.getValue(), "AppContainer SID disappeared");
+            if (suppressedAcls.keySet().stream().anyMatch(path -> path.startsWith(workspace))) {
+                grantOwnerLocally(workspace, sidKey(nativeSid));
+            } else {
+                grantAccess(
+                        workspace, nativeSid, FILE_ALL_ACCESS, SUB_CONTAINERS_AND_OBJECTS_INHERIT);
+            }
+            String appContainerSid = sidString(nativeSid);
+            projectForeignRoots(profile, targets, projected);
+            for (Path deniedPath : profile.protectedPaths()) {
                 Path denied = deniedPath.toAbsolutePath().normalize();
                 if (Files.exists(denied)) {
                     denyAccess(
@@ -138,6 +168,9 @@ final class WindowsWorkspaceSecurity {
                     removeSandboxAccess(denied, Set.of(appContainerSid));
                 }
             }
+            projectedPaths
+                    .computeIfAbsent(profile, ignored -> new ArrayDeque<>())
+                    .addLast(List.copyOf(projected));
             completed = true;
             return containerName;
         } finally {
@@ -145,7 +178,11 @@ final class WindowsWorkspaceSecurity {
             localFree(allApplicationPackagesSid.getValue());
             api.FreeSid(sid.getValue());
             if (!completed) {
-                releaseCreationMasks(acquiredMasks);
+                try {
+                    for (Path path : projected.reversed()) releaseProjection(path, targets);
+                } finally {
+                    releaseCreationMasks(acquiredMasks);
+                }
             }
         }
     }
@@ -157,7 +194,10 @@ final class WindowsWorkspaceSecurity {
      */
     synchronized void provisionExecutable(
             @NonNull Path executable, @NonNull SandboxProfile profile) {
-        Path canonical = executable.toAbsolutePath().normalize();
+        Path canonical = HostPathInput.canonicalForCreation(executable, "sandbox executable");
+        if (profile.deniedPaths().stream().anyMatch(canonical::startsWith)) {
+            throw new SecurityException("Executable is inside an inaccessible path");
+        }
         if (!Files.isRegularFile(canonical)) {
             return;
         }
@@ -167,6 +207,9 @@ final class WindowsWorkspaceSecurity {
         }
         if (compatibilityRoot == null) {
             return;
+        }
+        if (overlapsDeniedRoot(compatibilityRoot, profile)) {
+            throw new SecurityException("Executable compatibility root is inaccessible");
         }
 
         PointerByReference sid = new PointerByReference();
@@ -198,7 +241,362 @@ final class WindowsWorkspaceSecurity {
     }
 
     synchronized void deprovision(@NonNull SandboxProfile profile) {
-        releaseCreationMasks(profile.deniedPaths().stream().toList());
+        try {
+            var receipts = projectedPaths.get(profile);
+            if (receipts != null && !receipts.isEmpty()) {
+                var paths = receipts.removeFirst();
+                var targets = projectionTargets(profile);
+                for (Path path : paths.reversed()) releaseProjection(path, targets);
+                if (receipts.isEmpty()) projectedPaths.remove(profile);
+            }
+        } finally {
+            releaseCreationMasks(profile.deniedPaths().stream().toList());
+        }
+    }
+
+    private boolean overlapsDeniedRoot(@NonNull Path root, @NonNull SandboxProfile profile) {
+        return profile.protectedPaths().stream().anyMatch(root::startsWith)
+                || profile.occupiedRoots().stream()
+                        .anyMatch(denied -> root.startsWith(denied) || denied.startsWith(root))
+                || projectedPaths.keySet().stream()
+                        .filter(active -> active.workspaceRoot().equals(profile.workspaceRoot()))
+                        .flatMap(active -> active.occupiedRoots().stream())
+                        .anyMatch(denied -> root.startsWith(denied) || denied.startsWith(root));
+    }
+
+    /** Grants the rightful owner's identity without reinheriting suppressed package entries. */
+    private void grantOwnerLocally(@NonNull Path workspace, @NonNull ByteBuffer owner) {
+        try {
+            Files.walkFileTree(
+                    workspace,
+                    new SimpleFileVisitor<>() {
+                        @Override
+                        public @NonNull FileVisitResult preVisitDirectory(
+                                @NonNull Path path, @NonNull BasicFileAttributes attributes) {
+                            if (isReparsePoint(path)) return FileVisitResult.SKIP_SUBTREE;
+                            grant(path, true);
+                            return FileVisitResult.CONTINUE;
+                        }
+
+                        @Override
+                        public @NonNull FileVisitResult visitFile(
+                                @NonNull Path path, @NonNull BasicFileAttributes attributes) {
+                            if (!isReparsePoint(path)) grant(path, false);
+                            return FileVisitResult.CONTINUE;
+                        }
+
+                        private void grant(@NonNull Path path, boolean directory) {
+                            var suppression = suppressedAcls.get(path);
+                            if (suppression != null && suppression.references.containsKey(owner))
+                                return;
+                            var acl = readDacl(path);
+                            if (acl.entries.stream()
+                                    .anyMatch(
+                                            ace -> {
+                                                var allowed = allowedSid(ace);
+                                                return allowed != null
+                                                        && owner.equals(allowed)
+                                                        && ByteBuffer.wrap(bytes(ace))
+                                                                        .order(
+                                                                                ByteOrder
+                                                                                        .LITTLE_ENDIAN)
+                                                                        .getInt(4)
+                                                                == FILE_ALL_ACCESS;
+                                            })) return;
+                            var data =
+                                    ByteBuffer.allocate(8 + owner.remaining())
+                                            .order(ByteOrder.LITTLE_ENDIAN);
+                            data.put((byte) 0)
+                                    .put((byte) (directory ? 3 : 0))
+                                    .putShort((short) data.capacity())
+                                    .putInt(FILE_ALL_ACCESS)
+                                    .put(owner.duplicate());
+                            var entry = ByteBuffer.wrap(data.array()).asReadOnlyBuffer();
+                            var entries = new ArrayList<>(acl.entries);
+                            entries.add(
+                                    restorePosition(entries, Map.entry(entry, entries.size())),
+                                    entry);
+                            writeDacl(path, acl, entries);
+                        }
+                    });
+        } catch (IOException failure) {
+            throw new SecurityException("Cannot grant workspace owner access locally", failure);
+        }
+    }
+
+    private @NonNull List<@NonNull ByteBuffer> projectionTargets(@NonNull SandboxProfile profile) {
+        var sid = new PointerByReference();
+        int result =
+                appContainerApi.DeriveAppContainerSidFromAppContainerName(
+                        new WString(appContainerName(profile.workspaceRoot())), sid);
+        if (result != 0 || sid.getValue() == null)
+            throw new IllegalStateException("Cannot derive retiring AppContainer SID: " + result);
+        try {
+            return projectionTargets(profile, Objects.requireNonNull(sid.getValue()));
+        } finally {
+            api.FreeSid(sid.getValue());
+        }
+    }
+
+    private @NonNull List<@NonNull ByteBuffer> projectionTargets(
+            @NonNull SandboxProfile profile, @NonNull Pointer containerSid) {
+        List<@NonNull ByteBuffer> targets = new ArrayList<>();
+        targets.add(sidKey(containerSid));
+        targets.add(sidKey(ALL_APPLICATION_PACKAGES_SID));
+        targets.add(sidKey(ALL_RESTRICTED_APPLICATION_PACKAGES_SID));
+        if (profile.networkAllowed()) {
+            for (String capability : WindowsAppContainerLauncher.NETWORK_CAPABILITY_SIDS) {
+                targets.add(sidKey(capability));
+            }
+        }
+        return List.copyOf(targets);
+    }
+
+    private @NonNull ByteBuffer sidKey(@NonNull String text) {
+        var sid = new PointerByReference();
+        if (!api.ConvertStringSidToSidW(new WString(text), sid) || sid.getValue() == null)
+            throw new IllegalStateException("Cannot resolve package SID");
+        try {
+            return sidKey(Objects.requireNonNull(sid.getValue()));
+        } finally {
+            localFree(sid.getValue());
+        }
+    }
+
+    private static @NonNull ByteBuffer sidKey(@NonNull Pointer sid) {
+        int length = 8 + 4 * Byte.toUnsignedInt(sid.getByte(1));
+        return ByteBuffer.wrap(sid.getByteArray(0, length)).asReadOnlyBuffer();
+    }
+
+    private void projectForeignRoots(
+            @NonNull SandboxProfile profile,
+            @NonNull List<@NonNull ByteBuffer> targets,
+            @NonNull List<@NonNull Path> projected) {
+        Set<Path> visited = new HashSet<>();
+        for (Path root : profile.occupiedRoots()) {
+            try {
+                Files.walkFileTree(
+                        root,
+                        new SimpleFileVisitor<Path>() {
+                            @Override
+                            public @NonNull FileVisitResult preVisitDirectory(
+                                    @NonNull Path directory,
+                                    @NonNull BasicFileAttributes attributes) {
+                                if (isReparsePoint(directory)) return FileVisitResult.SKIP_SUBTREE;
+                                acquire(directory);
+                                return FileVisitResult.CONTINUE;
+                            }
+
+                            @Override
+                            public @NonNull FileVisitResult visitFile(
+                                    @NonNull Path file, @NonNull BasicFileAttributes attributes) {
+                                if (!isReparsePoint(file)) acquire(file);
+                                return FileVisitResult.CONTINUE;
+                            }
+
+                            private void acquire(@NonNull Path path) {
+                                if (visited.add(path)) {
+                                    acquireProjection(path, targets);
+                                    projected.add(path);
+                                }
+                            }
+                        });
+            } catch (IOException exception) {
+                throw new SecurityException(
+                        "Foreign workspace ACL projection is incomplete", exception);
+            }
+        }
+    }
+
+    private static boolean isReparsePoint(@NonNull Path path) {
+        int attributes = Kernel32.INSTANCE.GetFileAttributes(path.toString());
+        if (attributes == -1) throw new SecurityException("Cannot inspect foreign workspace entry");
+        return (attributes & 0x400)
+                != 0; // FILE_ATTRIBUTE_REPARSE_POINT: never follow junctions/links.
+    }
+
+    private void acquireProjection(@NonNull Path path, @NonNull List<@NonNull ByteBuffer> targets) {
+        var acl = readDacl(path);
+        var existing = suppressedAcls.get(path);
+        var state = existing == null ? new AclSuppression() : existing;
+        var nextReferences = new HashMap<>(state.references);
+        for (ByteBuffer target : targets) nextReferences.merge(target, 1, Integer::sum);
+        var removed = new ArrayList<>(state.removed);
+        List<@NonNull ByteBuffer> retained = new ArrayList<>();
+        for (int index = 0; index < acl.entries.size(); index++) {
+            ByteBuffer ace = acl.entries.get(index);
+            ByteBuffer sid = allowedSid(ace);
+            if (sid != null && targets.contains(sid)) removed.add(Map.entry(ace, index));
+            else retained.add(ace);
+        }
+        if (retained.size() != acl.entries.size()) writeDacl(path, acl, retained);
+        state.references = nextReferences;
+        state.removed = removed;
+        suppressedAcls.put(path, state);
+    }
+
+    private void releaseProjection(@NonNull Path path, @NonNull List<@NonNull ByteBuffer> targets) {
+        var state = suppressedAcls.get(path);
+        if (state == null) return;
+        var nextReferences = new HashMap<>(state.references);
+        Set<ByteBuffer> retired = new HashSet<>();
+        for (ByteBuffer target : targets) {
+            var count = nextReferences.get(target);
+            if (count == null) throw new IllegalStateException("Unowned ACL projection reference");
+            if (count > 1) nextReferences.put(target, count - 1);
+            else {
+                nextReferences.remove(target);
+                retired.add(target);
+            }
+        }
+        var restoring =
+                state.removed.stream()
+                        .filter(
+                                entry -> {
+                                    var allowed = allowedSid(entry.getKey());
+                                    return allowed != null && retired.contains(allowed);
+                                })
+                        .sorted(Comparator.comparingInt(Entry::getValue))
+                        .toList();
+        if (!restoring.isEmpty() && Files.exists(path, LinkOption.NOFOLLOW_LINKS)) {
+            if (isReparsePoint(path)) throw new SecurityException("Projected entry became a link");
+            var acl = readDacl(path);
+            var entries = new ArrayList<>(acl.entries);
+            for (var entry : restoring)
+                entries.add(restorePosition(entries, entry), entry.getKey());
+            writeDacl(path, acl, entries);
+        }
+        state.references = nextReferences;
+        state.removed.removeAll(restoring);
+        if (state.references.isEmpty()) suppressedAcls.remove(path);
+    }
+
+    private static int restorePosition(
+            @NonNull List<@NonNull ByteBuffer> entries,
+            @NonNull Entry<@NonNull ByteBuffer, @NonNull Integer> restoring) {
+        boolean inherited = (restoring.getKey().get(1) & 0x10) != 0;
+        int minimum = 0;
+        int maximum = entries.size();
+        for (int index = 0; index < entries.size(); index++) {
+            ByteBuffer ace = entries.get(index);
+            if ((ace.get(1) & 0x10) == 0) {
+                if (inherited || ace.get(0) == 1) minimum = index + 1;
+            } else if (!inherited) {
+                maximum = index;
+                break;
+            }
+        }
+        return Math.max(minimum, Math.min(restoring.getValue(), maximum));
+    }
+
+    private static ByteBuffer allowedSid(@NonNull ByteBuffer ace) {
+        int type = Byte.toUnsignedInt(ace.get(0));
+        if (type == 5 || type == 9 || type == 11)
+            throw new SecurityException("Unsupported foreign workspace ALLOW ACE");
+        if (type != 0) return null;
+        if (ace.remaining() < 16) throw new SecurityException("Malformed ALLOW ACE");
+        int end = 16 + 4 * Byte.toUnsignedInt(ace.get(9));
+        if (end > ace.remaining()) throw new SecurityException("Malformed ALLOW SID");
+        return ByteBuffer.wrap(Arrays.copyOfRange(bytes(ace), 8, end)).asReadOnlyBuffer();
+    }
+
+    private @NonNull NativeDacl readDacl(@NonNull Path path) {
+        var acl = new PointerByReference();
+        var descriptor = new PointerByReference();
+        try {
+            int result =
+                    api.GetNamedSecurityInfoW(
+                            new WString(path.toString()),
+                            SE_FILE_OBJECT,
+                            DACL_SECURITY_INFORMATION,
+                            null,
+                            null,
+                            acl,
+                            null,
+                            descriptor);
+            if (result != 0)
+                throw new SecurityException("Cannot read foreign workspace ACL: " + result);
+            var pointer = acl.getValue();
+            if (pointer == null)
+                throw new SecurityException("Foreign workspace has an unrestricted DACL");
+            int length = Short.toUnsignedInt(pointer.getShort(2));
+            if (length < 8) throw new SecurityException("Malformed foreign ACL header");
+            var data = pointer.getByteArray(0, length);
+            var view = ByteBuffer.wrap(data).order(ByteOrder.LITTLE_ENDIAN);
+            int count = Short.toUnsignedInt(view.getShort(4));
+            List<@NonNull ByteBuffer> entries = new ArrayList<>();
+            int offset = 8;
+            for (int index = 0; index < count; index++) {
+                if (offset + 4 > data.length)
+                    throw new SecurityException("Malformed foreign ACE header");
+                int size = Short.toUnsignedInt(view.getShort(offset + 2));
+                if (size < 4 || offset + size > data.length)
+                    throw new SecurityException("Malformed foreign ACL");
+                entries.add(
+                        ByteBuffer.wrap(Arrays.copyOfRange(data, offset, offset + size))
+                                .asReadOnlyBuffer());
+                offset += size;
+            }
+            var security = Objects.requireNonNull(descriptor.getValue());
+            return new NativeDacl(Arrays.copyOf(data, 8), entries, security.getShort(2));
+        } finally {
+            localFree(descriptor.getValue());
+        }
+    }
+
+    private void writeDacl(
+            @NonNull Path path,
+            @NonNull NativeDacl original,
+            @NonNull List<@NonNull ByteBuffer> entries) {
+        // SetFileSecurity updates only this node. Windows clears its historical AUTO_INHERITED
+        // marker, but retains the ACE inheritance flags and protection. SetNamedSecurityInfo's
+        // descendant propagation could reintroduce package allows into another live projection.
+        int length = 8 + entries.stream().mapToInt(ByteBuffer::remaining).sum();
+        if (length > 65535 || entries.size() > 65535)
+            throw new SecurityException("Foreign ACL exceeds native limits");
+        var data = ByteBuffer.allocate(length).order(ByteOrder.LITTLE_ENDIAN);
+        data.put(original.header).putShort(2, (short) length).putShort(4, (short) entries.size());
+        for (ByteBuffer entry : entries) data.put(entry.duplicate());
+        try (var acl = new Memory(length);
+                var descriptor = new Memory(64)) {
+            acl.write(0, data.array(), 0, length);
+            if (!api.InitializeSecurityDescriptor(descriptor, 1)
+                    || !api.SetSecurityDescriptorDacl(
+                            descriptor, true, acl, (original.control & 8) != 0)
+                    || !api.SetSecurityDescriptorControl(
+                            descriptor, (short) 0x1500, (short) (original.control & 0x1500))
+                    || !api.SetFileSecurityW(
+                            new WString(path.toString()), DACL_SECURITY_INFORMATION, descriptor))
+                throw new SecurityException(
+                        "Cannot write foreign workspace ACL: " + Kernel32.INSTANCE.GetLastError());
+        }
+    }
+
+    private static byte @NonNull [] bytes(@NonNull ByteBuffer buffer) {
+        byte[] data = new byte[buffer.remaining()];
+        buffer.duplicate().get(data);
+        return data;
+    }
+
+    private static final class NativeDacl {
+        private final byte @NonNull [] header;
+        private final @NonNull List<@NonNull ByteBuffer> entries;
+        private final short control;
+
+        private NativeDacl(
+                byte @NonNull [] header,
+                @NonNull List<@NonNull ByteBuffer> entries,
+                short control) {
+            this.header = header;
+            this.entries = entries;
+            this.control = control;
+        }
+    }
+
+    private static final class AclSuppression {
+        private @NonNull Map<@NonNull ByteBuffer, @NonNull Integer> references = new HashMap<>();
+        private @NonNull List<@NonNull Entry<@NonNull ByteBuffer, @NonNull Integer>> removed =
+                new ArrayList<>();
     }
 
     static @NonNull String appContainerName(@NonNull Path workspace) {
@@ -503,6 +901,15 @@ final class WindowsWorkspaceSecurity {
     }
 
     interface WindowsAclApi extends StdCallLibrary {
+        boolean InitializeSecurityDescriptor(Pointer descriptor, int revision);
+
+        boolean SetSecurityDescriptorDacl(
+                Pointer descriptor, boolean present, Pointer acl, boolean defaulted);
+
+        boolean SetSecurityDescriptorControl(Pointer descriptor, short interest, short control);
+
+        boolean SetFileSecurityW(WString path, int information, Pointer descriptor);
+
         Pointer FreeSid(Pointer sid);
 
         boolean ConvertStringSidToSidW(WString stringSid, PointerByReference sid);

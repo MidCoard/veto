@@ -23,8 +23,9 @@ import org.jspecify.annotations.NonNull;
  * @param maxProcesses maximum number of processes in the sandbox process tree
  * @param maxWallClock the default per-chain wall-clock timeout
  * @param networkAllowed whether this exact Gateway-approved execution may use the network
- * @param deniedPaths canonical paths that the already-screened workspace policy requires the OS
+ * @param protectedPaths canonical paths that the already-screened workspace policy requires the OS
  *     boundary to keep unreachable
+ * @param occupiedRoots foreign workspace roots denied only to this execution identity
  * @param readExecuteRoots host paths exposed read/execute for terminal-compatible tool discovery;
  *     this is reachability, never a declaration that code under those roots is trusted
  * @param readWriteExecuteRoots host cache/temp paths exposed read/write/execute
@@ -36,15 +37,17 @@ public record SandboxProfile(
         int maxProcesses,
         @NonNull Duration maxWallClock,
         boolean networkAllowed,
-        @NonNull Set<@NonNull Path> deniedPaths,
+        @NonNull Set<@NonNull Path> protectedPaths,
         @NonNull Set<@NonNull Path> readExecuteRoots,
-        @NonNull Set<@NonNull Path> readWriteExecuteRoots) {
+        @NonNull Set<@NonNull Path> readWriteExecuteRoots,
+        @NonNull Set<@NonNull Path> occupiedRoots) {
 
     /** Canonicalizes all paths to absolute-normal form and validates the resource caps. */
     public SandboxProfile {
         workspaceRoot = workspaceRoot.toAbsolutePath().normalize();
-        deniedPaths =
-                deniedPaths.stream()
+        occupiedRoots = canonicalizeRoots(occupiedRoots);
+        protectedPaths =
+                protectedPaths.stream()
                         .map(path -> path.toAbsolutePath().normalize())
                         .collect(Collectors.toUnmodifiableSet());
         readExecuteRoots = canonicalizeRoots(readExecuteRoots);
@@ -61,6 +64,37 @@ public record SandboxProfile(
         if (maxWallClock.isZero() || maxWallClock.isNegative()) {
             throw new IllegalArgumentException("maxWallClock must be positive");
         }
+    }
+
+    /** All paths the process must not access, retaining the origin of each exclusion. */
+    public @NonNull Set<@NonNull Path> deniedPaths() {
+        Set<Path> denied = new HashSet<>(protectedPaths);
+        denied.addAll(occupiedRoots);
+        return Set.copyOf(denied);
+    }
+
+    /** Creates a profile without foreign workspace claims. */
+    public SandboxProfile(
+            @NonNull Path workspaceRoot,
+            long maxMemoryMb,
+            int maxCpuPercent,
+            int maxProcesses,
+            @NonNull Duration maxWallClock,
+            boolean networkAllowed,
+            @NonNull Set<@NonNull Path> protectedPaths,
+            @NonNull Set<@NonNull Path> readExecuteRoots,
+            @NonNull Set<@NonNull Path> readWriteExecuteRoots) {
+        this(
+                workspaceRoot,
+                maxMemoryMb,
+                maxCpuPercent,
+                maxProcesses,
+                maxWallClock,
+                networkAllowed,
+                protectedPaths,
+                readExecuteRoots,
+                readWriteExecuteRoots,
+                Set.of());
     }
 
     /** Compatibility constructor for profiles without policy-projected deny paths. */
@@ -91,7 +125,7 @@ public record SandboxProfile(
             int maxCpuPercent,
             int maxProcesses,
             @NonNull Duration maxWallClock,
-            @NonNull Set<@NonNull Path> deniedPaths) {
+            @NonNull Set<@NonNull Path> protectedPaths) {
         this(
                 workspaceRoot,
                 maxMemoryMb,
@@ -99,7 +133,7 @@ public record SandboxProfile(
                 maxProcesses,
                 maxWallClock,
                 false,
-                deniedPaths,
+                protectedPaths,
                 Set.of(),
                 Set.of());
     }
@@ -113,14 +147,23 @@ public record SandboxProfile(
      * Default resource limits with the Gateway-approved protected paths projected into the wall.
      */
     public static @NonNull SandboxProfile forExecution(
-            @NonNull Path workspaceRoot, @NonNull Set<@NonNull Path> deniedPaths) {
-        return forExecution(workspaceRoot, deniedPaths, false);
+            @NonNull Path workspaceRoot, @NonNull Set<@NonNull Path> protectedPaths) {
+        return forExecution(workspaceRoot, protectedPaths, false);
     }
 
     /** Policy projection for one screened process execution. */
     public static @NonNull SandboxProfile forExecution(
             @NonNull Path workspaceRoot,
-            @NonNull Set<@NonNull Path> deniedPaths,
+            @NonNull Set<@NonNull Path> protectedPaths,
+            boolean networkAllowed) {
+        return forExecution(workspaceRoot, protectedPaths, Set.of(), networkAllowed);
+    }
+
+    /** Projects distinct universal protection and execution-specific foreign claims. */
+    public static @NonNull SandboxProfile forExecution(
+            @NonNull Path workspaceRoot,
+            @NonNull Set<@NonNull Path> protectedPaths,
+            @NonNull Set<@NonNull Path> occupiedRoots,
             boolean networkAllowed) {
         EnvironmentRoots environmentRoots = EnvironmentRoots.discover(System.getenv());
         return new SandboxProfile(
@@ -130,9 +173,10 @@ public record SandboxProfile(
                 64,
                 Duration.ofMinutes(10),
                 networkAllowed,
-                deniedPaths,
+                protectedPaths,
                 environmentRoots.readExecute(),
-                environmentRoots.readWriteExecute());
+                environmentRoots.readWriteExecute(),
+                occupiedRoots);
     }
 
     private static @NonNull Set<@NonNull Path> canonicalizeRoots(

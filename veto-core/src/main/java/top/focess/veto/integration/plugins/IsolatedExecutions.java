@@ -213,7 +213,11 @@ public final class IsolatedExecutions {
                             SlmScreeningProvider.unavailable(),
                             parent.executionPermit().deployerPolicy(),
                             new ProtectedSet(parent.executionPermit().protectedPaths()),
-                            new ReadHistory());
+                            new ReadHistory(),
+                            permit ->
+                                    permit.withAccessScope(
+                                            parent.executionPermit().accessRoots(),
+                                            parent.executionPermit().occupiedRoots()));
             var options =
                     new LlmOptions(
                             model.temperature(),

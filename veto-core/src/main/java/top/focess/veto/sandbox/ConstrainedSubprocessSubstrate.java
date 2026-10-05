@@ -10,9 +10,11 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.NonNull;
@@ -51,6 +53,15 @@ public final class ConstrainedSubprocessSubstrate implements SandboxSubstrate {
      */
     private final KernelSandboxSubstrate kernelWall;
 
+    // Handle records with equal profiles still own distinct native retirement claims.
+    private final @NonNull Map<@NonNull SandboxHandle, @NonNull ProcessScope> retirements =
+            new IdentityHashMap<>();
+
+    private static final class ProcessScope {
+        final @NonNull List<@NonNull CompletableFuture<Void>> completions = new ArrayList<>();
+        boolean retiring;
+    }
+
     /** Test/local constructor without an OS wall; production construction supplies the wall. */
     public ConstrainedSubprocessSubstrate() {
         this.kernelWall = null;
@@ -81,7 +92,11 @@ public final class ConstrainedSubprocessSubstrate implements SandboxSubstrate {
             throw new IllegalStateException("Sandbox workspace root unreachable: " + root, e);
         }
         log.info("Sandbox provisioned (subprocess substrate): workspaceRoot={}", root);
-        return new SandboxHandle("local-" + root.hashCode(), this, root, profile);
+        var handle = new SandboxHandle("local-" + root.hashCode(), this, root, profile);
+        synchronized (retirements) {
+            retirements.put(handle, new ProcessScope());
+        }
+        return handle;
     }
 
     @Override
@@ -104,9 +119,9 @@ public final class ConstrainedSubprocessSubstrate implements SandboxSubstrate {
         try {
             try {
                 return switch (connect) {
-                    case PIPE -> runPipeline(builders, effectiveTimeout, h.profile());
+                    case PIPE -> runPipeline(builders, effectiveTimeout, h);
                     case RUN_ALL, STOP_ON_FAILURE ->
-                            runSequential(builders, connect, effectiveTimeout, h.profile());
+                            runSequential(builders, connect, effectiveTimeout, h);
                 };
             } finally {
                 builders.forEach(PreparedProcess::close);
@@ -144,14 +159,50 @@ public final class ConstrainedSubprocessSubstrate implements SandboxSubstrate {
         ProcessBuilder pb = prepared.builder();
         // Merge stderr into stdout so a single drain thread captures everything the server logs.
         pb.redirectErrorStream(true);
+        CompletableFuture<Void> completion = null;
+        boolean started = false;
         try {
+            completion = admitProcess(h);
             Process p = pb.start();
-            establishKernelWall(p, prepared, h.profile());
+            started = true;
+            establishKernelWall(p, prepared, h.profile(), completion);
             return p;
-        } catch (IOException e) {
+        } catch (IOException | RuntimeException e) {
+            if (!started && completion != null) completeUnstarted(completion);
             prepared.close();
             throw new IllegalStateException("Background start failed: " + cmd.executable(), e);
         }
+    }
+
+    @Override
+    public @NonNull CompletableFuture<@NonNull Process> onExit(
+            @NonNull SandboxHandle handle, @NonNull Process process) {
+        var retirement = completion(handle);
+        return process.onExit().thenCompose(ignored -> retirement.thenApply(done -> process));
+    }
+
+    private @NonNull CompletableFuture<Void> admitProcess(@NonNull SandboxHandle handle) {
+        synchronized (retirements) {
+            var scope = retirements.get(handle);
+            if (scope == null || scope.retiring)
+                throw new IllegalStateException("Sandbox handle is retiring");
+            var completion = new CompletableFuture<Void>();
+            scope.completions.add(completion);
+            return completion;
+        }
+    }
+
+    private @NonNull CompletableFuture<Void> completion(@NonNull SandboxHandle handle) {
+        synchronized (retirements) {
+            var scope = retirements.get(handle);
+            return scope == null
+                    ? CompletableFuture.completedFuture(null)
+                    : CompletableFuture.allOf(scope.completions.toArray(CompletableFuture[]::new));
+        }
+    }
+
+    private static void completeUnstarted(@NonNull CompletableFuture<Void> completion) {
+        if (!completion.complete(null)) log.debug("Process completion was already recorded");
     }
 
     private @NonNull PreparedProcess processBuilderFor(
@@ -336,21 +387,42 @@ public final class ConstrainedSubprocessSubstrate implements SandboxSubstrate {
     private @NonNull CommandResult runPipeline(
             @NonNull List<PreparedProcess> builders,
             @NonNull Duration timeout,
-            @NonNull SandboxProfile profile)
+            @NonNull SandboxHandle handle)
             throws IOException, InterruptedException {
         List<ProcessBuilder> processBuilders =
                 builders.stream().map(PreparedProcess::builder).toList();
-        List<Process> pipeline = ProcessBuilder.startPipeline(processBuilders);
+        List<@NonNull CompletableFuture<Void>> completions;
+        synchronized (retirements) {
+            completions = builders.stream().map(ignored -> admitProcess(handle)).toList();
+        }
+        List<Process> pipeline;
+        try {
+            pipeline = ProcessBuilder.startPipeline(processBuilders);
+        } catch (IOException | RuntimeException failure) {
+            completions.forEach(ConstrainedSubprocessSubstrate::completeUnstarted);
+            throw failure;
+        }
         for (int i = 0; i < pipeline.size(); i++) {
             try {
-                establishKernelWall(pipeline.get(i), builders.get(i), profile);
-            } catch (IOException e) {
+                establishKernelWall(
+                        pipeline.get(i), builders.get(i), handle.profile(), completions.get(i));
+            } catch (IOException | RuntimeException e) {
                 pipeline.forEach(Process::destroyForcibly);
+                for (int pending = i + 1; pending < pipeline.size(); pending++) {
+                    var completion = completions.get(pending);
+                    pipeline.get(pending).onExit().thenRun(() -> completeUnstarted(completion));
+                }
                 throw e;
             }
         }
         Process last = pipeline.get(pipeline.size() - 1);
-        CappedWait wait = waitCapped(last, timeout);
+        CappedWait wait;
+        try {
+            wait = waitCapped(last, timeout);
+        } catch (InterruptedException interrupted) {
+            pipeline.forEach(Process::destroyForcibly);
+            throw interrupted;
+        }
         String stdout = wait.stdout();
         String stderr = wait.stderr();
         if (!wait.finished()) {
@@ -366,7 +438,7 @@ public final class ConstrainedSubprocessSubstrate implements SandboxSubstrate {
             @NonNull List<PreparedProcess> builders,
             @NonNull ChainMode connect,
             @NonNull Duration timeout,
-            @NonNull SandboxProfile profile)
+            @NonNull SandboxHandle handle)
             throws IOException, InterruptedException {
         StringBuilder stdout = new StringBuilder();
         StringBuilder stderr = new StringBuilder();
@@ -385,8 +457,15 @@ public final class ConstrainedSubprocessSubstrate implements SandboxSubstrate {
                 codes.add(-1);
                 return timeoutResult(stdout, stderr, codes);
             }
-            Process p = prepared.builder().start();
-            establishKernelWall(p, prepared, profile);
+            var completion = admitProcess(handle);
+            Process p;
+            try {
+                p = prepared.builder().start();
+            } catch (IOException | RuntimeException failure) {
+                completeUnstarted(completion);
+                throw failure;
+            }
+            establishKernelWall(p, prepared, handle.profile(), completion);
             CappedWait wait = waitCapped(p, remaining);
             stdout.append(wait.stdout());
             stderr.append(wait.stderr());
@@ -437,7 +516,13 @@ public final class ConstrainedSubprocessSubstrate implements SandboxSubstrate {
                 Thread.ofVirtual()
                         .name("sandbox-drain-err")
                         .start(() -> drain(p.getErrorStream(), err));
-        boolean finished = waitForCap(p, timeout);
+        boolean finished;
+        try {
+            finished = waitForCap(p, timeout);
+        } catch (InterruptedException interrupted) {
+            p.destroyForcibly();
+            throw interrupted;
+        }
         if (!finished) {
             p.destroyForcibly();
             p.waitFor(); // reap: streams close, the drain threads observe EOF and exit
@@ -475,19 +560,30 @@ public final class ConstrainedSubprocessSubstrate implements SandboxSubstrate {
     private void establishKernelWall(
             @NonNull Process process,
             @NonNull PreparedProcess prepared,
-            @NonNull SandboxProfile profile)
+            @NonNull SandboxProfile profile,
+            @NonNull CompletableFuture<Void> completion)
             throws IOException {
         KernelSandboxSubstrate.PreparedCommand preparation = prepared.kernelPreparation();
         if (kernelWall == null || preparation == null) {
+            process.onExit().thenRun(() -> completeUnstarted(completion));
             return;
         }
+        boolean attached = false;
         try {
             preparation.awaitReady(process);
-            kernelWall.attach(process, profile);
+            var nativeExit = kernelWall.attach(process, profile);
+            attached = true;
+            nativeExit.whenComplete(
+                    (ignored, failure) -> {
+                        if (failure == null) completeUnstarted(completion);
+                        else if (!completion.completeExceptionally(failure))
+                            log.debug("Native retirement failure was already recorded");
+                    });
             preparation.release();
         } catch (RuntimeException e) {
             preparation.close();
             process.destroyForcibly();
+            if (!attached) process.onExit().thenRun(() -> completeUnstarted(completion));
             throw new IOException(
                     "Kernel sandbox wall could not be established: " + safe(e.getMessage()), e);
         }
@@ -495,8 +591,17 @@ public final class ConstrainedSubprocessSubstrate implements SandboxSubstrate {
 
     @Override
     public void deprovision(@NonNull SandboxHandle h) {
+        synchronized (retirements) {
+            var scope = retirements.get(h);
+            if (scope == null || scope.retiring) return;
+            scope.retiring = true;
+        }
+        completion(h).join();
         if (kernelWall != null) {
             kernelWall.deprovisionWorkspace(h.profile());
+        }
+        synchronized (retirements) {
+            retirements.remove(h);
         }
         log.debug("Sandbox deprovisioned: {}", h.sessionId());
     }

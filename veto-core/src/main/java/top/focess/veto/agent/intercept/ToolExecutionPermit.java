@@ -49,7 +49,8 @@ public record ToolExecutionPermit(
         @NonNull Set<@NonNull Path> protectedPaths,
         @NonNull Map<@NonNull String, @NonNull URI> httpDestinations,
         PreparedInvocation preparation,
-        @NonNull List<@NonNull Path> accessRoots) {
+        @NonNull List<@NonNull Path> accessRoots,
+        @NonNull Set<@NonNull Path> occupiedRoots) {
 
     private static final @NonNull ToolExecutionPermit EMPTY =
             new ToolExecutionPermit(
@@ -149,11 +150,39 @@ public record ToolExecutionPermit(
                 workspaceRoots);
     }
 
+    /** Creates a permit without foreign workspace claims. */
+    public ToolExecutionPermit(
+            @NonNull ToolCall call,
+            @NonNull ToolCapability capability,
+            String remoteServerName,
+            CallerBinding caller,
+            @NonNull Map<@NonNull String, @NonNull AuthorizedPath> filesystemPaths,
+            @NonNull List<@NonNull Path> workspaceRoots,
+            Path executionRoot,
+            @NonNull DeployerPolicy deployerPolicy,
+            @NonNull Set<@NonNull Path> protectedPaths,
+            @NonNull Map<@NonNull String, @NonNull URI> httpDestinations,
+            PreparedInvocation preparation,
+            @NonNull List<@NonNull Path> accessRoots) {
+        this(
+                call,
+                capability,
+                remoteServerName,
+                caller,
+                filesystemPaths,
+                workspaceRoots,
+                executionRoot,
+                deployerPolicy,
+                protectedPaths,
+                httpDestinations,
+                preparation,
+                accessRoots,
+                Set.of());
+    }
+
     /** Projects current deployment scope and occupied workspace claims into this invocation. */
     public @NonNull ToolExecutionPermit withAccessScope(
             @NonNull Collection<@NonNull Path> roots, @NonNull Collection<@NonNull Path> occupied) {
-        Set<Path> denied = new HashSet<>(protectedPaths);
-        denied.addAll(occupied);
         return new ToolExecutionPermit(
                 call,
                 capability,
@@ -163,10 +192,18 @@ public record ToolExecutionPermit(
                 workspaceRoots,
                 executionRoot,
                 deployerPolicy,
-                denied,
+                protectedPaths,
                 httpDestinations,
                 preparation,
-                List.copyOf(roots));
+                List.copyOf(roots),
+                Set.copyOf(occupied));
+    }
+
+    /** Global protected paths plus workspaces inaccessible to this caller. */
+    public @NonNull Set<@NonNull Path> deniedPaths() {
+        Set<Path> denied = new HashSet<>(protectedPaths);
+        denied.addAll(occupiedRoots);
+        return Set.copyOf(denied);
     }
 
     /** Returns a copy of this permit bound to the given prepared invocation. */
@@ -183,11 +220,16 @@ public record ToolExecutionPermit(
                 protectedPaths,
                 httpDestinations,
                 prepared,
-                accessRoots);
+                accessRoots,
+                occupiedRoots);
     }
 
     /** Normalizes collections to immutable copies and canonicalizes all captured paths. */
     public ToolExecutionPermit {
+        occupiedRoots =
+                occupiedRoots.stream()
+                        .map(path -> path.toAbsolutePath().normalize())
+                        .collect(Collectors.toUnmodifiableSet());
         httpDestinations = Map.copyOf(httpDestinations);
         accessRoots = accessRoots.stream().map(path -> path.toAbsolutePath().normalize()).toList();
         filesystemPaths = Map.copyOf(filesystemPaths);
@@ -314,7 +356,8 @@ public record ToolExecutionPermit(
                 protectedPaths,
                 httpDestinations,
                 preparation,
-                accessRoots);
+                accessRoots,
+                occupiedRoots);
     }
 
     private static String externalBinding(@NonNull ToolDefinition definition) {
@@ -371,6 +414,7 @@ public record ToolExecutionPermit(
                 || !Objects.equals(executionRoot, current.executionRoot)
                 || deployerPolicy != current.deployerPolicy
                 || !protectedPaths.equals(current.protectedPaths)
+                || !occupiedRoots.equals(current.occupiedRoots)
                 || preparation != current.preparation) {
             return false;
         }
