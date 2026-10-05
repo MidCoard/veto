@@ -134,8 +134,8 @@ public class RetainedPluginData {
         };
     }
 
-    // Checker treats a nested enum valueOf result as nullable under the package default.
-    @SuppressWarnings("ConstantValue")
+    // WHY: Checker needs the enum guard; the queried plugin handle remains manager-owned.
+    @SuppressWarnings({"ConstantValue", "resource"})
     private @NonNull Metadata metadata(@NonNull PluginRecord row) {
         PluginScope kind = PluginScope.valueOf(row.kind);
         if (kind == null) throw new IllegalStateException("Unknown plugin record kind");

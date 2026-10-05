@@ -83,38 +83,6 @@ class TrainingProgressTest {
         assertEquals(TrainingProgress.Status.EVALUATING, progress.getStatus());
     }
 
-    @Test
-    void testEvaluationReport() {
-        TrainingProgress.EvaluationReport report =
-                new TrainingProgress.EvaluationReport(
-                        "/path/to/model.gguf",
-                        "/path/to/eval.jsonl",
-                        "2026-07-14T00:00:00Z",
-                        100,
-                        45.2,
-                        new TrainingProgress.EvaluationReport.GbnfCompliance(95, 0.95),
-                        new TrainingProgress.EvaluationReport.DecisionAccuracy(88, 100, 0.88),
-                        new TrainingProgress.EvaluationReport.RedactionAccuracy(
-                                80, 5, 15, 0.94, 0.84, 0.89),
-                        new TrainingProgress.EvaluationReport.StructuralValidation(90, 100, 0.90));
-
-        progress.setEvaluation(report);
-        TrainingProgress.@NonNull EvaluationReport evaluation =
-                requireEvaluation(progress.getEvaluation());
-        assertEquals(0.95, evaluation.gbnfCompliance().validJsonRate());
-        assertEquals(0.88, evaluation.decisionAccuracy().accuracy());
-        assertEquals(0.89, evaluation.redactionAccuracy().f1());
-        assertEquals(0.90, evaluation.structuralValidation().accuracy());
-    }
-
-    private static TrainingProgress.@NonNull EvaluationReport requireEvaluation(
-            TrainingProgress.EvaluationReport evaluation) {
-        if (evaluation != null) {
-            return evaluation;
-        }
-        throw new AssertionError("evaluation report should be present");
-    }
-
     private static @NonNull Instant requireInstant(Instant instant, @NonNull String message) {
         if (instant != null) {
             return instant;

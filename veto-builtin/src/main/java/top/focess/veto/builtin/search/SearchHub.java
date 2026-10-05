@@ -89,8 +89,7 @@ public final class SearchHub extends PluginService {
         local.keySet().stream()
                 .sorted()
                 .forEach(name -> names.add(new JsonValue.StringValue(name)));
-        callbacks.entrySet().stream()
-                .map(Map.Entry::getKey)
+        callbacks.keySet().stream()
                 .sorted()
                 .forEach(name -> names.add(new JsonValue.StringValue(name)));
         return new JsonValue.ArrayValue(names);

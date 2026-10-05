@@ -32,7 +32,7 @@ public interface PluginStorage {
      * @param token opaque host authorization token
      * @param scope shared identity authorized by this token
      */
-    record Grant<S extends @NonNull Scope>(@NonNull String token, @NonNull S scope) {
+    record Grant<S extends @NonNull Scope>(@NonNull String token, S scope) {
         /** Validates that this grant names a supported storage scope. */
         public Grant {
             Objects.requireNonNull(token, "token");
@@ -73,7 +73,7 @@ public interface PluginStorage {
      * @param entries page entries, copied on construction
      * @param cursor opaque cursor for the next page, or {@code null} at the end
      */
-    record Page<T extends @NonNull Object>(@NonNull List<@NonNull T> entries, String cursor) {
+    record Page<T extends @NonNull Object>(@NonNull List<T> entries, String cursor) {
         /** Defensively copies the page entries. */
         public Page {
             entries = List.copyOf(entries);

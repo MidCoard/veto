@@ -1,7 +1,11 @@
 package top.focess.veto.security;
 
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
+import java.util.ArrayDeque;
+import java.util.Deque;
 import org.jspecify.annotations.NonNull;
 
 /** Validates untrusted host-path text before it reaches filesystem operations. */
@@ -38,6 +42,33 @@ public final class HostPathInput {
             return Path.of(input);
         } catch (InvalidPathException e) {
             throw new IllegalArgumentException(fieldName + " is not a valid host path", e);
+        }
+    }
+
+    /** Resolves existing segments so a symlink cannot disguise an out-of-scope future child. */
+    public static @NonNull Path canonicalForCreation(
+            @NonNull Path path, @NonNull String fieldName) {
+        Path absolute = path.toAbsolutePath().normalize();
+        Deque<Path> missing = new ArrayDeque<>();
+        Path existing = absolute;
+        while (existing != null && !Files.exists(existing)) {
+            Path name = existing.getFileName();
+            if (name != null) {
+                missing.addFirst(name);
+            }
+            existing = existing.getParent();
+        }
+        if (existing == null) {
+            throw new IllegalArgumentException(fieldName + " has no existing filesystem ancestor");
+        }
+        try {
+            Path resolved = existing.toRealPath();
+            for (Path segment : missing) {
+                resolved = resolved.resolve(segment);
+            }
+            return resolved.normalize();
+        } catch (IOException e) {
+            throw new IllegalArgumentException(fieldName + " cannot be canonicalized", e);
         }
     }
 }

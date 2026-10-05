@@ -3,6 +3,7 @@ package top.focess.veto.sandbox;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.process.ChainMode;
 import top.focess.veto.api.process.Command;
@@ -46,6 +47,10 @@ public sealed interface SandboxSubstrate permits ConstrainedSubprocessSubstrate 
      */
     @NonNull Process startBackground(
             @NonNull SandboxHandle h, @NonNull Command cmd, @NonNull Path cwd);
+
+    /** Completes after the parent and its contained process tree retire, before ACL restoration. */
+    @NonNull CompletableFuture<@NonNull Process> onExit(
+            @NonNull SandboxHandle h, @NonNull Process process);
 
     /** Deprovision the sandbox, releasing runtime resources. */
     void deprovision(@NonNull SandboxHandle h);

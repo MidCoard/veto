@@ -119,7 +119,7 @@ public class DangerComputation {
         Danger worst = Danger.SAFE;
         for (ToolExecutionPermit.AuthorizedPath path : permit.filesystemPaths().values()) {
             Resolution res = new Resolution(path.hostPath(), path.rootIndex(), path.inScope());
-            Danger d = classifyPath(res, def.capability(), policy, protectedSet, workspace);
+            Danger d = classifyPath(res, def.capability(), policy, protectedSet, workspace, permit);
             worst = max(worst, d);
         }
         return worst;
@@ -145,7 +145,12 @@ public class DangerComputation {
         int rootIndex = workspace.currentRootIndex();
         Resolution executionRoot = new Resolution(executionPath, rootIndex, true);
         return classifyPath(
-                executionRoot, ToolCapability.WORKSPACE_WRITE, policy, protectedSet, workspace);
+                executionRoot,
+                ToolCapability.WORKSPACE_WRITE,
+                policy,
+                protectedSet,
+                workspace,
+                permit);
     }
 
     private @NonNull Danger classifyPath(
@@ -153,7 +158,8 @@ public class DangerComputation {
             @NonNull ToolCapability capability,
             @NonNull DeployerPolicy policy,
             @NonNull ProtectedSet protectedSet,
-            @NonNull Workspace workspace) {
+            @NonNull Workspace workspace,
+            @NonNull ToolExecutionPermit permit) {
         Path host = res.hostPath();
         if (host == null) {
             return Danger.CRITICAL;
@@ -161,13 +167,12 @@ public class DangerComputation {
         String str = host.toString();
 
         // 1. Check policies that make certain paths CRITICAL
-        if (policy != DeployerPolicy.FULL_ACCESS) {
-            if (protectedSet.covers(host)) {
-                return Danger.CRITICAL;
-            }
+        if ((policy != DeployerPolicy.FULL_ACCESS && protectedSet.covers(host))
+                || permit.deniedPaths().stream().anyMatch(host::startsWith)) {
+            return Danger.CRITICAL;
         }
         if (policy == DeployerPolicy.SANDBOXED) {
-            if (!res.inScope()) {
+            if (permit.accessRoots().stream().noneMatch(host::startsWith)) {
                 return Danger.CRITICAL;
             }
         } else if (policy == DeployerPolicy.TENANT) {

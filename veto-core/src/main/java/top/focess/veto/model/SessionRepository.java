@@ -1,10 +1,12 @@
 package top.focess.veto.model;
 
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
 import org.jspecify.annotations.NonNull;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
+import top.focess.veto.agent.workspace.WorkspaceAdmissionPolicy;
 
 /** Spring Data JPA access to {@link SessionEntity} (per-user conversation sessions). */
 @Repository
@@ -12,6 +14,25 @@ public interface SessionRepository extends JpaRepository<SessionEntity, String> 
 
     /** All sessions owned by {@code owner}. */
     @NonNull List<SessionEntity> findByOwner(@NonNull String owner);
+
+    /** Existing sessions whose filesystem roots belong to another owner. */
+    @NonNull List<@NonNull SessionEntity> findByOwnerNot(@NonNull String owner);
+
+    /** Canonical persisted claims, including the backend default used by older sessions. */
+    default @NonNull List<@NonNull Path> claimedRootsExcept(@NonNull String owner) {
+        return findByOwnerNot(owner).stream()
+                .flatMap(
+                        session -> {
+                            String roots = session.getWorkspaceRoots();
+                            return WorkspaceAdmissionPolicy.canonicalRoots(
+                                    roots == null || roots.isBlank()
+                                            ? System.getProperty("user.dir", ".")
+                                            : roots)
+                                    .stream();
+                        })
+                .distinct()
+                .toList();
+    }
 
     /**
      * The owner's most-recently-active session (max lastActiveAt); used to auto-resume on
@@ -47,8 +68,8 @@ public interface SessionRepository extends JpaRepository<SessionEntity, String> 
      * <p>A DB-level unique constraint on {@code (owner, name, workspace_roots)} would be the
      * defense-in-depth complement; it is not added here because JPA's {@code ddl-auto=update} does
      * not introduce new constraints on an existing table, so it would require a hand-written
-     * migration. The application-layer check is sufficient under single-writer semantics (JPA
-     * within a transaction).
+     * migration. SessionService serializes creation through transaction completion on a single
+     * backend host.
      */
     @NonNull Optional<SessionEntity> findByOwnerAndNameAndWorkspaceRoots(
             @NonNull String owner, @NonNull String name, @NonNull String workspaceRoots);

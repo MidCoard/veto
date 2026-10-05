@@ -12,6 +12,8 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.jspecify.annotations.NonNull;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Bean;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.SessionAgentRegistry;
@@ -29,12 +31,15 @@ import top.focess.veto.api.process.CommandResult;
 import top.focess.veto.api.process.ProcessHost;
 import top.focess.veto.integration.plugins.storage.PluginStorageFactory;
 import top.focess.veto.plugin.runtime.ManagedPlugin;
+import top.focess.veto.sandbox.SandboxHandle;
 import top.focess.veto.sandbox.SandboxManager;
 import top.focess.veto.sandbox.SandboxProfile;
 
 /** Generic admitted process resources. Feature registries and task policy are outside core. */
 @Component
 public final class PluginProcessHosts implements PluginProcessHostFactory {
+    private static final @NonNull Logger log =
+            LoggerFactory.getLogger("top.focess.veto.integration.plugins.PluginProcessHosts");
     private final @NonNull SandboxManager sandbox;
     private final @NonNull PluginStorageFactory scopes;
     private final @NonNull SessionAgentRegistry agents;
@@ -122,6 +127,7 @@ public final class PluginProcessHosts implements PluginProcessHostFactory {
                     SandboxProfile.forExecution(
                             context.executionPermit().requireExecutionRoot(),
                             context.executionPermit().protectedPaths(),
+                            context.executionPermit().occupiedRoots(),
                             intent.network());
             var handle = sandbox.provision(id, profile);
             var thread = Thread.currentThread();
@@ -157,6 +163,7 @@ public final class PluginProcessHosts implements PluginProcessHostFactory {
                             SandboxProfile.forExecution(
                                     context.executionPermit().requireExecutionRoot(),
                                     context.executionPermit().protectedPaths(),
+                                    context.executionPermit().occupiedRoots(),
                                     intent.network()));
             try {
                 var process =
@@ -184,7 +191,7 @@ public final class PluginProcessHosts implements PluginProcessHostFactory {
                                 sandboxId);
                 try {
                     plugin.ownStoppingResource(running, running::stop);
-                    running.startDeadline();
+                    running.startDeadline(handle);
                     return running;
                 } catch (RuntimeException failure) {
                     running.stop();
@@ -289,7 +296,7 @@ public final class PluginProcessHosts implements PluginProcessHostFactory {
 
         @SuppressWarnings(
                 "resource") // WHY: the timer is shut down from the process exit callback below
-        private void startDeadline() {
+        private void startDeadline(@NonNull SandboxHandle handle) {
             var timer =
                     Executors.newSingleThreadScheduledExecutor(
                             Thread.ofPlatform()
@@ -306,14 +313,22 @@ public final class PluginProcessHosts implements PluginProcessHostFactory {
                             },
                             intent.timeout().toMillis(),
                             TimeUnit.MILLISECONDS);
-            process.onExit()
+            sandbox.substrate()
+                    .onExit(handle, process)
                     .whenComplete(
                             (ignored, failure) -> {
                                 var scheduled = deadline;
                                 if (scheduled != null) scheduled.cancel(false);
                                 timer.shutdown();
-                                sandbox.deprovision(sandboxId);
-                                owner.plugin.releaseResource(this);
+                                try {
+                                    if (failure == null) sandbox.deprovision(sandboxId);
+                                    else
+                                        log.error(
+                                                "Native process-tree retirement failed; workspace masks retained",
+                                                failure);
+                                } finally {
+                                    owner.plugin.releaseResource(this);
+                                }
                             });
         }
 

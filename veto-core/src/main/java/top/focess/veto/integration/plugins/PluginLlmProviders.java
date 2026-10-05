@@ -18,7 +18,7 @@ import top.focess.veto.observability.AuditLogger;
 /** Adapts installed provider contributions to core audit/retry orchestration. */
 @Component
 public final class PluginLlmProviders {
-    private volatile @NonNull Map<ProviderType, RegisteredProvider> providers = Map.of();
+    private volatile @NonNull Map<ProviderType, RegisteredProvider> providers;
     private final @NonNull ObjectMapper mapper;
     private final @NonNull AuditLogger audit;
     private final @NonNull PluginManager manager;
@@ -42,6 +42,8 @@ public final class PluginLlmProviders {
         providers = build(state, mapper, audit);
     }
 
+    // WHY: adapters borrow the manager-owned activation; they must not close it.
+    @SuppressWarnings("resource")
     private static @NonNull Map<ProviderType, RegisteredProvider> build(
             @NonNull PluginRegistry state,
             @NonNull ObjectMapper mapper,

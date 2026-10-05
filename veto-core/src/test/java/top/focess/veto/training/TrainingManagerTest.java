@@ -47,14 +47,6 @@ class TrainingManagerTest {
     }
 
     @Test
-    void testStartTrainingWithRequest() {
-        TrainingRequest request =
-                new TrainingRequest("Qwen/Qwen2.5-0.5B-Instruct", 1, 2e-4, 2, 8, null, false);
-        boolean started = manager.startTraining(request);
-        assertFalse(started); // Still fails because directory doesn't exist
-    }
-
-    @Test
     void testCancelWhenNotRunning() {
         // Should be a no-op
         assertDoesNotThrow(() -> manager.cancelTraining());

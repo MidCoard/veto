@@ -41,30 +41,6 @@ public class SessionPlugins {
     }
 
     /**
-     * Resolves the requested ids (null selects every installed plugin) to pinned bindings;
-     * duplicates and unknown or inactive plugins are rejected.
-     */
-    public @NonNull List<PluginBinding> selection(List<String> requested) {
-        var publication = manager.registry();
-        var available = publication.plugins();
-        var ids =
-                requested == null
-                        ? available.stream().map(p -> p.identity().id()).toList()
-                        : requested.stream().map(publication::canonicalId).toList();
-        if (ids.size() != Set.copyOf(ids).size())
-            throw new IllegalArgumentException("Duplicate plugin selection");
-        return ids.stream()
-                .map(
-                        id -> {
-                            var plugin = publication.plugin(id);
-                            if (plugin.state() != PluginState.ACTIVE)
-                                throw new IllegalArgumentException("Plugin is unavailable: " + id);
-                            return plugin.binding();
-                        })
-                .toList();
-    }
-
-    /**
      * Returns explicit persisted bindings. An empty selection is valid; missing bindings are
      * invalid. Missing or changed plugins remain pinned and are reported through availability.
      */
@@ -134,6 +110,8 @@ public class SessionPlugins {
     }
 
     /** Opens the model-response policies of the session's selected plugins in catalog order. */
+    // WHY: selected activation handles belong to PluginManager, not this query or adapter.
+    @SuppressWarnings("resource")
     public @NonNull List<ModelResponsePolicy.Exchange> responsePolicies(@NonNull String sessionId) {
         var publication = manager.registry();
         var ids = selectedIds(sessionId, publication);
@@ -177,6 +155,8 @@ public class SessionPlugins {
     }
 
     /** Returns a lazily resolved composite work source of the session's selected plugins. */
+    // WHY: selected activation handles belong to PluginManager, not this query or adapter.
+    @SuppressWarnings("resource")
     public @NonNull AgentInbox workSource(@NonNull String sessionId) {
         return new CompositeAgentInbox(
                 () -> {
@@ -244,6 +224,8 @@ public class SessionPlugins {
         return availability(selected, manager.registry());
     }
 
+    // WHY: selected activation handles belong to PluginManager, not this query or adapter.
+    @SuppressWarnings("resource")
     private @NonNull BoundPluginAvailability availability(
             @NonNull PluginBinding selected, @NonNull PluginRegistry publication) {
         String canonical = publication.canonicalId(selected.id());

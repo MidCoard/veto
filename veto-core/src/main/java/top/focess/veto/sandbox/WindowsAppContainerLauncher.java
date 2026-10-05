@@ -31,7 +31,7 @@ final class WindowsAppContainerLauncher {
     private static final int STD_OUTPUT_HANDLE = -11;
     private static final int STD_ERROR_HANDLE = -12;
     private static final int SE_GROUP_ENABLED = 0x00000004;
-    private static final @NonNull List<@NonNull String> NETWORK_CAPABILITY_SIDS =
+    static final @NonNull List<@NonNull String> NETWORK_CAPABILITY_SIDS =
             List.of("S-1-15-3-1", "S-1-15-3-2", "S-1-15-3-3");
 
     private WindowsAppContainerLauncher() {}

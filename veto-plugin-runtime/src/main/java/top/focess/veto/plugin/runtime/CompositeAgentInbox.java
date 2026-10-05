@@ -60,8 +60,9 @@ public final class CompositeAgentInbox implements AgentInbox {
 
     // Called only while holding this composite's monitor.
     private void discardAbandonedRoutes() {
-        for (var reference = abandoned.poll(); reference != null; reference = abandoned.poll())
-            routes.remove(reference);
+        for (var reference = abandoned.poll(); reference != null; reference = abandoned.poll()) {
+            if (reference instanceof ObservationReference observation) routes.remove(observation);
+        }
     }
 
     private synchronized void bind(@NonNull Observation value, @NonNull Entry entry) {
@@ -143,6 +144,8 @@ public final class CompositeAgentInbox implements AgentInbox {
                 .toList();
     }
 
+    // Entry handles are borrowed from their lifecycle owners, not owned by inbox callbacks.
+    @SuppressWarnings("resource")
     private void notify(
             @NonNull Observation observation,
             @NonNull BiConsumer<@NonNull AgentInbox, @NonNull Observation> action) {

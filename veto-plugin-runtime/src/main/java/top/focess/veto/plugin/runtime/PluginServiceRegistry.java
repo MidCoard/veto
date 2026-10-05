@@ -88,6 +88,8 @@ public final class PluginServiceRegistry {
     }
 
     /** Atomically replaces the service directory after a plugin catalog transition. */
+    // Provider handles are borrowed from the host plugin lifecycle, which owns their closure.
+    @SuppressWarnings("resource")
     public synchronized void bind(
             @NonNull ContributionCatalog catalog, @NonNull List<ManagedPlugin> plugins) {
         Map<String, ManagedPlugin> owners = new HashMap<>();
@@ -110,6 +112,8 @@ public final class PluginServiceRegistry {
     }
 
     /** Revokes one provider's registrations before its lifecycle and classloader are closed. */
+    // Provider handles are borrowed from the host plugin lifecycle, which owns their closure.
+    @SuppressWarnings("resource")
     public synchronized void revoke(@NonNull String providerId) {
         var activation = callbackOwners.remove(providerId);
         if (activation != null) revokedCallbackActivations.addAll(activation);
@@ -126,6 +130,8 @@ public final class PluginServiceRegistry {
     }
 
     /** Returns the service view authorized for the given calling plugin. */
+    // Provider handles are borrowed from the host plugin lifecycle, which owns their closure.
+    @SuppressWarnings("resource")
     public synchronized @NonNull PluginServices forPlugin(@NonNull ManagedPlugin caller) {
         callbackOwners
                 .computeIfAbsent(caller.identity().id(), ignored -> new HashSet<>())
@@ -167,6 +173,8 @@ public final class PluginServiceRegistry {
                         .toList();
             }
 
+            // Retained calls borrow the activation; only its host lifecycle may close it.
+            @SuppressWarnings("resource")
             public @NonNull Optional<Handle> find(@NonNull String name, int version) {
                 Key key = new Key(name, version);
                 var entry = entries.get(key);
@@ -253,6 +261,8 @@ public final class PluginServiceRegistry {
                 };
             }
 
+            // Retained calls borrow the activation; only its host lifecycle may close it.
+            @SuppressWarnings("resource")
             public @NonNull Optional<CallbackHandle> findCallback(@NonNull String id) {
                 CallbackEntry registration = callbacks.get(id);
                 if (registration == null

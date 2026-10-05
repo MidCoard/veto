@@ -26,6 +26,7 @@ import top.focess.veto.llm.core.UniformLLMCaller;
 import top.focess.veto.memory.TurnLogService;
 import top.focess.veto.memory.TurnRecordRepository;
 import top.focess.veto.model.AgentInstanceRepository;
+import top.focess.veto.model.SessionRepository;
 import top.focess.veto.model.tier.ModelTierRegistry;
 import top.focess.veto.observability.ObservabilityConfiguration;
 import top.focess.veto.vault.CredentialVaultConfiguration;
@@ -184,6 +185,7 @@ public final class AgentServiceTestSupport {
                 dependencies.continuations,
                 dependencies.vault,
                 dependencies.events,
-                dependencies.tiers);
+                dependencies.tiers,
+                Mockito.mock(SessionRepository.class));
     }
 }

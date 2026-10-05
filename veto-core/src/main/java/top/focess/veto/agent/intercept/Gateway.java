@@ -8,6 +8,7 @@ import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.UnaryOperator;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -55,6 +56,7 @@ public class Gateway {
     private final @NonNull DeployerPolicy policy;
     private final @NonNull ProtectedSet protectedSet;
     private final @NonNull ReadHistory readHistory;
+    private final @NonNull UnaryOperator<@NonNull ToolExecutionPermit> accessScope;
 
     /**
      * Constructs a per-agent Gateway wired to its screening dependencies. The caller ({@link
@@ -77,6 +79,26 @@ public class Gateway {
             @NonNull DeployerPolicy policy,
             @NonNull ProtectedSet protectedSet,
             @NonNull ReadHistory readHistory) {
+        this(
+                workspace,
+                dangerComputation,
+                slmScreeningProvider,
+                policy,
+                protectedSet,
+                readHistory,
+                UnaryOperator.identity());
+    }
+
+    /** The scope projection is evaluated again after approval to observe newly claimed roots. */
+    public Gateway(
+            @NonNull Workspace workspace,
+            @NonNull DangerComputation dangerComputation,
+            @NonNull SlmScreeningProvider slmScreeningProvider,
+            @NonNull DeployerPolicy policy,
+            @NonNull ProtectedSet protectedSet,
+            @NonNull ReadHistory readHistory,
+            @NonNull UnaryOperator<@NonNull ToolExecutionPermit> accessScope) {
+        this.accessScope = accessScope;
         this.workspace = workspace;
         this.dangerComputation = dangerComputation;
         this.slmScreeningProvider = slmScreeningProvider;
@@ -156,7 +178,8 @@ public class Gateway {
             return new GatewayResult.NotScreened();
         }
         ToolExecutionPermit executionPermit =
-                ToolExecutionPermit.capture(call, def, workspace, policy, protectedSet);
+                accessScope.apply(
+                        ToolExecutionPermit.capture(call, def, workspace, policy, protectedSet));
         if (prepared != null) executionPermit = executionPermit.withPreparation(prepared);
         List<@NonNull String> paths = executionPermit.requestedPaths();
         // drift is a correctness check on writes — checked before danger.
@@ -197,10 +220,13 @@ public class Gateway {
             @NonNull ToolDefinition definition,
             @NonNull ToolExecutionPermit screenedPermit) {
         if (definition instanceof AgentToolDefinition) {
-            return ToolExecutionPermit.capture(call, definition, workspace, policy, protectedSet);
+            return accessScope.apply(
+                    ToolExecutionPermit.capture(call, definition, workspace, policy, protectedSet));
         }
         ToolExecutionPermit current =
-                ToolExecutionPermit.capture(call, definition, workspace, policy, protectedSet);
+                accessScope.apply(
+                        ToolExecutionPermit.capture(
+                                call, definition, workspace, policy, protectedSet));
         var preparation = screenedPermit.preparation();
         if (preparation != null) {
             preparation.revalidate();

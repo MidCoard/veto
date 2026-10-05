@@ -75,6 +75,8 @@ final class ToolCatalog {
     }
 
     /** Replaces every plugin-owned registration while retaining local and MCP tools. */
+    // WHY: registrations borrow plugin activations; replacing catalog entries cannot close them.
+    @SuppressWarnings("resource")
     @NonNull ToolCatalog replacePlugins(@NonNull List<RegisteredTool> replacements) {
         List<RegisteredTool> combined = new ArrayList<>();
         for (var registration : registrations) {

@@ -179,6 +179,8 @@ public final class ManagedPlugin implements AutoCloseable {
     }
 
     /** Exact persisted selection identity; activation identity remains separate in bindingId. */
+    // The implementation remains owned by this activation and is closed only during cleanup.
+    @SuppressWarnings("resource")
     public @NonNull PluginBinding binding() {
         var identity = identity();
         String revision =
@@ -208,12 +210,16 @@ public final class ManagedPlugin implements AutoCloseable {
         return current;
     }
 
+    // The implementation remains owned by this activation and is closed only during cleanup.
+    @SuppressWarnings("resource")
     public @NonNull PluginIdentity identity() {
         InstalledPlugin descriptor = installed;
         return descriptor == null ? implementation().identity() : descriptor.identity();
     }
 
     /** Returns entry metadata without requiring construction. */
+    // The implementation remains owned by this activation and is closed only during cleanup.
+    @SuppressWarnings("resource")
     public @NonNull String displayName() {
         InstalledPlugin descriptor = installed;
         return descriptor == null ? implementation().displayName() : descriptor.displayName();
@@ -249,6 +255,8 @@ public final class ManagedPlugin implements AutoCloseable {
     }
 
     /** Constructs or binds the plugin on the control executor before it starts. */
+    // The implementation remains owned by this activation and is closed only during cleanup.
+    @SuppressWarnings("resource")
     public void construct(
             @NonNull PluginContext context, JsonValue.@NonNull ObjectValue configuration)
             throws PluginFailure {
@@ -322,6 +330,8 @@ public final class ManagedPlugin implements AutoCloseable {
     }
 
     /** Transitions an initialized plugin to ACTIVE on the control executor. */
+    // The implementation remains owned by this activation and is closed only during cleanup.
+    @SuppressWarnings("resource")
     public void start() throws PluginFailure {
         requireExternalControl();
         await(

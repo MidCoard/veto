@@ -54,6 +54,8 @@ final class PluginContributionDirectory {
         groups = Map.copyOf(prepared);
     }
 
+    // WHY: provider owners belong to PluginManager; this directory only queries admission state.
+    @SuppressWarnings("resource")
     @NonNull List<PluginContributionsDirectory.Entry> entries(
             @NonNull ContributionId pointId,
             int major,

@@ -2,18 +2,29 @@ package top.focess.veto.sandbox;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import com.sun.jna.Native;
+import com.sun.jna.Pointer;
+import com.sun.jna.WString;
+import com.sun.jna.platform.win32.Kernel32;
+import com.sun.jna.ptr.PointerByReference;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.Map.Entry;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import org.jspecify.annotations.NonNull;
@@ -303,6 +314,310 @@ class KernelSandboxSubstrateTest {
         assertTrue(result.stdout().contains("outside-write=denied"), result.stdout());
         assertTrue(Files.exists(insideTarget));
         assertFalse(Files.exists(outsideTarget));
+    }
+
+    @Test
+    @EnabledOnOs(OS.WINDOWS)
+    void foreignWorkspaceExclusionsDoNotDenyTheirOwners(@TempDir @NonNull Path temporaryRoot)
+            throws Exception {
+        Path alice = Files.createDirectory(temporaryRoot.resolve("alice"));
+        Path bob = Files.createDirectory(temporaryRoot.resolve("bob"));
+        // Suppress broad package and stale requester allows while preserving the rightful owner.
+        allowApplicationPackages(alice);
+        allowApplicationPackages(bob);
+        Path aliceSecret = Files.writeString(alice.resolve("secret.txt"), "alice-secret");
+        Path bobCache = Files.createDirectory(bob.resolve("cache"));
+        allowApplicationPackages(bobCache); // explicit child allow, not just inherited root allow
+        Path bobSecret = Files.writeString(bobCache.resolve("secret.txt"), "bob-secret");
+        Path aliceProbe = installEscapeProbe(alice);
+        Path bobProbe = installEscapeProbe(bob);
+        Path javaHome = Path.of(System.getProperty("java.home"));
+        ConstrainedSubprocessSubstrate substrate =
+                new ConstrainedSubprocessSubstrate(new KernelSandboxSubstrate());
+        SandboxProfile aliceProfile =
+                new SandboxProfile(
+                        alice,
+                        512,
+                        100,
+                        8,
+                        Duration.ofSeconds(30),
+                        true,
+                        Set.of(),
+                        Set.of(javaHome),
+                        Set.of(bobCache),
+                        Set.of(bob));
+        SandboxProfile bobProfile =
+                new SandboxProfile(
+                        bob,
+                        512,
+                        100,
+                        8,
+                        Duration.ofSeconds(30),
+                        true,
+                        Set.of(),
+                        Set.of(javaHome),
+                        Set.of(),
+                        Set.of(alice));
+        SandboxProfile unclaimedAliceProfile =
+                new SandboxProfile(
+                        alice,
+                        512,
+                        100,
+                        8,
+                        Duration.ofSeconds(30),
+                        true,
+                        Set.of(),
+                        Set.of(javaHome),
+                        Set.of());
+        SandboxProfile overlappingAliceProfile =
+                new SandboxProfile(
+                        alice,
+                        512,
+                        100,
+                        8,
+                        Duration.ofSeconds(30),
+                        true,
+                        Set.of(),
+                        Set.of(javaHome),
+                        Set.of(temporaryRoot),
+                        Set.of(bobCache));
+        SandboxHandle priorAlice = substrate.provision(unclaimedAliceProfile);
+        try {
+            allowSandboxIdentity(bobCache, alice); // simulate a prior explicit compatibility grant
+        } finally {
+            substrate.deprovision(priorAlice);
+        }
+        SandboxHandle bobHandle = substrate.provision(bobProfile);
+        try {
+            var originalBobAcl = nativeAclSnapshot(bobCache);
+            SandboxHandle aliceHandle = substrate.provision(aliceProfile);
+            SandboxHandle secondAliceHandle = null;
+            boolean firstAliceReleased = false;
+            try {
+                secondAliceHandle = substrate.provision(overlappingAliceProfile);
+                // A later rightful-owner invocation must not reinherit the package allows removed
+                // by Alice's active projection.
+                SandboxHandle laterBob = substrate.provision(bobProfile);
+                try {
+                    assertWorkspaceProbe(
+                            substrate,
+                            laterBob,
+                            bobProbe,
+                            bob.resolve("inside.txt"),
+                            alice.resolve("outside.txt"),
+                            bobSecret,
+                            "allowed");
+                } finally {
+                    substrate.deprovision(laterBob);
+                }
+                assertThrows(
+                        SecurityException.class,
+                        () ->
+                                new WindowsWorkspaceSecurity()
+                                        .provisionExecutable(bobSecret, aliceProfile));
+                assertWorkspaceProbe(
+                        substrate,
+                        aliceHandle,
+                        aliceProbe,
+                        alice.resolve("inside.txt"),
+                        bob.resolve("outside.txt"),
+                        bobSecret,
+                        "denied");
+                assertWorkspaceProbe(
+                        substrate,
+                        bobHandle,
+                        bobProbe,
+                        bob.resolve("inside.txt"),
+                        alice.resolve("outside.txt"),
+                        aliceSecret,
+                        "denied");
+                assertWorkspaceProbe(
+                        substrate,
+                        aliceHandle,
+                        aliceProbe,
+                        alice.resolve("inside.txt"),
+                        bob.resolve("outside.txt"),
+                        aliceSecret,
+                        "allowed");
+                assertWorkspaceProbe(
+                        substrate,
+                        bobHandle,
+                        bobProbe,
+                        bob.resolve("inside.txt"),
+                        alice.resolve("outside.txt"),
+                        bobSecret,
+                        "allowed");
+                substrate.deprovision(aliceHandle);
+                firstAliceReleased = true;
+                assertWorkspaceProbe(
+                        substrate,
+                        secondAliceHandle,
+                        aliceProbe,
+                        alice.resolve("inside.txt"),
+                        bobCache.resolve("outside.txt"),
+                        bobSecret,
+                        "denied");
+            } finally {
+                try {
+                    if (secondAliceHandle != null) substrate.deprovision(secondAliceHandle);
+                } finally {
+                    if (!firstAliceReleased) substrate.deprovision(aliceHandle);
+                }
+            }
+            var restoredBobAcl = nativeAclSnapshot(bobCache);
+            assertEquals(
+                    originalBobAcl.getValue(),
+                    restoredBobAcl.getValue(),
+                    "Retirement must restore exact ACE bytes, including inherited flags and ordering");
+            // Local SetFileSecurity deliberately avoids descendant propagation and clears the
+            // historical AUTO_INHERITED marker. Every other control bit, especially protection,
+            // must survive. Inherited ACE flags themselves are compared exactly above.
+            assertEquals(originalBobAcl.getKey() & ~0x400, restoredBobAcl.getKey() & ~0x400);
+            // Foreign masks must not leave a broad denial after the requesting process ends.
+            assertWorkspaceProbe(
+                    substrate,
+                    bobHandle,
+                    bobProbe,
+                    bob.resolve("inside.txt"),
+                    alice.resolve("outside.txt"),
+                    bobSecret,
+                    "allowed");
+            SandboxHandle unclaimedAlice = substrate.provision(unclaimedAliceProfile);
+            try {
+                assertWorkspaceProbe(
+                        substrate,
+                        unclaimedAlice,
+                        aliceProbe,
+                        alice.resolve("inside.txt"),
+                        temporaryRoot.resolve("unavailable.txt"),
+                        bobSecret,
+                        "allowed");
+            } finally {
+                substrate.deprovision(unclaimedAlice);
+            }
+        } finally {
+            substrate.deprovision(bobHandle);
+        }
+        assertEquals("alice-secret", Files.readString(aliceSecret));
+        assertEquals("bob-secret", Files.readString(bobSecret));
+        assertFalse(Files.exists(alice.resolve("outside.txt")));
+        assertFalse(Files.exists(bob.resolve("outside.txt")));
+    }
+
+    private static @NonNull Entry<@NonNull Short, @NonNull List<@NonNull ByteBuffer>>
+            nativeAclSnapshot(@NonNull Path path) {
+        var api = Native.load("advapi32", WindowsWorkspaceSecurity.WindowsAclApi.class);
+        var acl = new PointerByReference();
+        var descriptor = new PointerByReference();
+        try {
+            assertEquals(
+                    0,
+                    api.GetNamedSecurityInfoW(
+                            new WString(path.toString()), 1, 4, null, null, acl, null, descriptor));
+            var pointer = Objects.requireNonNull(acl.getValue());
+            byte[] bytes = pointer.getByteArray(0, Short.toUnsignedInt(pointer.getShort(2)));
+            var data = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN);
+            List<@NonNull ByteBuffer> entries = new ArrayList<>();
+            int offset = 8;
+            for (int index = 0; index < Short.toUnsignedInt(data.getShort(4)); index++) {
+                int size = Short.toUnsignedInt(data.getShort(offset + 2));
+                entries.add(
+                        ByteBuffer.wrap(Arrays.copyOfRange(bytes, offset, offset + size))
+                                .asReadOnlyBuffer());
+                offset += size;
+            }
+            return Map.entry(Objects.requireNonNull(descriptor.getValue()).getShort(2), entries);
+        } finally {
+            if (descriptor.getValue() != null) Kernel32.INSTANCE.LocalFree(descriptor.getValue());
+        }
+    }
+
+    private static void allowApplicationPackages(@NonNull Path directory) {
+        List<@NonNull String> sids = new ArrayList<>(List.of("S-1-15-2-1", "S-1-15-2-2"));
+        sids.addAll(WindowsAppContainerLauncher.NETWORK_CAPABILITY_SIDS);
+        for (String sid : sids) {
+            var api = Native.load("advapi32", WindowsWorkspaceSecurity.WindowsAclApi.class);
+            var nativeSid = new PointerByReference();
+            try {
+                assertTrue(api.ConvertStringSidToSidW(new WString(sid), nativeSid));
+                allowSid(directory, Objects.requireNonNull(nativeSid.getValue()));
+            } finally {
+                if (nativeSid.getValue() != null) Kernel32.INSTANCE.LocalFree(nativeSid.getValue());
+            }
+        }
+    }
+
+    private static void allowSandboxIdentity(@NonNull Path directory, @NonNull Path workspace) {
+        var containers =
+                Native.load("userenv", WindowsWorkspaceSecurity.WindowsAppContainerApi.class);
+        var api = Native.load("advapi32", WindowsWorkspaceSecurity.WindowsAclApi.class);
+        var sid = new PointerByReference();
+        try {
+            assertEquals(
+                    0,
+                    containers.DeriveAppContainerSidFromAppContainerName(
+                            new WString(WindowsWorkspaceSecurity.appContainerName(workspace)),
+                            sid));
+            allowSid(directory, Objects.requireNonNull(sid.getValue()));
+        } finally {
+            if (sid.getValue() != null) api.FreeSid(sid.getValue());
+        }
+    }
+
+    private static void allowSid(@NonNull Path directory, @NonNull Pointer sid) {
+        var api = Native.load("advapi32", WindowsWorkspaceSecurity.WindowsAclApi.class);
+        var acl = new PointerByReference();
+        var descriptor = new PointerByReference();
+        var updated = new PointerByReference();
+        try {
+            var name = new WString(directory.toString());
+            assertEquals(
+                    0, api.GetNamedSecurityInfoW(name, 1, 4, null, null, acl, null, descriptor));
+            var allow = WindowsWorkspaceSecurity.explicitSidAccess(sid, 0x001F01FF, 1, 3);
+            assertEquals(0, api.SetEntriesInAclW(1, allow, acl.getValue(), updated));
+            assertEquals(
+                    0, api.SetNamedSecurityInfoW(name, 1, 4, null, null, updated.getValue(), null));
+        } finally {
+            if (updated.getValue() != null) Kernel32.INSTANCE.LocalFree(updated.getValue());
+            if (descriptor.getValue() != null) Kernel32.INSTANCE.LocalFree(descriptor.getValue());
+        }
+    }
+
+    private static void assertWorkspaceProbe(
+            @NonNull ConstrainedSubprocessSubstrate substrate,
+            @NonNull SandboxHandle handle,
+            @NonNull Path probeRoot,
+            @NonNull Path inside,
+            @NonNull Path outside,
+            @NonNull Path secret,
+            @NonNull String expectedRead) {
+        String java = Path.of(System.getProperty("java.home"), "bin", "java.exe").toString();
+        var result =
+                substrate.runCommands(
+                        handle,
+                        List.of(
+                                new Command(
+                                        java,
+                                        List.of(
+                                                "-Xms8m",
+                                                "-Xmx64m",
+                                                "-XX:MaxMetaspaceSize=64m",
+                                                "-XX:ReservedCodeCacheSize=32m",
+                                                "-XX:+UseSerialGC",
+                                                "-cp",
+                                                probeRoot.toString(),
+                                                "top.focess.veto.sandbox.WindowsSandboxEscapeProbe",
+                                                inside.toString(),
+                                                outside.toString(),
+                                                secret.toString()))),
+                        Path.of("."),
+                        ChainMode.STOP_ON_FAILURE,
+                        Duration.ofSeconds(20));
+        assertEquals(
+                0, result.exitCode(), "stdout=" + result.stdout() + "; stderr=" + result.stderr());
+        assertTrue(result.stdout().contains("inside-write=allowed"), result.stdout());
+        assertTrue(result.stdout().contains("outside-write=denied"), result.stdout());
+        assertTrue(result.stdout().contains("outside-read=" + expectedRead), result.stdout());
     }
 
     @Test

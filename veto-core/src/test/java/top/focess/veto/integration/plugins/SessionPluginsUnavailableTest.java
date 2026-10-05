@@ -109,9 +109,36 @@ class SessionPluginsUnavailableTest {
     }
 
     @Test
+    void creationSelectionPinsActiveRevisionAndRejectsUnavailableOrDuplicateAliases() {
+        var manager = mock(PluginManager.class);
+        doCallRealMethod().when(manager).selection(anyList());
+        var installed = mock(ManagedPlugin.class);
+        var identity = new PluginIdentity("installed.plugin", "1.0.0");
+        var pin = new PluginBinding(identity.id(), identity.version(), "exact-revision");
+        when(installed.identity()).thenReturn(identity);
+        when(installed.binding()).thenReturn(pin);
+        when(installed.state()).thenReturn(PluginState.ACTIVE);
+        var publication = publication(manager, List.of(installed));
+        when(publication.canonicalId("historical.plugin")).thenReturn(identity.id());
+
+        assertEquals(List.of(), manager.selection(List.of()));
+        assertEquals(List.of(pin), manager.selection(List.of("historical.plugin")));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> manager.selection(List.of(identity.id(), "historical.plugin")));
+        assertThrows(
+                IllegalArgumentException.class, () -> manager.selection(List.of("missing.plugin")));
+        when(installed.state()).thenReturn(PluginState.CLOSED);
+        assertThrows(
+                IllegalArgumentException.class, () -> manager.selection(List.of(identity.id())));
+    }
+
+    @Test
     void explicitEmptySelectionRemainsEmptyAndReadsDoNotWrite() {
         var manager = mock(PluginManager.class);
-        publication(manager, List.of());
+        var installed = mock(ManagedPlugin.class);
+        when(installed.identity()).thenReturn(new PluginIdentity("installed.plugin", "1.0.0"));
+        publication(manager, List.of(installed));
         var sessions = mock(SessionRepository.class);
         var session = new SessionEntity("owner", "plugin-free");
         session.setPluginBindings(List.of());

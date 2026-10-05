@@ -15,6 +15,8 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -143,22 +145,21 @@ public class KernelSandboxSubstrate {
         }
     }
 
-    /**
-     * Attach a spawned trusted bootstrap to the kernel process wall and retain the wall until the
-     * process exits. Unsupported platforms and attachment failures fail closed.
-     */
+    /** Attaches the process wall; completion proves the entire contained tree has retired. */
     @SuppressWarnings("resource") // The process-exit callback owns this async handle.
-    public void attach(@NonNull Process process, @NonNull SandboxProfile profile) {
+    public @NonNull CompletableFuture<Void> attach(
+            @NonNull Process process, @NonNull SandboxProfile profile) {
         AutoCloseable handle = attachRequired(process, profile);
-        process.onExit()
-                .whenComplete(
+        return process.onExit()
+                .handleAsync(
                         (ignoredProcess, ignoredFailure) -> {
                             try {
                                 handle.close();
                             } catch (Exception e) {
-                                log.warn(
-                                        "KernelSandboxSubstrate: failed to close kernel handle", e);
+                                throw new IllegalStateException(
+                                        "Kernel process tree retirement failed", e);
                             }
+                            return null;
                         });
     }
 
@@ -544,16 +545,50 @@ public class KernelSandboxSubstrate {
         }
 
         @Override
+        @SuppressWarnings(
+                "BusyWait") // WHY: bounded native accounting must prove every Job descendant has
+        // stopped.
         public void close() {
-            if (windowsStdKernel != null) {
-                try {
-                    windowsStdKernel.CloseHandle(job);
-                    log.debug("KernelSandboxSubstrate: closed Job handle for pid {}", pid);
-                } catch (Throwable t) {
-                    log.warn(
-                            "KernelSandboxSubstrate: CloseHandle failed: {}", safe(t.getMessage()));
+            var kernel = requiredWindowsKernel();
+            var standard = requiredWindowsStdKernel();
+            try {
+                if (!kernel.TerminateJobObject(job, 1))
+                    throw new IllegalStateException(
+                            "TerminateJobObject failed: " + standard.GetLastError());
+                var accounting = new JobObjectBasicAccountingInformation();
+                long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+                while (true) {
+                    if (!kernel.QueryInformationJobObject(
+                            job,
+                            JobObjectInfoClass.JobObjectBasicAccountingInformation,
+                            accounting,
+                            accounting.size(),
+                            null))
+                        throw new IllegalStateException(
+                                "QueryInformationJobObject failed: " + standard.GetLastError());
+                    accounting.read();
+                    if (accounting.ActiveProcesses == 0) break;
+                    if (System.nanoTime() >= deadline)
+                        throw new IllegalStateException("Windows process tree did not terminate");
+                    try {
+                        Thread.sleep(10);
+                    } catch (InterruptedException interrupted) {
+                        Thread.currentThread().interrupt();
+                        throw new IllegalStateException(
+                                "Windows process tree retirement interrupted", interrupted);
+                    }
                 }
+            } catch (RuntimeException | Error failure) {
+                if (!standard.CloseHandle(job))
+                    failure.addSuppressed(
+                            new IllegalStateException(
+                                    "CloseHandle(Job) failed: " + standard.GetLastError()));
+                throw failure;
             }
+            if (!standard.CloseHandle(job))
+                throw new IllegalStateException(
+                        "CloseHandle(Job) failed: " + standard.GetLastError());
+            log.debug("KernelSandboxSubstrate: retired Job tree for pid {}", pid);
         }
     }
 
@@ -591,6 +626,17 @@ public class KernelSandboxSubstrate {
         /** Win32 {@code AssignProcessToJobObject}: puts the child under the Job's limits. */
         boolean AssignProcessToJobObject(WinNT.HANDLE hJob, WinNT.HANDLE hProcess);
 
+        /** Terminates all processes assigned to a Job. */
+        boolean TerminateJobObject(WinNT.HANDLE job, int exitCode);
+
+        /** Reads native Job accounting while the Job handle remains owned. */
+        boolean QueryInformationJobObject(
+                WinNT.HANDLE job,
+                int informationClass,
+                Structure information,
+                int length,
+                Pointer returnLength);
+
         /** Win32 {@code CreateEventW}: creates the named gate/ready event for the bootstrap. */
         WinNT.HANDLE CreateEventW(
                 Pointer eventAttributes, boolean manualReset, boolean initialState, WString name);
@@ -603,6 +649,28 @@ public class KernelSandboxSubstrate {
     }
 
     // --- Windows job-object structs (JOBOBJECT_EXTENDED_LIMIT_INFORMATION, WinNT.h) ---
+
+    /** Win32 {@code JOBOBJECT_BASIC_ACCOUNTING_INFORMATION}. */
+    @Structure.FieldOrder({
+        "TotalUserTime",
+        "TotalKernelTime",
+        "ThisPeriodTotalUserTime",
+        "ThisPeriodTotalKernelTime",
+        "TotalPageFaultCount",
+        "TotalProcesses",
+        "ActiveProcesses",
+        "TotalTerminatedProcesses"
+    })
+    public static class JobObjectBasicAccountingInformation extends Structure {
+        public long TotalUserTime;
+        public long TotalKernelTime;
+        public long ThisPeriodTotalUserTime;
+        public long ThisPeriodTotalKernelTime;
+        public int TotalPageFaultCount;
+        public int TotalProcesses;
+        public int ActiveProcesses;
+        public int TotalTerminatedProcesses;
+    }
 
     /** Win32 {@code JOBOBJECT_BASIC_LIMIT_INFORMATION}. */
     public static class JobObjectBasicLimitInformation extends Structure {
@@ -685,6 +753,7 @@ public class KernelSandboxSubstrate {
 
     /** {@code JOBOBJECTINFOCLASS} values (subset; JobObjectExtendedLimitInformation = 9). */
     public static final class JobObjectInfoClass {
+        public static final int JobObjectBasicAccountingInformation = 1;
         public static final int JobObjectBasicUiRestrictions = 4;
         public static final int JobObjectExtendedLimitInformation = 9;
         public static final int JobObjectCpuRateControlInformation = 15;

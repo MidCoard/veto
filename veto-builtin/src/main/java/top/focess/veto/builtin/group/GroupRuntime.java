@@ -173,6 +173,8 @@ public final class GroupRuntime implements AgentConfiguration, GroupObservations
                                 prior != null && prior.restored()));
     }
 
+    // WHY: compute's external return remains nullable to Checker despite the non-null remapping.
+    @SuppressWarnings("ConstantValue")
     public synchronized Intent configure(@NonNull Context context) {
         if (!activationReady) throw new IllegalStateException("Host startup is not ready");
         var key = key(context);

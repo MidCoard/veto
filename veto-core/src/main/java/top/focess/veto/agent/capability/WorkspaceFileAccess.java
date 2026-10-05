@@ -66,8 +66,9 @@ final class WorkspaceFileAccess {
                 continue;
             }
             if ((permit.deployerPolicy() == DeployerPolicy.SANDBOXED
-                            || permit.deployerPolicy() == DeployerPolicy.TENANT)
-                    && !authorized.inScope()) {
+                            && permit.accessRoots().stream().noneMatch(host::startsWith))
+                    || (permit.deployerPolicy() == DeployerPolicy.TENANT
+                            && !authorized.inScope())) {
                 throw new SecurityException("Path is outside the configured policy scope");
             }
             Path normalized = host.toAbsolutePath().normalize();
@@ -402,7 +403,7 @@ final class WorkspaceFileAccess {
     }
 
     private static boolean isProtected(@NonNull ToolExecutionPermit permit, @NonNull Path path) {
-        return permit.protectedPaths().stream().anyMatch(path::startsWith);
+        return permit.deniedPaths().stream().anyMatch(path::startsWith);
     }
 
     private static void refuseProtected(
@@ -413,7 +414,7 @@ final class WorkspaceFileAccess {
                     "Protected path: the path is protected and cannot be accessed.");
         }
         if (tree
-                && permit.protectedPaths().stream()
+                && permit.deniedPaths().stream()
                         .anyMatch(protectedPath -> protectedPath.startsWith(path))) {
             ToolErrors.refused(
                     ToolErrorCode.POLICY.DESCENDANT_REFUSED,

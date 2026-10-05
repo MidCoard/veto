@@ -289,89 +289,20 @@ class AgentEndToEndTest {
         assertTrue(types.contains(TurnType.TOOL_CALL), "the tool call was recorded");
         assertTrue(types.contains(TurnType.TOOL_RESPONSE), "the tool observation was recorded");
         assertTrue(types.contains(TurnType.ASSISTANT_RESPONSE));
-        assertCompletedTool(HistoryProjection.effective(agent.history()), "calc");
-        assertReturnsToIdle(agent);
-    }
-
-    /**
-     * Regression contract: one tool call in the model's response must produce exactly one
-     * TOOL_RESPONSE turn in history - not two. A prior bug (introduced when a recordRecentCall hook
-     * was inserted between two identical appendTurn calls in executeOneConfirmedCall) doubled every
-     * tool observation, wasting turn numbers and feeding the model duplicate observations.
-     */
-    @Test
-    void oneToolCallProducesExactlyOneToolResponse() throws Exception {
-        AgentService service =
-                serviceWith(
-                        new CalculatorToolEngine(),
-                        scripted(
-                                thoughtOnWithCall(
-                                        "I'll compute 2+2 via calc.",
-                                        "Let me check.",
-                                        new ToolCall("calc", Map.of("expr", "2+2"))),
-                                thoughtOn("calc says 4.", "The answer is 4.")));
-
-        AgentResult result =
-                service.submit(
-                        "one-response-test",
-                        "What is 2 + 2?",
-                        binding("You are a helpful assistant."),
-                        EPISODE_TIMEOUT,
-                        ignored -> {});
-
-        assertTrue(result.success(), "episode should finish successfully after the tool call");
-
-        VetoAgent agent = requireAgent(service.agent("one-response-test"));
-        long toolCalls =
-                agent.history().stream().filter(t -> t.type() == TurnType.TOOL_CALL).count();
-        long toolResponses =
-                agent.history().stream().filter(t -> t.type() == TurnType.TOOL_RESPONSE).count();
-        assertEquals(1, toolCalls, "exactly one TOOL_CALL turn should be recorded");
+        // One durable result per call, with unique turn numbers across thoughts and tools.
+        assertEquals(
+                1, agent.history().stream().filter(t -> t.type() == TurnType.TOOL_CALL).count());
         assertEquals(
                 1,
-                toolResponses,
-                "exactly one TOOL_RESPONSE turn should be recorded"
-                        + " (regression: a duplicate appendTurn doubled this)");
-        assertCompletedTool(HistoryProjection.effective(agent.history()), "calc");
-    }
-
-    @Test
-    void turnNumbersAreStrictlyIncreasingAcrossThoughtAndToolCall() throws Exception {
-        // Regression: a non-blank thought followed by a tool call used to reuse the user prompt's
-        // turn_number (appendThought and the confirmed-path appendToolCall did not advance the
-        // counter), so the second record collided on the uk_turn_records_agent_turn unique key and
-        // the durable turn log rejected it, leaving the DB inconsistent with the in-memory history.
-        // The runner now authoritatively allocates a unique, strictly-increasing number per
-        // appended
-        // record.
-        AgentService service =
-                serviceWith(
-                        new CalculatorToolEngine(),
-                        scripted(
-                                thoughtOnWithCall(
-                                        "I'll compute 2+2 via calc.",
-                                        "Let me check.",
-                                        new ToolCall("calc", Map.of("expr", "2+2"))),
-                                thoughtOn("calc says 4.", "The answer is 4.")));
-
-        AgentResult result =
-                service.submit(
-                        "turn-numbers-test",
-                        "What is 2 + 2?",
-                        binding("You are a helpful assistant."),
-                        EPISODE_TIMEOUT,
-                        ignored -> {});
-
-        assertTrue(result.success(), "episode should finish successfully");
-        VetoAgent agent = requireAgent(service.agent("turn-numbers-test"));
+                agent.history().stream().filter(t -> t.type() == TurnType.TOOL_RESPONSE).count());
         assertCompletedTool(HistoryProjection.effective(agent.history()), "calc");
         List<Integer> numbers = agent.history().stream().map(TurnRecord::turnNumber).toList();
-        assertFalse(numbers.isEmpty(), "history should contain turns");
         for (int i = 1; i < numbers.size(); i++) {
             assertTrue(
                     numbers.get(i) > numbers.get(i - 1),
                     "turn numbers must be strictly increasing; got " + numbers);
         }
+        assertReturnsToIdle(agent);
     }
 
     @Test

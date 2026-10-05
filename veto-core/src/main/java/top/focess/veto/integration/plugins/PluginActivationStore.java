@@ -58,6 +58,8 @@ public final class PluginActivationStore {
     }
 
     /** Saves a choice without changing any running plugin instance. */
+    // WHY: Checker treats the persistence return as nullable; validate the external save boundary.
+    @SuppressWarnings("ConstantValue")
     public synchronized void setEnabled(@NonNull String id, boolean enabled) {
         PluginActivationEntity saved =
                 repository.saveAndFlush(new PluginActivationEntity(id, enabled));

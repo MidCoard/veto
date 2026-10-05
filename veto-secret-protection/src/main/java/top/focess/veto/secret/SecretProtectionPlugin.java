@@ -22,7 +22,6 @@ import top.focess.veto.api.llm.LocalModelCompletion;
 import top.focess.veto.api.llm.PromptRenderer;
 import top.focess.veto.api.plugin.*;
 import top.focess.veto.api.plugin.contract.*;
-import top.focess.veto.api.plugin.contribution.*;
 import top.focess.veto.secret.detection.MdcSecretDetectionModel;
 import top.focess.veto.secret.detection.SlmSecretDetector;
 import top.focess.veto.secret.references.SecretCandidateStore;

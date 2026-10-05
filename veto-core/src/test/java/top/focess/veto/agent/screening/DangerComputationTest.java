@@ -11,6 +11,7 @@ import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import top.focess.veto.agent.intercept.ToolExecutionPermit;
 import top.focess.veto.agent.tool.NativeToolDefinition;
 import top.focess.veto.agent.workspace.PathMode;
 import top.focess.veto.agent.workspace.TrustMarker;
@@ -121,6 +122,61 @@ class DangerComputationTest {
                 Danger.CRITICAL,
                 dc.compute(
                         readDef(), call, ws(root), DeployerPolicy.SANDBOXED, ProtectedSet.empty()));
+    }
+
+    @Test
+    void sandboxAllowsUnclaimedSiblingButPreservesSessionRootsAndTenantBoundary() throws Exception {
+        Path selected = Files.createDirectory(root.resolve("selected"));
+        Path sibling = Files.createDirectory(root.resolve("sibling"));
+        var workspace = ws(selected);
+        var definition = readDef();
+        var call = new ToolCall("view_file", Map.of("path", sibling.toString()));
+        var permit =
+                ToolExecutionPermit.capture(
+                                call,
+                                definition,
+                                workspace,
+                                DeployerPolicy.SANDBOXED,
+                                ProtectedSet.empty())
+                        .withAccessScope(List.of(root), List.of());
+        assertEquals(List.of(selected), permit.workspaceRoots());
+        assertEquals(
+                Danger.ELEVATED,
+                dc.compute(
+                        definition,
+                        call,
+                        workspace,
+                        DeployerPolicy.SANDBOXED,
+                        ProtectedSet.empty(),
+                        permit));
+        var occupied = permit.withAccessScope(List.of(root), List.of(sibling));
+        assertEquals(
+                Danger.CRITICAL,
+                dc.compute(
+                        definition,
+                        call,
+                        workspace,
+                        DeployerPolicy.SANDBOXED,
+                        ProtectedSet.empty(),
+                        occupied));
+        assertFalse(permit.sameTargets(occupied));
+        var tenant =
+                ToolExecutionPermit.capture(
+                                call,
+                                definition,
+                                workspace,
+                                DeployerPolicy.TENANT,
+                                ProtectedSet.empty())
+                        .withAccessScope(List.of(root), List.of());
+        assertEquals(
+                Danger.CRITICAL,
+                dc.compute(
+                        definition,
+                        call,
+                        workspace,
+                        DeployerPolicy.TENANT,
+                        ProtectedSet.empty(),
+                        tenant));
     }
 
     @Test

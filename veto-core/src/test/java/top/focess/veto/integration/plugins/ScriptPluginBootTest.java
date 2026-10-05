@@ -11,6 +11,7 @@ import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -61,7 +62,6 @@ class ScriptPluginBootTest {
     private final @NonNull ToolEngine engine;
     private final @NonNull PluginManager plugins;
     @Autowired private @NonNull SessionRepository sessions;
-    @Autowired private @NonNull SessionPlugins selection;
 
     @Autowired
     ScriptPluginBootTest(@NonNull ToolEngine engine, @NonNull PluginManager plugins) {
@@ -188,7 +188,7 @@ class ScriptPluginBootTest {
         assertEquals(ToolResultStatus.FAILURE, engine.execute(call, definition).status());
         UUID user = UUID.randomUUID();
         var session = new SessionEntity("test-owner", "plugin-selection");
-        session.setPluginBindings(selection.selection(java.util.List.of("text")));
+        session.setPluginBindings(plugins.selection(List.of("text")));
         sessions.saveAndFlush(session);
         UUID sessionId = UUID.fromString(session.getId());
         var permit =

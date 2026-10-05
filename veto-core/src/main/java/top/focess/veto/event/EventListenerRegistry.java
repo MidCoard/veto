@@ -168,7 +168,8 @@ public final class EventListenerRegistry {
      * @param event producer-owned event
      * @param selected selected plugin identities, or null for all active plugins
      */
-    @SuppressWarnings("removal") // ThreadDeath remains a fatal callback signal while supported.
+    // WHY: listener owners are manager-owned activations; delivery only borrows their handles.
+    @SuppressWarnings({"removal", "resource"}) // ThreadDeath remains fatal while supported.
     public void submit(@NonNull Event event, Set<String> selected) {
         List<RegisteredHandler> handlers = byEventType.get(event.getClass());
         if (handlers == null) throw new IllegalArgumentException("Unregistered event type");

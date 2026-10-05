@@ -29,7 +29,8 @@ import top.focess.veto.agent.continuation.RequestContinuationStore;
 import top.focess.veto.agent.identity.AgentPersona;
 import top.focess.veto.agent.identity.Role;
 import top.focess.veto.agent.intercept.HitlRecordRepository;
-import top.focess.veto.agent.screening.DeployerPolicy;
+import top.focess.veto.agent.screening.DeployerPolicyConfiguration;
+import top.focess.veto.agent.screening.ProtectedSetResolver;
 import top.focess.veto.agent.workspace.WorkspaceAdmissionPolicy;
 import top.focess.veto.api.agent.AgentState;
 import top.focess.veto.api.event.BeforeTextCommitEvent;
@@ -40,8 +41,8 @@ import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.bus.SessionInvalidations;
 import top.focess.veto.event.EventManager;
 import top.focess.veto.integration.plugins.PluginDataCleanup;
+import top.focess.veto.integration.plugins.PluginManager;
 import top.focess.veto.integration.plugins.PluginTestSupport;
-import top.focess.veto.integration.plugins.SessionPlugins;
 import top.focess.veto.integration.plugins.storage.ScopedPluginStorage;
 import top.focess.veto.memory.TurnRecordRepository;
 import top.focess.veto.model.AgentEntity;
@@ -98,10 +99,12 @@ class SessionServiceTest {
                             registry,
                             mock(SessionHistoryLoader.class),
                             mock(ModelTierRegistry.class),
-                            new WorkspaceAdmissionPolicy(List.of(), DeployerPolicy.FULL_ACCESS),
+                            new WorkspaceAdmissionPolicy(
+                                    new DeployerPolicyConfiguration(),
+                                    mock(ProtectedSetResolver.class)),
                             mock(ScopedPluginStorage.class),
                             mock(HitlRecordRepository.class),
-                            mock(SessionPlugins.class),
+                            mock(PluginManager.class),
                             mock(EventManager.class),
                             mock(PluginDataCleanup.class),
                             mock(RequestContinuationStore.class));
@@ -127,10 +130,12 @@ class SessionServiceTest {
                         liveAgents,
                         mock(SessionHistoryLoader.class),
                         mock(ModelTierRegistry.class),
-                        new WorkspaceAdmissionPolicy(List.of(), DeployerPolicy.FULL_ACCESS),
+                        new WorkspaceAdmissionPolicy(
+                                new DeployerPolicyConfiguration(),
+                                mock(ProtectedSetResolver.class)),
                         mock(ScopedPluginStorage.class),
                         mock(HitlRecordRepository.class),
-                        mock(SessionPlugins.class),
+                        mock(PluginManager.class),
                         events,
                         mock(PluginDataCleanup.class),
                         mock(RequestContinuationStore.class));
@@ -184,10 +189,12 @@ class SessionServiceTest {
                         liveAgents,
                         history,
                         tierRegistry,
-                        new WorkspaceAdmissionPolicy(List.of(), DeployerPolicy.FULL_ACCESS),
+                        new WorkspaceAdmissionPolicy(
+                                new DeployerPolicyConfiguration(),
+                                mock(ProtectedSetResolver.class)),
                         mock(ScopedPluginStorage.class),
                         mock(HitlRecordRepository.class),
-                        mock(SessionPlugins.class),
+                        mock(PluginManager.class),
                         mock(EventManager.class),
                         mock(PluginDataCleanup.class),
                         mock(RequestContinuationStore.class));
@@ -275,10 +282,12 @@ class SessionServiceTest {
                         liveAgents,
                         loader,
                         tierRegistry,
-                        new WorkspaceAdmissionPolicy(List.of(), DeployerPolicy.FULL_ACCESS),
+                        new WorkspaceAdmissionPolicy(
+                                new DeployerPolicyConfiguration(),
+                                mock(ProtectedSetResolver.class)),
                         mock(ScopedPluginStorage.class),
                         mock(HitlRecordRepository.class),
-                        mock(SessionPlugins.class),
+                        mock(PluginManager.class),
                         mock(EventManager.class),
                         mock(PluginDataCleanup.class),
                         mock(RequestContinuationStore.class));
@@ -315,17 +324,23 @@ class SessionServiceTest {
                         liveAgents,
                         loader,
                         tierRegistry,
-                        new WorkspaceAdmissionPolicy(List.of(), DeployerPolicy.FULL_ACCESS),
+                        new WorkspaceAdmissionPolicy(
+                                new DeployerPolicyConfiguration(),
+                                mock(ProtectedSetResolver.class)),
                         mock(ScopedPluginStorage.class),
                         mock(HitlRecordRepository.class),
-                        mock(SessionPlugins.class),
+                        mock(PluginManager.class),
                         mock(EventManager.class),
                         mock(PluginDataCleanup.class),
                         mock(RequestContinuationStore.class));
 
         SessionEntity session =
                 service.createSession(
-                        "alice", "coder", "mysession", CWD, ToolResultPresentationMode.DETAILED);
+                        "alice",
+                        "coder",
+                        "mysession",
+                        List.of(CWD),
+                        ToolResultPresentationMode.DETAILED);
         assertEquals("mysession", session.getName());
         assertEquals(ToolResultPresentationMode.DETAILED, session.getToolResultPresentation());
 
@@ -359,15 +374,17 @@ class SessionServiceTest {
                         liveAgents,
                         loader,
                         tierRegistry,
-                        new WorkspaceAdmissionPolicy(List.of(), DeployerPolicy.FULL_ACCESS),
+                        new WorkspaceAdmissionPolicy(
+                                new DeployerPolicyConfiguration(),
+                                mock(ProtectedSetResolver.class)),
                         mock(ScopedPluginStorage.class),
                         mock(HitlRecordRepository.class),
-                        mock(SessionPlugins.class),
+                        mock(PluginManager.class),
                         mock(EventManager.class),
                         mock(PluginDataCleanup.class),
                         mock(RequestContinuationStore.class));
 
-        SessionEntity session = service.createSession("alice", "coder", null, CWD);
+        SessionEntity session = service.createSession("alice", "coder", null, List.of(CWD));
         assertTrue(
                 session.getName().startsWith("coder-"),
                 "an implicit session name must be derived from the pattern name");
@@ -414,10 +431,12 @@ class SessionServiceTest {
                         liveAgents,
                         loader,
                         tierRegistry,
-                        new WorkspaceAdmissionPolicy(List.of(), DeployerPolicy.FULL_ACCESS),
+                        new WorkspaceAdmissionPolicy(
+                                new DeployerPolicyConfiguration(),
+                                mock(ProtectedSetResolver.class)),
                         mock(ScopedPluginStorage.class),
                         mock(HitlRecordRepository.class),
-                        mock(SessionPlugins.class),
+                        mock(PluginManager.class),
                         mock(EventManager.class),
                         mock(PluginDataCleanup.class),
                         mock(RequestContinuationStore.class));
@@ -470,10 +489,12 @@ class SessionServiceTest {
                         liveAgents,
                         loader,
                         tierRegistry,
-                        new WorkspaceAdmissionPolicy(List.of(), DeployerPolicy.FULL_ACCESS),
+                        new WorkspaceAdmissionPolicy(
+                                new DeployerPolicyConfiguration(),
+                                mock(ProtectedSetResolver.class)),
                         mock(ScopedPluginStorage.class),
                         mock(HitlRecordRepository.class),
-                        mock(SessionPlugins.class),
+                        mock(PluginManager.class),
                         mock(EventManager.class),
                         mock(PluginDataCleanup.class),
                         mock(RequestContinuationStore.class));
@@ -520,10 +541,12 @@ class SessionServiceTest {
                         liveAgents,
                         loader,
                         tierRegistry,
-                        new WorkspaceAdmissionPolicy(List.of(), DeployerPolicy.FULL_ACCESS),
+                        new WorkspaceAdmissionPolicy(
+                                new DeployerPolicyConfiguration(),
+                                mock(ProtectedSetResolver.class)),
                         mock(ScopedPluginStorage.class),
                         mock(HitlRecordRepository.class),
-                        mock(SessionPlugins.class),
+                        mock(PluginManager.class),
                         mock(EventManager.class),
                         mock(PluginDataCleanup.class),
                         mock(RequestContinuationStore.class));
@@ -574,10 +597,12 @@ class SessionServiceTest {
                         liveAgents,
                         loader,
                         tierRegistry,
-                        new WorkspaceAdmissionPolicy(List.of(), DeployerPolicy.FULL_ACCESS),
+                        new WorkspaceAdmissionPolicy(
+                                new DeployerPolicyConfiguration(),
+                                mock(ProtectedSetResolver.class)),
                         mock(ScopedPluginStorage.class),
                         mock(HitlRecordRepository.class),
-                        mock(SessionPlugins.class),
+                        mock(PluginManager.class),
                         mock(EventManager.class),
                         mock(PluginDataCleanup.class),
                         mock(RequestContinuationStore.class));
@@ -605,10 +630,12 @@ class SessionServiceTest {
                         liveAgents,
                         loader,
                         tierRegistry,
-                        new WorkspaceAdmissionPolicy(List.of(), DeployerPolicy.FULL_ACCESS),
+                        new WorkspaceAdmissionPolicy(
+                                new DeployerPolicyConfiguration(),
+                                mock(ProtectedSetResolver.class)),
                         mock(ScopedPluginStorage.class),
                         mock(HitlRecordRepository.class),
-                        mock(SessionPlugins.class),
+                        mock(PluginManager.class),
                         mock(EventManager.class),
                         mock(PluginDataCleanup.class),
                         mock(RequestContinuationStore.class));
@@ -634,10 +661,12 @@ class SessionServiceTest {
                         liveAgents,
                         loader,
                         tierRegistry,
-                        new WorkspaceAdmissionPolicy(List.of(), DeployerPolicy.FULL_ACCESS),
+                        new WorkspaceAdmissionPolicy(
+                                new DeployerPolicyConfiguration(),
+                                mock(ProtectedSetResolver.class)),
                         mock(ScopedPluginStorage.class),
                         mock(HitlRecordRepository.class),
-                        mock(SessionPlugins.class),
+                        mock(PluginManager.class),
                         mock(EventManager.class),
                         mock(PluginDataCleanup.class),
                         mock(RequestContinuationStore.class));
@@ -691,10 +720,12 @@ class SessionServiceTest {
                             liveAgents,
                             loader,
                             tierRegistry,
-                            new WorkspaceAdmissionPolicy(List.of(), DeployerPolicy.FULL_ACCESS),
+                            new WorkspaceAdmissionPolicy(
+                                    new DeployerPolicyConfiguration(),
+                                    mock(ProtectedSetResolver.class)),
                             mock(ScopedPluginStorage.class),
                             mock(HitlRecordRepository.class),
-                            mock(SessionPlugins.class),
+                            mock(PluginManager.class),
                             events,
                             cleanup,
                             mock(RequestContinuationStore.class));
@@ -774,10 +805,12 @@ class SessionServiceTest {
                         liveAgents,
                         loader,
                         tierRegistry,
-                        new WorkspaceAdmissionPolicy(List.of(), DeployerPolicy.FULL_ACCESS),
+                        new WorkspaceAdmissionPolicy(
+                                new DeployerPolicyConfiguration(),
+                                mock(ProtectedSetResolver.class)),
                         mock(ScopedPluginStorage.class),
                         mock(HitlRecordRepository.class),
-                        mock(SessionPlugins.class),
+                        mock(PluginManager.class),
                         mock(EventManager.class),
                         mock(PluginDataCleanup.class),
                         mock(RequestContinuationStore.class));
@@ -833,10 +866,12 @@ class SessionServiceTest {
                         liveAgents,
                         loader,
                         tierRegistry,
-                        new WorkspaceAdmissionPolicy(List.of(), DeployerPolicy.FULL_ACCESS),
+                        new WorkspaceAdmissionPolicy(
+                                new DeployerPolicyConfiguration(),
+                                mock(ProtectedSetResolver.class)),
                         mock(ScopedPluginStorage.class),
                         mock(HitlRecordRepository.class),
-                        mock(SessionPlugins.class),
+                        mock(PluginManager.class),
                         mock(EventManager.class),
                         mock(PluginDataCleanup.class),
                         mock(RequestContinuationStore.class));
@@ -867,9 +902,10 @@ class SessionServiceTest {
         AgentPatternEntity pattern =
                 new AgentPatternEntity(
                         "coder", "DEEPSEEK", "deepseek-v4", "pattern-coder", "alice");
-        String roots = fakeDir("root-a") + "," + fakeDir("root-b");
+        var roots = List.of(fakeDir("root-a"), fakeDir("root-b"));
         when(patterns.findByNameAndOwner("coder", "alice")).thenReturn(Optional.of(pattern));
-        when(sessions.findByOwnerAndNameAndWorkspaceRoots("alice", "selected", roots))
+        when(sessions.findByOwnerAndNameAndWorkspaceRoots(
+                        "alice", "selected", String.join(",", roots)))
                 .thenReturn(Optional.empty());
         when(sessions.save(any(SessionEntity.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
@@ -884,10 +920,12 @@ class SessionServiceTest {
                         liveAgents,
                         loader,
                         tierRegistry,
-                        new WorkspaceAdmissionPolicy(List.of(), DeployerPolicy.FULL_ACCESS),
+                        new WorkspaceAdmissionPolicy(
+                                new DeployerPolicyConfiguration(),
+                                mock(ProtectedSetResolver.class)),
                         mock(ScopedPluginStorage.class),
                         mock(HitlRecordRepository.class),
-                        mock(SessionPlugins.class),
+                        mock(PluginManager.class),
                         mock(EventManager.class),
                         mock(PluginDataCleanup.class),
                         mock(RequestContinuationStore.class));
@@ -920,10 +958,12 @@ class SessionServiceTest {
                         liveAgents,
                         loader,
                         tierRegistry,
-                        new WorkspaceAdmissionPolicy(List.of(), DeployerPolicy.FULL_ACCESS),
+                        new WorkspaceAdmissionPolicy(
+                                new DeployerPolicyConfiguration(),
+                                mock(ProtectedSetResolver.class)),
                         mock(ScopedPluginStorage.class),
                         mock(HitlRecordRepository.class),
-                        mock(SessionPlugins.class),
+                        mock(PluginManager.class),
                         mock(EventManager.class),
                         mock(PluginDataCleanup.class),
                         mock(RequestContinuationStore.class));
@@ -936,7 +976,7 @@ class SessionServiceTest {
                                         "alice",
                                         "coder",
                                         "invalid-root",
-                                        roots,
+                                        List.of(roots),
                                         1,
                                         ToolResultPresentationMode.BASIC));
 
@@ -992,10 +1032,12 @@ class SessionServiceTest {
                         liveAgents,
                         loader,
                         tierRegistry,
-                        new WorkspaceAdmissionPolicy(List.of(), DeployerPolicy.FULL_ACCESS),
+                        new WorkspaceAdmissionPolicy(
+                                new DeployerPolicyConfiguration(),
+                                mock(ProtectedSetResolver.class)),
                         mock(ScopedPluginStorage.class),
                         mock(HitlRecordRepository.class),
-                        mock(SessionPlugins.class),
+                        mock(PluginManager.class),
                         mock(EventManager.class),
                         mock(PluginDataCleanup.class),
                         mock(RequestContinuationStore.class));
@@ -1041,10 +1083,12 @@ class SessionServiceTest {
                         liveAgents,
                         loader,
                         tierRegistry,
-                        new WorkspaceAdmissionPolicy(List.of(), DeployerPolicy.FULL_ACCESS),
+                        new WorkspaceAdmissionPolicy(
+                                new DeployerPolicyConfiguration(),
+                                mock(ProtectedSetResolver.class)),
                         mock(ScopedPluginStorage.class),
                         mock(HitlRecordRepository.class),
-                        mock(SessionPlugins.class),
+                        mock(PluginManager.class),
                         mock(EventManager.class),
                         mock(PluginDataCleanup.class),
                         mock(RequestContinuationStore.class));
@@ -1076,10 +1120,12 @@ class SessionServiceTest {
                         liveAgents,
                         loader,
                         tierRegistry,
-                        new WorkspaceAdmissionPolicy(List.of(), DeployerPolicy.FULL_ACCESS),
+                        new WorkspaceAdmissionPolicy(
+                                new DeployerPolicyConfiguration(),
+                                mock(ProtectedSetResolver.class)),
                         mock(ScopedPluginStorage.class),
                         mock(HitlRecordRepository.class),
-                        mock(SessionPlugins.class),
+                        mock(PluginManager.class),
                         mock(EventManager.class),
                         mock(PluginDataCleanup.class),
                         mock(RequestContinuationStore.class));
@@ -1141,10 +1187,12 @@ class SessionServiceTest {
                         liveAgents,
                         loader,
                         tierRegistry,
-                        new WorkspaceAdmissionPolicy(List.of(), DeployerPolicy.FULL_ACCESS),
+                        new WorkspaceAdmissionPolicy(
+                                new DeployerPolicyConfiguration(),
+                                mock(ProtectedSetResolver.class)),
                         mock(ScopedPluginStorage.class),
                         mock(HitlRecordRepository.class),
-                        mock(SessionPlugins.class),
+                        mock(PluginManager.class),
                         mock(EventManager.class),
                         mock(PluginDataCleanup.class),
                         mock(RequestContinuationStore.class));
@@ -1185,10 +1233,12 @@ class SessionServiceTest {
                         liveAgents,
                         loader,
                         tierRegistry,
-                        new WorkspaceAdmissionPolicy(List.of(), DeployerPolicy.FULL_ACCESS),
+                        new WorkspaceAdmissionPolicy(
+                                new DeployerPolicyConfiguration(),
+                                mock(ProtectedSetResolver.class)),
                         mock(ScopedPluginStorage.class),
                         mock(HitlRecordRepository.class),
-                        mock(SessionPlugins.class),
+                        mock(PluginManager.class),
                         mock(EventManager.class),
                         mock(PluginDataCleanup.class),
                         mock(RequestContinuationStore.class));
@@ -1256,10 +1306,12 @@ class SessionServiceTest {
                         liveAgents,
                         loader,
                         tierRegistry,
-                        new WorkspaceAdmissionPolicy(List.of(), DeployerPolicy.FULL_ACCESS),
+                        new WorkspaceAdmissionPolicy(
+                                new DeployerPolicyConfiguration(),
+                                mock(ProtectedSetResolver.class)),
                         mock(ScopedPluginStorage.class),
                         mock(HitlRecordRepository.class),
-                        mock(SessionPlugins.class),
+                        mock(PluginManager.class),
                         mock(EventManager.class),
                         mock(PluginDataCleanup.class),
                         mock(RequestContinuationStore.class));
@@ -1303,15 +1355,17 @@ class SessionServiceTest {
                         liveAgents,
                         loader,
                         tierRegistry,
-                        new WorkspaceAdmissionPolicy(List.of(), DeployerPolicy.FULL_ACCESS),
+                        new WorkspaceAdmissionPolicy(
+                                new DeployerPolicyConfiguration(),
+                                mock(ProtectedSetResolver.class)),
                         mock(ScopedPluginStorage.class),
                         mock(HitlRecordRepository.class),
-                        mock(SessionPlugins.class),
+                        mock(PluginManager.class),
                         mock(EventManager.class),
                         mock(PluginDataCleanup.class),
                         mock(RequestContinuationStore.class));
 
-        SessionEntity created = service.createSession("alice", "coder", null, projectB);
+        SessionEntity created = service.createSession("alice", "coder", null, List.of(projectB));
         assertTrue(
                 created.getName().startsWith("coder-"),
                 "implicit name must use the pattern as a prefix even in a different workspace");
@@ -1358,10 +1412,12 @@ class SessionServiceTest {
                         liveAgents,
                         loader,
                         tierRegistry,
-                        new WorkspaceAdmissionPolicy(List.of(), DeployerPolicy.FULL_ACCESS),
+                        new WorkspaceAdmissionPolicy(
+                                new DeployerPolicyConfiguration(),
+                                mock(ProtectedSetResolver.class)),
                         mock(ScopedPluginStorage.class),
                         mock(HitlRecordRepository.class),
-                        mock(SessionPlugins.class),
+                        mock(PluginManager.class),
                         mock(EventManager.class),
                         mock(PluginDataCleanup.class),
                         mock(RequestContinuationStore.class));
@@ -1369,7 +1425,7 @@ class SessionServiceTest {
         IllegalArgumentException ex =
                 assertThrows(
                         IllegalArgumentException.class,
-                        () -> service.createSession("alice", "coder", "ds", projectA));
+                        () -> service.createSession("alice", "coder", "ds", List.of(projectA)));
         assertTrue(
                 String.valueOf(ex.getMessage()).contains("ds"),
                 "error names the session so the user can identify it");
@@ -1413,15 +1469,17 @@ class SessionServiceTest {
                         liveAgents,
                         loader,
                         tierRegistry,
-                        new WorkspaceAdmissionPolicy(List.of(), DeployerPolicy.FULL_ACCESS),
+                        new WorkspaceAdmissionPolicy(
+                                new DeployerPolicyConfiguration(),
+                                mock(ProtectedSetResolver.class)),
                         mock(ScopedPluginStorage.class),
                         mock(HitlRecordRepository.class),
-                        mock(SessionPlugins.class),
+                        mock(PluginManager.class),
                         mock(EventManager.class),
                         mock(PluginDataCleanup.class),
                         mock(RequestContinuationStore.class));
 
-        SessionEntity created = service.createSession("alice", "coder", null, projectA);
+        SessionEntity created = service.createSession("alice", "coder", null, List.of(projectA));
         assertTrue(
                 created.getName().matches("coder-[0-9a-f]{8}"),
                 "must generate coder-xxxxxxxx when bare 'coder' is taken, got: "
@@ -1471,10 +1529,12 @@ class SessionServiceTest {
                         liveAgents,
                         loader,
                         tierRegistry,
-                        new WorkspaceAdmissionPolicy(List.of(), DeployerPolicy.FULL_ACCESS),
+                        new WorkspaceAdmissionPolicy(
+                                new DeployerPolicyConfiguration(),
+                                mock(ProtectedSetResolver.class)),
                         mock(ScopedPluginStorage.class),
                         mock(HitlRecordRepository.class),
-                        mock(SessionPlugins.class),
+                        mock(PluginManager.class),
                         mock(EventManager.class),
                         mock(PluginDataCleanup.class),
                         mock(RequestContinuationStore.class));
@@ -1513,10 +1573,12 @@ class SessionServiceTest {
                         liveAgents,
                         loader,
                         tierRegistry,
-                        new WorkspaceAdmissionPolicy(List.of(), DeployerPolicy.FULL_ACCESS),
+                        new WorkspaceAdmissionPolicy(
+                                new DeployerPolicyConfiguration(),
+                                mock(ProtectedSetResolver.class)),
                         mock(ScopedPluginStorage.class),
                         mock(HitlRecordRepository.class),
-                        mock(SessionPlugins.class),
+                        mock(PluginManager.class),
                         mock(EventManager.class),
                         mock(PluginDataCleanup.class),
                         mock(RequestContinuationStore.class));

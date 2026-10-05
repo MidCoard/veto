@@ -26,7 +26,7 @@ public final class LoopBreaker {
     public void newEpisode() {
         count = 0;
         grantedCalls = maxCallsPerEpisode < 0 ? -1 : maxCallsPerEpisode;
-        exhausted = grantedCalls >= 0 && count >= grantedCalls;
+        exhausted = grantedCalls == 0;
     }
 
     /** Explicit user authorization after exhaustion adds one segment without erasing usage. */

@@ -2,12 +2,13 @@ package top.focess.veto.checker;
 
 import org.checkerframework.checker.nullness.NullnessVisitor;
 import org.checkerframework.common.basetype.BaseTypeChecker;
+import org.jspecify.annotations.NonNull;
 
 /** Supplies Veto's annotated type factory to the ordinary nullness visitor. */
 public final class VetoNullnessVisitor extends NullnessVisitor {
 
     /** Creates a visitor for the given checker. */
-    public VetoNullnessVisitor(BaseTypeChecker checker) {
+    public VetoNullnessVisitor(@NonNull BaseTypeChecker checker) {
         super(checker);
     }
 
