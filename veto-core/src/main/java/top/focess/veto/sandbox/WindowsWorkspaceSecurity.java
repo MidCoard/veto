@@ -292,17 +292,14 @@ final class WindowsWorkspaceSecurity {
                             var acl = readDacl(path);
                             if (acl.entries.stream()
                                     .anyMatch(
-                                            ace -> {
-                                                var allowed = allowedSid(ace);
-                                                return allowed != null
-                                                        && owner.equals(allowed)
-                                                        && ByteBuffer.wrap(bytes(ace))
-                                                                        .order(
-                                                                                ByteOrder
-                                                                                        .LITTLE_ENDIAN)
-                                                                        .getInt(4)
-                                                                == FILE_ALL_ACCESS;
-                                            })) return;
+                                            ace ->
+                                                    Objects.equals(owner, allowedSid(ace))
+                                                            && ByteBuffer.wrap(bytes(ace))
+                                                                            .order(
+                                                                                    ByteOrder
+                                                                                            .LITTLE_ENDIAN)
+                                                                            .getInt(4)
+                                                                    == FILE_ALL_ACCESS)) return;
                             var data =
                                     ByteBuffer.allocate(8 + owner.remaining())
                                             .order(ByteOrder.LITTLE_ENDIAN);

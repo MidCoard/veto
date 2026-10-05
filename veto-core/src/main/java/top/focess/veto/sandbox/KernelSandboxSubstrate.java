@@ -545,6 +545,9 @@ public class KernelSandboxSubstrate {
         }
 
         @Override
+        @SuppressWarnings(
+                "BusyWait") // WHY: bounded native accounting must prove every Job descendant has
+        // stopped.
         public void close() {
             var kernel = requiredWindowsKernel();
             var standard = requiredWindowsStdKernel();
