@@ -31,14 +31,14 @@ import top.focess.veto.llm.core.UniformLLMCaller;
  * Verifies the Part-8 emission seam: an agent's user-facing message is published as a per-session
  * {@link DeltaFrame} to the {@link DeltaBroker} (which the {@code DeltaBusBridge} then forwards to
  * WebSocket clients). The broker assigns a monotonic sequence; the frame text is the message
- * verbatim. A {@code null} broker (the no-broker path) must not break the loop.
+ * verbatim.
  */
 class DeltaBrokerWiringTest {
 
     private static final Duration EPISODE_TIMEOUT = Duration.ofSeconds(10);
 
     private static @NonNull AgentService serviceWithBroker(
-            @NonNull UniformLLMCaller caller, DeltaBroker broker) {
+            @NonNull UniformLLMCaller caller, @NonNull DeltaBroker broker) {
         ObjectMapper mapper = new ObjectMapper();
         PromptCompiler compiler =
                 new PromptCompiler(
@@ -125,19 +125,5 @@ class DeltaBrokerWiringTest {
                                                 && String.valueOf(frame.attrs().get("resources"))
                                                         .contains("execution")),
                 "execution changes must reach clients independently of conversation content");
-    }
-
-    @Test
-    void nullBrokerDoesNotBreakTheLoop() throws Exception {
-        // deltaBroker = null: the publish is skipped, the loop still runs and emits normally.
-        AgentService service =
-                serviceWithBroker(scripted(thoughtOn("2 + 2 = 4.", "The answer is 4.")), null);
-        AgentResult result =
-                service.submit(
-                        "delta-null",
-                        "What is 2 + 2?",
-                        binding("You are a helpful assistant."),
-                        EPISODE_TIMEOUT);
-        assertTrue(result.success(), "a null broker must not break the loop");
     }
 }

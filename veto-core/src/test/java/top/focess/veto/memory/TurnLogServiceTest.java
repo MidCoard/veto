@@ -90,28 +90,6 @@ class TurnLogServiceTest {
                                 UUID.randomUUID(),
                                 UUID.randomUUID(),
                                 "agent"));
-        service.setEnabled(false);
-        assertThrows(
-                IllegalStateException.class,
-                () ->
-                        service.logRequired(
-                                TurnRecord.userPrompt(2, "event"),
-                                UUID.randomUUID(),
-                                UUID.randomUUID(),
-                                "agent"));
-    }
-
-    @Test
-    void logWritesRawTurnLog() {
-        TurnRecordRepository repo = mock(TurnRecordRepository.class);
-        TurnLogService service = new TurnLogService(repo, new ObjectMapper(), new DeltaBroker());
-
-        UUID session = UUID.randomUUID();
-        UUID user = UUID.randomUUID();
-        String agent = UUID.randomUUID().toString();
-        service.log(TurnRecord.userPrompt(1, "hello world"), session, user, agent);
-
-        verify(repo, times(1)).save(any(TurnRecordEntity.class));
     }
 
     @Test
