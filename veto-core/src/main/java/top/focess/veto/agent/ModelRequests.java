@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import top.focess.veto.agent.identity.AgentPersona;
@@ -33,7 +34,7 @@ final class ModelRequests {
     private final @NonNull LlmBinding binding;
     private final AgentProfile.Prompt prompt;
     private final @NonNull ToolResultPresentationMode toolResultPresentation;
-    private final String owner;
+    private final @NonNull UUID userId;
     private final ModelTierRegistry modelTierRegistry;
 
     ModelRequests(
@@ -43,7 +44,7 @@ final class ModelRequests {
             @NonNull LlmBinding binding,
             AgentProfile.Prompt prompt,
             @NonNull ToolResultPresentationMode presentation,
-            String owner,
+            @NonNull UUID userId,
             ModelTierRegistry tiers,
             @NonNull ModelResponseValidation responses) {
         this.promptCompiler = compiler;
@@ -52,7 +53,7 @@ final class ModelRequests {
         this.binding = binding;
         this.prompt = prompt;
         this.toolResultPresentation = presentation;
-        this.owner = owner;
+        this.userId = userId;
         this.modelTierRegistry = tiers;
     }
 
@@ -95,12 +96,13 @@ final class ModelRequests {
         String tier = generation.modelTier();
         if (tier != null) {
             var registry = modelTierRegistry;
-            String username = owner;
-            if (registry == null || username == null)
+            UUID authenticatedUserId = userId;
+            if (registry == null)
                 throw new IllegalStateException(
-                        "Model tier override requires the session owner's model profile");
+                        "Model tier override requires the session userId's model profile");
             var model =
-                    registry.resolve(username, Nullness.requireNonNull(ModelTier.valueOf(tier)));
+                    registry.resolve(
+                            authenticatedUserId, Nullness.requireNonNull(ModelTier.valueOf(tier)));
             selected =
                     new LlmBinding(
                             model.provider(),

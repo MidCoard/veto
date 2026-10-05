@@ -25,7 +25,7 @@ class GroupShutdownRaceTest {
         var group =
                 Group.create(
                                 "leader",
-                                "owner",
+                                UUID.fromString("4228b1e0-6b9e-582e-9848-fc4f2e11c332"),
                                 "work",
                                 board,
                                 ExecutionDag.linear(UUID.randomUUID(), List.of("work")))
@@ -79,7 +79,7 @@ class GroupShutdownRaceTest {
         var group =
                 Group.create(
                                 "leader",
-                                "owner",
+                                UUID.fromString("4228b1e0-6b9e-582e-9848-fc4f2e11c332"),
                                 "work",
                                 board,
                                 new ExecutionDag(UUID.randomUUID(), List.of()))
@@ -139,7 +139,7 @@ class GroupShutdownRaceTest {
         var original = fixture.configuration;
         var secondContext =
                 new AgentConfiguration.Context(
-                        original.owner(),
+                        original.userId(),
                         original.storageGrant(),
                         original.agents(),
                         "second-leader",
@@ -148,7 +148,7 @@ class GroupShutdownRaceTest {
                         "task two");
         fixture.caller =
                 new PluginHost.Invocation(
-                        "owner",
+                        fixture.grant.scope().userId(),
                         fixture.grant.scope().session(),
                         "second-leader",
                         "request-two",
@@ -174,7 +174,7 @@ class GroupShutdownRaceTest {
         var group =
                 Group.create(
                                 "leader",
-                                "owner",
+                                UUID.fromString("4228b1e0-6b9e-582e-9848-fc4f2e11c332"),
                                 "work",
                                 board,
                                 ExecutionDag.linear(UUID.randomUUID(), List.of("work")))

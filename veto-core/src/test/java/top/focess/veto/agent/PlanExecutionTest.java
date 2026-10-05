@@ -59,6 +59,7 @@ import top.focess.veto.model.tier.ModelBinding;
 import top.focess.veto.model.tier.ModelTier;
 import top.focess.veto.model.tier.ModelTierRegistry;
 import top.focess.veto.sandbox.*;
+import top.focess.veto.vault.TestUsers;
 
 class PlanExecutionTest {
     private static final @NonNull List<PluginManager> MANAGERS = new CopyOnWriteArrayList<>();
@@ -99,8 +100,7 @@ class PlanExecutionTest {
                         UUID.randomUUID().toString(),
                         binding(),
                         List.of(),
-                        UUID.randomUUID(),
-                        "owner",
+                        TestUsers.OWNER,
                         root.toString(),
                         0,
                         ToolResultPresentationMode.BASIC);
@@ -164,8 +164,7 @@ class PlanExecutionTest {
                         UUID.randomUUID().toString(),
                         binding(),
                         List.of(),
-                        UUID.randomUUID(),
-                        "owner",
+                        TestUsers.OWNER,
                         root.toString(),
                         0,
                         ToolResultPresentationMode.BASIC);
@@ -264,15 +263,18 @@ class PlanExecutionTest {
                     null,
                     binding(),
                     List.of(observation),
-                    UUID.randomUUID(),
-                    "owner",
+                    TestUsers.OWNER,
                     root.toString(),
                     0,
                     ToolResultPresentationMode.BASIC);
             assertEquals(0, calls.get());
             var result =
                     service.submit(
-                            "recovered-plan", "New request", binding(), Duration.ofSeconds(10));
+                            "recovered-plan",
+                            "New request",
+                            binding(),
+                            Duration.ofSeconds(10),
+                            TestUsers.OWNER);
             assertTrue(result.success(), result.message());
             assertEquals("new answer", result.message());
             assertEquals(2, calls.get());
@@ -322,7 +324,11 @@ class PlanExecutionTest {
                         root);
         var result =
                 service.submit(
-                        "read-plan", "Meeting starts at 14:30", binding(), Duration.ofSeconds(10));
+                        "read-plan",
+                        "Meeting starts at 14:30",
+                        binding(),
+                        Duration.ofSeconds(10),
+                        TestUsers.OWNER);
         assertTrue(result.success());
         var agent = service.agent("read-plan");
         if (agent == null) throw new AssertionError("Expected plan agent");
@@ -394,7 +400,11 @@ class PlanExecutionTest {
         try {
             var result =
                     service.submit(
-                            "citation-retry", "Launch Friday", binding(), Duration.ofSeconds(10));
+                            "citation-retry",
+                            "Launch Friday",
+                            binding(),
+                            Duration.ofSeconds(10),
+                            TestUsers.OWNER);
             assertTrue(result.success(), result.message());
             assertEquals("Launch [Friday](cite:launch).", result.message());
             assertEquals(2, calls.get());
@@ -450,7 +460,12 @@ class PlanExecutionTest {
                         root);
         try {
             var result =
-                    service.submit("exclusive-submit", "Hello", binding(), Duration.ofSeconds(10));
+                    service.submit(
+                            "exclusive-submit",
+                            "Hello",
+                            binding(),
+                            Duration.ofSeconds(10),
+                            TestUsers.OWNER);
             assertTrue(result.success(), result.message());
             assertEquals("Corrected", result.message());
             assertEquals(2, calls.get());
@@ -494,7 +509,8 @@ class PlanExecutionTest {
                             null,
                             null,
                             events::add,
-                            null);
+                            null,
+                            TestUsers.OWNER);
             assertTrue(result.success(), result.message());
             assertTrue(
                     events.stream().allMatch(event -> event.toolName().equals("submit_plan")),
@@ -541,7 +557,12 @@ class PlanExecutionTest {
                         root);
         try {
             var result =
-                    service.submit("program-retry", "Hello", binding(), Duration.ofSeconds(10));
+                    service.submit(
+                            "program-retry",
+                            "Hello",
+                            binding(),
+                            Duration.ofSeconds(10),
+                            TestUsers.OWNER);
             assertTrue(result.success(), result.message());
             assertEquals("Hello", result.message());
             assertEquals(3, calls.get());
@@ -677,8 +698,7 @@ class PlanExecutionTest {
                     null,
                     binding(),
                     List.of(),
-                    UUID.randomUUID(),
-                    "owner",
+                    TestUsers.OWNER,
                     root.toString(),
                     0,
                     ToolResultPresentationMode.BASIC);
@@ -689,8 +709,7 @@ class PlanExecutionTest {
                     null,
                     binding(),
                     List.of(),
-                    UUID.randomUUID(),
-                    "owner",
+                    TestUsers.OWNER,
                     root.toString(),
                     0,
                     ToolResultPresentationMode.BASIC);
@@ -771,7 +790,12 @@ class PlanExecutionTest {
                         new HitlRegistry(null, Mockito.mock(SessionInvalidations.class)),
                         root);
         var result =
-                service.submit("read-plan", "Read the notes", binding(), Duration.ofSeconds(15));
+                service.submit(
+                        "read-plan",
+                        "Read the notes",
+                        binding(),
+                        Duration.ofSeconds(15),
+                        TestUsers.OWNER);
         assertTrue(result.success(), result.message());
         assertEquals("Migration summary", result.message());
         assertEquals(4, calls.get());
@@ -858,7 +882,8 @@ class PlanExecutionTest {
                             assertTrue(
                                     hitl.resolveOption(
                                             prompt.agentId(), prompt.callId(), option.name()));
-                        });
+                        },
+                        TestUsers.OWNER);
         assertEquals(approve, result.success(), result.message());
         if (approve) assertTrue(result.message().contains("version"), result.message());
         else {
@@ -889,7 +914,11 @@ class PlanExecutionTest {
                         null);
         var result =
                 service.submit(
-                        "bounded-plan", "Exercise bounded loop", binding(), Duration.ofSeconds(10));
+                        "bounded-plan",
+                        "Exercise bounded loop",
+                        binding(),
+                        Duration.ofSeconds(10),
+                        TestUsers.OWNER);
         assertFalse(result.success());
         assertEquals(1, calls.get());
     }
@@ -917,7 +946,8 @@ class PlanExecutionTest {
                                 "failed-plan",
                                 "Read missing file",
                                 binding(),
-                                Duration.ofSeconds(10));
+                                Duration.ofSeconds(10),
+                                TestUsers.OWNER);
         assertFalse(result.success());
     }
 
@@ -1040,7 +1070,11 @@ class PlanExecutionTest {
         serviceRef.set(service);
         var result =
                 service.submit(
-                        "read-plan", "Say hello using a plan", binding(), Duration.ofSeconds(10));
+                        "read-plan",
+                        "Say hello using a plan",
+                        binding(),
+                        Duration.ofSeconds(10),
+                        TestUsers.OWNER);
         assertTrue(result.success(), result.message());
         assertEquals("Hello", result.message());
         assertEquals(2, calls.get());
@@ -1056,7 +1090,7 @@ class PlanExecutionTest {
             """;
         AtomicInteger calls = new AtomicInteger();
         var tiers = mock(ModelTierRegistry.class);
-        when(tiers.resolve("owner", ModelTier.LOW))
+        when(tiers.resolve(TestUsers.OWNER, ModelTier.LOW))
                 .thenReturn(
                         new ModelBinding(
                                 ProviderType.DEEPSEEK,
@@ -1100,14 +1134,25 @@ class PlanExecutionTest {
                         root,
                         1000,
                         tiers);
-        service.getOrCreateAgent(
-                "tier-plan", null, binding(), List.of(), UUID.randomUUID(), "owner", null);
-        service.submit("tier-plan", "Initialize", binding(), Duration.ofSeconds(10));
-        var result = service.submit("tier-plan", "Summarize", binding(), Duration.ofSeconds(10));
+        service.getOrCreateAgent("tier-plan", null, binding(), List.of(), TestUsers.OWNER, null);
+        service.submit(
+                "tier-plan", "Initialize", binding(), Duration.ofSeconds(10), TestUsers.OWNER);
+        var result =
+                service.submit(
+                        "tier-plan",
+                        "Summarize",
+                        binding(),
+                        Duration.ofSeconds(10),
+                        TestUsers.OWNER);
         assertTrue(result.success(), result.message());
         assertEquals("scoped output", result.message());
         assertTrue(
-                service.submit("tier-plan", "Continue normally", binding(), Duration.ofSeconds(10))
+                service.submit(
+                                "tier-plan",
+                                "Continue normally",
+                                binding(),
+                                Duration.ofSeconds(10),
+                                TestUsers.OWNER)
                         .success());
         assertEquals(5, calls.get());
     }
@@ -1139,7 +1184,8 @@ class PlanExecutionTest {
                                 "recover-plan",
                                 "Read missing file",
                                 binding(),
-                                Duration.ofSeconds(10));
+                                Duration.ofSeconds(10),
+                                TestUsers.OWNER);
         assertTrue(result.success(), result.message());
         assertEquals("The file is missing; provide an existing path.", result.message());
     }
@@ -1224,7 +1270,8 @@ class PlanExecutionTest {
                         null,
                         null,
                         planTools::add,
-                        null);
+                        null,
+                        TestUsers.OWNER);
         var ordinaryResult =
                 ordinary.submit(
                         "ordinary-comparison",
@@ -1235,7 +1282,8 @@ class PlanExecutionTest {
                         null,
                         null,
                         ordinaryTools::add,
-                        null);
+                        null,
+                        TestUsers.OWNER);
         assertTrue(planResult.success(), planResult.message());
         assertTrue(ordinaryResult.success(), ordinaryResult.message());
         assertEquals("Stable release, version 42.", planResult.message());
@@ -1327,7 +1375,8 @@ class PlanExecutionTest {
                         null,
                         null,
                         toolCalls::add,
-                        null);
+                        null,
+                        TestUsers.OWNER);
         assertTrue(result.success(), result.message());
         assertEquals(1, calls.get());
         assertTrue(result.message().contains("Default plan result"), result.message());
@@ -1383,7 +1432,8 @@ class PlanExecutionTest {
                             "read-plan",
                             "Prepare a reminder from these notes",
                             binding(),
-                            Duration.ofSeconds(10));
+                            Duration.ofSeconds(10),
+                            TestUsers.OWNER);
             assertTrue(result.success(), result.message());
             assertEquals("Release reminder", result.message());
             assertEquals(2, calls.get());
@@ -1447,7 +1497,8 @@ class PlanExecutionTest {
                             null,
                             null,
                             executed::add,
-                            null);
+                            null,
+                            TestUsers.OWNER);
             assertTrue(result.success(), result.message());
             assertEquals("safe answer", result.message());
             assertEquals(4, calls.get());
@@ -1495,7 +1546,8 @@ class PlanExecutionTest {
                             "read-plan",
                             "Read the selected file",
                             binding(),
-                            Duration.ofSeconds(10));
+                            Duration.ofSeconds(10),
+                            TestUsers.OWNER);
             assertTrue(result.success(), result.message());
             var capture = ArgumentCaptor.forClass(ActionContext.class);
             verify(observed)

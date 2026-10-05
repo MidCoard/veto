@@ -10,6 +10,7 @@ import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.api.plugin.contract.AgentInbox;
 import top.focess.veto.integration.plugins.SessionPlugins;
+import top.focess.veto.vault.TestUsers;
 
 class AgentContinuationExecutionTest {
     @Test
@@ -26,7 +27,7 @@ class AgentContinuationExecutionTest {
                 new AgentContinuationExecution(
                         "agent",
                         session,
-                        "owner",
+                        TestUsers.OWNER,
                         5,
                         mock(AgentOutput.class),
                         new LinkedBlockingQueue<>(),

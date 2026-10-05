@@ -167,7 +167,7 @@ class CompositeAgentInboxTest {
                 new AgentInbox.Observation(
                         "local", null, "work", Instant.now(), "topic", Map.of(), null);
         var source = new Source(raw, entered, release);
-        try (var owner = new Owner();
+        try (var userId = new Owner();
                 var workers = Executors.newFixedThreadPool(2)) {
             var composite =
                     new CompositeAgentInbox(
@@ -175,7 +175,7 @@ class CompositeAgentInboxTest {
                                     List.of(
                                             new Entry(
                                                     "example.reminders:work",
-                                                    owner.plugin,
+                                                    userId.plugin,
                                                     source)));
             var scope = new AgentInbox.InboxContext("session", "agent", null);
             var value = composite.pending(scope).getFirst();
@@ -246,7 +246,7 @@ class CompositeAgentInboxTest {
                                 () -> {},
                                 () -> {
                                     throw new IllegalStateException(
-                                            "Plugin context is not bound to a lifecycle owner");
+                                            "Plugin context is not bound to a lifecycle userId");
                                 },
                                 Map.of(),
                                 Map.of()),

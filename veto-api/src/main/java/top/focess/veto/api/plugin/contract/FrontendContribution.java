@@ -15,7 +15,7 @@ public interface FrontendContribution {
     /**
      * Handles a host-authorized action from this module.
      *
-     * @param scope authenticated owner, session, and agent
+     * @param scope authenticated user, session, and agent
      * @param action action name requested by the module
      * @param arguments bounded JSON arguments
      * @return bounded JSON response

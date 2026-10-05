@@ -343,12 +343,12 @@ public record ToolExecutionPermit(
 
     /** Binds authorization to the runtime caller immediately before dispatch. */
     public @NonNull ToolExecutionPermit withCaller(
-            @NonNull String agentId, @NonNull UUID userId, String owner, UUID sessionId) {
+            @NonNull String agentId, @NonNull UUID userId, UUID sessionId) {
         return new ToolExecutionPermit(
                 call,
                 capability,
                 remoteServerName,
-                new CallerBinding(agentId, userId, owner, sessionId),
+                new CallerBinding(agentId, userId, sessionId),
                 filesystemPaths,
                 workspaceRoots,
                 executionRoot,
@@ -386,13 +386,11 @@ public record ToolExecutionPermit(
         return caller != null
                 && caller.agentId().equals(context.agentId())
                 && caller.userId().equals(context.userId())
-                && Objects.equals(caller.owner(), context.owner())
                 && Objects.equals(caller.sessionId(), context.sessionId());
     }
 
-    /** The runtime identity (agent, user, owner, session) an authorization is bound to. */
-    public record CallerBinding(
-            @NonNull String agentId, @NonNull UUID userId, String owner, UUID sessionId) {}
+    /** The runtime identity (agent, user, session) an authorization is bound to. */
+    public record CallerBinding(@NonNull String agentId, @NonNull UUID userId, UUID sessionId) {}
 
     /** Whether this permit still binds the exact immutable tool call. */
     public boolean matchesCall(@NonNull ToolCall call) {

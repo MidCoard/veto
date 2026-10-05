@@ -4,6 +4,8 @@ import jakarta.persistence.*;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.AgentService;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
@@ -42,8 +44,9 @@ public class SessionEntity {
 
     @Id private @NonNull String id = "";
 
-    @Column(nullable = false)
-    private @NonNull String owner = "";
+    @JdbcTypeCode(SqlTypes.VARCHAR)
+    @Column(name = "user_id", nullable = false)
+    private @NonNull UUID userId = new UUID(0, 0);
 
     @Column(nullable = false)
     private @NonNull String name = "";
@@ -79,32 +82,32 @@ public class SessionEntity {
     protected SessionEntity() {}
 
     /** Create a session with no workspace roots (falls back to the JVM working dir on use). */
-    public SessionEntity(@NonNull String owner, @NonNull String name) {
-        this(owner, name, null);
+    public SessionEntity(@NonNull UUID userId, @NonNull String name) {
+        this(userId, name, null);
     }
 
     /**
-     * @param owner the session owner
+     * @param userId the account ID
      * @param name the session name
      * @param workspaceRoots CSV of host paths backing the session's workspace; null/blank falls
      *     back to the JVM working dir at activation (see {@link AgentService})
      */
-    public SessionEntity(@NonNull String owner, @NonNull String name, String workspaceRoots) {
-        this(owner, name, workspaceRoots, ToolResultPresentationMode.BASIC);
+    public SessionEntity(@NonNull UUID userId, @NonNull String name, String workspaceRoots) {
+        this(userId, name, workspaceRoots, ToolResultPresentationMode.BASIC);
     }
 
     /**
-     * @param owner the session owner
+     * @param userId the account ID
      * @param name the session name
      * @param workspaceRoots CSV of host paths backing the session's workspace
      * @param toolResultPresentation the session-start tool-result presentation mode
      */
     public SessionEntity(
-            @NonNull String owner,
+            @NonNull UUID userId,
             @NonNull String name,
             String workspaceRoots,
             @NonNull ToolResultPresentationMode toolResultPresentation) {
-        this(owner, name, workspaceRoots, 0, toolResultPresentation);
+        this(userId, name, workspaceRoots, 0, toolResultPresentation);
     }
 
     /**
@@ -114,13 +117,13 @@ public class SessionEntity {
      * @param currentWorkspaceRootIndex index of the root used for relative paths and execution
      */
     public SessionEntity(
-            @NonNull String owner,
+            @NonNull UUID userId,
             @NonNull String name,
             String workspaceRoots,
             int currentWorkspaceRootIndex,
             @NonNull ToolResultPresentationMode toolResultPresentation) {
         this.id = UUID.randomUUID().toString();
-        this.owner = owner;
+        this.userId = userId;
         this.name = name;
         this.workspaceRoots = workspaceRoots;
         this.currentWorkspaceRootIndex = currentWorkspaceRootIndex;
@@ -133,8 +136,8 @@ public class SessionEntity {
         return id;
     }
 
-    public @NonNull String getOwner() {
-        return owner;
+    public @NonNull UUID getUserId() {
+        return userId;
     }
 
     public @NonNull String getName() {

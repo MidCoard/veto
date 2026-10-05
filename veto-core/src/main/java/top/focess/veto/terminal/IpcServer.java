@@ -5,6 +5,7 @@ import jakarta.annotation.PreDestroy;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -256,7 +257,11 @@ public class IpcServer {
             // malformed payloads are dropped (and logged) by the transport, never surfaced.
             Transport.FramedMsg msg = transport.recv(timeout);
             if (msg != null) {
-                routeFrame(msg.identity(), msg.frame());
+                try {
+                    routeFrame(msg.identity(), msg.frame());
+                } catch (RuntimeException invalid) {
+                    rejectFrame(msg.identity(), msg.frame(), invalid);
+                }
             }
 
             // Step 2 — drain the outbox so responses reach terminals promptly.
@@ -314,7 +319,7 @@ public class IpcServer {
             log.warn(
                     "Received {} from unknown or closed session {} — terminating stale peer",
                     frame.getClass().getSimpleName(),
-                    identity.substring(0, 8));
+                    peerLabel(identity));
             send(
                     identity,
                     new IpcFrame.Terminate(
@@ -327,9 +332,24 @@ public class IpcServer {
         if (!session.mailbox.offer(frame)) {
             log.warn(
                     "Mailbox full for session {} — dropping {}",
-                    identity.substring(0, 8),
+                    peerLabel(identity),
                     frame.getClass().getSimpleName());
         }
+    }
+
+    private static @NonNull String peerLabel(@NonNull String identity) {
+        return identity.substring(0, Math.min(8, identity.length()));
+    }
+
+    private void rejectFrame(
+            @NonNull String identity, @NonNull IpcFrame frame, @NonNull RuntimeException failure) {
+        log.warn(
+                "Rejected {} frame from {}",
+                frame.getClass().getSimpleName(),
+                peerLabel(identity),
+                failure);
+        long seq = frame instanceof IpcFrame.SeqRequest request ? request.seq() : 0;
+        send(identity, new IpcFrame.Error("Frame could not be processed.", seq));
     }
 
     /**
@@ -342,7 +362,7 @@ public class IpcServer {
     private void handleHello(@NonNull String identity, IpcFrame.@NonNull Hello hello) {
         if (sessions.containsKey(identity)) {
             // The IO thread is the only writer to `sessions`, so containsKey + put is safe here.
-            log.warn("Duplicate identity {} — rejecting handshake", identity.substring(0, 8));
+            log.warn("Duplicate identity {} — rejecting handshake", peerLabel(identity));
             send(identity, new IpcFrame.Error("Duplicate identity connected.", hello.seq()));
             return;
         }
@@ -356,7 +376,7 @@ public class IpcServer {
         int negotiated = Math.min(hello.version(), IpcFrame.PROTOCOL_VERSION);
         log.debug(
                 "HELLO {}: v{} → negotiated v{} (client product {})",
-                identity.substring(0, 8),
+                peerLabel(identity),
                 hello.version(),
                 negotiated,
                 clientProductVersion);
@@ -374,7 +394,7 @@ public class IpcServer {
      * they are submitted to {@link #requestPool} so long-running commands never stall this loop.
      */
     private void sessionLoop(@NonNull Session session) {
-        log.debug("Session worker started for {}", session.identity.substring(0, 8));
+        log.debug("Session worker started for {}", peerLabel(session.identity));
         while (!session.closed.get() && running) {
             IpcFrame frame;
             try {
@@ -386,13 +406,17 @@ public class IpcServer {
                 break;
             }
             session.lastActivityMillis = System.currentTimeMillis();
-            handleSessionFrame(session, frame);
+            try {
+                handleSessionFrame(session, frame);
+            } catch (RuntimeException invalid) {
+                rejectFrame(session.identity, frame, invalid);
+            }
         }
         // Ensure the session is cleaned up when the loop exits (e.g. server shutdown
         // without an explicit Bye). closeSession is idempotent — if it was already called
         // (Bye, heartbeat timeout), the CAS on `closed` makes this a no-op.
         closeSession(session);
-        log.debug("Session worker stopped for {}", session.identity.substring(0, 8));
+        log.debug("Session worker stopped for {}", peerLabel(session.identity));
     }
 
     /**
@@ -408,7 +432,7 @@ public class IpcServer {
             "LoggingSimilarMessage") // Request/result trace pairs intentionally share a prefix.
     private void handleSessionFrame(@NonNull Session session, @NonNull IpcFrame frame) {
         String identity = session.identity;
-        String user = session.sender.username();
+        UUID user = session.sender.userId();
         if (user != null) {
             UserContext.set(user);
         }
@@ -422,7 +446,7 @@ public class IpcServer {
                             session.pendingRequests.addLast(req);
                             log.trace(
                                     "REQ  {}: queued (in-flight request already running)",
-                                    identity.substring(0, 8));
+                                    peerLabel(identity));
                         } else {
                             dispatchRequestLocked(session, req);
                         }
@@ -432,7 +456,7 @@ public class IpcServer {
                 }
 
                 case IpcFrame.Input in -> {
-                    log.trace("IN   {}", identity.substring(0, 8));
+                    log.trace("IN   {}", peerLabel(identity));
                     // Veto-first routing: a pending HITL veto consumes this Input as the
                     // chosen option name; only free-text inputs reach receiveInput. The 1:1
                     // invariant (veto-pending XOR free-text-prompt-pending) makes the
@@ -443,7 +467,7 @@ public class IpcServer {
                         agentService.resolveVeto(pv.agentId(), pv.callId(), in.raw());
                         log.trace(
                                 "IN   {}: resolved veto {} with option '{}'",
-                                identity.substring(0, 8),
+                                peerLabel(identity),
                                 pv.callId(),
                                 in.raw());
                     } else {
@@ -456,27 +480,24 @@ public class IpcServer {
                             // unrelated Request.
                             log.trace(
                                     "Input from {} with no waiting request — discarding",
-                                    identity.substring(0, 8));
+                                    peerLabel(identity));
                         }
                     }
                 }
 
                 case IpcFrame.Complete comp -> {
-                    log.trace("COMP {}: {}", identity.substring(0, 8), comp.raw());
+                    log.trace("COMP {}: {}", peerLabel(identity), comp.raw());
                     var completions = registry.complete(session.sender, comp.raw());
-                    log.trace(
-                            "COMP {}: → {} candidates",
-                            identity.substring(0, 8),
-                            completions.size());
+                    log.trace("COMP {}: → {} candidates", peerLabel(identity), completions.size());
                     send(identity, new IpcFrame.CompleteResult(completions, comp.seq()));
                 }
 
                 case IpcFrame.Hint h -> {
-                    log.trace("HINT {}: {}", identity.substring(0, 8), h.raw());
+                    log.trace("HINT {}: {}", peerLabel(identity), h.raw());
                     HintInfo hint = registry.hint(session.sender, h.raw());
                     log.trace(
                             "HINT {}: → {}",
-                            identity.substring(0, 8),
+                            peerLabel(identity),
                             hint == HintInfo.EMPTY ? "EMPTY" : hint.displayText());
                     send(identity, new IpcFrame.HintResult(hint, h.seq()));
                 }
@@ -503,9 +524,7 @@ public class IpcServer {
                         if (session.activeRequest != null) {
                             if (session.sender.cancelCurrentPrompt()) {
                                 // Level 1: a prompt was pending and has been dismissed.
-                                log.trace(
-                                        "CANC {}: dismissed current prompt",
-                                        identity.substring(0, 8));
+                                log.trace("CANC {}: dismissed current prompt", peerLabel(identity));
                             } else if (session.sender.claimPendingVeto()
                                     instanceof VetoCommandSender.PendingVeto pv) {
                                 // Level 1.5: a HITL veto was pending. cancelCurrentPrompt
@@ -517,7 +536,7 @@ public class IpcServer {
                                 agentService.declineVeto(pv.agentId(), pv.callId());
                                 log.trace(
                                         "CANC {}: declined veto {}",
-                                        identity.substring(0, 8),
+                                        peerLabel(identity),
                                         pv.callId());
                             } else if (!session.terminalSent) {
                                 // Level 2: claim the single terminal frame, then cancel(true) the
@@ -537,7 +556,7 @@ public class IpcServer {
                                 }
                                 log.trace(
                                         "CANC {}: cancelled in-flight request",
-                                        identity.substring(0, 8));
+                                        peerLabel(identity));
                             }
                             // else: the body already sent its terminal frame — send nothing.
                         } else {
@@ -548,7 +567,7 @@ public class IpcServer {
                                     IpcFrame.Error.ofError("No in-flight request to cancel."));
                             log.trace(
                                     "CANC {}: no in-flight request — sent error",
-                                    identity.substring(0, 8));
+                                    peerLabel(identity));
                         }
                     } finally {
                         session.requestLock.unlock();
@@ -556,7 +575,7 @@ public class IpcServer {
                 }
 
                 case IpcFrame.Bye b -> {
-                    log.trace("BYE  {}: terminal disconnecting", identity.substring(0, 8));
+                    log.trace("BYE  {}: terminal disconnecting", peerLabel(identity));
                     // Bye is fire-and-forget — the client tears down without waiting, and the
                     // server closes on receipt without sending anything back (no Done). Closing
                     // is idempotent; closeSession sets closed=true so the session loop exits.
@@ -572,7 +591,7 @@ public class IpcServer {
                         log.warn(
                                 "Unknown frame type '{}' from {} — protocol version mismatch?",
                                 type,
-                                identity.substring(0, 8));
+                                peerLabel(identity));
                     }
                 }
             }
@@ -619,7 +638,7 @@ public class IpcServer {
                             // thread, where registry.dispatch runs. The set in
                             // handleSessionFrame runs on the session-worker thread and does not
                             // propagate across requestPool.execute.
-                            String user = session.sender.username();
+                            UUID user = session.sender.userId();
                             if (user != null) {
                                 UserContext.set(user);
                             }
@@ -638,9 +657,7 @@ public class IpcServer {
                                 // guard (terminalSent) suppresses it if the session is already
                                 // closing/cancelled, so this never races the cancel path.
                                 log.error(
-                                        "REQ  {}: dispatch threw",
-                                        session.identity.substring(0, 8),
-                                        t);
+                                        "REQ  {}: dispatch threw", peerLabel(session.identity), t);
                                 sendTerminal(
                                         session,
                                         IpcFrame.Error.ofError("Internal error: " + t),
@@ -671,7 +688,7 @@ public class IpcServer {
 
         session.activeRequest = task;
         session.terminalSent = false; // fresh exactly-once slot for this request
-        log.trace("REQ  {}: dispatched", session.identity.substring(0, 8));
+        log.trace("REQ  {}: dispatched", peerLabel(session.identity));
         requestPool.execute(task);
     }
 
@@ -684,7 +701,7 @@ public class IpcServer {
     private void dispatchNextOrIdleLocked(@NonNull Session session) {
         IpcFrame.Request next = session.pendingRequests.pollFirst();
         if (next != null) {
-            log.trace("REQ  {}: dequeuing next pending request", session.identity.substring(0, 8));
+            log.trace("REQ  {}: dequeuing next pending request", peerLabel(session.identity));
             dispatchRequestLocked(session, next);
         }
     }
@@ -744,7 +761,7 @@ public class IpcServer {
             long cutoff = System.currentTimeMillis() - SESSION_TIMEOUT_MS;
             for (Session session : sessions.values()) {
                 if (session.lastActivityMillis < cutoff && !session.closed.get()) {
-                    log.info("Evicting timed-out session {}", session.identity.substring(0, 8));
+                    log.info("Evicting timed-out session {}", peerLabel(session.identity));
                     // Notify the terminal before closing so it can display a message.
                     send(session.identity, new IpcFrame.Terminate("Session timed out."));
                     closeSession(session);
@@ -781,7 +798,7 @@ public class IpcServer {
                 session.requestLock.unlock();
             }
             sessions.remove(session.identity);
-            log.debug("Session closed for {}", session.identity.substring(0, 8));
+            log.debug("Session closed for {}", peerLabel(session.identity));
         }
     }
 

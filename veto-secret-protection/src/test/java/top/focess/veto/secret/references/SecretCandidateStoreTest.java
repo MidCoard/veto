@@ -10,6 +10,7 @@ import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.api.credentials.VaultAccess;
@@ -60,7 +61,12 @@ class SecretCandidateStoreTest {
                 IllegalArgumentException.class,
                 () -> store.importOnce(scope, reference, "github", "Changed", writer));
         var expected =
-                new StoredCredential("alice", reference, "github", "Repository", "synthetic-token");
+                new StoredCredential(
+                        UUID.fromString("58e341e3-0de3-571d-81db-520951bc691b"),
+                        reference,
+                        "github",
+                        "Repository",
+                        "synthetic-token");
         assertEquals(List.of(expected, expected), writer.attempts);
         writer.unlocked = false;
         assertThrows(
@@ -69,7 +75,8 @@ class SecretCandidateStoreTest {
     }
 
     private final Scope.@NonNull AgentScope scope =
-            new Scope.AgentScope("alice", "session", "agent");
+            new Scope.AgentScope(
+                    UUID.fromString("58e341e3-0de3-571d-81db-520951bc691b"), "session", "agent");
 
     @Test
     void stableReferencesReplaceKnownValuesWithoutPublishingRawSecrets() {
@@ -103,9 +110,18 @@ class SecretCandidateStoreTest {
                         .reference();
         for (var other :
                 new Scope.AgentScope[] {
-                    new Scope.AgentScope("bob", "session", "agent"),
-                    new Scope.AgentScope("alice", "other", "agent"),
-                    new Scope.AgentScope("alice", "session", "mate")
+                    new Scope.AgentScope(
+                            UUID.fromString("8ae198e4-a119-54c1-bb34-adc327dd03f2"),
+                            "session",
+                            "agent"),
+                    new Scope.AgentScope(
+                            UUID.fromString("58e341e3-0de3-571d-81db-520951bc691b"),
+                            "other",
+                            "agent"),
+                    new Scope.AgentScope(
+                            UUID.fromString("58e341e3-0de3-571d-81db-520951bc691b"),
+                            "session",
+                            "mate")
                 }) {
             assertTrue(store.describe(other, reference).isEmpty());
             assertNotEquals(
@@ -162,17 +178,17 @@ class SecretCandidateStoreTest {
                         .getFirst()
                         .reference();
         assertNotEquals(old, next);
-        store.discardSession("bob", "session");
+        store.discardSession(UUID.fromString("ec629ca2-6e80-51d3-a243-d00a0c2fcb52"), "session");
         assertEquals(
                 SecretCandidateStore.State.AVAILABLE,
                 store.describe(scope, next).orElseThrow().state());
-        store.discardSession("alice", "session");
+        store.discardSession(UUID.fromString("58e341e3-0de3-571d-81db-520951bc691b"), "session");
         assertEquals(
                 SecretCandidateStore.State.DISCARDED,
                 store.describe(scope, next).orElseThrow().state());
         String last =
                 store.capture(scope, "source", "password=beta").candidates().getFirst().reference();
-        store.discardOwner("alice");
+        store.discardUser(UUID.fromString("58e341e3-0de3-571d-81db-520951bc691b"));
         assertEquals(
                 SecretCandidateStore.State.DISCARDED,
                 store.describe(scope, last).orElseThrow().state());
@@ -190,9 +206,18 @@ class SecretCandidateStoreTest {
         var writer = new InMemoryWriter();
         for (var other :
                 List.of(
-                        new Scope.AgentScope("bob", "session", "agent"),
-                        new Scope.AgentScope("alice", "other", "agent"),
-                        new Scope.AgentScope("alice", "session", "mate"))) {
+                        new Scope.AgentScope(
+                                UUID.fromString("8ae198e4-a119-54c1-bb34-adc327dd03f2"),
+                                "session",
+                                "agent"),
+                        new Scope.AgentScope(
+                                UUID.fromString("58e341e3-0de3-571d-81db-520951bc691b"),
+                                "other",
+                                "agent"),
+                        new Scope.AgentScope(
+                                UUID.fromString("58e341e3-0de3-571d-81db-520951bc691b"),
+                                "session",
+                                "mate"))) {
             assertThrows(
                     IllegalStateException.class,
                     () -> store.importOnce(other, reference, "github", "Repository", writer));
@@ -214,7 +239,7 @@ class SecretCandidateStoreTest {
 
     @Test
     void closedOwnersRetiredSessionsAndDiscardedAgentsCannotImport() {
-        for (String lifecycle : List.of("owner", "session", "agent", "expiration")) {
+        for (String lifecycle : List.of("userId", "session", "agent", "expiration")) {
             var clock = new MutableClock();
             var store = new SecretCandidateStore(clock, Duration.ofMinutes(30), 1, 100, 100);
             String reference =
@@ -223,8 +248,8 @@ class SecretCandidateStoreTest {
                             .getFirst()
                             .reference();
             switch (lifecycle) {
-                case "owner" -> store.closeOwner(scope.owner());
-                case "session" -> store.retireSession(scope.owner(), scope.session());
+                case "userId" -> store.closeUser(scope.userId());
+                case "session" -> store.retireSession(scope.userId(), scope.session());
                 case "agent" -> store.discardAgent(scope);
                 case "expiration" -> clock.current = Instant.EPOCH.plus(Duration.ofMinutes(30));
                 default -> throw new AssertionError(lifecycle);
@@ -242,7 +267,7 @@ class SecretCandidateStoreTest {
     }
 
     private record StoredCredential(
-            @NonNull String owner,
+            @NonNull UUID userId,
             @NonNull String reference,
             @NonNull String service,
             @NonNull String label,
@@ -256,7 +281,8 @@ class SecretCandidateStoreTest {
 
         @Override
         public Scope.@NonNull AgentScope scope() {
-            return new Scope.AgentScope("alice", "session", "agent");
+            return new Scope.AgentScope(
+                    UUID.fromString("58e341e3-0de3-571d-81db-520951bc691b"), "session", "agent");
         }
 
         @Override
@@ -272,7 +298,7 @@ class SecretCandidateStoreTest {
                 @NonNull String value) {
             attempts.add(
                     new StoredCredential(
-                            "alice",
+                            UUID.fromString("58e341e3-0de3-571d-81db-520951bc691b"),
                             attributes.getOrDefault("veto.import.id", ""),
                             attributes.getOrDefault("veto.import.service", ""),
                             attributes.getOrDefault("veto.import.label", ""),

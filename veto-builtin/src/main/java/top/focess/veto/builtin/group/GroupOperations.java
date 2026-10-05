@@ -49,7 +49,7 @@ final class GroupOperations implements GroupControlCapability, DelegationCapabil
                 .filter(
                         group ->
                                 group.leaderId().equals(scope.agentId())
-                                        && scope.owner().equals(group.owner())
+                                        && scope.userId().equals(group.userId())
                                         && group.sessionId() != null
                                         && scope.sessionId()
                                                 .equals(String.valueOf(group.sessionId()))

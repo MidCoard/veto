@@ -26,6 +26,7 @@ import top.focess.veto.integration.plugins.SessionPlugins;
 import top.focess.veto.integration.plugins.WorkflowPluginFixture;
 import top.focess.veto.model.SessionEntity;
 import top.focess.veto.model.SessionRepository;
+import top.focess.veto.vault.TestUsers;
 import top.focess.veto.vault.UserContext;
 
 class PluginFrontendControllerTest {
@@ -64,8 +65,9 @@ class PluginFrontendControllerTest {
             SessionRepository sessions = mock(SessionRepository.class);
             SessionPlugins selected = mock(SessionPlugins.class);
             SessionAgentRegistry agents = mock(SessionAgentRegistry.class);
-            var session = new SessionEntity("owner", "private", "D:/workspace");
-            when(sessions.findFirstByNameAndOwnerOrderByLastActiveAtDesc("private", "owner"))
+            var session = new SessionEntity(TestUsers.OWNER, "private", "D:/workspace");
+            when(sessions.findFirstByNameAndUserIdOrderByLastActiveAtDesc(
+                            "private", TestUsers.OWNER))
                     .thenReturn(Optional.of(session));
             when(selected.status(session.getId()))
                     .thenReturn(
@@ -90,7 +92,7 @@ class PluginFrontendControllerTest {
                             fixture.manager,
                             agents);
             clearInvocations(fixture.manager);
-            UserContext.set("owner");
+            UserContext.set(TestUsers.OWNER);
             try {
                 when(fixture.manager.registry()).thenReturn(captured, replacement);
                 var modules = controller.list("private").getBody();
@@ -127,8 +129,8 @@ class PluginFrontendControllerTest {
         SessionPlugins selected = mock(SessionPlugins.class);
         PluginManager plugins = mock(PluginManager.class);
         SessionAgentRegistry agents = mock(SessionAgentRegistry.class);
-        var session = new SessionEntity("owner", "private", "D:/workspace");
-        when(sessions.findFirstByNameAndOwnerOrderByLastActiveAtDesc("private", "owner"))
+        var session = new SessionEntity(TestUsers.OWNER, "private", "D:/workspace");
+        when(sessions.findFirstByNameAndUserIdOrderByLastActiveAtDesc("private", TestUsers.OWNER))
                 .thenReturn(Optional.of(session));
         when(selected.status(session.getId())).thenReturn(List.of());
         when(agents.records(UUID.fromString(session.getId())))
@@ -144,7 +146,7 @@ class PluginFrontendControllerTest {
                         selected,
                         plugins,
                         agents);
-        UserContext.set("owner");
+        UserContext.set(TestUsers.OWNER);
         try {
             for (String agent :
                     List.of("same-owner-other-session", "other-owner-agent", "missing")) {
@@ -207,7 +209,8 @@ class PluginFrontendControllerTest {
         SessionRepository sessions = mock(SessionRepository.class);
         SessionPlugins selected = mock(SessionPlugins.class);
         PluginManager plugins = mock(PluginManager.class);
-        when(sessions.findFirstByNameAndOwnerOrderByLastActiveAtDesc("private", "other"))
+        when(sessions.findFirstByNameAndUserIdOrderByLastActiveAtDesc(
+                        "private", UUID.fromString("e4d90c3e-2176-523d-8dd9-e3deec8183b7")))
                 .thenReturn(Optional.empty());
         var controller =
                 new PluginFrontendController(
@@ -216,7 +219,7 @@ class PluginFrontendControllerTest {
                         selected,
                         plugins,
                         mock());
-        UserContext.set("other");
+        UserContext.set(TestUsers.BOB);
         try {
             assertEquals(
                     HttpStatus.NOT_FOUND,

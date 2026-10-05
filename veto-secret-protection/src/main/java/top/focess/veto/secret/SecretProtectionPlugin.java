@@ -102,12 +102,12 @@ public final class SecretProtectionPlugin extends VetoPlugin {
             resultFormats = {ToolResultFormat.JSON},
             description =
                     """
-                    Import a session-registered SECRET_REF into the owner's encrypted vault after approval.\
+                    Import a session-registered SECRET_REF into the userId's encrypted vault after approval.\
                     """,
             behavior =
                     """
                     Resolves the referenced secret candidate captured earlier in this session, checks the \
-                    approved tool invocation, and writes the credential into the owner's encrypted vault exactly \
+                    approved tool invocation, and writes the credential into the userId's encrypted vault exactly \
                     once. The plaintext secret never passes through the model or the tool arguments; only the \
                     opaque reference, target service, and a human label are supplied.\
                     """,
@@ -287,9 +287,9 @@ public final class SecretProtectionPlugin extends VetoPlugin {
     }
 
     /**
-     * Scopes secret-candidate availability to the owner, session, and agent transitions the host
+     * Scopes secret-candidate availability to the userId, session, and agent transitions the host
      * broadcasts. A closed scope makes its captured references unrecoverable, so capture fails
-     * closed until the owner is opened again.
+     * closed until the userId is opened again.
      */
     public static final class SecretLifecycle implements Listener {
         private final @NonNull SecretCandidateStore candidates;
@@ -329,17 +329,17 @@ public final class SecretProtectionPlugin extends VetoPlugin {
 
         @EventHandler
         public void onUserAuthenticated(@NonNull UserAuthenticatedEvent event) {
-            candidates.openOwner(event.scope().owner());
+            candidates.openUser(event.scope().userId());
         }
 
         @EventHandler
         public void onUserLogout(@NonNull UserLogoutEvent event) {
-            candidates.closeOwner(event.scope().owner());
+            candidates.closeUser(event.scope().userId());
         }
 
         @EventHandler
         public void onSessionDeleted(@NonNull SessionDeletedEvent event) {
-            candidates.retireSession(event.scope().owner(), event.scope().session());
+            candidates.retireSession(event.scope().userId(), event.scope().session());
         }
 
         @EventHandler

@@ -22,6 +22,7 @@ import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.api.resources.CatalogueTree;
 import top.focess.veto.event.EventManager;
 import top.focess.veto.integration.plugins.SessionPlugins;
+import top.focess.veto.vault.TestUsers;
 
 class ToolPresentationExecutionTest {
     @Test
@@ -40,14 +41,14 @@ class ToolPresentationExecutionTest {
         ToolDefinition definition = engine.resolveDefinition("conditional");
         if (definition == null) throw new AssertionError("Conditional tool was not registered");
         var call = new ToolCall("conditional", Map.of(), "call");
-        var user = UUID.randomUUID();
+        var user = TestUsers.OWNER;
         var session = UUID.randomUUID();
         var permit =
                 ToolExecutionPermit.capture(call, definition, Workspace.single(root, PathMode.REAL))
-                        .withCaller("agent", user, "owner", session);
+                        .withCaller("agent", user, session);
         ToolCallContextHolder.set(
                 new ToolCallContext(
-                        "agent", user, "owner", session, ToolResultPresentationMode.BASIC, permit));
+                        "agent", user, session, ToolResultPresentationMode.BASIC, permit));
         try {
             assertEquals(ToolResultStatus.FAILURE, engine.execute(call, definition).status());
             assertFalse(tool.executed);

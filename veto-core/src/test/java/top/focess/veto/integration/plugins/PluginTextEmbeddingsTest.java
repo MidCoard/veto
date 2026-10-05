@@ -31,8 +31,8 @@ class PluginTextEmbeddingsTest {
     }
 
     private void bind(
-            @NonNull String plugin, @NonNull String actualOwner, @NonNull String actualCall) {
-        var user = UUID.randomUUID();
+            @NonNull String plugin, @NonNull UUID actualUserId, @NonNull String actualCall) {
+        var user = UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376");
         var session = UUID.randomUUID();
         var permit =
                 new ToolExecutionPermit(
@@ -46,15 +46,10 @@ class PluginTextEmbeddingsTest {
                                 DeployerPolicy.FULL_ACCESS,
                                 Set.of(),
                                 null)
-                        .withCaller("agent", user, "owner", session);
+                        .withCaller("agent", user, session);
         ToolCallContextHolder.set(
                 new ToolCallContext(
-                        "agent",
-                        user,
-                        actualOwner,
-                        session,
-                        ToolResultPresentationMode.BASIC,
-                        permit));
+                        "agent", actualUserId, session, ToolResultPresentationMode.BASIC, permit));
         ReflectionTestUtils.invokeMethod(
                 ToolCallContextHolder.class, "setCurrentCallId", actualCall);
     }
@@ -69,14 +64,14 @@ class PluginTextEmbeddingsTest {
         when(model.embed("text")).thenReturn(new float[] {1, 0});
         var port = new PluginTextEmbeddings(plugin, model);
         assertThrows(SecurityException.class, () -> port.embed("text"));
-        bind("other", "owner", "call");
+        bind("other", UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"), "call");
         assertThrows(SecurityException.class, () -> port.embed("text"));
-        bind("instance", "wrong-owner", "call");
+        bind("instance", UUID.randomUUID(), "call");
         assertThrows(SecurityException.class, () -> port.embed("text"));
-        bind("instance", "owner", "expired");
+        bind("instance", UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"), "expired");
         assertThrows(SecurityException.class, () -> port.embed("text"));
         verifyNoInteractions(model);
-        bind("instance", "owner", "call");
+        bind("instance", UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"), "call");
         assertArrayEquals(new float[] {1, 0}, port.embed("text"));
         when(plugin.state()).thenReturn(PluginState.CLOSED);
         assertThrows(SecurityException.class, () -> port.embed("text"));
@@ -90,7 +85,7 @@ class PluginTextEmbeddingsTest {
         when(plugin.state()).thenReturn(PluginState.ACTIVE);
         when(plugin.bindingId()).thenReturn("instance");
         var port = new PluginTextEmbeddings(plugin, model);
-        bind("instance", "owner", "call");
+        bind("instance", UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"), "call");
         assertThrows(IllegalArgumentException.class, () -> port.embed("x".repeat(64_001)));
         Thread.currentThread().interrupt();
         assertThrows(CancellationException.class, () -> port.embed("text"));

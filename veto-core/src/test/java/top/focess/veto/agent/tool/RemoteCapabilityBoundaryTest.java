@@ -20,6 +20,7 @@ import top.focess.veto.agent.workspace.PathMode;
 import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
+import top.focess.veto.vault.TestUsers;
 
 class RemoteCapabilityBoundaryTest {
     private final @NonNull ObjectMapper mapper = new ObjectMapper();
@@ -40,14 +41,13 @@ class RemoteCapabilityBoundaryTest {
         var capability = new RemoteCallCapabilityImpl(definition, transport, client);
         var otherCapability = new RemoteCallCapabilityImpl(otherServer, transport, client);
         var call = new ToolCall("lookup", Map.of("id", "allowed"), "approved-call");
-        UUID user = UUID.randomUUID();
+        UUID user = TestUsers.OWNER;
         var permit =
                 ToolExecutionPermit.capture(call, definition, Workspace.single(root, PathMode.REAL))
-                        .withCaller("agent", user, "owner", null);
+                        .withCaller("agent", user, null);
         assertEquals("server-one", permit.remoteServerName());
         ToolCallContextHolder.set(
-                new ToolCallContext(
-                        "agent", user, "owner", null, ToolResultPresentationMode.BASIC, permit));
+                new ToolCallContext("agent", user, null, ToolResultPresentationMode.BASIC, permit));
         ToolCallContextHolder.setCurrentCallId(call.callId());
         assertThrows(SecurityException.class, () -> otherCapability.call(call));
         assertThrows(
@@ -63,17 +63,11 @@ class RemoteCapabilityBoundaryTest {
         ToolCallContextHolder.setCurrentCallId(call.callId());
         ToolCallContextHolder.set(
                 new ToolCallContext(
-                        "other-agent",
-                        user,
-                        "owner",
-                        null,
-                        ToolResultPresentationMode.BASIC,
-                        permit));
+                        "other-agent", user, null, ToolResultPresentationMode.BASIC, permit));
         assertThrows(SecurityException.class, () -> capability.call(call));
         verifyNoInteractions(client);
         ToolCallContextHolder.set(
-                new ToolCallContext(
-                        "agent", user, "owner", null, ToolResultPresentationMode.BASIC, permit));
+                new ToolCallContext("agent", user, null, ToolResultPresentationMode.BASIC, permit));
         var result = mapper.createObjectNode().put("isError", false);
         when(client.callTool(transport, "lookup", call.args())).thenReturn(result);
         assertSame(result, capability.call(call));

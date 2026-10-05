@@ -42,13 +42,13 @@ class SessionAgentHistoryTest {
     void committedFailuresReloadInTheirOriginalAgentAndSessionStreams() {
         UUID session = UUID.randomUUID();
         UUID otherSession = UUID.randomUUID();
-        UUID owner = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
         String primary = UUID.randomUUID().toString();
         String mate = UUID.randomUUID().toString();
         var mapper = new ObjectMapper();
         var writer = new TurnLogService(turns, mapper, new DeltaBroker());
         try {
-            writer.log(TurnRecord.userPrompt(1, "Original request"), session, owner, primary);
+            writer.log(TurnRecord.userPrompt(1, "Original request"), session, userId, primary);
             writer.log(
                     new TurnRecord(
                             2,
@@ -56,7 +56,7 @@ class SessionAgentHistoryTest {
                             Map.of("content", "Primary failure", "requestId", "request-a"),
                             null),
                     session,
-                    owner,
+                    userId,
                     primary);
             writer.log(
                     new TurnRecord(
@@ -65,7 +65,7 @@ class SessionAgentHistoryTest {
                             Map.of("content", "Mate failure", "requestId", "request-b"),
                             null),
                     session,
-                    owner,
+                    userId,
                     mate);
             writer.log(
                     new TurnRecord(
@@ -74,7 +74,7 @@ class SessionAgentHistoryTest {
                             Map.of("content", "Other session failure"),
                             null),
                     otherSession,
-                    owner,
+                    userId,
                     primary);
 
             var reader = new SessionHistoryLoader(turns, new ObjectMapper());
@@ -97,7 +97,7 @@ class SessionAgentHistoryTest {
             var row =
                     turns.findBySessionIdAndAgentIdAndTurnNumber(session.toString(), primary, 2)
                             .orElseThrow();
-            assertEquals(owner.toString(), row.getUserId());
+            assertEquals(userId, row.getUserId());
             assertEquals(restored.getLast().timestamp(), row.getTimestamp());
         } finally {
             turns.deleteAll(turns.findBySessionIdOrderByTurnNumberAsc(session.toString()));

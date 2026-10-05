@@ -1,6 +1,7 @@
 package top.focess.veto.command.commands;
 
 import java.util.List;
+import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import top.focess.command.CommandResult;
 import top.focess.command.CommandSender;
@@ -36,9 +37,9 @@ public class LogoutCommand extends VetoCommand {
                     VetoCommandSender s = vetoSender(sender);
                     if (s == null) return CommandResult.REFUSE;
 
-                    String user = s.requireUsername();
+                    UUID user = s.requireUserId();
                     authLifecycleManager.logout(user);
-                    s.setUsername(null);
+                    s.setUser(null);
                     promptHandler.deactivate(s.terminalId());
                     s.output("Logged out.");
                     throw new LogoutException();

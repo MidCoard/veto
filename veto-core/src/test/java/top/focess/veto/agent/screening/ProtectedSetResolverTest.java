@@ -12,6 +12,7 @@ import top.focess.veto.agent.workspace.PathMode;
 import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.observability.ObservabilityConfiguration;
 import top.focess.veto.vault.CredentialVaultConfiguration;
+import top.focess.veto.vault.TestUsers;
 
 @SuppressWarnings("initialization.field.uninitialized")
 class ProtectedSetResolverTest {
@@ -25,7 +26,8 @@ class ProtectedSetResolverTest {
                 .setPaths(List.of(root.resolve("custom-secret").toString()));
 
         ProtectedSet resolved =
-                resolver(configuration).resolve(DeployerPolicy.FULL_ACCESS, "u", workspace());
+                resolver(configuration)
+                        .resolve(DeployerPolicy.FULL_ACCESS, TestUsers.OWNER, workspace());
 
         assertTrue(resolved.paths().isEmpty());
     }
@@ -37,7 +39,8 @@ class ProtectedSetResolverTest {
         configuration.getProtectedPolicy().setPaths(List.of(custom.toString()));
 
         ProtectedSet resolved =
-                resolver(configuration).resolve(DeployerPolicy.PROTECTED, "u", workspace());
+                resolver(configuration)
+                        .resolve(DeployerPolicy.PROTECTED, TestUsers.OWNER, workspace());
 
         assertTrue(resolved.covers(custom.resolve("token.txt")));
         assertTrue(resolved.covers(root.resolve("workspace/.env")));
@@ -55,8 +58,9 @@ class ProtectedSetResolverTest {
         configuration.getTenant().getProtection().setPaths(List.of(tenantOnly.toString()));
 
         ProtectedSetResolver resolver = resolver(configuration);
-        ProtectedSet sandboxed = resolver.resolve(DeployerPolicy.SANDBOXED, "u", workspace());
-        ProtectedSet tenant = resolver.resolve(DeployerPolicy.TENANT, "u", workspace());
+        ProtectedSet sandboxed =
+                resolver.resolve(DeployerPolicy.SANDBOXED, TestUsers.OWNER, workspace());
+        ProtectedSet tenant = resolver.resolve(DeployerPolicy.TENANT, TestUsers.OWNER, workspace());
 
         assertTrue(sandboxed.covers(sandboxedOnly));
         assertFalse(sandboxed.covers(protectedOnly));

@@ -36,7 +36,7 @@ class ScriptPluginTest {
                 identity,
                 () -> {},
                 () -> {
-                    throw new IllegalStateException("Plugin context has no lifecycle owner");
+                    throw new IllegalStateException("Plugin context has no lifecycle userId");
                 },
                 Map.of(),
                 Map.of(StandardContributionPoints.TOOLS, contribution -> {}));

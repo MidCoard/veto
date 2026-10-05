@@ -115,7 +115,7 @@ final class DeepSeekLlmClient implements LlmClient {
                             .uri(URI.create(baseUrl + "/responses"))
                             .header("Authorization", "Bearer " + apiKey)
                             .header("Content-Type", "application/json")
-                            .timeout(Duration.ofSeconds(options.timeoutOrDefault().toSeconds()))
+                            .timeout(options.timeoutOrDefault())
                             .POST(HttpRequest.BodyPublishers.ofString(json))
                             .build();
 

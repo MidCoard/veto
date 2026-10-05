@@ -32,7 +32,7 @@ class GroupOrchestratorTest {
         Group g =
                 Group.create(
                         "Leader-1",
-                        "user-1",
+                        UUID.fromString("8158954f-044f-58f5-968f-ac185b65f0a9"),
                         "build",
                         blackboard,
                         ExecutionDag.linear(groupId, List.of("n1", "n2")));
@@ -185,7 +185,7 @@ class GroupOrchestratorTest {
         Group group =
                 Group.create(
                         "Leader-1",
-                        "user-1",
+                        UUID.fromString("8158954f-044f-58f5-968f-ac185b65f0a9"),
                         "review",
                         blackboard,
                         new ExecutionDag(
@@ -394,7 +394,7 @@ class GroupOrchestratorTest {
         Group g =
                 Group.create(
                         "Leader-1",
-                        "user-1",
+                        UUID.fromString("8158954f-044f-58f5-968f-ac185b65f0a9"),
                         "build",
                         blackboard,
                         ExecutionDag.linear(groupId, List.of("n1", "n2")));
@@ -504,7 +504,7 @@ class GroupOrchestratorTest {
         Group g =
                 Group.create(
                         "Leader-1",
-                        "user-1",
+                        UUID.fromString("8158954f-044f-58f5-968f-ac185b65f0a9"),
                         "build",
                         blackboard,
                         ExecutionDag.linear(groupId, List.of("n1", "n2")));

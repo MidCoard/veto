@@ -7,6 +7,7 @@ import java.security.*;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.regex.Pattern;
 import javax.crypto.*;
 import javax.crypto.spec.GCMParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
@@ -30,6 +31,7 @@ public class TamperProofStore {
     private static final String STORE_FILE_PREFIX = "veto-audit-";
     private static final String STORE_FILE_SUFFIX = ".enc";
     private static final String INDEX_FILE = "veto-audit-index";
+    private static final @NonNull String RECORD_BOUNDARY = "\n---RECORD_BOUNDARY---\n";
     private static final String ALGORITHM = "AES/GCM/NoPadding";
     private static final int GCM_TAG_LENGTH = 128;
     private static final int GCM_IV_LENGTH = 12;
@@ -111,7 +113,7 @@ public class TamperProofStore {
             // Write separator
             Files.write(
                     dailyFile,
-                    "\n---RECORD_BOUNDARY---\n".getBytes(StandardCharsets.UTF_8),
+                    RECORD_BOUNDARY.getBytes(StandardCharsets.UTF_8),
                     StandardOpenOption.APPEND);
 
             // Update chain tail
@@ -198,9 +200,13 @@ public class TamperProofStore {
                     String fileName = namePath.toString();
                     LocalDate fileDate = extractDate(fileName);
                     if (fileDate != null && !fileDate.isBefore(from) && !fileDate.isAfter(to)) {
-                        byte[] encrypted = Files.readAllBytes(file);
-                        String decrypted = decryptRecord(encrypted);
-                        records.add(decrypted);
+                        String framed = Files.readString(file, StandardCharsets.UTF_8);
+                        for (String encrypted : framed.split(Pattern.quote(RECORD_BOUNDARY), -1)) {
+                            if (!encrypted.isEmpty()) {
+                                records.add(
+                                        decryptRecord(encrypted.getBytes(StandardCharsets.UTF_8)));
+                            }
+                        }
                     }
                 }
             }

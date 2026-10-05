@@ -6,6 +6,8 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.*;
 
 import java.util.Optional;
+import java.util.UUID;
+import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
@@ -15,6 +17,12 @@ import top.focess.veto.vault.KeysteadVault;
 import top.focess.veto.vault.UserContext;
 
 class RequestAuthorizationTest {
+    private static final @NonNull UUID ALICE =
+            UUID.fromString("11111111-1111-1111-1111-111111111111");
+    private static final @NonNull UUID MEMBER =
+            UUID.fromString("22222222-2222-2222-2222-222222222222");
+    private static final @NonNull UUID ADMIN =
+            UUID.fromString("33333333-3333-3333-3333-333333333333");
 
     @AfterEach
     void clearUserContext() {
@@ -25,7 +33,7 @@ class RequestAuthorizationTest {
     void sessionAccessRequiresUnlockedVaultAndUsesCurrentOwner() {
         KeysteadVault vault = mock(KeysteadVault.class);
         SessionService sessions = mock(SessionService.class);
-        UserContext.set("alice");
+        UserContext.set(ALICE);
         assertEquals(
                 HttpStatus.UNAUTHORIZED,
                 assertThrows(
@@ -35,8 +43,8 @@ class RequestAuthorizationTest {
                                                 "shared-name", sessions, vault))
                         .getStatusCode());
         verifyNoInteractions(sessions);
-        when(vault.currentUser()).thenReturn("alice");
-        when(sessions.primaryAgentIdFor("shared-name", "alice")).thenReturn(Optional.empty());
+        when(vault.currentUser()).thenReturn(ALICE);
+        when(sessions.primaryAgentIdFor("shared-name", ALICE)).thenReturn(Optional.empty());
         assertEquals(
                 HttpStatus.NOT_FOUND,
                 assertThrows(
@@ -45,7 +53,7 @@ class RequestAuthorizationTest {
                                         RequestAuthorization.requireAgentId(
                                                 "shared-name", sessions, vault))
                         .getStatusCode());
-        when(sessions.primaryAgentIdFor("shared-name", "alice"))
+        when(sessions.primaryAgentIdFor("shared-name", ALICE))
                 .thenReturn(Optional.of("alice-agent"));
         assertEquals(
                 "alice-agent", RequestAuthorization.requireAgentId("shared-name", sessions, vault));
@@ -63,7 +71,7 @@ class RequestAuthorizationTest {
 
     @Test
     void authenticatedUserMustBeAdministrator() {
-        UserContext.set("member");
+        UserContext.set(MEMBER);
         RequestAuthorization authorization = AuthorizationTestSupport.authorizer(name -> false);
 
         ResponseStatusException error =
@@ -74,8 +82,8 @@ class RequestAuthorizationTest {
 
     @Test
     void authenticatedAdministratorPasses() {
-        UserContext.set("admin");
-        RequestAuthorization authorization = AuthorizationTestSupport.authorizer("admin"::equals);
+        UserContext.set(ADMIN);
+        RequestAuthorization authorization = AuthorizationTestSupport.authorizer(ADMIN::equals);
 
         assertDoesNotThrow(authorization::requireAdmin);
     }

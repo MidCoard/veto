@@ -3,6 +3,7 @@ package top.focess.veto.command.commands;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import top.focess.command.Command;
 import top.focess.command.CommandCompletion;
@@ -43,15 +44,15 @@ public class SessionCommand extends VetoCommand {
                     String pattern = requiredArg(args.get("pattern"), "pattern");
                     String requestedName = args.get("name");
                     try {
-                        var owner = s.requireUsername();
+                        var userId = s.requireUserId();
                         var cwd =
                                 HostPathInput.canonicalForCreation(
                                         HostPathInput.absoluteNormalized(s.cwd(), "terminal cwd"),
                                         "terminal cwd");
-                        var workspace = workspaceAdmission.toClientPath(owner, cwd);
+                        var workspace = workspaceAdmission.toClientPath(userId, cwd);
                         SessionEntity session =
                                 service.createSession(
-                                        owner, pattern, requestedName, List.of(workspace));
+                                        userId, pattern, requestedName, List.of(workspace));
                         s.output(
                                 "Session '"
                                         + session.getName()
@@ -63,10 +64,7 @@ public class SessionCommand extends VetoCommand {
                         // activate() trivially passes.
                         if (service.activeSession(s.terminalId()).isEmpty()) {
                             service.activate(
-                                    s.terminalId(),
-                                    session.getName(),
-                                    s.requireUsername(),
-                                    s.cwd());
+                                    s.terminalId(), session.getName(), s.requireUserId(), s.cwd());
                             s.output("Activated session '" + session.getName() + "'.");
                         }
                         return CommandResult.ALLOW;
@@ -84,8 +82,7 @@ public class SessionCommand extends VetoCommand {
                 (sender, args) -> {
                     VetoCommandSender s = vetoSender(sender);
                     if (s == null) return CommandResult.REFUSE;
-                    List<SessionEntity> sessions =
-                            service.listSessions(s.requireUsername(), s.cwd());
+                    List<SessionEntity> sessions = service.listSessions(s.requireUserId(), s.cwd());
                     if (sessions.isEmpty()) {
                         s.output(
                                 "No sessions in this workspace ('"
@@ -113,7 +110,7 @@ public class SessionCommand extends VetoCommand {
                     String n = requiredArg(args.get("name"), "name");
                     try {
                         Optional<LlmConfig> cfg =
-                                service.activate(s.terminalId(), n, s.requireUsername(), s.cwd());
+                                service.activate(s.terminalId(), n, s.requireUserId(), s.cwd());
                         if (cfg.isEmpty()) {
                             s.output("Session has no primary agent.");
                             return CommandResult.REFUSE;
@@ -173,7 +170,7 @@ public class SessionCommand extends VetoCommand {
             @NonNull CommandSender sender, @NonNull Command cmd, @NonNull String @NonNull [] argv) {
         if (!LOGGED_IN.test(sender)) return List.of();
         VetoCommandSender v = (VetoCommandSender) sender;
-        String u = v.requireUsername();
+        UUID u = v.requireUserId();
         String prefix = argv.length > 0 ? argv[argv.length - 1].toLowerCase() : "";
         return service.listSessions(u, v.cwd()).stream()
                 .filter(se -> se.getName().toLowerCase().startsWith(prefix))

@@ -68,6 +68,7 @@ import top.focess.veto.llm.core.ToolResultPresenter;
 import top.focess.veto.llm.core.UniformLLMCaller;
 import top.focess.veto.memory.TurnLogService;
 import top.focess.veto.util.Nullness;
+import top.focess.veto.vault.TestUsers;
 
 /** Exercises tool waits, request ordering, cancellation, and durable agent continuation. */
 class AgentRunnerTest {
@@ -142,7 +143,8 @@ class AgentRunnerTest {
                         new HitlRegistry(null, Mockito.mock(SessionInvalidations.class)));
 
         var questionRequest =
-                service.submitNow("question-wait", "Ask for a format", binding("System"));
+                service.submitNow(
+                        "question-wait", "Ask for a format", binding("System"), TestUsers.OWNER);
         var agent = requireAgent(service.agent("question-wait"));
         try {
             long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
@@ -203,7 +205,8 @@ class AgentRunnerTest {
                             return new VetoResponse(null, null, "done");
                         });
         try {
-            service.submit("owned-queue", "Warm up", binding("System"), EPISODE_TIMEOUT);
+            service.submit(
+                    "owned-queue", "Warm up", binding("System"), EPISODE_TIMEOUT, TestUsers.OWNER);
             var agent = requireAgent(service.agent("owned-queue"));
             var active = agent.submitRequest("First");
             assertTrue(entered.await(5, TimeUnit.SECONDS));
@@ -239,7 +242,12 @@ class AgentRunnerTest {
         var service =
                 serviceWith((request, modelSessionId) -> new VetoResponse(null, null, "done"));
         try {
-            service.submit("callback-throw", "Warm up", binding("System"), EPISODE_TIMEOUT);
+            service.submit(
+                    "callback-throw",
+                    "Warm up",
+                    binding("System"),
+                    EPISODE_TIMEOUT,
+                    TestUsers.OWNER);
             var agent = requireAgent(service.agent("callback-throw"));
             var first =
                     agent.submitRequest(
@@ -275,7 +283,8 @@ class AgentRunnerTest {
                             return new VetoResponse(null, null, "done");
                         });
         try {
-            service.submit("close-owned", "Warm up", binding("System"), EPISODE_TIMEOUT);
+            service.submit(
+                    "close-owned", "Warm up", binding("System"), EPISODE_TIMEOUT, TestUsers.OWNER);
             var agent = requireAgent(service.agent("close-owned"));
             var active = agent.submitRequest("First");
             assertTrue(entered.await(5, TimeUnit.SECONDS));
@@ -300,7 +309,12 @@ class AgentRunnerTest {
         var service =
                 serviceWith((request, modelSessionId) -> new VetoResponse(null, null, "done"));
         try {
-            service.submit("callback-exit", "Warm up", binding("System"), EPISODE_TIMEOUT);
+            service.submit(
+                    "callback-exit",
+                    "Warm up",
+                    binding("System"),
+                    EPISODE_TIMEOUT,
+                    TestUsers.OWNER);
             var agent = requireAgent(service.agent("callback-exit"));
             var task =
                     agent.submitRequest(
@@ -365,8 +379,7 @@ class AgentRunnerTest {
                                     agentId,
                                     binding("System"),
                                     restored,
-                                    UUID.randomUUID(),
-                                    null,
+                                    TestUsers.OWNER,
                                     "D:/IdeaProjects/veto/work/tmp/unfinished-group",
                                     0,
                                     ToolResultPresentationMode.BASIC);
@@ -447,7 +460,9 @@ class AgentRunnerTest {
                             return new VetoResponse(null, null, "completed");
                         });
         try {
-            var first = service.submitNow("cancel-task", "First task", binding("System"));
+            var first =
+                    service.submitNow(
+                            "cancel-task", "First task", binding("System"), TestUsers.OWNER);
             var agent = requireAgent(service.agent("cancel-task"));
             assertTrue(entered.await(5, TimeUnit.SECONDS));
             assertFalse(agent.cancelTask(first, Duration.ofMillis(20)));
@@ -534,7 +549,8 @@ class AgentRunnerTest {
                         });
         try {
             var cancelled =
-                    service.submitNow("wrapped-cancel", "Cancelled work", binding("System"));
+                    service.submitNow(
+                            "wrapped-cancel", "Cancelled work", binding("System"), TestUsers.OWNER);
             var agent = requireAgent(service.agent("wrapped-cancel"));
             assertTrue(entered.await(5, TimeUnit.SECONDS));
             assertTrue(agent.cancelTask(cancelled, Duration.ofSeconds(5)));
@@ -560,8 +576,18 @@ class AgentRunnerTest {
         var service =
                 serviceWith((request, modelSessionId) -> new VetoResponse(null, null, "done"));
         try {
-            service.submit("request-ids", "First task", binding("System"), EPISODE_TIMEOUT);
-            service.submit("request-ids", "Second task", binding("System"), EPISODE_TIMEOUT);
+            service.submit(
+                    "request-ids",
+                    "First task",
+                    binding("System"),
+                    EPISODE_TIMEOUT,
+                    TestUsers.OWNER);
+            service.submit(
+                    "request-ids",
+                    "Second task",
+                    binding("System"),
+                    EPISODE_TIMEOUT,
+                    TestUsers.OWNER);
             var agent = requireAgent(service.agent("request-ids"));
             var requests =
                     agent.history().stream()
@@ -601,7 +627,12 @@ class AgentRunnerTest {
                             return new VetoResponse(null, null, "result-" + call);
                         });
         try {
-            service.submit("direct-monitor", "Initial task", binding("System"), EPISODE_TIMEOUT);
+            service.submit(
+                    "direct-monitor",
+                    "Initial task",
+                    binding("System"),
+                    EPISODE_TIMEOUT,
+                    TestUsers.OWNER);
             var agent = requireAgent(service.agent("direct-monitor"));
             MonitorService monitors = Mockito.mock(MonitorService.class);
             var event =
@@ -689,7 +720,12 @@ class AgentRunnerTest {
                             return new VetoResponse(null, null, "result-" + call);
                         });
         try {
-            service.submit("wait-settlement", "Initialize", binding("System"), EPISODE_TIMEOUT);
+            service.submit(
+                    "wait-settlement",
+                    "Initialize",
+                    binding("System"),
+                    EPISODE_TIMEOUT,
+                    TestUsers.OWNER);
             var agent = requireAgent(service.agent("wait-settlement"));
             var request = agent.submitRequest("Wait for plugin work");
             assertTrue(initialEntered.await(5, TimeUnit.SECONDS));
@@ -792,7 +828,12 @@ class AgentRunnerTest {
                         engine,
                         new HitlRegistry(null, Mockito.mock(SessionInvalidations.class)));
         try {
-            service.submit("active-wait-failure", "Initialize", binding("System"), EPISODE_TIMEOUT);
+            service.submit(
+                    "active-wait-failure",
+                    "Initialize",
+                    binding("System"),
+                    EPISODE_TIMEOUT,
+                    TestUsers.OWNER);
             var agent = requireAgent(service.agent("active-wait-failure"));
             var request = agent.submitRequest("Work");
             assertTrue(entered.await(5, TimeUnit.SECONDS));
@@ -829,7 +870,12 @@ class AgentRunnerTest {
                             return new VetoResponse(null, null, "waiting");
                         });
         try {
-            service.submit("wait-failure", "Initialize", binding("System"), EPISODE_TIMEOUT);
+            service.submit(
+                    "wait-failure",
+                    "Initialize",
+                    binding("System"),
+                    EPISODE_TIMEOUT,
+                    TestUsers.OWNER);
             var agent = requireAgent(service.agent("wait-failure"));
             var request = agent.submitRequest("Wait");
             assertTrue(entered.await(5, TimeUnit.SECONDS));
@@ -892,7 +938,9 @@ class AgentRunnerTest {
                             return new VetoResponse(null, null, "result-" + call);
                         });
         try {
-            var workflow = service.submitNow("direct-user", "Group task", binding("System"));
+            var workflow =
+                    service.submitNow(
+                            "direct-user", "Group task", binding("System"), TestUsers.OWNER);
             var agent = requireAgent(service.agent("direct-user"));
             assertTrue(firstEntered.await(5, TimeUnit.SECONDS));
             agent.submitUserPrompt("User follow-up");
@@ -940,7 +988,12 @@ class AgentRunnerTest {
                             if (seen.size() > 1) resumed.countDown();
                             return new VetoResponse(null, null, "Done");
                         });
-        service.submit("monitor-wake", "Initial task", binding("System"), EPISODE_TIMEOUT);
+        service.submit(
+                "monitor-wake",
+                "Initial task",
+                binding("System"),
+                EPISODE_TIMEOUT,
+                TestUsers.OWNER);
         var agent = requireAgent(service.agent("monitor-wake"));
         MonitorService monitors = Mockito.mock(MonitorService.class);
         var event =
@@ -1007,7 +1060,12 @@ class AgentRunnerTest {
                             return new VetoResponse(null, null, "Done");
                         },
                         1L);
-        service.submit("monitor-budget", "Initial task", binding("System"), EPISODE_TIMEOUT);
+        service.submit(
+                "monitor-budget",
+                "Initial task",
+                binding("System"),
+                EPISODE_TIMEOUT,
+                TestUsers.OWNER);
         var agent = requireAgent(service.agent("monitor-budget"));
         MonitorService monitors = Mockito.mock(MonitorService.class);
         var event =
@@ -1067,10 +1125,20 @@ class AgentRunnerTest {
                             return new VetoResponse(null, null, "done");
                         });
         try {
-            service.submit("origin-wake", "Review apples", binding("System"), EPISODE_TIMEOUT);
+            service.submit(
+                    "origin-wake",
+                    "Review apples",
+                    binding("System"),
+                    EPISODE_TIMEOUT,
+                    TestUsers.OWNER);
             var agent = requireAgent(service.agent("origin-wake"));
             String firstId = requestIdentity(agent);
-            service.submit("origin-wake", "Review oranges", binding("System"), EPISODE_TIMEOUT);
+            service.submit(
+                    "origin-wake",
+                    "Review oranges",
+                    binding("System"),
+                    EPISODE_TIMEOUT,
+                    TestUsers.OWNER);
             String secondId = requestIdentity(agent);
             var old =
                     new MonitorRecord.Event(
@@ -1152,7 +1220,8 @@ class AgentRunnerTest {
                             return new VetoResponse(null, null, "reply-" + call);
                         });
         try {
-            service.submit("future-wake", "Original", binding("System"), EPISODE_TIMEOUT);
+            service.submit(
+                    "future-wake", "Original", binding("System"), EPISODE_TIMEOUT, TestUsers.OWNER);
             var agent = requireAgent(service.agent("future-wake"));
             var event =
                     new MonitorRecord.Event(
@@ -1202,11 +1271,21 @@ class AgentRunnerTest {
                         },
                         2L);
         try {
-            service.submit("origin-budget", "Original task", binding("System"), EPISODE_TIMEOUT);
+            service.submit(
+                    "origin-budget",
+                    "Original task",
+                    binding("System"),
+                    EPISODE_TIMEOUT,
+                    TestUsers.OWNER);
             var agent = requireAgent(service.agent("origin-budget"));
             String originalId = requestIdentity(agent);
             assertEquals(2, calls.get());
-            service.submit("origin-budget", "Later task", binding("System"), EPISODE_TIMEOUT);
+            service.submit(
+                    "origin-budget",
+                    "Later task",
+                    binding("System"),
+                    EPISODE_TIMEOUT,
+                    TestUsers.OWNER);
             assertEquals(3, calls.get());
             var event =
                     new MonitorRecord.Event(
@@ -1353,8 +1432,7 @@ class AgentRunnerTest {
                                     agentId,
                                     binding("System"),
                                     history,
-                                    UUID.randomUUID(),
-                                    null,
+                                    TestUsers.OWNER,
                                     "D:/IdeaProjects/veto/work/tmp/breaker-budget",
                                     0,
                                     ToolResultPresentationMode.BASIC);
@@ -1363,7 +1441,8 @@ class AgentRunnerTest {
                                     session.toString(),
                                     "continue",
                                     binding("System"),
-                                    EPISODE_TIMEOUT)
+                                    EPISODE_TIMEOUT,
+                                    TestUsers.OWNER)
                             .success());
             assertEquals(1, calls.get());
             String newRequest = requestIdentity(agent);
@@ -1430,13 +1509,28 @@ class AgentRunnerTest {
         String session = UUID.randomUUID().toString();
         try {
             assertFalse(
-                    service.submit(session, "Original task", binding("System"), EPISODE_TIMEOUT)
+                    service.submit(
+                                    session,
+                                    "Original task",
+                                    binding("System"),
+                                    EPISODE_TIMEOUT,
+                                    TestUsers.OWNER)
                             .success());
             assertFalse(
-                    service.submit(session, "continue", binding("System"), EPISODE_TIMEOUT)
+                    service.submit(
+                                    session,
+                                    "continue",
+                                    binding("System"),
+                                    EPISODE_TIMEOUT,
+                                    TestUsers.OWNER)
                             .success());
             assertTrue(
-                    service.submit(session, "continue", binding("System"), EPISODE_TIMEOUT)
+                    service.submit(
+                                    session,
+                                    "continue",
+                                    binding("System"),
+                                    EPISODE_TIMEOUT,
+                                    TestUsers.OWNER)
                             .success());
             assertEquals(3, calls.get());
             var agent = requireAgent(service.agent(session));
@@ -1486,7 +1580,8 @@ class AgentRunnerTest {
                         "breaker-continue",
                         originalTask,
                         binding("You are a helpful assistant."),
-                        EPISODE_TIMEOUT);
+                        EPISODE_TIMEOUT,
+                        TestUsers.OWNER);
         assertFalse(tripped.success(), "the first episode must trip at the one-call ceiling");
         assertEquals(Boolean.TRUE, tripped.metadata().get("breakerTrip"));
 
@@ -1495,7 +1590,8 @@ class AgentRunnerTest {
                         "breaker-continue",
                         "continue",
                         binding("You are a helpful assistant."),
-                        EPISODE_TIMEOUT);
+                        EPISODE_TIMEOUT,
+                        TestUsers.OWNER);
 
         assertTrue(resumed.success(), resumed.message());
         assertEquals(2, seenRequests.size(), "continue starts one fresh model call");
@@ -1591,7 +1687,11 @@ class AgentRunnerTest {
         try {
             var result =
                     service.submit(
-                            session, "Validate this request", binding("System"), EPISODE_TIMEOUT);
+                            session,
+                            "Validate this request",
+                            binding("System"),
+                            EPISODE_TIMEOUT,
+                            TestUsers.OWNER);
             assertEquals(recover, result.success());
             assertEquals(recover ? 2 : 50, attempts.get());
             var agent = requireAgent(service.agent(session));

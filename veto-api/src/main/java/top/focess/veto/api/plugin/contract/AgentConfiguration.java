@@ -1,6 +1,7 @@
 package top.focess.veto.api.plugin.contract;
 
 import java.util.List;
+import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.plugin.Scope;
@@ -37,7 +38,7 @@ public interface AgentConfiguration {
     /**
      * Immutable inputs for one configuration evaluation.
      *
-     * @param owner authenticated owner
+     * @param userId authenticated userId
      * @param storageGrant host-issued session grant
      * @param agents agent authority bound to that grant
      * @param agentId current agent
@@ -46,7 +47,7 @@ public interface AgentConfiguration {
      * @param activeTask current task text
      */
     record Context(
-            @NonNull String owner,
+            @NonNull UUID userId,
             PluginStorage.@NonNull Grant<Scope.@NonNull SessionScope> storageGrant,
             AgentHost.@NonNull Session agents,
             @NonNull String agentId,

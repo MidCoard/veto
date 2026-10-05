@@ -33,6 +33,7 @@ import top.focess.veto.api.llm.VetoResponse;
 import top.focess.veto.bus.SessionInvalidations;
 import top.focess.veto.llm.core.ToolResultPresenter;
 import top.focess.veto.llm.core.UniformLLMCaller;
+import top.focess.veto.vault.TestUsers;
 
 /**
  * Verifies the production agent persona resolves a real tool whitelist from the {@link ToolEngine}
@@ -119,7 +120,7 @@ class PersonaToolWhitelistTest {
                     return new VetoResponse("done", null, "ok");
                 };
         AgentService service = serviceWith(engineWithReadFile(), caller);
-        service.submit("whitelist-test", "hi", binding(), EPISODE_TIMEOUT);
+        service.submit("whitelist-test", "hi", binding(), EPISODE_TIMEOUT, TestUsers.OWNER);
 
         assertFalse(seen.isEmpty(), "the model was called");
         assertFalse(
@@ -140,7 +141,10 @@ class PersonaToolWhitelistTest {
                     return new VetoResponse("done", null, "ok");
                 };
         AgentService service = serviceWith(new TestToolEngine(), caller);
-        assertDoesNotThrow(() -> service.submit("empty-test", "hi", binding(), EPISODE_TIMEOUT));
+        assertDoesNotThrow(
+                () ->
+                        service.submit(
+                                "empty-test", "hi", binding(), EPISODE_TIMEOUT, TestUsers.OWNER));
         assertFalse(seen.isEmpty());
         assertTrue(seen.get(0).tools().isEmpty(), "an empty engine advertises no tools");
     }

@@ -96,6 +96,7 @@ import top.focess.veto.session.SessionHistoryLoader;
 import top.focess.veto.session.SessionService;
 import top.focess.veto.util.Nullness;
 import top.focess.veto.vault.KeysteadVault;
+import top.focess.veto.vault.TestUsers;
 import top.focess.veto.vault.UserContext;
 
 /**
@@ -168,8 +169,7 @@ class AgentEpisodeModelTest {
                         UUID.randomUUID().toString(),
                         binding("System"),
                         List.of(),
-                        UUID.randomUUID(),
-                        "owner",
+                        TestUsers.OWNER,
                         null,
                         0,
                         ToolResultPresentationMode.BASIC);
@@ -255,7 +255,9 @@ class AgentEpisodeModelTest {
                             return new VetoResponse("thinking", null, "answer");
                         });
         try {
-            var request = service.submitNow("usage-reference", "New request", binding("System"));
+            var request =
+                    service.submitNow(
+                            "usage-reference", "New request", binding("System"), TestUsers.OWNER);
             var agent = requireAgent(service.agent("usage-reference"));
             assertTrue(request.await(EPISODE_TIMEOUT).success());
             List<@Nullable String> ids = new ArrayList<>();
@@ -311,7 +313,11 @@ class AgentEpisodeModelTest {
                         });
         try {
             var request =
-                    service.submitNow("ordinary-provider-error", "New request", binding("System"));
+                    service.submitNow(
+                            "ordinary-provider-error",
+                            "New request",
+                            binding("System"),
+                            TestUsers.OWNER);
             var agent = requireAgent(service.agent("ordinary-provider-error"));
             assertFalse(request.await(EPISODE_TIMEOUT).success());
             assertTrue(
@@ -358,12 +364,11 @@ class AgentEpisodeModelTest {
                                 agentId,
                                 binding("You are a helpful assistant."),
                                 List.of(),
-                                UUID.randomUUID(),
-                                "alice",
+                                TestUsers.OWNER,
                                 null,
                                 0,
                                 ToolResultPresentationMode.BASIC);
-                var scope = new Scope.AgentScope("alice", session, agentId);
+                var scope = new Scope.AgentScope(TestUsers.OWNER, session, agentId);
                 assertTrue(
                         agent.submitRequest("Inspect password=synthetic-token")
                                 .await(EPISODE_TIMEOUT)
@@ -458,8 +463,7 @@ class AgentEpisodeModelTest {
                                 UUID.randomUUID().toString(),
                                 binding("You are a helpful assistant."),
                                 List.of(),
-                                UUID.randomUUID(),
-                                "alice",
+                                TestUsers.OWNER,
                                 null);
                 String input = "password=synthetic-token [SECRET_REF:forged]";
                 assertTrue(agent.submitRequest(input).await(EPISODE_TIMEOUT).success());
@@ -502,7 +506,7 @@ class AgentEpisodeModelTest {
                 serviceWith(
                         new AgentServiceTestSupport.Dependencies().vault(vault).plugins(selected),
                         (request, modelSessionId) -> {
-                            assertEquals("alice", UserContext.get());
+                            assertEquals(TestUsers.ALICE, UserContext.get());
                             assertTrue(
                                     request.messages().toString().contains("Earlier conversation"));
                             calls.incrementAndGet();
@@ -519,7 +523,7 @@ class AgentEpisodeModelTest {
         AgentPatternRepository patterns = Mockito.mock(AgentPatternRepository.class);
         SessionHistoryLoader history = Mockito.mock(SessionHistoryLoader.class);
         ModelTierRegistry tiers = Mockito.mock(ModelTierRegistry.class);
-        var session = new SessionEntity("alice", "duplicate-name");
+        var session = new SessionEntity(TestUsers.ALICE, "duplicate-name");
         var identity =
                 new AgentEntity(
                         session.getId(),
@@ -544,7 +548,7 @@ class AgentEpisodeModelTest {
                                                 Map.of("content", "Done"),
                                                 null))
                                 : List.of(TurnRecord.userPrompt(1, "Earlier conversation")));
-        Mockito.when(tiers.resolve("alice", ModelTier.TOP))
+        Mockito.when(tiers.resolve(TestUsers.ALICE, ModelTier.TOP))
                 .thenReturn(
                         new ModelBinding(ProviderType.DEEPSEEK, "model", "key", 0.7, 4096, null));
         var sessionService =
@@ -558,7 +562,8 @@ class AgentEpisodeModelTest {
                         tiers,
                         new WorkspaceAdmissionPolicy(
                                 new DeployerPolicyConfiguration(),
-                                mock(ProtectedSetResolver.class)),
+                                mock(ProtectedSetResolver.class),
+                                TestUsers.registry()),
                         Mockito.mock(ScopedPluginStorage.class),
                         Mockito.mock(HitlRecordRepository.class),
                         Mockito.mock(PluginManager.class),
@@ -575,13 +580,13 @@ class AgentEpisodeModelTest {
                         host(sessionService, registry, vault));
         Mockito.when(selected.workSource(Mockito.anyString())).thenReturn(work(monitors));
         var due = Instant.now().plusSeconds(10);
-        monitors.createTimer("alice", session.getId(), identity.getId(), "Review", due);
+        monitors.createTimer(TestUsers.ALICE, session.getId(), identity.getId(), "Review", due);
         try {
             Mockito.when(vault.isUnlocked()).thenReturn(true);
             ReflectionTestUtils.invokeMethod(monitors, "tickAt", due.plusSeconds(1));
             assertTrue(runtime.agent(session.getId()) == null);
             assertEquals(1, monitors.pending(identity.getId(), session.getId()).size());
-            Mockito.when(vault.isUnlocked("alice")).thenReturn(true);
+            Mockito.when(vault.isUnlocked(TestUsers.ALICE)).thenReturn(true);
             ReflectionTestUtils.invokeMethod(monitors, "tickAt", due.plusSeconds(2));
             if (!completed) {
                 assertNull(runtime.agent(session.getId()));
@@ -595,7 +600,7 @@ class AgentEpisodeModelTest {
             assertTrue(called.await(5, TimeUnit.SECONDS));
             awaitCondition(
                     () ->
-                            monitors.list("alice", session.getId()).stream()
+                            monitors.list(TestUsers.ALICE, session.getId()).stream()
                                     .allMatch(
                                             record ->
                                                     record.activationStates().values().stream()
@@ -635,8 +640,7 @@ class AgentEpisodeModelTest {
                                 id,
                                 binding("System"),
                                 List.of(TurnRecord.userPrompt(1, "Explain TCP")),
-                                UUID.randomUUID(),
-                                null,
+                                TestUsers.OWNER,
                                 "D:/IdeaProjects/veto/work/tmp/unfinished-group",
                                 0,
                                 ToolResultPresentationMode.BASIC);
@@ -673,7 +677,7 @@ class AgentEpisodeModelTest {
         var snapshot =
                 new MonitorRecord(
                                 "timer",
-                                "owner",
+                                TestUsers.OWNER,
                                 session.toString(),
                                 agentId,
                                 "TIME_ONCE",
@@ -729,8 +733,7 @@ class AgentEpisodeModelTest {
                                                             "content",
                                                             "Review"),
                                                     Instant.now())),
-                                    UUID.randomUUID(),
-                                    null,
+                                    TestUsers.OWNER,
                                     "D:/IdeaProjects/veto/work/tmp/unfinished-group",
                                     0,
                                     ToolResultPresentationMode.BASIC);
@@ -740,7 +743,7 @@ class AgentEpisodeModelTest {
             assertEquals(
                     ActivationState.RUNNING,
                     Nullness.requireNonNull(
-                                    monitor.list("owner", session.toString())
+                                    monitor.list(TestUsers.OWNER, session.toString())
                                             .getFirst()
                                             .activationStates()
                                             .get(event.id()))
@@ -750,7 +753,9 @@ class AgentEpisodeModelTest {
             awaitCondition(
                     () ->
                             Nullness.requireNonNull(
-                                                    monitor.list("owner", session.toString())
+                                                    monitor.list(
+                                                                    TestUsers.OWNER,
+                                                                    session.toString())
                                                             .getFirst()
                                                             .activationStates()
                                                             .get(event.id()))
@@ -761,7 +766,7 @@ class AgentEpisodeModelTest {
             assertEquals(
                     success ? ActivationState.COMPLETED : ActivationState.FAILED,
                     Nullness.requireNonNull(
-                                    monitor.list("owner", session.toString())
+                                    monitor.list(TestUsers.OWNER, session.toString())
                                             .getFirst()
                                             .activationStates()
                                             .get(event.id()))
@@ -822,12 +827,16 @@ class AgentEpisodeModelTest {
                 UUID.randomUUID().toString(),
                 binding("System"),
                 List.of(),
-                UUID.randomUUID(),
-                null,
+                TestUsers.OWNER,
                 "D:/IdeaProjects/veto/work/tmp/unfinished-group",
                 0,
                 ToolResultPresentationMode.BASIC);
-        first.submit(session.toString(), "Review apples", binding("System"), EPISODE_TIMEOUT);
+        first.submit(
+                session.toString(),
+                "Review apples",
+                binding("System"),
+                EPISODE_TIMEOUT,
+                TestUsers.OWNER);
         var original = requireAgent(first.agent(session.toString()));
         String requestId = requestIdentity(original);
         List<TurnRecord> history = original.history();
@@ -851,8 +860,7 @@ class AgentEpisodeModelTest {
                                     agentId,
                                     binding("System"),
                                     history,
-                                    UUID.randomUUID(),
-                                    null,
+                                    TestUsers.OWNER,
                                     "D:/IdeaProjects/veto/work/tmp/unfinished-group",
                                     0,
                                     ToolResultPresentationMode.BASIC);
@@ -942,7 +950,12 @@ class AgentEpisodeModelTest {
                 new TurnLogService(records, new ObjectMapper(), new DeltaBroker()));
         try {
             assertFalse(
-                    service.submit("checkpoint-failure", "Work", binding("System"), EPISODE_TIMEOUT)
+                    service.submit(
+                                    "checkpoint-failure",
+                                    "Work",
+                                    binding("System"),
+                                    EPISODE_TIMEOUT,
+                                    TestUsers.OWNER)
                             .success());
             assertEquals(0, calls.get());
             assertTrue(logged.contains("EXECUTION_ERROR"));
@@ -990,8 +1003,7 @@ class AgentEpisodeModelTest {
                                     agentId,
                                     binding("System"),
                                     List.of(),
-                                    UUID.randomUUID(),
-                                    null,
+                                    TestUsers.OWNER,
                                     "D:/IdeaProjects/veto/work/tmp/unfinished-group",
                                     0,
                                     ToolResultPresentationMode.BASIC);
@@ -1049,7 +1061,7 @@ class AgentEpisodeModelTest {
                                         new JsonValue.StringValue("prior task"))));
         Mockito.when(
                         plugins.configure(
-                                Mockito.anyString(),
+                                Mockito.any(),
                                 Mockito.anyString(),
                                 Mockito.anyString(),
                                 Mockito.isNull(),
@@ -1077,8 +1089,7 @@ class AgentEpisodeModelTest {
                             UUID.randomUUID().toString(),
                             binding("System"),
                             List.of(TurnRecord.userPrompt(1, "prior persisted request")),
-                            UUID.randomUUID(),
-                            "owner",
+                            TestUsers.OWNER,
                             "D:/IdeaProjects/veto/work/tmp/runner-state-storage",
                             0,
                             ToolResultPresentationMode.BASIC);
@@ -1137,7 +1148,8 @@ class AgentEpisodeModelTest {
                                 "citation-after-schema",
                                 "Meeting at 14:30",
                                 binding("System"),
-                                EPISODE_TIMEOUT)
+                                EPISODE_TIMEOUT,
+                                TestUsers.OWNER)
                         .success());
         assertEquals(4, calls.get());
     }
@@ -1167,7 +1179,8 @@ class AgentEpisodeModelTest {
                         "citation-candidate",
                         "Meeting at 14:30",
                         binding("System"),
-                        EPISODE_TIMEOUT);
+                        EPISODE_TIMEOUT,
+                        TestUsers.OWNER);
         assertTrue(result.success());
         assertEquals(4, calls.get());
         var answer =
@@ -1204,7 +1217,8 @@ class AgentEpisodeModelTest {
                         "citation-unresolved",
                         "Meeting at 14:30",
                         binding("System"),
-                        EPISODE_TIMEOUT);
+                        EPISODE_TIMEOUT,
+                        TestUsers.OWNER);
         assertTrue(result.success());
         assertEquals(3, calls.get());
         assertTrue(result.message().contains("14:30"));
@@ -1249,7 +1263,8 @@ class AgentEpisodeModelTest {
                                 "citation-correction",
                                 "Meeting at 14:30",
                                 binding("System"),
-                                EPISODE_TIMEOUT)
+                                EPISODE_TIMEOUT,
+                                TestUsers.OWNER)
                         .success());
         assertEquals(2, calls.get());
         var answers =
@@ -1290,7 +1305,8 @@ class AgentEpisodeModelTest {
                                 "citation-retry",
                                 "Meeting at 14:30",
                                 binding("System"),
-                                EPISODE_TIMEOUT)
+                                EPISODE_TIMEOUT,
+                                TestUsers.OWNER)
                         .success());
         var agent = requireAgent(service.agent("citation-retry"));
         var answer =
@@ -1309,7 +1325,12 @@ class AgentEpisodeModelTest {
                                         turn.turnNumber() == sourceTurn
                                                 && turn.type() == TurnType.USER_PROMPT));
         assertTrue(
-                service.submit("citation-retry", "Continue", binding("System"), EPISODE_TIMEOUT)
+                service.submit(
+                                "citation-retry",
+                                "Continue",
+                                binding("System"),
+                                EPISODE_TIMEOUT,
+                                TestUsers.OWNER)
                         .success());
         var latest =
                 agent.history().stream()
@@ -1327,7 +1348,12 @@ class AgentEpisodeModelTest {
                             throw new NoClassDefFoundError("ToolErrors");
                         });
         var result =
-                service.submit("linkage-failure", "Answer", binding("System"), EPISODE_TIMEOUT);
+                service.submit(
+                        "linkage-failure",
+                        "Answer",
+                        binding("System"),
+                        EPISODE_TIMEOUT,
+                        TestUsers.OWNER);
         assertFalse(result.success());
         assertTrue(result.message().contains("ToolErrors"));
     }
@@ -1356,7 +1382,11 @@ class AgentEpisodeModelTest {
                         });
         try {
             service.submit(
-                    "model-snapshot", "Initialize", binding("Original system"), EPISODE_TIMEOUT);
+                    "model-snapshot",
+                    "Initialize",
+                    binding("Original system"),
+                    EPISODE_TIMEOUT,
+                    TestUsers.OWNER);
             var agent = requireAgent(service.agent("model-snapshot"));
             active.set(agent);
             assertTrue(agent.submitRequest("Repair once").await(EPISODE_TIMEOUT).success());
@@ -1390,13 +1420,7 @@ class AgentEpisodeModelTest {
                         caller);
 
         service.getOrCreateAgent(
-                agentKey,
-                null,
-                binding("System"),
-                List.of(),
-                UUID.randomUUID(),
-                "citation-owner",
-                null);
+                agentKey, null, binding("System"), List.of(), TestUsers.OWNER, null);
         return service;
     }
 
@@ -1416,7 +1440,12 @@ class AgentEpisodeModelTest {
                             return new VetoResponse(null, null, "Recovered");
                         });
         var result =
-                service.submit("schema-recovery", "Answer", binding("System"), EPISODE_TIMEOUT);
+                service.submit(
+                        "schema-recovery",
+                        "Answer",
+                        binding("System"),
+                        EPISODE_TIMEOUT,
+                        TestUsers.OWNER);
         assertTrue(result.success());
         assertEquals(5, calls.get());
         var errors =
@@ -1448,7 +1477,11 @@ class AgentEpisodeModelTest {
         var service = serviceWith(caller);
         var result =
                 service.submit(
-                        "provider-schema-retry", "Answer", binding("System"), EPISODE_TIMEOUT);
+                        "provider-schema-retry",
+                        "Answer",
+                        binding("System"),
+                        EPISODE_TIMEOUT,
+                        TestUsers.OWNER);
         assertTrue(result.success(), result.message());
         assertEquals("Recovered", result.message());
         assertEquals(2, requests.size());
@@ -1486,7 +1519,8 @@ class AgentEpisodeModelTest {
                         "schema-retry",
                         "What is 2 + 2?",
                         binding("You are a helpful assistant."),
-                        EPISODE_TIMEOUT);
+                        EPISODE_TIMEOUT,
+                        TestUsers.OWNER);
 
         assertTrue(result.success(), "episode should finish after the schema retry");
         assertEquals(2, seenRequests.size(), "the caller is invoked once per attempt");
@@ -1545,7 +1579,8 @@ class AgentEpisodeModelTest {
                         "message-required-retry",
                         "What is 2 + 2?",
                         binding("You are a helpful assistant."),
-                        EPISODE_TIMEOUT);
+                        EPISODE_TIMEOUT,
+                        TestUsers.OWNER);
 
         assertTrue(result.success(), "episode should finish after the schema retry");
         VetoRequest retried = seenRequests.get(1);
@@ -1589,7 +1624,8 @@ class AgentEpisodeModelTest {
                         t -> {
                             thoughts.add(t);
                             sequence.add("thought:" + order.incrementAndGet());
-                        });
+                        },
+                        TestUsers.OWNER);
 
         assertTrue(result.success(), "episode should finish cleanly");
         assertEquals(1, thoughts.size(), "the thought is delivered to the thoughtSink once");

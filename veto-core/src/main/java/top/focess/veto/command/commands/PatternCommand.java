@@ -1,6 +1,7 @@
 package top.focess.veto.command.commands;
 
 import java.util.List;
+import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -66,7 +67,7 @@ public class PatternCommand extends VetoCommand {
                     ModelTier tier = requiredArg(args.get("tier"), "tier");
                     ModelBinding cache;
                     try {
-                        cache = tierRegistry.resolve(s.requireUsername(), tier);
+                        cache = tierRegistry.resolve(s.requireUserId(), tier);
                     } catch (ModelTierConfigException e) {
                         s.output(
                                 "Cannot resolve tier "
@@ -78,7 +79,7 @@ public class PatternCommand extends VetoCommand {
                         return CommandResult.REFUSE;
                     }
                     AgentPatternEntity entity =
-                            new AgentPatternEntity(n, tier, cache, s.requireUsername());
+                            new AgentPatternEntity(n, tier, cache, s.requireUserId());
                     repo.save(entity);
                     s.output(
                             "Pattern '"
@@ -101,7 +102,7 @@ public class PatternCommand extends VetoCommand {
                 (sender, args) -> {
                     VetoCommandSender s = vetoSender(sender);
                     if (s == null) return CommandResult.REFUSE;
-                    var pats = repo.findByOwner(s.requireUsername());
+                    var pats = repo.findByUserId(s.requireUserId());
                     if (pats.isEmpty()) {
                         s.output("No patterns configured. Use /pattern create ...");
                         return CommandResult.ALLOW;
@@ -110,7 +111,7 @@ public class PatternCommand extends VetoCommand {
                     for (var p : pats) {
                         ModelBinding live;
                         try {
-                            live = tierRegistry.resolve(s.requireUsername(), p.getTier());
+                            live = tierRegistry.resolve(s.requireUserId(), p.getTier());
                         } catch (ModelTierConfigException e) {
                             s.output(
                                     String.format(
@@ -133,12 +134,12 @@ public class PatternCommand extends VetoCommand {
                     VetoCommandSender s = vetoSender(sender);
                     if (s == null) return CommandResult.REFUSE;
                     String n = requiredArg(args.get("name"), "name");
-                    var pats = repo.findByOwner(s.requireUsername());
+                    var pats = repo.findByUserId(s.requireUserId());
                     if (pats.stream().noneMatch(p -> p.getName().equals(n))) {
                         s.output("Pattern not found: " + n);
                         return CommandResult.REFUSE;
                     }
-                    repo.deleteByNameAndOwner(n, s.requireUsername());
+                    repo.deleteByNameAndUserId(n, s.requireUserId());
                     s.output("Pattern '" + n + "' deleted.");
                     return CommandResult.ALLOW;
                 },
@@ -152,7 +153,7 @@ public class PatternCommand extends VetoCommand {
                     if (s == null) return CommandResult.REFUSE;
                     String n = args.get("name");
                     var found =
-                            repo.findByOwner(s.requireUsername()).stream()
+                            repo.findByUserId(s.requireUserId()).stream()
                                     .filter(p -> p.getName().equals(n))
                                     .findFirst();
                     if (found.isEmpty()) {
@@ -162,7 +163,7 @@ public class PatternCommand extends VetoCommand {
                     var p = found.get();
                     ModelBinding live;
                     try {
-                        live = tierRegistry.resolve(s.requireUsername(), p.getTier());
+                        live = tierRegistry.resolve(s.requireUserId(), p.getTier());
                     } catch (ModelTierConfigException e) {
                         s.output(
                                 "Cannot resolve tier "
@@ -175,7 +176,7 @@ public class PatternCommand extends VetoCommand {
                     }
                     s.output("Pattern: " + p.getName());
                     s.output("  Tier:          " + p.getTier());
-                    s.output("  Active config: " + tierRegistry.activeProfile(s.requireUsername()));
+                    s.output("  Active config: " + tierRegistry.activeProfile(s.requireUserId()));
                     s.output("  Resolved:      " + live.provider() + "/" + live.model());
                     s.output(
                             "  Credential:    "
@@ -190,9 +191,9 @@ public class PatternCommand extends VetoCommand {
     private @NonNull List<CommandCompletion> completePatternName(
             @NonNull CommandSender sender, @NonNull Command cmd, @NonNull String @NonNull [] argv) {
         if (!LOGGED_IN.test(sender)) return List.of();
-        String u = ((VetoCommandSender) sender).requireUsername();
+        UUID u = ((VetoCommandSender) sender).requireUserId();
         String prefix = argv.length > 0 ? argv[argv.length - 1].toLowerCase() : "";
-        return repo.findByOwner(u).stream()
+        return repo.findByUserId(u).stream()
                 .filter(p -> p.getName().toLowerCase().startsWith(prefix))
                 .map(p -> CommandCompletion.of(p.getName(), "tier=" + p.getTier()))
                 .toList();

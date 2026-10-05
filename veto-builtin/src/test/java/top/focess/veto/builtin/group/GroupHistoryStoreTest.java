@@ -28,11 +28,10 @@ class GroupHistoryStoreTest {
         var group =
                 Group.create(
                                 "leader",
-                                "user",
+                                UUID.fromString("a59028e2-7be6-5c04-9439-9d4f7a4942b2"),
                                 "work",
                                 new Blackboard(),
                                 new ExecutionDag(UUID.randomUUID(), List.of()),
-                                "owner",
                                 null,
                                 ToolResultPresentationMode.BASIC,
                                 session)
@@ -116,11 +115,10 @@ class GroupHistoryStoreTest {
         var group =
                 Group.create(
                         "leader",
-                        "user",
+                        UUID.fromString("a59028e2-7be6-5c04-9439-9d4f7a4942b2"),
                         "read",
                         new Blackboard(),
                         ExecutionDag.linear(UUID.randomUUID(), List.of("page")),
-                        "owner",
                         null,
                         ToolResultPresentationMode.BASIC,
                         session);

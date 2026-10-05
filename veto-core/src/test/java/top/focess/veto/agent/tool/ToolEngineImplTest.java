@@ -301,17 +301,7 @@ class ToolEngineImplTest {
     }
 
     @ParameterizedTest
-    @ValueSource(
-            strings = {
-                "context",
-                "empty",
-                "callId",
-                "capability",
-                "agent",
-                "user",
-                "owner",
-                "session"
-            })
+    @ValueSource(strings = {"context", "empty", "callId", "capability", "agent", "user", "session"})
     void agentExecutionRejectsUnboundOrMismatchedAuthorization(@NonNull String mismatch)
             throws Exception {
         ApplicationContext appCtx = mock(ApplicationContext.class);
@@ -340,13 +330,12 @@ class ToolEngineImplTest {
                                 screened,
                                 screenedDefinition,
                                 Workspace.single(Path.of("."), PathMode.REAL))
-                        .withCaller("test-agent", TEST_USER, null, null);
+                        .withCaller("test-agent", TEST_USER, null);
         if (!mismatch.equals("context")) {
             ToolCallContextHolder.set(
                     new ToolCallContext(
                             mismatch.equals("agent") ? "other-agent" : "test-agent",
                             mismatch.equals("user") ? UUID.randomUUID() : TEST_USER,
-                            mismatch.equals("owner") ? "other-owner" : null,
                             mismatch.equals("session") ? UUID.randomUUID() : null,
                             ToolResultPresentationMode.BASIC,
                             mismatch.equals("empty") ? ToolExecutionPermit.empty() : permit));
@@ -521,8 +510,7 @@ class ToolEngineImplTest {
             ToolCallContextHolder.set(
                     new ToolCallContext(
                             fixture.agent,
-                            fixture.user,
-                            fixture.owner,
+                            fixture.userId,
                             fixture.session,
                             ToolResultPresentationMode.BASIC,
                             permit));
@@ -540,10 +528,9 @@ class ToolEngineImplTest {
                 new ToolCallContext(
                         "test-agent",
                         TEST_USER,
-                        "test-owner",
                         sessionId,
                         ToolResultPresentationMode.BASIC,
-                        permit.withCaller("test-agent", TEST_USER, "test-owner", sessionId)));
+                        permit.withCaller("test-agent", TEST_USER, sessionId)));
         try {
             ToolResult result = engine.execute(call, definition);
             return result;
@@ -563,12 +550,11 @@ class ToolEngineImplTest {
         var permit =
                 ToolExecutionPermit.capture(
                                 call, definition, Workspace.single(workspaceRoot, PathMode.REAL))
-                        .withCaller(fixture.agent, fixture.user, fixture.owner, fixture.session);
+                        .withCaller(fixture.agent, fixture.userId, fixture.session);
         ToolCallContextHolder.set(
                 new ToolCallContext(
                         fixture.agent,
-                        fixture.user,
-                        fixture.owner,
+                        fixture.userId,
                         fixture.session,
                         ToolResultPresentationMode.BASIC,
                         permit));
@@ -753,9 +739,8 @@ class ToolEngineImplTest {
                         "test-agent",
                         TEST_USER,
                         null,
-                        null,
                         ToolResultPresentationMode.BASIC,
-                        permit.withCaller("test-agent", TEST_USER, null, null)));
+                        permit.withCaller("test-agent", TEST_USER, null)));
         try {
             ToolResult result =
                     engine.execute(
@@ -1102,8 +1087,7 @@ class ToolEngineImplTest {
         ToolCallContextHolder.set(
                 new ToolCallContext(
                         fixture.agent,
-                        fixture.user,
-                        fixture.owner,
+                        fixture.userId,
                         fixture.session,
                         ToolResultPresentationMode.BASIC,
                         permit));
@@ -1270,8 +1254,7 @@ class ToolEngineImplTest {
         ToolCallContextHolder.set(
                 new ToolCallContext(
                         fixture.agent,
-                        fixture.user,
-                        fixture.owner,
+                        fixture.userId,
                         fixture.session,
                         ToolResultPresentationMode.BASIC,
                         permit));

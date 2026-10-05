@@ -1,6 +1,7 @@
 package top.focess.veto.integration.plugins;
 
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 import org.jspecify.annotations.NonNull;
@@ -46,7 +47,7 @@ final class BoundPluginHost implements PluginHost {
         this.factory = factory;
     }
 
-    private @NonNull String authorize(@NonNull String session) {
+    private @NonNull UUID authorize(@NonNull String session) {
         var grant = scopes.get(session);
         if (grant == null) {
             String cursor = null;
@@ -121,13 +122,13 @@ final class BoundPluginHost implements PluginHost {
     }
 
     private void authorize(Scope.@NonNull SessionScope scope) {
-        if (!authorize(scope.session()).equals(scope.owner()))
-            throw new SecurityException("Session owner mismatch");
+        if (!authorize(scope.session()).equals(scope.userId()))
+            throw new SecurityException("Session userId mismatch");
     }
 
-    public void wake(@NonNull String owner, @NonNull String session, @NonNull String agent) {
-        if (!authorize(session).equals(owner))
-            throw new SecurityException("Session owner mismatch");
-        delegate.wake(owner, session, agent);
+    public void wake(@NonNull UUID userId, @NonNull String session, @NonNull String agent) {
+        if (!authorize(session).equals(userId))
+            throw new SecurityException("Session userId mismatch");
+        delegate.wake(userId, session, agent);
     }
 }

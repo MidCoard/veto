@@ -3,6 +3,7 @@ package top.focess.veto.controller;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -19,11 +20,11 @@ import top.focess.veto.util.Nullness;
 import top.focess.veto.vault.KeysteadVault;
 
 /**
- * REST surface for per-user model-tier profiles - the web equivalent of the terminal {@code
+ * REST surface for per-userId model-tier profiles - the web equivalent of the terminal {@code
  * /modeltier} command. Profiles map tiers (TOP/MID/LOW/LOCAL) to concrete bindings (provider /
  * baseUrl / model / credential-key / sampling); exactly one profile is active, and {@code
  * ModelTierRegistry.resolve} reads the active one, so an "activate" here swaps the concrete model
- * for every pattern and agent the user owns at the next resolution.
+ * for every pattern and agent the userId owns at the next resolution.
  */
 @RestController
 @RequestMapping("/api/modeltiers")
@@ -42,7 +43,7 @@ public class ModelTierController {
     /** Lists the current user's profiles, each with its name, active flag, and creation time. */
     @GetMapping
     public @NonNull List<ModelTierProfileResponse> list() {
-        return profiles.listProfiles(requireUser()).stream()
+        return profiles.listProfiles(requireUserId()).stream()
                 .map(ModelTierController::profileView)
                 .toList();
     }
@@ -51,18 +52,18 @@ public class ModelTierController {
     @PostMapping
     public @NonNull ModelTierProfileResponse create(
             @RequestBody @NonNull CreateModelTierProfileRequest body) {
-        String user = requireUser();
+        UUID userId = requireUserId();
         String name = body.name();
         if (name == null || name.isBlank()) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST, Msg.get("error.tier.nameRequired"));
         }
         try {
-            profiles.createProfile(user, name.trim());
+            profiles.createProfile(userId, name.trim());
         } catch (IllegalArgumentException e) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, e.getMessage());
         }
-        return profiles.profile(user, name.trim())
+        return profiles.profile(userId, name.trim())
                 .map(ModelTierController::profileView)
                 .orElseThrow(
                         () ->
@@ -74,9 +75,9 @@ public class ModelTierController {
     /** Makes the named profile the user's active one; 404 if it does not exist. */
     @PostMapping("/{name}/activate")
     public @NonNull ResponseEntity<Void> activate(@PathVariable @NonNull String name) {
-        String user = requireUser();
+        UUID userId = requireUserId();
         try {
-            profiles.activateProfile(user, name);
+            profiles.activateProfile(userId, name);
         } catch (IllegalArgumentException e) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, e.getMessage());
         }
@@ -86,8 +87,8 @@ public class ModelTierController {
     /** Deletes the named profile; 404 if it does not exist. */
     @DeleteMapping("/{name}")
     public @NonNull ResponseEntity<Void> delete(@PathVariable @NonNull String name) {
-        String user = requireUser();
-        if (!profiles.deleteProfile(user, name)) {
+        UUID userId = requireUserId();
+        if (!profiles.deleteProfile(userId, name)) {
             throw new ResponseStatusException(
                     HttpStatus.NOT_FOUND, Msg.get("error.tier.noProfile", name));
         }
@@ -97,12 +98,12 @@ public class ModelTierController {
     /** Lists the tier bindings of a profile; 404 if the profile does not exist. */
     @GetMapping("/{name}/bindings")
     public @NonNull List<ModelTierBindingResponse> bindings(@PathVariable @NonNull String name) {
-        String user = requireUser();
-        if (profiles.profile(user, name).isEmpty()) {
+        UUID userId = requireUserId();
+        if (profiles.profile(userId, name).isEmpty()) {
             throw new ResponseStatusException(
                     HttpStatus.NOT_FOUND, Msg.get("error.tier.noProfile", name));
         }
-        return profiles.bindings(user, name).stream()
+        return profiles.bindings(userId, name).stream()
                 .map(ModelTierController::bindingView)
                 .toList();
     }
@@ -119,7 +120,7 @@ public class ModelTierController {
             @PathVariable @NonNull String name,
             @PathVariable @NonNull String tier,
             @RequestBody @NonNull Map<String, String> body) {
-        String user = requireUser();
+        UUID userId = requireUserId();
         ModelTier parsedTier;
         try {
             parsedTier = Nullness.requireNonNull(ModelTier.valueOf(tier.toUpperCase()));
@@ -127,7 +128,7 @@ public class ModelTierController {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST, Msg.get("error.tier.unknownTier", tier));
         }
-        if (profiles.profile(user, name).isEmpty()) {
+        if (profiles.profile(userId, name).isEmpty()) {
             throw new ResponseStatusException(
                     HttpStatus.NOT_FOUND, Msg.get("error.tier.noProfile", name));
         }
@@ -154,7 +155,7 @@ public class ModelTierController {
             fields.put(field, value);
         }
         try {
-            profiles.setFields(user, name, parsedTier, fields);
+            profiles.setFields(userId, name, parsedTier, fields);
         } catch (IllegalArgumentException e) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
         }
@@ -180,12 +181,12 @@ public class ModelTierController {
                 binding.getContextWindowTokens());
     }
 
-    private @NonNull String requireUser() {
-        String user = vault.currentUser();
-        if (user == null) {
+    private @NonNull UUID requireUserId() {
+        UUID userId = vault.currentUser();
+        if (userId == null) {
             throw new ResponseStatusException(
                     HttpStatus.UNAUTHORIZED, Msg.get("error.auth.notLoggedIn"));
         }
-        return user;
+        return userId;
     }
 }

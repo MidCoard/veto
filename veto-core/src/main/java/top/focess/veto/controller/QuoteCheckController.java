@@ -2,6 +2,7 @@ package top.focess.veto.controller;
 
 import jakarta.annotation.PreDestroy;
 import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.RejectedExecutionException;
@@ -54,10 +55,10 @@ public class QuoteCheckController {
             @PathVariable @NonNull String agent,
             @PathVariable int turn,
             @RequestBody @NonNull Request request) {
-        String user = vault.currentUser();
-        if (user == null) throw new ResponseStatusException(HttpStatus.UNAUTHORIZED);
+        UUID userId = vault.currentUser();
+        if (userId == null) throw new ResponseStatusException(HttpStatus.UNAUTHORIZED);
         var session =
-                sessions.resolveByName(name, user)
+                sessions.resolveByName(name, userId)
                         .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
         String body = request.body();
         if (body == null || body.length() > 64_000)

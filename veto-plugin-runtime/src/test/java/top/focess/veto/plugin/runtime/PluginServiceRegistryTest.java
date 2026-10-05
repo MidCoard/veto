@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -207,7 +208,11 @@ class PluginServiceRegistryTest {
         try (var pair = new Pair()) {
             var handle = pair.consumer.context.services().find("demo:agent", 1).orElseThrow();
             var grant =
-                    new PluginStorage.Grant<>("valid", new Scope.SessionScope("owner", "session"));
+                    new PluginStorage.Grant<>(
+                            "valid",
+                            new Scope.SessionScope(
+                                    UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"),
+                                    "session"));
             assertThrows(
                     ServiceException.class,
                     () -> handle.invoke(grant, JsonValue.NullValue.INSTANCE));
@@ -245,13 +250,20 @@ class PluginServiceRegistryTest {
                                     () ->
                                             handle.invoke(
                                                     new PluginStorage.Grant<>(
-                                                            "forged", new Scope.UserScope("owner")),
+                                                            "forged",
+                                                            new Scope.UserScope(
+                                                                    UUID.fromString(
+                                                                            "36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"))),
                                                     JsonValue.NullValue.INSTANCE))
                             .code());
             assertEquals(
-                    new JsonValue.StringValue("owner"),
+                    new JsonValue.StringValue("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"),
                     handle.invoke(
-                            new PluginStorage.Grant<>("valid", new Scope.UserScope("owner")),
+                            new PluginStorage.Grant<>(
+                                    "valid",
+                                    new Scope.UserScope(
+                                            UUID.fromString(
+                                                    "36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"))),
                             JsonValue.NullValue.INSTANCE));
         }
     }
@@ -268,7 +280,10 @@ class PluginServiceRegistryTest {
                                     () ->
                                             handle.invoke(
                                                     new PluginStorage.Grant<>(
-                                                            "valid", new Scope.UserScope("owner")),
+                                                            "valid",
+                                                            new Scope.UserScope(
+                                                                    UUID.fromString(
+                                                                            "36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"))),
                                                     JsonValue.NullValue.INSTANCE))
                             .code());
             assertEquals(
@@ -280,14 +295,19 @@ class PluginServiceRegistryTest {
                                                     new PluginStorage.Grant<>(
                                                             "expired",
                                                             new Scope.SessionScope(
-                                                                    "owner", "session")),
+                                                                    UUID.fromString(
+                                                                            "36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"),
+                                                                    "session")),
                                                     JsonValue.NullValue.INSTANCE))
                             .code());
             assertEquals(
                     new JsonValue.StringValue("session"),
                     handle.invoke(
                             new PluginStorage.Grant<>(
-                                    "valid", new Scope.SessionScope("owner", "session")),
+                                    "valid",
+                                    new Scope.SessionScope(
+                                            UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"),
+                                            "session")),
                             JsonValue.NullValue.INSTANCE));
         }
     }
@@ -364,7 +384,7 @@ class PluginServiceRegistryTest {
                         () -> {},
                         () -> {
                             throw new IllegalStateException(
-                                    "Plugin context is not bound to a lifecycle owner");
+                                    "Plugin context is not bound to a lifecycle userId");
                         },
                         Map.of(),
                         Map.of());
@@ -402,10 +422,10 @@ class PluginServiceRegistryTest {
                                         1,
                                         PluginScope.USER,
                                         (call, request) -> {
-                                            String owner = call.identity().owner();
-                                            if (owner == null)
+                                            UUID userId = call.identity().userId();
+                                            if (userId == null)
                                                 throw new AssertionError("Missing user");
-                                            return new JsonValue.StringValue(owner);
+                                            return new JsonValue.StringValue(userId.toString());
                                         })),
                         Contribution.of(
                                 StandardContributionPoints.SERVICES,
@@ -476,7 +496,7 @@ class PluginServiceRegistryTest {
                                         caller,
                                         required,
                                         new Scope.AgentScope(
-                                                session.owner(), session.session(), "host-agent"),
+                                                session.userId(), session.session(), "host-agent"),
                                         scope);
                             throw new ServiceException(ServiceException.Code.UNAVAILABLE);
                         });
@@ -497,7 +517,7 @@ class PluginServiceRegistryTest {
                                 () -> {
                                     throw new IllegalStateException(
                                             "Plugin context is not bound to a lifecycle"
-                                                    + " owner");
+                                                    + " userId");
                                 },
                                 Map.of(PluginServices.class, registry.forPlugin(runtime)),
                                 Map.of());

@@ -19,6 +19,7 @@ import top.focess.veto.model.tier.ModelTierField;
 import top.focess.veto.model.tier.ModelTierProfileEntity;
 import top.focess.veto.model.tier.ModelTierProfileService;
 import top.focess.veto.model.tier.ModelTierRegistry;
+import top.focess.veto.vault.TestUsers;
 
 /**
  * Verifies the {@code /modeltier} command dispatches to {@link ModelTierProfileService} / {@link
@@ -33,7 +34,8 @@ class ModelTierCommandTest {
         when(sender.hasPermission(any(CommandPermission.class))).thenReturn(true);
         when(sender.isLoggedIn()).thenReturn(true);
         when(sender.username()).thenReturn("alice");
-        when(sender.requireUsername()).thenReturn("alice");
+        when(sender.userId()).thenReturn(TestUsers.ALICE);
+        when(sender.requireUserId()).thenReturn(TestUsers.ALICE);
         return sender;
     }
 
@@ -52,7 +54,7 @@ class ModelTierCommandTest {
                 manager(profiles, tiers).dispatch(aliceSender(), "modeltier create default");
 
         assertEquals(CommandResult.ALLOW, result.result());
-        verify(profiles).createProfile("alice", "default");
+        verify(profiles).createProfile(TestUsers.ALICE, "default");
     }
 
     @Test
@@ -61,7 +63,7 @@ class ModelTierCommandTest {
         ModelTierRegistry tiers = mock(ModelTierRegistry.class);
         doThrow(new IllegalArgumentException("Profile 'default' already exists"))
                 .when(profiles)
-                .createProfile("alice", "default");
+                .createProfile(TestUsers.ALICE, "default");
         VetoCommandSender sender = aliceSender();
 
         ExecutionResult result =
@@ -81,7 +83,12 @@ class ModelTierCommandTest {
 
         assertEquals(CommandResult.ALLOW, result.result());
         verify(profiles)
-                .setField("alice", "default", ModelTier.TOP, ModelTierField.PROVIDER, "deepseek");
+                .setField(
+                        TestUsers.ALICE,
+                        "default",
+                        ModelTier.TOP,
+                        ModelTierField.PROVIDER,
+                        "deepseek");
     }
 
     @Test
@@ -95,7 +102,7 @@ class ModelTierCommandTest {
 
         assertEquals(CommandResult.REFUSE, result.result());
         verify(sender).output(startsWith("Unknown field: bogus"));
-        verify(profiles, never()).setField(anyString(), anyString(), any(), any(), anyString());
+        verify(profiles, never()).setField(any(), anyString(), any(), any(), anyString());
     }
 
     @Test
@@ -104,7 +111,8 @@ class ModelTierCommandTest {
         ModelTierRegistry tiers = mock(ModelTierRegistry.class);
         doThrow(new IllegalArgumentException("Unknown provider: nope"))
                 .when(profiles)
-                .setField("alice", "default", ModelTier.TOP, ModelTierField.PROVIDER, "nope");
+                .setField(
+                        TestUsers.ALICE, "default", ModelTier.TOP, ModelTierField.PROVIDER, "nope");
         VetoCommandSender sender = aliceSender();
 
         ExecutionResult result =
@@ -124,7 +132,7 @@ class ModelTierCommandTest {
         ExecutionResult result = manager(profiles, tiers).dispatch(sender, "modeltier use premium");
 
         assertEquals(CommandResult.ALLOW, result.result());
-        verify(profiles).activateProfile("alice", "premium");
+        verify(profiles).activateProfile(TestUsers.ALICE, "premium");
         verify(sender).output("Active profile: premium");
     }
 
@@ -132,7 +140,7 @@ class ModelTierCommandTest {
     void listReportsNoProfiles() {
         ModelTierProfileService profiles = mock(ModelTierProfileService.class);
         ModelTierRegistry tiers = mock(ModelTierRegistry.class);
-        when(profiles.listProfiles("alice")).thenReturn(List.of());
+        when(profiles.listProfiles(TestUsers.ALICE)).thenReturn(List.of());
         VetoCommandSender sender = aliceSender();
 
         ExecutionResult result = manager(profiles, tiers).dispatch(sender, "modeltier list");
@@ -145,11 +153,11 @@ class ModelTierCommandTest {
     void listMarksActiveProfile() {
         ModelTierProfileService profiles = mock(ModelTierProfileService.class);
         ModelTierRegistry tiers = mock(ModelTierRegistry.class);
-        when(profiles.listProfiles("alice"))
+        when(profiles.listProfiles(TestUsers.ALICE))
                 .thenReturn(
                         List.of(
-                                new ModelTierProfileEntity("default", "alice", true),
-                                new ModelTierProfileEntity("premium", "alice", false)));
+                                new ModelTierProfileEntity("default", TestUsers.ALICE, true),
+                                new ModelTierProfileEntity("premium", TestUsers.ALICE, false)));
         VetoCommandSender sender = aliceSender();
 
         ExecutionResult result = manager(profiles, tiers).dispatch(sender, "modeltier list");
@@ -164,14 +172,15 @@ class ModelTierCommandTest {
     void showDefaultsToActiveProfile() {
         ModelTierProfileService profiles = mock(ModelTierProfileService.class);
         ModelTierRegistry tiers = mock(ModelTierRegistry.class);
-        when(tiers.activeProfile("alice")).thenReturn("default");
-        when(profiles.profile("alice", "default"))
-                .thenReturn(Optional.of(new ModelTierProfileEntity("default", "alice", true)));
+        when(tiers.activeProfile(TestUsers.ALICE)).thenReturn("default");
+        when(profiles.profile(TestUsers.ALICE, "default"))
+                .thenReturn(
+                        Optional.of(new ModelTierProfileEntity("default", TestUsers.ALICE, true)));
         ModelTierBindingEntity binding = new ModelTierBindingEntity("pid", ModelTier.TOP);
         binding.setProvider(ProviderType.DEEPSEEK);
         binding.setModel("deepseek-chat");
         binding.setCredentialKey("dk");
-        when(profiles.bindings("alice", "default")).thenReturn(List.of(binding));
+        when(profiles.bindings(TestUsers.ALICE, "default")).thenReturn(List.of(binding));
         VetoCommandSender sender = aliceSender();
 
         ExecutionResult result = manager(profiles, tiers).dispatch(sender, "modeltier show");
@@ -188,7 +197,7 @@ class ModelTierCommandTest {
     void showWithoutActiveProfileAdvisesUse() {
         ModelTierProfileService profiles = mock(ModelTierProfileService.class);
         ModelTierRegistry tiers = mock(ModelTierRegistry.class);
-        when(tiers.activeProfile("alice")).thenReturn(null);
+        when(tiers.activeProfile(TestUsers.ALICE)).thenReturn(null);
         VetoCommandSender sender = aliceSender();
 
         ExecutionResult result = manager(profiles, tiers).dispatch(sender, "modeltier show");
@@ -201,7 +210,7 @@ class ModelTierCommandTest {
     void deleteDispatchesAndConfirms() {
         ModelTierProfileService profiles = mock(ModelTierProfileService.class);
         ModelTierRegistry tiers = mock(ModelTierRegistry.class);
-        when(profiles.deleteProfile("alice", "old")).thenReturn(true);
+        when(profiles.deleteProfile(TestUsers.ALICE, "old")).thenReturn(true);
         VetoCommandSender sender = aliceSender();
 
         ExecutionResult result = manager(profiles, tiers).dispatch(sender, "modeltier delete old");
@@ -214,7 +223,7 @@ class ModelTierCommandTest {
     void deleteRefusesMissingProfile() {
         ModelTierProfileService profiles = mock(ModelTierProfileService.class);
         ModelTierRegistry tiers = mock(ModelTierRegistry.class);
-        when(profiles.deleteProfile("alice", "missing")).thenReturn(false);
+        when(profiles.deleteProfile(TestUsers.ALICE, "missing")).thenReturn(false);
         VetoCommandSender sender = aliceSender();
 
         ExecutionResult result =

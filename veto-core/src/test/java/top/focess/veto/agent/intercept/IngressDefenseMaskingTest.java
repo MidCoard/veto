@@ -24,6 +24,7 @@ import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.builtin.workspace.ViewFileTool;
 import top.focess.veto.integration.plugins.PluginManager;
 import top.focess.veto.integration.plugins.PluginTestSupport;
+import top.focess.veto.vault.TestUsers;
 import top.focess.veto.veto.LlamaCppBridge;
 
 /**
@@ -49,7 +50,7 @@ class IngressDefenseMaskingTest {
 
     @Test
     void protectedFileReferencesSurviveMaskingOnlyWithinTheirLiveScope() throws Exception {
-        var scope = new Scope.AgentScope("owner", "session", "agent");
+        var scope = new Scope.AgentScope(TestUsers.OWNER, "session", "agent");
         String captured =
                 PluginTestSupport.protect(
                         plugins,
@@ -86,11 +87,11 @@ class IngressDefenseMaskingTest {
                 PluginTestSupport.protect(
                         plugins,
                         BeforeTextCommitEvent.Phase.FILE_OBSERVATION,
-                        new Scope.AgentScope("owner", "session", "other-agent"),
+                        new Scope.AgentScope(TestUsers.OWNER, "session", "other-agent"),
                         "file",
                         fileResult.content()));
         PluginTestSupport.eventManager(plugins)
-                .submit(new UserLogoutEvent(new Scope.UserScope("owner")));
+                .submit(new UserLogoutEvent(new Scope.UserScope(TestUsers.OWNER)));
         assertEquals(
                 fileResult.content(),
                 PluginTestSupport.protect(

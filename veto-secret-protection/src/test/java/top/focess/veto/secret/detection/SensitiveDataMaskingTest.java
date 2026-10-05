@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.api.plugin.Scope;
@@ -82,7 +83,11 @@ class SensitiveDataMaskingTest {
     @Test
     void captureExcludesMaskOnlyCategories() {
         var store = new SecretCandidateStore();
-        var scope = new Scope.AgentScope("owner", "session", "agent");
+        var scope =
+                new Scope.AgentScope(
+                        UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"),
+                        "session",
+                        "agent");
         var captured =
                 store.capture(
                         scope,

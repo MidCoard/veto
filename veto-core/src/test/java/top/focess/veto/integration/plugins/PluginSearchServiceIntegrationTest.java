@@ -6,6 +6,7 @@ import static org.mockito.Mockito.*;
 import java.net.http.HttpTimeoutException;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
@@ -186,7 +187,7 @@ class PluginSearchServiceIntegrationTest {
                             var session = scope.sessionId();
                             if (session == null) throw new SecurityException("No session scope");
                             return new PluginHost.Invocation(
-                                    "owner",
+                                    UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"),
                                     session.toString(),
                                     scope.agentId(),
                                     scope.requestId(),
@@ -198,7 +199,7 @@ class PluginSearchServiceIntegrationTest {
                         () -> {},
                         () -> {
                             throw new IllegalStateException(
-                                    "Plugin context is not bound to a lifecycle owner");
+                                    "Plugin context is not bound to a lifecycle userId");
                         },
                         Map.of(
                                 PluginHost.class,

@@ -23,7 +23,7 @@ class VolatileMemoryRankingTest {
 
     @Test
     void bothVolatileProfilesRankOnlyEligibleMemoriesEvenBeyondTheFormerGlobalWindow() {
-        var owner = UUID.randomUUID();
+        var userId = UUID.randomUUID();
         var other = UUID.randomUUID();
         var session = UUID.randomUUID();
         var project = UUID.randomUUID();
@@ -31,9 +31,9 @@ class VolatileMemoryRankingTest {
             var store = new InMemoryMemoryStore(EMBEDDER, vectorProfile);
             for (int i = 0; i < 100; i++)
                 store.add(memory(other, session, project, new float[] {1, 0}));
-            store.add(memory(owner, UUID.randomUUID(), project, new float[] {1, 0}));
-            store.add(memory(owner, session, UUID.randomUUID(), new float[] {1, 0}));
-            var target = memory(owner, session, project, new float[] {.8f, .6f});
+            store.add(memory(userId, UUID.randomUUID(), project, new float[] {1, 0}));
+            store.add(memory(userId, session, UUID.randomUUID(), new float[] {1, 0}));
+            var target = memory(userId, session, project, new float[] {.8f, .6f});
             store.add(target);
             var matches =
                     store.search(
@@ -42,7 +42,7 @@ class VolatileMemoryRankingTest {
                                     List.of(MemoryTier.SESSION),
                                     session,
                                     project,
-                                    owner,
+                                    userId,
                                     1,
                                     .5f));
             assertEquals(List.of(target.id()), matches.stream().map(m -> m.memory().id()).toList());
@@ -54,7 +54,7 @@ class VolatileMemoryRankingTest {
                                             List.of(MemoryTier.SESSION),
                                             session,
                                             project,
-                                            owner,
+                                            userId,
                                             1,
                                             .9f))
                             .isEmpty());
@@ -65,7 +65,7 @@ class VolatileMemoryRankingTest {
                                             List.of(MemoryTier.CROSS_SESSION),
                                             null,
                                             null,
-                                            owner,
+                                            userId,
                                             1,
                                             0))
                             .isEmpty());
@@ -74,11 +74,11 @@ class VolatileMemoryRankingTest {
 
     @Test
     void profileSpecificZeroScorePolicyRemainsUnchanged() {
-        var owner = UUID.randomUUID();
+        var userId = UUID.randomUUID();
         var session = UUID.randomUUID();
-        var zero = memory(owner, session, null, new float[] {0, 1});
+        var zero = memory(userId, session, null, new float[] {0, 1});
         var query =
-                new MemoryQuery("query", List.of(MemoryTier.SESSION), session, null, owner, 1, 0);
+                new MemoryQuery("query", List.of(MemoryTier.SESSION), session, null, userId, 1, 0);
         var memory = new InMemoryMemoryStore(EMBEDDER);
         var vector = new InMemoryMemoryStore(EMBEDDER, true);
         memory.add(zero);
@@ -88,10 +88,13 @@ class VolatileMemoryRankingTest {
     }
 
     private static @NonNull Memory memory(
-            @NonNull UUID owner, @NonNull UUID session, UUID project, float @NonNull [] embedding) {
+            @NonNull UUID userId,
+            @NonNull UUID session,
+            UUID project,
+            float @NonNull [] embedding) {
         return new Memory(
                 MemoryId.random(),
-                owner,
+                userId,
                 session,
                 MemoryTier.SESSION,
                 project,

@@ -19,6 +19,7 @@ import top.focess.veto.api.plugin.contribution.ContributionSource;
 import top.focess.veto.integration.plugins.PluginManager;
 import top.focess.veto.integration.plugins.PluginRegistry;
 import top.focess.veto.plugin.runtime.ManagedPlugin;
+import top.focess.veto.vault.TestUsers;
 import top.focess.veto.vault.UserContext;
 
 class PluginControllerTest {
@@ -53,11 +54,12 @@ class PluginControllerTest {
         when(publication.toolName(portableEntry)).thenReturn("portable_alias");
         when(publication.toolName(nativeEntry)).thenReturn("native_alias");
 
-        UserContext.set("admin");
+        UserContext.set(TestUsers.ADMIN);
         try {
             var response =
                     new PluginController(
-                                    manager, AuthorizationTestSupport.authorizer("admin"::equals))
+                                    manager,
+                                    AuthorizationTestSupport.authorizer(TestUsers.ADMIN::equals))
                             .list();
             assertEquals(1, response.size());
             assertEquals("Example Tools", response.getFirst().name());

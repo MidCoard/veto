@@ -16,7 +16,7 @@ import top.focess.veto.controller.dto.*;
 import top.focess.veto.session.SessionService;
 import top.focess.veto.vault.KeysteadVault;
 
-/** Direct user interaction with an explicitly enabled live agent in an owned session. */
+/** Direct userId interaction with an explicitly enabled live agent in an owned session. */
 @RestController
 public class AgentPromptController {
     private final @NonNull SessionService sessions;
@@ -34,7 +34,7 @@ public class AgentPromptController {
     }
 
     /**
-     * Queues a user prompt on the named agent of an owned session. Rejects blank prompts, agents
+     * Queues a userId prompt on the named agent of an owned session. Rejects blank prompts, agents
      * with direct interaction disabled (403), terminated agents (409), and unparsable protected
      * input (422); unknown session or agent yields 404. Returns 202 once queued.
      */
@@ -43,10 +43,10 @@ public class AgentPromptController {
             @PathVariable @NonNull String name,
             @PathVariable @NonNull String agentId,
             @RequestBody @NonNull SubmitPromptRequest body) {
-        String user = vault.currentUser();
-        if (user == null) throw new ResponseStatusException(HttpStatus.UNAUTHORIZED);
+        UUID userId = vault.currentUser();
+        if (userId == null) throw new ResponseStatusException(HttpStatus.UNAUTHORIZED);
         var session =
-                sessions.resolveByName(name, user)
+                sessions.resolveByName(name, userId)
                         .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
         String prompt = body.prompt();
         if (prompt == null || prompt.isBlank())
@@ -59,7 +59,9 @@ public class AgentPromptController {
                         .agent();
         if (!agent.userInteractionEnabled())
             return ResponseEntity.status(HttpStatus.FORBIDDEN)
-                    .body(new ErrorResponse("Direct user interaction is disabled for this agent"));
+                    .body(
+                            new ErrorResponse(
+                                    "Direct userId interaction is disabled for this agent"));
         if (agent.state() == AgentState.TERMINATED)
             return ResponseEntity.status(HttpStatus.CONFLICT)
                     .body(new ErrorResponse("Agent has terminated"));

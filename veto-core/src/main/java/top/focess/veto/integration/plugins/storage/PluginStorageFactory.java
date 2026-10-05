@@ -1,5 +1,6 @@
 package top.focess.veto.integration.plugins.storage;
 
+import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.api.plugin.storage.PluginStorage;
@@ -11,12 +12,12 @@ public interface PluginStorageFactory {
     @NonNull PluginStorage bind(@NonNull ManagedPlugin plugin);
 
     /** Validates the grant against its issuing binding and returns the session owner. */
-    @NonNull String authorizeSession(
+    @NonNull UUID authorizeSession(
             @NonNull PluginStorage storage,
             PluginStorage.@NonNull Grant<Scope.@NonNull SessionScope> grant);
 
     /** Validates a user grant against its issuing plugin binding and live owner. */
-    @NonNull String authorizeUser(
+    @NonNull UUID authorizeUser(
             @NonNull PluginStorage storage,
             PluginStorage.@NonNull Grant<Scope.@NonNull UserScope> grant);
 

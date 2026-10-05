@@ -11,6 +11,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.jspecify.annotations.NonNull;
@@ -41,7 +42,10 @@ class EventListenerRegistryTest {
         var registry = registry(new NormalProbe(calls, "listener"));
         var event =
                 new BeforeToolEvent(
-                        new Scope.AgentScope("owner", "session", "agent"),
+                        new Scope.AgentScope(
+                                UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"),
+                                "session",
+                                "agent"),
                         new BeforeToolEvent.Invocation(
                                 "tool", "call", new JsonValue.ObjectValue(Map.of())));
         registry.submit(event);
@@ -52,11 +56,17 @@ class EventListenerRegistryTest {
     void pluginAssertionIsContainedButFatalVmErrorsPropagate() {
         var calls = new ArrayList<String>();
         var ordinary = registry(new ErrorProbe(false), new NormalProbe(calls, "later"));
-        ordinary.submit(new UserLoggedInEvent(new Scope.UserScope("owner")));
+        ordinary.submit(
+                new UserLoggedInEvent(
+                        new Scope.UserScope(
+                                UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"))));
         assertEquals(List.of("later"), calls);
         var event =
                 new BeforeToolEvent(
-                        new Scope.AgentScope("owner", "session", "agent"),
+                        new Scope.AgentScope(
+                                UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"),
+                                "session",
+                                "agent"),
                         new BeforeToolEvent.Invocation(
                                 "tool", "call", new JsonValue.ObjectValue(Map.of())));
         ordinary.submit(event, Set.of("demo.listener"));
@@ -64,7 +74,12 @@ class EventListenerRegistryTest {
         var fatal = registry(new ErrorProbe(true));
         assertThrows(
                 InternalError.class,
-                () -> fatal.submit(new UserLoggedInEvent(new Scope.UserScope("owner"))));
+                () ->
+                        fatal.submit(
+                                new UserLoggedInEvent(
+                                        new Scope.UserScope(
+                                                UUID.fromString(
+                                                        "36fc510c-70b8-5be2-b3cc-c9d1bc0c6376")))));
     }
 
     private static final class ErrorProbe implements Listener {
@@ -120,17 +135,26 @@ class EventListenerRegistryTest {
                                                 listener)))
                         .freeze();
         var active = new AtomicBoolean(true);
-        var owner = owner();
-        when(owner.state())
+        var userId = userId();
+        when(userId.state())
                 .thenAnswer(invocation -> active.get() ? PluginState.ACTIVE : PluginState.CLOSED);
         var registry =
-                EventListenerRegistry.build(catalog, Map.of("demo.listener", owner), preparation);
-        registry.submit(new UserRegisteredEvent(new Scope.UserScope("owner")));
+                EventListenerRegistry.build(catalog, Map.of("demo.listener", userId), preparation);
+        registry.submit(
+                new UserRegisteredEvent(
+                        new Scope.UserScope(
+                                UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"))));
         assertTrue(calls.isEmpty());
-        registry.submit(new UserLoggedInEvent(new Scope.UserScope("owner")));
+        registry.submit(
+                new UserLoggedInEvent(
+                        new Scope.UserScope(
+                                UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"))));
         assertEquals(List.of("active"), calls);
         active.set(false);
-        registry.submit(new UserLoggedInEvent(new Scope.UserScope("owner")));
+        registry.submit(
+                new UserLoggedInEvent(
+                        new Scope.UserScope(
+                                UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"))));
         assertEquals(List.of("active"), calls);
     }
 
@@ -146,7 +170,10 @@ class EventListenerRegistryTest {
                 registry(
                         new LowProbe(calls), new NormalProbe(calls, "first"),
                         new NormalProbe(calls, "second"), new HighProbe(calls));
-        registry.submit(new UserLoggedInEvent(new Scope.UserScope("owner")));
+        registry.submit(
+                new UserLoggedInEvent(
+                        new Scope.UserScope(
+                                UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"))));
         assertEquals(List.of("high", "first", "second", "low"), calls);
     }
 
@@ -156,7 +183,10 @@ class EventListenerRegistryTest {
         var registry = registry(new RejectProbe(calls));
         var event =
                 new BeforeToolEvent(
-                        new Scope.AgentScope("owner", "session", "agent"),
+                        new Scope.AgentScope(
+                                UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"),
+                                "session",
+                                "agent"),
                         new BeforeToolEvent.Invocation(
                                 "tool", "call", new JsonValue.ObjectValue(Map.of())));
         registry.submit(event, Set.of("demo.listener"));
@@ -171,19 +201,25 @@ class EventListenerRegistryTest {
         var registry = registry(new FailureProbe(), new NormalProbe(calls, "later"));
         var event =
                 new BeforeToolEvent(
-                        new Scope.AgentScope("owner", "session", "agent"),
+                        new Scope.AgentScope(
+                                UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"),
+                                "session",
+                                "agent"),
                         new BeforeToolEvent.Invocation(
                                 "tool", "call", new JsonValue.ObjectValue(Map.of())));
         registry.submit(event, Set.of("demo.listener"));
         assertEquals(List.of("later"), calls);
-        registry.submit(new UserLoggedInEvent(new Scope.UserScope("owner")));
+        registry.submit(
+                new UserLoggedInEvent(
+                        new Scope.UserScope(
+                                UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"))));
         assertEquals(List.of("later", "later"), calls);
     }
 
     @Test
     void admissionFailureIsContainedAndLaterHandlersStillRun() throws PluginFailure {
         var calls = new ArrayList<String>();
-        var owner = owner();
+        var userId = userId();
         var first = new AtomicBoolean(true);
         doAnswer(
                         invocation -> {
@@ -196,11 +232,14 @@ class EventListenerRegistryTest {
                             if (operation == null) throw new AssertionError("Missing operation");
                             return operation.run();
                         })
-                .when(owner)
+                .when(userId)
                 .<Boolean>execute(any());
         var registry =
-                registry(owner, new NormalProbe(calls, "first"), new NormalProbe(calls, "later"));
-        registry.submit(new UserLoggedInEvent(new Scope.UserScope("owner")));
+                registry(userId, new NormalProbe(calls, "first"), new NormalProbe(calls, "later"));
+        registry.submit(
+                new UserLoggedInEvent(
+                        new Scope.UserScope(
+                                UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"))));
         assertEquals(List.of("later"), calls);
     }
 
@@ -222,7 +261,10 @@ class EventListenerRegistryTest {
                 };
         var event =
                 new BeforeToolEvent(
-                        new Scope.AgentScope("owner", "session", "agent"),
+                        new Scope.AgentScope(
+                                UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"),
+                                "session",
+                                "agent"),
                         new BeforeToolEvent.Invocation(
                                 "tool", "call", new JsonValue.ObjectValue(Map.of())));
         try {
@@ -237,7 +279,10 @@ class EventListenerRegistryTest {
     void nativeHostInterruptionAlsoStopsLifecycleDelivery() {
         var calls = new ArrayList<String>();
         var registry = registry(new NormalProbe(calls, "listener"));
-        var event = new UserLoggedInEvent(new Scope.UserScope("owner"));
+        var event =
+                new UserLoggedInEvent(
+                        new Scope.UserScope(
+                                UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376")));
         Thread.currentThread().interrupt();
         try {
             assertThrows(CancellationException.class, () -> registry.submit(event));
@@ -249,11 +294,11 @@ class EventListenerRegistryTest {
 
     private static @NonNull EventListenerRegistry registry(
             @NonNull Listener @NonNull ... listeners) {
-        return registry(owner(), listeners);
+        return registry(userId(), listeners);
     }
 
     private static @NonNull EventListenerRegistry registry(
-            @NonNull ManagedPlugin owner, @NonNull Listener @NonNull ... listeners) {
+            @NonNull ManagedPlugin userId, @NonNull Listener @NonNull ... listeners) {
         var source =
                 new ContributionSource("demo.listener", "1.0.0", ContributionSource.Origin.PLUGIN);
         var contributions = new ArrayList<@NonNull Contribution<?>>();
@@ -270,12 +315,12 @@ class EventListenerRegistryTest {
                         .stage(source, contributions)
                         .freeze();
         return EventListenerRegistry.build(
-                catalog, Map.of("demo.listener", owner), new EventListenerRegistry.Preparation());
+                catalog, Map.of("demo.listener", userId), new EventListenerRegistry.Preparation());
     }
 
-    private static @NonNull ManagedPlugin owner() {
-        var owner = mock(ManagedPlugin.class);
-        when(owner.state()).thenReturn(PluginState.ACTIVE);
+    private static @NonNull ManagedPlugin userId() {
+        var userId = mock(ManagedPlugin.class);
+        when(userId.state()).thenReturn(PluginState.ACTIVE);
         try {
             doAnswer(
                             invocation -> {
@@ -287,12 +332,12 @@ class EventListenerRegistryTest {
                                     throw new AssertionError("Admitted operation must exist");
                                 return operation.run();
                             })
-                    .when(owner)
+                    .when(userId)
                     .<Boolean>execute(any());
         } catch (PluginFailure failure) {
             throw new AssertionError(failure);
         }
-        return owner;
+        return userId;
     }
 
     @Test
@@ -301,7 +346,10 @@ class EventListenerRegistryTest {
         var registry = registry(new RejectProbe(calls));
         var event =
                 new BeforeToolEvent(
-                        new Scope.AgentScope("owner", "session", "agent"),
+                        new Scope.AgentScope(
+                                UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"),
+                                "session",
+                                "agent"),
                         new BeforeToolEvent.Invocation(
                                 "tool", "call", new JsonValue.ObjectValue(Map.of())));
         registry.submit(event, Set.of());
@@ -314,23 +362,33 @@ class EventListenerRegistryTest {
     void activeRecipientEventCanUseAnExplicitSelectionOrAllActiveOwners() {
         var calls = new ArrayList<String>();
         var registry = registry(new NormalProbe(calls, "selected"));
-        registry.submit(new UserLoggedInEvent(new Scope.UserScope("owner")), Set.of());
+        registry.submit(
+                new UserLoggedInEvent(
+                        new Scope.UserScope(
+                                UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"))),
+                Set.of());
         assertTrue(calls.isEmpty());
-        registry.submit(new UserLoggedInEvent(new Scope.UserScope("owner")));
+        registry.submit(
+                new UserLoggedInEvent(
+                        new Scope.UserScope(
+                                UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"))));
         assertEquals(List.of("selected"), calls);
     }
 
     @Test
     void inactiveOwnersAreExcludedInBothEntryPoints() throws PluginFailure {
         var calls = new ArrayList<String>();
-        var owner = owner();
-        when(owner.state()).thenReturn(PluginState.CLOSED);
-        var registry = registry(owner, new NormalProbe(calls, "inactive"));
-        var event = new UserLoggedInEvent(new Scope.UserScope("owner"));
+        var userId = userId();
+        when(userId.state()).thenReturn(PluginState.CLOSED);
+        var registry = registry(userId, new NormalProbe(calls, "inactive"));
+        var event =
+                new UserLoggedInEvent(
+                        new Scope.UserScope(
+                                UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376")));
         assertDoesNotThrow(() -> registry.submit(event));
         assertDoesNotThrow(() -> registry.submit(event, Set.of("demo.listener")));
         assertTrue(calls.isEmpty());
-        verify(owner, never()).execute(any());
+        verify(userId, never()).execute(any());
     }
 
     @Test
@@ -339,7 +397,10 @@ class EventListenerRegistryTest {
         var registry = registry(new RejectProbe(calls));
         var event =
                 new BeforeToolEvent(
-                        new Scope.AgentScope("owner", "session", "agent"),
+                        new Scope.AgentScope(
+                                UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"),
+                                "session",
+                                "agent"),
                         new BeforeToolEvent.Invocation(
                                 "tool", "call", new JsonValue.ObjectValue(Map.of())));
         Thread.currentThread().interrupt();
@@ -381,7 +442,10 @@ class EventListenerRegistryTest {
                 };
         var event =
                 new BeforeToolEvent(
-                        new Scope.AgentScope("owner", "session", "agent"),
+                        new Scope.AgentScope(
+                                UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"),
+                                "session",
+                                "agent"),
                         new BeforeToolEvent.Invocation(
                                 "tool", "call", new JsonValue.ObjectValue(Map.of())));
         registry(listener).submit(event, Set.of("demo.listener"));
@@ -421,7 +485,10 @@ class EventListenerRegistryTest {
                 };
         var event =
                 new BeforeToolEvent(
-                        new Scope.AgentScope("owner", "session", "agent"),
+                        new Scope.AgentScope(
+                                UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"),
+                                "session",
+                                "agent"),
                         new BeforeToolEvent.Invocation(
                                 "tool", "call", new JsonValue.ObjectValue(Map.of())));
         registry(listener).submit(event, Set.of("demo.listener"));
@@ -440,7 +507,11 @@ class EventListenerRegistryTest {
                         calls.add("observe");
                     }
                 };
-        registry(listener).submit(new UserLoggedInEvent(new Scope.UserScope("owner")));
+        registry(listener)
+                .submit(
+                        new UserLoggedInEvent(
+                                new Scope.UserScope(
+                                        UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"))));
         assertEquals(List.of("observe"), calls);
     }
 
@@ -464,7 +535,10 @@ class EventListenerRegistryTest {
                 };
         var event =
                 new BeforeToolEvent(
-                        new Scope.AgentScope("owner", "session", "agent"),
+                        new Scope.AgentScope(
+                                UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"),
+                                "session",
+                                "agent"),
                         new BeforeToolEvent.Invocation(
                                 "tool", "call", new JsonValue.ObjectValue(Map.of())));
         registry(listener).submit(event, Set.of("demo.listener"));
@@ -475,7 +549,10 @@ class EventListenerRegistryTest {
 
     @Test
     void preparedRoutesIgnoreEmptyAndUnrelatedListeners() {
-        var event = new UserLoggedInEvent(new Scope.UserScope("owner"));
+        var event =
+                new UserLoggedInEvent(
+                        new Scope.UserScope(
+                                UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376")));
         assertFalse(registry(new Listener() {}).hasHandlers(event));
         assertFalse(registry().hasHandlers(event));
         var unrelated =
@@ -505,7 +582,10 @@ class EventListenerRegistryTest {
 
     @Test
     void inheritedHandlerMakesConcreteRouteNonEmpty() {
-        var event = new UserRegisteredEvent(new Scope.UserScope("owner"));
+        var event =
+                new UserRegisteredEvent(
+                        new Scope.UserScope(
+                                UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376")));
         var listener =
                 new Listener() {
                     @EventHandler
@@ -518,7 +598,10 @@ class EventListenerRegistryTest {
     void listenerCanInheritHandlersFromItsImplementationSuperclass() {
         var calls = new ArrayList<String>();
         var routes = registry(new InheritedListener(calls));
-        var event = new UserLoggedInEvent(new Scope.UserScope("owner"));
+        var event =
+                new UserLoggedInEvent(
+                        new Scope.UserScope(
+                                UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376")));
         assertTrue(routes.hasHandlers(event));
         routes.submit(event);
         assertEquals(List.of("inherited"), calls);
@@ -647,12 +730,18 @@ class EventListenerRegistryTest {
         var registry =
                 EventListenerRegistry.build(
                         catalog,
-                        Map.of("demo.listener", owner()),
+                        Map.of("demo.listener", userId()),
                         new EventListenerRegistry.Preparation());
-        registry.submit(new UserRegisteredEvent(new Scope.UserScope("owner")));
+        registry.submit(
+                new UserRegisteredEvent(
+                        new Scope.UserScope(
+                                UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"))));
         assertEquals(List.of("registered", "authenticated", "lifecycle", "event"), calls);
         calls.clear();
-        registry.submit(new UserLoggedInEvent(new Scope.UserScope("owner")));
+        registry.submit(
+                new UserLoggedInEvent(
+                        new Scope.UserScope(
+                                UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"))));
         assertEquals(List.of("logged-in", "authenticated", "lifecycle", "event"), calls);
     }
 

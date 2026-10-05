@@ -89,7 +89,7 @@ class AskUserActionTest {
             ToolDefinition definition =
                     Nullness.requireNonNull(engine.resolveDefinition("ask_user"));
             var mvc = fixture.mvc;
-            UserContext.set("alice");
+            UserContext.set(fixture.session.getUserId());
 
             // Raw JSON deliberately enters before schema validation and record deserialization.
             StringJoiner questions = new StringJoiner(",", "{\"questions\":[", "]}");
@@ -106,7 +106,7 @@ class AskUserActionTest {
                     mapper.readValue(
                             questions.toString(), new TypeReference<Map<String, Object>>() {});
             ToolCall call = new ToolCall("ask_user", arguments, "action-call");
-            UUID userId = UUID.randomUUID();
+            UUID userId = fixture.session.getUserId();
             UUID sessionId = UUID.fromString(fixture.session.getId());
             var empty = ToolExecutionPermit.empty();
             ToolExecutionPermit permit =
@@ -124,7 +124,7 @@ class AskUserActionTest {
                                     empty.deployerPolicy(),
                                     empty.protectedPaths(),
                                     null)
-                            .withCaller("agent", userId, "alice", sessionId);
+                            .withCaller("agent", userId, sessionId);
 
             var executor = Executors.newVirtualThreadPerTaskExecutor();
             try {
@@ -133,8 +133,7 @@ class AskUserActionTest {
                                 () -> {
                                     ToolCallContextHolder.set(
                                             new ToolCallContext(
-                                                    "agent", userId, "alice", sessionId, mode,
-                                                    permit));
+                                                    "agent", userId, sessionId, mode, permit));
                                     try {
                                         return engine.execute(call, definition);
                                     } finally {

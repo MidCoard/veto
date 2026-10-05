@@ -9,7 +9,7 @@ import top.focess.veto.api.plugin.storage.PluginStorage;
 /**
  * Host-derived caller facts supplied to one admitted service invocation. Scope identities are
  * validated by the host; request JSON cannot choose or replace them. User and session IDs are
- * absent for a global call, and session ID is absent for a user call. Scoped service owner
+ * absent for a global call, and session ID is absent for a user call. Scoped service user
  * identities are immutable storage user IDs, rather than login names. AGENT calls require a
  * matching live host tool invocation in addition to a revalidated session grant; the identity value
  * itself conveys no authority.

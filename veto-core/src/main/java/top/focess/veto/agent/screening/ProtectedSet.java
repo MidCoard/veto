@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 import java.util.stream.Collectors;
 import org.jspecify.annotations.NonNull;
 
@@ -27,14 +28,14 @@ public record ProtectedSet(@NonNull Set<Path> paths) {
     }
 
     /**
-     * Creates the deployer defaults: {@code ~/.veto/users/{vetoUserId}/}, {@code ~/.ssh}, {@code
+     * Creates the deployer defaults: {@code ~/.veto/users/{userId}/}, {@code ~/.ssh}, {@code
      * ~/.aws}, {@code ~/.gnupg}, plus {@code <root>/.env} for each workspace root.
      */
     public static @NonNull ProtectedSet withDeployerDefaults(
-            @NonNull String vetoUserId, @NonNull List<Path> workspaceRoots) {
+            @NonNull UUID userId, @NonNull List<Path> workspaceRoots) {
         String home = System.getProperty("user.home", "");
         Set<Path> defaults = new HashSet<>();
-        defaults.add(Path.of(home, ".veto", "users", vetoUserId));
+        defaults.add(Path.of(home, ".veto", "users", userId.toString()));
         defaults.add(Path.of(home, ".ssh"));
         defaults.add(Path.of(home, ".aws"));
         defaults.add(Path.of(home, ".gnupg"));

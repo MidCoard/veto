@@ -19,18 +19,18 @@ public final class ConfigurationStorageFixture implements PluginStorageFactory {
         return new Storage();
     }
 
-    public @NonNull String authorizeSession(
+    public @NonNull UUID authorizeSession(
             @NonNull PluginStorage storage,
             PluginStorage.@NonNull Grant<Scope.@NonNull SessionScope> scope) {
         storage.session(scope);
-        return scope.scope().owner();
+        return scope.scope().userId();
     }
 
-    public @NonNull String authorizeUser(
+    public @NonNull UUID authorizeUser(
             @NonNull PluginStorage storage,
             PluginStorage.@NonNull Grant<Scope.@NonNull UserScope> scope) {
         storage.user(scope);
-        return scope.scope().owner();
+        return scope.scope().userId();
     }
 
     public PluginStorage.@NonNull Grant<Scope.@NonNull UserScope> transferUser(
@@ -78,14 +78,14 @@ public final class ConfigurationStorageFixture implements PluginStorageFactory {
         public synchronized @NonNull Grant<Scope.@NonNull SessionScope> currentSession() {
             var invocation = PluginInvocationContext.current();
             var call = ToolCallContextHolder.get();
-            String owner =
-                    invocation == null ? (call == null ? null : call.owner()) : invocation.owner;
+            UUID userId =
+                    invocation == null ? (call == null ? null : call.userId()) : invocation.userId;
             var callSession = call == null ? null : call.sessionId();
             String session =
                     invocation == null
                             ? (callSession == null ? null : callSession.toString())
                             : invocation.session;
-            if (owner == null || session == null)
+            if (userId == null || session == null)
                 throw new SecurityException("No authenticated fixture invocation");
             var scope =
                     scopes.computeIfAbsent(
@@ -93,9 +93,9 @@ public final class ConfigurationStorageFixture implements PluginStorageFactory {
                             id ->
                                     new Grant<>(
                                             UUID.randomUUID().toString(),
-                                            new Scope.SessionScope(owner, id)));
-            if (!scope.scope().owner().equals(owner))
-                throw new SecurityException("Fixture owner mismatch");
+                                            new Scope.SessionScope(userId, id)));
+            if (!scope.scope().userId().equals(userId))
+                throw new SecurityException("Fixture userId mismatch");
             return scope;
         }
 

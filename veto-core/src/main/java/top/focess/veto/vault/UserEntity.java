@@ -1,9 +1,10 @@
 package top.focess.veto.vault;
 
 import jakarta.persistence.*;
-import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.UUID;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import org.jspecify.annotations.NonNull;
 
 /** JPA entity for the {@code users} table — replaces the old {@code users.json} file. */
@@ -12,21 +13,16 @@ import org.jspecify.annotations.NonNull;
 public class UserEntity {
 
     @Id
-    @Column(length = 64)
+    @JdbcTypeCode(SqlTypes.VARCHAR)
+    @Column(name = "storage_identity", nullable = false, length = 36)
+    private @NonNull UUID userId = UUID.randomUUID();
+
+    @Column(length = 64, nullable = false, unique = true)
     private @NonNull String username = "";
 
-    @Column(name = "storage_identity", unique = true)
-    private String storageIdentity;
-
-    /** Stable for this account incarnation, including across username reuse. */
-    public @NonNull String storageIdentity() {
-        if (storageIdentity == null)
-            storageIdentity =
-                    UUID.nameUUIDFromBytes(
-                                    (username + "\u0000" + createdAt)
-                                            .getBytes(StandardCharsets.UTF_8))
-                            .toString();
-        return storageIdentity;
+    /** Canonical identity of this account incarnation; username reuse never reuses it. */
+    public @NonNull UUID getUserId() {
+        return userId;
     }
 
     @Column(name = "password_hash", nullable = false)
@@ -52,11 +48,16 @@ public class UserEntity {
             @NonNull String role,
             @NonNull Instant createdAt) {
         this.username = username;
-        this.storageIdentity = UUID.randomUUID().toString();
         this.passwordHash = passwordHash;
         this.passwordSalt = passwordSalt;
         this.role = role;
         this.createdAt = createdAt;
+    }
+
+    /** Updates authentication material without replacing the account or its storage identity. */
+    void updatePassword(byte @NonNull [] passwordHash, byte @NonNull [] passwordSalt) {
+        this.passwordHash = passwordHash;
+        this.passwordSalt = passwordSalt;
     }
 
     public @NonNull String getUsername() {

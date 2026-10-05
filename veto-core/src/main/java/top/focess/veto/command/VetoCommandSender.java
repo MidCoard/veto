@@ -1,5 +1,6 @@
 package top.focess.veto.command;
 
+import java.util.UUID;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
@@ -15,6 +16,7 @@ import top.focess.veto.api.agent.ToolResultEvent;
 import top.focess.veto.contract.IpcFrame;
 import top.focess.veto.contract.Version;
 import top.focess.veto.terminal.IpcServer;
+import top.focess.veto.vault.UserEntity;
 
 /**
  * A pure {@link CommandSender} for a single terminal session.
@@ -54,7 +56,10 @@ public final class VetoCommandSender extends AbstractCommandSender {
             LoggerFactory.getLogger("top.focess.veto.command.VetoCommandSender");
 
     private final @NonNull IpcServer ipcServer;
-    private volatile String username;
+    private volatile Identity identity;
+
+    private record Identity(@NonNull UUID userId, @NonNull String username) {}
+
     private final @NonNull String terminalId;
     private final @NonNull Version clientProductVersion;
 
@@ -77,7 +82,7 @@ public final class VetoCommandSender extends AbstractCommandSender {
      * Constructs a new {@code VetoCommandSender} for the given terminal session.
      *
      * @param ipcServer the IPC server used to enqueue outbound frames
-     * @param username the initially authenticated username, or {@code null} if not yet logged in
+     * @param user the initially authenticated account, or {@code null} if not yet logged in
      * @param terminalId the ZMQ DEALER identity of the owning terminal
      * @param clientProductVersion the product version the connecting terminal reported in its
      *     {@link IpcFrame.Hello} handshake; never {@code null} - {@link Version#UNKNOWN} when the
@@ -88,13 +93,13 @@ public final class VetoCommandSender extends AbstractCommandSender {
      */
     public VetoCommandSender(
             @NonNull IpcServer ipcServer,
-            String username,
+            UserEntity user,
             @NonNull String terminalId,
             @NonNull Version clientProductVersion,
             @NonNull String cwd) {
         super(CommandPermission.EVERYONE);
         this.ipcServer = ipcServer;
-        this.username = username;
+        identity = user == null ? null : new Identity(user.getUserId(), user.getUsername());
         this.terminalId = terminalId;
         this.clientProductVersion = clientProductVersion;
         this.cwd = cwd;
@@ -108,12 +113,13 @@ public final class VetoCommandSender extends AbstractCommandSender {
      * @return the username, or {@code null} if the terminal is not yet logged in
      */
     public String username() {
-        return username;
+        var current = identity;
+        return current == null ? null : current.username();
     }
 
     /** Returns the authenticated username for code guarded by the logged-in permission. */
     public @NonNull String requireUsername() {
-        String current = username;
+        String current = username();
         if (current == null) {
             throw new IllegalStateException("Command requires an authenticated user");
         }
@@ -121,14 +127,28 @@ public final class VetoCommandSender extends AbstractCommandSender {
     }
 
     /**
-     * Updates the authenticated username for this session.
+     * Updates the authenticated account and its display name together.
      *
-     * <p>Set to a non-null value after a successful login; reset to {@code null} on logout.
+     * <p>Set after successful authentication; reset to {@code null} on logout.
      *
-     * @param username the new username, or {@code null} to mark the session as logged out
+     * @param user the authenticated account, or {@code null} to mark the session as logged out
      */
-    public void setUsername(String username) {
-        this.username = username;
+    public void setUser(UserEntity user) {
+        identity = user == null ? null : new Identity(user.getUserId(), user.getUsername());
+    }
+
+    /** The authenticated account identity, or null before login. */
+    public UUID userId() {
+        var current = identity;
+        return current == null ? null : current.userId();
+    }
+
+    /** Requires the authenticated account identity for session and resource access. */
+    public @NonNull UUID requireUserId() {
+        var current = userId();
+        if (current == null)
+            throw new IllegalStateException("Command requires an authenticated user");
+        return current;
     }
 
     /**
@@ -165,10 +185,10 @@ public final class VetoCommandSender extends AbstractCommandSender {
     /**
      * Returns whether this sender's session is currently authenticated.
      *
-     * @return {@code true} if {@link #username} is non-null, {@code false} otherwise
+     * @return {@code true} if an authenticated account is present, {@code false} otherwise
      */
     public boolean isLoggedIn() {
-        return username() != null;
+        return identity != null;
     }
 
     // ── output (CommandSender contract) ───────────────────────────────────

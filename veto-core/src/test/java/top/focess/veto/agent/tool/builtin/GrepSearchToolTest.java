@@ -31,6 +31,7 @@ import top.focess.veto.api.agent.tool.ToolExecutionException;
 import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.builtin.workspace.GrepSearchTool;
+import top.focess.veto.vault.TestUsers;
 
 class GrepSearchToolTest {
 
@@ -143,16 +144,15 @@ class GrepSearchToolTest {
                         DeployerPolicy.PROTECTED,
                         protectedPaths,
                         null);
-        UUID userId = UUID.randomUUID();
+        UUID userId = TestUsers.OWNER;
         UUID sessionId = UUID.randomUUID();
         ToolCallContextHolder.set(
                 new ToolCallContext(
                         "agent",
                         userId,
-                        null,
                         sessionId,
                         ToolResultPresentationMode.BASIC,
-                        executionPermit.withCaller("agent", userId, null, sessionId)));
+                        executionPermit.withCaller("agent", userId, sessionId)));
         ReflectionTestUtils.invokeMethod(
                 ToolCallContextHolder.class, "setCurrentCallId", executionPermit.callId());
     }

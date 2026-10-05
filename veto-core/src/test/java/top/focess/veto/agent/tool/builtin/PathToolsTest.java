@@ -37,6 +37,7 @@ import top.focess.veto.builtin.workspace.FindFilesTool;
 import top.focess.veto.builtin.workspace.MovePathTool;
 import top.focess.veto.builtin.workspace.ReplaceFileContentTool;
 import top.focess.veto.builtin.workspace.WriteToFileTool;
+import top.focess.veto.vault.TestUsers;
 
 class PathToolsTest {
 
@@ -363,16 +364,15 @@ class PathToolsTest {
                         DeployerPolicy.FULL_ACCESS,
                         protectedPaths,
                         null);
-        UUID userId = UUID.randomUUID();
+        UUID userId = TestUsers.OWNER;
         UUID sessionId = UUID.randomUUID();
         ToolCallContextHolder.set(
                 new ToolCallContext(
                         "agent",
                         userId,
-                        null,
                         sessionId,
                         ToolResultPresentationMode.BASIC,
-                        permit.withCaller("agent", userId, null, sessionId)));
+                        permit.withCaller("agent", userId, sessionId)));
         ReflectionTestUtils.invokeMethod(
                 ToolCallContextHolder.class, "setCurrentCallId", permit.callId());
     }

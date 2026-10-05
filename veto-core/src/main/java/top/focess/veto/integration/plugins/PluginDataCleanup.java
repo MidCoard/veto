@@ -1,5 +1,6 @@
 package top.focess.veto.integration.plugins;
 
+import java.util.UUID;
 import java.util.function.Function;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Service;
@@ -29,31 +30,29 @@ public final class PluginDataCleanup {
     }
 
     /** Required owner-deletion preparation; fails closed when a contributor is unavailable. */
-    public void beforeOwnerDeleted(@NonNull String owner) {
+    public void beforeUserDeleted(@NonNull UUID userId) {
         var publication = manager.registry();
         if (manager.hasInactiveDataLifecycle())
             throw new IllegalStateException("Plugin data cleanup is unavailable");
         if (publication.entries(StandardContributionPoints.DATA_LIFECYCLE).isEmpty()) return;
-        String identity = userIdentity(owner);
-        requiredDeletion(publication, lifecycle -> lifecycle.prepareOwnerDeletion(owner, identity));
+        requireUser(userId);
+        requiredDeletion(publication, lifecycle -> lifecycle.prepareUserDeletion(userId));
     }
 
     /** Required session-deletion preparation; fails closed when a contributor is unavailable. */
-    public void beforeSessionDeleted(@NonNull String owner, @NonNull String session) {
+    public void beforeSessionDeleted(@NonNull UUID userId, @NonNull String session) {
         var publication = manager.registry();
         if (manager.hasInactiveDataLifecycle())
             throw new IllegalStateException("Plugin data cleanup is unavailable");
         if (publication.entries(StandardContributionPoints.DATA_LIFECYCLE).isEmpty()) return;
-        String identity = userIdentity(owner);
+        requireUser(userId);
         requiredDeletion(
-                publication,
-                lifecycle -> lifecycle.prepareSessionDeletion(owner, identity, session));
+                publication, lifecycle -> lifecycle.prepareSessionDeletion(userId, session));
     }
 
-    private @NonNull String userIdentity(@NonNull String owner) {
-        return users.findByUsername(owner)
-                .orElseThrow(() -> new IllegalStateException("Account no longer exists"))
-                .storageIdentity();
+    private void requireUser(@NonNull UUID userId) {
+        if (users.findByUserId(userId).isEmpty())
+            throw new IllegalStateException("Account no longer exists");
     }
 
     @SuppressWarnings("removal") // ThreadDeath remains a fatal participant signal while supported.

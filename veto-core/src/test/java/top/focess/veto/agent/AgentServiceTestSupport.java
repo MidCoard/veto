@@ -49,7 +49,7 @@ public final class AgentServiceTestSupport {
         public Dependencies() {
             Mockito.when(plugins.tools(Mockito.anyString(), Mockito.any()))
                     .thenAnswer(call -> call.getArgument(1));
-            Mockito.when(vault.isUnlocked(Mockito.anyString())).thenReturn(true);
+            Mockito.when(vault.isUnlocked(Mockito.any())).thenReturn(true);
         }
 
         public @NonNull Dependencies plugins(@NonNull SessionPlugins value) {

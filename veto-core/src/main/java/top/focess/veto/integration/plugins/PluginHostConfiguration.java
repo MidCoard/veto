@@ -69,10 +69,10 @@ public class PluginHostConfiguration {
                         if (context == null)
                             throw new SecurityException("No authorized invocation");
                         CapabilityAccess.require(context.executionPermit().capability(), tool);
-                        if (context.owner() == null || context.sessionId() == null)
+                        if (context.userId() == null || context.sessionId() == null)
                             throw new SecurityException("No session scope");
                         return new Invocation(
-                                Nullness.requireNonNull(context.owner()),
+                                Nullness.requireNonNull(context.userId()),
                                 Nullness.requireNonNull(context.sessionId()).toString(),
                                 context.agentId(),
                                 context.requestId(),
@@ -105,13 +105,13 @@ public class PluginHostConfiguration {
                     }
 
                     public void wake(
-                            @NonNull String owner, @NonNull String session, @NonNull String agent) {
-                        if (!vault.getObject().isUnlocked(owner)) return;
-                        String previous = UserContext.get();
-                        UserContext.set(owner);
+                            @NonNull UUID userId, @NonNull String session, @NonNull String agent) {
+                        if (!vault.getObject().isUnlocked(userId)) return;
+                        UUID previous = UserContext.get();
+                        UserContext.set(userId);
                         try {
                             var id = UUID.fromString(session);
-                            if (!sessions.getObject().activateForObservation(id, owner, agent))
+                            if (!sessions.getObject().activateForObservation(id, userId, agent))
                                 return;
                             agents.getObject().agents(id).stream()
                                     .filter(entry -> entry.agent().id().equals(agent))

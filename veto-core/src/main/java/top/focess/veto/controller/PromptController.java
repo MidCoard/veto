@@ -1,5 +1,6 @@
 package top.focess.veto.controller;
 
+import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -61,8 +62,8 @@ public class PromptController {
     @SuppressWarnings("JvmTaintAnalysis")
     public ResponseEntity<?> prompt(
             @PathVariable @NonNull String name, @RequestBody @NonNull SubmitPromptRequest body) {
-        String user = vault.currentUser();
-        if (user == null) {
+        UUID userId = vault.currentUser();
+        if (userId == null) {
             return ResponseEntity.status(401)
                     .body(new ErrorResponse(Msg.get("error.auth.notAuthenticated")));
         }
@@ -75,10 +76,12 @@ public class PromptController {
         // activateForRest (not resolveByName): the agent must be the session-aware one - persona
         // id = the DB primary agent id (so parked HITL vetoes are visible to HitlController) and
         // workspace = the session's roots (so tools run against them, not the JVM working dir).
-        SessionConfig cfg = sessionService.activateForRest(name, user).orElse(null);
+        SessionConfig cfg = sessionService.activateForRest(name, userId).orElse(null);
         if (cfg == null) {
             return ResponseEntity.status(404)
-                    .body(new ErrorResponse(Msg.get("error.session.notFoundForUser", name, user)));
+                    .body(
+                            new ErrorResponse(
+                                    Msg.get("error.session.notFoundForUser", name, userId)));
         }
 
         LlmBinding binding =
@@ -90,7 +93,7 @@ public class PromptController {
                         cfg.config().baseUrl());
 
         try {
-            agentService.submitNow(cfg.sessionId(), prompt, binding);
+            agentService.submitNow(cfg.sessionId(), prompt, binding, userId);
             log.info("Prompt accepted for session {} (agent {})", name, cfg.sessionId());
             return ResponseEntity.status(HttpStatus.ACCEPTED)
                     .body(new PromptStartedResponse("started", cfg.sessionId()));

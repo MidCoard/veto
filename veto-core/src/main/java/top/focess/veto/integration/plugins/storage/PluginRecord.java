@@ -45,7 +45,7 @@ public class PluginRecord {
     @NonNull String payload = "";
 
     @ManyToOne
-    @JoinColumn(name = "owner_username")
+    @JoinColumn(name = "user_id", referencedColumnName = "storage_identity")
     @OnDelete(action = OnDeleteAction.CASCADE)
     UserEntity user;
 

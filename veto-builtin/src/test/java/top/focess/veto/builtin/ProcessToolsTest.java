@@ -48,7 +48,7 @@ class ProcessToolsTest {
                                 () -> {},
                                 () -> {
                                     throw new IllegalStateException(
-                                            "Plugin context is not bound to a lifecycle owner");
+                                            "Plugin context is not bound to a lifecycle userId");
                                 },
                                 Map.of(PluginHost.class, host, ProcessHost.class, host),
                                 Map.of()),
@@ -129,14 +129,18 @@ class ProcessToolsTest {
     private static final class Host implements ProcessHost, PluginHost {
         final PluginHost.@NonNull Invocation invocation =
                 new PluginHost.Invocation(
-                        "owner", UUID.randomUUID().toString(), "agent", "original-request", "call");
+                        UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"),
+                        UUID.randomUUID().toString(),
+                        "agent",
+                        "original-request",
+                        "call");
         ToolPreparation preparation;
 
         public @NonNull Invocation invocation(@NonNull String tool) {
             return invocation;
         }
 
-        public void wake(@NonNull String owner, @NonNull String session, @NonNull String agent) {}
+        public void wake(@NonNull UUID userId, @NonNull String session, @NonNull String agent) {}
 
         public void invalidate(@NonNull String session, @NonNull String resource) {}
 

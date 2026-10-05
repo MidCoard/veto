@@ -14,6 +14,7 @@ import java.util.Arrays;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
@@ -55,26 +56,30 @@ public class KeysteadVault {
             LoggerFactory.getLogger("top.focess.veto.vault.KeysteadVault");
 
     private final @NonNull Path vaultBase;
+    private final @NonNull UserRegistry users;
     private final @NonNull VaultService vaultService = new DefaultVaultService();
-    private final @NonNull ConcurrentHashMap<String, VaultHandle> handles =
-            new ConcurrentHashMap<>();
+    private final @NonNull ConcurrentHashMap<UUID, VaultHandle> handles = new ConcurrentHashMap<>();
 
     /** Constructs the vault with per-user keystead files under the configured vault home. */
-    public KeysteadVault(@NonNull CredentialVaultConfiguration config) {
+    public KeysteadVault(
+            @NonNull CredentialVaultConfiguration config, @NonNull UserRegistry users) {
         this.vaultBase = Path.of(config.getVaultHome(), "keystead");
+        this.users = users;
     }
 
     // ── lifecycle ──────────────────────────────────────────────────────────
 
     /** Creates a new vault for the user and caches its unlocked handle (signup). */
-    public void signup(@NonNull String username, @NonNull String password) {
+    public @NonNull UUID signup(@NonNull String username, @NonNull String password) {
+        UUID userId = requireUser(username).getUserId();
         char[] pw = password.toCharArray();
         try {
             ensureVaultDir(username);
             VaultHandle handle =
                     vaultService.createVault(new CreateVaultRequest(vaultPath(username)), pw);
-            handles.put(username, handle);
-            log.info("KeysteadVault: vault created and opened for user '{}'", username);
+            handles.put(userId, handle);
+            log.info("KeysteadVault: vault created and opened for user {}", userId);
+            return userId;
         } finally {
             wipe(pw);
         }
@@ -85,7 +90,12 @@ public class KeysteadVault {
      * when an admin provisions another user's vault - the vault exists on disk but is not unlocked
      * until that user logs in.
      */
-    public void createVault(@NonNull String username, @NonNull String password) {
+    public void createVault(@NonNull UUID userId, @NonNull String password) {
+        String username =
+                users.findByUserId(userId)
+                        .orElseThrow(
+                                () -> new IllegalArgumentException("User not found: " + userId))
+                        .getUsername();
         char[] pw = password.toCharArray();
         try {
             ensureVaultDir(username);
@@ -99,27 +109,29 @@ public class KeysteadVault {
     }
 
     /** Opens an existing vault and caches its unlocked handle (login). Reuses an open handle. */
-    public void login(@NonNull String username, @NonNull String password) {
-        VaultHandle existing = handles.get(username);
+    public @NonNull UUID login(@NonNull String username, @NonNull String password) {
+        UUID userId = requireUser(username).getUserId();
+        VaultHandle existing = handles.get(userId);
         if (existing != null && !existing.isClosed()) {
-            return;
+            return userId;
         }
         char[] pw = password.toCharArray();
         try {
             VaultHandle handle = vaultService.openVault(vaultPath(username), pw);
-            handles.put(username, handle);
-            log.info("KeysteadVault: vault opened for user '{}'", username);
+            handles.put(userId, handle);
+            log.info("KeysteadVault: vault opened for user {}", userId);
+            return userId;
         } finally {
             wipe(pw);
         }
     }
 
     /** Closes and drops the user's cached handle. The persisted vault is untouched. */
-    public void logout(@NonNull String username) {
-        VaultHandle handle = handles.remove(username);
+    public void logout(@NonNull UUID userId) {
+        VaultHandle handle = handles.remove(userId);
         if (handle != null) {
             handle.close();
-            log.info("KeysteadVault: vault closed for user '{}'", username);
+            log.info("KeysteadVault: vault closed for user {}", userId);
         }
     }
 
@@ -134,8 +146,13 @@ public class KeysteadVault {
      * handle and drops the cached service first. Best-effort: if a file is locked the store may be
      * partially left, but the user row and DB-owned data are already removed by the caller.
      */
-    public void deleteVaultStore(@NonNull String username) {
-        logout(username);
+    public void deleteVaultStore(@NonNull UUID userId) {
+        logout(userId);
+        String username =
+                users.findByUserId(userId)
+                        .orElseThrow(
+                                () -> new IllegalArgumentException("User not found: " + userId))
+                        .getUsername();
         Path path = userVaultDirectory(username);
         if (!Files.exists(path)) {
             return;
@@ -194,7 +211,7 @@ public class KeysteadVault {
      * @throws VaultLockedException if no handle is available
      */
     public @NonNull VaultHandle currentHandle() {
-        String user = UserContext.get();
+        UUID user = UserContext.get();
         if (user != null) {
             VaultHandle handle = handles.get(user);
             if (handle != null && !handle.isClosed()) {
@@ -208,18 +225,22 @@ public class KeysteadVault {
         throw new VaultLockedException("Vault is locked - authenticate first");
     }
 
-    /** The request-scoped authenticated username, or {@code null} when the request is anonymous. */
-    public String currentUser() {
-        String user = UserContext.get();
+    /**
+     * The request-scoped authenticated user UUID, or {@code null} when the request is anonymous.
+     */
+    public UUID currentUser() {
+        UUID user = UserContext.get();
         if (user != null && handles.containsKey(user)) {
             return user;
         }
         return null;
     }
 
-    /** The current request user, or the sole unlocked user for local terminal command handling. */
-    public String currentUserOrOnlyUnlocked() {
-        String user = currentUser();
+    /**
+     * The current request user UUID, or the sole unlocked user for local terminal command handling.
+     */
+    public UUID currentUserOrOnlyUnlocked() {
+        UUID user = currentUser();
         if (user != null) {
             return user;
         }
@@ -234,16 +255,16 @@ public class KeysteadVault {
      * when a context is set, otherwise any open handle (single-user CLI path).
      */
     public boolean isUnlocked() {
-        String user = UserContext.get();
+        UUID user = UserContext.get();
         if (user != null) {
             return handles.containsKey(user);
         }
         return !handles.isEmpty();
     }
 
-    /** Owner-specific readiness; never falls back to another logged-in user. */
-    public boolean isUnlocked(@NonNull String owner) {
-        VaultHandle handle = handles.get(owner);
+    /** User-specific readiness; never falls back to another logged-in user. */
+    public boolean isUnlocked(@NonNull UUID userId) {
+        VaultHandle handle = handles.get(userId);
         return handle != null && !handle.isClosed();
     }
 
@@ -252,14 +273,14 @@ public class KeysteadVault {
     /**
      * Creates a secure note idempotently by exact title, attributes, and body.
      *
-     * @param owner authenticated owner with an open vault
+     * @param userId authenticated account with an open vault
      * @param title stable note title
      * @param attributes metadata supplied by the caller
      * @param value secret note body
      * @return opaque vault handle
      */
     public @NonNull String createSecureNoteIfAbsent(
-            @NonNull String owner,
+            @NonNull UUID userId,
             @NonNull String title,
             @NonNull Map<@NonNull String, @NonNull String> attributes,
             @NonNull String value) {
@@ -270,7 +291,7 @@ public class KeysteadVault {
                     || entry.getKey().length() > 80
                     || entry.getValue().length() > 160)
                 throw new IllegalArgumentException("Invalid secure note metadata");
-        VaultHandle handle = handles.get(owner);
+        VaultHandle handle = handles.get(userId);
         if (handle == null || handle.isClosed())
             throw new VaultLockedException("Credential owner vault is locked");
         char[] chars = value.toCharArray();
@@ -332,7 +353,7 @@ public class KeysteadVault {
      * Trusted operation seam; the caller must independently authorize the fixed service request.
      */
     public void withImportedCredential(
-            @NonNull String owner,
+            @NonNull UUID userId,
             @NonNull String credentialRef,
             @NonNull String service,
             @NonNull Consumer<char @NonNull []> operation) {
@@ -340,7 +361,7 @@ public class KeysteadVault {
                 || !credentialRef.matches(
                         "cred_[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}"))
             throw new IllegalArgumentException("Invalid credential binding");
-        VaultHandle handle = handles.get(owner);
+        VaultHandle handle = handles.get(userId);
         if (handle == null || handle.isClosed())
             throw new VaultLockedException("Credential owner vault is locked");
         synchronized (handle) {
@@ -416,15 +437,15 @@ public class KeysteadVault {
     /**
      * Whether a credential with the given title (key) exists in the named user's vault. Unlike the
      * other note helpers, which resolve the current user via {@link UserContext}, this takes the
-     * username explicitly so callers that already hold the username (e.g. the model-tier service
+     * UUID explicitly so callers that already hold the user identity (e.g. the model-tier service
      * validating a {@code credKey}) can check without relying on a thread-local context.
      *
      * @throws VaultLockedException if the user's vault is not unlocked
      */
-    public boolean hasNote(@NonNull String username, @NonNull String title) {
-        VaultHandle handle = handles.get(username);
+    public boolean hasNote(@NonNull UUID userId, @NonNull String title) {
+        VaultHandle handle = handles.get(userId);
         if (handle == null || handle.isClosed()) {
-            throw new VaultLockedException("Vault is locked for user: " + username);
+            throw new VaultLockedException("Vault is locked for user: " + userId);
         }
         synchronized (handle) {
             return findNoteByTitle(handle, title) != null;
@@ -442,6 +463,11 @@ public class KeysteadVault {
                 .map(SecretMetadata::id)
                 .findFirst()
                 .orElse(null);
+    }
+
+    private @NonNull UserEntity requireUser(@NonNull String username) {
+        return users.findByUsername(username)
+                .orElseThrow(() -> new IllegalArgumentException("User not found: " + username));
     }
 
     private @NonNull Path vaultPath(@NonNull String username) {

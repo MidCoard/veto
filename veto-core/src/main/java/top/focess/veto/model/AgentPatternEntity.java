@@ -3,6 +3,8 @@ package top.focess.veto.model;
 import jakarta.persistence.*;
 import java.time.Instant;
 import java.util.UUID;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.model.tier.ModelBinding;
 import top.focess.veto.model.tier.ModelTier;
@@ -34,8 +36,9 @@ public class AgentPatternEntity {
     @Column(name = "tier", nullable = false)
     private @NonNull ModelTier tier = ModelTier.TOP;
 
-    @Column(name = "owner", nullable = false)
-    private @NonNull String owner = "";
+    @JdbcTypeCode(SqlTypes.VARCHAR)
+    @Column(name = "user_id", nullable = false)
+    private @NonNull UUID userId = new UUID(0, 0);
 
     @Column(name = "created_at", nullable = false)
     private @NonNull Instant createdAt = Instant.EPOCH;
@@ -63,17 +66,17 @@ public class AgentPatternEntity {
      * @param name the pattern name
      * @param tier the model tier this pattern binds to
      * @param cache the resolved binding for {@code tier} (provider/model/credential cached)
-     * @param owner the owning username
+     * @param userId the account ID
      */
     public AgentPatternEntity(
             @NonNull String name,
             @NonNull ModelTier tier,
             @NonNull ModelBinding cache,
-            @NonNull String owner) {
+            @NonNull UUID userId) {
         this.id = UUID.randomUUID().toString();
         this.name = name;
         this.tier = tier;
-        this.owner = owner;
+        this.userId = userId;
         this.createdAt = Instant.now();
         this.provider = cache.provider().name();
         this.model = cache.model();
@@ -91,10 +94,10 @@ public class AgentPatternEntity {
             @NonNull String provider,
             @NonNull String model,
             @NonNull String credentialKey,
-            @NonNull String owner) {
+            @NonNull UUID userId) {
         this.id = UUID.randomUUID().toString();
         this.name = name;
-        this.owner = owner;
+        this.userId = userId;
         this.createdAt = Instant.now();
         this.provider = provider;
         this.model = model;
@@ -122,12 +125,12 @@ public class AgentPatternEntity {
         this.tier = tier;
     }
 
-    public @NonNull String getOwner() {
-        return owner;
+    public @NonNull UUID getUserId() {
+        return userId;
     }
 
-    public void setOwner(@NonNull String owner) {
-        this.owner = owner;
+    public void setUserId(@NonNull UUID userId) {
+        this.userId = userId;
     }
 
     public @NonNull Instant getCreatedAt() {

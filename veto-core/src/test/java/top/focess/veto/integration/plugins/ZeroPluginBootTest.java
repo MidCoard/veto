@@ -86,7 +86,10 @@ class ZeroPluginBootTest {
         assertTrue(plugins.registry().plugins().isEmpty());
         assertTrue(plugins.registry().entries(StandardContributionPoints.TOOLS).isEmpty());
         assertTrue(plugins.registry().entries(StandardContributionPoints.FRONTEND).isEmpty());
-        var session = new SessionEntity("owner", "zero-plugin-" + oldBuiltinSession);
+        var session =
+                new SessionEntity(
+                        UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"),
+                        "zero-plugin-" + oldBuiltinSession);
         session.setPluginBindings(
                 oldBuiltinSession
                         ? List.of(
@@ -117,8 +120,7 @@ class ZeroPluginBootTest {
                                                 "test",
                                                 "test"))
                                 : List.of(),
-                        UUID.randomUUID(),
-                        "owner",
+                        session.getUserId(),
                         null);
         try {
             var result =

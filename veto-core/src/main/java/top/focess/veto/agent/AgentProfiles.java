@@ -2,6 +2,7 @@ package top.focess.veto.agent;
 
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import java.util.stream.Collectors;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.identity.AgentPersona;
@@ -47,14 +48,13 @@ public final class AgentProfiles {
             @NonNull AgentPersona persona,
             @NonNull LlmBinding binding,
             SessionPlugins plugins,
-            String owner,
+            @NonNull UUID userId,
             @NonNull String session,
             @NonNull String agentId,
             @NonNull ToolEngine engine,
             ModelTierRegistry tiers,
             @NonNull String task) {
-        if (plugins == null || owner == null)
-            return new Selection(new Resolved(persona, binding, null), null);
+        if (plugins == null) return new Selection(new Resolved(persona, binding, null), null);
         var available = plugins.tools(session, Set.copyOf(engine.getActiveTools(null)));
         var base =
                 new AgentProfile(
@@ -69,7 +69,7 @@ public final class AgentProfiles {
                         Map.of());
         var intent =
                 plugins.configure(
-                        owner,
+                        userId,
                         session,
                         agentId,
                         persona.configurationOwner(),
@@ -86,19 +86,19 @@ public final class AgentProfiles {
                     null);
         if (tiers == null) throw new IllegalStateException("Model tiers unavailable");
         return new Selection(
-                resolve(agentId, owner, intent.profile(), available, binding, tiers),
+                resolve(agentId, userId, intent.profile(), available, binding, tiers),
                 intent.transition());
     }
 
     /**
      * Resolves a requested {@link AgentProfile} against the tools the host actually authorizes and
-     * the owner's model tiers, rejecting any request for tools outside {@code authorized}.
+     * the userId's model tiers, rejecting any request for tools outside {@code authorized}.
      *
      * @throws SecurityException if the profile requests tools not present in {@code authorized}
      */
     public static @NonNull Resolved resolve(
             @NonNull String id,
-            @NonNull String owner,
+            @NonNull UUID userId,
             @NonNull AgentProfile profile,
             @NonNull Set<ToolDefinition> authorized,
             @NonNull LlmBinding base,
@@ -121,7 +121,7 @@ public final class AgentProfiles {
         var prompt = profile.prompt();
         var tier = profile.tier();
         if (tier == null) return new Resolved(persona, base, prompt);
-        var model = tiers.resolve(owner, Nullness.requireNonNull(ModelTier.valueOf(tier)));
+        var model = tiers.resolve(userId, Nullness.requireNonNull(ModelTier.valueOf(tier)));
         return new Resolved(
                 persona,
                 new LlmBinding(

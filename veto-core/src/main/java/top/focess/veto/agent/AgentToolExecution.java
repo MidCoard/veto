@@ -62,7 +62,6 @@ final class AgentToolExecution {
     private final @NonNull AgentRunner runner;
     private final @NonNull String agentId;
     private final @NonNull UUID userId;
-    private final String owner;
     private final @NonNull UUID sessionId;
 
     record Invocation(
@@ -83,7 +82,6 @@ final class AgentToolExecution {
             @NonNull AgentRunner runner,
             @NonNull String agentId,
             @NonNull UUID userId,
-            String owner,
             @NonNull UUID sessionId) {
         this.toolEngine = toolEngine;
         this.toolBoundary = toolBoundary;
@@ -95,7 +93,6 @@ final class AgentToolExecution {
         this.runner = runner;
         this.agentId = agentId;
         this.userId = userId;
-        this.owner = owner;
         this.sessionId = sessionId;
     }
 
@@ -340,10 +337,9 @@ final class AgentToolExecution {
                 new ToolCallContext(
                         agentId,
                         userId,
-                        owner,
                         sessionId,
                         invocation.presentation(),
-                        executionPermit.withCaller(agentId, userId, owner, sessionId),
+                        executionPermit.withCaller(agentId, userId, sessionId),
                         invocation.request().episode.id()));
         try {
             if (responses.submissionKind(call.toolName()) != null) {
@@ -395,15 +391,14 @@ final class AgentToolExecution {
             // (g) final ingress defense, immediately before committing the observation to history.
             String replacement = null;
             var eventManager = runner.eventManager;
-            String currentOwner = owner;
+            UUID currentUserId = userId;
             if (transformed.success()
                     && def instanceof NativeToolDefinition
                     && def.capability() == ToolCapability.WORKSPACE_READ
-                    && eventManager != null
-                    && currentOwner != null) {
+                    && eventManager != null) {
                 var event =
                         new BeforeTextCommitEvent(
-                                new Scope.AgentScope(currentOwner, sessionId.toString(), agentId),
+                                new Scope.AgentScope(currentUserId, sessionId.toString(), agentId),
                                 BeforeTextCommitEvent.Phase.FILE_OBSERVATION,
                                 UUID.randomUUID().toString(),
                                 transformed.content());

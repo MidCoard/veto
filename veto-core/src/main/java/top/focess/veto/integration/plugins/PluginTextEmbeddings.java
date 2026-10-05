@@ -23,7 +23,7 @@ public final class PluginTextEmbeddings implements TextEmbedding {
         var context = ToolCallContextHolder.get();
         if (plugin.state() != PluginState.ACTIVE
                 || context == null
-                || context.owner() == null
+                || context.userId() == null
                 || context.sessionId() == null
                 || !plugin.bindingId().equals(context.executionPermit().remoteServerName())
                 || !context.executionPermit().authorizesCaller(context)

@@ -25,30 +25,18 @@ class MemoryRuntimeTest {
     private final @NonNull UUID session = UUID.randomUUID();
 
     private @NonNull MemoryRuntime runtime(
-            @NonNull String owner, @NonNull String profile, MemoryBackendFactory backend) {
-        return runtime(owner, UUID.randomUUID(), profile, backend);
-    }
-
-    private @NonNull MemoryRuntime runtime(
-            @NonNull String owner,
-            @NonNull UUID userIdentity,
-            @NonNull String profile,
-            MemoryBackendFactory backend) {
+            @NonNull UUID userId, @NonNull String profile, MemoryBackendFactory backend) {
         when(host.invocation(anyString()))
                 .thenAnswer(
                         call ->
                                 new PluginHost.Invocation(
-                                        owner, session.toString(), "agent", "request", "call"));
+                                        userId, session.toString(), "agent", "request", "call"));
         when(storage.currentSession())
                 .thenReturn(
                         new PluginStorage.Grant<>(
-                                "token",
-                                new Scope.SessionScope(
-                                        userIdentity.toString(), session.toString())));
+                                "token", new Scope.SessionScope(userId, session.toString())));
         when(storage.currentUser())
-                .thenReturn(
-                        new PluginStorage.Grant<>(
-                                "token", new Scope.UserScope(userIdentity.toString())));
+                .thenReturn(new PluginStorage.Grant<>("token", new Scope.UserScope(userId)));
         var services = new HashMap<Class<?>, Object>();
         services.put(PluginHost.class, host);
         services.put(PluginStorage.class, storage);
@@ -59,7 +47,7 @@ class MemoryRuntimeTest {
                         () -> {},
                         () -> {
                             throw new IllegalStateException(
-                                    "Plugin context is not bound to a lifecycle owner");
+                                    "Plugin context is not bound to a lifecycle userId");
                         },
                         services,
                         Map.of()),
@@ -71,7 +59,7 @@ class MemoryRuntimeTest {
     void volatileProfilesWriteRecallForgetWithoutHostMemoryCapability() {
         for (String profile : List.of("memory", "vector")) {
             UUID identity = UUID.randomUUID();
-            var runtime = runtime("alice", identity, profile, null);
+            var runtime = runtime(identity, profile, null);
             var write = new MemoryTools.WriteMemory(runtime.writer("write_memory"));
             String result =
                     write.execute(
@@ -111,7 +99,7 @@ class MemoryRuntimeTest {
                         Memory.SourceRef.insightOrigin("legacy"),
                         Instant.now());
         store.add(current);
-        var runtime = runtime("alice", newIdentity, "jpa", (profile, embedder) -> store);
+        var runtime = runtime(newIdentity, "jpa", (profile, embedder) -> store);
         assertTrue(runtime.reader().search(text, MemoryTier.SESSION, 5, .5f).isEmpty());
         assertNull(runtime.writer("write_memory").promote(current.id()));
         assertFalse(runtime.writer("forget_memory").forget(current.id()));
@@ -120,11 +108,11 @@ class MemoryRuntimeTest {
     @Test
     void ownerDeletionBlocksWritesAndRollbackRestoresAccess() {
         UUID identity = UUID.randomUUID();
-        var runtime = runtime("alice", identity, "memory", null);
+        var runtime = runtime(identity, "memory", null);
         var writer = runtime.writer("write_memory");
         writer.add("retained on rollback", null);
 
-        var completion = runtime.prepareOwnerDeletion("alice", identity.toString());
+        var completion = runtime.prepareUserDeletion(identity);
         assertThrows(SecurityException.class, () -> writer.add("blocked", null));
         completion.complete(false);
 
@@ -135,10 +123,10 @@ class MemoryRuntimeTest {
     @Test
     void committedOwnerDeletionClearsVolatileMemoryAndKeepsScopeBlocked() {
         UUID identity = UUID.randomUUID();
-        var runtime = runtime("alice", identity, "vector", null);
+        var runtime = runtime(identity, "vector", null);
         runtime.writer("write_memory").add("erase me", null);
 
-        runtime.prepareOwnerDeletion("alice", identity.toString()).complete(true);
+        runtime.prepareUserDeletion(identity).complete(true);
 
         assertThrows(
                 SecurityException.class,
@@ -150,11 +138,9 @@ class MemoryRuntimeTest {
         UUID identity = UUID.randomUUID();
         var factory = mock(MemoryBackendFactory.class);
         doThrow(new IllegalStateException("cleanup failed")).when(factory).deleteOwner(identity);
-        var runtime = runtime("alice", identity, "jpa", factory);
+        var runtime = runtime(identity, "jpa", factory);
 
-        assertThrows(
-                IllegalStateException.class,
-                () -> runtime.prepareOwnerDeletion("alice", identity.toString()));
+        assertThrows(IllegalStateException.class, () -> runtime.prepareUserDeletion(identity));
 
         when(factory.open(eq("jpa"), any()))
                 .thenReturn(new InMemoryMemoryStore(new HashEmbedder()));
@@ -168,7 +154,11 @@ class MemoryRuntimeTest {
             var store = mock(MemoryStore.class);
             when(factory.open(eq(profile), any())).thenReturn(store);
             when(store.search(any())).thenReturn(List.of());
-            var runtime = runtime("alice", profile, factory);
+            var runtime =
+                    runtime(
+                            UUID.fromString("58e341e3-0de3-571d-81db-520951bc691b"),
+                            profile,
+                            factory);
             verifyNoInteractions(factory);
             runtime.reader().search("query", MemoryTier.SESSION, 5, .5f);
             runtime.reader().search("query", MemoryTier.CROSS_SESSION, 5, .5f);
@@ -179,13 +169,20 @@ class MemoryRuntimeTest {
     @Test
     void absentInvocationCannotReachBackendAndWrongOperationCannotMutate() {
         var factory = mock(MemoryBackendFactory.class);
-        var runtime = runtime("alice", "jpa", factory);
+        var runtime =
+                runtime(UUID.fromString("58e341e3-0de3-571d-81db-520951bc691b"), "jpa", factory);
         when(host.invocation(anyString())).thenThrow(new SecurityException("no invocation"));
         assertThrows(
                 SecurityException.class,
                 () -> runtime.reader().search("query", MemoryTier.SESSION, 5, .5f));
         verifyNoInteractions(factory);
-        doReturn(new PluginHost.Invocation("alice", session.toString(), "agent", "request", "call"))
+        doReturn(
+                        new PluginHost.Invocation(
+                                UUID.fromString("58e341e3-0de3-571d-81db-520951bc691b"),
+                                session.toString(),
+                                "agent",
+                                "request",
+                                "call"))
                 .when(host)
                 .invocation(anyString());
         assertThrows(

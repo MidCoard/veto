@@ -23,7 +23,6 @@ import top.focess.veto.agent.SessionAgentRegistry;
 import top.focess.veto.agent.TurnRecord;
 import top.focess.veto.agent.continuation.RequestContinuationStore;
 import top.focess.veto.agent.intercept.HitlRecordRepository;
-import top.focess.veto.agent.workspace.PathResolver;
 import top.focess.veto.agent.workspace.WorkspaceAdmissionPolicy;
 import top.focess.veto.api.event.SessionDeletedEvent;
 import top.focess.veto.api.llm.LlmBinding;
@@ -119,33 +118,32 @@ public class SessionService {
     /**
      * Creates a session + its primary agent from a pattern, with an auto-generated unique name.
      * Does NOT auto-activate. The workspace defaults to the JVM working dir, translated to the
-     * owner's logical path under TENANT.
+     * user's logical path under TENANT.
      */
     @Transactional
-    public @NonNull SessionEntity createSession(
-            @NonNull String owner, @NonNull String patternName) {
-        return createSession(owner, patternName, null);
+    public @NonNull SessionEntity createSession(@NonNull UUID userId, @NonNull String patternName) {
+        return createSession(userId, patternName, null);
     }
 
     /**
      * Creates a session + its primary agent from a pattern. Does NOT auto-activate. The session's
      * workspace defaults to the JVM working dir, mapped to a client path before admission.
      *
-     * @param owner the session owner
+     * @param userId the account ID
      * @param patternName the pattern to instantiate the primary agent from
      * @param sessionName the desired session name; null/empty generates a workspace-unique name
      *     prefixed by the pattern name
      */
     @Transactional
     public @NonNull SessionEntity createSession(
-            @NonNull String owner, @NonNull String patternName, String sessionName) {
+            @NonNull UUID userId, @NonNull String patternName, String sessionName) {
         return createSession(
-                owner,
+                userId,
                 patternName,
                 sessionName,
                 List.of(
                         workspaceAdmissionPolicy.toClientPath(
-                                owner,
+                                userId,
                                 HostPathInput.canonicalForCreation(
                                         Path.of(System.getProperty("user.dir", ".")),
                                         "backend cwd"))),
@@ -161,7 +159,7 @@ public class SessionService {
      * terminal path supplies its cwd and a remote UI must declare roots explicitly; blank
      * declarations are rejected.
      *
-     * @param owner the session owner
+     * @param userId the account ID
      * @param patternName the pattern to instantiate the primary agent from
      * @param sessionName the desired session name; null/empty triggers an auto-generated name of
      *     the form {@code <patternName>-xxxxxxxx} (8 lowercase hex digits) that is unique within
@@ -170,12 +168,12 @@ public class SessionService {
      */
     @Transactional
     public @NonNull SessionEntity createSession(
-            @NonNull String owner,
+            @NonNull UUID userId,
             @NonNull String patternName,
             String sessionName,
             @NonNull List<@NonNull String> workspaceRoots) {
         return createSession(
-                owner,
+                userId,
                 patternName,
                 sessionName,
                 workspaceRoots,
@@ -187,13 +185,13 @@ public class SessionService {
     /** Creates a session with an explicit tool-result presentation mode; the root index is 0. */
     @Transactional
     public @NonNull SessionEntity createSession(
-            @NonNull String owner,
+            @NonNull UUID userId,
             @NonNull String patternName,
             String sessionName,
             @NonNull List<@NonNull String> workspaceRoots,
             @NonNull ToolResultPresentationMode toolResultPresentation) {
         return createSession(
-                owner,
+                userId,
                 patternName,
                 sessionName,
                 workspaceRoots,
@@ -205,14 +203,14 @@ public class SessionService {
     /** Creates a session with an explicit current workspace-root index and no plugins selected. */
     @Transactional
     public @NonNull SessionEntity createSession(
-            @NonNull String owner,
+            @NonNull UUID userId,
             @NonNull String patternName,
             String sessionName,
             @NonNull List<@NonNull String> workspaceRoots,
             int currentWorkspaceRootIndex,
             @NonNull ToolResultPresentationMode toolResultPresentation) {
         return createSession(
-                owner,
+                userId,
                 patternName,
                 sessionName,
                 workspaceRoots,
@@ -233,7 +231,7 @@ public class SessionService {
      */
     @Transactional
     public @NonNull SessionEntity createSession(
-            @NonNull String owner,
+            @NonNull UUID userId,
             @NonNull String patternName,
             String sessionName,
             @NonNull List<@NonNull String> workspaceRoots,
@@ -241,7 +239,7 @@ public class SessionService {
             @NonNull ToolResultPresentationMode toolResultPresentation,
             @NonNull List<@NonNull String> pluginIds) {
         AgentPatternEntity pattern =
-                patterns.findByNameAndOwner(patternName, owner)
+                patterns.findByNameAndUserId(patternName, userId)
                         .orElseThrow(
                                 () ->
                                         new IllegalArgumentException(
@@ -253,7 +251,7 @@ public class SessionService {
         // creation.
         List<@NonNull Path> declaredRoots;
         try {
-            declaredRoots = workspaceAdmissionPolicy.validateRoots(owner, workspaceRoots);
+            declaredRoots = workspaceAdmissionPolicy.validateRoots(userId, workspaceRoots);
         } catch (RuntimeException e) {
             throw new IllegalArgumentException(
                     Msg.get(
@@ -271,7 +269,7 @@ public class SessionService {
                 String.join(",", declaredRoots.stream().map(Path::toString).toList());
 
         var selectedPlugins = pluginManager.selection(pluginIds);
-        ModelBinding cache = tierRegistry.resolve(owner, pattern.getTier());
+        ModelBinding cache = tierRegistry.resolve(userId, pattern.getTier());
         sessionCreation.lock();
         boolean releaseHere = true;
         try {
@@ -285,7 +283,7 @@ public class SessionService {
                         });
                 releaseHere = false;
             }
-            requireWorkspaceAvailable(owner, declaredRoots);
+            requireWorkspaceAvailable(userId, declaredRoots);
             String resolvedName;
             if (sessionName == null || sessionName.isEmpty()) {
                 // Implicit session name: always produce a workspace-unique name so `/session create
@@ -294,17 +292,17 @@ public class SessionService {
                 // name
                 // keeps the pattern name as a human-readable prefix.
                 resolvedName =
-                        generateUniqueSessionName(owner, patternName, admittedWorkspaceRoots);
+                        generateUniqueSessionName(userId, patternName, admittedWorkspaceRoots);
             } else {
                 resolvedName = sessionName;
-                // Uniqueness is scoped to (owner, name, workspaceRoots): the same name is allowed
+                // Uniqueness is scoped to (userId, name, workspaceRoots): the same name is allowed
                 // in a
                 // different workspace. The match is an exact CSV-string compare; a legacy row with
                 // workspace_roots = NULL is a distinct workspace from any new row (SQL NULL !=
                 // 'X'), so
                 // it does not block creation in a concrete workspace.
-                if (sessions.findByOwnerAndNameAndWorkspaceRoots(
-                                owner, resolvedName, admittedWorkspaceRoots)
+                if (sessions.findByUserIdAndNameAndWorkspaceRoots(
+                                userId, resolvedName, admittedWorkspaceRoots)
                         .isPresent()) {
                     throw new IllegalArgumentException(
                             Msg.get("error.session.nameExists", resolvedName, workspaceRoots));
@@ -318,7 +316,7 @@ public class SessionService {
                     throw new IllegalArgumentException(
                             Msg.get(
                                     "error.session.workspaceInvalid",
-                                    workspaceAdmissionPolicy.toClientPath(owner, admittedRoot),
+                                    workspaceAdmissionPolicy.toClientPath(userId, admittedRoot),
                                     workspaceAdmissionPolicy.tenant()
                                             ? "directory cannot be created"
                                             : e.getMessage() == null
@@ -330,7 +328,7 @@ public class SessionService {
 
             SessionEntity session =
                     new SessionEntity(
-                            owner,
+                            userId,
                             resolvedName,
                             admittedWorkspaceRoots,
                             currentWorkspaceRootIndex,
@@ -355,19 +353,19 @@ public class SessionService {
 
     /** Checks canonical overlap with persisted claims while the creation lock is held. */
     private void requireWorkspaceAvailable(
-            @NonNull String owner, @NonNull List<@NonNull Path> roots) {
-        var occupied = sessions.claimedRootsExcept(owner);
+            @NonNull UUID userId, @NonNull List<@NonNull Path> roots) {
+        var occupied = sessions.claimedRootsExcept(userId);
         for (Path root : roots) {
             if (occupied.stream()
                     .anyMatch(path -> root.startsWith(path) || path.startsWith(root))) {
-                throw new IllegalArgumentException("workspace overlaps another owner's session");
+                throw new IllegalArgumentException("workspace overlaps another user's session");
             }
         }
     }
 
     /** Creates a directory without racing a session's persisted workspace claim on this host. */
     public @NonNull Path createWorkspaceDirectory(
-            @NonNull String owner, @NonNull Path parent, @NonNull String name) throws IOException {
+            @NonNull UUID userId, @NonNull Path parent, @NonNull String name) throws IOException {
         if (name.isBlank() || name.contains("/") || name.contains("\\")) {
             throw new IllegalArgumentException("directory name must be a single path segment");
         }
@@ -381,9 +379,9 @@ public class SessionService {
                 throw new IllegalArgumentException(
                         "directory must be a direct child of its parent");
             }
-            var occupied = sessions.claimedRootsExcept(owner);
-            if (!workspaceAdmissionPolicy.canBrowse(owner, canonicalParent, occupied)
-                    || !workspaceAdmissionPolicy.canSelect(owner, target, occupied)) {
+            var occupied = sessions.claimedRootsExcept(userId);
+            if (!workspaceAdmissionPolicy.canBrowse(userId, canonicalParent, occupied)
+                    || !workspaceAdmissionPolicy.canSelect(userId, target, occupied)) {
                 throw new IllegalArgumentException(
                         "directory is outside the available workspace scope");
             }
@@ -396,16 +394,16 @@ public class SessionService {
 
     /**
      * Generates a session name of the form {@code baseName-xxxxxxxx} that is not already used by
-     * {@code owner} in {@code workspaceRoots}. The suffix is 8 lowercase hex digits from a
+     * {@code userId} in {@code workspaceRoots}. The suffix is 8 lowercase hex digits from a
      * ThreadLocalRandom source; the lookup loop protects against an astronomically unlikely
      * collision.
      */
     private @NonNull String generateUniqueSessionName(
-            @NonNull String owner, @NonNull String baseName, @NonNull String workspaceRoots) {
+            @NonNull UUID userId, @NonNull String baseName, @NonNull String workspaceRoots) {
         for (int attempt = 0; attempt < 16; attempt++) {
             String suffix = String.format("%08x", ThreadLocalRandom.current().nextInt());
             String candidate = baseName + "-" + suffix;
-            if (sessions.findByOwnerAndNameAndWorkspaceRoots(owner, candidate, workspaceRoots)
+            if (sessions.findByUserIdAndNameAndWorkspaceRoots(userId, candidate, workspaceRoots)
                     .isEmpty()) {
                 return candidate;
             }
@@ -415,16 +413,16 @@ public class SessionService {
     }
 
     /**
-     * Returns every session owned by {@code owner}, irrespective of workspace binding. Used by the
+     * Returns every session owned by {@code userId}, irrespective of workspace binding. Used by the
      * REST facade ({@link SessionController#list}) where there is no terminal cwd to scope to — the
      * web UI is expected to group / filter as it wishes.
      */
-    public @NonNull List<SessionEntity> listSessions(@NonNull String owner) {
-        return sessions.findByOwner(owner);
+    public @NonNull List<SessionEntity> listSessions(@NonNull UUID userId) {
+        return sessions.findByUserId(userId);
     }
 
     /**
-     * Returns the owner's sessions whose {@link SessionEntity#getWorkspaceRoots()} contains the
+     * Returns the user's sessions whose {@link SessionEntity#getWorkspaceRoots()} contains the
      * terminal's {@code cwd} (at-or-under one of the roots). {@code cwd} is the terminal's current
      * working directory — the session's bound workspace is fixed at creation, so a terminal outside
      * that scope sees an empty list. The strict binding is what makes sessions "belong" to a
@@ -434,12 +432,12 @@ public class SessionService {
      * treated as "matches any workspace" for backward compatibility with legacy rows written before
      * the field was populated.
      *
-     * @param owner the session owner
+     * @param userId the account ID
      * @param cwd the terminal's current working directory; never {@code null} (the terminal always
      *     reports its JVM working dir in the IPC {@code Hello} handshake)
      */
-    public @NonNull List<SessionEntity> listSessions(@NonNull String owner, @NonNull String cwd) {
-        return sessions.findByOwner(owner).stream()
+    public @NonNull List<SessionEntity> listSessions(@NonNull UUID userId, @NonNull String cwd) {
+        return sessions.findByUserId(userId).stream()
                 .filter(s -> isInWorkspace(s.getWorkspaceRoots(), cwd))
                 .toList();
     }
@@ -458,15 +456,15 @@ public class SessionService {
     public @NonNull Optional<LlmConfig> activate(
             @NonNull String terminalId,
             @NonNull String sessionName,
-            @NonNull String owner,
+            @NonNull UUID userId,
             @NonNull String cwd) {
-        // Find by owner + name (the same name may exist in multiple workspaces) and pick the one
+        // Find by userId + name (the same name may exist in multiple workspaces) and pick the one
         // whose workspace contains the terminal's cwd. With the create-time uniqueness check on
-        // (owner, name, workspaceRoots), at most one session per name is bound to a given cwd —
+        // (userId, name, workspaceRoots), at most one session per name is bound to a given cwd —
         // except legacy rows with workspace_roots = NULL, which match every cwd. When both a
         // legacy row and a concrete-workspace row match, the concrete one wins (more specific).
         List<SessionEntity> candidates =
-                sessions.findByOwner(owner).stream()
+                sessions.findByUserId(userId).stream()
                         .filter(s -> sessionName.equals(s.getName()))
                         .filter(s -> isInWorkspace(s.getWorkspaceRoots(), cwd))
                         .sorted(SessionService::compareActivationCandidates)
@@ -474,8 +472,8 @@ public class SessionService {
         if (candidates.isEmpty()) {
             // Disambiguate the error: is it "not found at all" or "found but in a different
             // workspace"? The user benefits from knowing they can cd to activate. Stream over the
-            // owner's sessions - findByNameAndOwner would throw on cross-workspace duplicates.
-            sessions.findByOwner(owner).stream()
+            // user's sessions - findByNameAndUserId would throw on cross-workspace duplicates.
+            sessions.findByUserId(userId).stream()
                     .filter(s -> sessionName.equals(s.getName()))
                     .findFirst()
                     .ifPresent(
@@ -492,7 +490,7 @@ public class SessionService {
             return Optional.empty();
         }
 
-        ModelBinding resolved = tierRegistry.resolve(owner, agent.getTier());
+        ModelBinding resolved = tierRegistry.resolve(userId, agent.getTier());
         LlmBinding binding = standaloneBinding(resolved);
         List<TurnRecord> history = historyLoader.load(session.getId(), agent.getId());
         agentService.getOrCreateAgent(
@@ -500,8 +498,7 @@ public class SessionService {
                 agent.getId(),
                 binding,
                 history,
-                agentService.userIdForOwner(owner),
-                owner,
+                userId,
                 session.getWorkspaceRoots(),
                 session.getCurrentWorkspaceRootIndex(),
                 session.getToolResultPresentation());
@@ -513,20 +510,20 @@ public class SessionService {
     }
 
     /**
-     * Auto-resumes the owner's most-recently-active session in the terminal's current {@code cwd}
+     * Auto-resumes the user's most-recently-active session in the terminal's current {@code cwd}
      * after a server restart or terminal reconnect (the in-memory active-session map is wiped on
      * restart). Replays durable history by delegating to {@link #activate}. Returns empty if the
-     * owner has no in-workspace session, or the most-recent in-workspace session has no primary
+     * userId has no in-workspace session, or the most-recent in-workspace session has no primary
      * agent — out-of-workspace sessions are intentionally skipped so a terminal never silently
      * resumes into a session that operates on a different directory tree.
      */
     @Transactional
     public @NonNull Optional<LlmConfig> resumeLastSession(
-            @NonNull String terminalId, @NonNull String owner, @NonNull String cwd) {
-        return sessions.findByOwner(owner).stream()
+            @NonNull String terminalId, @NonNull UUID userId, @NonNull String cwd) {
+        return sessions.findByUserId(userId).stream()
                 .filter(s -> isInWorkspace(s.getWorkspaceRoots(), cwd))
                 .max(SessionService::compareLastActiveAscending)
-                .flatMap(session -> activate(terminalId, session.getName(), owner, cwd));
+                .flatMap(session -> activate(terminalId, session.getName(), userId, cwd));
     }
 
     /** Detaches the terminal from its active session; the session itself persists. */
@@ -535,17 +532,17 @@ public class SessionService {
     }
 
     /**
-     * Detaches every terminal currently attached to one of {@code username}'s sessions. Used by the
-     * unified logout path ({@code AuthLifecycleManager}) - the sessions themselves persist in the
-     * DB and can be re-activated on re-login, but no terminal remains attached.
+     * Detaches every terminal currently attached to one of the user's sessions. Used by the unified
+     * logout path ({@code AuthLifecycleManager}) - the sessions themselves persist in the DB and
+     * can be re-activated on re-login, but no terminal remains attached.
      */
-    public void deactivateUser(@NonNull String username) {
+    public void deactivateUser(@NonNull UUID userId) {
         activeSessions
                 .entrySet()
                 .removeIf(
                         e -> {
                             SessionEntity session = sessions.findById(e.getValue()).orElse(null);
-                            return session == null || username.equals(session.getOwner());
+                            return session == null || userId.equals(session.getUserId());
                         });
     }
 
@@ -554,45 +551,38 @@ public class SessionService {
      * in-memory agent, and removes the session's agent instances + the session row. Mirrors the
      * per-session slice of {@link UserAdminService#deleteUser}.
      *
-     * <p>Because two sessions may share a name across workspaces, the {@code (owner, name)} pair is
-     * not unique; the REST caller ({@code SessionController}) has no workspace context to
-     * disambiguate with, so every matching session is deleted. Returns {@code false} when no
-     * session matches.
+     * <p>The immutable session ID selects exactly one owned session, even when names are shared
+     * across workspaces. Returns {@code false} when the session does not exist or belongs to
+     * another user.
      */
     @Transactional
-    public boolean delete(@NonNull String owner, @NonNull String sessionName) {
-        List<SessionEntity> matches =
-                sessions.findByOwner(owner).stream()
-                        .filter(s -> sessionName.equals(s.getName()))
-                        .toList();
-        if (matches.isEmpty()) {
+    public boolean delete(@NonNull UUID userId, @NonNull String sessionId) {
+        SessionEntity session = sessions.findById(sessionId).orElse(null);
+        if (session == null || !userId.equals(session.getUserId())) {
             return false;
         }
-        for (SessionEntity session : matches) {
-            String sessionId = session.getId();
-            pluginDataCleanup.beforeSessionDeleted(owner, sessionId);
-            Runnable stop =
-                    () -> {
-                        activeSessions.entrySet().removeIf(e -> sessionId.equals(e.getValue()));
-                        eventManager.submit(
-                                new SessionDeletedEvent(new Scope.SessionScope(owner, sessionId)));
-                        sessionAgents.stopSession(UUID.fromString(sessionId));
-                    };
-            if (TransactionSynchronizationManager.isSynchronizationActive())
-                TransactionSynchronizationManager.registerSynchronization(
-                        new TransactionSynchronization() {
-                            @Override
-                            public void afterCommit() {
-                                stop.run();
-                            }
-                        });
-            else stop.run();
-            continuations.deleteSession(sessionId);
-            hitlRecords.deleteBySessionId(sessionId);
-            agents.deleteBySessionId(sessionId);
-            pluginStorage.deleteSession(sessionId);
-            sessions.delete(session);
-        }
+        pluginDataCleanup.beforeSessionDeleted(userId, sessionId);
+        Runnable stop =
+                () -> {
+                    activeSessions.entrySet().removeIf(e -> sessionId.equals(e.getValue()));
+                    eventManager.submit(
+                            new SessionDeletedEvent(new Scope.SessionScope(userId, sessionId)));
+                    sessionAgents.stopSession(UUID.fromString(sessionId));
+                };
+        if (TransactionSynchronizationManager.isSynchronizationActive())
+            TransactionSynchronizationManager.registerSynchronization(
+                    new TransactionSynchronization() {
+                        @Override
+                        public void afterCommit() {
+                            stop.run();
+                        }
+                    });
+        else stop.run();
+        continuations.deleteSession(sessionId);
+        hitlRecords.deleteBySessionId(sessionId);
+        agents.deleteBySessionId(sessionId);
+        pluginStorage.deleteSession(sessionId);
+        sessions.delete(session);
         return true;
     }
 
@@ -602,7 +592,7 @@ public class SessionService {
     }
 
     /**
-     * Resolves the LLM config for the terminal's active session, re-resolved from the owner's
+     * Resolves the LLM config for the terminal's active session, re-resolved from the user's
      * current tier profile on every call. Empty when the terminal, session, or primary agent is
      * gone.
      */
@@ -613,24 +603,24 @@ public class SessionService {
         if (session == null) return Optional.empty();
         AgentEntity agent = primaryAgent(session);
         if (agent == null) return Optional.empty();
-        return Optional.of(llmConfig(tierRegistry.resolve(session.getOwner(), agent.getTier())));
+        return Optional.of(llmConfig(tierRegistry.resolve(session.getUserId(), agent.getTier())));
     }
 
     /**
-     * Resolves the LLM config for a session by name + owner (REST path). The REST controller has no
-     * terminalId (that's an IPC concept); it resolves the session by name for the authenticated
+     * Resolves the LLM config for a session by name + userId (REST path). The REST controller has
+     * no terminalId (that's an IPC concept); it resolves the session by name for the authenticated
      * user and returns the config + session id in one call.
      */
     public @NonNull Optional<SessionConfig> resolveByName(
-            @NonNull String name, @NonNull String owner) {
+            @NonNull String name, @NonNull UUID userId) {
         // Duplicate-tolerant: several sessions may share a name across workspaces, and the REST
         // caller has no workspace to disambiguate with - the most-recently-active one wins.
         SessionEntity session =
-                sessions.findFirstByNameAndOwnerOrderByLastActiveAtDesc(name, owner).orElse(null);
+                sessions.findFirstByNameAndUserIdOrderByLastActiveAtDesc(name, userId).orElse(null);
         if (session == null) return Optional.empty();
         AgentEntity agent = primaryAgent(session);
         if (agent == null) return Optional.empty();
-        LlmConfig config = llmConfig(tierRegistry.resolve(session.getOwner(), agent.getTier()));
+        LlmConfig config = llmConfig(tierRegistry.resolve(session.getUserId(), agent.getTier()));
         return Optional.of(
                 new SessionConfig(session.getId(), config, session.getToolResultPresentation()));
     }
@@ -651,21 +641,20 @@ public class SessionService {
      */
     @Transactional
     public @NonNull Optional<SessionConfig> activateForRest(
-            @NonNull String name, @NonNull String owner) {
+            @NonNull String name, @NonNull UUID userId) {
         SessionEntity session =
-                sessions.findFirstByNameAndOwnerOrderByLastActiveAtDesc(name, owner).orElse(null);
+                sessions.findFirstByNameAndUserIdOrderByLastActiveAtDesc(name, userId).orElse(null);
         if (session == null) return Optional.empty();
         AgentEntity agent = primaryAgent(session);
         if (agent == null) return Optional.empty();
-        ModelBinding resolved = tierRegistry.resolve(session.getOwner(), agent.getTier());
+        ModelBinding resolved = tierRegistry.resolve(session.getUserId(), agent.getTier());
         List<TurnRecord> history = historyLoader.load(session.getId(), agent.getId());
         agentService.getOrCreateAgent(
                 session.getId(),
                 agent.getId(),
                 standaloneBinding(resolved),
                 history,
-                agentService.userIdForOwner(owner),
-                owner,
+                userId,
                 session.getWorkspaceRoots(),
                 session.getCurrentWorkspaceRootIndex(),
                 session.getToolResultPresentation());
@@ -678,9 +667,9 @@ public class SessionService {
 
     /** Restores the exact primary/team identity for an plugin observation. */
     public boolean activateForObservation(
-            @NonNull UUID sessionId, @NonNull String owner, @NonNull String targetId) {
+            @NonNull UUID sessionId, @NonNull UUID userId, @NonNull String targetId) {
         SessionEntity session = sessions.findById(sessionId.toString()).orElse(null);
-        if (session == null || !session.getOwner().equals(owner)) return false;
+        if (session == null || !session.getUserId().equals(userId)) return false;
         AgentEntity primary = primaryAgent(session);
         AgentEntity target = agents.findById(targetId).orElse(null);
         if (primary != null
@@ -702,14 +691,13 @@ public class SessionService {
         if (!target.getId().equals(primary.getId())
                 && (!"MATE".equals(target.getRuntimeRole()) || target.getParentCallId() != null))
             return false;
-        ModelBinding resolved = tierRegistry.resolve(owner, primary.getTier());
+        ModelBinding resolved = tierRegistry.resolve(userId, primary.getTier());
         agentService.getOrCreateAgent(
                 session.getId(),
                 primary.getId(),
                 standaloneBinding(resolved),
                 historyLoader.load(session.getId(), primary.getId()),
-                agentService.userIdForOwner(owner),
-                owner,
+                userId,
                 session.getWorkspaceRoots(),
                 session.getCurrentWorkspaceRootIndex(),
                 session.getToolResultPresentation());
@@ -721,10 +709,9 @@ public class SessionService {
      * duplicate-tolerantly (most-recently-active wins), same as {@link #resolveByName}. Empty when
      * the session has no primary agent.
      */
-    public @NonNull Optional<String> primaryAgentIdFor(
-            @NonNull String name, @NonNull String owner) {
+    public @NonNull Optional<String> primaryAgentIdFor(@NonNull String name, @NonNull UUID userId) {
         SessionEntity session =
-                sessions.findFirstByNameAndOwnerOrderByLastActiveAtDesc(name, owner).orElse(null);
+                sessions.findFirstByNameAndUserIdOrderByLastActiveAtDesc(name, userId).orElse(null);
         if (session == null) {
             return Optional.empty();
         }
@@ -784,9 +771,9 @@ public class SessionService {
     }
 
     /**
-     * Builds the user-facing error when a session exists for {@code (owner, name)} but its
+     * Builds the user-facing error when a session exists for {@code (userId, name)} but its
      * workspace does not contain the terminal's current {@code cwd}. Pulled out so {@link
-     * #activate} (which now matches by owner+name+workspace) produces a single canonical message
+     * #activate} (which now matches by userId+name+workspace) produces a single canonical message
      * whether the wrong-workspace session was filtered out or surfaced via the fallback lookup.
      */
     private static @NonNull String workspaceMismatchMessage(
@@ -802,26 +789,22 @@ public class SessionService {
      * Returns true when {@code cwd} is at or under one of the roots in {@code
      * sessionWorkspaceRoots} (CSV of host paths). Null/blank {@code sessionWorkspaceRoots} is
      * treated as "matches any workspace" for backward compatibility with legacy rows written before
-     * the field was populated. Both paths are normalized via {@code toAbsolutePath().normalize()}
-     * so a trailing slash, {@code .} / {@code ..} segments, or relative-vs-absolute spelling never
-     * causes a false negative.
-     *
-     * <p>This is a purely lexical check — symlink-resolved canonicalization is the job of {@link
-     * PathResolver} at tool-call time, not session routing. A terminal that has symlinked itself
-     * into a session's workspace is still "in" it for session-routing purposes; the agent's tool
-     * calls will then resolve symlinks per their own canonicalization rules.
+     * the field was populated. Canonicalization uses the same existing-ancestor resolution as
+     * workspace creation, so symlinks and junctions select their actual workspace.
      */
     private static boolean isInWorkspace(String sessionWorkspaceRoots, @NonNull String cwd) {
         if (sessionWorkspaceRoots == null || sessionWorkspaceRoots.isBlank()) {
             return true;
         }
-        Path cwdPath = Path.of(cwd).toAbsolutePath().normalize();
+        Path cwdPath = HostPathInput.canonicalForCreation(Path.of(cwd), "terminal cwd");
         return Arrays.stream(sessionWorkspaceRoots.split(","))
                 .map(String::trim)
                 .filter(s -> !s.isEmpty())
                 .anyMatch(
                         root -> {
-                            Path rootPath = Path.of(root).toAbsolutePath().normalize();
+                            Path rootPath =
+                                    HostPathInput.canonicalForCreation(
+                                            Path.of(root), "workspace root");
                             return cwdPath.equals(rootPath) || cwdPath.startsWith(rootPath);
                         });
     }

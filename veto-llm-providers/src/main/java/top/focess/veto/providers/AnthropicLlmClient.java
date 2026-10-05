@@ -3,6 +3,7 @@ package top.focess.veto.providers;
 import com.anthropic.client.AnthropicClient;
 import com.anthropic.core.JsonValue;
 import com.anthropic.core.ObjectMappers;
+import com.anthropic.core.RequestOptions;
 import com.anthropic.models.messages.ContentBlock;
 import com.anthropic.models.messages.ContentBlockParam;
 import com.anthropic.models.messages.Message;
@@ -117,7 +118,14 @@ final class AnthropicLlmClient implements LlmClient {
             builder.addMessage(messageParam);
         }
 
-        Message message = sdkClient.messages().create(builder.build());
+        Message message =
+                sdkClient
+                        .messages()
+                        .create(
+                                builder.build(),
+                                RequestOptions.builder()
+                                        .timeout(request.options().timeoutOrDefault())
+                                        .build());
         LlmSystemUsage.set(
                 message.usage().inputTokens()
                         + message.usage().cacheReadInputTokens().orElse(0L)

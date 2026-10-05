@@ -37,8 +37,7 @@ class ProcessHostAuthorityTest {
         ToolCallContextHolder.set(
                 new ToolCallContext(
                         fixture.agent,
-                        fixture.user,
-                        fixture.owner,
+                        fixture.userId,
                         fixture.session,
                         ToolResultPresentationMode.BASIC,
                         permit));
@@ -124,8 +123,7 @@ class ProcessHostAuthorityTest {
                             Workspace.single(directory, PathMode.REAL)));
             var running = fixture.host.startApproved();
             try {
-                assertEquals(fixture.owner, running.invocation().owner());
-                assertNotEquals(fixture.user.toString(), running.invocation().owner());
+                assertEquals(fixture.userId, running.invocation().userId());
                 var input =
                         new ToolCall(
                                 "input_task",
@@ -138,7 +136,7 @@ class ProcessHostAuthorityTest {
                         new PreparedInvocation(
                                 fixture.plugin,
                                 new PluginHost.Invocation(
-                                        fixture.owner,
+                                        fixture.userId,
                                         fixture.session.toString(),
                                         fixture.agent,
                                         null,
@@ -153,8 +151,7 @@ class ProcessHostAuthorityTest {
                                         input,
                                         definition(fixture, "input_task"),
                                         Workspace.single(directory, PathMode.REAL))
-                                .withCaller(
-                                        fixture.agent, fixture.user, fixture.owner, fixture.session)
+                                .withCaller(fixture.agent, fixture.userId, fixture.session)
                                 .withPreparation(prepared);
                 bind(fixture, permit);
                 var write = fixture.host.prepareInput(running);
@@ -182,7 +179,7 @@ class ProcessHostAuthorityTest {
                         new PreparedInvocation(
                                 fixture.plugin,
                                 new PluginHost.Invocation(
-                                        fixture.owner,
+                                        fixture.userId,
                                         fixture.session.toString(),
                                         fixture.agent,
                                         null,
@@ -199,8 +196,7 @@ class ProcessHostAuthorityTest {
                                         input,
                                         definition(fixture, "input_task"),
                                         Workspace.single(directory, PathMode.REAL))
-                                .withCaller(
-                                        fixture.agent, fixture.user, fixture.owner, fixture.session)
+                                .withCaller(fixture.agent, fixture.userId, fixture.session)
                                 .withPreparation(prepared));
                 var write = fixture.host.prepareInput(second);
                 var retainedOutput = second.output();

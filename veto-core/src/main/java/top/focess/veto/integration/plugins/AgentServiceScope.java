@@ -23,11 +23,11 @@ final class AgentServiceScope {
                 || !permit.callId().equals(ToolCallContextHolder.currentCallId())
                 || !permit.authorizesCaller(invocation)
                 || !session.toString().equals(grant.scope().session())
-                || !factory.authorizeSession(caller, grant).equals(invocation.owner()))
+                || !factory.authorizeSession(caller, grant).equals(invocation.userId()))
             throw denied();
         // Storage grants use immutable user IDs; the live caller uses the login name.
         return new Scope.AgentScope(
-                grant.scope().owner(), grant.scope().session(), invocation.agentId());
+                grant.scope().userId(), grant.scope().session(), invocation.agentId());
     }
 
     private static @NonNull SecurityException denied() {

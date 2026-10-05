@@ -33,6 +33,7 @@ import top.focess.veto.integration.plugins.PluginManager;
 import top.focess.veto.integration.plugins.PluginTestSupport;
 import top.focess.veto.util.Nullness;
 import top.focess.veto.vault.KeysteadVault;
+import top.focess.veto.vault.TestUsers;
 
 class CredentialImportIntegrationTest {
     private static final @NonNull String IMPORT_TOOL =
@@ -47,16 +48,16 @@ class CredentialImportIntegrationTest {
     void screenedImportBindsCallerAndArgumentsBeforeStorage(@TempDir @NonNull Path directory)
             throws Exception {
         var session = UUID.randomUUID();
-        var user = UUID.randomUUID();
+        var user = TestUsers.ALICE;
         KeysteadVault vault = mock(KeysteadVault.class);
-        when(vault.isUnlocked("alice")).thenReturn(true);
+        when(vault.isUnlocked(TestUsers.ALICE)).thenReturn(true);
         var mapper = new ObjectMapper();
         var workspace = Workspace.single(directory, PathMode.REAL);
         try (var plugins = PluginTestSupport.manager(hostServices(vault))) {
-            var scope = new Scope.AgentScope("alice", session.toString(), "agent");
+            var scope = new Scope.AgentScope(TestUsers.ALICE, session.toString(), "agent");
             String reference = reference(plugins, scope);
             when(vault.createSecureNoteIfAbsent(
-                            "alice",
+                            TestUsers.ALICE,
                             "veto.import." + reference,
                             Map.of(
                                     "veto.import.id", reference,
@@ -96,25 +97,15 @@ class CredentialImportIntegrationTest {
             verifyNoInteractions(vault);
             var permit =
                     gateway.revalidateExecution(call, definition, screened.executionPermit())
-                            .withCaller("agent", user, "alice", session);
+                            .withCaller("agent", user, session);
             ToolCallContextHolder.set(
                     new ToolCallContext(
-                            "mate",
-                            user,
-                            "alice",
-                            session,
-                            ToolResultPresentationMode.BASIC,
-                            permit));
+                            "mate", user, session, ToolResultPresentationMode.BASIC, permit));
             assertFalse(engine.execute(call, definition).success());
             verifyNoInteractions(vault);
             ToolCallContextHolder.set(
                     new ToolCallContext(
-                            "agent",
-                            user,
-                            "alice",
-                            session,
-                            ToolResultPresentationMode.BASIC,
-                            permit));
+                            "agent", user, session, ToolResultPresentationMode.BASIC, permit));
             var changed =
                     new ToolCall(
                             IMPORT_TOOL,
@@ -137,7 +128,7 @@ class CredentialImportIntegrationTest {
             assertTrue(engine.execute(call, definition).success());
             verify(vault, times(1))
                     .createSecureNoteIfAbsent(
-                            "alice",
+                            TestUsers.ALICE,
                             "veto.import." + reference,
                             Map.of(
                                     "veto.import.id", reference,
@@ -199,7 +190,7 @@ class CredentialImportIntegrationTest {
         if (!(service instanceof VaultAccess access))
             throw new AssertionError("Vault host service missing");
         try (var plugins = PluginTestSupport.manager(services)) {
-            var scope = new Scope.AgentScope("alice", session.toString(), "agent");
+            var scope = new Scope.AgentScope(TestUsers.ALICE, session.toString(), "agent");
             String reference = reference(plugins, scope);
             var engine = engineWith(new ObjectMapper(), plugins);
             var definition = importTool(engine);
@@ -218,12 +209,13 @@ class CredentialImportIntegrationTest {
             assertThrows(
                     SecurityException.class, () -> open(access, reference, "github", "Repository"));
 
-            installContext(call, definition, workspace, "alice", session, "agent");
+            installContext(call, definition, workspace, TestUsers.ALICE, session, "agent");
             var writer = open(access, reference, "github", "Repository");
             assertEquals(
-                    new Scope.AgentScope("alice", session.toString(), "agent"), writer.scope());
+                    new Scope.AgentScope(TestUsers.ALICE, session.toString(), "agent"),
+                    writer.scope());
             // Even identical approved arguments on a new invocation do not renew a retained writer.
-            installContext(call, definition, workspace, "alice", session, "agent");
+            installContext(call, definition, workspace, TestUsers.ALICE, session, "agent");
             assertThrows(SecurityException.class, writer::isUnlocked);
             assertThrows(
                     SecurityException.class, () -> open(access, reference, "github", "Changed"));
@@ -251,28 +243,39 @@ class CredentialImportIntegrationTest {
                                             "extra",
                                             "not approved"),
                                     call.callId()))) {
-                installContext(incompatibleCall, definition, workspace, "alice", session, "agent");
+                installContext(
+                        incompatibleCall, definition, workspace, TestUsers.ALICE, session, "agent");
                 assertThrows(
                         SecurityException.class,
                         () -> open(access, reference, "github", "Repository"));
             }
 
-            installContext(call, definition, workspace, null, session, "agent");
+            installContext(call, definition, workspace, TestUsers.ALICE, session, "agent");
+            var aliceWriter = open(access, reference, "github", "Repository");
+            installContext(call, definition, workspace, TestUsers.BOB, session, "agent");
+            assertThrows(SecurityException.class, aliceWriter::isUnlocked);
+            assertThrows(SecurityException.class, aliceWriter::scope);
+            var bobWriter = open(access, reference, "github", "Repository");
+            assertEquals(
+                    new Scope.AgentScope(TestUsers.BOB, session.toString(), "agent"),
+                    bobWriter.scope());
             assertThrows(
-                    SecurityException.class, () -> open(access, reference, "github", "Repository"));
-            installContext(call, definition, workspace, "alice", null, "agent");
+                    IllegalStateException.class,
+                    () -> invokeImport(plugins, reference, "github", "Repository"));
+            installContext(call, definition, workspace, TestUsers.ALICE, null, "agent");
             assertThrows(
                     SecurityException.class, () -> open(access, reference, "github", "Repository"));
             for (var other :
                     List.of(
-                            new Scope.AgentScope("bob", session.toString(), "agent"),
-                            new Scope.AgentScope("alice", UUID.randomUUID().toString(), "agent"),
-                            new Scope.AgentScope("alice", session.toString(), "mate"))) {
+                            new Scope.AgentScope(TestUsers.BOB, session.toString(), "agent"),
+                            new Scope.AgentScope(
+                                    TestUsers.ALICE, UUID.randomUUID().toString(), "agent"),
+                            new Scope.AgentScope(TestUsers.ALICE, session.toString(), "mate"))) {
                 installContext(
                         call,
                         definition,
                         workspace,
-                        other.owner(),
+                        other.userId(),
                         UUID.fromString(other.session()),
                         other.agent());
                 assertThrows(
@@ -328,16 +331,16 @@ class CredentialImportIntegrationTest {
             @NonNull ToolCall call,
             @NonNull ToolDefinition definition,
             @NonNull Workspace workspace,
-            String owner,
+            @NonNull UUID userId,
             UUID session,
             @NonNull String agent) {
-        var user = UUID.randomUUID();
+        var user = userId;
         var permit =
                 ToolExecutionPermit.capture(call, definition, workspace)
-                        .withCaller(agent, user, owner, session);
+                        .withCaller(agent, user, session);
         ToolCallContextHolder.set(
                 new ToolCallContext(
-                        agent, user, owner, session, ToolResultPresentationMode.BASIC, permit));
+                        agent, user, session, ToolResultPresentationMode.BASIC, permit));
         ToolCallContextHolder.setCurrentCallId(call.callId());
     }
 }

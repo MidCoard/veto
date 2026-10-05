@@ -14,6 +14,7 @@ import top.focess.veto.controller.dto.SubmitPromptRequest;
 import top.focess.veto.session.LlmConfig;
 import top.focess.veto.session.SessionService;
 import top.focess.veto.vault.KeysteadVault;
+import top.focess.veto.vault.TestUsers;
 
 class PromptControllerTest {
     @Test
@@ -21,8 +22,8 @@ class PromptControllerTest {
         SessionService sessions = mock(SessionService.class);
         AgentService agents = mock(AgentService.class);
         KeysteadVault vault = mock(KeysteadVault.class);
-        when(vault.currentUser()).thenReturn("owner");
-        when(sessions.activateForRest("session", "owner"))
+        when(vault.currentUser()).thenReturn(TestUsers.OWNER);
+        when(sessions.activateForRest("session", TestUsers.OWNER))
                 .thenReturn(
                         Optional.of(
                                 new SessionService.SessionConfig(
@@ -31,7 +32,7 @@ class PromptControllerTest {
                                         ToolResultPresentationMode.BASIC)));
         doThrow(new ProtectedInputException())
                 .when(agents)
-                .submitNow(anyString(), anyString(), any());
+                .submitNow(anyString(), anyString(), any(), any());
         var response =
                 new PromptController(sessions, agents, vault)
                         .prompt("session", new SubmitPromptRequest("synthetic-secret"));

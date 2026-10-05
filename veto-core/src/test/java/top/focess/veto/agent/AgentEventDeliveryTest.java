@@ -40,6 +40,7 @@ import top.focess.veto.api.plugin.contribution.Contribution;
 import top.focess.veto.bus.SessionInvalidations;
 import top.focess.veto.integration.plugins.WorkflowPluginFixture;
 import top.focess.veto.llm.core.UniformLLMCaller;
+import top.focess.veto.vault.TestUsers;
 
 /** Exercises installed event delivery and action cancellation through the real agent loop. */
 class AgentEventDeliveryTest {
@@ -92,8 +93,7 @@ class AgentEventDeliveryTest {
                             UUID.randomUUID().toString(),
                             binding("System"),
                             List.of(),
-                            UUID.randomUUID(),
-                            "owner",
+                            TestUsers.OWNER,
                             null,
                             0,
                             ToolResultPresentationMode.BASIC);
@@ -170,8 +170,7 @@ class AgentEventDeliveryTest {
                             UUID.randomUUID().toString(),
                             binding("System"),
                             List.of(),
-                            UUID.randomUUID(),
-                            "owner",
+                            TestUsers.OWNER,
                             null,
                             0,
                             ToolResultPresentationMode.BASIC);
@@ -276,8 +275,7 @@ class AgentEventDeliveryTest {
                             UUID.randomUUID().toString(),
                             binding("System"),
                             List.of(),
-                            UUID.randomUUID(),
-                            "owner",
+                            TestUsers.OWNER,
                             null,
                             0,
                             ToolResultPresentationMode.BASIC);
@@ -347,8 +345,7 @@ class AgentEventDeliveryTest {
                             UUID.randomUUID().toString(),
                             binding("System"),
                             List.of(),
-                            UUID.randomUUID(),
-                            "owner",
+                            TestUsers.OWNER,
                             null,
                             0,
                             ToolResultPresentationMode.BASIC);

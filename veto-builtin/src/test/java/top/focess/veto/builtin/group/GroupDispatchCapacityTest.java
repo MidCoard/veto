@@ -23,7 +23,7 @@ class GroupDispatchCapacityTest {
         Group group =
                 Group.create(
                         "leader",
-                        "user",
+                        UUID.fromString("a59028e2-7be6-5c04-9439-9d4f7a4942b2"),
                         "parallel work",
                         board,
                         new ExecutionDag(
@@ -54,7 +54,7 @@ class GroupDispatchCapacityTest {
         Group group =
                 Group.create(
                                 "leader",
-                                "user",
+                                UUID.fromString("a59028e2-7be6-5c04-9439-9d4f7a4942b2"),
                                 "sequential work",
                                 board,
                                 new ExecutionDag(

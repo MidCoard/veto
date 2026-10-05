@@ -36,10 +36,10 @@ public class HostResourceConfiguration {
     private static @NonNull VaultAccess vaultAccess(@NonNull KeysteadVault vault) {
         return arguments -> {
             var invocation = CapabilityAccess.require(ToolCapability.PRIVILEGED);
-            var owner = invocation.owner();
+            var userId = invocation.userId();
             var session = invocation.sessionId();
             if (Thread.currentThread().isInterrupted()
-                    || owner == null
+                    || userId == null
                     || session == null
                     || !invocation.executionPermit().call().args().equals(arguments))
                 throw denied();
@@ -48,19 +48,19 @@ public class HostResourceConfiguration {
                     var current = CapabilityAccess.require(ToolCapability.PRIVILEGED);
                     if (Thread.currentThread().isInterrupted()
                             || current.executionPermit() != invocation.executionPermit()
-                            || !owner.equals(current.owner())
+                            || !userId.equals(current.userId())
                             || !session.equals(current.sessionId())
                             || !invocation.agentId().equals(current.agentId())) throw denied();
                 }
 
                 public Scope.@NonNull AgentScope scope() {
                     check();
-                    return new Scope.AgentScope(owner, session.toString(), invocation.agentId());
+                    return new Scope.AgentScope(userId, session.toString(), invocation.agentId());
                 }
 
                 public boolean isUnlocked() {
                     check();
-                    return vault.isUnlocked(owner);
+                    return vault.isUnlocked(userId);
                 }
 
                 public @NonNull String createSecureNote(
@@ -68,7 +68,7 @@ public class HostResourceConfiguration {
                         @NonNull Map<@NonNull String, @NonNull String> attributes,
                         @NonNull String body) {
                     check();
-                    return vault.createSecureNoteIfAbsent(owner, title, attributes, body);
+                    return vault.createSecureNoteIfAbsent(userId, title, attributes, body);
                 }
             };
         };

@@ -20,6 +20,7 @@ import top.focess.veto.controller.dto.SubmitPromptRequest;
 import top.focess.veto.session.LlmConfig;
 import top.focess.veto.session.SessionService;
 import top.focess.veto.vault.KeysteadVault;
+import top.focess.veto.vault.TestUsers;
 
 class AgentPromptControllerTest {
     private final @NonNull SessionService sessions = mock();
@@ -45,8 +46,8 @@ class AgentPromptControllerTest {
     }
 
     private void ownedSession() {
-        when(vault.currentUser()).thenReturn("owner");
-        when(sessions.resolveByName("session", "owner"))
+        when(vault.currentUser()).thenReturn(TestUsers.OWNER);
+        when(sessions.resolveByName("session", TestUsers.OWNER))
                 .thenReturn(
                         Optional.of(
                                 new SessionService.SessionConfig(
@@ -108,8 +109,11 @@ class AgentPromptControllerTest {
                                 controller.prompt(
                                         "session", "mate", new SubmitPromptRequest("Review")));
         assertEquals(HttpStatus.UNAUTHORIZED, unauthenticated.getStatusCode());
-        when(vault.currentUser()).thenReturn("other-owner");
-        when(sessions.resolveByName("session", "other-owner")).thenReturn(Optional.empty());
+        when(vault.currentUser())
+                .thenReturn(UUID.fromString("b8e2a363-b485-59e6-af0d-96f11fcd35db"));
+        when(sessions.resolveByName(
+                        "session", UUID.fromString("b8e2a363-b485-59e6-af0d-96f11fcd35db")))
+                .thenReturn(Optional.empty());
         var missing =
                 assertThrows(
                         ResponseStatusException.class,

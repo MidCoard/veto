@@ -6,6 +6,7 @@ import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
+import top.focess.veto.vault.TestUsers;
 
 @DataJpaTest
 @SuppressWarnings("initialization.field.uninitialized")
@@ -16,7 +17,7 @@ class AgentInstanceRepositoryTest {
 
     @Test
     void primaryAgentOfSession() {
-        SessionEntity s = sessions.save(new SessionEntity("alice", "coder"));
+        SessionEntity s = sessions.save(new SessionEntity(TestUsers.ALICE, "coder"));
         AgentEntity agent =
                 new AgentEntity(
                         s.getId(),

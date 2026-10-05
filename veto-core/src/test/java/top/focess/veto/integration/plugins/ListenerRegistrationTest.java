@@ -9,6 +9,7 @@ import static org.mockito.Mockito.mock;
 
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import org.jspecify.annotations.NonNull;
@@ -61,7 +62,11 @@ class ListenerRegistrationTest {
                             .anyMatch(entry -> entry.id().localId().equals("prepared-probe")));
             manager.registry()
                     .events()
-                    .submit(new UserLoggedInEvent(new Scope.UserScope("probe-user")));
+                    .submit(
+                            new UserLoggedInEvent(
+                                    new Scope.UserScope(
+                                            UUID.fromString(
+                                                    "febf396e-ae0a-5b33-88d7-04876a1185dc"))));
             assertEquals(1, calls.get());
             assertTrue(
                     manager.registry().entries(StandardContributionPoints.LISTENERS).stream()
@@ -109,8 +114,8 @@ class ListenerRegistrationTest {
         if (!(staged instanceof List<?> registrations)) throw new AssertionError("Missing staging");
         for (var registration : registrations) {
             if (registration == null) throw new AssertionError("Missing registration");
-            var owner = ReflectionTestUtils.invokeMethod(registration, "plugin");
-            if (owner != plugin) continue;
+            var userId = ReflectionTestUtils.invokeMethod(registration, "plugin");
+            if (userId != plugin) continue;
             var points = ReflectionTestUtils.invokeMethod(registration, "points");
             if (points == null) throw new AssertionError("Missing registration points");
             Map<@NonNull ContributionPoint<?>, @NonNull Consumer<@NonNull Contribution<?>>>

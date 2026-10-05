@@ -75,6 +75,14 @@ final class GeminiLlmClient implements LlmClient {
             config.temperature(temperature.floatValue());
         Integer maxTokens = request.options().maxTokens();
         if (maxTokens != null) config.maxOutputTokens(maxTokens);
+        config.httpOptions(
+                HttpOptions.builder()
+                        .timeout(
+                                Math.toIntExact(
+                                        Math.max(
+                                                1,
+                                                request.options().timeoutOrDefault().toMillis())))
+                        .build());
         var response =
                 sdkClient.models.generateContent(
                         request.modelName(), conversationContents(request), config.build());

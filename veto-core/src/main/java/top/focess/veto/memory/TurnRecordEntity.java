@@ -10,6 +10,8 @@ import jakarta.persistence.UniqueConstraint;
 import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import top.focess.veto.agent.TurnRecord;
@@ -38,8 +40,9 @@ public class TurnRecordEntity {
 
     @Id private @NonNull String id = "";
 
+    @JdbcTypeCode(SqlTypes.VARCHAR)
     @Column(name = "user_id", nullable = false)
-    private @NonNull String userId = "";
+    private @NonNull UUID userId = new UUID(0, 0);
 
     @Column(name = "session_id")
     private String sessionId;
@@ -77,7 +80,7 @@ public class TurnRecordEntity {
             @NonNull ObjectMapper mapper) {
         TurnRecordEntity e = new TurnRecordEntity();
         e.id = UUID.randomUUID().toString();
-        e.userId = userId.toString();
+        e.userId = userId;
         e.sessionId = sessionId == null ? null : sessionId.toString();
         e.agentId = agentId;
         e.turnNumber = turn.turnNumber();
@@ -110,7 +113,7 @@ public class TurnRecordEntity {
         return id;
     }
 
-    public @NonNull String getUserId() {
+    public @NonNull UUID getUserId() {
         return userId;
     }
 

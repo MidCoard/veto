@@ -26,7 +26,7 @@ class TasksFrontendTest {
         var invocation = process.invocation();
         var scope =
                 new Scope.AgentScope(
-                        invocation.owner(), invocation.sessionId(), invocation.agentId());
+                        invocation.userId(), invocation.sessionId(), invocation.agentId());
         var contribution = new TasksFrontend(tasks);
         var args =
                 new JsonValue.ObjectValue(
@@ -38,10 +38,13 @@ class TasksFrontendTest {
         try {
             for (var wrong :
                     List.of(
-                            new Scope.AgentScope("other", scope.session(), scope.agent()),
                             new Scope.AgentScope(
-                                    scope.owner(), UUID.randomUUID().toString(), scope.agent()),
-                            new Scope.AgentScope(scope.owner(), scope.session(), "other"))) {
+                                    UUID.fromString("ede9d700-cf06-5666-9e12-b8cb22e3da12"),
+                                    scope.session(),
+                                    scope.agent()),
+                            new Scope.AgentScope(
+                                    scope.userId(), UUID.randomUUID().toString(), scope.agent()),
+                            new Scope.AgentScope(scope.userId(), scope.session(), "other"))) {
                 var list =
                         object(
                                 contribution.handle(

@@ -187,22 +187,17 @@ class ScriptPluginBootTest {
         var call = new ToolCall(definition.name(), Map.of("text", "a😀b"), "plugin-boot-call");
         assertEquals(ToolResultStatus.FAILURE, engine.execute(call, definition).status());
         UUID user = UUID.randomUUID();
-        var session = new SessionEntity("test-owner", "plugin-selection");
+        var session = new SessionEntity(user, "plugin-selection");
         session.setPluginBindings(plugins.selection(List.of("text")));
         sessions.saveAndFlush(session);
         UUID sessionId = UUID.fromString(session.getId());
         var permit =
                 ToolExecutionPermit.capture(
                                 call, definition, Workspace.single(STATE, PathMode.REAL))
-                        .withCaller("test-agent", user, "test-owner", sessionId);
+                        .withCaller("test-agent", user, sessionId);
         ToolCallContextHolder.set(
                 new ToolCallContext(
-                        "test-agent",
-                        user,
-                        "test-owner",
-                        sessionId,
-                        ToolResultPresentationMode.BASIC,
-                        permit));
+                        "test-agent", user, sessionId, ToolResultPresentationMode.BASIC, permit));
         try {
             var result = engine.execute(call, definition);
             assertEquals(

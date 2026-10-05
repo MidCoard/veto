@@ -50,6 +50,7 @@ import top.focess.veto.model.SessionEntity;
 import top.focess.veto.model.SessionRepository;
 import top.focess.veto.sandbox.*;
 import top.focess.veto.vault.*;
+import top.focess.veto.vault.TestUsers;
 
 class CredentialJourneyTest {
     private static final @NonNull String IMPORT_TOOL =
@@ -70,8 +71,8 @@ class CredentialJourneyTest {
         Path file = Files.writeString(root.resolve("config.txt"), "token=" + token);
         var configuration = new CredentialVaultConfiguration();
         configuration.setVaultHome(root.resolve("vault").toString());
-        var vault = new KeysteadVault(configuration);
-        vault.signup("owner", "test-password");
+        var vault = new KeysteadVault(configuration, TestUsers.registry());
+        var userId = vault.signup("owner", "test-password");
         var pluginConfiguration = new PluginConfigurations();
         pluginConfiguration.setToolNames(
                 Map.of(
@@ -304,7 +305,7 @@ class CredentialJourneyTest {
                         null,
                         null);
 
-        var credentialSession = new SessionEntity("owner", "test");
+        var credentialSession = new SessionEntity(userId, "test");
         String session = credentialSession.getId();
         when(credentialSessions.findById(session)).thenReturn(Optional.of(credentialSession));
         var agent =
@@ -318,8 +319,7 @@ class CredentialJourneyTest {
                                 LlmOptions.defaults(),
                                 null),
                         List.of(),
-                        UUID.randomUUID(),
-                        "owner",
+                        userId,
                         root.toString(),
                         0,
                         ToolResultPresentationMode.BASIC);
@@ -359,7 +359,8 @@ class CredentialJourneyTest {
                                 assertTrue(
                                         hitl.resolveOption(
                                                 prompt.agentId(), prompt.callId(), option.name()));
-                            });
+                            },
+                            userId);
             if (approveUse) {
                 assertTrue(result.success(), result.message());
                 assertEquals("Private repository read successfully", result.message());
@@ -374,7 +375,7 @@ class CredentialJourneyTest {
             }
             assertEquals(1, importedReferences.size());
             vault.withImportedCredential(
-                    "owner",
+                    userId,
                     importedReferences.getFirst(),
                     "github",
                     value -> assertEquals(token, new String(value)));

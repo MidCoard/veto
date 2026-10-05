@@ -5,12 +5,13 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 
 /** A persisted rule and its pending observations; triggering and delivery are separate. */
 public record MonitorRecord(
         @NonNull String id,
-        @NonNull String owner,
+        @NonNull UUID userId,
         @NonNull String sessionId,
         @NonNull String agentId,
         @NonNull String kind,
@@ -31,7 +32,7 @@ public record MonitorRecord(
     /** Compatibility constructor without activation states or request id. */
     public MonitorRecord(
             @NonNull String id,
-            @NonNull String owner,
+            @NonNull UUID userId,
             @NonNull String sessionId,
             @NonNull String agentId,
             @NonNull String kind,
@@ -44,14 +45,14 @@ public record MonitorRecord(
             @NonNull Instant createdAt,
             List<Event> delivered) {
         this(
-                id, owner, sessionId, agentId, kind, purpose, sourceId, dueAt, state, seen, pending,
-                createdAt, delivered, Map.of());
+                id, userId, sessionId, agentId, kind, purpose, sourceId, dueAt, state, seen,
+                pending, createdAt, delivered, Map.of());
     }
 
     /** Compatibility constructor without a request id. */
     public MonitorRecord(
             @NonNull String id,
-            @NonNull String owner,
+            @NonNull UUID userId,
             @NonNull String sessionId,
             @NonNull String agentId,
             @NonNull String kind,
@@ -66,7 +67,7 @@ public record MonitorRecord(
             Map<String, Activation> activations) {
         this(
                 id,
-                owner,
+                userId,
                 sessionId,
                 agentId,
                 kind,
@@ -107,7 +108,7 @@ public record MonitorRecord(
         states.put(eventId, new Activation(next, Instant.now()));
         return new MonitorRecord(
                 id,
-                owner,
+                userId,
                 sessionId,
                 agentId,
                 kind,
@@ -147,7 +148,7 @@ public record MonitorRecord(
     /** Compatibility constructor without delivered events, activations or request id. */
     public MonitorRecord(
             @NonNull String id,
-            @NonNull String owner,
+            @NonNull UUID userId,
             @NonNull String sessionId,
             @NonNull String agentId,
             @NonNull String kind,
@@ -159,8 +160,8 @@ public record MonitorRecord(
             @NonNull List<Event> pending,
             @NonNull Instant createdAt) {
         this(
-                id, owner, sessionId, agentId, kind, purpose, sourceId, dueAt, state, seen, pending,
-                createdAt, List.of());
+                id, userId, sessionId, agentId, kind, purpose, sourceId, dueAt, state, seen,
+                pending, createdAt, List.of());
     }
 
     /** Delivered events; never null. */
@@ -175,7 +176,7 @@ public record MonitorRecord(
         MonitorRecord next =
                 new MonitorRecord(
                         id,
-                        owner,
+                        userId,
                         sessionId,
                         agentId,
                         kind,
@@ -221,7 +222,7 @@ public record MonitorRecord(
             @NonNull List<Event> events) {
         return new MonitorRecord(
                 id,
-                owner,
+                userId,
                 sessionId,
                 agentId,
                 kind,

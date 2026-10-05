@@ -59,6 +59,7 @@ import top.focess.veto.llm.core.UniformLLMCaller;
 import top.focess.veto.model.SessionEntity;
 import top.focess.veto.model.tier.ModelBinding;
 import top.focess.veto.model.tier.ModelTierRegistry;
+import top.focess.veto.vault.TestUsers;
 
 /**
  * Exercises the agent loop end-to-end (AgentService → VetoAgent → AgentRunner) with a scripted
@@ -184,7 +185,7 @@ class AgentEndToEndTest {
                     .thenAnswer(call -> call.getArgument(1));
             Mockito.when(
                             selection.configure(
-                                    Mockito.anyString(),
+                                    Mockito.any(),
                                     Mockito.anyString(),
                                     Mockito.anyString(),
                                     Mockito.isNull(),
@@ -196,7 +197,7 @@ class AgentEndToEndTest {
             dependencies.plugins(selection).events(Mockito.mock(EventManager.class));
             var tiers = Mockito.mock(ModelTierRegistry.class);
             var model = transforms.leaderBinding;
-            Mockito.when(tiers.resolve(Mockito.anyString(), Mockito.any()))
+            Mockito.when(tiers.resolve(Mockito.any(), Mockito.any()))
                     .thenReturn(
                             new ModelBinding(
                                     model.provider(),
@@ -243,7 +244,8 @@ class AgentEndToEndTest {
                         "What is 2 + 2?",
                         binding("You are a helpful assistant."),
                         EPISODE_TIMEOUT,
-                        streamed::set);
+                        streamed::set,
+                        TestUsers.OWNER);
 
         assertTrue(result.success(), "episode should finish successfully");
         assertEquals("The answer is 4.", result.message());
@@ -277,7 +279,8 @@ class AgentEndToEndTest {
                         "What is 2 + 2?",
                         binding("You are a helpful assistant."),
                         EPISODE_TIMEOUT,
-                        streamed::add);
+                        streamed::add,
+                        TestUsers.OWNER);
 
         assertTrue(result.success(), "episode should finish successfully after the tool call");
         assertEquals("The answer is 4.", result.message());
@@ -333,8 +336,7 @@ class AgentEndToEndTest {
                 null,
                 binding("standalone base"),
                 List.of(),
-                UUID.randomUUID(),
-                "owner",
+                TestUsers.OWNER,
                 null,
                 0,
                 ToolResultPresentationMode.BASIC);
@@ -345,7 +347,8 @@ class AgentEndToEndTest {
                         "transform-fwd",
                         "Ship the feature.",
                         binding("You are a helpful assistant."),
-                        EPISODE_TIMEOUT);
+                        EPISODE_TIMEOUT,
+                        TestUsers.OWNER);
 
         assertTrue(result.success(), "episode should finish after the forward transform");
         AgentRunner runner =
@@ -433,8 +436,7 @@ class AgentEndToEndTest {
                 null,
                 binding("standalone base"),
                 List.of(),
-                UUID.randomUUID(),
-                "owner",
+                TestUsers.OWNER,
                 null,
                 0,
                 ToolResultPresentationMode.BASIC);
@@ -445,7 +447,8 @@ class AgentEndToEndTest {
                         "transform-rev",
                         "Ship the feature.",
                         binding("You are a helpful assistant."),
-                        EPISODE_TIMEOUT);
+                        EPISODE_TIMEOUT,
+                        TestUsers.OWNER);
 
         assertTrue(result.success(), "episode should finish after the reverse transform");
         AgentRunner runner =
@@ -502,7 +505,7 @@ class AgentEndToEndTest {
     @Test
     void mateUsesParentSessionBeforeItsFirstTurn() throws Exception {
         UUID sessionId = UUID.randomUUID();
-        UUID userId = UUID.randomUUID();
+        UUID userId = TestUsers.OWNER;
         var selection = Mockito.mock(SessionPlugins.class);
         Mockito.when(selection.tools(Mockito.anyString(), Mockito.any()))
                 .thenAnswer(call -> call.getArgument(1));
@@ -516,7 +519,6 @@ class AgentEndToEndTest {
                 binding("Parent"),
                 List.of(),
                 userId,
-                "owner",
                 Path.of(".").toAbsolutePath().toString(),
                 0,
                 ToolResultPresentationMode.BASIC);
@@ -526,7 +528,7 @@ class AgentEndToEndTest {
 
         var session = Mockito.mock(SessionEntity.class);
         Mockito.when(session.getId()).thenReturn(sessionId.toString());
-        Mockito.when(session.getOwner()).thenReturn("owner");
+        Mockito.when(session.getUserId()).thenReturn(TestUsers.OWNER);
         Mockito.when(session.getToolResultPresentation())
                 .thenReturn(ToolResultPresentationMode.BASIC);
         var parent = requireAgent(service.agent(sessionId.toString()));
@@ -604,8 +606,7 @@ class AgentEndToEndTest {
                 null,
                 binding("standalone base"),
                 List.of(),
-                UUID.randomUUID(),
-                "owner",
+                TestUsers.OWNER,
                 null,
                 0,
                 ToolResultPresentationMode.BASIC);
@@ -614,7 +615,8 @@ class AgentEndToEndTest {
                         "plan-transform",
                         "Ship the feature",
                         binding("standalone base"),
-                        EPISODE_TIMEOUT);
+                        EPISODE_TIMEOUT,
+                        TestUsers.OWNER);
         assertTrue(result.success(), result.message());
         assertEquals("Both transformations completed.", result.message());
         var agent = requireAgent(service.agent("plan-transform"));
@@ -645,14 +647,17 @@ class AgentEndToEndTest {
                 null,
                 binding("standalone base"),
                 List.of(),
-                UUID.randomUUID(),
-                "owner",
+                TestUsers.OWNER,
                 null,
                 0,
                 ToolResultPresentationMode.BASIC);
         var result =
                 service.submit(
-                        "batch-transform", "Ship it", binding("standalone base"), EPISODE_TIMEOUT);
+                        "batch-transform",
+                        "Ship it",
+                        binding("standalone base"),
+                        EPISODE_TIMEOUT,
+                        TestUsers.OWNER);
         assertTrue(result.success(), result.message());
         assertEquals("Leader continued.", result.message());
         assertEquals(

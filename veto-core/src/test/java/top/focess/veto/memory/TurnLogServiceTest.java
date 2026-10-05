@@ -70,7 +70,7 @@ class TurnLogServiceTest {
                 TurnRecord.userPrompt(1, "hello"), UUID.randomUUID(), UUID.randomUUID(), "agent");
         verifyNoInteractions(broker);
         when(repo.updateRecordMetadata(
-                        anyString(), anyString(), anyString(), anyInt(), anyString(), anyString()))
+                        anyString(), any(), anyString(), anyInt(), anyString(), anyString()))
                 .thenReturn(1);
         service.updateMetadata(
                 TurnRecord.userPrompt(1, "hello"), UUID.randomUUID(), UUID.randomUUID(), "agent");
@@ -105,7 +105,7 @@ class TurnLogServiceTest {
         ArgumentCaptor<TurnRecordEntity> captor = ArgumentCaptor.forClass(TurnRecordEntity.class);
         verify(repo).save(captor.capture());
         TurnRecordEntity saved = requireValue(captor.getValue(), "captured turn required");
-        assertEquals(user.toString(), saved.getUserId());
+        assertEquals(user, saved.getUserId());
         assertEquals(session.toString(), saved.getSessionId());
         assertEquals(agent, saved.getAgentId());
         assertEquals(7, saved.getTurnNumber());

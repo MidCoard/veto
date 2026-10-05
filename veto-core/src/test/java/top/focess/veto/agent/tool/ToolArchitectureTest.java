@@ -28,6 +28,7 @@ import top.focess.veto.api.plugin.contract.StandardContributionPoints;
 import top.focess.veto.api.plugin.storage.PluginStorage;
 import top.focess.veto.builtin.group.GroupProfiles;
 import top.focess.veto.integration.plugins.PluginManager;
+import top.focess.veto.vault.TestUsers;
 
 /** Checks that registered tools expose coherent authoring contracts. */
 @SpringBootTest
@@ -105,9 +106,9 @@ class ToolArchitectureTest {
             var session = mock(AgentHost.Session.class);
             var configuration =
                     new AgentConfiguration.Context(
-                            "owner",
+                            TestUsers.OWNER,
                             new PluginStorage.Grant<>(
-                                    "token", new Scope.SessionScope("owner", "session")),
+                                    "token", new Scope.SessionScope(TestUsers.OWNER, "session")),
                             session,
                             "agent",
                             base,

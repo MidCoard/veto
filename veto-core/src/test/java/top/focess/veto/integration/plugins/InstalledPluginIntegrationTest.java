@@ -1,26 +1,112 @@
 package top.focess.veto.integration.plugins;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 import java.util.jar.JarEntry;
 import java.util.jar.JarOutputStream;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.test.util.ReflectionTestUtils;
+import top.focess.veto.agent.tool.ToolCallContextHolder;
+import top.focess.veto.agent.tool.ToolEngineImpl;
+import top.focess.veto.api.event.BeforeInputEvent;
+import top.focess.veto.api.event.EventHandler;
+import top.focess.veto.api.event.Listener;
 import top.focess.veto.api.plugin.PluginState;
+import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
+import top.focess.veto.api.plugin.contribution.Contribution;
 import top.focess.veto.api.plugin.contribution.ContributionId;
 import top.focess.veto.api.plugin.contribution.ContributionPoint;
 import top.focess.veto.api.plugin.contribution.PluginContributionsDirectory;
+import top.focess.veto.api.plugin.service.ServiceException;
+import top.focess.veto.bus.SessionInvalidations;
+import top.focess.veto.integration.plugins.storage.PluginInvocationContext;
+import top.focess.veto.model.SessionRepository;
 import top.focess.veto.plugin.runtime.PluginClassLoader;
 
 class InstalledPluginIntegrationTest {
+    @Test
+    void workflowInvocationHidesUnselectedServicesAndRejectsRetainedHandles(
+            @TempDir @NonNull Path root) throws Exception {
+        writePackage(Files.createDirectory(root.resolve("service-provider")));
+        var selections = mock(SessionPlugins.class);
+        try (var manager =
+                new PluginManager(
+                        root.toString(),
+                        "",
+                        false,
+                        5000,
+                        PluginTestSupport.providerOf(PluginTestSupport.configurationServices(null)),
+                        new PluginConfigurations(),
+                        PluginTestSupport.activationStore(root.toString()),
+                        PluginTestSupport.providerOf(selections),
+                        PluginTestSupport.providerOf(mock(SessionRepository.class)),
+                        PluginTestSupport.providerOf(mock(SessionInvalidations.class)),
+                        PluginTestSupport.providerOf(mock(ToolEngineImpl.class)),
+                        PluginTestSupport.providerOf(mock(PluginLlmProviders.class)))) {
+            var services = manager.services();
+            var retained = services.find("sample:echo", 1).orElseThrow();
+            var request = new JsonValue.StringValue("hello");
+            assertEquals(request, retained.invoke(request));
+            Listener listener =
+                    new Listener() {
+                        @EventHandler
+                        public void input(@NonNull BeforeInputEvent event) {
+                            if (ToolCallContextHolder.get() != null) {
+                                event.setText("unexpected tool context");
+                                return;
+                            }
+                            if (!services.available().isEmpty()
+                                    || services.find("sample:echo", 1).isPresent()) {
+                                event.setText("provider exposed");
+                                return;
+                            }
+                            try {
+                                retained.invoke(request);
+                                event.setText("retained invocation allowed");
+                            } catch (ServiceException failure) {
+                                event.setText(failure.code().name());
+                            }
+                        }
+                    };
+            try (var workflow =
+                    new WorkflowPluginFixture(
+                            List.of(
+                                    Contribution.of(
+                                            StandardContributionPoints.LISTENERS,
+                                            "service-visibility",
+                                            listener)))) {
+                var scope =
+                        new Scope.AgentScope(
+                                UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"),
+                                workflow.session.getId(),
+                                "agent");
+                var event = new BeforeInputEvent(scope, "pending");
+                var invocation = new PluginInvocationContext(scope.userId(), scope.session());
+                try {
+                    workflow.events.submit(event);
+                } finally {
+                    invocation.close();
+                }
+                assertEquals("UNAVAILABLE", event.text());
+            }
+            assertEquals(
+                    request,
+                    retained.invoke(request),
+                    "Outside a session, application visibility returns");
+        }
+    }
+
     @Test
     void manifestPackagePublishesServiceThroughHost(@TempDir @NonNull Path root) throws Exception {
         Path packageDirectory = Files.createDirectory(root.resolve("service-provider"));
@@ -325,7 +411,7 @@ class InstalledPluginIntegrationTest {
         try (var jar =
                 new JarOutputStream(Files.newOutputStream(directory.resolve("plugin.jar")))) {
             for (String entry :
-                    java.util.List.of(
+                    List.of(
                             resource,
                             resource.replace(".class", "$1.class"),
                             resource.replace(".class", "$1$1.class"))) {

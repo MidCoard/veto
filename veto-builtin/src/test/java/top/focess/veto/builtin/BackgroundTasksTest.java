@@ -59,7 +59,11 @@ class BackgroundTasksTest {
         var info = tasks.start();
         var scope = process.invocation().scope();
         assertTrue(
-                tasks.list(new Scope.AgentScope("other", scope.session(), scope.agent()))
+                tasks.list(
+                                new Scope.AgentScope(
+                                        UUID.fromString("ede9d700-cf06-5666-9e12-b8cb22e3da12"),
+                                        scope.session(),
+                                        scope.agent()))
                         .isEmpty());
         assertThrows(
                 IllegalArgumentException.class,
@@ -151,7 +155,11 @@ class BackgroundTasksTest {
         second.invocation = first.invocation;
         other.invocation =
                 new PluginHost.Invocation(
-                        "owner", first.invocation.sessionId(), "other", null, "call");
+                        UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"),
+                        first.invocation.sessionId(),
+                        "other",
+                        null,
+                        "call");
         var queue = new ArrayDeque<Running>(List.of(first, second, other));
         var tasks = new BackgroundTasks(() -> new Host(queue.removeFirst()));
         var causes = new CopyOnWriteArrayList<BackgroundTasks.ExitCause>();
@@ -224,7 +232,11 @@ class BackgroundTasksTest {
         final @NonNull UUID id = UUID.randomUUID();
         PluginHost.@NonNull Invocation invocation =
                 new PluginHost.Invocation(
-                        "owner", UUID.randomUUID().toString(), "agent", "request", "call");
+                        UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"),
+                        UUID.randomUUID().toString(),
+                        "agent",
+                        "request",
+                        "call");
         final @NonNull CountDownLatch exited = new CountDownLatch(1);
         final @NonNull String text;
         volatile boolean refuseClose;

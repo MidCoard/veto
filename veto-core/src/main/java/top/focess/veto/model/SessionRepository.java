@@ -3,6 +3,7 @@ package top.focess.veto.model;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
@@ -12,15 +13,15 @@ import top.focess.veto.agent.workspace.WorkspaceAdmissionPolicy;
 @Repository
 public interface SessionRepository extends JpaRepository<SessionEntity, String> {
 
-    /** All sessions owned by {@code owner}. */
-    @NonNull List<SessionEntity> findByOwner(@NonNull String owner);
+    /** All sessions owned by {@code userId}. */
+    @NonNull List<SessionEntity> findByUserId(@NonNull UUID userId);
 
-    /** Existing sessions whose filesystem roots belong to another owner. */
-    @NonNull List<@NonNull SessionEntity> findByOwnerNot(@NonNull String owner);
+    /** Existing sessions whose filesystem roots belong to another userId. */
+    @NonNull List<@NonNull SessionEntity> findByUserIdNot(@NonNull UUID userId);
 
     /** Canonical persisted claims, including the backend default used by older sessions. */
-    default @NonNull List<@NonNull Path> claimedRootsExcept(@NonNull String owner) {
-        return findByOwnerNot(owner).stream()
+    default @NonNull List<@NonNull Path> claimedRootsExcept(@NonNull UUID userId) {
+        return findByUserIdNot(userId).stream()
                 .flatMap(
                         session -> {
                             String roots = session.getWorkspaceRoots();
@@ -35,45 +36,44 @@ public interface SessionRepository extends JpaRepository<SessionEntity, String> 
     }
 
     /**
-     * The owner's most-recently-active session (max lastActiveAt); used to auto-resume on
-     * reconnect.
+     * The user's most-recently-active session (max lastActiveAt); used to auto-resume on reconnect.
      */
-    @NonNull Optional<SessionEntity> findFirstByOwnerOrderByLastActiveAtDesc(@NonNull String owner);
+    @NonNull Optional<SessionEntity> findFirstByUserIdOrderByLastActiveAtDesc(@NonNull UUID userId);
 
     /**
-     * The owner's session with the given name; throws {@code NonUniqueResultException} if legacy
-     * rows share the {@code (owner, name)} pair (see {@link
-     * #findFirstByNameAndOwnerOrderByLastActiveAtDesc}).
+     * The user's session with the given name; throws {@code NonUniqueResultException} if legacy
+     * rows share the {@code (userId, name)} pair (see {@link
+     * #findFirstByNameAndUserIdOrderByLastActiveAtDesc}).
      */
-    @NonNull Optional<SessionEntity> findByNameAndOwner(
-            @NonNull String name, @NonNull String owner);
+    @NonNull Optional<SessionEntity> findByNameAndUserId(
+            @NonNull String name, @NonNull UUID userId);
 
     /**
-     * Duplicate-tolerant variant of {@link #findByNameAndOwner}: when legacy rows share an {@code
-     * (owner, name)} pair (same name across workspaces), the most-recently-active one wins instead
+     * Duplicate-tolerant variant of {@link #findByNameAndUserId}: when legacy rows share an {@code
+     * (userId, name)} pair (same name across workspaces), the most-recently-active one wins instead
      * of throwing {@code NonUniqueResultException}. Used by the REST path, which has no workspace
      * context to disambiguate with.
      */
-    @NonNull Optional<SessionEntity> findFirstByNameAndOwnerOrderByLastActiveAtDesc(
-            @NonNull String name, @NonNull String owner);
+    @NonNull Optional<SessionEntity> findFirstByNameAndUserIdOrderByLastActiveAtDesc(
+            @NonNull String name, @NonNull UUID userId);
 
     /**
-     * Returns the owner's session whose {@code name} and {@code workspaceRoots} both match exactly
+     * Returns the user's session whose {@code name} and {@code workspaceRoots} both match exactly
      * (case-sensitive, byte-exact CSV string). Used by {@code createSession} to enforce that two
      * sessions with the same name may exist in different workspaces but not in the same one — the
      * SQL {@code =} on a nullable column treats NULL and a concrete value as distinct, so legacy
      * rows with {@code workspace_roots = NULL} do not collide with new rows bound to a concrete
      * workspace.
      *
-     * <p>A DB-level unique constraint on {@code (owner, name, workspace_roots)} would be the
+     * <p>A DB-level unique constraint on {@code (userId, name, workspace_roots)} would be the
      * defense-in-depth complement; it is not added here because JPA's {@code ddl-auto=update} does
      * not introduce new constraints on an existing table, so it would require a hand-written
      * migration. SessionService serializes creation through transaction completion on a single
      * backend host.
      */
-    @NonNull Optional<SessionEntity> findByOwnerAndNameAndWorkspaceRoots(
-            @NonNull String owner, @NonNull String name, @NonNull String workspaceRoots);
+    @NonNull Optional<SessionEntity> findByUserIdAndNameAndWorkspaceRoots(
+            @NonNull UUID userId, @NonNull String name, @NonNull String workspaceRoots);
 
-    /** Bulk-delete every session owned by {@code owner} (used by user-deletion cascade). */
-    void deleteByOwner(@NonNull String owner);
+    /** Bulk-delete every session owned by {@code userId} (used by user-deletion cascade). */
+    void deleteByUserId(@NonNull UUID userId);
 }

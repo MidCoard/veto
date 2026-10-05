@@ -134,7 +134,7 @@ public final class PreparedInvocation {
         if (plugin != owner
                 || !call.equals(context.executionPermit().call())
                 || !invocation.agentId().equals(context.agentId())
-                || !invocation.owner().equals(context.owner())
+                || !invocation.userId().equals(context.userId())
                 || !invocation.sessionId().equals(String.valueOf(context.sessionId())))
             throw new SecurityException("Prepared effect belongs to another invocation");
         revalidate();

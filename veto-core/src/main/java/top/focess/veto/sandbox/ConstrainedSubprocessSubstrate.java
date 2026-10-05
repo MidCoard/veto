@@ -418,7 +418,7 @@ public final class ConstrainedSubprocessSubstrate implements SandboxSubstrate {
         Process last = pipeline.get(pipeline.size() - 1);
         CappedWait wait;
         try {
-            wait = waitCapped(last, timeout);
+            wait = waitCapped(pipeline, timeout);
         } catch (InterruptedException interrupted) {
             pipeline.forEach(Process::destroyForcibly);
             throw interrupted;
@@ -503,43 +503,71 @@ public final class ConstrainedSubprocessSubstrate implements SandboxSubstrate {
      */
     private @NonNull CappedWait waitCapped(@NonNull Process p, @NonNull Duration timeout)
             throws InterruptedException {
+        return waitCapped(List.of(p), timeout);
+    }
+
+    /** Drains every stderr pipe and waits for every command under the chain's one deadline. */
+    private @NonNull CappedWait waitCapped(
+            @NonNull List<@NonNull Process> processes, @NonNull Duration timeout)
+            throws InterruptedException {
         // Raw bytes first, decoded once at the end: a multi-byte character can straddle two read
         // chunks, and the writer population is mixed — console CLIs emit the platform codepage,
         // node/python emit UTF-8 — so {@link SubprocessOutput} sniffs per buffer.
         BoundedByteBuffer out = new BoundedByteBuffer(MAX_CAPTURE_BYTES_PER_STREAM);
-        BoundedByteBuffer err = new BoundedByteBuffer(MAX_CAPTURE_BYTES_PER_STREAM);
+        Process last = processes.getLast();
+        List<BoundedByteBuffer> errors = new ArrayList<>();
+        List<Thread> drains = new ArrayList<>();
         Thread outDrain =
                 Thread.ofVirtual()
                         .name("sandbox-drain-out")
-                        .start(() -> drain(p.getInputStream(), out));
-        Thread errDrain =
-                Thread.ofVirtual()
-                        .name("sandbox-drain-err")
-                        .start(() -> drain(p.getErrorStream(), err));
-        boolean finished;
+                        .start(() -> drain(last.getInputStream(), out));
+        for (Process process : processes) {
+            var err = new BoundedByteBuffer(MAX_CAPTURE_BYTES_PER_STREAM);
+            errors.add(err);
+            drains.add(
+                    Thread.ofVirtual()
+                            .name("sandbox-drain-err")
+                            .start(() -> drain(process.getErrorStream(), err)));
+        }
+        boolean capped = !timeout.isZero() && !timeout.isNegative();
+        long deadline = capped ? System.nanoTime() + timeout.toNanos() : Long.MAX_VALUE;
+        boolean finished = true;
         try {
-            finished = waitForCap(p, timeout);
+            for (Process process : processes) {
+                Duration remaining =
+                        capped ? Duration.ofNanos(deadline - System.nanoTime()) : timeout;
+                if ((capped && (remaining.isNegative() || remaining.isZero()))
+                        || !waitForCap(process, remaining)) {
+                    finished = false;
+                    break;
+                }
+            }
         } catch (InterruptedException interrupted) {
-            p.destroyForcibly();
+            processes.forEach(Process::destroyForcibly);
             throw interrupted;
         }
         if (!finished) {
-            p.destroyForcibly();
-            p.waitFor(); // reap: streams close, the drain threads observe EOF and exit
+            processes.forEach(Process::destroyForcibly);
+            for (Process process : processes) process.waitFor();
         }
         outDrain.join();
-        errDrain.join();
+        for (Thread thread : drains) thread.join();
         // Strip ANSI/VT escapes at the decode seam: the agent's context, the persisted history,
         // and the UI ledger all consume this same string, and escape bytes are noise to all three.
         String stdout = AnsiEscapes.strip(SubprocessOutput.decode(out.toByteArray()));
-        String stderr = AnsiEscapes.strip(SubprocessOutput.decode(err.toByteArray()));
+        StringBuilder stderr = new StringBuilder();
         if (out.truncated()) {
             stdout += "\n[stdout truncated at " + MAX_CAPTURE_BYTES_PER_STREAM + " bytes]";
         }
-        if (err.truncated()) {
-            stderr += "\n[stderr truncated at " + MAX_CAPTURE_BYTES_PER_STREAM + " bytes]";
+        for (BoundedByteBuffer err : errors) {
+            stderr.append(AnsiEscapes.strip(SubprocessOutput.decode(err.toByteArray())));
+            if (err.truncated()) {
+                stderr.append("\n[stderr truncated at ")
+                        .append(MAX_CAPTURE_BYTES_PER_STREAM)
+                        .append(" bytes]");
+            }
         }
-        return new CappedWait(finished, stdout, stderr);
+        return new CappedWait(finished, stdout, stderr.toString());
     }
 
     /** One writer (the drain thread) per buffer; the main thread reads only after join(). */

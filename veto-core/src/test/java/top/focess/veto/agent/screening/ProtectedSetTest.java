@@ -6,6 +6,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
+import top.focess.veto.vault.TestUsers;
 
 class ProtectedSetTest {
 
@@ -26,7 +27,7 @@ class ProtectedSetTest {
 
     @Test
     void deployerDefaultsIncludeVetoAndSsh() {
-        ProtectedSet ps = ProtectedSet.withDeployerDefaults("default", List.of());
+        ProtectedSet ps = ProtectedSet.withDeployerDefaults(TestUsers.OWNER, List.of());
         // ~/.veto and ~/.ssh entries should be present (absolute canonicalized)
         assertTrue(ps.paths().stream().anyMatch(p -> p.toString().contains(".veto")));
         assertTrue(ps.paths().stream().anyMatch(p -> p.toString().contains(".ssh")));
@@ -39,7 +40,7 @@ class ProtectedSetTest {
         // CRITICAL rather than DANGEROUS.
         Path root1 = Path.of("/home/u/proj1").toAbsolutePath().normalize();
         Path root2 = Path.of("/home/u/proj2").toAbsolutePath().normalize();
-        ProtectedSet ps = ProtectedSet.withDeployerDefaults("default", List.of(root1, root2));
+        ProtectedSet ps = ProtectedSet.withDeployerDefaults(TestUsers.OWNER, List.of(root1, root2));
         assertTrue(ps.covers(root1.resolve(".env")));
         assertTrue(ps.covers(root2.resolve(".env")));
         // home-relative defaults are still present alongside the per-root .env entries

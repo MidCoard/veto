@@ -111,13 +111,13 @@ public final class AgentRunner {
     private final @NonNull AgentToolExecution tools;
     final @NonNull ModelSession models;
     final @NonNull AgentOutput output;
-    private final String owner;
+    private final @NonNull UUID userId;
 
     /**
-     * Creates a runner bound to an explicit session owner and session id. Does not start the loop;
+     * Creates a runner bound to an explicit session userId and session id. Does not start the loop;
      * {@link VetoAgent} attaches and starts its dedicated virtual thread to drain the action queue.
      */
-    // WHY: these collaborator constructors only store callbacks/owner references; none invoke or
+    // WHY: these collaborator constructors only store callbacks/userId references; none invoke or
     // publish this runner. The final tool executor is assembled last, before any execution.
     @SuppressWarnings({"method.invocation", "methodref.receiver.bound", "argument", "assignment"})
     public AgentRunner(
@@ -134,14 +134,13 @@ public final class AgentRunner {
             @NonNull AgentEventSink eventSink,
             @NonNull UUID userId,
             TurnLogService turnLogService,
-            String owner,
             @NonNull UUID sessionId) {
         var responses = new ModelResponseValidation(toolEngine, objectMapper);
         List<LoopInterceptor> configuredInterceptors =
                 interceptors == null ? List.of() : List.copyOf(interceptors);
         this.agentId = agentId;
         this.sessionId = sessionId;
-        this.owner = owner;
+        this.userId = userId;
         this.toolEngine = toolEngine;
         this.toolBoundary = toolBoundary;
         this.persona = persona;
@@ -158,7 +157,7 @@ public final class AgentRunner {
                         this::outputView);
         var hooks =
                 new AgentPluginHooks(
-                        owner,
+                        userId,
                         sessionId.toString(),
                         agentId,
                         objectMapper,
@@ -184,7 +183,7 @@ public final class AgentRunner {
                 new AgentContinuationExecution(
                         agentId,
                         sessionId,
-                        owner,
+                        userId,
                         maxCallsPerEpisode,
                         output,
                         actionQueue,
@@ -201,11 +200,12 @@ public final class AgentRunner {
                         this,
                         agentId,
                         userId,
-                        owner,
                         sessionId);
     }
 
-    /** Attaches the vault that gates autonomous plugin work on the owner's unlocked credentials. */
+    /**
+     * Attaches the vault that gates autonomous plugin work on the userId's unlocked credentials.
+     */
     public void attachExecutionVault(@NonNull KeysteadVault vault) {
         requireSetup();
         continuations.attachExecutionVault(vault);
@@ -295,15 +295,13 @@ public final class AgentRunner {
     void run() {
         if (Thread.currentThread() != executionThread)
             throw new IllegalStateException("Runner must execute on its attached thread");
-        // Stamp the session owner onto the agent's virtual thread so credential resolution on the
+        // Stamp the session userId onto the agent's virtual thread so credential resolution on the
         // LLM-call path (CredentialResolver → KeysteadVault.currentHandle → UserContext.get) and
-        // the embedder path resolve against the owner's vault rather than the single-active-handle
+        // the embedder path resolve against the userId's vault rather than the single-active-handle
         // fallback. Owner is set once by AgentService before this thread starts, so a single set at
         // entry covers every turn; clear on exit so the thread never leaks a stale user.
-        String currentOwner = owner;
-        if (currentOwner != null) {
-            UserContext.set(currentOwner);
-        }
+        UUID currentUserId = userId;
+        UserContext.set(currentUserId);
         try {
             while (stopReason == null && control.open()) {
                 try {
@@ -402,7 +400,7 @@ public final class AgentRunner {
                         Thread.currentThread().interrupt();
                         break;
                     }
-                    // The interrupt merely wakes this owner; persistence and wait release stay
+                    // The interrupt merely wakes this userId; persistence and wait release stay
                     // here.
                     checkCancelledParked(parked);
                 }
@@ -661,7 +659,7 @@ public final class AgentRunner {
                 configuration.binding(),
                 configuration.prompt(),
                 toolResultPresentation,
-                owner,
+                userId,
                 modelTierRegistry,
                 executionPolicy.terminal(),
                 toolBoundary.workspace());
@@ -833,7 +831,7 @@ public final class AgentRunner {
                         persona,
                         binding,
                         sessionPlugins,
-                        owner,
+                        userId,
                         sessionId.toString(),
                         agentId,
                         toolEngine,
@@ -864,15 +862,15 @@ public final class AgentRunner {
         }
         try {
             var events = eventManager;
-            String currentOwner = owner;
+            UUID currentUserId = userId;
             var snapshot = control;
             if (snapshot instanceof ExecutionControl.Closed closed
                     && closed.reason() != ExecutionControl.CloseReason.SHUTDOWN
-                    && events != null
-                    && currentOwner != null)
+                    && events != null)
                 events.submit(
                         new AgentTerminatedEvent(
-                                new Scope.AgentScope(currentOwner, sessionId.toString(), agentId)));
+                                new Scope.AgentScope(
+                                        currentUserId, sessionId.toString(), agentId)));
         } finally {
             if (callback != null) callback.run();
         }
@@ -895,7 +893,7 @@ public final class AgentRunner {
         }
         if (stopped != null) {
             // Unblock a waiting parent even when its child provider ignores interruption.
-            // This announces rejection, not execution exit; only the owner releases waits/settles.
+            // This announces rejection, not execution exit; only the userId releases waits/settles.
             stopped.result.complete(
                     AgentResult.failure(
                             Msg.get(stopped.locale, "error.agent.interrupted"), Map.of()));

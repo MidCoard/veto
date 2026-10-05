@@ -28,7 +28,7 @@ import top.focess.veto.builtin.memory.embedder.HashEmbedder;
  * for another operation on this runtime; slow I/O serializes callers by design.
  */
 public final class MemoryRuntime implements DataLifecycle {
-    private final @NonNull Set<String> deletingOwners = new HashSet<>();
+    private final @NonNull Set<UUID> deletingUsers = new HashSet<>();
     private final @NonNull Set<String> deletingSessions = new HashSet<>();
     private final @NonNull PluginContext context;
     private final @NonNull String profile;
@@ -93,24 +93,24 @@ public final class MemoryRuntime implements DataLifecycle {
         var invocation = authorize(tool);
         var grant = context.storage().currentSession();
         if (!grant.scope().session().equals(invocation.sessionId())
-                || deletingOwners.contains(grant.scope().owner())
-                || deletingSessions.contains(grant.scope().owner() + ":" + grant.scope().session()))
+                || deletingUsers.contains(grant.scope().userId())
+                || deletingSessions.contains(
+                        grant.scope().userId() + ":" + grant.scope().session()))
             throw new SecurityException("Memory scope is being deleted");
         return grant;
     }
 
     @Override
-    public synchronized @NonNull Completion prepareOwnerDeletion(
-            @NonNull String owner, @NonNull String userId) {
-        if (!deletingOwners.add(userId))
+    public synchronized @NonNull Completion prepareUserDeletion(@NonNull UUID userId) {
+        if (!deletingUsers.add(userId))
             throw new IllegalStateException("Account cleanup already pending");
         try {
             var backend = context.service(MemoryBackendFactory.class).orElse(null);
-            if (backend != null) backend.deleteOwner(UUID.fromString(userId));
+            if (backend != null) backend.deleteOwner(userId);
             else if (profile.equals("jpa") || profile.equals("pgvector"))
                 throw new IllegalStateException("Durable cleanup unavailable");
         } catch (RuntimeException failure) {
-            deletingOwners.remove(userId);
+            deletingUsers.remove(userId);
             throw failure;
         }
         return committed -> {
@@ -118,22 +118,21 @@ public final class MemoryRuntime implements DataLifecycle {
                 if (committed
                         && store != null
                         && (profile.equals("memory") || profile.equals("vector")))
-                    store.deleteOwner(UUID.fromString(userId));
-                if (!committed) deletingOwners.remove(userId);
+                    store.deleteOwner(userId);
+                if (!committed) deletingUsers.remove(userId);
             }
         };
     }
 
     @Override
     public synchronized @NonNull Completion prepareSessionDeletion(
-            @NonNull String owner, @NonNull String userId, @NonNull String sessionId) {
+            @NonNull UUID userId, @NonNull String sessionId) {
         String key = userId + ":" + sessionId;
         if (!deletingSessions.add(key))
             throw new IllegalStateException("Session cleanup already pending");
         try {
             var backend = context.service(MemoryBackendFactory.class).orElse(null);
-            if (backend != null)
-                backend.deleteSession(UUID.fromString(userId), UUID.fromString(sessionId));
+            if (backend != null) backend.deleteSession(userId, UUID.fromString(sessionId));
             else if (profile.equals("jpa") || profile.equals("pgvector"))
                 throw new IllegalStateException("Durable cleanup unavailable");
         } catch (RuntimeException failure) {
@@ -145,7 +144,7 @@ public final class MemoryRuntime implements DataLifecycle {
                 if (committed
                         && store != null
                         && (profile.equals("memory") || profile.equals("vector")))
-                    store.deleteSession(UUID.fromString(userId), UUID.fromString(sessionId));
+                    store.deleteSession(userId, UUID.fromString(sessionId));
                 if (!committed) deletingSessions.remove(key);
             }
         };
@@ -164,7 +163,7 @@ public final class MemoryRuntime implements DataLifecycle {
                                                 ? UUID.fromString(grant.scope().session())
                                                 : null,
                                         null,
-                                        UUID.fromString(grant.scope().owner()),
+                                        grant.scope().userId(),
                                         limit,
                                         floor));
             }
@@ -176,7 +175,7 @@ public final class MemoryRuntime implements DataLifecycle {
         return new MemoryWriteCapability() {
             public @NonNull MemoryId add(@NonNull String content, UUID projectId) {
                 synchronized (MemoryRuntime.this) {
-                    UUID user = UUID.fromString(grant(tool).scope().owner());
+                    UUID user = grant(tool).scope().userId();
                     if (!tool.equals("write_memory"))
                         throw new SecurityException("Memory operation mismatch");
                     return store().add(
@@ -195,7 +194,7 @@ public final class MemoryRuntime implements DataLifecycle {
 
             public MemoryId promote(@NonNull MemoryId id) {
                 synchronized (MemoryRuntime.this) {
-                    UUID user = UUID.fromString(grant(tool).scope().owner());
+                    UUID user = grant(tool).scope().userId();
                     if (!tool.equals("write_memory"))
                         throw new SecurityException("Memory operation mismatch");
                     return store().promote(id, user);
@@ -204,7 +203,7 @@ public final class MemoryRuntime implements DataLifecycle {
 
             public boolean forget(@NonNull MemoryId id) {
                 synchronized (MemoryRuntime.this) {
-                    UUID user = UUID.fromString(grant(tool).scope().owner());
+                    UUID user = grant(tool).scope().userId();
                     if (!tool.equals("forget_memory"))
                         throw new SecurityException("Memory operation mismatch");
                     return store().forget(id, user);

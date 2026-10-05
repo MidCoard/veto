@@ -143,7 +143,7 @@ public final class TaskEvents implements BackgroundTasks.TaskObserver, AutoClose
         Pending value = pending.get(id);
         if (value == null) return;
         try {
-            observer.changed(value.scope().owner(), value.task(), value.cause().name());
+            observer.changed(value.scope().userId(), value.task(), value.cause().name());
             pending.remove(id, value);
         } catch (RuntimeException failure) {
             LoggerFactory.getLogger(TaskEvents.class)

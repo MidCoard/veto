@@ -34,14 +34,27 @@ class GroupOrchestratorFixesTest {
         HeuristicLeader heuristic = new HeuristicLeader(2, 5);
         Group g =
                 newGroup(
-                        "user-1", "Mate-A", "coding", "Mate-B", "coding", "Mate-C", "coding",
-                        "Mate-D", "coding");
+                        UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"),
+                        "Mate-A",
+                        "coding",
+                        "Mate-B",
+                        "coding",
+                        "Mate-C",
+                        "coding",
+                        "Mate-D",
+                        "coding");
         // Below threshold: no Mate has more than 4 → should not pivot.
         assertFalse(
                 perMateShouldPivot(heuristic, g, 4),
                 "F1: 4 messages per Mate × 4 Mates must NOT exceed per-Mate threshold of 5");
         // A single Mate at 6 must pivot even when others are quiet.
-        Group g2 = newGroup("user-1", "Mate-A", "coding", "Mate-B", "coding");
+        Group g2 =
+                newGroup(
+                        UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"),
+                        "Mate-A",
+                        "coding",
+                        "Mate-B",
+                        "coding");
         assertTrue(
                 perMateShouldPivot(heuristic, g2, 6),
                 "F1: a single Mate at 6 must pivot when threshold is 5");
@@ -57,7 +70,7 @@ class GroupOrchestratorFixesTest {
         Group g =
                 Group.create(
                         "Leader-1",
-                        "user-1",
+                        UUID.fromString("8158954f-044f-58f5-968f-ac185b65f0a9"),
                         "test",
                         blackboard,
                         ExecutionDag.linear(groupId, List.of("n1")));
@@ -107,7 +120,7 @@ class GroupOrchestratorFixesTest {
         Group g =
                 Group.create(
                         "Leader-1",
-                        "user-1",
+                        UUID.fromString("8158954f-044f-58f5-968f-ac185b65f0a9"),
                         "test",
                         blackboard,
                         ExecutionDag.linear(UUID.randomUUID(), List.of("n1")));
@@ -168,7 +181,7 @@ class GroupOrchestratorFixesTest {
         Group g =
                 Group.create(
                         "Leader-1",
-                        "user-1",
+                        UUID.fromString("8158954f-044f-58f5-968f-ac185b65f0a9"),
                         "test",
                         blackboard,
                         new ExecutionDag(UUID.randomUUID(), List.of()));
@@ -186,7 +199,7 @@ class GroupOrchestratorFixesTest {
     // ─── helpers ──────────────────────────────────────────────────────────
 
     private static @NonNull Group newGroup(
-            @NonNull String userId, @NonNull Object @NonNull ... matePairs) {
+            @NonNull UUID userId, @NonNull Object @NonNull ... matePairs) {
         Blackboard blackboard = new Blackboard();
         UUID groupId = UUID.randomUUID();
         Group g =

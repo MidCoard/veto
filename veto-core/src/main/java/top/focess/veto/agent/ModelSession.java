@@ -52,7 +52,7 @@ final class ModelSession {
             @NonNull LlmBinding binding,
             AgentProfile.Prompt prompt,
             @NonNull ToolResultPresentationMode presentation,
-            String owner,
+            @NonNull UUID userId,
             ModelTierRegistry tiers,
             IsolatedAgent.Terminal terminal,
             @NonNull Workspace workspace) {}
@@ -277,7 +277,7 @@ final class ModelSession {
                 current.binding(),
                 current.prompt(),
                 current.presentation(),
-                current.owner(),
+                current.userId(),
                 current.tiers(),
                 responses);
     }

@@ -3,6 +3,7 @@ package top.focess.veto.agent.screening;
 import java.nio.file.Path;
 import java.util.HashSet;
 import java.util.Set;
+import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
@@ -50,9 +51,7 @@ public class ProtectedSetResolver {
      * under {@link DeployerPolicy#FULL_ACCESS}.
      */
     public @NonNull ProtectedSet resolve(
-            @NonNull DeployerPolicy policy,
-            @NonNull String vetoUserId,
-            @NonNull Workspace workspace) {
+            @NonNull DeployerPolicy policy, @NonNull UUID userId, @NonNull Workspace workspace) {
         if (policy == DeployerPolicy.FULL_ACCESS) {
             return ProtectedSet.empty();
         }
@@ -60,8 +59,7 @@ public class ProtectedSetResolver {
                 policyConfiguration.protectionFor(policy);
         Set<Path> paths = new HashSet<>();
         if (configuration.isIncludeDefaults()) {
-            paths.addAll(
-                    ProtectedSet.withDeployerDefaults(vetoUserId, workspace.hostRoots()).paths());
+            paths.addAll(ProtectedSet.withDeployerDefaults(userId, workspace.hostRoots()).paths());
         }
         if (configuration.isIncludeApplicationPaths()) {
             paths.addAll(ProtectedSet.standardSystemProtected(launchDirectory));

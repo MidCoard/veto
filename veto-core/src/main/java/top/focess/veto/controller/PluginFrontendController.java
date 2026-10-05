@@ -63,8 +63,8 @@ public final class PluginFrontendController {
             @NonNull JsonNode arguments) {}
 
     private @NonNull SessionEntity session(@NonNull String name) {
-        return sessions.findFirstByNameAndOwnerOrderByLastActiveAtDesc(
-                        name, authorization.requireUser())
+        return sessions.findFirstByNameAndUserIdOrderByLastActiveAtDesc(
+                        name, authorization.requireUserId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
     }
 
@@ -114,7 +114,7 @@ public final class PluginFrontendController {
     }
 
     /**
-     * Runs a frontend module action scoped to the session's owner, id, and a known agent. 400 on
+     * Runs a frontend module action scoped to the session's userId, id, and a known agent. 400 on
      * malformed requests, 404 on unknown session/agent/module, 503 on plugin failure.
      */
     @PostMapping("/actions")
@@ -159,12 +159,12 @@ public final class PluginFrontendController {
                                     () -> {
                                         var invocation =
                                                 new PluginInvocationContext(
-                                                        session.getOwner(), session.getId());
+                                                        session.getUserId(), session.getId());
                                         try {
                                             return entry.implementation()
                                                     .handle(
                                                             new Scope.AgentScope(
-                                                                    session.getOwner(),
+                                                                    session.getUserId(),
                                                                     session.getId(),
                                                                     request.agentId()),
                                                             request.action(),

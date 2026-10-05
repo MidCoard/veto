@@ -5,6 +5,7 @@ import static org.mockito.Mockito.*;
 
 import com.anthropic.client.AnthropicClient;
 import com.anthropic.core.JsonValue;
+import com.anthropic.core.RequestOptions;
 import com.anthropic.models.messages.ContentBlock;
 import com.anthropic.models.messages.ContentBlockParam;
 import com.anthropic.models.messages.Message;
@@ -44,7 +45,8 @@ class AnthropicLlmClientTest {
                 .thenReturn(
                         java.util.Optional.of(
                                 com.anthropic.models.messages.StopReason.of("max_tokens")));
-        when(sdk.messages().create(any(MessageCreateParams.class))).thenReturn(response);
+        when(sdk.messages().create(any(MessageCreateParams.class), any(RequestOptions.class)))
+                .thenReturn(response);
         assertThrows(
                 ModelSchemaException.class,
                 () ->
@@ -60,7 +62,8 @@ class AnthropicLlmClientTest {
                 "骨架已完成。消息格式示例：\n```json\n{\"id\":\"demo\",\"text\":\"hello\"}\n```\n接下来可以编译。";
         var answerBlock = text(answer);
         when(response.content()).thenReturn(List.of(answerBlock));
-        when(sdk.messages().create(any(MessageCreateParams.class))).thenReturn(response);
+        when(sdk.messages().create(any(MessageCreateParams.class), any(RequestOptions.class)))
+                .thenReturn(response);
         var result =
                 new AnthropicLlmClient(sdk, new ObjectMapper(), ProviderTestPrompts.PROMPTS)
                         .complete(new ResolvedRequest(request(), null, "unused"));
@@ -78,7 +81,8 @@ class AnthropicLlmClientTest {
         when(response.usage().outputTokens()).thenReturn(5L);
         when(response.usage().cacheReadInputTokens()).thenReturn(Optional.of(800L));
         when(response.usage().cacheCreationInputTokens()).thenReturn(Optional.of(100L));
-        when(sdk.messages().create(any(MessageCreateParams.class))).thenReturn(response);
+        when(sdk.messages().create(any(MessageCreateParams.class), any(RequestOptions.class)))
+                .thenReturn(response);
         LlmSystemUsage.begin();
         try {
             new AnthropicLlmClient(sdk, new ObjectMapper(), ProviderTestPrompts.PROMPTS)
@@ -99,7 +103,8 @@ class AnthropicLlmClientTest {
         var response = mock(Message.class, RETURNS_DEEP_STUBS);
         var finished = text("Finished");
         when(response.content()).thenReturn(List.of(finished));
-        when(sdk.messages().create(any(MessageCreateParams.class))).thenReturn(response);
+        when(sdk.messages().create(any(MessageCreateParams.class), any(RequestOptions.class)))
+                .thenReturn(response);
         ToolDefinition tool = mock(ToolDefinition.class);
         when(tool.name()).thenReturn("view_file");
         when(tool.description()).thenReturn("Read a file");
@@ -134,7 +139,11 @@ class AnthropicLlmClientTest {
                 "Finished",
                 client.complete(new ResolvedRequest(request, null, "unused")).rawResponse());
         var sent = ArgumentCaptor.forClass(MessageCreateParams.class);
-        verify(sdk.messages()).create(sent.capture());
+        var options = ArgumentCaptor.forClass(RequestOptions.class);
+        verify(sdk.messages()).create(sent.capture(), options.capture());
+        assertEquals(
+                request.options().timeoutOrDefault(),
+                Nullness.requireNonNull(options.getValue().getTimeout()).request());
         var params = sent.getValue();
         assertEquals(1, params.tools().orElseThrow().size());
         assertTrue(params.tools().toString().contains("absolutePath"));
@@ -170,7 +179,8 @@ class AnthropicLlmClientTest {
         var response = mock(Message.class, RETURNS_DEEP_STUBS);
         var finished = text("{\"message\":\"Finished\"}");
         when(response.content()).thenReturn(List.of(finished));
-        when(sdk.messages().create(any(MessageCreateParams.class))).thenReturn(response);
+        when(sdk.messages().create(any(MessageCreateParams.class), any(RequestOptions.class)))
+                .thenReturn(response);
         ToolDefinition tool = mock(ToolDefinition.class);
         when(tool.name()).thenReturn("view_file");
         when(tool.description()).thenReturn("Read a file");
@@ -194,7 +204,7 @@ class AnthropicLlmClientTest {
         var client = new AnthropicLlmClient(sdk, new ObjectMapper(), ProviderTestPrompts.PROMPTS);
         client.complete(new ResolvedRequest(request, null, "unused"));
         var sent = ArgumentCaptor.forClass(MessageCreateParams.class);
-        verify(sdk.messages()).create(sent.capture());
+        verify(sdk.messages()).create(sent.capture(), any(RequestOptions.class));
         assertTrue(
                 String.valueOf(sent.getValue()._additionalBodyProperties().get("tool_choice"))
                         .contains("none"));
@@ -212,7 +222,8 @@ class AnthropicLlmClientTest {
     void providerLookingTextNeverBecomesAnExecutableCall() throws Exception {
         var sdk = mock(AnthropicClient.class, RETURNS_DEEP_STUBS);
         var response = mock(Message.class, RETURNS_DEEP_STUBS);
-        when(sdk.messages().create(any(MessageCreateParams.class))).thenReturn(response);
+        when(sdk.messages().create(any(MessageCreateParams.class), any(RequestOptions.class)))
+                .thenReturn(response);
         var client = new AnthropicLlmClient(sdk, new ObjectMapper(), ProviderTestPrompts.PROMPTS);
         String leaked = "]<]minimax[>[<tool_call>\n]<]minimax[>[<invoke name=\"view_file\">";
         var leakedBlock = text(leaked);
@@ -235,7 +246,8 @@ class AnthropicLlmClientTest {
         var nativeCall = mock(ContentBlock.class, RETURNS_DEEP_STUBS);
         when(nativeCall.isToolUse()).thenReturn(true);
         when(response.content()).thenReturn(List.of(nativeCall));
-        when(sdk.messages().create(any(MessageCreateParams.class))).thenReturn(response);
+        when(sdk.messages().create(any(MessageCreateParams.class), any(RequestOptions.class)))
+                .thenReturn(response);
         assertThrows(
                 ModelSchemaException.class,
                 () ->
@@ -247,7 +259,8 @@ class AnthropicLlmClientTest {
     void acceptsAlternatingJsonAndNativeCallsWithoutLosingArguments() throws Exception {
         var sdk = mock(AnthropicClient.class, RETURNS_DEEP_STUBS);
         var response = mock(Message.class, RETURNS_DEEP_STUBS);
-        when(sdk.messages().create(any(MessageCreateParams.class))).thenReturn(response);
+        when(sdk.messages().create(any(MessageCreateParams.class), any(RequestOptions.class)))
+                .thenReturn(response);
         ToolDefinition tool = mock(ToolDefinition.class);
         when(tool.name()).thenReturn("list_dir");
         when(tool.description()).thenReturn("List a directory");
@@ -318,7 +331,8 @@ class AnthropicLlmClientTest {
         when(nativeCall.isToolUse()).thenReturn(true);
         var jsonCall = text("{\"calls\":[{\"tool_name\":\"list_dir\",\"args\":{}}]}");
         when(response.content()).thenReturn(List.of(jsonCall, nativeCall));
-        when(sdk.messages().create(any(MessageCreateParams.class))).thenReturn(response);
+        when(sdk.messages().create(any(MessageCreateParams.class), any(RequestOptions.class)))
+                .thenReturn(response);
         var failure =
                 assertThrows(
                         ModelSchemaException.class,
@@ -440,7 +454,8 @@ class AnthropicLlmClientTest {
         var response = mock(Message.class, RETURNS_DEEP_STUBS);
         var guideText = text(GUIDE);
         when(response.content()).thenReturn(List.of(guideText));
-        when(sdk.messages().create(any(MessageCreateParams.class))).thenReturn(response);
+        when(sdk.messages().create(any(MessageCreateParams.class), any(RequestOptions.class)))
+                .thenReturn(response);
         var request = request();
         var result =
                 new AnthropicLlmClient(sdk, new ObjectMapper(), ProviderTestPrompts.PROMPTS)
@@ -448,7 +463,7 @@ class AnthropicLlmClientTest {
         assertEquals(GUIDE, result.rawResponse());
         assertFalse(result.rawResponse().contains("features"));
         var sent = ArgumentCaptor.forClass(MessageCreateParams.class);
-        verify(sdk.messages()).create(sent.capture());
+        verify(sdk.messages()).create(sent.capture(), any(RequestOptions.class));
         assertFalse(sent.getValue()._additionalBodyProperties().containsKey("output_config"));
         assertFalse(sent.getValue().system().toString().contains("VetoResponse"));
         assertTrue(
@@ -464,7 +479,8 @@ class AnthropicLlmClientTest {
         when(nativeCall.isToolUse()).thenReturn(true);
         var guideText = text(GUIDE);
         when(response.content()).thenReturn(List.of(guideText, nativeCall));
-        when(sdk.messages().create(any(MessageCreateParams.class))).thenReturn(response);
+        when(sdk.messages().create(any(MessageCreateParams.class), any(RequestOptions.class)))
+                .thenReturn(response);
         var client = new AnthropicLlmClient(sdk, new ObjectMapper(), ProviderTestPrompts.PROMPTS);
         assertThrows(
                 ModelSchemaException.class,

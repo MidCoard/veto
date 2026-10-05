@@ -33,6 +33,7 @@ import top.focess.veto.llm.core.*;
 import top.focess.veto.model.SessionEntity;
 import top.focess.veto.model.SessionRepository;
 import top.focess.veto.vault.*;
+import top.focess.veto.vault.TestUsers;
 
 class GitHubRepositoryReaderTest {
     @Test
@@ -41,15 +42,15 @@ class GitHubRepositoryReaderTest {
             throws Exception {
         var configuration = new CredentialVaultConfiguration();
         configuration.setVaultHome(root.toString());
-        var vault = new KeysteadVault(configuration);
+        var vault = new KeysteadVault(configuration, TestUsers.registry());
         HttpClient client = mock(HttpClient.class);
         HttpResponse<byte[]> response = (HttpResponse<byte[]>) mock(HttpResponse.class);
         String token = "synthetic-token";
         try (var plugins = PluginTestSupport.manager()) {
-            vault.signup("alice", "test-password");
+            var userId = vault.signup("alice", "test-password");
             String reference =
                     vault.createSecureNoteIfAbsent(
-                            "alice",
+                            userId,
                             "veto.import.s_0123456789abcdef0123456789abcdef",
                             Map.of(
                                     "veto.import.id", "s_0123456789abcdef0123456789abcdef",
@@ -79,7 +80,7 @@ class GitHubRepositoryReaderTest {
                                 return response;
                             });
             SessionRepository sessions = mock(SessionRepository.class);
-            var row = new SessionEntity("alice", "test");
+            var row = new SessionEntity(userId, "test");
             when(sessions.findById(row.getId())).thenReturn(Optional.of(row));
             var leases =
                     new ImportedCredentialLeases(
@@ -98,22 +99,17 @@ class GitHubRepositoryReaderTest {
                             "repositoryName",
                             "project");
             var call = new ToolCall(tool.getName(), args, "approved-call");
-            UUID user = UUID.randomUUID();
+            UUID user = userId;
             UUID session = UUID.fromString(row.getId());
             var permit =
                     ToolExecutionPermit.capture(
                                     call,
                                     ToolSchemaCompiler.compileNative(tool),
                                     Workspace.single(root, PathMode.REAL))
-                            .withCaller("agent", user, "alice", session);
+                            .withCaller("agent", user, session);
             ToolCallContextHolder.set(
                     new ToolCallContext(
-                            "agent",
-                            user,
-                            "alice",
-                            session,
-                            ToolResultPresentationMode.BASIC,
-                            permit));
+                            "agent", user, session, ToolResultPresentationMode.BASIC, permit));
             var engine =
                     ToolEngineImpl.isolated(
                             new ObjectMapper(),

@@ -4,6 +4,7 @@ import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.concurrent.TimeoutException;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
@@ -86,11 +87,11 @@ public class PromptHandler {
     }
 
     /**
-     * Detach every terminal attached to one of {@code username}'s sessions (called by the unified
-     * logout path). Sessions persist in the DB and can be re-activated on re-login.
+     * Detach every terminal attached to one of the user's sessions (called by the unified logout
+     * path). Sessions persist in the DB and can be re-activated on re-login.
      */
-    public void deactivateUser(@NonNull String username) {
-        sessionService.deactivateUser(username);
+    public void deactivateUser(@NonNull UUID userId) {
+        sessionService.deactivateUser(userId);
     }
 
     /**
@@ -103,7 +104,8 @@ public class PromptHandler {
      */
     public IpcFrame.@NonNull TerminalResponse handle(
             @NonNull String prompt, @NonNull String terminalId, @NonNull VetoCommandSender sender) {
-        String user = vault.currentUserOrOnlyUnlocked();
+        UUID user = sender.userId();
+        if (user != null && !vault.isUnlocked(user)) user = null;
         if (user == null) {
             return IpcFrame.Error.ofError("Not logged in. Use /login.");
         }
@@ -149,10 +151,12 @@ public class PromptHandler {
                             sender::sendVetoPrompt,
                             sender::outputThought,
                             sender::sendToolCall,
-                            sender::sendToolResult);
+                            sender::sendToolResult,
+                            user);
 
             Map<String, Object> doneMeta = new HashMap<>();
-            doneMeta.put(IpcMeta.USERNAME, user);
+            String displayName = sender.username();
+            if (displayName != null) doneMeta.put(IpcMeta.USERNAME, displayName);
             doneMeta.put(IpcMeta.TURN_NUMBER, turnsOf(result));
 
             if (result.success()) {

@@ -114,11 +114,11 @@ public final class PluginAgentHosts implements PluginAgentHostFactory {
                     throw new SecurityException("Invocation does not belong to this plugin");
                 CapabilityAccess.require(call.executionPermit().capability());
                 var grant = storage.currentSession();
-                String owner = scopes.authorizeSession(storage, grant);
+                UUID userId = scopes.authorizeSession(storage, grant);
                 var sessionId = call.sessionId();
                 if (sessionId == null
                         || !grant.scope().session().equals(sessionId.toString())
-                        || !owner.equals(call.owner()))
+                        || !userId.equals(call.userId()))
                     throw new SecurityException("Invocation scope mismatch");
                 var child =
                         engine.open(
@@ -127,8 +127,8 @@ public final class PluginAgentHosts implements PluginAgentHostFactory {
                                 () -> {
                                     try {
                                         return plugin.state() == PluginState.ACTIVE
-                                                && vault.isUnlocked(owner)
-                                                && owner.equals(
+                                                && vault.isUnlocked(userId)
+                                                && userId.equals(
                                                         scopes.authorizeSession(storage, grant));
                                     } catch (RuntimeException failure) {
                                         return false;
@@ -160,8 +160,8 @@ public final class PluginAgentHosts implements PluginAgentHostFactory {
         synchronized (childLocks.get(parsedId.hashCode() & (childLocks.size() - 1))) {
             // Reauthorize after acquiring exclusion: scopes and vault access can change while
             // waiting.
-            String owner = scopes.authorizeSession(storage, grant);
-            if (!vault.isUnlocked(owner)) throw new SecurityException("Session owner is locked");
+            UUID userId = scopes.authorizeSession(storage, grant);
+            if (!vault.isUnlocked(userId)) throw new SecurityException("Session userId is locked");
             var session = sessions.findById(grant.scope().session()).orElseThrow();
             var parent =
                     identities
@@ -194,8 +194,8 @@ public final class PluginAgentHosts implements PluginAgentHostFactory {
                     row.claimPlugin(namespace, parentId);
                     identities.saveAndFlush(row);
                 }
-                String previous = UserContext.get();
-                UserContext.set(owner);
+                UUID previous = UserContext.get();
+                UserContext.set(userId);
                 try {
                     agent =
                             service.getObject()
@@ -249,9 +249,9 @@ public final class PluginAgentHosts implements PluginAgentHostFactory {
             }
 
             public AgentHost.@NonNull Request submit(@NonNull String prompt) {
-                String owner = scopes.authorizeSession(storage, grant);
-                if (!vault.isUnlocked(owner))
-                    throw new SecurityException("Session owner is locked");
+                UUID userId = scopes.authorizeSession(storage, grant);
+                if (!vault.isUnlocked(userId))
+                    throw new SecurityException("Session userId is locked");
                 var request = agent.submitRequest(prompt);
                 return new AgentHost.Request() {
                     public @NonNull String id() {

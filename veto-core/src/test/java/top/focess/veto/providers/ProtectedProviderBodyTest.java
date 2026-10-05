@@ -22,6 +22,7 @@ import top.focess.veto.api.llm.ResponseContract;
 import top.focess.veto.api.llm.VetoRequest;
 import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.secret.references.SecretCandidateStore;
+import top.focess.veto.vault.TestUsers;
 
 /** Captures actual SDK HTTP bytes at a local provider substitute, never real credentials. */
 class ProtectedProviderBodyTest {
@@ -32,7 +33,7 @@ class ProtectedProviderBodyTest {
         String userValue = "ghp_SYNTHETIC0913INVALIDUSER00000000000000000";
         String fileValue = "ghp_SYNTHETIC0913INVALIDFILE00000000000000000";
         var store = new SecretCandidateStore();
-        var scope = new Scope.AgentScope("test-owner", "test-session", "test-agent");
+        var scope = new Scope.AgentScope(TestUsers.ALICE, "test-session", "test-agent");
         String user = store.capture(scope, "browser-substitute", "token=" + userValue).text();
         String file = store.captureFile(scope, "file-substitute", "token=" + fileValue).text();
         var source =

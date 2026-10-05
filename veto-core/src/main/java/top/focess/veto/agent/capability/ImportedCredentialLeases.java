@@ -2,6 +2,7 @@ package top.focess.veto.agent.capability;
 
 import java.util.Arrays;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 import org.jspecify.annotations.NonNull;
@@ -78,19 +79,18 @@ public final class ImportedCredentialLeases {
             this.service = service;
         }
 
-        private @NonNull String check() {
+        private @NonNull UUID check() {
             if (closed
                     || Thread.currentThread() != thread
                     || thread.isInterrupted()
                     || CapabilityAccess.require(ToolCapability.NETWORK_EGRESS) != context)
                 throw new SecurityException("Credential invocation is no longer active");
-            var owner = context.owner();
+            var userId = context.userId();
             var session = context.sessionId();
-            if (owner == null
-                    || session == null
-                    || !vault.isUnlocked(owner)
+            if (session == null
+                    || !vault.isUnlocked(userId)
                     || !sessions.findById(session.toString())
-                            .map(row -> owner.equals(row.getOwner()))
+                            .map(row -> userId.equals(row.getUserId()))
                             .orElse(false))
                 throw new SecurityException("Credential session is unavailable");
             var binding = context.executionPermit().remoteServerName();
@@ -109,7 +109,7 @@ public final class ImportedCredentialLeases {
                                                                 plugin.identity().id())))
                     throw new SecurityException("Credential plugin is unavailable");
             }
-            return owner;
+            return userId;
         }
 
         public void use(@NonNull Consumer<char @NonNull []> operation) {

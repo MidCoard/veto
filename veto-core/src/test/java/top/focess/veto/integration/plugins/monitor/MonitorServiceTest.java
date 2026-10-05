@@ -34,7 +34,13 @@ class MonitorServiceTest {
     @Test
     void cancelledActivationRetainsTheEventAndRetriesPersistence() throws Exception {
         var due = Instant.now().plusSeconds(10);
-        service.createTimer("owner", session, "agent", "Cancelled request", due, "request");
+        service.createTimer(
+                UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"),
+                session,
+                "agent",
+                "Cancelled request",
+                due,
+                "request");
         service.tickAt(due.plusSeconds(1));
         var event = service.pending("agent", session).getFirst();
         service.activationCancelled("other-agent", session, event);
@@ -54,7 +60,9 @@ class MonitorServiceTest {
                 .save(any());
         service.activationCancelled("agent", session, event);
         assertTrue(service.pending("agent", session).isEmpty());
-        var saved = service.list("owner", session).getFirst();
+        var saved =
+                service.list(UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"), session)
+                        .getFirst();
         assertEquals(List.of(event), saved.deliveredEvents());
         var activation = saved.activationStates().get(event.id());
         if (activation == null) throw new AssertionError("Missing cancelled activation");
@@ -64,17 +72,39 @@ class MonitorServiceTest {
                         List.of(new MonitorEntity(saved.id(), mapper.writeValueAsString(saved))));
         service.restore();
         assertTrue(service.pending("agent", session).isEmpty());
-        assertEquals(List.of(event), service.list("owner", session).getFirst().deliveredEvents());
+        assertEquals(
+                List.of(event),
+                service.list(UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"), session)
+                        .getFirst()
+                        .deliveredEvents());
     }
 
     @Test
     void timerRequestSurvivesControlRestoreAndDelivery() throws Exception {
         var due = Instant.now().plusSeconds(60);
         var timer =
-                service.createTimer("owner", session, "agent", "Cancel task", due, "request-timer");
-        service.control("owner", session, "agent", timer.id(), "pause");
-        service.control("owner", session, "agent", timer.id(), "resume");
-        var saved = service.list("owner", session).getFirst();
+                service.createTimer(
+                        UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"),
+                        session,
+                        "agent",
+                        "Cancel task",
+                        due,
+                        "request-timer");
+        service.control(
+                UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"),
+                session,
+                "agent",
+                timer.id(),
+                "pause");
+        service.control(
+                UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"),
+                session,
+                "agent",
+                timer.id(),
+                "resume");
+        var saved =
+                service.list(UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"), session)
+                        .getFirst();
         assertEquals("request-timer", saved.requestId());
         String json = mapper.writeValueAsString(saved);
         when(repository.findAll()).thenReturn(List.of(new MonitorEntity(saved.id(), json)));
@@ -84,7 +114,9 @@ class MonitorServiceTest {
         assertEquals("request-timer", event.requestId());
         assertNull(event.dispatchId());
         service.acknowledge("agent", event);
-        var delivered = service.list("owner", session).getFirst();
+        var delivered =
+                service.list(UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"), session)
+                        .getFirst();
         assertEquals("request-timer", delivered.requestId());
         assertEquals("request-timer", delivered.deliveredEvents().getFirst().requestId());
         String oldJson = json.replace(",\"requestId\":\"request-timer\"", "");
@@ -95,17 +127,22 @@ class MonitorServiceTest {
     void failedOfflineActivationKeepsTheSameNotificationForTheNextTick() {
         PluginHost activator = host;
         var due = Instant.now().plusSeconds(10);
-        service.createTimer("owner", session, "agent", "Review", due);
+        service.createTimer(
+                UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"),
+                session,
+                "agent",
+                "Review",
+                due);
         doThrow(new IllegalStateException("recovery unavailable"))
                 .doNothing()
                 .when(activator)
-                .wake(anyString(), anyString(), anyString());
+                .wake(any(UUID.class), anyString(), anyString());
         service.tickAt(due.plusSeconds(1));
         var pending = service.pending("agent", session);
         assertEquals(1, pending.size());
         service.tickAt(due.plusSeconds(2));
         assertEquals(pending, service.pending("agent", session));
-        verify(activator, times(2)).wake(anyString(), anyString(), anyString());
+        verify(activator, times(2)).wake(any(UUID.class), anyString(), anyString());
     }
 
     private final @NonNull PluginHost host = mock();
@@ -123,7 +160,7 @@ class MonitorServiceTest {
         var old =
                 new MonitorRecord(
                         "old",
-                        "owner",
+                        UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"),
                         session,
                         "agent",
                         "TIME_ONCE",
@@ -139,7 +176,9 @@ class MonitorServiceTest {
         assertFalse(json.contains("activations"));
         when(repository.findAll()).thenReturn(List.of(new MonitorEntity(old.id(), json)));
         service.restore();
-        var restored = service.list("owner", session).getFirst();
+        var restored =
+                service.list(UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"), session)
+                        .getFirst();
         assertEquals(List.of(event), restored.deliveredEvents());
         assertTrue(restored.activationStates().isEmpty());
         assertTrue(service.pending("agent", session).isEmpty());
@@ -148,11 +187,18 @@ class MonitorServiceTest {
     @Test
     void appendedReceiptRecoversButInProgressWorkIsInterruptedWithoutReplay() throws Exception {
         var due = Instant.now().plusSeconds(60);
-        service.createTimer("owner", session, "agent", "Review", due);
+        service.createTimer(
+                UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"),
+                session,
+                "agent",
+                "Review",
+                due);
         service.tickAt(due.plusSeconds(1));
         var event = service.pending("agent", session).getFirst();
         service.acknowledge("agent", event);
-        var appended = service.list("owner", session).getFirst();
+        var appended =
+                service.list(UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"), session)
+                        .getFirst();
         assertEquals(
                 ActivationState.APPENDED,
                 Nullness.requireNonNull(appended.activationStates().get(event.id())).state());
@@ -166,7 +212,9 @@ class MonitorServiceTest {
         restored.restore();
         assertEquals(List.of(event), restored.pending("agent", session));
         restored.activationStarted("agent", event);
-        var running = restored.list("owner", session).getFirst();
+        var running =
+                restored.list(UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"), session)
+                        .getFirst();
         assertEquals(
                 ActivationState.RUNNING,
                 Nullness.requireNonNull(running.activationStates().get(event.id())).state());
@@ -183,7 +231,10 @@ class MonitorServiceTest {
                 ActivationState.INTERRUPTED,
                 Nullness.requireNonNull(
                                 restartedAgain
-                                        .list("owner", session)
+                                        .list(
+                                                UUID.fromString(
+                                                        "36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"),
+                                                session)
                                         .getFirst()
                                         .activationStates()
                                         .get(event.id()))
@@ -194,7 +245,12 @@ class MonitorServiceTest {
     @Test
     void failedClaimStaysEligibleAndFailedCompletionWriteRetriesWithoutReexecution() {
         var due = Instant.now().plusSeconds(60);
-        service.createTimer("owner", session, "agent", "Review", due);
+        service.createTimer(
+                UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"),
+                session,
+                "agent",
+                "Review",
+                due);
         service.tickAt(due.plusSeconds(1));
         var event = service.pending("agent", session).getFirst();
         service.acknowledge("agent", event);
@@ -214,7 +270,10 @@ class MonitorServiceTest {
         assertEquals(
                 ActivationState.RUNNING,
                 Nullness.requireNonNull(
-                                service.list("owner", session)
+                                service.list(
+                                                UUID.fromString(
+                                                        "36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"),
+                                                session)
                                         .getFirst()
                                         .activationStates()
                                         .get(event.id()))
@@ -225,7 +284,10 @@ class MonitorServiceTest {
         assertEquals(
                 ActivationState.COMPLETED,
                 Nullness.requireNonNull(
-                                service.list("owner", session)
+                                service.list(
+                                                UUID.fromString(
+                                                        "36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"),
+                                                session)
                                         .getFirst()
                                         .activationStates()
                                         .get(event.id()))
@@ -236,16 +298,37 @@ class MonitorServiceTest {
     @Test
     void pausedOrCancelledAppendedReceiptCannotBeClaimed() {
         var due = Instant.now().plusSeconds(60);
-        var timer = service.createTimer("owner", session, "agent", "Review", due);
+        var timer =
+                service.createTimer(
+                        UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"),
+                        session,
+                        "agent",
+                        "Review",
+                        due);
         service.tickAt(due.plusSeconds(1));
         var event = service.pending("agent", session).getFirst();
         service.acknowledge("agent", event);
-        service.control("owner", session, "agent", timer.id(), "pause");
+        service.control(
+                UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"),
+                session,
+                "agent",
+                timer.id(),
+                "pause");
         assertTrue(service.pending("agent", session).isEmpty());
         assertThrows(IllegalStateException.class, () -> service.activationStarted("agent", event));
-        service.control("owner", session, "agent", timer.id(), "resume");
+        service.control(
+                UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"),
+                session,
+                "agent",
+                timer.id(),
+                "resume");
         assertEquals(List.of(event), service.pending("agent", session));
-        service.control("owner", session, "agent", timer.id(), "cancel");
+        service.control(
+                UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"),
+                session,
+                "agent",
+                timer.id(),
+                "cancel");
         assertTrue(service.pending("agent", session).isEmpty());
         assertThrows(IllegalStateException.class, () -> service.activationStarted("agent", event));
     }
@@ -264,11 +347,10 @@ class MonitorServiceTest {
         var group =
                 Group.create(
                         "leader",
-                        "user",
+                        UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"),
                         "Review",
                         new Blackboard(),
                         new ExecutionDag(UUID.randomUUID(), List.of()),
-                        "owner",
                         null,
                         ToolResultPresentationMode.BASIC,
                         UUID.fromString(session));
@@ -290,7 +372,9 @@ class MonitorServiceTest {
                                                 "request"))));
         groups.put(group);
         service.tickAt(Instant.now());
-        var saved = service.list("owner", session).getFirst();
+        var saved =
+                service.list(UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"), session)
+                        .getFirst();
         var event = saved.pending().getFirst();
         when(repository.findAll())
                 .thenReturn(
@@ -298,7 +382,11 @@ class MonitorServiceTest {
         var restoredGroups = new GroupRegistry();
         var restored = new MonitorService(repository, mapper, groups(restoredGroups), host);
         restored.restore();
-        assertEquals("INTERRUPTED", restored.list("owner", session).getFirst().state());
+        assertEquals(
+                "INTERRUPTED",
+                restored.list(UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"), session)
+                        .getFirst()
+                        .state());
         assertTrue(restored.pending("leader", session).isEmpty());
         restoredGroups.put(group.withState(GroupState.RECOVERING, Instant.now()));
         restored.tickAt(Instant.now());
@@ -306,13 +394,21 @@ class MonitorServiceTest {
         restoredGroups.put(group.withState(GroupState.ACTIVE, Instant.now()));
         restored.tickAt(Instant.now());
         assertEquals(List.of(event), restored.pending("leader", session));
-        assertEquals(saved.seen(), restored.list("owner", session).getFirst().seen());
+        assertEquals(
+                saved.seen(),
+                restored.list(UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"), session)
+                        .getFirst()
+                        .seen());
         restored.tickAt(Instant.now());
         assertEquals(List.of(event), restored.pending("leader", session));
         deliver(restored, "leader", event);
         restored.tickAt(Instant.now());
         assertTrue(restored.pending("leader", session).isEmpty());
-        assertEquals(List.of(event), restored.list("owner", session).getFirst().deliveredEvents());
+        assertEquals(
+                List.of(event),
+                restored.list(UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"), session)
+                        .getFirst()
+                        .deliveredEvents());
     }
 
     @Test
@@ -346,7 +442,7 @@ class MonitorServiceTest {
                 new Group(
                         id,
                         "leader",
-                        "user",
+                        UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"),
                         "Review",
                         new ExecutionDag(id, List.of(oldNode, newNode)),
                         new Blackboard(),
@@ -354,7 +450,6 @@ class MonitorServiceTest {
                         GroupState.ACTIVE,
                         Instant.now(),
                         null,
-                        "owner",
                         null,
                         ToolResultPresentationMode.BASIC,
                         UUID.fromString(session));
@@ -442,9 +537,10 @@ class MonitorServiceTest {
                         Instant.now(),
                         UUID.fromString(session),
                         instance);
-        service.observeProcess("owner", exited, "USER_STOP");
         service.observeProcess(
-                "owner",
+                UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"), exited, "USER_STOP");
+        service.observeProcess(
+                UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"),
                 new TaskInfo(
                         "bg-1",
                         "agent",
@@ -463,9 +559,12 @@ class MonitorServiceTest {
         service.acknowledge("other", event);
         assertEquals(1, service.pending("agent", session).size());
         deliver(service, "agent", event);
-        service.observeProcess("owner", exited, "USER_STOP");
+        service.observeProcess(
+                UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"), exited, "USER_STOP");
         assertTrue(service.pending("agent", session).isEmpty());
-        var record = service.list("owner", session).getFirst();
+        var record =
+                service.list(UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"), session)
+                        .getFirst();
         assertEquals("COMPLETED", record.state());
         assertEquals(1, record.deliveredEvents().size());
     }
@@ -474,7 +573,7 @@ class MonitorServiceTest {
     void processInstanceIdentityPreventsTaskCounterCollisions() {
         for (int i = 0; i < 2; i++) {
             service.observeProcess(
-                    "owner",
+                    UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"),
                     new TaskInfo(
                             "bg-1",
                             "agent",
@@ -496,12 +595,22 @@ class MonitorServiceTest {
     @Test
     void timeTriggerIsDurableAndOnlyDeliveredOnce() {
         var due = Instant.now().plusSeconds(60);
-        var r = service.createTimer("owner", session, "agent", "Review", due);
+        var r =
+                service.createTimer(
+                        UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"),
+                        session,
+                        "agent",
+                        "Review",
+                        due);
         service.tickAt(due.plusSeconds(1));
         service.tickAt(due.plusSeconds(2));
         var events = service.pending("agent", session);
         assertEquals(1, events.size());
-        assertEquals("COMPLETED", service.list("owner", session).getFirst().state());
+        assertEquals(
+                "COMPLETED",
+                service.list(UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"), session)
+                        .getFirst()
+                        .state());
         deliver(service, "agent", events.getFirst());
         service.tickAt(due.plusSeconds(3));
         assertTrue(service.pending("agent", session).isEmpty());
@@ -511,15 +620,41 @@ class MonitorServiceTest {
     @Test
     void pauseHoldsOverdueWakeAndResumeDoesNotRepeatAcknowledgedOccurrence() {
         var due = Instant.now().plusSeconds(60);
-        var r = service.createTimer("owner", session, "agent", "Review", due);
-        service.control("owner", session, "agent", r.id(), "pause");
+        var r =
+                service.createTimer(
+                        UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"),
+                        session,
+                        "agent",
+                        "Review",
+                        due);
+        service.control(
+                UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"),
+                session,
+                "agent",
+                r.id(),
+                "pause");
         service.tickAt(due.plusSeconds(1));
         assertTrue(service.pending("agent", session).isEmpty());
-        service.control("owner", session, "agent", r.id(), "resume");
+        service.control(
+                UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"),
+                session,
+                "agent",
+                r.id(),
+                "resume");
         service.tickAt(due.plusSeconds(2));
         deliver(service, "agent", service.pending("agent", session).getFirst());
-        service.control("owner", session, "agent", r.id(), "pause");
-        service.control("owner", session, "agent", r.id(), "resume");
+        service.control(
+                UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"),
+                session,
+                "agent",
+                r.id(),
+                "pause");
+        service.control(
+                UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"),
+                session,
+                "agent",
+                r.id(),
+                "resume");
         service.tickAt(due.plusSeconds(3));
         assertTrue(service.pending("agent", session).isEmpty());
     }
@@ -527,17 +662,42 @@ class MonitorServiceTest {
     @Test
     void cancellationRemovesQueuedWakeButCannotControlAnotherOwner() {
         var due = Instant.now().plusSeconds(60);
-        var r = service.createTimer("owner", session, "agent", "Review", due);
+        var r =
+                service.createTimer(
+                        UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"),
+                        session,
+                        "agent",
+                        "Review",
+                        due);
         service.tickAt(due.plusSeconds(1));
         assertThrows(
                 SecurityException.class,
-                () -> service.control("other", session, "agent", r.id(), "cancel"));
+                () ->
+                        service.control(
+                                UUID.fromString("ec629ca2-6e80-51d3-a243-d00a0c2fcb52"),
+                                session,
+                                "agent",
+                                r.id(),
+                                "cancel"));
         assertThrows(
                 SecurityException.class,
-                () -> service.control("owner", session, "other", r.id(), "cancel"));
-        service.control("owner", session, "agent", r.id(), "cancel");
+                () ->
+                        service.control(
+                                UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"),
+                                session,
+                                "other",
+                                r.id(),
+                                "cancel"));
+        service.control(
+                UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"),
+                session,
+                "agent",
+                r.id(),
+                "cancel");
         assertTrue(service.pending("agent", session).isEmpty());
-        assertTrue(service.list("other", session).isEmpty());
+        assertTrue(
+                service.list(UUID.fromString("ec629ca2-6e80-51d3-a243-d00a0c2fcb52"), session)
+                        .isEmpty());
     }
 
     @Test
@@ -552,7 +712,12 @@ class MonitorServiceTest {
                             return row;
                         });
         var due = Instant.now().plusSeconds(60);
-        service.createTimer("owner", session, "agent", "Review", due);
+        service.createTimer(
+                UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"),
+                session,
+                "agent",
+                "Review",
+                due);
         service.tickAt(due.plusSeconds(1));
         when(repository.findAll()).thenReturn(List.of(saved.getLast()));
         var restored = new MonitorService(repository, mapper, groups(groups), host);
@@ -578,7 +743,7 @@ class MonitorServiceTest {
                 new Group(
                         id,
                         "leader",
-                        "user",
+                        UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"),
                         "Calculate",
                         new ExecutionDag(id, List.of(node)),
                         new Blackboard(),
@@ -586,13 +751,12 @@ class MonitorServiceTest {
                         GroupState.COMPLETED,
                         Instant.now(),
                         null,
-                        "owner",
                         null,
                         ToolResultPresentationMode.BASIC,
                         UUID.fromString(session));
         groups.put(group);
         assertTrue(service.hasUndeliveredGroup("leader"));
-        service.list("owner", session);
+        service.list(UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"), session);
         service.tick();
         assertEquals(1, service.pending("leader", session).size());
         assertTrue(
@@ -608,8 +772,18 @@ class MonitorServiceTest {
     @Test
     void terminatingReceiverCancelsItsWakeOnly() {
         var due = Instant.now().plusSeconds(60);
-        service.createTimer("owner", session, "a", "Review A", due);
-        service.createTimer("owner", session, "b", "Review B", due);
+        service.createTimer(
+                UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"),
+                session,
+                "a",
+                "Review A",
+                due);
+        service.createTimer(
+                UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"),
+                session,
+                "b",
+                "Review B",
+                due);
         service.cancelForAgent("a");
         service.tickAt(due.plusSeconds(1));
         assertTrue(service.pending("a", session).isEmpty());

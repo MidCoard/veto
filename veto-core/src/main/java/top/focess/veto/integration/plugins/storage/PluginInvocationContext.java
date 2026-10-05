@@ -1,5 +1,6 @@
 package top.focess.veto.integration.plugins.storage;
 
+import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import top.focess.veto.agent.tool.ToolCallContextHolder;
@@ -13,12 +14,12 @@ public final class PluginInvocationContext implements AutoCloseable {
     private static final @NonNull ThreadLocal<@Nullable PluginInvocationContext> CURRENT =
             new ThreadLocal<>();
     private final PluginInvocationContext previous;
-    final @NonNull String owner;
+    final @NonNull UUID userId;
     final @NonNull String session;
 
-    /** Installs this owner/session context as current on this thread until {@link #close()}. */
-    public PluginInvocationContext(@NonNull String owner, @NonNull String session) {
-        this.owner = owner;
+    /** Installs this userId/session context as current on this thread until {@link #close()}. */
+    public PluginInvocationContext(@NonNull UUID userId, @NonNull String session) {
+        this.userId = userId;
         this.session = session;
         previous = CURRENT.get();
         CURRENT.set(this);

@@ -29,6 +29,7 @@ import top.focess.veto.llm.core.ToolResultPresenter;
 import top.focess.veto.llm.core.UniformLLMCaller;
 import top.focess.veto.memory.TurnLogService;
 import top.focess.veto.memory.TurnRecordRepository;
+import top.focess.veto.vault.TestUsers;
 
 /**
  * Verifies {@link AgentService#getOrCreateAgent} seeds replayed history on first creation (so a
@@ -49,7 +50,7 @@ class AgentServiceHistorySeedTest {
                 };
         AgentService service = serviceWith(caller);
         UUID sessionId = UUID.randomUUID();
-        UUID userId = UUID.randomUUID();
+        UUID userId = TestUsers.OWNER;
         LlmBinding binding = binding();
 
         List<TurnRecord> history =
@@ -75,8 +76,7 @@ class AgentServiceHistorySeedTest {
         LlmBinding binding = binding();
 
         Agent a =
-                service.getOrCreateAgent(
-                        sessionId.toString(), binding, List.of(), UUID.randomUUID());
+                service.getOrCreateAgent(sessionId.toString(), binding, List.of(), TestUsers.OWNER);
         assertTrue(a.history().isEmpty(), "empty replay history leaves the agent's history empty");
     }
 
@@ -96,8 +96,7 @@ class AgentServiceHistorySeedTest {
                         TurnRecord.assistantResponse(2, "b"),
                         TurnRecord.userPrompt(5, "c"));
 
-        Agent a =
-                service.getOrCreateAgent(sessionId.toString(), binding, history, UUID.randomUUID());
+        Agent a = service.getOrCreateAgent(sessionId.toString(), binding, history, TestUsers.OWNER);
         AgentRunner runner =
                 assertInstanceOf(
                         AgentRunner.class, requireField(ReflectionTestUtils.getField(a, "runner")));
@@ -111,7 +110,7 @@ class AgentServiceHistorySeedTest {
     @Test
     void restartedAgentRecordsUpdatedSystemAndPreservesEffectiveConversation() throws Exception {
         UUID sessionId = UUID.randomUUID();
-        UUID userId = UUID.randomUUID();
+        UUID userId = TestUsers.OWNER;
         LlmBinding binding = binding();
         UniformLLMCaller finishingCaller =
                 (request, modelSessionId) -> new VetoResponse("done", null, "done");

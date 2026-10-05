@@ -16,6 +16,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 import top.focess.veto.controller.AuthorizationTestSupport;
 import top.focess.veto.controller.RequestAuthorization;
+import top.focess.veto.vault.TestUsers;
 import top.focess.veto.vault.UserContext;
 
 class TrainingControllerAuthorizationTest {
@@ -41,7 +42,7 @@ class TrainingControllerAuthorizationTest {
 
     @Test
     void everyEndpointRejectsNonAdminUsers() {
-        UserContext.set("member");
+        UserContext.set(TestUsers.ALICE);
         TrainingController controller =
                 controller(AuthorizationTestSupport.authorizer(name -> false));
 
@@ -56,7 +57,7 @@ class TrainingControllerAuthorizationTest {
 
     @Test
     void adminCanReadTrainingState() {
-        UserContext.set("admin");
+        UserContext.set(TestUsers.ADMIN);
         TrainingController controller =
                 controller(AuthorizationTestSupport.authorizer(name -> true));
 
@@ -67,7 +68,7 @@ class TrainingControllerAuthorizationTest {
 
     @Test
     void manualDeployDefaultsToTheLatestConversion(@TempDir @NonNull Path root) throws Exception {
-        UserContext.set("admin");
+        UserContext.set(TestUsers.ADMIN);
         TrainingConfiguration config = new TrainingConfiguration();
         config.setModelOutputDir(root.toString());
         config.setAutoDeployOnCompletion(false);

@@ -7,7 +7,6 @@ import java.time.Duration;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.atomic.AtomicBoolean;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -31,6 +30,7 @@ import top.focess.veto.llm.core.UniformLLMCaller;
 import top.focess.veto.memory.TurnLogService;
 import top.focess.veto.memory.TurnRecordEntity;
 import top.focess.veto.memory.TurnRecordRepository;
+import top.focess.veto.vault.TestUsers;
 import top.focess.veto.vault.UserContext;
 
 /**
@@ -112,39 +112,7 @@ class PerUserIdentityTest {
         Mockito.verify(repo, Mockito.atLeastOnce()).save(captor.capture());
         TurnRecordEntity first = captor.getAllValues().get(0);
         assertEquals(
-                TEST_USER_ID.toString(),
-                first.getUserId(),
-                "Logged turn should carry the supplied userId");
-        assertNotEquals(
-                AgentService.DEFAULT_USER_ID.toString(),
-                first.getUserId(),
-                "Logged userId should not be the default placeholder");
-    }
-
-    /**
-     * The backwards-compatible overload (userId defaults to DEFAULT_USER_ID) still works and logs
-     * under the default.
-     */
-    @Test
-    void defaultUserIdUsedWhenNotSupplied() throws Exception {
-        TurnRecordRepository repo = Mockito.mock(TurnRecordRepository.class);
-        TurnLogService turnLog = new TurnLogService(repo, new ObjectMapper(), new DeltaBroker());
-
-        UniformLLMCaller caller =
-                (request, modelSessionId) -> new VetoResponse("Done.", null, "Task complete.");
-
-        AgentService service = serviceWith(caller, turnLog);
-
-        // Use the existing overload (no userId parameter)
-        AgentResult result = service.submit("test-agent-default", "Hello", binding());
-
-        assertTrue(result.success());
-
-        // Turns logged under DEFAULT_USER_ID
-        ArgumentCaptor<TurnRecordEntity> captor = ArgumentCaptor.forClass(TurnRecordEntity.class);
-        Mockito.verify(repo, Mockito.atLeastOnce()).save(captor.capture());
-        TurnRecordEntity first = captor.getAllValues().get(0);
-        assertEquals(AgentService.DEFAULT_USER_ID.toString(), first.getUserId());
+                TEST_USER_ID, first.getUserId(), "Logged turn should carry the supplied userId");
     }
 
     /**
@@ -158,60 +126,27 @@ class PerUserIdentityTest {
         TurnRecordRepository repo = Mockito.mock(TurnRecordRepository.class);
         TurnLogService turnLog = new TurnLogService(repo, new ObjectMapper(), new DeltaBroker());
 
-        List<String> seen = new CopyOnWriteArrayList<>();
+        List<UUID> seen = new CopyOnWriteArrayList<>();
         UniformLLMCaller caller =
                 (request, modelSessionId) -> {
-                    String currentUser = UserContext.get();
+                    UUID currentUser = UserContext.get();
                     if (currentUser != null) seen.add(currentUser);
                     return new VetoResponse("Done.", null, "Task complete.");
                 };
 
         AgentService service = serviceWith(caller, turnLog);
 
-        String owner = "alice";
+        UUID userId = TestUsers.ALICE;
         String sessionId = UUID.randomUUID().toString();
         String primaryAgentId = UUID.randomUUID().toString();
         Agent agent =
                 service.getOrCreateAgent(
-                        sessionId,
-                        primaryAgentId,
-                        binding(),
-                        List.of(),
-                        service.userIdForOwner(owner),
-                        owner,
-                        null);
+                        sessionId, primaryAgentId, binding(), List.of(), userId, null);
         AgentResult result = agent.submitRequest("Hello").await(EPISODE_TIMEOUT);
 
         assertTrue(result.success(), "Episode should complete successfully");
         assertFalse(seen.isEmpty(), "Caller should have been invoked on the agent thread");
         assertEquals(
-                owner, seen.get(0), "UserContext on the agent thread must be the session owner");
-    }
-
-    /**
-     * When no owner is threaded (the legacy/test submit path), the runner leaves {@link
-     * UserContext} unset on the agent thread so the single-active-handle vault fallback still
-     * applies.
-     */
-    @Test
-    void nullOwnerLeavesUserContextUnset() throws Exception {
-        TurnRecordRepository repo = Mockito.mock(TurnRecordRepository.class);
-        TurnLogService turnLog = new TurnLogService(repo, new ObjectMapper(), new DeltaBroker());
-
-        AtomicBoolean sawNullContext = new AtomicBoolean();
-        UniformLLMCaller caller =
-                (request, modelSessionId) -> {
-                    sawNullContext.set(UserContext.get() == null);
-                    return new VetoResponse("Done.", null, "Task complete.");
-                };
-
-        AgentService service = serviceWith(caller, turnLog);
-
-        String agentKey = UUID.randomUUID().toString();
-        AgentResult result =
-                service.submit(agentKey, "Hello", binding(), EPISODE_TIMEOUT, TEST_USER_ID);
-
-        assertTrue(result.success(), "Episode should complete successfully");
-        assertTrue(sawNullContext.get(), "UserContext must be unset when no owner is threaded");
+                userId, seen.get(0), "UserContext on the agent thread must be the session owner");
     }
 }

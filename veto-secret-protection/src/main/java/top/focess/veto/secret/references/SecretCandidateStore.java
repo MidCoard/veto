@@ -22,9 +22,9 @@ import top.focess.veto.secret.detection.SecretMasker;
 
 /** Bounded transient captures. No raw-value lookup is exposed to tools or model callers. */
 public final class SecretCandidateStore {
-    private record SessionKey(@NonNull String owner, @NonNull String session) {}
+    private record SessionKey(@NonNull UUID userId, @NonNull String session) {}
 
-    private final @NonNull Set<String> closedOwners = new HashSet<>();
+    private final @NonNull Set<UUID> closedUsers = new HashSet<>();
     private final @NonNull Set<SessionKey> retiredSessions = new HashSet<>();
     private static final @NonNull Pattern REFERENCE = Pattern.compile("\\[SECRET_REF:([^]]+)]");
 
@@ -49,7 +49,7 @@ public final class SecretCandidateStore {
     /** Result of a capture pass: the masked text and the candidates it produced. */
     public record Capture(@NonNull String text, @NonNull List<Descriptor> candidates) {}
 
-    /** Confirmation returned after a candidate is imported into the owner's vault. */
+    /** Confirmation returned after a candidate is imported into the userId's vault. */
     public record ImportReceipt(
             @NonNull String credentialRef, @NonNull String service, @NonNull String label) {}
 
@@ -172,8 +172,8 @@ public final class SecretCandidateStore {
             @NonNull String sourceId,
             @NonNull String input,
             boolean preserveLines) {
-        if (closedOwners.contains(scope.owner())
-                || retiredSessions.contains(new SessionKey(scope.owner(), scope.session())))
+        if (closedUsers.contains(scope.userId())
+                || retiredSessions.contains(new SessionKey(scope.userId(), scope.session())))
             throw new IllegalStateException("Secret capture is unavailable");
         expire();
         List<int[]> references = new ArrayList<>();
@@ -304,13 +304,13 @@ public final class SecretCandidateStore {
                 : Optional.of(entry.descriptor);
     }
 
-    /** Owner-authorized browser access; no tool or model adapter exposes this operation. */
+    /** User-authorized browser access; no tool or model adapter exposes this operation. */
     public synchronized @NonNull Optional<String> reveal(
             Scope.@NonNull AgentScope scope, @NonNull String reference) {
         expire();
         Entry entry = entries.get(reference);
-        if (closedOwners.contains(scope.owner())
-                || retiredSessions.contains(new SessionKey(scope.owner(), scope.session()))
+        if (closedUsers.contains(scope.userId())
+                || retiredSessions.contains(new SessionKey(scope.userId(), scope.session()))
                 || entry == null
                 || !entry.scope.equals(scope)) return Optional.empty();
         return Optional.ofNullable(entry.value);
@@ -325,8 +325,8 @@ public final class SecretCandidateStore {
             VaultAccess.@NonNull Handle vault) {
         expire();
         Entry entry = entries.get(reference);
-        if (closedOwners.contains(scope.owner())
-                || retiredSessions.contains(new SessionKey(scope.owner(), scope.session()))
+        if (closedUsers.contains(scope.userId())
+                || retiredSessions.contains(new SessionKey(scope.userId(), scope.session()))
                 || entry == null
                 || !entry.scope.equals(scope)
                 || entry.value == null)
@@ -337,12 +337,12 @@ public final class SecretCandidateStore {
                 || !label.equals(label.trim()))
             throw new IllegalArgumentException("Invalid credential import binding");
         var vaultScope = vault.scope();
-        if (!scope.owner().equals(vaultScope.owner())
+        if (!scope.userId().equals(vaultScope.userId())
                 || !scope.session().equals(vaultScope.session())
                 || !scope.agent().equals(vaultScope.agent()))
             throw new SecurityException("Vault scope does not match the candidate");
         if (!vault.isUnlocked())
-            throw new IllegalStateException("Credential owner vault is locked");
+            throw new IllegalStateException("Credential userId vault is locked");
         ImportReceipt previous = entry.imported;
         if (previous != null) {
             if (!previous.service().equals(service) || !previous.label().equals(label))
@@ -383,18 +383,18 @@ public final class SecretCandidateStore {
         return receipt;
     }
 
-    /** Discards the captured values of one owner/session; does not block future captures. */
-    public synchronized void discardSession(@NonNull String owner, @NonNull String session) {
+    /** Discards the captured values of one userId/session; does not block future captures. */
+    public synchronized void discardSession(@NonNull UUID userId, @NonNull String session) {
         entries.values().stream()
                 .filter(
                         entry ->
-                                entry.scope.owner().equals(owner)
+                                entry.scope.userId().equals(userId)
                                         && entry.scope.session().equals(session))
                 .forEach(entry -> entry.discard(State.DISCARDED));
     }
 
     /**
-     * Discards the captured values of one owner/session/agent scope; does not block future
+     * Discards the captured values of one userId/session/agent scope; does not block future
      * captures.
      */
     public synchronized void discardAgent(Scope.@NonNull AgentScope scope) {
@@ -403,37 +403,37 @@ public final class SecretCandidateStore {
                 .forEach(entry -> entry.discard(State.DISCARDED));
     }
 
-    /** Discards the captured values of one owner; does not block future captures. */
-    public synchronized void discardOwner(@NonNull String owner) {
+    /** Discards the captured values of one userId; does not block future captures. */
+    public synchronized void discardUser(@NonNull UUID userId) {
         entries.values().stream()
-                .filter(entry -> entry.scope.owner().equals(owner))
+                .filter(entry -> entry.scope.userId().equals(userId))
                 .forEach(entry -> entry.discard(State.DISCARDED));
     }
 
     /**
-     * Discards an owner's captures and blocks further capture, reveal, and import for that owner.
+     * Discards an userId's captures and blocks further capture, reveal, and import for that userId.
      */
-    public synchronized void closeOwner(@NonNull String owner) {
-        closedOwners.add(owner);
-        discardOwner(owner);
+    public synchronized void closeUser(@NonNull UUID userId) {
+        closedUsers.add(userId);
+        discardUser(userId);
     }
 
-    /** Lifts a prior {@link #closeOwner} block, allowing capture for the owner again. */
-    public synchronized void openOwner(@NonNull String owner) {
-        closedOwners.remove(owner);
+    /** Lifts a prior {@link #closeUser} block, allowing capture for the userId again. */
+    public synchronized void openUser(@NonNull UUID userId) {
+        closedUsers.remove(userId);
     }
 
     /** Discards a session's captures and blocks further capture, reveal, and import for it. */
-    public synchronized void retireSession(@NonNull String owner, @NonNull String session) {
-        retiredSessions.add(new SessionKey(owner, session));
-        discardSession(owner, session);
+    public synchronized void retireSession(@NonNull UUID userId, @NonNull String session) {
+        retiredSessions.add(new SessionKey(userId, session));
+        discardSession(userId, session);
     }
 
     /** Release all captured secret material when the owning plugin stops. */
     public synchronized void clear() {
         entries.values().forEach(entry -> entry.discard(State.DISCARDED));
         entries.clear();
-        closedOwners.clear();
+        closedUsers.clear();
         retiredSessions.clear();
     }
 

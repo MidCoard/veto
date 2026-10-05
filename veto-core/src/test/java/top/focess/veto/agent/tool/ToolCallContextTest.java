@@ -8,6 +8,7 @@ import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.agent.intercept.ToolExecutionPermit;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
+import top.focess.veto.vault.TestUsers;
 
 /** Trusted caller and control state remain isolated to the executing thread. */
 class ToolCallContextTest {
@@ -63,7 +64,6 @@ class ToolCallContextTest {
                         agentId,
                         userId,
                         null,
-                        null,
                         ToolResultPresentationMode.BASIC,
                         ToolExecutionPermit.empty());
 
@@ -74,14 +74,13 @@ class ToolCallContextTest {
     @Test
     void contextIsThreadLocalAccessible() {
         String agentId = "agent-thread";
-        UUID userId = UUID.randomUUID();
+        UUID userId = TestUsers.OWNER;
 
         // Set in thread-local
         ToolCallContextHolder.set(
                 new ToolCallContext(
                         agentId,
                         userId,
-                        null,
                         null,
                         ToolResultPresentationMode.BASIC,
                         ToolExecutionPermit.empty()));

@@ -7,6 +7,7 @@ import static org.mockito.Mockito.*;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -15,6 +16,7 @@ import top.focess.veto.agent.screening.DeployerPolicyConfiguration;
 import top.focess.veto.agent.screening.ProtectedSet;
 import top.focess.veto.agent.screening.ProtectedSetResolver;
 import top.focess.veto.security.HostPathInput;
+import top.focess.veto.vault.TestUsers;
 
 class WorkspaceAdmissionPolicyTest {
 
@@ -23,10 +25,12 @@ class WorkspaceAdmissionPolicyTest {
         Path mount = tempDir.resolve("mount");
         WorkspaceAdmissionPolicy policy =
                 new WorkspaceAdmissionPolicy(
-                        configuration(mount, DeployerPolicy.SANDBOXED), emptyProtection());
+                        configuration(mount, DeployerPolicy.SANDBOXED),
+                        emptyProtection(),
+                        TestUsers.registry());
 
         Path admitted =
-                policy.validateRoots("alice", List.of(mount.resolve("project").toString()))
+                policy.validateRoots(TestUsers.ALICE, List.of(mount.resolve("project").toString()))
                         .getFirst();
         assertEquals(
                 HostPathInput.canonicalForCreation(mount.resolve("project"), "workspace root"),
@@ -35,24 +39,26 @@ class WorkspaceAdmissionPolicyTest {
                 IllegalArgumentException.class,
                 () ->
                         policy.validateRoots(
-                                "alice", List.of(tempDir.resolve("outside").toString())));
+                                TestUsers.ALICE, List.of(tempDir.resolve("outside").toString())));
     }
 
     @Test
-    void tenantMapsEachOwnerBelowEveryConfiguredMount(@TempDir @NonNull Path tempDir) {
+    void tenantMapsEachUserIdBelowEveryConfiguredMount(@TempDir @NonNull Path tempDir) {
         Path mount = tempDir.resolve("mount");
         WorkspaceAdmissionPolicy policy =
                 new WorkspaceAdmissionPolicy(
-                        configuration(mount, DeployerPolicy.TENANT), emptyProtection());
+                        configuration(mount, DeployerPolicy.TENANT),
+                        emptyProtection(),
+                        TestUsers.registry());
 
-        Path admitted = policy.validateRoots("alice", List.of("/0/project")).getFirst();
+        Path admitted = policy.validateRoots(TestUsers.ALICE, List.of("/0/project")).getFirst();
         assertEquals(
                 HostPathInput.canonicalForCreation(
                         mount.resolve("alice/project"), "workspace root"),
                 admitted);
         assertThrows(
                 IllegalArgumentException.class,
-                () -> policy.validateRoots("alice", List.of("/0/project/nested")));
+                () -> policy.validateRoots(TestUsers.ALICE, List.of("/0/project/nested")));
     }
 
     @Test
@@ -60,28 +66,32 @@ class WorkspaceAdmissionPolicyTest {
             @TempDir @NonNull Path tempDir) {
         WorkspaceAdmissionPolicy policy =
                 new WorkspaceAdmissionPolicy(
-                        new DeployerPolicyConfiguration(), mock(ProtectedSetResolver.class));
+                        new DeployerPolicyConfiguration(),
+                        mock(ProtectedSetResolver.class),
+                        TestUsers.registry());
         Path target = tempDir.resolve("arbitrary/project");
 
         assertEquals(
                 HostPathInput.canonicalForCreation(target, "workspace root"),
-                policy.validateRoots("alice", List.of(target.toString())).getFirst());
+                policy.validateRoots(TestUsers.ALICE, List.of(target.toString())).getFirst());
     }
 
     @Test
     void protectedRootsAndChildrenAreRejectedButTheirWorkspaceParentIsAllowed(
             @TempDir @NonNull Path tempDir) throws Exception {
-        var protectedPath = tempDir.resolve("secrets");
+        var protectedPath = tempDir.resolve("alice");
         var resolver = mock(ProtectedSetResolver.class);
-        when(resolver.resolve(any(), anyString(), any()))
+        when(resolver.resolve(any(), any(UUID.class), any()))
                 .thenReturn(new ProtectedSet(Set.of(protectedPath)));
         for (var mode :
                 List.of(
                         DeployerPolicy.PROTECTED,
                         DeployerPolicy.SANDBOXED,
                         DeployerPolicy.TENANT)) {
-            var policy = new WorkspaceAdmissionPolicy(configuration(tempDir, mode), resolver);
-            String owner = "secrets";
+            var policy =
+                    new WorkspaceAdmissionPolicy(
+                            configuration(tempDir, mode), resolver, TestUsers.registry());
+            UUID owner = TestUsers.ALICE;
             assertThrows(
                     IllegalArgumentException.class,
                     () ->
@@ -105,31 +115,38 @@ class WorkspaceAdmissionPolicyTest {
         }
         var policy =
                 new WorkspaceAdmissionPolicy(
-                        configuration(tempDir, DeployerPolicy.PROTECTED), resolver);
+                        configuration(tempDir, DeployerPolicy.PROTECTED),
+                        resolver,
+                        TestUsers.registry());
         assertEquals(
                 tempDir.toRealPath(),
-                policy.validateRoots("alice", List.of(tempDir.toString())).getFirst());
+                policy.validateRoots(TestUsers.ALICE, List.of(tempDir.toString())).getFirst());
     }
 
     @Test
     void filesystemRootIsValidButBlankIsNot(@TempDir @NonNull Path tempDir) throws Exception {
         var policy =
                 new WorkspaceAdmissionPolicy(
-                        new DeployerPolicyConfiguration(), mock(ProtectedSetResolver.class));
+                        new DeployerPolicyConfiguration(),
+                        mock(ProtectedSetResolver.class),
+                        TestUsers.registry());
         var root = tempDir.toAbsolutePath().getRoot();
         if (root == null) throw new AssertionError("absolute path must have a filesystem root");
         assertEquals(
                 root.toRealPath(),
-                policy.validateRoots("alice", List.of(root.toString())).getFirst());
+                policy.validateRoots(TestUsers.ALICE, List.of(root.toString())).getFirst());
         assertThrows(
-                IllegalArgumentException.class, () -> policy.validateRoots("alice", List.of(" ")));
+                IllegalArgumentException.class,
+                () -> policy.validateRoots(TestUsers.ALICE, List.of(" ")));
         assertThrows(
-                IllegalArgumentException.class, () -> policy.validateRoots("alice", List.of()));
+                IllegalArgumentException.class,
+                () -> policy.validateRoots(TestUsers.ALICE, List.of()));
         assertThrows(
                 IllegalArgumentException.class,
                 () ->
                         policy.validateRoots(
-                                "alice", List.of(tempDir.resolve("comma,name").toString())));
+                                TestUsers.ALICE,
+                                List.of(tempDir.resolve("comma,name").toString())));
     }
 
     private static @NonNull DeployerPolicyConfiguration configuration(
@@ -145,30 +162,35 @@ class WorkspaceAdmissionPolicyTest {
     void tenantUsesLogicalDirectChildSelectionAndHidesHostMapping(@TempDir @NonNull Path base) {
         var policy =
                 new WorkspaceAdmissionPolicy(
-                        configuration(base, DeployerPolicy.TENANT), emptyProtection());
-        var selected = policy.validateRoots("alice", List.of("/0/project")).getFirst();
+                        configuration(base, DeployerPolicy.TENANT),
+                        emptyProtection(),
+                        TestUsers.registry());
+        var selected = policy.validateRoots(TestUsers.ALICE, List.of("/0/project")).getFirst();
         assertEquals(base.resolve("alice/project"), selected);
-        assertEquals("/0/project", policy.toClientPath("alice", selected));
-        assertThrows(
-                IllegalArgumentException.class, () -> policy.validateRoots("alice", List.of("/0")));
+        assertEquals("/0/project", policy.toClientPath(TestUsers.ALICE, selected));
         assertThrows(
                 IllegalArgumentException.class,
-                () -> policy.validateRoots("alice", List.of("/0/project/nested")));
+                () -> policy.validateRoots(TestUsers.ALICE, List.of("/0")));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> policy.validateRoots(TestUsers.ALICE, List.of("/0/project/nested")));
         assertThrows(
                 IllegalArgumentException.class,
                 () ->
                         policy.validateRoots(
-                                "alice", List.of(base.resolve("alice/project").toString())));
-        assertThrows(
-                IllegalArgumentException.class, () -> policy.fromClientPath("alice", "/0/../bob"));
+                                TestUsers.ALICE,
+                                List.of(base.resolve("alice/project").toString())));
         assertThrows(
                 IllegalArgumentException.class,
-                () -> policy.fromClientPath("alice", "/0/project/"));
+                () -> policy.fromClientPath(TestUsers.ALICE, "/0/../bob"));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> policy.fromClientPath(TestUsers.ALICE, "/0/project/"));
     }
 
     private static @NonNull ProtectedSetResolver emptyProtection() {
         var resolver = mock(ProtectedSetResolver.class);
-        when(resolver.resolve(any(), anyString(), any())).thenReturn(ProtectedSet.empty());
+        when(resolver.resolve(any(), any(UUID.class), any())).thenReturn(ProtectedSet.empty());
         return resolver;
     }
 }

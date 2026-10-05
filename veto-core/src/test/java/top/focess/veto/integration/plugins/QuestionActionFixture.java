@@ -35,7 +35,8 @@ import top.focess.veto.vault.UserContext;
 
 /** Actual builtin contributions behind the generic authenticated frontend router. */
 public final class QuestionActionFixture implements AutoCloseable {
-    public final @NonNull SessionEntity session = new SessionEntity("alice", "session");
+    public final @NonNull SessionEntity session =
+            new SessionEntity(UUID.fromString("58e341e3-0de3-571d-81db-520951bc691b"), "session");
     public final @NonNull SessionRepository sessions = mock();
     public final @NonNull SessionPlugins selected;
     public final @NonNull PluginManager manager;
@@ -45,12 +46,12 @@ public final class QuestionActionFixture implements AutoCloseable {
 
     /** Supplies a distinct persisted row initialized with no selected plugins. */
     public void useUnselectedSession() {
-        var unselected = new SessionEntity(session.getOwner(), session.getName());
+        var unselected = new SessionEntity(session.getUserId(), session.getName());
         ReflectionTestUtils.setField(unselected, "id", session.getId());
         unselected.setPluginBindings(List.of());
         when(sessions.findById(session.getId())).thenReturn(Optional.of(unselected));
-        when(sessions.findFirstByNameAndOwnerOrderByLastActiveAtDesc(
-                        session.getName(), session.getOwner()))
+        when(sessions.findFirstByNameAndUserIdOrderByLastActiveAtDesc(
+                        session.getName(), session.getUserId()))
                 .thenReturn(Optional.of(unselected));
     }
 
@@ -68,7 +69,10 @@ public final class QuestionActionFixture implements AutoCloseable {
                 new PluginStorageFactory() {
                     public @NonNull PluginStorage bind(@NonNull ManagedPlugin plugin) {
                         var storage = backing.bind(plugin);
-                        var invocation = new PluginInvocationContext("alice", session.getId());
+                        var invocation =
+                                new PluginInvocationContext(
+                                        UUID.fromString("58e341e3-0de3-571d-81db-520951bc691b"),
+                                        session.getId());
                         try {
                             storage.currentSession();
                         } finally {
@@ -77,13 +81,13 @@ public final class QuestionActionFixture implements AutoCloseable {
                         return storage;
                     }
 
-                    public @NonNull String authorizeSession(
+                    public @NonNull UUID authorizeSession(
                             @NonNull PluginStorage storage,
                             PluginStorage.@NonNull Grant<Scope.@NonNull SessionScope> scope) {
                         return backing.authorizeSession(storage, scope);
                     }
 
-                    public @NonNull String authorizeUser(
+                    public @NonNull UUID authorizeUser(
                             @NonNull PluginStorage storage,
                             PluginStorage.@NonNull Grant<Scope.@NonNull UserScope> scope) {
                         return backing.authorizeUser(storage, scope);
@@ -128,8 +132,13 @@ public final class QuestionActionFixture implements AutoCloseable {
                                                         "top.focess.veto.builtin.questions.QuestionRuntime"))
                         .findFirst()
                         .orElseThrow();
-        scope = new Scope.AgentScope("alice", session.getId(), "agent");
-        when(sessions.findFirstByNameAndOwnerOrderByLastActiveAtDesc("session", "alice"))
+        scope =
+                new Scope.AgentScope(
+                        UUID.fromString("58e341e3-0de3-571d-81db-520951bc691b"),
+                        session.getId(),
+                        "agent");
+        when(sessions.findFirstByNameAndUserIdOrderByLastActiveAtDesc(
+                        "session", session.getUserId()))
                 .thenReturn(Optional.of(session));
         selected = spy(new SessionPlugins(manager, sessions));
         when(sessions.findById(session.getId())).thenReturn(Optional.of(session));
@@ -155,7 +164,7 @@ public final class QuestionActionFixture implements AutoCloseable {
 
     public PluginHost.@NonNull Invocation invocation(@NonNull String call) {
         return new PluginHost.Invocation(
-                scope.owner(), scope.session(), scope.agent(), "request", call);
+                scope.userId(), scope.session(), scope.agent(), "request", call);
     }
 
     public int pendingCount() {

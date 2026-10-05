@@ -5,6 +5,7 @@ import java.security.SecureRandom;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.regex.Pattern;
 import org.bouncycastle.crypto.generators.Argon2BytesGenerator;
 import org.bouncycastle.crypto.params.Argon2Parameters;
@@ -52,7 +53,7 @@ public class UserRegistry {
         if (!isValidRole(role)) {
             throw new IllegalArgumentException("Role must be ADMIN or USER");
         }
-        if (repo.existsById(username)) {
+        if (repo.existsByUsername(username)) {
             throw new IllegalArgumentException("User '" + username + "' already exists");
         }
         byte[] salt = new byte[SALT_LENGTH];
@@ -78,7 +79,7 @@ public class UserRegistry {
     @Transactional(readOnly = true)
     public @NonNull Optional<UserEntity> authenticate(
             @NonNull String username, @NonNull String password) {
-        Optional<UserEntity> user = repo.findById(username);
+        Optional<UserEntity> user = repo.findByUsername(username);
         if (user.isEmpty()) {
             hashPassword(password, new byte[SALT_LENGTH]); // constant-time mitigation
             return Optional.empty();
@@ -99,12 +100,18 @@ public class UserRegistry {
     /** Looks up a user by exact username. */
     @Transactional(readOnly = true)
     public @NonNull Optional<UserEntity> findByUsername(@NonNull String username) {
-        return repo.findById(username);
+        return repo.findByUsername(username);
     }
 
-    /** Deletes the user row by username (no cascade - see UserAdminService.deleteUser). */
-    public void deleteByUsername(@NonNull String username) {
-        repo.findById(username).ifPresent(repo::delete);
+    /** Looks up the account by its canonical identity. */
+    @Transactional(readOnly = true)
+    public @NonNull Optional<UserEntity> findByUserId(@NonNull UUID userId) {
+        return repo.findById(userId);
+    }
+
+    /** Deletes one account; lifecycle and persisted-data cleanup are owned by UserAdminService. */
+    public void deleteByUserId(@NonNull UUID userId) {
+        repo.findById(userId).ifPresent(repo::delete);
     }
 
     /** Number of users with the ADMIN role (for the last-admin guard on /user delete). */
@@ -115,8 +122,8 @@ public class UserRegistry {
 
     /** Whether the user exists and has the ADMIN role. */
     @Transactional(readOnly = true)
-    public boolean isAdmin(@NonNull String username) {
-        return repo.findById(username).map(u -> Role.ADMIN.equals(u.getRole())).orElse(false);
+    public boolean isAdmin(@NonNull UUID userId) {
+        return repo.findById(userId).map(u -> Role.ADMIN.equals(u.getRole())).orElse(false);
     }
 
     /** Lists every user (admin only). */
@@ -130,16 +137,17 @@ public class UserRegistry {
      * password is also the keystead vault master password, so a reset invalidates the existing
      * vault (the user must re-provision credentials after re-login).
      */
-    public void setPassword(@NonNull String username, @NonNull String password) {
+    public void setPassword(@NonNull UUID userId, @NonNull String password) {
         UserEntity user =
-                repo.findById(username)
+                repo.findById(userId)
                         .orElseThrow(
-                                () -> new IllegalArgumentException("User not found: " + username));
+                                () -> new IllegalArgumentException("User not found: " + userId));
         byte[] salt = new byte[SALT_LENGTH];
         newSecureRandom().nextBytes(salt);
         byte[] hash = hashPassword(password, salt);
-        repo.save(new UserEntity(username, hash, salt, user.getRole(), user.getCreatedAt()));
-        log.info("Password reset for user '{}'", username);
+        user.updatePassword(hash, salt);
+        repo.save(user);
+        log.info("Password reset for user {}", userId);
     }
 
     // ── Crypto ──────────────────────────────────────────────────────────────

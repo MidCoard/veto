@@ -158,7 +158,13 @@ class GroupWorkflowTest {
     void groupLifecycleCreateAndDisband() {
         UUID groupId = UUID.randomUUID();
         ExecutionDag dag = ExecutionDag.linear(groupId, List.of("n1"));
-        Group g = Group.create("Leader-1", "user-1", "build feature X", blackboard, dag);
+        Group g =
+                Group.create(
+                        "Leader-1",
+                        UUID.fromString("8158954f-044f-58f5-968f-ac185b65f0a9"),
+                        "build feature X",
+                        blackboard,
+                        dag);
         registry.put(g);
         assertEquals(GroupState.ACTIVE, requireGroup(registry.get(g.groupId())).state());
 
@@ -171,7 +177,7 @@ class GroupWorkflowTest {
         Group g =
                 Group.create(
                         "Leader-1",
-                        "user-1",
+                        UUID.fromString("8158954f-044f-58f5-968f-ac185b65f0a9"),
                         "build",
                         blackboard,
                         ExecutionDag.linear(UUID.randomUUID(), List.of("n1")));

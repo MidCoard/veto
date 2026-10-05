@@ -2,6 +2,7 @@ package top.focess.veto.command.commands;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -84,7 +85,7 @@ public class ModelTierCommand extends VetoCommand {
                     if (s == null) return CommandResult.REFUSE;
                     String name = requiredArg(args.get("name"), "name");
                     try {
-                        profileService.createProfile(s.requireUsername(), name);
+                        profileService.createProfile(s.requireUserId(), name);
                     } catch (IllegalArgumentException e) {
                         s.output("Cannot create profile: " + e.getMessage());
                         return CommandResult.REFUSE;
@@ -114,7 +115,7 @@ public class ModelTierCommand extends VetoCommand {
                         return CommandResult.REFUSE;
                     }
                     try {
-                        profileService.setField(s.requireUsername(), profile, tier, field, value);
+                        profileService.setField(s.requireUserId(), profile, tier, field, value);
                     } catch (IllegalArgumentException e) {
                         s.output("Cannot set " + fieldStr + ": " + e.getMessage());
                         return CommandResult.REFUSE;
@@ -135,7 +136,7 @@ public class ModelTierCommand extends VetoCommand {
                     if (s == null) return CommandResult.REFUSE;
                     String profile = requiredArg(args.get("profile"), "profile");
                     try {
-                        profileService.activateProfile(s.requireUsername(), profile);
+                        profileService.activateProfile(s.requireUserId(), profile);
                     } catch (IllegalArgumentException e) {
                         s.output("Cannot activate profile: " + e.getMessage());
                         return CommandResult.REFUSE;
@@ -151,7 +152,7 @@ public class ModelTierCommand extends VetoCommand {
                 (sender, args) -> {
                     VetoCommandSender s = vetoSender(sender);
                     if (s == null) return CommandResult.REFUSE;
-                    var profiles = profileService.listProfiles(s.requireUsername());
+                    var profiles = profileService.listProfiles(s.requireUserId());
                     if (profiles.isEmpty()) {
                         s.output("No model-tier profiles. Use /modeltier create <name> ...");
                         return CommandResult.ALLOW;
@@ -171,19 +172,19 @@ public class ModelTierCommand extends VetoCommand {
                     if (s == null) return CommandResult.REFUSE;
                     String target = args.get("profile");
                     if (target == null) {
-                        target = tierRegistry.activeProfile(s.requireUsername());
+                        target = tierRegistry.activeProfile(s.requireUserId());
                         if (target == null) {
                             s.output("No active profile. Use /modeltier use <profile>.");
                             return CommandResult.ALLOW;
                         }
                     }
-                    var found = profileService.profile(s.requireUsername(), target);
+                    var found = profileService.profile(s.requireUserId(), target);
                     if (found.isEmpty()) {
                         s.output("Profile not found: " + target);
                         return CommandResult.REFUSE;
                     }
                     s.output("Profile: " + target + (found.get().isActive() ? " (active)" : ""));
-                    var bindings = profileService.bindings(s.requireUsername(), target);
+                    var bindings = profileService.bindings(s.requireUserId(), target);
                     if (bindings.isEmpty()) {
                         s.output(
                                 "  No tier bindings configured. Use /modeltier set "
@@ -205,7 +206,7 @@ public class ModelTierCommand extends VetoCommand {
                     VetoCommandSender s = vetoSender(sender);
                     if (s == null) return CommandResult.REFUSE;
                     String profile = requiredArg(args.get("profile"), "profile");
-                    if (profileService.deleteProfile(s.requireUsername(), profile)) {
+                    if (profileService.deleteProfile(s.requireUserId(), profile)) {
                         s.output("Profile '" + profile + "' deleted.");
                         return CommandResult.ALLOW;
                     }
@@ -239,7 +240,7 @@ public class ModelTierCommand extends VetoCommand {
     private @NonNull List<CommandCompletion> completeProfile(
             @NonNull CommandSender sender, @NonNull Command cmd, @NonNull String @NonNull [] argv) {
         if (!LOGGED_IN.test(sender)) return List.of();
-        String u = ((VetoCommandSender) sender).requireUsername();
+        UUID u = ((VetoCommandSender) sender).requireUserId();
         String prefix = argv.length > 0 ? argv[argv.length - 1].toLowerCase() : "";
         return profileService.listProfiles(u).stream()
                 .map(p -> p.getName())

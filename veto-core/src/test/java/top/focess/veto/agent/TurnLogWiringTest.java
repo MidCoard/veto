@@ -28,6 +28,7 @@ import top.focess.veto.llm.core.UniformLLMCaller;
 import top.focess.veto.memory.TurnLogService;
 import top.focess.veto.memory.TurnRecordEntity;
 import top.focess.veto.memory.TurnRecordRepository;
+import top.focess.veto.vault.TestUsers;
 
 /**
  * Verifies the turn-log wiring end-to-end: an agent's {@code appendTurn} (driven by a submitted
@@ -81,7 +82,8 @@ class TurnLogWiringTest {
                                 "stub-key",
                                 LlmOptions.defaults(),
                                 "sys"),
-                        EPISODE_TIMEOUT);
+                        EPISODE_TIMEOUT,
+                        TestUsers.OWNER);
 
         assertTrue(result.success(), "the episode finishes");
         ArgumentCaptor<TurnRecordEntity> records = ArgumentCaptor.forClass(TurnRecordEntity.class);

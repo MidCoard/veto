@@ -2,6 +2,7 @@ package top.focess.veto.vault;
 
 import java.util.Collections;
 import java.util.Map;
+import java.util.UUID;
 import java.util.WeakHashMap;
 import org.jspecify.annotations.NonNull;
 
@@ -12,26 +13,26 @@ import org.jspecify.annotations.NonNull;
  */
 public final class UserContext {
 
-    private static final @NonNull Map<@NonNull Thread, @NonNull String> CURRENT_USERS =
+    private static final @NonNull Map<@NonNull Thread, @NonNull UUID> CURRENT_USERS =
             Collections.synchronizedMap(new WeakHashMap<>());
 
     private UserContext() {}
 
     /**
-     * Sets the authenticated username for the current thread.
+     * Sets the authenticated user UUID for the current thread.
      *
-     * @param username the username to set
+     * @param userId the canonical account identity
      */
-    public static void set(@NonNull String username) {
-        CURRENT_USERS.put(Thread.currentThread(), username);
+    public static void set(@NonNull UUID userId) {
+        CURRENT_USERS.put(Thread.currentThread(), userId);
     }
 
     /**
-     * Gets the authenticated username for the current thread.
+     * Gets the authenticated user UUID for the current thread.
      *
-     * @return the username, or null if not set
+     * @return the user UUID, or null if not set
      */
-    public static String get() {
+    public static UUID get() {
         return CURRENT_USERS.get(Thread.currentThread());
     }
 

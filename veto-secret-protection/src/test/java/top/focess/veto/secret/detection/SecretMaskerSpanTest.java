@@ -7,6 +7,17 @@ import org.junit.jupiter.api.Test;
 
 class SecretMaskerSpanTest {
     @Test
+    void crossingCredentialUrlAndEmailSpansCoverTheWholeEmail() {
+        String input = "https://user:pass@example.com/path";
+        var matches = SecretMasker.matches(input);
+        assertEquals(1, matches.size());
+        assertEquals(input.indexOf("/path"), matches.getFirst().end());
+        String masked = SecretMasker.mask(input, matches);
+        assertFalse(masked.contains("example.com"), masked);
+        assertTrue(masked.endsWith("/path"), masked);
+    }
+
+    @Test
     void chinesePunctuationDoesNotConsumeTheFollowingUserInstruction() {
         String value = "ghp_SYNTHETIC0913INVALIDUSER00000000000000000";
         for (String separator : List.of("。", "，", "；", "：", "、")) {

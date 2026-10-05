@@ -32,7 +32,7 @@ public class TaskController {
     private final @NonNull RoutingBusService routingBusService;
     private final @NonNull RequestAuthorization authorization;
 
-    private record OwnedTask(@NonNull String owner, @NonNull DAGPayload payload) {}
+    private record OwnedTask(@NonNull UUID userId, @NonNull DAGPayload payload) {}
 
     private final @NonNull ConcurrentHashMap<String, OwnedTask> taskStore =
             new ConcurrentHashMap<>();
@@ -51,7 +51,7 @@ public class TaskController {
             produces = MediaType.APPLICATION_JSON_VALUE)
     public @NonNull ResponseEntity<RestResponse> createTask(
             @RequestBody @NonNull CreateTaskRequest request) {
-        String owner = authorization.requireUser();
+        UUID userId = authorization.requireUserId();
         String taskType = request.taskType();
         if (taskType == null || taskType.isEmpty()) {
             return ResponseEntity.badRequest()
@@ -76,7 +76,7 @@ public class TaskController {
                         .targetComponent(targetComponent)
                         .build();
 
-        if (taskStore.putIfAbsent(payload.getId(), new OwnedTask(owner, payload)) != null) {
+        if (taskStore.putIfAbsent(payload.getId(), new OwnedTask(userId, payload)) != null) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Task id already exists");
         }
         log.info("REST: Created task id={}, type={}", payload.getId(), payload.getTaskType());
@@ -101,7 +101,7 @@ public class TaskController {
     // DAG parameters are intentionally preserved as JSON; Jackson supplies JSON encoding.
     @SuppressWarnings("JvmTaintAnalysis")
     public @NonNull ResponseEntity<RestResponse> getTask(@PathVariable @NonNull String id) {
-        DAGPayload payload = ownedPayload(id, authorization.requireUser());
+        DAGPayload payload = ownedPayload(id, authorization.requireUserId());
         if (payload == null) {
             return ResponseEntity.status(404)
                     .body(new StatusMessageResponse("error", Msg.get("error.task.notFound", id)));
@@ -125,10 +125,10 @@ public class TaskController {
     /** GET /api/tasks - List all tasks. */
     @GetMapping(produces = MediaType.APPLICATION_JSON_VALUE)
     public @NonNull ResponseEntity<RestResponse> listTasks() {
-        String owner = authorization.requireUser();
+        UUID userId = authorization.requireUserId();
         List<DAGPayload> owned =
                 taskStore.values().stream()
-                        .filter(task -> owner.equals(task.owner()))
+                        .filter(task -> userId.equals(task.userId()))
                         .map(OwnedTask::payload)
                         .toList();
         return ResponseEntity.ok(
@@ -153,15 +153,15 @@ public class TaskController {
     // The validated task identifier is serialized as JSON, never rendered as HTML.
     @SuppressWarnings("JvmTaintAnalysis")
     public @NonNull ResponseEntity<RestResponse> cancelTask(@PathVariable @NonNull String id) {
-        String owner = authorization.requireUser();
-        DAGPayload existing = ownedPayload(id, owner);
+        UUID userId = authorization.requireUserId();
+        DAGPayload existing = ownedPayload(id, userId);
         if (existing == null) {
             return ResponseEntity.status(404)
                     .body(new StatusMessageResponse("error", Msg.get("error.task.notFound", id)));
         }
 
         DAGPayload cancelled = existing.withStatus(DAGPayload.DAGPayloadStatus.CANCELLED);
-        taskStore.put(id, new OwnedTask(owner, cancelled));
+        taskStore.put(id, new OwnedTask(userId, cancelled));
 
         return ResponseEntity.ok(
                 new TaskCancelledResponse(
@@ -171,8 +171,8 @@ public class TaskController {
                         Instant.now().toString()));
     }
 
-    private DAGPayload ownedPayload(@NonNull String id, @NonNull String owner) {
+    private DAGPayload ownedPayload(@NonNull String id, @NonNull UUID userId) {
         OwnedTask task = taskStore.get(id);
-        return task != null && owner.equals(task.owner()) ? task.payload() : null;
+        return task != null && userId.equals(task.userId()) ? task.payload() : null;
     }
 }

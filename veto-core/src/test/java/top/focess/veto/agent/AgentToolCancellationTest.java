@@ -17,6 +17,7 @@ import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.api.plugin.contract.JsonValue;
+import top.focess.veto.vault.TestUsers;
 
 class AgentToolCancellationTest {
     @Test
@@ -29,7 +30,7 @@ class AgentToolCancellationTest {
         var hooks = mock(AgentPluginHooks.class);
         var event =
                 new BeforeToolEvent(
-                        new Scope.AgentScope("owner", "session", "agent"),
+                        new Scope.AgentScope(TestUsers.OWNER, "session", "agent"),
                         new BeforeToolEvent.Invocation(
                                 "fixture", call.callId(), new JsonValue.ObjectValue(Map.of())));
         event.cancel();
@@ -45,8 +46,7 @@ class AgentToolCancellationTest {
                         hooks,
                         mock(AgentRunner.class),
                         "agent",
-                        UUID.randomUUID(),
-                        "owner",
+                        TestUsers.OWNER,
                         UUID.randomUUID());
         var invocation =
                 new AgentToolExecution.Invocation(

@@ -91,7 +91,7 @@ public class TurnLogService {
             int changed =
                     turnRecordRepository.updateRecordMetadata(
                             sessionId.toString(),
-                            userId.toString(),
+                            userId,
                             agentId,
                             turn.turnNumber(),
                             mapper.writeValueAsString(turn.payload()),

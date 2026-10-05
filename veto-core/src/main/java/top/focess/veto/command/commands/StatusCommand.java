@@ -30,8 +30,8 @@ public class StatusCommand extends VetoCommand {
                     VetoCommandSender s = vetoSender(sender);
                     if (s == null) return CommandResult.REFUSE;
 
-                    String user = vault.currentUserOrOnlyUnlocked();
-                    if (user == null) {
+                    String user = s.username();
+                    if (user == null || !vault.isUnlocked(s.requireUserId())) {
                         s.output("Not logged in.");
                         return CommandResult.REFUSE;
                     }

@@ -1,5 +1,6 @@
 package top.focess.veto.integration.plugins;
 
+import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.tool.ToolCallContextHolder;
 import top.focess.veto.api.plugin.PluginHost;
@@ -10,7 +11,8 @@ public final class QuestionTestSupport {
     private QuestionTestSupport() {}
 
     public static Scope.@NonNull AgentScope scope(@NonNull String agent) {
-        return new Scope.AgentScope("owner", "session", agent);
+        return new Scope.AgentScope(
+                UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"), "session", agent);
     }
 
     public static @NonNull PluginHost host() {
@@ -19,7 +21,7 @@ public final class QuestionTestSupport {
                 var context = ToolCallContextHolder.get();
                 if (context == null) throw new AssertionError("Missing tool context");
                 return new Invocation(
-                        "owner",
+                        UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"),
                         "session",
                         context.agentId(),
                         context.requestId(),
@@ -27,7 +29,7 @@ public final class QuestionTestSupport {
             }
 
             public void wake(
-                    @NonNull String owner, @NonNull String session, @NonNull String agent) {}
+                    @NonNull UUID userId, @NonNull String session, @NonNull String agent) {}
 
             public void invalidate(@NonNull String session, @NonNull String resource) {}
         };

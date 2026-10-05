@@ -3,6 +3,7 @@ package top.focess.veto.model.tier;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -51,8 +52,8 @@ public class DefaultModelTierService implements ModelTierRegistry, ModelTierProf
 
     @Override
     @Transactional(readOnly = true)
-    public @NonNull ModelBinding resolve(@NonNull String username, @NonNull ModelTier tier) {
-        ModelTierProfileEntity profile = activeProfileEntity(username);
+    public @NonNull ModelBinding resolve(@NonNull UUID userId, @NonNull ModelTier tier) {
+        ModelTierProfileEntity profile = activeProfileEntity(userId);
         ModelTierBindingEntity binding =
                 bindingRepo
                         .findByProfileIdAndTier(profile.getId(), tier)
@@ -91,53 +92,53 @@ public class DefaultModelTierService implements ModelTierRegistry, ModelTierProf
 
     @Override
     @Transactional(readOnly = true)
-    public String activeProfile(@NonNull String username) {
+    public String activeProfile(@NonNull UUID userId) {
         return profileRepo
-                .findByOwnerAndActiveTrue(username)
+                .findByUserIdAndActiveTrue(userId)
                 .map(ModelTierProfileEntity::getName)
                 .orElse(null);
     }
 
-    private @NonNull ModelTierProfileEntity activeProfileEntity(@NonNull String username) {
+    private @NonNull ModelTierProfileEntity activeProfileEntity(@NonNull UUID userId) {
         return profileRepo
-                .findByOwnerAndActiveTrue(username)
+                .findByUserIdAndActiveTrue(userId)
                 .orElseThrow(
                         () ->
                                 new ModelTierConfigException(
-                                        Msg.get("error.tier.noActiveProfile", username)));
+                                        Msg.get("error.tier.noActiveProfile", userId)));
     }
 
     @Override
     @Transactional
-    public void createProfile(@NonNull String username, @NonNull String name) {
-        if (profileRepo.findByNameAndOwner(name, username).isPresent()) {
+    public void createProfile(@NonNull UUID userId, @NonNull String name) {
+        if (profileRepo.findByNameAndUserId(name, userId).isPresent()) {
             throw new IllegalArgumentException(Msg.get("error.tier.profileExists", name));
         }
         // Auto-activate the user's first profile so a first-time user can resolve immediately
         // without a separate /modeltier use (they can switch later with `use`).
-        boolean autoActive = profileRepo.findByOwnerAndActiveTrue(username).isEmpty();
-        profileRepo.save(new ModelTierProfileEntity(name, username, autoActive));
+        boolean autoActive = profileRepo.findByUserIdAndActiveTrue(userId).isEmpty();
+        profileRepo.save(new ModelTierProfileEntity(name, userId, autoActive));
     }
 
     @Override
     @Transactional
     public void setField(
-            @NonNull String username,
+            @NonNull UUID userId,
             @NonNull String profileName,
             @NonNull ModelTier tier,
             @NonNull ModelTierField field,
             @NonNull String value) {
-        setFields(username, profileName, tier, Map.of(field, value));
+        setFields(userId, profileName, tier, Map.of(field, value));
     }
 
     @Override
     @Transactional
     public void setFields(
-            @NonNull String username,
+            @NonNull UUID userId,
             @NonNull String profileName,
             @NonNull ModelTier tier,
             @NonNull Map<@NonNull ModelTierField, @NonNull String> fields) {
-        ModelTierProfileEntity profile = requireProfile(username, profileName);
+        ModelTierProfileEntity profile = requireProfile(userId, profileName);
         ModelTierBindingEntity binding =
                 bindingRepo
                         .findByProfileIdAndTier(profile.getId(), tier)
@@ -148,7 +149,7 @@ public class DefaultModelTierService implements ModelTierRegistry, ModelTierProf
             try {
                 if (field == ModelTierField.CREDENTIAL_KEY) {
                     String credKey = value.trim();
-                    if (!credentialChecker.exists(username, credKey)) {
+                    if (!credentialChecker.exists(userId, credKey)) {
                         throw new IllegalArgumentException(
                                 Msg.get("error.vault.credKeyMissing", credKey));
                     }
@@ -175,10 +176,10 @@ public class DefaultModelTierService implements ModelTierRegistry, ModelTierProf
 
     @Override
     @Transactional
-    public void activateProfile(@NonNull String username, @NonNull String name) {
-        ModelTierProfileEntity profile = requireProfile(username, name);
+    public void activateProfile(@NonNull UUID userId, @NonNull String name) {
+        ModelTierProfileEntity profile = requireProfile(userId, name);
         // Deactivate the user's other profiles first so at most one is active.
-        for (ModelTierProfileEntity other : profileRepo.findByOwner(username)) {
+        for (ModelTierProfileEntity other : profileRepo.findByUserId(userId)) {
             if (other.isActive() && !other.getId().equals(profile.getId())) {
                 other.setActive(false);
                 profileRepo.save(other);
@@ -190,42 +191,42 @@ public class DefaultModelTierService implements ModelTierRegistry, ModelTierProf
 
     @Override
     @Transactional(readOnly = true)
-    public @NonNull List<ModelTierProfileEntity> listProfiles(@NonNull String username) {
-        return profileRepo.findByOwner(username);
+    public @NonNull List<ModelTierProfileEntity> listProfiles(@NonNull UUID userId) {
+        return profileRepo.findByUserId(userId);
     }
 
     @Override
     @Transactional(readOnly = true)
     public @NonNull Optional<ModelTierProfileEntity> profile(
-            @NonNull String username, @NonNull String name) {
-        return profileRepo.findByNameAndOwner(name, username);
+            @NonNull UUID userId, @NonNull String name) {
+        return profileRepo.findByNameAndUserId(name, userId);
     }
 
     @Override
     @Transactional(readOnly = true)
     public @NonNull List<ModelTierBindingEntity> bindings(
-            @NonNull String username, @NonNull String profileName) {
-        ModelTierProfileEntity profile = requireProfile(username, profileName);
+            @NonNull UUID userId, @NonNull String profileName) {
+        ModelTierProfileEntity profile = requireProfile(userId, profileName);
         return bindingRepo.findByProfileId(profile.getId());
     }
 
     @Override
     @Transactional
-    public boolean deleteProfile(@NonNull String username, @NonNull String name) {
-        Optional<ModelTierProfileEntity> opt = profileRepo.findByNameAndOwner(name, username);
+    public boolean deleteProfile(@NonNull UUID userId, @NonNull String name) {
+        Optional<ModelTierProfileEntity> opt = profileRepo.findByNameAndUserId(name, userId);
         if (opt.isEmpty()) {
             return false;
         }
         ModelTierProfileEntity profile = opt.get();
         bindingRepo.deleteByProfileId(profile.getId());
-        profileRepo.deleteByNameAndOwner(name, username);
+        profileRepo.deleteByNameAndUserId(name, userId);
         return true;
     }
 
     private @NonNull ModelTierProfileEntity requireProfile(
-            @NonNull String username, @NonNull String name) {
+            @NonNull UUID userId, @NonNull String name) {
         return profileRepo
-                .findByNameAndOwner(name, username)
+                .findByNameAndUserId(name, userId)
                 .orElseThrow(
                         () ->
                                 new IllegalArgumentException(

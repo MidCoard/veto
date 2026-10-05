@@ -1,5 +1,6 @@
 package top.focess.veto.api.plugin;
 
+import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.agent.workflow.PluginAwait;
 import top.focess.veto.api.plugin.contract.JsonValue;
@@ -35,14 +36,14 @@ public interface PluginHost {
     /**
      * Host-derived identity of an admitted tool call.
      *
-     * @param owner authenticated login name (not the immutable storage account ID)
+     * @param userId authenticated login name (not the immutable storage account ID)
      * @param sessionId selected session ID
      * @param agentId executing agent ID
      * @param requestId durable request ID, or {@code null} when none exists
      * @param callId unique tool-call ID
      */
     record Invocation(
-            @NonNull String owner,
+            @NonNull UUID userId,
             @NonNull String sessionId,
             @NonNull String agentId,
             String requestId,
@@ -53,7 +54,7 @@ public interface PluginHost {
          * @return identity of this admitted invocation; the value itself grants no authority
          */
         public Scope.@NonNull AgentScope scope() {
-            return new Scope.AgentScope(owner, sessionId, agentId);
+            return new Scope.AgentScope(userId, sessionId, agentId);
         }
     }
 
@@ -69,19 +70,19 @@ public interface PluginHost {
     /**
      * Hint only; host recovery, selection, pause, approval, and budget gates remain authoritative.
      *
-     * @param owner authenticated login name containing the target agent
+     * @param userId authenticated login name containing the target agent
      * @param sessionId target session
      * @param agentId target agent
      */
-    void wake(@NonNull String owner, @NonNull String sessionId, @NonNull String agentId);
+    void wake(@NonNull UUID userId, @NonNull String sessionId, @NonNull String agentId);
 
     /**
      * Wakes an agent identified by one scope value; host admission is still checked.
      *
-     * @param scope identity of the target owner, session, and agent
+     * @param scope identity of the target userId, session, and agent
      */
     default void wake(Scope.@NonNull AgentScope scope) {
-        wake(scope.owner(), scope.session(), scope.agent());
+        wake(scope.userId(), scope.session(), scope.agent());
     }
 
     /**

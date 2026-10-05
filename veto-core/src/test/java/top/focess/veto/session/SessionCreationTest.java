@@ -9,6 +9,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
@@ -51,8 +52,11 @@ import top.focess.veto.model.SessionEntity;
 import top.focess.veto.model.SessionRepository;
 import top.focess.veto.model.tier.ModelBinding;
 import top.focess.veto.model.tier.ModelTierRegistry;
+import top.focess.veto.vault.TestUsers;
+import top.focess.veto.vault.UserRegistry;
 
 class SessionCreationTest {
+    private final @NonNull UserRegistry users = TestUsers.registry();
     private final @NonNull SessionRepository sessions = mock();
     private final @NonNull AgentInstanceRepository agents = mock();
     private final @NonNull AgentPatternRepository patterns = mock();
@@ -70,7 +74,7 @@ class SessionCreationTest {
                     mock(SessionAgentRegistry.class),
                     mock(SessionHistoryLoader.class),
                     tiers,
-                    new WorkspaceAdmissionPolicy(configuration, protectedSets),
+                    new WorkspaceAdmissionPolicy(configuration, protectedSets, users),
                     mock(ScopedPluginStorage.class),
                     mock(HitlRecordRepository.class),
                     plugins,
@@ -83,14 +87,16 @@ class SessionCreationTest {
             throws Exception {
         configuration.setDeployerPolicy(DeployerPolicy.TENANT);
         configuration.getTenant().setRoots(List.of(base.toString()));
-        when(protectedSets.resolve(any(), anyString(), any()))
+        when(protectedSets.resolve(any(), any(UUID.class), any()))
                 .thenReturn(new ProtectedSet(Set.of()));
         var ownerRoot = Files.createDirectory(base.resolve("alice"));
         Files.writeString(ownerRoot.resolve("project"), "existing file");
         var failure =
                 assertThrows(
                         IllegalArgumentException.class,
-                        () -> service.createSession("alice", "coder", null, List.of("/0/project")));
+                        () ->
+                                service.createSession(
+                                        TestUsers.ALICE, "coder", null, List.of("/0/project")));
         var message = failure.getMessage();
         if (message == null) throw new AssertionError("missing failure message");
         assertTrue(message.contains("/0/project"));
@@ -99,8 +105,8 @@ class SessionCreationTest {
 
     @BeforeEach
     void persistence() {
-        when(sessions.claimedRootsExcept(anyString())).thenCallRealMethod();
-        when(patterns.findByNameAndOwner(eq("coder"), anyString()))
+        when(sessions.claimedRootsExcept(any(UUID.class))).thenCallRealMethod();
+        when(patterns.findByNameAndUserId(eq("coder"), any(UUID.class)))
                 .thenAnswer(
                         call ->
                                 Optional.of(
@@ -110,7 +116,7 @@ class SessionCreationTest {
                                                 "model",
                                                 "prompt",
                                                 call.getArgument(1))));
-        when(tiers.resolve(anyString(), any()))
+        when(tiers.resolve(any(UUID.class), any()))
                 .thenReturn(
                         new ModelBinding(
                                 ProviderType.DEEPSEEK, "model", "profile", 0.7, 4096, null));
@@ -119,33 +125,39 @@ class SessionCreationTest {
     }
 
     @Test
-    void directoryCreationRejectsOtherOwnersClaimAndUnsafeNames(@TempDir @NonNull Path tempDir)
+    void directoryCreationRejectsOtherUserIdsClaimAndUnsafeNames(@TempDir @NonNull Path tempDir)
             throws IOException {
         var occupied = tempDir.resolve("occupied");
-        when(sessions.findByOwnerNot("alice"))
-                .thenReturn(List.of(new SessionEntity("bob", "existing", occupied.toString())));
+        when(sessions.findByUserIdNot(TestUsers.ALICE))
+                .thenReturn(
+                        List.of(new SessionEntity(TestUsers.BOB, "existing", occupied.toString())));
         assertThrows(
                 IllegalArgumentException.class,
-                () -> service.createWorkspaceDirectory("alice", tempDir, "occupied"));
+                () -> service.createWorkspaceDirectory(TestUsers.ALICE, tempDir, "occupied"));
         assertThrows(
                 IllegalArgumentException.class,
-                () -> service.createWorkspaceDirectory("alice", tempDir, "../escaped"));
+                () -> service.createWorkspaceDirectory(TestUsers.ALICE, tempDir, "../escaped"));
         assertFalse(Files.exists(occupied));
-        var created = service.createWorkspaceDirectory("alice", tempDir, "available");
+        var created = service.createWorkspaceDirectory(TestUsers.ALICE, tempDir, "available");
         assertEquals(tempDir.resolve("available").toRealPath(), created);
         assertTrue(Files.isDirectory(created));
         verify(sessions, never()).save(any(SessionEntity.class));
     }
 
     @Test
-    void anotherOwnerCannotClaimEqualParentOrChildRoots(@TempDir @NonNull Path tempDir) {
+    void anotherUserIdCannotClaimEqualParentOrChildRoots(@TempDir @NonNull Path tempDir) {
         var existingRoot = tempDir.resolve("occupied");
-        when(sessions.findByOwnerNot("alice"))
-                .thenReturn(List.of(new SessionEntity("bob", "existing", existingRoot.toString())));
+        when(sessions.findByUserIdNot(TestUsers.ALICE))
+                .thenReturn(
+                        List.of(
+                                new SessionEntity(
+                                        TestUsers.BOB, "existing", existingRoot.toString())));
         for (var root : List.of(existingRoot, tempDir, existingRoot.resolve("child"))) {
             assertThrows(
                     IllegalArgumentException.class,
-                    () -> service.createSession("alice", "coder", null, List.of(root.toString())));
+                    () ->
+                            service.createSession(
+                                    TestUsers.ALICE, "coder", null, List.of(root.toString())));
         }
         assertFalse(Files.exists(existingRoot));
         verify(sessions, never()).save(any(SessionEntity.class));
@@ -155,13 +167,14 @@ class SessionCreationTest {
     @Test
     void ownerCanReuseWorkspaceAndDefaultsSelectNoPlugins(@TempDir @NonNull Path tempDir) {
         var root = tempDir.resolve("project");
-        var first = service.createSession("alice", "coder", null, List.of(root.toString()));
-        var second = service.createSession("alice", "coder", null, List.of(root.toString()));
+        var first = service.createSession(TestUsers.ALICE, "coder", null, List.of(root.toString()));
+        var second =
+                service.createSession(TestUsers.ALICE, "coder", null, List.of(root.toString()));
         assertEquals(first.getWorkspaceRoots(), second.getWorkspaceRoots());
         assertTrue(Files.isDirectory(root));
         assertEquals(List.of(), second.getPluginBindings());
         verify(plugins, times(2)).selection(List.of());
-        verify(sessions, times(2)).findByOwnerNot("alice");
+        verify(sessions, times(2)).findByUserIdNot(TestUsers.ALICE);
     }
 
     @Test
@@ -171,14 +184,16 @@ class SessionCreationTest {
                 .thenThrow(new IllegalArgumentException("unavailable plugin"));
         assertThrows(
                 IllegalArgumentException.class,
-                () -> service.createSession("alice", "coder", null, List.of(root.toString())));
+                () ->
+                        service.createSession(
+                                TestUsers.ALICE, "coder", null, List.of(root.toString())));
         assertFalse(Files.exists(root));
         verify(sessions, never()).save(any(SessionEntity.class));
         verifyNoInteractions(agents);
     }
 
     @Test
-    void symlinkAliasCannotBypassAnotherOwnersClaim(@TempDir @NonNull Path tempDir)
+    void symlinkAliasCannotBypassAnotherUserIdsClaim(@TempDir @NonNull Path tempDir)
             throws Exception {
         var existingRoot = Files.createDirectory(tempDir.resolve("occupied"));
         var alias = tempDir.resolve("alias");
@@ -188,13 +203,16 @@ class SessionCreationTest {
             Assumptions.assumeTrue(
                     false, "host does not permit directory symlinks: " + e.getMessage());
         }
-        when(sessions.findByOwnerNot("alice"))
-                .thenReturn(List.of(new SessionEntity("bob", "existing", existingRoot.toString())));
+        when(sessions.findByUserIdNot(TestUsers.ALICE))
+                .thenReturn(
+                        List.of(
+                                new SessionEntity(
+                                        TestUsers.BOB, "existing", existingRoot.toString())));
         assertThrows(
                 IllegalArgumentException.class,
                 () ->
                         service.createSession(
-                                "alice",
+                                TestUsers.ALICE,
                                 "coder",
                                 null,
                                 List.of(alias.resolve("child").toString())));
@@ -204,9 +222,11 @@ class SessionCreationTest {
 
     @Test
     void unspecifiedPersistedRootReservesBackendWorkingDirectory() {
-        when(sessions.findByOwnerNot("alice"))
-                .thenReturn(List.of(new SessionEntity("bob", "existing")));
-        assertThrows(IllegalArgumentException.class, () -> service.createSession("alice", "coder"));
+        when(sessions.findByUserIdNot(TestUsers.ALICE))
+                .thenReturn(List.of(new SessionEntity(TestUsers.BOB, "existing")));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> service.createSession(TestUsers.ALICE, "coder"));
         verify(sessions, never()).save(any(SessionEntity.class));
     }
 
@@ -215,20 +235,22 @@ class SessionCreationTest {
         var cwd = Path.of(System.getProperty("user.dir", ".")).toRealPath();
         var ownerBase = cwd.getParent();
         if (ownerBase == null)
-            throw new AssertionError("test checkout must have an owner and deployment parent");
+            throw new AssertionError("test checkout must have an userId and deployment parent");
         var deploymentBase = ownerBase.getParent();
         var ownerName = ownerBase.getFileName();
         if (deploymentBase == null || ownerName == null)
-            throw new AssertionError("test checkout must have an owner and deployment parent");
-        var owner = ownerName.toString();
+            throw new AssertionError("test checkout must have an userId and deployment parent");
+        var userId = TestUsers.ALICE;
+        var account = users.findByUserId(userId).orElseThrow();
+        when(account.getUsername()).thenReturn(ownerName.toString());
         configuration.setDeployerPolicy(DeployerPolicy.TENANT);
         configuration.getTenant().setRoots(List.of(deploymentBase.toString()));
-        when(protectedSets.resolve(any(), anyString(), any())).thenReturn(ProtectedSet.empty());
+        when(protectedSets.resolve(any(), any(UUID.class), any())).thenReturn(ProtectedSet.empty());
 
-        var created = service.createSession(owner, "coder");
+        var created = service.createSession(userId, "coder");
 
         assertEquals(cwd.toString(), created.getWorkspaceRoots());
-        assertEquals(owner, created.getOwner());
+        assertEquals(userId, created.getUserId());
         verify(sessions, times(2)).save(created);
     }
 
@@ -238,35 +260,36 @@ class SessionCreationTest {
         var cwd = Files.createDirectories(base.resolve("alice/project")).toRealPath().toString();
         configuration.setDeployerPolicy(DeployerPolicy.TENANT);
         configuration.getTenant().setRoots(List.of(base.toString()));
-        when(protectedSets.resolve(any(), anyString(), any())).thenReturn(ProtectedSet.empty());
+        when(protectedSets.resolve(any(), any(UUID.class), any())).thenReturn(ProtectedSet.empty());
         var terminalService = spy(service);
         doReturn(Optional.of(new LlmConfig(ProviderType.DEEPSEEK, "model", "profile")))
                 .when(terminalService)
-                .activate("term-1", "terminal", "alice", cwd);
+                .activate("term-1", "terminal", TestUsers.ALICE, cwd);
         VetoCommandSender sender = mock(VetoCommandSender.class);
         when(sender.hasPermission(any(CommandPermission.class))).thenReturn(true);
         when(sender.isLoggedIn()).thenReturn(true);
-        when(sender.requireUsername()).thenReturn("alice");
+        when(sender.requireUserId()).thenReturn(TestUsers.ALICE);
         when(sender.terminalId()).thenReturn("term-1");
         when(sender.cwd()).thenReturn(cwd);
         var manager = new CommandManager();
         manager.register(
                 new SessionCommand(
                         terminalService,
-                        new WorkspaceAdmissionPolicy(configuration, protectedSets)));
+                        new WorkspaceAdmissionPolicy(configuration, protectedSets, users)));
 
         assertEquals(
                 CommandResult.ALLOW,
                 manager.dispatch(sender, "session create coder terminal").result());
-        verify(terminalService).createSession("alice", "coder", "terminal", List.of("/0/project"));
+        verify(terminalService)
+                .createSession(TestUsers.ALICE, "coder", "terminal", List.of("/0/project"));
         verify(sessions, times(2))
                 .save(
                         argThat(
                                 created ->
                                         created != null
                                                 && cwd.equals(created.getWorkspaceRoots())
-                                                && "alice".equals(created.getOwner())));
-        verify(terminalService).activate("term-1", "terminal", "alice", cwd);
+                                                && TestUsers.ALICE.equals(created.getUserId())));
+        verify(terminalService).activate("term-1", "terminal", TestUsers.ALICE, cwd);
 
         when(sender.cwd())
                 .thenReturn(Files.createDirectories(base.resolve("bob/project")).toString());
@@ -283,16 +306,16 @@ class SessionCreationTest {
             throws Exception {
         var root = tempDir.resolve("project");
         var persisted = new AtomicReference<SessionEntity>();
-        when(sessions.findByOwnerNot(anyString()))
+        when(sessions.findByUserIdNot(any(UUID.class)))
                 .thenAnswer(
                         call -> {
                             var claim = persisted.get();
-                            return claim == null || claim.getOwner().equals(call.getArgument(0))
+                            return claim == null || claim.getUserId().equals(call.getArgument(0))
                                     ? List.of()
                                     : List.of(claim);
                         });
         var secondValidated = new CountDownLatch(1);
-        when(tiers.resolve(eq("bob"), any()))
+        when(tiers.resolve(eq(TestUsers.BOB), any()))
                 .thenAnswer(
                         call -> {
                             secondValidated.countDown();
@@ -303,12 +326,16 @@ class SessionCreationTest {
         TransactionSynchronizationManager.initSynchronization();
         TransactionSynchronizationManager.setActualTransactionActive(true);
         try {
-            var first = service.createSession("alice", "coder", null, List.of(root.toString()));
+            var first =
+                    service.createSession(TestUsers.ALICE, "coder", null, List.of(root.toString()));
             var second =
                     executor.submit(
                             () ->
                                     service.createSession(
-                                            "bob", "coder", null, List.of(root.toString())));
+                                            TestUsers.BOB,
+                                            "coder",
+                                            null,
+                                            List.of(root.toString())));
             assertTrue(secondValidated.await(5, TimeUnit.SECONDS));
             assertThrows(TimeoutException.class, () -> second.get(100, TimeUnit.MILLISECONDS));
             if (committed) persisted.set(first);
@@ -325,7 +352,7 @@ class SessionCreationTest {
                                 ExecutionException.class, () -> second.get(5, TimeUnit.SECONDS));
                 assertInstanceOf(IllegalArgumentException.class, failure.getCause());
             } else {
-                assertEquals("bob", second.get(5, TimeUnit.SECONDS).getOwner());
+                assertEquals(TestUsers.BOB, second.get(5, TimeUnit.SECONDS).getUserId());
             }
         } finally {
             if (TransactionSynchronizationManager.isSynchronizationActive()) {

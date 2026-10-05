@@ -29,7 +29,9 @@ class AgentServiceScopeTest {
     private final PluginStorage.@NonNull Grant<Scope.@NonNull SessionScope> grant =
             new PluginStorage.Grant<>(
                     "host-issued-token",
-                    new Scope.SessionScope("immutable-user-id", session.toString()));
+                    new Scope.SessionScope(
+                            UUID.fromString("6a7c37d3-01ad-5b7b-9b0e-a096af3310b6"),
+                            session.toString()));
 
     @AfterEach
     void clearInvocation() {
@@ -37,12 +39,15 @@ class AgentServiceScopeTest {
     }
 
     @Test
-    void agentComesFromAdmittedCallAndUsernameIsDistinctFromStorageIdentity() {
-        admit("agent-one", "login-name", session);
-        when(factory.authorizeSession(caller, grant)).thenReturn("login-name");
+    void agentComesFromAdmittedCallWithCanonicalAccountIdentity() {
+        admit("agent-one", grant.scope().userId(), session);
+        when(factory.authorizeSession(caller, grant)).thenReturn(grant.scope().userId());
         var identity = AgentServiceScope.authorize(factory, caller, grant);
         assertEquals(
-                new Scope.AgentScope("immutable-user-id", session.toString(), "agent-one"),
+                new Scope.AgentScope(
+                        UUID.fromString("6a7c37d3-01ad-5b7b-9b0e-a096af3310b6"),
+                        session.toString(),
+                        "agent-one"),
                 identity);
         verify(factory).authorizeSession(caller, grant);
     }
@@ -56,7 +61,7 @@ class AgentServiceScopeTest {
 
     @Test
     void anotherSessionCannotBorrowCurrentAgent() {
-        admit("agent-one", "login-name", UUID.randomUUID());
+        admit("agent-one", grant.scope().userId(), UUID.randomUUID());
         assertThrows(
                 SecurityException.class, () -> AgentServiceScope.authorize(factory, caller, grant));
         verifyNoInteractions(factory);
@@ -64,22 +69,21 @@ class AgentServiceScopeTest {
 
     @Test
     void anotherOwnerCannotBorrowCurrentAgent() {
-        admit("agent-one", "other-login", session);
-        when(factory.authorizeSession(caller, grant)).thenReturn("login-name");
+        admit("agent-one", UUID.randomUUID(), session);
+        when(factory.authorizeSession(caller, grant)).thenReturn(grant.scope().userId());
         assertThrows(
                 SecurityException.class, () -> AgentServiceScope.authorize(factory, caller, grant));
     }
 
     @Test
     void changedAgentCannotReuseCallerBoundPermit() {
-        admit("agent-one", "login-name", session);
+        admit("agent-one", grant.scope().userId(), session);
         var previous = ToolCallContextHolder.get();
         if (previous == null) throw new AssertionError("Missing admitted test invocation");
         ToolCallContextHolder.set(
                 new ToolCallContext(
                         "agent-two",
                         previous.userId(),
-                        previous.owner(),
                         previous.sessionId(),
                         previous.toolResultPresentation(),
                         previous.executionPermit()));
@@ -90,7 +94,7 @@ class AgentServiceScopeTest {
 
     @Test
     void staleCallIdCannotReusePermit() {
-        admit("agent-one", "login-name", session);
+        admit("agent-one", grant.scope().userId(), session);
         assertNull(
                 ReflectionTestUtils.invokeMethod(
                         ToolCallContextHolder.class, "setCurrentCallId", "another-call"));
@@ -101,15 +105,15 @@ class AgentServiceScopeTest {
 
     @Test
     void forgedCrossPluginOrRevokedGrantIsRejectedByIssuer() {
-        admit("agent-one", "login-name", session);
+        admit("agent-one", grant.scope().userId(), session);
         when(factory.authorizeSession(caller, grant))
                 .thenThrow(new SecurityException("unrecognized grant"));
         assertThrows(
                 SecurityException.class, () -> AgentServiceScope.authorize(factory, caller, grant));
     }
 
-    private void admit(@NonNull String agent, @NonNull String owner, @NonNull UUID sessionId) {
-        var user = UUID.randomUUID();
+    private void admit(@NonNull String agent, @NonNull UUID userId, @NonNull UUID sessionId) {
+        var user = userId;
         var permit =
                 new ToolExecutionPermit(
                                 new ToolCall("fixture", Map.of(), "current-call"),
@@ -122,10 +126,10 @@ class AgentServiceScopeTest {
                                 DeployerPolicy.FULL_ACCESS,
                                 Set.of(),
                                 null)
-                        .withCaller(agent, user, owner, sessionId);
+                        .withCaller(agent, user, sessionId);
         ToolCallContextHolder.set(
                 new ToolCallContext(
-                        agent, user, owner, sessionId, ToolResultPresentationMode.BASIC, permit));
+                        agent, user, sessionId, ToolResultPresentationMode.BASIC, permit));
         assertNull(
                 ReflectionTestUtils.invokeMethod(
                         ToolCallContextHolder.class, "setCurrentCallId", "current-call"));

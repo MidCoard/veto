@@ -65,10 +65,10 @@ class WorkspaceFilePolicyTest {
                                 DeployerPolicy.SANDBOXED,
                                 ProtectedSet.empty())
                         .withAccessScope(List.of(base), List.of())
-                        .withCaller("agent", USER, "owner", SESSION);
+                        .withCaller("agent", USER, SESSION);
         ToolCallContextHolder.set(
                 new ToolCallContext(
-                        "agent", USER, "owner", SESSION, ToolResultPresentationMode.BASIC, permit));
+                        "agent", USER, SESSION, ToolResultPresentationMode.BASIC, permit));
         ToolCallContextHolder.setCurrentCallId(permit.callId());
         var capability = CapabilityResolver.require(WorkspaceReadCapability.class);
         try (var input = capability.file(file.toString()).openRead()) {
@@ -78,12 +78,7 @@ class WorkspaceFilePolicyTest {
         var occupied = permit.withAccessScope(List.of(base), List.of(sibling));
         ToolCallContextHolder.set(
                 new ToolCallContext(
-                        "agent",
-                        USER,
-                        "owner",
-                        SESSION,
-                        ToolResultPresentationMode.BASIC,
-                        occupied));
+                        "agent", USER, SESSION, ToolResultPresentationMode.BASIC, occupied));
         var occupiedCapability = CapabilityResolver.require(WorkspaceReadCapability.class);
         assertThrows(ToolExecutionException.class, () -> occupiedCapability.file(file.toString()));
     }
@@ -175,7 +170,7 @@ class WorkspaceFilePolicyTest {
                     key,
                     PluginTestSupport.reveal(
                                     plugins,
-                                    new Scope.AgentScope("owner", SESSION.toString(), "agent"),
+                                    new Scope.AgentScope(USER, SESSION.toString(), "agent"),
                                     reference)
                             .orElseThrow());
             assertEquals("first\r\n" + key + "\r\nlast\r\n", Files.readString(file));
@@ -312,10 +307,10 @@ class WorkspaceFilePolicyTest {
                                 Workspace.single(root, PathMode.REAL),
                                 DeployerPolicy.PROTECTED,
                                 new ProtectedSet(protectedPaths))
-                        .withCaller("agent", USER, "owner", SESSION);
+                        .withCaller("agent", USER, SESSION);
         ToolCallContextHolder.set(
                 new ToolCallContext(
-                        "agent", USER, "owner", SESSION, ToolResultPresentationMode.BASIC, permit));
+                        "agent", USER, SESSION, ToolResultPresentationMode.BASIC, permit));
         ToolCallContextHolder.setCurrentCallId(permit.callId());
     }
 }

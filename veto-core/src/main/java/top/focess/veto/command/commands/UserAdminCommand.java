@@ -41,7 +41,7 @@ public class UserAdminCommand extends VetoCommand {
                         s instanceof VetoCommandSender vs
                                 && vs.isLoggedIn()
                                 && policy.multiUser()
-                                && admin.isAdmin(vs.requireUsername()));
+                                && admin.isAdmin(vs.requireUserId()));
 
         // /user create <name> [admin]
         addExecutor(
@@ -87,13 +87,16 @@ public class UserAdminCommand extends VetoCommand {
                         s.output("Cannot delete your own account.");
                         return CommandResult.REFUSE;
                     }
-                    boolean exists =
-                            admin.listAll().stream().anyMatch(u -> u.getUsername().equals(name));
-                    if (!exists) {
+                    var target =
+                            admin.listAll().stream()
+                                    .filter(u -> u.getUsername().equals(name))
+                                    .findFirst();
+                    if (target.isEmpty()) {
                         s.output("No such user: " + name);
                         return CommandResult.REFUSE;
                     }
-                    if (admin.isAdmin(name) && admin.adminCount() <= 1) {
+                    if (admin.isAdmin(target.orElseThrow().getUserId())
+                            && admin.adminCount() <= 1) {
                         s.output("Cannot delete the last administrator account.");
                         return CommandResult.REFUSE;
                     }
@@ -107,7 +110,7 @@ public class UserAdminCommand extends VetoCommand {
                         s.output("Cancelled.");
                         return CommandResult.REFUSE;
                     }
-                    admin.deleteUser(name);
+                    admin.deleteUser(target.orElseThrow().getUserId());
                     s.output("User '" + name + "' deleted.");
                     return CommandResult.ALLOW;
                 },
@@ -153,7 +156,15 @@ public class UserAdminCommand extends VetoCommand {
                         return CommandResult.REFUSE;
                     }
                     try {
-                        admin.setPassword(name, pw);
+                        var target =
+                                admin.listAll().stream()
+                                        .filter(account -> account.getUsername().equals(name))
+                                        .findFirst()
+                                        .orElseThrow(
+                                                () ->
+                                                        new IllegalArgumentException(
+                                                                "No such user: " + name));
+                        admin.setPassword(target.getUserId(), pw);
                     } catch (IllegalArgumentException e) {
                         s.output(e.getMessage());
                         return CommandResult.REFUSE;

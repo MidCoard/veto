@@ -10,12 +10,14 @@ import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Consumer;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
@@ -50,6 +52,7 @@ public class TrainingManager {
     private final @NonNull AtomicBoolean running = new AtomicBoolean(false);
 
     private Process trainingProcess;
+    private boolean cancellationRequested;
     private final @NonNull ExecutorService processExecutor =
             Executors.newSingleThreadExecutor(
                     r -> {
@@ -166,6 +169,7 @@ public class TrainingManager {
         }
 
         progress.start();
+        cancellationRequested = false;
         running.set(true);
 
         // Capture request-scoped values for the async lambda
@@ -185,7 +189,6 @@ public class TrainingManager {
                         if (!runPythonScript(
                                 pythonDir, "prepare_data.py", "--skip-quality-check")) {
                             progress.fail("Data preparation failed");
-                            running.set(false);
                             return;
                         }
 
@@ -200,7 +203,6 @@ public class TrainingManager {
                                 progress.fail(
                                         "Quality filter failed — training data contains invalid"
                                                 + " records");
-                                running.set(false);
                                 return;
                             }
                         }
@@ -234,7 +236,6 @@ public class TrainingManager {
                                 Integer.toString(loraRank),
                                 "--structured-output")) {
                             progress.fail("Training failed");
-                            running.set(false);
                             return;
                         }
 
@@ -255,7 +256,6 @@ public class TrainingManager {
                                 conversionRun.resolve("gguf").toString(),
                                 "--no-default-copy")) {
                             progress.fail("GGUF conversion failed");
-                            running.set(false);
                             return;
                         }
 
@@ -267,8 +267,8 @@ public class TrainingManager {
 
                         if (Files.exists(evalDataPath) && Files.exists(ggufModelPath)) {
                             Path evalReportPath =
-                                    outputDir.resolve("eval_report_java.json").toAbsolutePath();
-                            runPythonScript(
+                                    conversionRun.resolve("eval_report_java.json").toAbsolutePath();
+                            if (!runPythonScript(
                                     pythonDir,
                                     "evaluate.py",
                                     "--model",
@@ -277,13 +277,21 @@ public class TrainingManager {
                                     evalDataPath.toAbsolutePath().toString(),
                                     "--output",
                                     evalReportPath.toString(),
-                                    "--json-output");
-
-                            // Parse evaluation report into TrainingProgress.EvaluationReport
-                            parseEvaluationReport(evalReportPath);
+                                    "--json-output")) {
+                                progress.fail("Model evaluation failed");
+                                return;
+                            }
+                            if (!parseEvaluationReport(evalReportPath)) {
+                                progress.fail(
+                                        "Current model evaluation report is missing or invalid");
+                                return;
+                            }
                         }
 
-                        completeTraining(ggufModelPath);
+                        synchronized (TrainingManager.this) {
+                            if (cancellationRequested) return;
+                            completeTraining(ggufModelPath);
+                        }
 
                     } catch (Exception e) {
                         log.error("Training pipeline failed", e);
@@ -293,7 +301,10 @@ public class TrainingManager {
                                         ? e.getClass().getSimpleName()
                                         : message);
                     } finally {
-                        running.set(false);
+                        synchronized (TrainingManager.this) {
+                            if (cancellationRequested) progress.cancel();
+                            running.set(false);
+                        }
                     }
                 });
 
@@ -306,9 +317,9 @@ public class TrainingManager {
             return;
         }
         log.warn("Cancelling training...");
+        cancellationRequested = true;
         killProcess();
         progress.cancel();
-        running.set(false);
     }
 
     /**
@@ -350,17 +361,9 @@ public class TrainingManager {
         pb.redirectErrorStream(true);
 
         try {
-            Process process = pb.start();
-            try (BufferedReader reader =
-                    new BufferedReader(new InputStreamReader(process.getInputStream()))) {
-                reader.transferTo(Writer.nullWriter());
-            }
-            boolean finished = process.waitFor(5, TimeUnit.MINUTES);
-            if (!finished) {
-                process.destroyForcibly();
-                return null;
-            }
-            if (process.exitValue() != 0) {
+            Integer exit = runProcess(pb, Duration.ofMinutes(5), line -> {}, false);
+            if (exit == null) return null;
+            if (exit != 0) {
                 log.warn("Quality filter reported invalid records");
             }
 
@@ -474,20 +477,8 @@ public class TrainingManager {
         pb.redirectErrorStream(true);
 
         try {
-            Process process = pb.start();
-            try (BufferedReader reader =
-                    new BufferedReader(new InputStreamReader(process.getInputStream()))) {
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    log.info("[QUALITY-FILTER] {}", line);
-                }
-            }
-            boolean finished = process.waitFor(5, TimeUnit.MINUTES);
-            if (!finished) {
-                process.destroyForcibly();
-                return false;
-            }
-            return process.exitValue() == 0;
+            Integer exit = runProcess(pb, Duration.ofMinutes(5), line -> {}, true);
+            return exit != null && exit == 0;
         } catch (Exception e) {
             log.error("Quality filter execution failed", e);
             return false;
@@ -498,10 +489,10 @@ public class TrainingManager {
      * Parse the evaluation report JSON (produced by evaluate.py --json-output) into a
      * TrainingProgress.EvaluationReport and attach it to the progress.
      */
-    private void parseEvaluationReport(@NonNull Path reportPath) {
+    private boolean parseEvaluationReport(@NonNull Path reportPath) {
         if (!Files.exists(reportPath)) {
             log.warn("Evaluation report not found: {}", reportPath);
-            return;
+            return false;
         }
         try {
             TrainingProgress.EvaluationReport evalReport =
@@ -523,8 +514,10 @@ public class TrainingManager {
                             Locale.ROOT,
                             "%.1f%%",
                             evalReport.decisionAccuracy().accuracy() * 100.0));
+            return true;
         } catch (Exception e) {
             log.warn("Failed to parse evaluation report: {}", safe(e.getMessage()));
+            return false;
         }
     }
 
@@ -562,6 +555,85 @@ public class TrainingManager {
     }
 
     /**
+     * Output and process termination share one deadline; a silent child cannot defeat the timeout.
+     */
+    private Integer runProcess(
+            @NonNull ProcessBuilder builder,
+            @NonNull Duration timeout,
+            @NonNull Consumer<@NonNull String> output,
+            boolean managed)
+            throws IOException, InterruptedException {
+        Process process;
+        synchronized (this) {
+            if (managed && cancellationRequested) return null;
+            process = builder.start();
+            if (managed) trainingProcess = process;
+        }
+        var drain =
+                new FutureTask<Void>(
+                        () -> {
+                            try (var reader =
+                                    new BufferedReader(
+                                            new InputStreamReader(process.getInputStream()))) {
+                                String line;
+                                while ((line = reader.readLine()) != null) {
+                                    log.info("[TRAINING] {}", line);
+                                    synchronized (TrainingManager.this) {
+                                        if (!managed
+                                                || (trainingProcess == process
+                                                        && !cancellationRequested))
+                                            output.accept(line);
+                                    }
+                                }
+                            }
+                            return null;
+                        });
+        var readerThread = Thread.ofVirtual().name("veto-training-output").start(drain);
+        long deadline = System.nanoTime() + timeout.toNanos();
+        Throwable failure = null;
+        try {
+            if (!process.waitFor(timeout.toNanos(), TimeUnit.NANOSECONDS)) {
+                log.warn("Training subprocess timed out after {}", timeout);
+                return null;
+            }
+            drain.get(Math.max(0, deadline - System.nanoTime()), TimeUnit.NANOSECONDS);
+            return process.exitValue();
+        } catch (TimeoutException e) {
+            return null;
+        } catch (ExecutionException e) {
+            var outputFailure = new IOException("Training output reader failed", e.getCause());
+            failure = outputFailure;
+            throw outputFailure;
+        } catch (InterruptedException | RuntimeException | Error e) {
+            failure = e;
+            throw e;
+        } finally {
+            try {
+                process.descendants()
+                        .forEach(
+                                child -> {
+                                    if (child.destroyForcibly())
+                                        log.debug("Stopped training descendant {}", child.pid());
+                                });
+                if (process.isAlive()) process.destroyForcibly();
+                if (!process.waitFor(5, TimeUnit.SECONDS))
+                    log.warn("Training child did not retire promptly");
+                drain.cancel(true);
+                readerThread.interrupt();
+                process.getInputStream().close();
+                readerThread.join(1000);
+            } catch (IOException | InterruptedException | RuntimeException cleanupFailure) {
+                if (failure != null) failure.addSuppressed(cleanupFailure);
+                else throw cleanupFailure;
+            } finally {
+                synchronized (this) {
+                    if (managed && trainingProcess == process) trainingProcess = null;
+                }
+            }
+        }
+    }
+
+    /**
      * Run a Python script located in the training/python directory.
      *
      * @param workingDir the python/ directory
@@ -592,36 +664,18 @@ public class TrainingManager {
         log.info("Running: {} {} (cwd={})", cmd.getFirst(), cmd.get(1), workingDir);
 
         try {
-            Process process = pb.start();
-            this.trainingProcess = process;
-
-            // Read output line by line and log it
-            try (BufferedReader reader =
-                    new BufferedReader(new InputStreamReader(process.getInputStream()))) {
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    log.info("[TRAINING] {}", line);
-
-                    // Try parsing as structured JSON progress
-                    parseProgressLine(line);
-                }
-            }
-
-            boolean finished = process.waitFor(config.getMaxTrainingHours(), TimeUnit.HOURS);
-            if (!finished || process.isAlive()) {
-                log.warn("Training timed out after {} hours", config.getMaxTrainingHours());
-                process.destroyForcibly();
+            Integer exit =
+                    runProcess(
+                            pb,
+                            Duration.ofHours(config.getMaxTrainingHours()),
+                            this::parseProgressLine,
+                            true);
+            if (exit == null) return false;
+            if (exit != 0) {
+                log.error("Python script exited with code {}", exit);
                 return false;
             }
-
-            int actualExit = process.exitValue();
-            if (actualExit != 0) {
-                log.error("Python script exited with code {}", actualExit);
-                return false;
-            }
-
             return true;
-
         } catch (IOException e) {
             log.error("Failed to start Python subprocess", e);
             return false;
@@ -629,8 +683,6 @@ public class TrainingManager {
             Thread.currentThread().interrupt();
             log.warn("Training interrupted");
             return false;
-        } finally {
-            this.trainingProcess = null;
         }
     }
 

@@ -24,7 +24,10 @@ final class GroupTestHost implements AutoCloseable {
     final AgentHost.@NonNull Session agents = mock(AgentHost.Session.class);
     final PluginStorage.@NonNull Grant<Scope.@NonNull SessionScope> grant =
             new PluginStorage.Grant<>(
-                    "scope", new Scope.SessionScope("user", UUID.randomUUID().toString()));
+                    "scope",
+                    new Scope.SessionScope(
+                            UUID.fromString("a59028e2-7be6-5c04-9439-9d4f7a4942b2"),
+                            UUID.randomUUID().toString()));
     final @NonNull Map<String, PluginStorage.Entry> rows = new ConcurrentHashMap<>();
     final @NonNull GroupRuntime runtime;
     final AgentConfiguration.@NonNull Context configuration;
@@ -33,7 +36,11 @@ final class GroupTestHost implements AutoCloseable {
     GroupTestHost() {
         caller =
                 new PluginHost.Invocation(
-                        "owner", grant.scope().session(), "leader", "request-one", "test-call");
+                        grant.scope().userId(),
+                        grant.scope().session(),
+                        "leader",
+                        "request-one",
+                        "test-call");
         var store = mock(PluginStorage.Store.class);
         when(storage.session(any())).thenReturn(store);
         when(storage.scopes(any(), any(), anyInt()))
@@ -118,7 +125,7 @@ final class GroupTestHost implements AutoCloseable {
                 new AgentProfile("Leader", "work", "STANDALONE", tools, "DEFAULT", null, Map.of());
         configuration =
                 new AgentConfiguration.Context(
-                        "owner",
+                        grant.scope().userId(),
                         grant,
                         agents,
                         "leader",

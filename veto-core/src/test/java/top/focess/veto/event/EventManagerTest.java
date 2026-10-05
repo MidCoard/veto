@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.*;
 
 import java.util.Set;
+import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.api.event.BeforeInputEvent;
@@ -28,8 +29,14 @@ class EventManagerTest {
 
         var event =
                 new BeforeInputEvent(
-                        new Scope.AgentScope("owner", "missing-session", "agent"), "text");
-        var context = new PluginInvocationContext("owner", "missing-session");
+                        new Scope.AgentScope(
+                                UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"),
+                                "missing-session",
+                                "agent"),
+                        "text");
+        var context =
+                new PluginInvocationContext(
+                        UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"), "missing-session");
         try {
             events.submit(event);
         } finally {
@@ -49,12 +56,18 @@ class EventManagerTest {
         var routes = mock(EventListenerRegistry.class);
         when(plugins.registry()).thenReturn(publication);
         when(publication.events()).thenReturn(routes);
-        var event = new SessionNotification(new Scope.SessionScope("owner", "session"));
+        var event =
+                new SessionNotification(
+                        new Scope.SessionScope(
+                                UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"),
+                                "session"));
         when(routes.hasHandlers(event))
                 .thenThrow(new IllegalArgumentException("Unregistered event type"));
         var events = new EventManager(plugins, selections);
 
-        var context = new PluginInvocationContext("owner", "session");
+        var context =
+                new PluginInvocationContext(
+                        UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"), "session");
         try {
             assertThrows(IllegalArgumentException.class, () -> events.submit(event));
         } finally {
@@ -79,9 +92,17 @@ class EventManagerTest {
         var selected = Set.of("selected.plugin");
         when(selections.selectedIds("session", captured)).thenReturn(selected);
         var events = new EventManager(plugins, selections);
-        var event = new BeforeInputEvent(new Scope.AgentScope("owner", "session", "agent"), "text");
+        var event =
+                new BeforeInputEvent(
+                        new Scope.AgentScope(
+                                UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"),
+                                "session",
+                                "agent"),
+                        "text");
 
-        var context = new PluginInvocationContext("owner", "session");
+        var context =
+                new PluginInvocationContext(
+                        UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"), "session");
         try {
             events.submit(event);
         } finally {
@@ -102,11 +123,17 @@ class EventManagerTest {
         var routes = mock(EventListenerRegistry.class);
         when(plugins.registry()).thenReturn(publication);
         when(publication.events()).thenReturn(routes);
-        var event = new SessionDeletedEvent(new Scope.SessionScope("owner", "payload-session"));
+        var event =
+                new SessionDeletedEvent(
+                        new Scope.SessionScope(
+                                UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"),
+                                "payload-session"));
         when(routes.hasHandlers(event)).thenReturn(true);
         var selected = Set.of("selected.plugin");
         when(selections.selectedIds("ambient-session", publication)).thenReturn(selected);
-        var context = new PluginInvocationContext("owner", "ambient-session");
+        var context =
+                new PluginInvocationContext(
+                        UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"), "ambient-session");
         try {
             new EventManager(plugins, selections).submit(event);
         } finally {
@@ -140,9 +167,15 @@ class EventManagerTest {
         when(routes.hasHandlers(any())).thenReturn(true);
         var selected = Set.of("selected.plugin");
         when(selections.selectedIds("session", publication)).thenReturn(selected);
-        var event = new SessionNotification(new Scope.SessionScope("owner", "payload-session"));
+        var event =
+                new SessionNotification(
+                        new Scope.SessionScope(
+                                UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"),
+                                "payload-session"));
 
-        var context = new PluginInvocationContext("owner", "session");
+        var context =
+                new PluginInvocationContext(
+                        UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"), "session");
         try {
             new EventManager(plugins, selections).submit(event);
         } finally {
@@ -161,7 +194,11 @@ class EventManagerTest {
         var routes = mock(EventListenerRegistry.class);
         when(plugins.registry()).thenReturn(publication);
         when(publication.events()).thenReturn(routes);
-        var event = new SessionDeletedEvent(new Scope.SessionScope("owner", "session"));
+        var event =
+                new SessionDeletedEvent(
+                        new Scope.SessionScope(
+                                UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"),
+                                "session"));
         when(routes.hasHandlers(event)).thenReturn(true);
 
         new EventManager(plugins, selections).submit(event);

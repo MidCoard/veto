@@ -66,6 +66,7 @@ import top.focess.veto.api.process.ProcessHost;
 import top.focess.veto.api.resources.CatalogueAccess;
 import top.focess.veto.bus.SessionInvalidations;
 import top.focess.veto.event.EventListenerRegistry;
+import top.focess.veto.integration.plugins.storage.PluginInvocationContext;
 import top.focess.veto.integration.plugins.storage.PluginStorageFactory;
 import top.focess.veto.model.SessionRepository;
 import top.focess.veto.plugin.runtime.*;
@@ -142,7 +143,7 @@ public final class PluginManager implements AutoCloseable {
                         agent == null
                                 ? issued.scope()
                                 : new Scope.AgentScope(
-                                        issued.scope().owner(),
+                                        issued.scope().userId(),
                                         issued.scope().session(),
                                         agent.agent()),
                         issued);
@@ -189,13 +190,11 @@ public final class PluginManager implements AutoCloseable {
         }
 
         public boolean test(@NonNull String caller, @NonNull String provider) {
-            var call = ToolCallContextHolder.get();
-            if (call == null) return true;
-            var id = call.sessionId();
-            if (id == null) return false;
+            var session = PluginInvocationContext.currentSession();
+            if (session == null) return ToolCallContextHolder.get() == null;
             var selected = sessions.getObject();
-            return (caller.isEmpty() || selected.includes(id.toString(), caller))
-                    && selected.includes(id.toString(), provider);
+            return (caller.isEmpty() || selected.includes(session, caller))
+                    && selected.includes(session, provider);
         }
     }
 

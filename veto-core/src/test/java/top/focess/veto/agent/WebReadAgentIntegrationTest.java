@@ -62,6 +62,7 @@ import top.focess.veto.model.AgentInstanceRepository;
 import top.focess.veto.model.tier.ModelBinding;
 import top.focess.veto.model.tier.ModelTier;
 import top.focess.veto.model.tier.ModelTierRegistry;
+import top.focess.veto.vault.TestUsers;
 
 class WebReadAgentIntegrationTest {
     @ParameterizedTest
@@ -145,7 +146,7 @@ class WebReadAgentIntegrationTest {
                     };
                 };
         var models = mock(ModelTierRegistry.class);
-        when(models.resolve("test-owner", ModelTier.LOW))
+        when(models.resolve(TestUsers.OWNER, ModelTier.LOW))
                 .thenReturn(
                         new ModelBinding(
                                 ProviderType.DEEPSEEK, "isolated-reader", "reader-key", 0, 2048));
@@ -246,14 +247,13 @@ class WebReadAgentIntegrationTest {
                         LlmOptions.defaults(),
                         null);
         String session = sessionId.toString();
-        UUID user = UUID.randomUUID();
+        UUID user = TestUsers.OWNER;
         service.getOrCreateAgent(
                 session,
                 UUID.randomUUID().toString(),
                 binding,
                 List.of(),
                 user,
-                "test-owner",
                 "D:/IdeaProjects/veto",
                 0,
                 presentation);
@@ -273,7 +273,8 @@ class WebReadAgentIntegrationTest {
                             assertTrue(
                                     hitl.resolveOption(
                                             prompt.agentId(), prompt.callId(), option.name()));
-                        });
+                        },
+                        TestUsers.OWNER);
         assertTrue(result.success(), result.message());
         assertEquals("Timeout is 30 seconds.", result.message());
         assertEquals(maxRounds == 4 ? 4 : 3, childRequests.size());
@@ -355,7 +356,7 @@ class WebReadAgentIntegrationTest {
         assertTrue(
                 savedTurns.stream()
                         .allMatch(row -> sessionId.toString().equals(row.getSessionId())));
-        assertTrue(savedTurns.stream().allMatch(row -> user.toString().equals(row.getUserId())));
+        assertTrue(savedTurns.stream().allMatch(row -> user.equals(row.getUserId())));
         assertEquals(1, savedTurns.stream().map(TurnRecordEntity::getAgentId).distinct().count());
         assertTrue(
                 savedTurns.stream()
@@ -395,7 +396,6 @@ class WebReadAgentIntegrationTest {
                 binding,
                 history,
                 user,
-                "test-owner",
                 "D:/IdeaProjects/veto",
                 0,
                 presentation);
@@ -404,7 +404,8 @@ class WebReadAgentIntegrationTest {
                         resumedSession,
                         "Repeat the documented timeout.",
                         binding,
-                        Duration.ofSeconds(10));
+                        Duration.ofSeconds(10),
+                        TestUsers.OWNER);
         assertTrue(resumedResult.success(), resumedResult.message());
         String replayed = mapper.writeValueAsString(parentRequests.getLast());
         assertTrue(replayed.contains("Timeout is 30 seconds."));
@@ -463,7 +464,7 @@ class WebReadAgentIntegrationTest {
                     throw new IllegalStateException("Reader released");
                 };
         var models = mock(ModelTierRegistry.class);
-        when(models.resolve("test-owner", ModelTier.LOW))
+        when(models.resolve(TestUsers.OWNER, ModelTier.LOW))
                 .thenReturn(new ModelBinding(ProviderType.DEEPSEEK, "reader", "key", 0, 2048));
         TurnRecordRepository turnRepository = mock(TurnRecordRepository.class);
         var reader =
@@ -551,8 +552,7 @@ class WebReadAgentIntegrationTest {
                 UUID.randomUUID().toString(),
                 binding,
                 List.of(),
-                UUID.randomUUID(),
-                "test-owner",
+                TestUsers.OWNER,
                 "D:/IdeaProjects/veto",
                 0,
                 ToolResultPresentationMode.BASIC);

@@ -33,7 +33,7 @@ public class SecurityContextInterceptor implements HandlerInterceptor {
                     .validate(token)
                     .ifPresent(
                             session -> {
-                                UserContext.set(session.username());
+                                UserContext.set(session.userId());
                             });
         }
         return true;

@@ -1,7 +1,6 @@
 package top.focess.veto.secret.detection;
 
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
@@ -73,23 +72,14 @@ public final class SlmSecretDetector implements SecretDetector {
         }
     }
 
-    /** Deterministic spans win on overlap, keeping their precise categories and markers. */
+    /** Overlaps preserve full coverage, with deterministic categories preferred to model labels. */
     private static @NonNull List<SecretMasker.SecretMatch> union(
             @NonNull List<SecretMasker.SecretMatch> deterministic,
             @NonNull List<SecretMasker.SecretMatch> modelSpans) {
         if (modelSpans.isEmpty()) return deterministic;
         List<SecretMasker.SecretMatch> all = new ArrayList<>(deterministic);
         all.addAll(modelSpans);
-        all.sort(
-                Comparator.comparingInt(SecretMasker.SecretMatch::start)
-                        .thenComparing(
-                                Comparator.comparingInt(SecretMasker.SecretMatch::end).reversed()));
-        List<SecretMasker.SecretMatch> result = new ArrayList<>();
-        for (var candidate : all) {
-            if (result.isEmpty() || candidate.start() >= result.getLast().end())
-                result.add(candidate);
-        }
-        return List.copyOf(result);
+        return SecretMasker.merge(all);
     }
 
     private static @NonNull List<SecretMasker.SecretMatch> spans(
@@ -108,15 +98,7 @@ public final class SlmSecretDetector implements SecretDetector {
                         new SecretMasker.SecretMatch(
                                 index, index + value.length(), "slm-detected"));
         }
-        matches.sort(
-                Comparator.comparingInt(SecretMasker.SecretMatch::start)
-                        .thenComparing(
-                                Comparator.comparingInt(SecretMasker.SecretMatch::end).reversed()));
-        List<SecretMasker.SecretMatch> result = new ArrayList<>();
-        for (var candidate : matches) {
-            if (result.isEmpty() || candidate.start() >= result.getLast().end())
-                result.add(candidate);
-        }
+        var result = SecretMasker.merge(matches);
         if (isBlanketStructuredClassification(text, result)) return List.of();
         return List.copyOf(result);
     }

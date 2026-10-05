@@ -29,17 +29,19 @@ class TaskEventsTest {
                     }
 
                     public void wake(
-                            @NonNull String owner,
-                            @NonNull String session,
-                            @NonNull String agent) {}
+                            @NonNull UUID userId, @NonNull String session, @NonNull String agent) {}
 
                     public void invalidate(@NonNull String session, @NonNull String resource) {}
                 };
         var events =
                 new TaskEvents(
-                        host, (owner, task, cause) -> observed.add(owner + ":" + task.taskId()));
+                        host, (userId, task, cause) -> observed.add(userId + ":" + task.taskId()));
         var session = UUID.randomUUID();
-        var scope = new Scope.AgentScope("owner", session.toString(), "agent");
+        var scope =
+                new Scope.AgentScope(
+                        UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"),
+                        session.toString(),
+                        "agent");
         var task =
                 new TaskInfo(
                         "bg-1",
@@ -63,7 +65,7 @@ class TaskEventsTest {
         events.userAuthenticated(scope.userScope());
         events.changed(
                 scope, task, BackgroundTasks.ExitCause.NATURAL, BackgroundTasks.Change.EXITED);
-        assertEquals(List.of("owner:bg-1"), observed);
+        assertEquals(List.of(scope.userId() + ":bg-1"), observed);
         events.close();
     }
 
@@ -73,7 +75,11 @@ class TaskEventsTest {
         List<String> observations = new ArrayList<>();
         List<String> topics = new ArrayList<>();
         var session = UUID.randomUUID();
-        var scope = new Scope.AgentScope("spawn-owner", session.toString(), "agent");
+        var scope =
+                new Scope.AgentScope(
+                        UUID.fromString("4de2fe72-0a34-5627-8e39-476676c86bb9"),
+                        session.toString(),
+                        "agent");
         PluginHost host =
                 new PluginHost() {
                     public @NonNull Invocation invocation(@NonNull String tool) {
@@ -81,9 +87,7 @@ class TaskEventsTest {
                     }
 
                     public void wake(
-                            @NonNull String owner,
-                            @NonNull String session,
-                            @NonNull String agent) {}
+                            @NonNull UUID userId, @NonNull String session, @NonNull String agent) {}
 
                     public void invalidate(@NonNull String session, @NonNull String resource) {
                         throw new AssertionError("Expected complete scoped invalidation identity");
@@ -111,9 +115,9 @@ class TaskEventsTest {
         var events =
                 new TaskEvents(
                         host,
-                        (owner, task, cause) -> {
+                        (userId, task, cause) -> {
                             if (fail.get()) throw new IllegalStateException("store unavailable");
-                            observations.add(owner + ":" + task.alive() + ":" + cause);
+                            observations.add(userId + ":" + task.alive() + ":" + cause);
                         });
         var instance = UUID.randomUUID();
         var started = Instant.now();
@@ -152,7 +156,7 @@ class TaskEventsTest {
         fail.set(false);
         events.retry();
         events.retry();
-        assertEquals(List.of("spawn-owner:false:AUTO_KILL"), observations);
+        assertEquals(List.of(scope.userId() + ":false:AUTO_KILL"), observations);
         assertEquals(List.of("task_started", "task_exited", "task_started"), topics);
         fail.set(true);
         events.changed(
@@ -177,21 +181,23 @@ class TaskEventsTest {
                     }
 
                     public void wake(
-                            @NonNull String owner,
-                            @NonNull String session,
-                            @NonNull String agent) {}
+                            @NonNull UUID userId, @NonNull String session, @NonNull String agent) {}
 
                     public void invalidate(@NonNull String session, @NonNull String resource) {}
                 };
         var events =
                 new TaskEvents(
                         host,
-                        (owner, task, cause) -> {
+                        (userId, task, cause) -> {
                             if (!available.get()) throw new IllegalStateException();
                             received.add(task);
                         });
         var session = UUID.randomUUID();
-        var scope = new Scope.AgentScope("owner", session.toString(), "agent");
+        var scope =
+                new Scope.AgentScope(
+                        UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"),
+                        session.toString(),
+                        "agent");
         var exited =
                 new TaskInfo(
                         "bg-1",
@@ -208,7 +214,10 @@ class TaskEventsTest {
                         "original-request");
         events.changed(
                 scope, exited, BackgroundTasks.ExitCause.NATURAL, BackgroundTasks.Change.EXITED);
-        events.sessionDeleted(new Scope.SessionScope("owner", session.toString()));
+        events.sessionDeleted(
+                new Scope.SessionScope(
+                        UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"),
+                        session.toString()));
         available.set(true);
         events.retry();
         events.changed(
@@ -236,16 +245,18 @@ class TaskEventsTest {
                     }
 
                     public void wake(
-                            @NonNull String owner,
-                            @NonNull String session,
-                            @NonNull String agent) {}
+                            @NonNull UUID userId, @NonNull String session, @NonNull String agent) {}
 
                     public void invalidate(@NonNull String session, @NonNull String resource) {}
                 };
         var events = new TaskEvents(host, monitor);
         var session = UUID.randomUUID();
         var instance = UUID.randomUUID();
-        var scope = new Scope.AgentScope("owner", session.toString(), "agent");
+        var scope =
+                new Scope.AgentScope(
+                        UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"),
+                        session.toString(),
+                        "agent");
         var now = Instant.now();
         var live =
                 new TaskInfo(
@@ -292,7 +303,11 @@ class TaskEventsTest {
         events.changed(
                 scope, exited, BackgroundTasks.ExitCause.USER_STOP, BackgroundTasks.Change.EXITED);
         assertEquals(1, monitor.pending("agent", session.toString()).size());
-        var saved = monitor.list("owner", session.toString()).getFirst();
+        var saved =
+                monitor.list(
+                                UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"),
+                                session.toString())
+                        .getFirst();
         var replayed = mapper.readValue(mapper.writeValueAsString(saved), MonitorRecord.class);
         assertEquals(event, replayed.pending().getFirst());
         events.close();

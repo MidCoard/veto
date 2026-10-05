@@ -1,6 +1,7 @@
 package top.focess.veto.controller.dto;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import java.util.UUID;
 import org.jspecify.annotations.*;
 
 /** Payload reporting setup, vault-lock, and session state for an auth status query. */
@@ -9,7 +10,7 @@ public record AuthStatusResponse(
         boolean setupNeeded,
         boolean vaultLocked,
         int activeSessions,
-        String currentUser,
+        UUID userId,
         @NonNull String timestamp,
         boolean authenticated,
         String username)

@@ -17,6 +17,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import top.focess.veto.api.agent.AgentState;
 import top.focess.veto.api.agent.workflow.PluginAwait;
 import top.focess.veto.api.llm.VetoResponse;
+import top.focess.veto.vault.TestUsers;
 
 class AgentThreadOwnershipTest {
     @Test
@@ -51,7 +52,12 @@ class AgentThreadOwnershipTest {
                             return new VetoResponse(null, null, "done");
                         });
         try {
-            service.submit("thread-stop", "warmup", binding("System"), Duration.ofSeconds(5));
+            service.submit(
+                    "thread-stop",
+                    "warmup",
+                    binding("System"),
+                    Duration.ofSeconds(5),
+                    TestUsers.OWNER);
             var agent = requireAgent(service.agent("thread-stop"));
             Object owned = ReflectionTestUtils.getField(agent, "runner");
             if (!(owned instanceof AgentRunner runner)) throw new AssertionError("Missing runner");
@@ -104,7 +110,12 @@ class AgentThreadOwnershipTest {
                             return new VetoResponse(null, null, "done");
                         });
         try {
-            service.submit("thread-cancel", "warmup", binding("System"), Duration.ofSeconds(5));
+            service.submit(
+                    "thread-cancel",
+                    "warmup",
+                    binding("System"),
+                    Duration.ofSeconds(5),
+                    TestUsers.OWNER);
             var agent = requireAgent(service.agent("thread-cancel"));
             Object owned = ReflectionTestUtils.getField(agent, "runner");
             if (!(owned instanceof AgentRunner runner)) throw new AssertionError("Missing runner");

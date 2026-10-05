@@ -24,6 +24,7 @@ import top.focess.veto.model.tier.ModelTierRegistry;
 import top.focess.veto.session.LlmConfig;
 import top.focess.veto.session.SessionService;
 import top.focess.veto.vault.KeysteadVault;
+import top.focess.veto.vault.TestUsers;
 
 class PromptBindingTest {
     private final ModelBinding model =
@@ -48,8 +49,8 @@ class PromptBindingTest {
         SessionService sessions = mock(SessionService.class);
         AgentService agents = mock(AgentService.class);
         KeysteadVault vault = mock(KeysteadVault.class);
-        when(vault.currentUser()).thenReturn("owner");
-        when(sessions.activateForRest("session", "owner"))
+        when(vault.currentUser()).thenReturn(TestUsers.OWNER);
+        when(sessions.activateForRest("session", TestUsers.OWNER))
                 .thenReturn(
                         Optional.of(
                                 new SessionService.SessionConfig(
@@ -62,7 +63,12 @@ class PromptBindingTest {
         }
         assertEquals(202, response.getStatusCode().value());
         var binding = ArgumentCaptor.forClass(LlmBinding.class);
-        verify(agents).submitNow(eq("session-id"), eq("Explain TCP"), binding.capture());
+        verify(agents)
+                .submitNow(
+                        eq("session-id"),
+                        eq("Explain TCP"),
+                        binding.capture(),
+                        eq(TestUsers.OWNER));
         assertEquals(model.llmOptions(), binding.getValue().options());
         assertEquals(model.model(), binding.getValue().model());
         assertEquals(model.baseUrl(), binding.getValue().baseUrl());
@@ -74,11 +80,21 @@ class PromptBindingTest {
         AgentService agents = mock(AgentService.class);
         KeysteadVault vault = mock(KeysteadVault.class);
         VetoCommandSender sender = mock(VetoCommandSender.class);
-        when(vault.currentUserOrOnlyUnlocked()).thenReturn("owner");
+        when(sender.userId()).thenReturn(TestUsers.OWNER);
+        when(vault.isUnlocked(TestUsers.OWNER)).thenReturn(true);
         when(sessions.resolveLlmConfig("terminal")).thenReturn(Optional.of(config));
         when(sessions.activeSession("terminal")).thenReturn(Optional.of("session-id"));
         when(agents.submit(
-                        anyString(), anyString(), any(), any(), any(), any(), any(), any(), any()))
+                        anyString(),
+                        anyString(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any()))
                 .thenReturn(AgentResult.success("done", Map.of()));
         new PromptHandler(vault, agents, sessions).handle("Explain TCP", "terminal", sender);
         var binding = ArgumentCaptor.forClass(LlmBinding.class);
@@ -92,18 +108,19 @@ class PromptBindingTest {
                         any(),
                         any(),
                         any(),
-                        any());
+                        any(),
+                        eq(TestUsers.OWNER));
         assertEquals(model.llmOptions(), binding.getValue().options());
     }
 
     @Test
     void leaderKeepsConfiguredWindowAndOutputReservation() {
         ModelTierRegistry tiers = mock(ModelTierRegistry.class);
-        when(tiers.resolve("owner", ModelTier.TOP)).thenReturn(model);
+        when(tiers.resolve(TestUsers.OWNER, ModelTier.TOP)).thenReturn(model);
         var leader =
                 AgentProfiles.resolve(
                                 "agent",
-                                "owner",
+                                TestUsers.OWNER,
                                 new AgentProfile(
                                         "Leader", "", "LEADER", Set.of(), "TOP", null, Map.of()),
                                 Set.of(),

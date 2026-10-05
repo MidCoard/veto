@@ -1,5 +1,6 @@
 package top.focess.veto.vault;
 
+import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
 import top.focess.veto.model.tier.CredentialExistenceChecker;
@@ -20,7 +21,7 @@ public class KeysteadCredentialExistenceChecker implements CredentialExistenceCh
     }
 
     @Override
-    public boolean exists(@NonNull String username, @NonNull String credentialKey) {
-        return vault.hasNote(username, credentialKey);
+    public boolean exists(@NonNull UUID userId, @NonNull String credentialKey) {
+        return vault.hasNote(userId, credentialKey);
     }
 }

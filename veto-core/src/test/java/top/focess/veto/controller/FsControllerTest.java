@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
@@ -22,11 +23,13 @@ import top.focess.veto.controller.dto.DirectoryListingResponse;
 import top.focess.veto.model.SessionRepository;
 import top.focess.veto.session.SessionService;
 import top.focess.veto.vault.KeysteadVault;
+import top.focess.veto.vault.TestUsers;
 
 class FsControllerTest {
     private static @NonNull FsController authenticated() {
         KeysteadVault vault = mock(KeysteadVault.class);
-        when(vault.currentUser()).thenReturn("test-user");
+        when(vault.currentUser())
+                .thenReturn(UUID.fromString("e01d95f2-8fed-5f83-ab91-8b68e2484899"));
         return controller(vault, new DeployerPolicyConfiguration(), List.of());
     }
 
@@ -35,13 +38,13 @@ class FsControllerTest {
             @NonNull DeployerPolicyConfiguration configuration,
             @NonNull List<@NonNull Path> occupied) {
         var resolver = mock(ProtectedSetResolver.class);
-        when(resolver.resolve(any(), anyString(), any())).thenReturn(ProtectedSet.empty());
-        var policy = new WorkspaceAdmissionPolicy(configuration, resolver);
+        when(resolver.resolve(any(), any(UUID.class), any())).thenReturn(ProtectedSet.empty());
+        var policy = new WorkspaceAdmissionPolicy(configuration, resolver, TestUsers.registry());
         var sessions = mock(SessionRepository.class);
-        when(sessions.claimedRootsExcept(anyString())).thenReturn(occupied);
+        when(sessions.claimedRootsExcept(any(UUID.class))).thenReturn(occupied);
         var service = mock(SessionService.class);
         try {
-            when(service.createWorkspaceDirectory(anyString(), any(), anyString()))
+            when(service.createWorkspaceDirectory(any(UUID.class), any(), anyString()))
                     .thenAnswer(
                             call -> {
                                 Path parent = call.getArgument(1);
@@ -62,7 +65,7 @@ class FsControllerTest {
             @NonNull DeployerPolicy mode,
             @NonNull List<@NonNull Path> occupied) {
         var vault = mock(KeysteadVault.class);
-        when(vault.currentUser()).thenReturn("alice");
+        when(vault.currentUser()).thenReturn(TestUsers.ALICE);
         var configuration = new DeployerPolicyConfiguration();
         configuration.setDeployerPolicy(mode);
         configuration.getSandboxed().setRoots(List.of(base.toString()));

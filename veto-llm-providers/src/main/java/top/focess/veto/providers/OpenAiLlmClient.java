@@ -3,6 +3,7 @@ package top.focess.veto.providers;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openai.client.OpenAIClient;
 import com.openai.core.JsonValue;
+import com.openai.core.RequestOptions;
 import com.openai.models.ChatModel;
 import com.openai.models.FunctionDefinition;
 import com.openai.models.FunctionParameters;
@@ -105,7 +106,15 @@ final class OpenAiLlmClient implements LlmClient {
             builder.putAdditionalBodyProperty("reasoning_effort", JsonValue.from("medium"));
         applyOptions(builder, request.options(), reasoning);
 
-        ChatCompletion completion = sdkClient.chat().completions().create(builder.build());
+        ChatCompletion completion =
+                sdkClient
+                        .chat()
+                        .completions()
+                        .create(
+                                builder.build(),
+                                RequestOptions.builder()
+                                        .timeout(request.options().timeoutOrDefault())
+                                        .build());
         if (completion.usage().isPresent()) {
             var usage = completion.usage().get();
             LlmSystemUsage.set(

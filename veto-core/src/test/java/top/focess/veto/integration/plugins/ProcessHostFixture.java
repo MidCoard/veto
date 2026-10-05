@@ -46,9 +46,8 @@ import top.focess.veto.sandbox.*;
 /** Real process host and builtin tools with explicit test-only session membership. */
 public final class ProcessHostFixture implements AutoCloseable {
     public final @NonNull UUID session = UUID.randomUUID();
-    public final @NonNull String owner = "test-owner";
+    public final @NonNull UUID userId = UUID.randomUUID();
     public final @NonNull String agent = "test-agent";
-    public final @NonNull UUID user = UUID.randomUUID();
     public final @NonNull AtomicBoolean admitted = new AtomicBoolean(true);
     public final @NonNull SessionAgentRegistry agents = mock(SessionAgentRegistry.class);
     public final @NonNull ManagedPlugin plugin;
@@ -78,13 +77,13 @@ public final class ProcessHostFixture implements AutoCloseable {
             PluginStorageFactory scopes = mock(PluginStorageFactory.class);
             var scope =
                     new PluginStorage.Grant<>(
-                            "issued", new Scope.SessionScope(user.toString(), session.toString()));
+                            "issued", new Scope.SessionScope(userId, session.toString()));
             when(storage.currentSession())
                     .thenAnswer(
                             call -> {
                                 var current = ToolCallContextHolder.get();
                                 if (current == null
-                                        || !owner.equals(current.owner())
+                                        || !userId.equals(current.userId())
                                         || !session.equals(current.sessionId()))
                                     throw new SecurityException("Fixture scope mismatch");
                                 return scope;
@@ -93,7 +92,7 @@ public final class ProcessHostFixture implements AutoCloseable {
                     .thenAnswer(
                             call -> {
                                 if (!admitted.get()) throw new SecurityException("Scope revoked");
-                                return owner;
+                                return userId;
                             });
             VetoAgent live = mock(VetoAgent.class);
             when(live.id()).thenReturn(agent);
@@ -115,14 +114,14 @@ public final class ProcessHostFixture implements AutoCloseable {
                                     || !admitted.get())
                                 throw new SecurityException("Wrong plugin invocation");
                             return new Invocation(
-                                    owner,
+                                    userId,
                                     session.toString(),
                                     agent,
                                     current.requestId(),
                                     current.executionPermit().callId());
                         }
 
-                        public void wake(String owner, String session, String agent) {}
+                        public void wake(UUID userId, String session, String agent) {}
 
                         public void invalidate(String session, String resource) {}
                     };
@@ -219,12 +218,12 @@ public final class ProcessHostFixture implements AutoCloseable {
                         var current = ToolCallContextHolder.get();
                         if (current == null) throw new SecurityException("No invocation");
                         CapabilityAccess.require(current.executionPermit().capability(), tool);
-                        var owner = current.owner();
+                        var userId = current.userId();
                         var session = current.sessionId();
-                        if (owner == null || session == null)
+                        if (userId == null || session == null)
                             throw new SecurityException("No owned session");
                         return new Invocation(
-                                owner,
+                                userId,
                                 session.toString(),
                                 current.agentId(),
                                 current.requestId(),
@@ -232,9 +231,7 @@ public final class ProcessHostFixture implements AutoCloseable {
                     }
 
                     public void wake(
-                            @NonNull String owner,
-                            @NonNull String session,
-                            @NonNull String agent) {}
+                            @NonNull UUID userId, @NonNull String session, @NonNull String agent) {}
 
                     public void invalidate(@NonNull String session, @NonNull String resource) {}
                 };
@@ -263,10 +260,10 @@ public final class ProcessHostFixture implements AutoCloseable {
                         call,
                         definition,
                         new PluginHost.Invocation(
-                                owner, session.toString(), agent, null, call.callId()));
+                                userId, session.toString(), agent, null, call.callId()));
         var permit =
                 ToolExecutionPermit.capture(call, definition, workspace)
-                        .withCaller(agent, user, owner, session);
+                        .withCaller(agent, userId, session);
         return prepared == null ? permit : permit.withPreparation(prepared);
     }
 

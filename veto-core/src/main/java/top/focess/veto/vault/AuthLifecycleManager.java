@@ -1,5 +1,6 @@
 package top.focess.veto.vault;
 
+import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -28,15 +29,18 @@ public class AuthLifecycleManager {
 
     private final @NonNull KeysteadVault vault;
     private final @NonNull PromptHandler promptHandler;
+    private final @NonNull SessionManager sessions;
 
     /** Constructs the manager with vault access, terminal detachment, and event delivery. */
     public AuthLifecycleManager(
             @NonNull KeysteadVault vault,
             @NonNull PromptHandler promptHandler,
-            @NonNull EventManager eventManager) {
+            @NonNull EventManager eventManager,
+            @NonNull SessionManager sessions) {
         this.vault = vault;
         this.promptHandler = promptHandler;
         this.eventManager = eventManager;
+        this.sessions = sessions;
     }
 
     /**
@@ -47,8 +51,8 @@ public class AuthLifecycleManager {
      */
     public synchronized void signup(@NonNull String username, @NonNull String password) {
         log.info("AuthLifecycleManager: Signing up user '{}'", username);
-        vault.signup(username, password);
-        eventManager.submit(new UserRegisteredEvent(new Scope.UserScope(username)));
+        UUID userId = vault.signup(username, password);
+        eventManager.submit(new UserRegisteredEvent(new Scope.UserScope(userId)));
     }
 
     /**
@@ -59,24 +63,25 @@ public class AuthLifecycleManager {
      */
     public synchronized void login(@NonNull String username, @NonNull String password) {
         log.info("AuthLifecycleManager: Logging in user '{}'", username);
-        vault.login(username, password);
-        eventManager.submit(new UserLoggedInEvent(new Scope.UserScope(username)));
+        UUID userId = vault.login(username, password);
+        eventManager.submit(new UserLoggedInEvent(new Scope.UserScope(userId)));
     }
 
     /**
      * Performs a unified logout: detaches the user's terminals and closes their vault handle. The
      * persisted vault is untouched and can be reopened on re-login.
      *
-     * @param username the name of the user logging out
+     * @param userId the canonical identity of the user logging out
      */
-    public synchronized void logout(@NonNull String username) {
-        log.info("AuthLifecycleManager: Logging out user '{}'", username);
-        eventManager.submit(new UserLogoutEvent(new Scope.UserScope(username)));
+    public synchronized void logout(@NonNull UUID userId) {
+        log.info("AuthLifecycleManager: Logging out user {}", userId);
+        sessions.invalidateUser(userId);
+        eventManager.submit(new UserLogoutEvent(new Scope.UserScope(userId)));
         try {
-            promptHandler.deactivateUser(username);
+            promptHandler.deactivateUser(userId);
         } catch (Exception e) {
-            log.warn("Error detaching sessions for user '{}' during logout", username, e);
+            log.warn("Error detaching sessions for user '{}' during logout", userId, e);
         }
-        vault.logout(username);
+        vault.logout(userId);
     }
 }

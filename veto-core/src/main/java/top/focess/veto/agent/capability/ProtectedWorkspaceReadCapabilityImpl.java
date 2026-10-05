@@ -31,14 +31,14 @@ public final class ProtectedWorkspaceReadCapabilityImpl implements WorkspaceRead
     @Override
     public @NonNull String captureFileText(@NonNull String input) {
         var context = CapabilityAccess.require(ToolCapability.WORKSPACE_READ);
-        String owner = context.owner();
+        UUID userId = context.userId();
         UUID session = context.sessionId();
-        if (owner == null || owner.isBlank() || session == null)
+        if (session == null)
             throw new IllegalStateException(
                     "Protected file reading requires an active owned session");
         var event =
                 new BeforeTextCommitEvent(
-                        new Scope.AgentScope(owner, session.toString(), context.agentId()),
+                        new Scope.AgentScope(userId, session.toString(), context.agentId()),
                         BeforeTextCommitEvent.Phase.FILE_CAPTURE,
                         UUID.randomUUID().toString(),
                         input);

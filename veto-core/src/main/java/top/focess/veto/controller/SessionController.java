@@ -35,7 +35,7 @@ import top.focess.veto.vault.KeysteadVault;
  *
  * <p>Unlike the terminal path - which maps the terminal's cwd to the workspace via the {@link
  * IpcFrame.Hello} handshake - a remote UI has no cwd to report, so it declares the workspace roots
- * explicitly in the create request body. The owner is the authenticated vault user;
+ * explicitly in the create request body. The userId is the authenticated vault userId;
  * activation/attachment is a UI concern (the UI holds the returned session id and submits prompts
  * through its own transport), so this controller only manages the session lifecycle, not prompt
  * dispatch.
@@ -73,9 +73,11 @@ public class SessionController {
     /** Lists the current user's sessions; empty when not logged in. */
     @GetMapping
     public @NonNull List<SessionResponse> list() {
-        String user = vault.currentUser();
-        if (user == null) return List.of();
-        return service.listSessions(user).stream().map(session -> response(user, session)).toList();
+        UUID userId = vault.currentUser();
+        if (userId == null) return List.of();
+        return service.listSessions(userId).stream()
+                .map(session -> response(userId, session))
+                .toList();
     }
 
     /**
@@ -90,25 +92,25 @@ public class SessionController {
     @SuppressWarnings(
             "JvmTaintAnalysis") // SessionService validates every root as normalized absolute input.
     public @NonNull SessionResponse create(@RequestBody @Valid @NonNull CreateSessionRequest body) {
-        String user = vault.currentUser();
-        if (user == null) throw new IllegalStateException(Msg.get("error.auth.notLoggedIn"));
+        UUID userId = vault.currentUser();
+        if (userId == null) throw new IllegalStateException(Msg.get("error.auth.notLoggedIn"));
         String pattern = body.pattern();
         var roots = body.workspaceRoots();
         Integer rootIndex = body.currentWorkspaceRootIndex();
         var created =
                 service.createSession(
-                        user,
+                        userId,
                         pattern,
                         body.name(),
                         roots,
                         rootIndex == null ? 0 : rootIndex,
                         ToolResultPresentationMode.canonicalize(body.toolResultPresentation()),
                         body.pluginIds());
-        return response(user, created);
+        return response(userId, created);
     }
 
     private @NonNull SessionResponse response(
-            @NonNull String owner, @NonNull SessionEntity session) {
+            @NonNull UUID userId, @NonNull SessionEntity session) {
         var roots = session.getWorkspaceRoots();
         String rendered = null;
         if (roots != null && !roots.isBlank()) {
@@ -116,7 +118,7 @@ public class SessionController {
                 rendered =
                         Arrays.stream(roots.split(","))
                                 .map(String::trim)
-                                .map(root -> workspaceAdmission.toClientPath(owner, Path.of(root)))
+                                .map(root -> workspaceAdmission.toClientPath(userId, Path.of(root)))
                                 .collect(Collectors.joining(","));
             } catch (IllegalArgumentException | IllegalStateException unavailable) {
                 // Historic roots outside current policy have no client-visible representation.
@@ -125,19 +127,21 @@ public class SessionController {
         return SessionResponse.from(session, rendered);
     }
 
-    /** Deletes an owned session by name; 404 when the user has no such session. */
-    @DeleteMapping("/{name}")
-    public @NonNull ResponseEntity<?> delete(@PathVariable @NonNull String name) {
-        String user = vault.currentUser();
-        if (user == null) {
+    /**
+     * Deletes exactly one owned session by immutable ID; 404 when the userId has no such session.
+     */
+    @DeleteMapping("/{sessionId}")
+    public @NonNull ResponseEntity<?> delete(@PathVariable @NonNull String sessionId) {
+        UUID userId = vault.currentUser();
+        if (userId == null) {
             return ResponseEntity.status(401)
                     .body(
                             new StatusMessageResponse(
                                     "error", Msg.get("error.auth.notAuthenticated")));
         }
-        if (!service.delete(user, name)) {
+        if (!service.delete(userId, sessionId)) {
             throw new ResponseStatusException(
-                    HttpStatus.NOT_FOUND, Msg.get("error.session.notFound", name));
+                    HttpStatus.NOT_FOUND, Msg.get("error.session.notFound", sessionId));
         }
         return ResponseEntity.noContent().build();
     }
@@ -156,9 +160,9 @@ public class SessionController {
     @SuppressWarnings("JvmTaintAnalysis")
     public @NonNull ResponseEntity<?> history(@PathVariable @NonNull String name) {
         SessionConfig cfg = requireOwnedSession(name);
-        String owner = vault.currentUser();
-        if (owner == null) throw new ResponseStatusException(HttpStatus.UNAUTHORIZED);
-        String agentId = service.primaryAgentIdFor(name, owner).orElse(null);
+        UUID userId = vault.currentUser();
+        if (userId == null) throw new ResponseStatusException(HttpStatus.UNAUTHORIZED);
+        String agentId = service.primaryAgentIdFor(name, userId).orElse(null);
         List<HistoryTurnResponse> turns = new ArrayList<>();
         // The conversation ledger has no agent IDs; keep child streams in /records only.
         if (agentId == null) return ResponseEntity.ok(turns);
@@ -225,12 +229,12 @@ public class SessionController {
     }
 
     private @NonNull SessionConfig requireOwnedSession(@NonNull String name) {
-        String user = vault.currentUser();
-        if (user == null) {
+        UUID userId = vault.currentUser();
+        if (userId == null) {
             throw new ResponseStatusException(
                     HttpStatus.UNAUTHORIZED, Msg.get("error.auth.notAuthenticated"));
         }
-        return service.resolveByName(name, user)
+        return service.resolveByName(name, userId)
                 .orElseThrow(
                         () ->
                                 new ResponseStatusException(

@@ -164,13 +164,33 @@ public final class SecretMasker {
                     candidates.add(new SecretMatch(start, matcher.end(), rule.getValue()));
             }
         }
+        return merge(candidates);
+    }
+
+    /** Preserves every covered character, including the tails of crossing spans. */
+    static @NonNull List<SecretMatch> merge(@NonNull List<SecretMatch> matches) {
+        List<SecretMatch> candidates = new ArrayList<>(matches);
         candidates.sort(
                 Comparator.comparingInt(SecretMatch::start)
                         .thenComparing(Comparator.comparingInt(SecretMatch::end).reversed()));
         List<SecretMatch> result = new ArrayList<>();
         for (SecretMatch candidate : candidates) {
-            if (result.isEmpty() || candidate.start() >= result.getLast().end())
+            if (result.isEmpty() || candidate.start() >= result.getLast().end()) {
                 result.add(candidate);
+            } else {
+                var previous = result.getLast();
+                String category =
+                        previous.category().equals("slm-detected")
+                                        && !candidate.category().equals("slm-detected")
+                                ? candidate.category()
+                                : previous.category();
+                result.set(
+                        result.size() - 1,
+                        new SecretMatch(
+                                previous.start(),
+                                Math.max(previous.end(), candidate.end()),
+                                category));
+            }
         }
         return List.copyOf(result);
     }

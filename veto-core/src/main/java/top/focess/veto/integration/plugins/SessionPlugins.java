@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 import java.util.stream.Collectors;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Service;
@@ -59,7 +60,7 @@ public class SessionPlugins {
      * contributor applies, and conflicting intents fail.
      */
     public AgentConfiguration.Intent configure(
-            @NonNull String owner,
+            @NonNull UUID userId,
             @NonNull String session,
             @NonNull String agent,
             String configurationOwner,
@@ -82,12 +83,12 @@ public class SessionPlugins {
             var host = manager.hostService(namespace, AgentHost.class);
             if (storage == null || host == null)
                 throw new IllegalStateException("Agent configuration services unavailable");
-            var invocation = new PluginInvocationContext(owner, session);
+            var invocation = new PluginInvocationContext(userId, session);
             try {
                 var scope = storage.currentSession();
                 var context =
                         new AgentConfiguration.Context(
-                                owner, scope, host.session(scope), agent, base, tools, activeTask);
+                                userId, scope, host.session(scope), agent, base, tools, activeTask);
                 var intent =
                         plugin.execute(
                                         () ->

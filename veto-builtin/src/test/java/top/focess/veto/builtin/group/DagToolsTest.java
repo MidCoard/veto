@@ -34,7 +34,7 @@ class DagToolsTest {
     private void setContext(@NonNull String agentId, UUID groupId) {
         fixture.caller =
                 new PluginHost.Invocation(
-                        "owner",
+                        fixture.grant.scope().userId(),
                         fixture.grant.scope().session(),
                         agentId.equals("leader-1") ? "leader" : agentId,
                         null,

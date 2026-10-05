@@ -1,12 +1,15 @@
 package top.focess.veto.vault;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static top.focess.veto.vault.TestUsers.ALICE;
+import static top.focess.veto.vault.TestUsers.BOB;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -29,24 +32,24 @@ class KeysteadVaultTest {
     void importedServicesAreBoundedGenericIdentifiers(@TempDir @NonNull Path tempDir) {
         var vault = newVault(tempDir);
         try {
-            vault.signup("alice", "password");
+            assertEquals(ALICE, vault.signup("alice", "password"));
             var ref =
                     importedNote(
                             vault,
-                            "alice",
+                            ALICE,
                             "s_0123456789abcdef0123456789abcdef",
                             "custom-service.v2",
                             "Label",
                             "synthetic-token");
             vault.withImportedCredential(
-                    "alice",
+                    ALICE,
                     ref,
                     "custom-service.v2",
                     value -> assertEquals("synthetic-token", new String(value)));
             String invalidServiceRef =
                     importedNote(
                             vault,
-                            "alice",
+                            ALICE,
                             "s_1123456789abcdef0123456789abcdef",
                             "https://bad",
                             "Label",
@@ -55,12 +58,12 @@ class KeysteadVaultTest {
                     IllegalArgumentException.class,
                     () ->
                             vault.withImportedCredential(
-                                    "alice", invalidServiceRef, "https://bad", value -> fail()));
+                                    ALICE, invalidServiceRef, "https://bad", value -> fail()));
             assertThrows(
                     IllegalArgumentException.class,
                     () ->
                             vault.withImportedCredential(
-                                    "alice", ref, "other", value -> fail("Service mismatch")));
+                                    ALICE, ref, "other", value -> fail("Service mismatch")));
         } finally {
             vault.shutdown();
         }
@@ -70,18 +73,18 @@ class KeysteadVaultTest {
     void importedCredentialUseRequiresTheExactOwnerAndService(@TempDir @NonNull Path tempDir) {
         var vault = newVault(tempDir);
         try {
-            vault.signup("alice", "p@ssw0rd!");
+            assertEquals(ALICE, vault.signup("alice", "p@ssw0rd!"));
             String reference =
                     importedNote(
                             vault,
-                            "alice",
+                            ALICE,
                             "s_0123456789abcdef0123456789abcdef",
                             "github",
                             "Repository",
                             "synthetic-token");
             boolean[] invoked = {false};
             vault.withImportedCredential(
-                    "alice",
+                    ALICE,
                     reference,
                     "github",
                     value -> {
@@ -89,12 +92,12 @@ class KeysteadVaultTest {
                         invoked[0] = true;
                     });
             assertTrue(invoked[0]);
-            vault.signup("bob", "other-password");
+            assertEquals(BOB, vault.signup("bob", "other-password"));
             assertThrows(
                     IllegalArgumentException.class,
                     () ->
                             vault.withImportedCredential(
-                                    "bob",
+                                    BOB,
                                     reference,
                                     "github",
                                     value -> fail("Wrong owner must not receive credential")));
@@ -102,16 +105,16 @@ class KeysteadVaultTest {
                     IllegalArgumentException.class,
                     () ->
                             vault.withImportedCredential(
-                                    "alice",
+                                    ALICE,
                                     reference,
                                     "other-service",
                                     value -> fail("Wrong service must not receive credential")));
-            vault.logout("alice");
+            vault.logout(ALICE);
             assertThrows(
                     KeysteadVault.VaultLockedException.class,
                     () ->
                             vault.withImportedCredential(
-                                    "alice",
+                                    ALICE,
                                     reference,
                                     "github",
                                     value -> fail("Locked owner must not use Bob's handle")));
@@ -126,9 +129,9 @@ class KeysteadVaultTest {
         var vault = newVault(tempDir);
         var store = new SecretCandidateStore();
         var writer = credentialWriter(vault);
-        var scope = new Scope.AgentScope("alice", "session", "agent");
+        var scope = new Scope.AgentScope(ALICE, "session", "agent");
         try {
-            vault.signup("alice", "p@ssw0rd!");
+            assertEquals(ALICE, vault.signup("alice", "p@ssw0rd!"));
             String reference =
                     store.capture(scope, "source", "password=synthetic-token")
                             .candidates()
@@ -146,11 +149,11 @@ class KeysteadVaultTest {
             assertEquals(
                     "[SECRET_REF:" + reference + "]",
                     store.capture(scope, "repeat", "synthetic-token").text());
-            var other = new Scope.AgentScope("alice", "session", "mate");
+            var other = new Scope.AgentScope(ALICE, "session", "mate");
             assertThrows(
                     IllegalStateException.class,
                     () -> store.importOnce(other, reference, "github", "Repository", writer));
-            store.closeOwner("alice");
+            store.closeUser(ALICE);
             assertThrows(
                     IllegalStateException.class,
                     () -> store.importOnce(scope, reference, "github", "Repository", writer));
@@ -166,16 +169,15 @@ class KeysteadVaultTest {
         var vault = newVault(tempDir);
         String importId = "s_0123456789abcdef0123456789abcdef";
         try {
-            vault.signup("alice", "p@ssw0rd!");
-            UserContext.set("alice");
+            assertEquals(ALICE, vault.signup("alice", "p@ssw0rd!"));
+            UserContext.set(ALICE);
             vault.saveNote("Repository", "existing-value");
             String reference =
-                    importedNote(
-                            vault, "alice", importId, "github", "Repository", "synthetic-token");
+                    importedNote(vault, ALICE, importId, "github", "Repository", "synthetic-token");
             assertEquals(
                     reference,
                     importedNote(
-                            vault, "alice", importId, "github", "Repository", "synthetic-token"));
+                            vault, ALICE, importId, "github", "Repository", "synthetic-token"));
             assertEquals(Optional.of("existing-value"), vault.readNoteBody("Repository"));
             assertEquals(2, vault.listTitles().size());
             assertThrows(
@@ -183,7 +185,7 @@ class KeysteadVaultTest {
                     () ->
                             importedNote(
                                     vault,
-                                    "alice",
+                                    ALICE,
                                     importId,
                                     "github",
                                     "Changed",
@@ -193,7 +195,7 @@ class KeysteadVaultTest {
                     () ->
                             importedNote(
                                     vault,
-                                    "alice",
+                                    ALICE,
                                     importId,
                                     "github",
                                     "Repository",
@@ -203,17 +205,17 @@ class KeysteadVaultTest {
                     () ->
                             importedNote(
                                     vault,
-                                    "bob",
+                                    BOB,
                                     importId,
                                     "github",
                                     "Repository",
                                     "synthetic-token"));
-            vault.logout("alice");
-            vault.login("alice", "p@ssw0rd!");
+            vault.logout(ALICE);
+            assertEquals(ALICE, vault.login("alice", "p@ssw0rd!"));
             assertEquals(
                     reference,
                     importedNote(
-                            vault, "alice", importId, "github", "Repository", "synthetic-token"));
+                            vault, ALICE, importId, "github", "Repository", "synthetic-token"));
             assertEquals(2, vault.listTitles().size());
         } finally {
             vault.shutdown();
@@ -224,15 +226,15 @@ class KeysteadVaultTest {
     void explicitOwnerReadinessCannotBorrowTheOnlyUnlockedVault(@TempDir @NonNull Path tempDir) {
         var vault = newVault(tempDir);
         try {
-            vault.signup("bob", "p@ssw0rd!");
-            UserContext.set("bob");
+            assertEquals(BOB, vault.signup("bob", "p@ssw0rd!"));
+            UserContext.set(BOB);
             assertTrue(vault.isUnlocked());
-            assertTrue(vault.isUnlocked("bob"));
-            assertFalse(vault.isUnlocked("alice"));
+            assertTrue(vault.isUnlocked(BOB));
+            assertFalse(vault.isUnlocked(ALICE));
             UserContext.clear();
-            assertFalse(vault.isUnlocked("alice"));
-            vault.logout("bob");
-            assertFalse(vault.isUnlocked("bob"));
+            assertFalse(vault.isUnlocked(ALICE));
+            vault.logout(BOB);
+            assertFalse(vault.isUnlocked(BOB));
         } finally {
             vault.shutdown();
         }
@@ -241,18 +243,19 @@ class KeysteadVaultTest {
     private static @NonNull KeysteadVault newVault(@NonNull Path tempDir) {
         CredentialVaultConfiguration config = new CredentialVaultConfiguration();
         config.setVaultHome(tempDir.toString());
-        return new KeysteadVault(config);
+        var users = TestUsers.registry();
+        return new KeysteadVault(config, users);
     }
 
     private static @NonNull String importedNote(
             @NonNull KeysteadVault vault,
-            @NonNull String owner,
+            @NonNull UUID userId,
             @NonNull String reference,
             @NonNull String service,
             @NonNull String label,
             @NonNull String value) {
         return vault.createSecureNoteIfAbsent(
-                owner,
+                userId,
                 "veto.import." + reference,
                 Map.of(
                         "veto.import.id", reference,
@@ -265,12 +268,12 @@ class KeysteadVaultTest {
         return new VaultAccess.Handle() {
             @Override
             public Scope.@NonNull AgentScope scope() {
-                return new Scope.AgentScope("alice", "session", "agent");
+                return new Scope.AgentScope(ALICE, "session", "agent");
             }
 
             @Override
             public boolean isUnlocked() {
-                return vault.isUnlocked("alice");
+                return vault.isUnlocked(ALICE);
             }
 
             @Override
@@ -278,7 +281,7 @@ class KeysteadVaultTest {
                     @NonNull String title,
                     @NonNull Map<@NonNull String, @NonNull String> attributes,
                     @NonNull String value) {
-                return vault.createSecureNoteIfAbsent("alice", title, attributes, value);
+                return vault.createSecureNoteIfAbsent(ALICE, title, attributes, value);
             }
         };
     }
@@ -288,7 +291,7 @@ class KeysteadVaultTest {
             throws Exception {
         var vault = newVault(tempDir);
         try (var workers = Executors.newVirtualThreadPerTaskExecutor()) {
-            vault.signup("alice", "p@ssw0rd!");
+            assertEquals(ALICE, vault.signup("alice", "p@ssw0rd!"));
             var start = new CountDownLatch(1);
             var results = new ArrayList<Future<String>>();
             for (int i = 0; i < 8; i++)
@@ -298,7 +301,7 @@ class KeysteadVaultTest {
                                     start.await();
                                     return importedNote(
                                             vault,
-                                            "alice",
+                                            ALICE,
                                             "s_0123456789abcdef0123456789abcdef",
                                             "github",
                                             "Repository",
@@ -307,7 +310,7 @@ class KeysteadVaultTest {
             start.countDown();
             String reference = results.getFirst().get(5, TimeUnit.SECONDS);
             for (var result : results) assertEquals(reference, result.get(5, TimeUnit.SECONDS));
-            UserContext.set("alice");
+            UserContext.set(ALICE);
             assertEquals(1, vault.listTitles().size());
         } finally {
             vault.shutdown();
@@ -322,7 +325,7 @@ class KeysteadVaultTest {
     @Test
     void signupAndRoundTrip(@TempDir @NonNull Path tempDir) {
         KeysteadVault vault = newVault(tempDir);
-        vault.signup("alice", "p@ssw0rd!");
+        assertEquals(ALICE, vault.signup("alice", "p@ssw0rd!"));
 
         vault.saveNote("pattern-coder", "sk-xxx");
         assertEquals(Optional.of("sk-xxx"), vault.readNoteBody("pattern-coder"));
@@ -335,20 +338,20 @@ class KeysteadVaultTest {
     @Test
     void loginReopensPersistedVault(@TempDir @NonNull Path tempDir) {
         KeysteadVault vault = newVault(tempDir);
-        vault.signup("alice", "p@ssw0rd!");
+        assertEquals(ALICE, vault.signup("alice", "p@ssw0rd!"));
         vault.saveNote("pattern-coder", "sk-xxx");
-        vault.logout("alice");
+        vault.logout(ALICE);
 
         // A fresh KeysteadVault instance (simulating a restart) reopens the same persisted vault.
         KeysteadVault reopened = newVault(tempDir);
-        reopened.login("alice", "p@ssw0rd!");
+        assertEquals(ALICE, reopened.login("alice", "p@ssw0rd!"));
         assertEquals(Optional.of("sk-xxx"), reopened.readNoteBody("pattern-coder"));
     }
 
     @Test
     void saveNoteUpsertDoesNotDuplicate(@TempDir @NonNull Path tempDir) {
         KeysteadVault vault = newVault(tempDir);
-        vault.signup("alice", "p@ssw0rd!");
+        assertEquals(ALICE, vault.signup("alice", "p@ssw0rd!"));
         vault.saveNote("pattern-coder", "sk-old");
         vault.saveNote("pattern-coder", "sk-new");
 
@@ -369,22 +372,24 @@ class KeysteadVaultTest {
     @Test
     void wrongPasswordFailsToOpen(@TempDir @NonNull Path tempDir) {
         KeysteadVault vault = newVault(tempDir);
-        vault.signup("alice", "p@ssw0rd!");
-        vault.logout("alice");
+        assertEquals(ALICE, vault.signup("alice", "p@ssw0rd!"));
+        vault.logout(ALICE);
 
         KeysteadVault reopened = newVault(tempDir);
-        assertThrows(Exception.class, () -> reopened.login("alice", "wrong-password"));
+        assertThrows(
+                Exception.class,
+                () -> assertEquals(ALICE, reopened.login("alice", "wrong-password")));
     }
 
     @Test
     void unlockedVaultDoesNotAuthenticateAnonymousRequest(@TempDir @NonNull Path tempDir) {
         KeysteadVault vault = newVault(tempDir);
-        vault.signup("alice", "p@ssw0rd!");
+        assertEquals(ALICE, vault.signup("alice", "p@ssw0rd!"));
 
         assertNull(vault.currentUser());
-        assertEquals("alice", vault.currentUserOrOnlyUnlocked());
+        assertEquals(ALICE, vault.currentUserOrOnlyUnlocked());
 
-        UserContext.set("alice");
-        assertEquals("alice", vault.currentUser());
+        UserContext.set(ALICE);
+        assertEquals(ALICE, vault.currentUser());
     }
 }

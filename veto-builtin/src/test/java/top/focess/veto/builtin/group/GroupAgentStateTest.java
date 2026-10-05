@@ -2,6 +2,7 @@ package top.focess.veto.builtin.group;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.api.event.AgentTerminatedEvent;
 import top.focess.veto.api.plugin.Scope;
@@ -16,7 +17,7 @@ class GroupAgentStateTest {
             fixture.runtime.transition(fixture.caller, "runtime-leader", "original");
             var updated =
                     new AgentConfiguration.Context(
-                            fixture.configuration.owner(),
+                            fixture.configuration.userId(),
                             fixture.grant,
                             fixture.agents,
                             "leader",
@@ -34,7 +35,9 @@ class GroupAgentStateTest {
             fixture.runtime.onAgentTerminated(
                     new AgentTerminatedEvent(
                             new Scope.AgentScope(
-                                    "different-owner", fixture.grant.scope().session(), "leader")));
+                                    UUID.fromString("709930b5-15f4-5ae0-8194-4a8c3f8b5713"),
+                                    fixture.grant.scope().session(),
+                                    "leader")));
             var retained =
                     GroupTestHost.required(
                             GroupTestHost.required(fixture.runtime.configure(updated))

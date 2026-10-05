@@ -48,10 +48,11 @@ class GroupToolAdmissionTest {
                         new PluginStorage.Grant<>(
                                 "group-account",
                                 new Scope.SessionScope(
-                                        "immutable-account", fixture.session.getId()));
+                                        fixture.session.getUserId(), fixture.session.getId()));
                 when(fixture.storage.scopes(PluginScope.SESSION, null, 200))
                         .thenReturn(new PluginStorage.Page<>(List.of(grant), null));
-                when(fixture.scopes.authorizeSession(fixture.storage, grant)).thenReturn("owner");
+                when(fixture.scopes.authorizeSession(fixture.storage, grant))
+                        .thenReturn(UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"));
                 var configuration = new PluginHostConfiguration(new DeltaBroker());
                 var delegate =
                         (PluginHost)
@@ -96,11 +97,10 @@ class GroupToolAdmissionTest {
                     var group =
                             Group.create(
                                     fixture.childId,
-                                    grant.scope().owner(),
+                                    grant.scope().userId(),
                                     "work",
                                     board,
                                     new ExecutionDag(UUID.randomUUID(), List.of()),
-                                    "owner",
                                     null,
                                     ToolResultPresentationMode.BASIC,
                                     UUID.fromString(fixture.session.getId()));
@@ -130,19 +130,18 @@ class GroupToolAdmissionTest {
                                                 fixture.plugin.bindingId(),
                                                 "1.0.0",
                                                 local));
-                        var user = UUID.randomUUID();
+                        var user = fixture.session.getUserId();
                         var session = UUID.fromString(fixture.session.getId());
                         var permit =
                                 ToolExecutionPermit.capture(
                                                 new ToolCall(name, Map.of(), "call"),
                                                 definition,
                                                 Workspace.single(Path.of("."), PathMode.REAL))
-                                        .withCaller(fixture.childId, user, "owner", session);
+                                        .withCaller(fixture.childId, user, session);
                         ToolCallContextHolder.set(
                                 new ToolCallContext(
                                         fixture.childId,
                                         user,
-                                        "owner",
                                         session,
                                         ToolResultPresentationMode.BASIC,
                                         permit,

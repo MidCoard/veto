@@ -2,6 +2,7 @@ package top.focess.veto.model;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
@@ -14,21 +15,21 @@ import org.springframework.transaction.annotation.Transactional;
 @Repository
 public interface AgentPatternRepository extends JpaRepository<AgentPatternEntity, String> {
 
-    /** All patterns owned by {@code owner}. */
-    @NonNull List<AgentPatternEntity> findByOwner(@NonNull String owner);
+    /** All patterns owned by {@code userId}. */
+    @NonNull List<AgentPatternEntity> findByUserId(@NonNull UUID userId);
 
     /**
-     * The owner's pattern with the given name; throws {@code NonUniqueResultException} if legacy
-     * duplicate rows share the {@code (name, owner)} pair (see {@link #existsByNameAndOwner}).
+     * The user's pattern with the given name; throws {@code NonUniqueResultException} if legacy
+     * duplicate rows share the {@code (name, userId)} pair (see {@link #existsByNameAndUserId}).
      */
-    @NonNull Optional<AgentPatternEntity> findByNameAndOwner(
-            @NonNull String name, @NonNull String owner);
+    @NonNull Optional<AgentPatternEntity> findByNameAndUserId(
+            @NonNull String name, @NonNull UUID userId);
 
     /**
-     * Duplicate-tolerant existence check (unlike {@link #findByNameAndOwner}, which throws when
+     * Duplicate-tolerant existence check (unlike {@link #findByNameAndUserId}, which throws when
      * legacy duplicate rows exist).
      */
-    boolean existsByNameAndOwner(@NonNull String name, @NonNull String owner);
+    boolean existsByNameAndUserId(@NonNull String name, @NonNull UUID userId);
 
     /**
      * Bulk JPQL delete (single SQL statement, no select-then-remove). The derived-delete form loads
@@ -39,11 +40,11 @@ public interface AgentPatternRepository extends JpaRepository<AgentPatternEntity
      */
     @Modifying
     @Transactional
-    @Query("delete from AgentPatternEntity p where p.name = :name and p.owner = :owner")
-    void deleteByNameAndOwner(
-            @Param("name") @NonNull String name, @Param("owner") @NonNull String owner);
+    @Query("delete from AgentPatternEntity p where p.name = :name and p.userId = :userId")
+    void deleteByNameAndUserId(
+            @Param("name") @NonNull String name, @Param("userId") @NonNull UUID userId);
 
-    /** Bulk-delete every pattern owned by {@code owner} (used by user-deletion cascade). */
+    /** Bulk-delete every pattern owned by {@code userId} (used by user-deletion cascade). */
     @Transactional
-    void deleteByOwner(@NonNull String owner);
+    void deleteByUserId(@NonNull UUID userId);
 }

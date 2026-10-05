@@ -49,6 +49,7 @@ import top.focess.veto.api.process.Command;
 import top.focess.veto.bus.SessionInvalidations;
 import top.focess.veto.llm.core.ToolResultPresenter;
 import top.focess.veto.llm.core.UniformLLMCaller;
+import top.focess.veto.vault.TestUsers;
 
 @SuppressWarnings("initialization.field.uninitialized")
 class NewRequirementsTest {
@@ -208,7 +209,8 @@ class NewRequirementsTest {
                                                             + " message: "
                                                             + msg);
                                             streamedMessage.set(msg);
-                                        });
+                                        },
+                                        TestUsers.OWNER);
                             } catch (Exception e) {
                                 System.out.println("TEST DEBUG: exception in submit thread: " + e);
                                 e.printStackTrace();
@@ -331,7 +333,8 @@ class NewRequirementsTest {
                                 LlmOptions.defaults(),
                                 "system"),
                         Duration.ofSeconds(2),
-                        msg -> {});
+                        msg -> {},
+                        TestUsers.OWNER);
 
         assertFalse(result.success());
         VetoAgent agent = service.agent(agentKey);

@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.LongNode;
 import java.io.IOException;
 import java.time.Instant;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicLong;
@@ -19,6 +20,7 @@ import org.springframework.web.socket.handler.ConcurrentWebSocketSessionDecorato
 import org.springframework.web.socket.handler.TextWebSocketHandler;
 import top.focess.veto.bus.BusMessage.*;
 import top.focess.veto.model.SessionRepository;
+import top.focess.veto.vault.SessionManager;
 import top.focess.veto.veto.VetoGateway;
 
 /**
@@ -35,12 +37,13 @@ public class VetoWebSocketHandler extends TextWebSocketHandler {
     private final @NonNull ObjectMapper objectMapper;
     private final @NonNull VetoGateway vetoGateway;
     private final @NonNull SessionRepository sessionRepository;
+    private final @NonNull SessionManager sessionManager;
 
     private final @NonNull CopyOnWriteArrayList<@NonNull WebSocketSession> sessions =
             new CopyOnWriteArrayList<>();
     private final @NonNull ConcurrentHashMap<@NonNull String, @NonNull String> sessionRoutes =
             new ConcurrentHashMap<>();
-    private final @NonNull ConcurrentHashMap<@NonNull String, @NonNull String> sessionUsers =
+    private final @NonNull ConcurrentHashMap<@NonNull String, @NonNull UUID> sessionUsers =
             new ConcurrentHashMap<>();
 
     private final @NonNull AtomicLong messageCounter = new AtomicLong(0);
@@ -49,15 +52,17 @@ public class VetoWebSocketHandler extends TextWebSocketHandler {
     public VetoWebSocketHandler(
             @NonNull ObjectMapper objectMapper,
             @NonNull VetoGateway vetoGateway,
-            @NonNull SessionRepository sessionRepository) {
+            @NonNull SessionRepository sessionRepository,
+            @NonNull SessionManager sessionManager) {
         this.objectMapper = objectMapper;
         this.vetoGateway = vetoGateway;
         this.sessionRepository = sessionRepository;
+        this.sessionManager = sessionManager;
     }
 
     @Override
     public void afterConnectionEstablished(@NonNull WebSocketSession session) throws IOException {
-        String authenticatedUser = authenticatedUser(session);
+        UUID authenticatedUser = authenticatedUser(session);
         if (authenticatedUser == null) {
             session.close(CloseStatus.POLICY_VIOLATION.withReason("authentication required"));
             return;
@@ -82,7 +87,11 @@ public class VetoWebSocketHandler extends TextWebSocketHandler {
 
     @Override
     protected void handleTextMessage(
-            @NonNull WebSocketSession session, @NonNull TextMessage message) {
+            @NonNull WebSocketSession session, @NonNull TextMessage message) throws IOException {
+        if (authenticatedUser(session) == null) {
+            session.close(CloseStatus.POLICY_VIOLATION.withReason("authentication expired"));
+            return;
+        }
         String payload = message.getPayload();
         long seq = messageCounter.incrementAndGet();
 
@@ -239,7 +248,7 @@ public class VetoWebSocketHandler extends TextWebSocketHandler {
             return;
         }
 
-        String senderUser = sessionUsers.get(excludeSessionId);
+        UUID senderUser = sessionUsers.get(excludeSessionId);
         if (senderUser == null) {
             return;
         }
@@ -267,18 +276,18 @@ public class VetoWebSocketHandler extends TextWebSocketHandler {
 
     /** Sends one agent frame only to authenticated connections that own its session. */
     public void sendFrame(@NonNull DeltaFrame frame) {
-        String owner =
+        UUID userId =
                 sessionRepository
                         .findById(frame.sessionId().toString())
-                        .map(session -> session.getOwner())
+                        .map(session -> session.getUserId())
                         .orElse(null);
-        if (owner == null) {
+        if (userId == null) {
             log.warn("WS Bus: Dropped frame for unknown session {}", frame.sessionId());
             return;
         }
         String json = frame.toJson(objectMapper);
         for (WebSocketSession session : sessions) {
-            if (session.isOpen() && owner.equals(sessionUsers.get(session.getId()))) {
+            if (session.isOpen() && userId.equals(sessionUsers.get(session.getId()))) {
                 try {
                     sendTo(session, new TextMessage(json));
                 } catch (IOException e) {
@@ -301,6 +310,10 @@ public class VetoWebSocketHandler extends TextWebSocketHandler {
 
     private void sendTo(@NonNull WebSocketSession target, @NonNull TextMessage message)
             throws IOException {
+        if (authenticatedUser(target) == null) {
+            target.close(CloseStatus.POLICY_VIOLATION.withReason("authentication expired"));
+            return;
+        }
         WebSocketSession wrapped =
                 sessions.stream()
                         .filter(candidate -> candidate.getId().equals(target.getId()))
@@ -327,11 +340,18 @@ public class VetoWebSocketHandler extends TextWebSocketHandler {
         return messageCounter.get();
     }
 
-    private static String authenticatedUser(@NonNull WebSocketSession session) {
+    private UUID authenticatedUser(@NonNull WebSocketSession session) {
         Object value =
                 session.getAttributes()
                         .get(VetoWebSocketAuthInterceptor.AUTHENTICATED_USER_ATTRIBUTE);
-        return value instanceof String user && !user.isBlank() ? user : null;
+        Object token =
+                session.getAttributes().get(VetoWebSocketAuthInterceptor.SESSION_TOKEN_ATTRIBUTE);
+        if (!(value instanceof UUID user) || !(token instanceof String text)) return null;
+        return sessionManager
+                .validate(text)
+                .filter(authenticated -> user.equals(authenticated.userId()))
+                .map(SessionManager.Session::userId)
+                .orElse(null);
     }
 
     private static @NonNull String stringValue(

@@ -1,5 +1,6 @@
 package top.focess.veto.model.tier;
 
+import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 
 /**
@@ -17,11 +18,11 @@ import org.jspecify.annotations.NonNull;
 public interface CredentialExistenceChecker {
 
     /**
-     * Whether the credential {@code credentialKey} exists in {@code username}'s vault.
+     * Whether the credential {@code credentialKey} exists in {@code userId}'s vault.
      *
-     * @param username the vault owner
+     * @param userId the vault userId
      * @param credentialKey the credential key (title) to look up
      * @return true if a credential with that key is stored in the user's vault
      */
-    boolean exists(@NonNull String username, @NonNull String credentialKey);
+    boolean exists(@NonNull UUID userId, @NonNull String credentialKey);
 }

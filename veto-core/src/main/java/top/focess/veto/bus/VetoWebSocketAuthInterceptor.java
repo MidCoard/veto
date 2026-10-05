@@ -16,6 +16,7 @@ import top.focess.veto.vault.SessionManager;
 public final class VetoWebSocketAuthInterceptor implements HandshakeInterceptor {
 
     public static final @NonNull String AUTHENTICATED_USER_ATTRIBUTE = "veto.authenticatedUser";
+    public static final @NonNull String SESSION_TOKEN_ATTRIBUTE = "veto.sessionToken";
     private static final @NonNull String TOKEN_HEADER = "X-Veto-Session-Token";
 
     private final @NonNull SessionManager sessionManager;
@@ -48,7 +49,8 @@ public final class VetoWebSocketAuthInterceptor implements HandshakeInterceptor 
             response.setStatusCode(HttpStatus.UNAUTHORIZED);
             return false;
         }
-        attributes.put(AUTHENTICATED_USER_ATTRIBUTE, authenticated.username());
+        attributes.put(AUTHENTICATED_USER_ATTRIBUTE, authenticated.userId());
+        attributes.put(SESSION_TOKEN_ATTRIBUTE, token);
         return true;
     }
 

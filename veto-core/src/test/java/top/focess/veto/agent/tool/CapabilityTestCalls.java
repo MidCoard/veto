@@ -18,6 +18,7 @@ import top.focess.veto.api.agent.tool.WorkspaceWriteTool;
 import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.event.EventManager;
+import top.focess.veto.vault.TestUsers;
 
 /** Creates an exact approved-call scope for direct capability integration tests. */
 public final class CapabilityTestCalls {
@@ -33,8 +34,7 @@ public final class CapabilityTestCalls {
             previous =
                     new ToolCallContext(
                             "test-agent",
-                            UUID.randomUUID(),
-                            "test-owner",
+                            TestUsers.OWNER,
                             UUID.randomUUID(),
                             ToolResultPresentationMode.BASIC,
                             ToolExecutionPermit.empty());
@@ -65,16 +65,11 @@ public final class CapabilityTestCalls {
                                                         Workspace.fromConfig("", "", "REAL"))
                                                 .httpDestinations()
                                         : Map.of())
-                        .withCaller(
-                                previous.agentId(),
-                                previous.userId(),
-                                previous.owner(),
-                                previous.sessionId());
+                        .withCaller(previous.agentId(), previous.userId(), previous.sessionId());
         ToolCallContextHolder.set(
                 new ToolCallContext(
                         previous.agentId(),
                         previous.userId(),
-                        previous.owner(),
                         previous.sessionId(),
                         previous.toolResultPresentation(),
                         permit,

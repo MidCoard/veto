@@ -45,7 +45,7 @@ class BlackboardWaitTest {
         var group =
                 Group.create(
                         "leader",
-                        "user",
+                        UUID.fromString("a59028e2-7be6-5c04-9439-9d4f7a4942b2"),
                         "brief",
                         blackboard,
                         new ExecutionDag(UUID.randomUUID(), List.of()));

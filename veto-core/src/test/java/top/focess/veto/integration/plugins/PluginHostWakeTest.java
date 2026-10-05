@@ -37,7 +37,7 @@ class PluginHostWakeTest {
         var record =
                 new MonitorRecord(
                         "timer",
-                        "alice",
+                        UUID.fromString("58e341e3-0de3-571d-81db-520951bc691b"),
                         session.toString(),
                         "agent",
                         "TIME_ONCE",
@@ -49,22 +49,30 @@ class PluginHostWakeTest {
                         List.of(),
                         Instant.now());
         when(vault.isUnlocked()).thenReturn(true);
-        UserContext.set("bob");
+        UserContext.set(UUID.fromString("92dca498-7be6-5c04-9439-9d4f7a4942b2"));
         try {
-            activator.wake(record.owner(), record.sessionId(), record.agentId());
+            activator.wake(record.userId(), record.sessionId(), record.agentId());
             verifyNoInteractions(sessions);
-            assertEquals("bob", UserContext.get());
-            when(vault.isUnlocked("alice")).thenReturn(true);
-            when(sessions.activateForObservation(session, "alice", "agent"))
+            assertEquals(
+                    UUID.fromString("92dca498-7be6-5c04-9439-9d4f7a4942b2"), UserContext.get());
+            when(vault.isUnlocked(UUID.fromString("58e341e3-0de3-571d-81db-520951bc691b")))
+                    .thenReturn(true);
+            when(sessions.activateForObservation(
+                            session,
+                            UUID.fromString("58e341e3-0de3-571d-81db-520951bc691b"),
+                            "agent"))
                     .thenAnswer(
                             invocation -> {
-                                assertEquals("alice", UserContext.get());
+                                assertEquals(
+                                        UUID.fromString("58e341e3-0de3-571d-81db-520951bc691b"),
+                                        UserContext.get());
                                 throw new IllegalStateException("temporary recovery failure");
                             });
             assertThrows(
                     IllegalStateException.class,
-                    () -> activator.wake(record.owner(), record.sessionId(), record.agentId()));
-            assertEquals("bob", UserContext.get());
+                    () -> activator.wake(record.userId(), record.sessionId(), record.agentId()));
+            assertEquals(
+                    UUID.fromString("92dca498-7be6-5c04-9439-9d4f7a4942b2"), UserContext.get());
             VetoAgent agent = mock(VetoAgent.class);
             when(agent.id()).thenReturn("agent");
             when(agent.name()).thenReturn("Agent");
@@ -73,18 +81,28 @@ class PluginHostWakeTest {
             when(agent.state()).thenReturn(AgentState.IDLE);
             doAnswer(
                             invocation -> {
-                                assertEquals("alice", UserContext.get());
+                                assertEquals(
+                                        UUID.fromString("58e341e3-0de3-571d-81db-520951bc691b"),
+                                        UserContext.get());
                                 if (registry.agents(session).isEmpty())
                                     registry.register(session, agent);
                                 return true;
                             })
                     .when(sessions)
-                    .activateForObservation(session, "alice", "agent");
-            activator.wake(record.owner(), record.sessionId(), record.agentId());
-            activator.wake(record.owner(), record.sessionId(), record.agentId());
+                    .activateForObservation(
+                            session,
+                            UUID.fromString("58e341e3-0de3-571d-81db-520951bc691b"),
+                            "agent");
+            activator.wake(record.userId(), record.sessionId(), record.agentId());
+            activator.wake(record.userId(), record.sessionId(), record.agentId());
             verify(agent, times(2)).signalWork();
-            verify(sessions, times(3)).activateForObservation(session, "alice", "agent");
-            assertEquals("bob", UserContext.get());
+            verify(sessions, times(3))
+                    .activateForObservation(
+                            session,
+                            UUID.fromString("58e341e3-0de3-571d-81db-520951bc691b"),
+                            "agent");
+            assertEquals(
+                    UUID.fromString("92dca498-7be6-5c04-9439-9d4f7a4942b2"), UserContext.get());
         } finally {
             UserContext.clear();
         }

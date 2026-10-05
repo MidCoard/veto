@@ -7,6 +7,8 @@ import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import org.jspecify.annotations.NonNull;
 
 /**
@@ -24,9 +26,10 @@ public class MemoryEntity {
 
     @Id @NonNull private String id = "";
 
+    @JdbcTypeCode(SqlTypes.VARCHAR)
     @Column(name = "user_id", nullable = false)
     @NonNull
-    private String userId = "";
+    private UUID userId = new UUID(0, 0);
 
     @Column(name = "session_id")
     private String sessionId;
@@ -58,7 +61,7 @@ public class MemoryEntity {
     /** Creates a persistable row from the given memory. */
     public MemoryEntity(@NonNull Memory memory) {
         this.id = memory.id().value().toString();
-        this.userId = memory.userId().toString();
+        this.userId = memory.userId();
         var sessionId = memory.sessionId();
         this.sessionId = sessionId == null ? null : sessionId.toString();
         this.tier = memory.tier().name();
@@ -79,7 +82,7 @@ public class MemoryEntity {
         if (parsedTier == null) throw new IllegalStateException("Memory row has no tier");
         return new Memory(
                 new MemoryId(UUID.fromString(e.id)),
-                UUID.fromString(e.userId),
+                e.userId,
                 e.sessionId == null ? null : UUID.fromString(e.sessionId),
                 parsedTier,
                 e.projectId == null ? null : UUID.fromString(e.projectId),
@@ -120,7 +123,7 @@ public class MemoryEntity {
         return id;
     }
 
-    public @NonNull String getUserId() {
+    public @NonNull UUID getUserId() {
         return userId;
     }
 

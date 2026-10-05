@@ -1,6 +1,7 @@
 package top.focess.veto.builtin.memory;
 
 import java.util.List;
+import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -15,12 +16,12 @@ public interface MemoryRepository extends JpaRepository<MemoryEntity, String> {
     @Query(
             "SELECT m FROM MemoryEntity m WHERE m.userId = :userId AND m.tier IN :tiers ORDER BY m.createdAt DESC")
     @NonNull List<MemoryEntity> findByUserIdAndTierIn(
-            @Param("userId") @NonNull String userId, @Param("tiers") @NonNull List<String> tiers);
+            @Param("userId") @NonNull UUID userId, @Param("tiers") @NonNull List<String> tiers);
 
     /** Find a session's LTM rows. */
     @NonNull List<MemoryEntity> findBySessionId(String sessionId);
 
-    void deleteByUserId(@NonNull String userId);
+    void deleteByUserId(@NonNull UUID userId);
 
-    void deleteByUserIdAndSessionId(@NonNull String userId, @NonNull String sessionId);
+    void deleteByUserIdAndSessionId(@NonNull UUID userId, @NonNull String sessionId);
 }

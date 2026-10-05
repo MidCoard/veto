@@ -20,6 +20,7 @@ import top.focess.veto.agent.tool.ToolInvocationFixture;
 import top.focess.veto.api.agent.control.SourceEvidence;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.llm.*;
+import top.focess.veto.vault.TestUsers;
 
 class SourceReceiptTest {
     private static @NonNull VetoRequest request() {
@@ -135,7 +136,7 @@ class SourceReceiptTest {
     @Test
     void plainFinishCannotCreateSourceMetadataAndControlCannotEscapeCall() throws Exception {
         var call = new ToolCall("third_party_finish", Map.of(), "call");
-        var user = UUID.randomUUID();
+        var user = TestUsers.OWNER;
         var session = UUID.randomUUID();
         var permit =
                 new ToolExecutionPermit(
@@ -149,10 +150,10 @@ class SourceReceiptTest {
                                 DeployerPolicy.FULL_ACCESS,
                                 Set.of(),
                                 null)
-                        .withCaller("agent", user, "owner", session);
+                        .withCaller("agent", user, session);
         var context =
                 new ToolCallContext(
-                        "agent", user, "owner", session, ToolResultPresentationMode.BASIC, permit);
+                        "agent", user, session, ToolResultPresentationMode.BASIC, permit);
         ToolEngine engine = mock(ToolEngine.class);
         var control =
                 new ModelControl(

@@ -22,11 +22,10 @@ public interface PluginStorage {
     /**
      * Host-issued storage authorization paired with the shared scope identity.
      *
-     * <p>The scope's owner is the immutable storage user ID, not a login name. The identity alone
-     * grants no access; every operation validates this token against its issuing plugin binding and
-     * the current scope incarnation. Constructing a grant does not issue a token or authorize
-     * storage. Only user and session scopes have stores; application storage is already bound to
-     * the plugin installation.
+     * <p>The scope's userId is the canonical account UUID. The identity alone grants no access;
+     * every operation validates this token against its issuing plugin binding and the current scope
+     * incarnation. Constructing a grant does not issue a token or authorize storage. Only user and
+     * session scopes have stores; application storage is already bound to the plugin installation.
      *
      * @param <S> shared user or session scope type
      * @param token opaque host authorization token

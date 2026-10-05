@@ -48,7 +48,62 @@ class ConstrainedSubprocessSubstrateTimeoutTest {
             @NonNull Duration timeout) {
         ConstrainedSubprocessSubstrate substrate = new ConstrainedSubprocessSubstrate();
         SandboxHandle handle = substrate.provision(SandboxProfile.defaults(root));
-        return substrate.runCommands(handle, commands, Path.of("."), mode, timeout);
+        try {
+            return substrate.runCommands(handle, commands, Path.of("."), mode, timeout);
+        } finally {
+            substrate.deprovision(handle);
+        }
+    }
+
+    private static @NonNull Command pipelineCommand(@NonNull String mode) throws Exception {
+        var source = PipelineProcessProbe.class.getProtectionDomain().getCodeSource();
+        if (source == null) throw new AssertionError("Pipeline probe has no class directory");
+        var classes = Path.of(source.getLocation().toURI());
+        return new Command(
+                Path.of(System.getProperty("java.home"), "bin", WINDOWS ? "java.exe" : "java")
+                        .toString(),
+                List.of("-cp", classes.toString(), PipelineProcessProbe.class.getName(), mode));
+    }
+
+    @Test
+    void pipelineWaitsForUpstreamAfterConsumerExits(@TempDir @NonNull Path root) throws Exception {
+        var result =
+                run(
+                        root,
+                        List.of(pipelineCommand("producer"), pipelineCommand("consumer")),
+                        ChainMode.PIPE,
+                        Duration.ofSeconds(10));
+        assertEquals(0, result.exitCode());
+        assertEquals(List.of(0, 0), result.perCommand());
+        assertTrue(result.stdout().contains("ready"));
+    }
+
+    @Test
+    void pipelineDrainsUpstreamStderrBeforeItsStdout(@TempDir @NonNull Path root) throws Exception {
+        var result =
+                run(
+                        root,
+                        List.of(pipelineCommand("noisy"), pipelineCommand("consumer")),
+                        ChainMode.PIPE,
+                        Duration.ofSeconds(10));
+        assertEquals(0, result.exitCode());
+        // JVM startup diagnostics may precede the payload when JAVA_TOOL_OPTIONS is configured.
+        assertTrue(requireStderr(result).contains("x".repeat(512 * 1024)));
+        assertTrue(result.stdout().contains("ready"));
+    }
+
+    @Test
+    void pipelineUsesOneDeadlineForAllMembers(@TempDir @NonNull Path root) throws Exception {
+        var result =
+                run(
+                        root,
+                        List.of(
+                                pipelineCommand("delayed-producer"),
+                                pipelineCommand("slow-consumer")),
+                        ChainMode.PIPE,
+                        Duration.ofSeconds(2));
+        assertEquals(-1, result.exitCode());
+        assertTrue(requireStderr(result).contains("[timeout]"));
     }
 
     @Test

@@ -56,6 +56,7 @@ import top.focess.veto.model.tier.ModelTier;
 import top.focess.veto.model.tier.ModelTierConfigException;
 import top.focess.veto.model.tier.ModelTierRegistry;
 import top.focess.veto.util.Nullness;
+import top.focess.veto.vault.TestUsers;
 import top.focess.veto.vault.UserContext;
 
 class WebFetchExecutorLoopTest {
@@ -101,7 +102,7 @@ class WebFetchExecutorLoopTest {
     @Test
     void smallSelectedModelStopsBeforeProviderOrNetworkWithoutTierFallback() {
         WebFetchTool tool = tool(script(List.of(fetch(), read(), finish("s1"))), 6, 10);
-        when(models.resolve("test-owner", ModelTier.LOW))
+        when(models.resolve(TestUsers.OWNER, ModelTier.LOW))
                 .thenReturn(
                         new ModelBinding(
                                 ProviderType.DEEPSEEK, "small-reader", "key", 0, 2048, null, 4096));
@@ -110,33 +111,33 @@ class WebFetchExecutorLoopTest {
         assertEquals(ToolErrorCode.READER.READER_MODEL, error.errorCode());
         assertTrue(requests.isEmpty());
         verify(access, never()).fetch();
-        verify(models, never()).resolve("test-owner", ModelTier.MID);
-        verify(models, never()).resolve("test-owner", ModelTier.TOP);
+        verify(models, never()).resolve(TestUsers.OWNER, ModelTier.MID);
+        verify(models, never()).resolve(TestUsers.OWNER, ModelTier.TOP);
         verify(access).close();
     }
 
     @Test
     void missingLowUsesMidInTheRealReaderLoop() throws Exception {
         WebFetchTool tool = tool(script(List.of(fetch(), read(), finish("s1"))), 6, 10);
-        when(models.resolve("test-owner", ModelTier.LOW))
+        when(models.resolve(TestUsers.OWNER, ModelTier.LOW))
                 .thenThrow(new ModelTierConfigException("LOW is unbound"));
-        when(models.resolve("test-owner", ModelTier.MID))
+        when(models.resolve(TestUsers.OWNER, ModelTier.MID))
                 .thenReturn(
                         new ModelBinding(ProviderType.DEEPSEEK, "mid-reader", "mid-key", 0, 2048));
         var result = mapper.readTree(execute(tool));
         assertEquals("mid-reader", result.path("execution").path("model").asText());
         assertTrue(requests.stream().allMatch(request -> request.modelName().equals("mid-reader")));
-        verify(models, never()).resolve("test-owner", ModelTier.TOP);
+        verify(models, never()).resolve(TestUsers.OWNER, ModelTier.TOP);
     }
 
     @Test
     void missingLowAndMidUseTop() throws Exception {
         WebFetchTool tool = tool(script(List.of(fetch(), read(), finish("s1"))), 6, 10);
-        when(models.resolve("test-owner", ModelTier.LOW))
+        when(models.resolve(TestUsers.OWNER, ModelTier.LOW))
                 .thenThrow(new ModelTierConfigException("LOW is unbound"));
-        when(models.resolve("test-owner", ModelTier.MID))
+        when(models.resolve(TestUsers.OWNER, ModelTier.MID))
                 .thenThrow(new ModelTierConfigException("MID is incomplete"));
-        when(models.resolve("test-owner", ModelTier.TOP))
+        when(models.resolve(TestUsers.OWNER, ModelTier.TOP))
                 .thenReturn(
                         new ModelBinding(ProviderType.DEEPSEEK, "top-reader", "top-key", 0, 2048));
         var result = mapper.readTree(execute(tool));
@@ -148,7 +149,7 @@ class WebFetchExecutorLoopTest {
     void noConfiguredTierFailsBeforeFetchingOrCallingAModel() throws Exception {
         WebFetchTool tool = tool(script(List.of()), 6, 10);
         for (ModelTier candidate : List.of(ModelTier.LOW, ModelTier.MID, ModelTier.TOP)) {
-            when(models.resolve("test-owner", candidate))
+            when(models.resolve(TestUsers.OWNER, candidate))
                     .thenThrow(new ModelTierConfigException("No configured binding"));
         }
         try {
@@ -193,11 +194,11 @@ class WebFetchExecutorLoopTest {
                 Set.of("fetch_page", "read_sections", "find_sections", "finish_read"),
                 Set.copyOf(first.tools().stream().map(ToolDefinition::name).toList()));
         assertFalse(first.systemPrompt().contains("UNRELATED_PAGE_BODY"));
-        assertEquals("test-owner", UserContext.get());
+        assertEquals(TestUsers.OWNER, UserContext.get());
         verify(access).fetch();
         verify(access).close();
-        verify(models, never()).resolve("test-owner", ModelTier.MID);
-        verify(models, never()).resolve("test-owner", ModelTier.TOP);
+        verify(models, never()).resolve(TestUsers.OWNER, ModelTier.MID);
+        verify(models, never()).resolve(TestUsers.OWNER, ModelTier.TOP);
     }
 
     @Test
@@ -453,8 +454,8 @@ class WebFetchExecutorLoopTest {
         assertEquals(ToolErrorCode.READER.READER_MODEL, error.errorCode());
         assertFalse(message.contains("provider secret"));
         assertFalse(message.contains("not_found"));
-        verify(models, never()).resolve("test-owner", ModelTier.MID);
-        verify(models, never()).resolve("test-owner", ModelTier.TOP);
+        verify(models, never()).resolve(TestUsers.OWNER, ModelTier.MID);
+        verify(models, never()).resolve(TestUsers.OWNER, ModelTier.TOP);
         verify(access).close();
         verify(access, never()).fetch();
     }
@@ -474,7 +475,7 @@ class WebFetchExecutorLoopTest {
         assertNotNull(thread);
         thread.join(3000);
         assertFalse(thread.isAlive());
-        assertEquals("test-owner", UserContext.get());
+        assertEquals(TestUsers.OWNER, UserContext.get());
         verify(access).close();
     }
 
@@ -522,7 +523,7 @@ class WebFetchExecutorLoopTest {
             @NonNull AtomicReference<Thread> worker,
             @NonNull CountDownLatch entered) {
         return (request, modelSessionId) -> {
-            assertEquals("test-owner", UserContext.get());
+            assertEquals(TestUsers.OWNER, UserContext.get());
             worker.set(Thread.currentThread());
             entered.countDown();
             try {
@@ -539,7 +540,7 @@ class WebFetchExecutorLoopTest {
     private @NonNull UniformLLMCaller script(@NonNull List<@NonNull VetoResponse> turns) {
         AtomicInteger index = new AtomicInteger();
         return (request, modelSessionId) -> {
-            assertEquals("test-owner", UserContext.get());
+            assertEquals(TestUsers.OWNER, UserContext.get());
             requests.add(request);
             return turns.get(index.getAndIncrement());
         };
@@ -562,7 +563,7 @@ class WebFetchExecutorLoopTest {
                                         + " seconds.</p><p>UNRELATED_PAGE_BODY</p></main>",
                                 false,
                                 10000));
-        when(models.resolve("test-owner", ModelTier.LOW))
+        when(models.resolve(TestUsers.OWNER, ModelTier.LOW))
                 .thenReturn(
                         new ModelBinding(
                                 ProviderType.DEEPSEEK,
@@ -625,7 +626,7 @@ class WebFetchExecutorLoopTest {
     }
 
     private @NonNull String execute(@NonNull WebFetchTool tool) throws Exception {
-        UserContext.set("test-owner");
+        UserContext.set(TestUsers.OWNER);
         return CapabilityTestCalls.execute(
                 tool, new WebFetchTool.Args("https://example.com/docs", "Find timeout units."));
     }

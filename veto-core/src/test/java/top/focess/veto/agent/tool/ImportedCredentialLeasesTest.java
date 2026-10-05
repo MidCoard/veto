@@ -19,16 +19,17 @@ import top.focess.veto.integration.plugins.PluginTestSupport;
 import top.focess.veto.model.SessionEntity;
 import top.focess.veto.model.SessionRepository;
 import top.focess.veto.vault.KeysteadVault;
+import top.focess.veto.vault.TestUsers;
 
 class ImportedCredentialLeasesTest {
     @Test
     void leaseIsExactInvocationConfinedWipedAndRevoked() {
         KeysteadVault vault = mock(KeysteadVault.class);
         SessionRepository sessions = mock(SessionRepository.class);
-        var row = new SessionEntity("alice", "test");
+        var row = new SessionEntity(TestUsers.ALICE, "test");
         var id = UUID.fromString(row.getId());
         when(sessions.findById(row.getId())).thenReturn(Optional.of(row));
-        when(vault.isUnlocked("alice")).thenReturn(true);
+        when(vault.isUnlocked(TestUsers.ALICE)).thenReturn(true);
         var reference = "cred_01234567-89ab-cdef-0123-456789abcdef";
         doAnswer(
                         invocation -> {
@@ -38,7 +39,8 @@ class ImportedCredentialLeasesTest {
                             return null;
                         })
                 .when(vault)
-                .withImportedCredential(eq("alice"), eq(reference), eq("custom-service"), any());
+                .withImportedCredential(
+                        eq(TestUsers.ALICE), eq(reference), eq("custom-service"), any());
         var leases =
                 new ImportedCredentialLeases(
                         vault,
@@ -47,16 +49,15 @@ class ImportedCredentialLeasesTest {
                         PluginTestSupport.providerOf(null));
         var tool = new ReadGitHubRepositoryTool();
         var call = new ToolCall(tool.getName(), Map.of("credentialRef", reference), "call");
-        var user = UUID.randomUUID();
+        var user = TestUsers.ALICE;
         var permit =
                 ToolExecutionPermit.capture(
                                 call,
                                 ToolSchemaCompiler.compileNative(tool),
                                 Workspace.fromConfig("", "", "REAL"))
-                        .withCaller("agent", user, "alice", id);
+                        .withCaller("agent", user, id);
         var context =
-                new ToolCallContext(
-                        "agent", user, "alice", id, ToolResultPresentationMode.BASIC, permit);
+                new ToolCallContext("agent", user, id, ToolResultPresentationMode.BASIC, permit);
         ToolCallContextHolder.set(context);
         ToolCallContextHolder.setCurrentCallId("call");
         try {
@@ -77,7 +78,7 @@ class ImportedCredentialLeasesTest {
             assertThrows(SecurityException.class, () -> lease.use(value -> fail("Replayed lease")));
             ToolCallContextHolder.setCurrentCallId("call");
             when(sessions.findById(row.getId()))
-                    .thenReturn(Optional.of(new SessionEntity("bob", "other")));
+                    .thenReturn(Optional.of(new SessionEntity(TestUsers.BOB, "other")));
             assertThrows(
                     SecurityException.class, () -> lease.use(value -> fail("Wrong session owner")));
             when(sessions.findById(row.getId())).thenReturn(Optional.of(row));
@@ -86,7 +87,7 @@ class ImportedCredentialLeasesTest {
                     SecurityException.class, () -> lease.use(value -> fail("Ended invocation")));
             verify(vault, times(1))
                     .withImportedCredential(
-                            eq("alice"), eq(reference), eq("custom-service"), any());
+                            eq(TestUsers.ALICE), eq(reference), eq("custom-service"), any());
         } finally {
             ToolCallContextHolder.clear();
             tool.close();

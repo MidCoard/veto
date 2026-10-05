@@ -6,6 +6,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -91,11 +92,17 @@ class EventActivationBindingTest {
     }
 
     private static @NonNull UserLoggedInEvent login() {
-        return new UserLoggedInEvent(new Scope.UserScope("owner"));
+        return new UserLoggedInEvent(
+                new Scope.UserScope(UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376")));
     }
 
     private static @NonNull BeforeInputEvent input() {
-        return new BeforeInputEvent(new Scope.AgentScope("owner", "session", "agent"), "input");
+        return new BeforeInputEvent(
+                new Scope.AgentScope(
+                        UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"),
+                        "session",
+                        "agent"),
+                "input");
     }
 
     private static final class Probe implements Listener {

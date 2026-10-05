@@ -388,17 +388,12 @@ class NetworkWebReadCapabilityTest {
         var permit =
                 ToolExecutionPermit.capture(
                                 call, definition, Workspace.single(Path.of("."), PathMode.REAL))
-                        .withCaller("http-agent", user, "owner", session);
+                        .withCaller("http-agent", user, session);
         var previous = ToolCallContextHolder.get();
         String previousCall = ToolCallContextHolder.currentCallId();
         ToolCallContextHolder.set(
                 new ToolCallContext(
-                        "http-agent",
-                        user,
-                        "owner",
-                        session,
-                        ToolResultPresentationMode.BASIC,
-                        permit));
+                        "http-agent", user, session, ToolResultPresentationMode.BASIC, permit));
         ReflectionTestUtils.invokeMethod(
                 ToolCallContextHolder.class, "setCurrentCallId", call.callId());
         try {

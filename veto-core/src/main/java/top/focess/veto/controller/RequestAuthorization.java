@@ -1,5 +1,6 @@
 package top.focess.veto.controller;
 
+import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
@@ -21,19 +22,19 @@ public class RequestAuthorization {
         this.users = users;
     }
 
-    /** Returns the request-scoped username, or throws 401 if the request is unauthenticated. */
-    public @NonNull String requireUser() {
-        String username = UserContext.get();
-        if (username == null) {
+    /** Returns the request-scoped UUID, or throws 401 if the request is unauthenticated. */
+    public @NonNull UUID requireUserId() {
+        UUID userId = UserContext.get();
+        if (userId == null || users.findByUserId(userId).isEmpty()) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Authentication required");
         }
-        return username;
+        return userId;
     }
 
     /** Requires an authenticated administrator; throws 401 or 403 otherwise. */
     public void requireAdmin() {
-        String username = requireUser();
-        if (!users.isAdmin(username)) {
+        UUID userId = requireUserId();
+        if (!users.isAdmin(userId)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Administrator role required");
         }
     }
@@ -44,7 +45,7 @@ public class RequestAuthorization {
      */
     public static @NonNull String requireAgentId(
             @NonNull String name, @NonNull SessionService sessions, @NonNull KeysteadVault vault) {
-        String user = vault.currentUser();
+        UUID user = vault.currentUser();
         if (user == null) {
             throw new ResponseStatusException(
                     HttpStatus.UNAUTHORIZED, Msg.get("error.auth.notAuthenticated"));

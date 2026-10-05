@@ -27,7 +27,7 @@ import top.focess.veto.api.process.ProcessHost;
  * Per-task line and input monitors protect their bounded buffers, and the task monitor makes exit
  * notification occur once. Process state is published through volatile fields. Task observer
  * callbacks can run under the registry or exit monitor and must not wait for a drainer or acquire
- * those monitors from another thread. Lifecycle admission supplies revocation for owner/session
+ * those monitors from another thread. Lifecycle admission supplies revocation for userId/session
  * cleanup.
  */
 public final class BackgroundTasks implements AutoCloseable {
@@ -406,7 +406,7 @@ public final class BackgroundTasks implements AutoCloseable {
         stopMatching(task -> task.scope.sessionScope().equals(scope));
     }
 
-    /** Stops every task owned by the closed owner. */
+    /** Stops every task owned by the closed userId. */
     public void onUserLogout(Scope.@NonNull UserScope scope) {
         stopMatching(task -> task.scope.userScope().equals(scope));
     }

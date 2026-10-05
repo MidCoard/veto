@@ -1,10 +1,12 @@
 package top.focess.veto.controller;
 
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.util.List;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
@@ -14,6 +16,27 @@ import top.focess.veto.vault.SessionManager;
 import top.focess.veto.vault.UserRegistry;
 
 class AuthControllerTest {
+    @Test
+    void lastOwnerTokenLogoutClosesItsVaultWhileAnotherOwnerRemainsLoggedIn() throws Exception {
+        var sessions = new SessionManager();
+        var aliceId = UUID.randomUUID();
+        var aliceToken = sessions.createSession(aliceId, "alice");
+        var bobToken = sessions.createSession(UUID.randomUUID(), "bob");
+        var lifecycle = mock(AuthLifecycleManager.class);
+        var mvc =
+                MockMvcBuilders.standaloneSetup(
+                                new AuthController(
+                                        mock(UserRegistry.class),
+                                        sessions,
+                                        mock(KeysteadVault.class),
+                                        lifecycle))
+                        .build();
+        mvc.perform(post("/api/auth/logout").header("X-Veto-Session-Token", aliceToken))
+                .andExpect(status().isOk());
+        verify(lifecycle).logout(aliceId);
+        assertTrue(sessions.validate(bobToken).isPresent());
+    }
+
     @Test
     void invalidRegistrationNeverCreatesAUserOrVault() throws Exception {
         UserRegistry users = mock(UserRegistry.class);

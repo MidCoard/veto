@@ -36,7 +36,7 @@ public final class MonitorTestSupport {
                                 group ->
                                         new GroupObservations.View(
                                                 group.groupId().toString(),
-                                                group.owner(),
+                                                group.userId(),
                                                 group.sessionId() == null
                                                         ? null
                                                         : Nullness.requireNonNull(group.sessionId())

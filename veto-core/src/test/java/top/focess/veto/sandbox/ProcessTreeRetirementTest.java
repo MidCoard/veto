@@ -78,8 +78,7 @@ class ProcessTreeRetirementTest {
                                             ToolCallContextHolder.set(
                                                     new ToolCallContext(
                                                             fixture.agent,
-                                                            fixture.user,
-                                                            fixture.owner,
+                                                            fixture.userId,
                                                             fixture.session,
                                                             ToolResultPresentationMode.BASIC,
                                                             permit));

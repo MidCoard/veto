@@ -28,6 +28,7 @@ import top.focess.veto.api.llm.ProviderType;
 import top.focess.veto.api.llm.VetoResponse;
 import top.focess.veto.bus.SessionInvalidations;
 import top.focess.veto.llm.core.*;
+import top.focess.veto.vault.TestUsers;
 
 class CompactionRuntimeTest {
     @Test
@@ -139,7 +140,7 @@ class CompactionRuntimeTest {
                 new ToolExecutionBoundary(
                         id,
                         UUID.fromString(id),
-                        null,
+                        TestUsers.OWNER,
                         tools,
                         gateway,
                         new HitlRegistry(null, Mockito.mock(SessionInvalidations.class)),
@@ -151,8 +152,7 @@ class CompactionRuntimeTest {
                 50,
                 new LlmBinding(ProviderType.ANTHROPIC, "test", "test", LlmOptions.defaults(), null),
                 AgentEventSink.none(),
-                UUID.randomUUID(),
-                null,
+                TestUsers.OWNER,
                 null,
                 UUID.fromString(id));
     }

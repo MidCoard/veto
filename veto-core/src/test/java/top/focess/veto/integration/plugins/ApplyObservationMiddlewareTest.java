@@ -99,7 +99,7 @@ class ApplyObservationMiddlewareTest {
                             () -> {},
                             () -> {
                                 throw new IllegalStateException(
-                                        "Plugin context is not bound to a lifecycle owner");
+                                        "Plugin context is not bound to a lifecycle userId");
                             },
                             Map.of(),
                             Map.of()),

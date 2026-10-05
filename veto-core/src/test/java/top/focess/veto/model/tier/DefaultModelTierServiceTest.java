@@ -1,12 +1,14 @@
 package top.focess.veto.model.tier;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
 
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -17,6 +19,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import top.focess.veto.api.llm.ProviderType;
+import top.focess.veto.vault.TestUsers;
 
 /**
  * Exercises the per-user, DB-backed {@link DefaultModelTierService}: profile lifecycle, per-field
@@ -37,34 +40,34 @@ class DefaultModelTierServiceTest {
     @Test
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     void failedBatchRollsBackEarlierFieldsAndValidBatchPersistsTogether() {
-        String owner = "atomic-binding-test";
-        service.createProfile(owner, "default");
+        UUID userId = UUID.fromString("97a0b6da-dbbb-59f6-89a1-40353637c5d1");
+        service.createProfile(userId, "default");
         try {
-            service.setField(owner, "default", ModelTier.TOP, ModelTierField.MODEL, "original");
+            service.setField(userId, "default", ModelTier.TOP, ModelTierField.MODEL, "original");
             Map<@NonNull ModelTierField, @NonNull String> fields = new LinkedHashMap<>();
             fields.put(ModelTierField.MODEL, "replacement");
             fields.put(ModelTierField.TEMPERATURE, "invalid");
             IllegalArgumentException failure =
                     assertThrows(
                             IllegalArgumentException.class,
-                            () -> service.setFields(owner, "default", ModelTier.TOP, fields));
+                            () -> service.setFields(userId, "default", ModelTier.TOP, fields));
             assertTrue(String.valueOf(failure.getMessage()).contains("temp"));
-            assertEquals("original", service.bindings(owner, "default").getFirst().getModel());
+            assertEquals("original", service.bindings(userId, "default").getFirst().getModel());
             fields.put(ModelTierField.TEMPERATURE, "0.5");
-            service.setFields(owner, "default", ModelTier.TOP, fields);
-            ModelTierBindingEntity binding = service.bindings(owner, "default").getFirst();
+            service.setFields(userId, "default", ModelTier.TOP, fields);
+            ModelTierBindingEntity binding = service.bindings(userId, "default").getFirst();
             assertEquals("replacement", binding.getModel());
             assertEquals(Double.valueOf(0.5), (Object) binding.getTemperature());
         } finally {
-            service.deleteProfile(owner, "default");
+            service.deleteProfile(userId, "default");
         }
     }
 
     @Test
     void contextWindowPersistsAndValidatesOutputReservation() {
-        service.createProfile("context-user", "default");
+        service.createProfile(UUID.fromString("c7988511-0295-56d4-886c-f1fe06cdd468"), "default");
         service.setFields(
-                "context-user",
+                UUID.fromString("c7988511-0295-56d4-886c-f1fe06cdd468"),
                 "default",
                 ModelTier.TOP,
                 Map.of(
@@ -74,19 +77,29 @@ class DefaultModelTierServiceTest {
                         "test",
                         ModelTierField.CREDENTIAL_KEY,
                         "key"));
-        assertEquals(128000, service.resolve("context-user", ModelTier.TOP).contextWindowTokens());
+        assertEquals(
+                128000,
+                service.resolve(
+                                UUID.fromString("c7988511-0295-56d4-886c-f1fe06cdd468"),
+                                ModelTier.TOP)
+                        .contextWindowTokens());
         service.setField(
-                "context-user",
+                UUID.fromString("c7988511-0295-56d4-886c-f1fe06cdd468"),
                 "default",
                 ModelTier.TOP,
                 ModelTierField.CONTEXT_WINDOW_TOKENS,
                 "64000");
-        assertEquals(64000, service.resolve("context-user", ModelTier.TOP).contextWindowTokens());
+        assertEquals(
+                64000,
+                service.resolve(
+                                UUID.fromString("c7988511-0295-56d4-886c-f1fe06cdd468"),
+                                ModelTier.TOP)
+                        .contextWindowTokens());
         assertThrows(
                 IllegalArgumentException.class,
                 () ->
                         service.setField(
-                                "context-user",
+                                UUID.fromString("c7988511-0295-56d4-886c-f1fe06cdd468"),
                                 "default",
                                 ModelTier.TOP,
                                 ModelTierField.CONTEXT_WINDOW_TOKENS,
@@ -95,7 +108,7 @@ class DefaultModelTierServiceTest {
                 IllegalArgumentException.class,
                 () ->
                         service.setFields(
-                                "context-user",
+                                UUID.fromString("c7988511-0295-56d4-886c-f1fe06cdd468"),
                                 "default",
                                 ModelTier.TOP,
                                 Map.of(
@@ -110,7 +123,7 @@ class DefaultModelTierServiceTest {
         // Happy-path tests set CREDENTIAL_KEY to arbitrary keys ("deepseek-default", "k", ...);
         // the service now validates existence, so default the checker to "exists" and let
         // individual tests override it to false to exercise the rejection path.
-        when(credentialChecker.exists(anyString(), anyString())).thenReturn(true);
+        when(credentialChecker.exists(any(UUID.class), anyString())).thenReturn(true);
     }
 
     @Test
@@ -118,37 +131,39 @@ class DefaultModelTierServiceTest {
         ModelTierConfigException e =
                 assertThrows(
                         ModelTierConfigException.class,
-                        () -> service.resolve("alice", ModelTier.TOP));
+                        () -> service.resolve(TestUsers.ALICE, ModelTier.TOP));
         assertTrue(String.valueOf(e.getMessage()).contains("No active model-tier profile"));
     }
 
     @Test
     void createProfileAutoActivatesFirstProfile() {
-        service.createProfile("alice", "default");
-        assertEquals("default", service.activeProfile("alice"));
+        service.createProfile(TestUsers.ALICE, "default");
+        assertEquals("default", service.activeProfile(TestUsers.ALICE));
     }
 
     @Test
     void secondProfileIsCreatedInactive() {
-        service.createProfile("alice", "default");
-        service.createProfile("alice", "premium");
-        assertEquals("default", service.activeProfile("alice"));
-        assertEquals(2, service.listProfiles("alice").size());
+        service.createProfile(TestUsers.ALICE, "default");
+        service.createProfile(TestUsers.ALICE, "premium");
+        assertEquals("default", service.activeProfile(TestUsers.ALICE));
+        assertEquals(2, service.listProfiles(TestUsers.ALICE).size());
     }
 
     @Test
     void resolveReturnsFullyConfiguredBindingWithSamplingDefaults() {
-        service.createProfile("alice", "default");
-        service.setField("alice", "default", ModelTier.TOP, ModelTierField.PROVIDER, "deepseek");
-        service.setField("alice", "default", ModelTier.TOP, ModelTierField.MODEL, "deepseek-chat");
+        service.createProfile(TestUsers.ALICE, "default");
         service.setField(
-                "alice",
+                TestUsers.ALICE, "default", ModelTier.TOP, ModelTierField.PROVIDER, "deepseek");
+        service.setField(
+                TestUsers.ALICE, "default", ModelTier.TOP, ModelTierField.MODEL, "deepseek-chat");
+        service.setField(
+                TestUsers.ALICE,
                 "default",
                 ModelTier.TOP,
                 ModelTierField.CREDENTIAL_KEY,
                 "deepseek-default");
 
-        ModelBinding resolved = service.resolve("alice", ModelTier.TOP);
+        ModelBinding resolved = service.resolve(TestUsers.ALICE, ModelTier.TOP);
 
         assertEquals(ProviderType.DEEPSEEK, resolved.provider());
         assertEquals("deepseek-chat", resolved.model());
@@ -160,26 +175,33 @@ class DefaultModelTierServiceTest {
 
     @Test
     void setFieldPersistsPerFieldOverrides() {
-        service.createProfile("alice", "default");
-        service.setField("alice", "default", ModelTier.TOP, ModelTierField.PROVIDER, "anthropic");
-        service.setField("alice", "default", ModelTier.TOP, ModelTierField.MODEL, "claude-opus");
+        service.createProfile(TestUsers.ALICE, "default");
         service.setField(
-                "alice",
+                TestUsers.ALICE, "default", ModelTier.TOP, ModelTierField.PROVIDER, "anthropic");
+        service.setField(
+                TestUsers.ALICE, "default", ModelTier.TOP, ModelTierField.MODEL, "claude-opus");
+        service.setField(
+                TestUsers.ALICE,
                 "default",
                 ModelTier.TOP,
                 ModelTierField.CREDENTIAL_KEY,
                 "anthropic-default");
-        service.setField("alice", "default", ModelTier.TOP, ModelTierField.TEMPERATURE, "0.5");
         service.setField(
-                "alice", "default", ModelTier.TOP, ModelTierField.MAX_OUTPUT_TOKENS, "8192");
+                TestUsers.ALICE, "default", ModelTier.TOP, ModelTierField.TEMPERATURE, "0.5");
         service.setField(
-                "alice",
+                TestUsers.ALICE,
+                "default",
+                ModelTier.TOP,
+                ModelTierField.MAX_OUTPUT_TOKENS,
+                "8192");
+        service.setField(
+                TestUsers.ALICE,
                 "default",
                 ModelTier.TOP,
                 ModelTierField.BASE_URL,
                 "https://proxy.example/v1");
 
-        ModelBinding resolved = service.resolve("alice", ModelTier.TOP);
+        ModelBinding resolved = service.resolve(TestUsers.ALICE, ModelTier.TOP);
 
         assertEquals(ProviderType.ANTHROPIC, resolved.provider());
         assertEquals("claude-opus", resolved.model());
@@ -191,39 +213,51 @@ class DefaultModelTierServiceTest {
 
     @Test
     void blankBaseUrlClearsOverride() {
-        service.createProfile("alice", "default");
-        service.setField("alice", "default", ModelTier.TOP, ModelTierField.PROVIDER, "openai");
-        service.setField("alice", "default", ModelTier.TOP, ModelTierField.MODEL, "gpt-4o");
-        service.setField("alice", "default", ModelTier.TOP, ModelTierField.CREDENTIAL_KEY, "k");
+        service.createProfile(TestUsers.ALICE, "default");
         service.setField(
-                "alice", "default", ModelTier.TOP, ModelTierField.BASE_URL, "https://proxy/v1");
-        service.setField("alice", "default", ModelTier.TOP, ModelTierField.BASE_URL, "   ");
+                TestUsers.ALICE, "default", ModelTier.TOP, ModelTierField.PROVIDER, "openai");
+        service.setField(TestUsers.ALICE, "default", ModelTier.TOP, ModelTierField.MODEL, "gpt-4o");
+        service.setField(
+                TestUsers.ALICE, "default", ModelTier.TOP, ModelTierField.CREDENTIAL_KEY, "k");
+        service.setField(
+                TestUsers.ALICE,
+                "default",
+                ModelTier.TOP,
+                ModelTierField.BASE_URL,
+                "https://proxy/v1");
+        service.setField(TestUsers.ALICE, "default", ModelTier.TOP, ModelTierField.BASE_URL, "   ");
 
-        ModelBinding resolved = service.resolve("alice", ModelTier.TOP);
+        ModelBinding resolved = service.resolve(TestUsers.ALICE, ModelTier.TOP);
         assertNull(resolved.baseUrl());
     }
 
     @Test
     void switchingActiveProfileSwapsBinding() {
-        service.createProfile("alice", "default");
-        service.setField("alice", "default", ModelTier.TOP, ModelTierField.PROVIDER, "deepseek");
-        service.setField("alice", "default", ModelTier.TOP, ModelTierField.MODEL, "deepseek-chat");
-        service.setField("alice", "default", ModelTier.TOP, ModelTierField.CREDENTIAL_KEY, "dk");
+        service.createProfile(TestUsers.ALICE, "default");
+        service.setField(
+                TestUsers.ALICE, "default", ModelTier.TOP, ModelTierField.PROVIDER, "deepseek");
+        service.setField(
+                TestUsers.ALICE, "default", ModelTier.TOP, ModelTierField.MODEL, "deepseek-chat");
+        service.setField(
+                TestUsers.ALICE, "default", ModelTier.TOP, ModelTierField.CREDENTIAL_KEY, "dk");
 
-        service.createProfile("alice", "premium");
-        service.setField("alice", "premium", ModelTier.TOP, ModelTierField.PROVIDER, "anthropic");
-        service.setField("alice", "premium", ModelTier.TOP, ModelTierField.MODEL, "claude-opus");
-        service.setField("alice", "premium", ModelTier.TOP, ModelTierField.CREDENTIAL_KEY, "ak");
-        service.activateProfile("alice", "premium");
+        service.createProfile(TestUsers.ALICE, "premium");
+        service.setField(
+                TestUsers.ALICE, "premium", ModelTier.TOP, ModelTierField.PROVIDER, "anthropic");
+        service.setField(
+                TestUsers.ALICE, "premium", ModelTier.TOP, ModelTierField.MODEL, "claude-opus");
+        service.setField(
+                TestUsers.ALICE, "premium", ModelTier.TOP, ModelTierField.CREDENTIAL_KEY, "ak");
+        service.activateProfile(TestUsers.ALICE, "premium");
 
-        ModelBinding resolved = service.resolve("alice", ModelTier.TOP);
+        ModelBinding resolved = service.resolve(TestUsers.ALICE, ModelTier.TOP);
         assertEquals(ProviderType.ANTHROPIC, resolved.provider());
         assertEquals("claude-opus", resolved.model());
-        assertEquals("premium", service.activeProfile("alice"));
+        assertEquals("premium", service.activeProfile(TestUsers.ALICE));
 
         // Only one profile is active at a time.
         long active =
-                service.listProfiles("alice").stream()
+                service.listProfiles(TestUsers.ALICE).stream()
                         .filter(ModelTierProfileEntity::isActive)
                         .count();
         assertEquals(1, active);
@@ -231,39 +265,43 @@ class DefaultModelTierServiceTest {
 
     @Test
     void missingTierBindingFailFasts() {
-        service.createProfile("alice", "default");
-        service.setField("alice", "default", ModelTier.TOP, ModelTierField.PROVIDER, "deepseek");
-        service.setField("alice", "default", ModelTier.TOP, ModelTierField.MODEL, "deepseek-chat");
-        service.setField("alice", "default", ModelTier.TOP, ModelTierField.CREDENTIAL_KEY, "dk");
+        service.createProfile(TestUsers.ALICE, "default");
+        service.setField(
+                TestUsers.ALICE, "default", ModelTier.TOP, ModelTierField.PROVIDER, "deepseek");
+        service.setField(
+                TestUsers.ALICE, "default", ModelTier.TOP, ModelTierField.MODEL, "deepseek-chat");
+        service.setField(
+                TestUsers.ALICE, "default", ModelTier.TOP, ModelTierField.CREDENTIAL_KEY, "dk");
 
         // MID has no binding row in the profile.
         ModelTierConfigException e =
                 assertThrows(
                         ModelTierConfigException.class,
-                        () -> service.resolve("alice", ModelTier.MID));
+                        () -> service.resolve(TestUsers.ALICE, ModelTier.MID));
         assertTrue(String.valueOf(e.getMessage()).contains("no binding for tier"));
     }
 
     @Test
     void incompleteBindingFailFasts() {
-        service.createProfile("alice", "default");
+        service.createProfile(TestUsers.ALICE, "default");
         // provider set, model + credKey still unset.
-        service.setField("alice", "default", ModelTier.TOP, ModelTierField.PROVIDER, "deepseek");
+        service.setField(
+                TestUsers.ALICE, "default", ModelTier.TOP, ModelTierField.PROVIDER, "deepseek");
 
         ModelTierConfigException e =
                 assertThrows(
                         ModelTierConfigException.class,
-                        () -> service.resolve("alice", ModelTier.TOP));
+                        () -> service.resolve(TestUsers.ALICE, ModelTier.TOP));
         assertTrue(String.valueOf(e.getMessage()).contains("incomplete"));
     }
 
     @Test
     void createProfileRejectsDuplicateName() {
-        service.createProfile("alice", "default");
+        service.createProfile(TestUsers.ALICE, "default");
         IllegalArgumentException e =
                 assertThrows(
                         IllegalArgumentException.class,
-                        () -> service.createProfile("alice", "default"));
+                        () -> service.createProfile(TestUsers.ALICE, "default"));
         assertTrue(String.valueOf(e.getMessage()).contains("already exists"));
     }
 
@@ -274,7 +312,7 @@ class DefaultModelTierServiceTest {
                         IllegalArgumentException.class,
                         () ->
                                 service.setField(
-                                        "alice",
+                                        TestUsers.ALICE,
                                         "missing",
                                         ModelTier.TOP,
                                         ModelTierField.PROVIDER,
@@ -284,13 +322,13 @@ class DefaultModelTierServiceTest {
 
     @Test
     void setFieldRejectsUnknownProvider() {
-        service.createProfile("alice", "default");
+        service.createProfile(TestUsers.ALICE, "default");
         IllegalArgumentException e =
                 assertThrows(
                         IllegalArgumentException.class,
                         () ->
                                 service.setField(
-                                        "alice",
+                                        TestUsers.ALICE,
                                         "default",
                                         ModelTier.TOP,
                                         ModelTierField.PROVIDER,
@@ -300,13 +338,13 @@ class DefaultModelTierServiceTest {
 
     @Test
     void setFieldRejectsNonNumericTemperature() {
-        service.createProfile("alice", "default");
+        service.createProfile(TestUsers.ALICE, "default");
         IllegalArgumentException e =
                 assertThrows(
                         IllegalArgumentException.class,
                         () ->
                                 service.setField(
-                                        "alice",
+                                        TestUsers.ALICE,
                                         "default",
                                         ModelTier.TOP,
                                         ModelTierField.TEMPERATURE,
@@ -316,14 +354,14 @@ class DefaultModelTierServiceTest {
 
     @Test
     void setFieldRejectsMissingCredential() {
-        when(credentialChecker.exists(anyString(), anyString())).thenReturn(false);
-        service.createProfile("alice", "default");
+        when(credentialChecker.exists(any(UUID.class), anyString())).thenReturn(false);
+        service.createProfile(TestUsers.ALICE, "default");
         IllegalArgumentException e =
                 assertThrows(
                         IllegalArgumentException.class,
                         () ->
                                 service.setField(
-                                        "alice",
+                                        TestUsers.ALICE,
                                         "default",
                                         ModelTier.TOP,
                                         ModelTierField.CREDENTIAL_KEY,
@@ -333,42 +371,52 @@ class DefaultModelTierServiceTest {
 
     @Test
     void profilesAreIsolatedPerUser() {
-        service.createProfile("alice", "default");
-        service.createProfile("bob", "default");
-        service.setField("alice", "default", ModelTier.TOP, ModelTierField.PROVIDER, "deepseek");
-        service.setField("alice", "default", ModelTier.TOP, ModelTierField.MODEL, "deepseek-chat");
-        service.setField("alice", "default", ModelTier.TOP, ModelTierField.CREDENTIAL_KEY, "ak");
+        service.createProfile(TestUsers.ALICE, "default");
+        service.createProfile(TestUsers.BOB, "default");
+        service.setField(
+                TestUsers.ALICE, "default", ModelTier.TOP, ModelTierField.PROVIDER, "deepseek");
+        service.setField(
+                TestUsers.ALICE, "default", ModelTier.TOP, ModelTierField.MODEL, "deepseek-chat");
+        service.setField(
+                TestUsers.ALICE, "default", ModelTier.TOP, ModelTierField.CREDENTIAL_KEY, "ak");
 
         // Bob has his own active "default" profile, unconfigured -> incomplete.
-        assertEquals("default", service.activeProfile("bob"));
-        assertThrows(ModelTierConfigException.class, () -> service.resolve("bob", ModelTier.TOP));
-        assertEquals(1, service.listProfiles("alice").size());
-        assertEquals(1, service.listProfiles("bob").size());
+        assertEquals("default", service.activeProfile(TestUsers.BOB));
+        assertThrows(
+                ModelTierConfigException.class,
+                () -> service.resolve(TestUsers.BOB, ModelTier.TOP));
+        assertEquals(1, service.listProfiles(TestUsers.ALICE).size());
+        assertEquals(1, service.listProfiles(TestUsers.BOB).size());
     }
 
     @Test
     void deleteProfileRemovesProfileAndBindings() {
-        service.createProfile("alice", "default");
-        service.setField("alice", "default", ModelTier.TOP, ModelTierField.PROVIDER, "deepseek");
-        service.setField("alice", "default", ModelTier.TOP, ModelTierField.MODEL, "deepseek-chat");
-        service.setField("alice", "default", ModelTier.TOP, ModelTierField.CREDENTIAL_KEY, "dk");
+        service.createProfile(TestUsers.ALICE, "default");
+        service.setField(
+                TestUsers.ALICE, "default", ModelTier.TOP, ModelTierField.PROVIDER, "deepseek");
+        service.setField(
+                TestUsers.ALICE, "default", ModelTier.TOP, ModelTierField.MODEL, "deepseek-chat");
+        service.setField(
+                TestUsers.ALICE, "default", ModelTier.TOP, ModelTierField.CREDENTIAL_KEY, "dk");
 
-        String profileId = service.profile("alice", "default").orElseThrow().getId();
+        String profileId = service.profile(TestUsers.ALICE, "default").orElseThrow().getId();
         assertEquals(1, bindingRepo.findByProfileId(profileId).size());
 
-        assertTrue(service.deleteProfile("alice", "default"));
-        assertTrue(service.listProfiles("alice").isEmpty());
+        assertTrue(service.deleteProfile(TestUsers.ALICE, "default"));
+        assertTrue(service.listProfiles(TestUsers.ALICE).isEmpty());
         assertEquals(0, bindingRepo.findByProfileId(profileId).size());
-        assertFalse(service.deleteProfile("alice", "default"));
+        assertFalse(service.deleteProfile(TestUsers.ALICE, "default"));
     }
 
     @Test
     void bindingsReturnsAllTiersForProfile() {
-        service.createProfile("alice", "default");
-        service.setField("alice", "default", ModelTier.TOP, ModelTierField.PROVIDER, "deepseek");
-        service.setField("alice", "default", ModelTier.LOW, ModelTierField.PROVIDER, "openai");
+        service.createProfile(TestUsers.ALICE, "default");
+        service.setField(
+                TestUsers.ALICE, "default", ModelTier.TOP, ModelTierField.PROVIDER, "deepseek");
+        service.setField(
+                TestUsers.ALICE, "default", ModelTier.LOW, ModelTierField.PROVIDER, "openai");
 
-        List<ModelTierBindingEntity> bindings = service.bindings("alice", "default");
+        List<ModelTierBindingEntity> bindings = service.bindings(TestUsers.ALICE, "default");
         assertEquals(2, bindings.size());
     }
 }

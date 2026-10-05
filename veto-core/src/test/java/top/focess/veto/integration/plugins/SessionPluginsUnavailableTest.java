@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 import java.util.stream.Collectors;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
@@ -28,7 +29,11 @@ class SessionPluginsUnavailableTest {
         var manager = mock(PluginManager.class);
         publication(manager, List.of());
         var sessions = mock(SessionRepository.class);
-        var session = new SessionEntity("owner", "session", "D:/workspace");
+        var session =
+                new SessionEntity(
+                        UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"),
+                        "session",
+                        "D:/workspace");
         var pin = new PluginBinding("missing.plugin", "1.0.0", "revision");
         session.setPluginBindings(List.of(pin));
         when(sessions.findById(session.getId())).thenReturn(Optional.of(session));
@@ -51,7 +56,11 @@ class SessionPluginsUnavailableTest {
     void reportsDisabledDeclinedAndRevisionMismatchSeparately() {
         var manager = mock(PluginManager.class);
         var sessions = mock(SessionRepository.class);
-        var session = new SessionEntity("owner", "session", "D:/workspace");
+        var session =
+                new SessionEntity(
+                        UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"),
+                        "session",
+                        "D:/workspace");
         var disabled = new PluginBinding("disabled.plugin", "1.0.0", "1.0.0");
         var declined = new PluginBinding("declined.plugin", "1.0.0", "1.0.0");
         var changed = new PluginBinding("changed.plugin", "1.0.0", "old-revision");
@@ -95,7 +104,9 @@ class SessionPluginsUnavailableTest {
     void missingBindingsAreRejectedWithoutInferringOrSavingSelection() {
         var manager = mock(PluginManager.class);
         var sessions = mock(SessionRepository.class);
-        var session = new SessionEntity("owner", "uninitialized");
+        var session =
+                new SessionEntity(
+                        UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"), "uninitialized");
         when(sessions.findById(session.getId())).thenReturn(Optional.of(session));
         var selected = new SessionPlugins(manager, sessions);
 
@@ -140,7 +151,9 @@ class SessionPluginsUnavailableTest {
         when(installed.identity()).thenReturn(new PluginIdentity("installed.plugin", "1.0.0"));
         publication(manager, List.of(installed));
         var sessions = mock(SessionRepository.class);
-        var session = new SessionEntity("owner", "plugin-free");
+        var session =
+                new SessionEntity(
+                        UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"), "plugin-free");
         session.setPluginBindings(List.of());
         when(sessions.findById(session.getId())).thenReturn(Optional.of(session));
         var selected = new SessionPlugins(manager, sessions);

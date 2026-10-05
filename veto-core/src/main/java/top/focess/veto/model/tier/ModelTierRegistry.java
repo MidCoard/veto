@@ -1,5 +1,6 @@
 package top.focess.veto.model.tier;
 
+import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 
 /**
@@ -22,19 +23,19 @@ public interface ModelTierRegistry {
     /**
      * Resolve the user's active profile's binding for the given tier.
      *
-     * @param username the session owner (the user whose profile resolves the tier)
+     * @param userId the account ID whose profile resolves the tier
      * @param tier the model tier
      * @return the concrete binding for that tier from the user's active profile
      * @throws ModelTierConfigException if the user has no active profile, the profile has no
      *     binding for the tier, or the binding is incomplete (provider/model/credential-key unset)
      */
-    @NonNull ModelBinding resolve(@NonNull String username, @NonNull ModelTier tier);
+    @NonNull ModelBinding resolve(@NonNull UUID userId, @NonNull ModelTier tier);
 
     /**
      * The name of the user's currently active profile (for display).
      *
-     * @param username the session owner
+     * @param userId the account ID
      * @return the active profile name, or {@code null} if the user has no active profile
      */
-    String activeProfile(@NonNull String username);
+    String activeProfile(@NonNull UUID userId);
 }

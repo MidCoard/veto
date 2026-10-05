@@ -3,7 +3,9 @@ package top.focess.veto.session;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
+import java.io.IOException;
 import java.lang.reflect.Field;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.List;
@@ -15,6 +17,7 @@ import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.mockito.ArgumentCaptor;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -53,6 +56,7 @@ import top.focess.veto.model.SessionEntity;
 import top.focess.veto.model.SessionRepository;
 import top.focess.veto.model.tier.ModelBinding;
 import top.focess.veto.model.tier.ModelTierRegistry;
+import top.focess.veto.vault.TestUsers;
 import top.focess.veto.vault.UserEntity;
 import top.focess.veto.vault.UserRegistry;
 
@@ -62,9 +66,10 @@ class SessionServiceTest {
     @Test
     void sessionDeletionStopsIndependentPeerAfterPrimaryAlreadyTerminated() {
         var sessions = mock(SessionRepository.class);
-        var session = new SessionEntity("alice", "coder");
+        var session = new SessionEntity(TestUsers.ALICE, "coder");
         var sessionId = UUID.fromString(session.getId());
-        when(sessions.findByOwner("alice")).thenReturn(List.of(session));
+        when(sessions.findByUserId(TestUsers.ALICE)).thenReturn(List.of(session));
+        when(sessions.findById(session.getId())).thenReturn(Optional.of(session));
         try (var registry =
                 new SessionAgentRegistry(
                         mock(AgentInstanceRepository.class),
@@ -101,14 +106,15 @@ class SessionServiceTest {
                             mock(ModelTierRegistry.class),
                             new WorkspaceAdmissionPolicy(
                                     new DeployerPolicyConfiguration(),
-                                    mock(ProtectedSetResolver.class)),
+                                    mock(ProtectedSetResolver.class),
+                                    TestUsers.registry()),
                             mock(ScopedPluginStorage.class),
                             mock(HitlRecordRepository.class),
                             mock(PluginManager.class),
                             mock(EventManager.class),
                             mock(PluginDataCleanup.class),
                             mock(RequestContinuationStore.class));
-            assertTrue(service.delete("alice", "coder"));
+            assertTrue(service.delete(TestUsers.ALICE, session.getId()));
             assertTrue(registry.agents(sessionId).isEmpty());
             verify(peer).terminate();
         }
@@ -118,8 +124,9 @@ class SessionServiceTest {
     void rolledBackSessionDeletionDoesNotPublishDeletionOrStopItsAgent() {
         var sessions = mock(SessionRepository.class);
         var agentService = mock(AgentService.class);
-        var session = new SessionEntity("alice", "coder");
-        when(sessions.findByOwner("alice")).thenReturn(List.of(session));
+        var session = new SessionEntity(TestUsers.ALICE, "coder");
+        when(sessions.findByUserId(TestUsers.ALICE)).thenReturn(List.of(session));
+        when(sessions.findById(session.getId())).thenReturn(Optional.of(session));
         var events = mock(EventManager.class);
         var service =
                 new SessionService(
@@ -132,7 +139,8 @@ class SessionServiceTest {
                         mock(ModelTierRegistry.class),
                         new WorkspaceAdmissionPolicy(
                                 new DeployerPolicyConfiguration(),
-                                mock(ProtectedSetResolver.class)),
+                                mock(ProtectedSetResolver.class),
+                                TestUsers.registry()),
                         mock(ScopedPluginStorage.class),
                         mock(HitlRecordRepository.class),
                         mock(PluginManager.class),
@@ -143,7 +151,7 @@ class SessionServiceTest {
         TransactionSynchronizationManager.initSynchronization();
         TransactionSynchronizationManager.setActualTransactionActive(true);
         try {
-            assertTrue(service.delete("alice", "coder"));
+            assertTrue(service.delete(TestUsers.ALICE, session.getId()));
             verifyNoInteractions(events);
             verify(liveAgents, never()).stopSession(UUID.fromString(session.getId()));
             for (var synchronization : TransactionSynchronizationManager.getSynchronizations()) {
@@ -163,7 +171,7 @@ class SessionServiceTest {
         AgentPatternRepository patterns = mock(AgentPatternRepository.class);
         AgentService runtime = mock(AgentService.class);
         SessionHistoryLoader history = mock(SessionHistoryLoader.class);
-        var session = new SessionEntity("alice", "duplicate-name");
+        var session = new SessionEntity(TestUsers.ALICE, "duplicate-name");
         var primary =
                 new AgentEntity(
                         session.getId(),
@@ -178,8 +186,7 @@ class SessionServiceTest {
         when(agents.findById(primary.getId())).thenReturn(Optional.of(primary));
         var replay = List.of(TurnRecord.userPrompt(1, "Original task"));
         when(history.load(session.getId(), primary.getId())).thenReturn(replay);
-        UUID user = UUID.randomUUID();
-        when(runtime.userIdForOwner("alice")).thenReturn(user);
+        UUID user = TestUsers.ALICE;
         var service =
                 new SessionService(
                         sessions,
@@ -191,7 +198,8 @@ class SessionServiceTest {
                         tierRegistry,
                         new WorkspaceAdmissionPolicy(
                                 new DeployerPolicyConfiguration(),
-                                mock(ProtectedSetResolver.class)),
+                                mock(ProtectedSetResolver.class),
+                                TestUsers.registry()),
                         mock(ScopedPluginStorage.class),
                         mock(HitlRecordRepository.class),
                         mock(PluginManager.class),
@@ -199,10 +207,10 @@ class SessionServiceTest {
                         mock(PluginDataCleanup.class),
                         mock(RequestContinuationStore.class));
         UUID id = UUID.fromString(session.getId());
-        assertFalse(service.activateForObservation(id, "bob", primary.getId()));
-        assertFalse(service.activateForObservation(id, "alice", primary.getId()));
+        assertFalse(service.activateForObservation(id, TestUsers.BOB, primary.getId()));
+        assertFalse(service.activateForObservation(id, TestUsers.ALICE, primary.getId()));
         ReflectionTestUtils.setField(primary, "recoveryVersion", 1);
-        assertFalse(service.activateForObservation(id, "alice", primary.getId()));
+        assertFalse(service.activateForObservation(id, TestUsers.ALICE, primary.getId()));
         replay =
                 List.of(
                         TurnRecord.userPrompt(1, "Original task"),
@@ -214,8 +222,8 @@ class SessionServiceTest {
         ReflectionTestUtils.setField(reader, "runtimeRole", "STANDALONE");
         ReflectionTestUtils.setField(reader, "parentCallId", "read-call");
         when(agents.findById("reader")).thenReturn(Optional.of(reader));
-        assertFalse(service.activateForObservation(id, "alice", "reader"));
-        assertTrue(service.activateForObservation(id, "alice", primary.getId()));
+        assertFalse(service.activateForObservation(id, TestUsers.ALICE, "reader"));
+        assertTrue(service.activateForObservation(id, TestUsers.ALICE, primary.getId()));
         verify(runtime)
                 .getOrCreateAgent(
                         eq(session.getId()),
@@ -223,12 +231,11 @@ class SessionServiceTest {
                         any(),
                         eq(replay),
                         eq(user),
-                        eq("alice"),
                         any(),
                         anyInt(),
                         any());
         verify(sessions, never())
-                .findFirstByNameAndOwnerOrderByLastActiveAtDesc(anyString(), anyString());
+                .findFirstByNameAndUserIdOrderByLastActiveAtDesc(anyString(), any(UUID.class));
         verify(sessions, never()).save(any());
     }
 
@@ -244,9 +251,9 @@ class SessionServiceTest {
 
     @BeforeEach
     void stubResolve() {
-        // SessionService resolves the owner's tier to a concrete binding at create + activate; the
+        // SessionService resolves the userId's tier to a concrete binding at create + activate; the
         // mock stands in for the per-user registry (no JPA needed for these unit tests).
-        when(tierRegistry.resolve(anyString(), any()))
+        when(tierRegistry.resolve(any(UUID.class), any()))
                 .thenReturn(
                         new ModelBinding(
                                 ProviderType.DEEPSEEK,
@@ -266,9 +273,11 @@ class SessionServiceTest {
         SessionHistoryLoader loader = mock(SessionHistoryLoader.class);
         AgentPatternEntity pattern =
                 new AgentPatternEntity(
-                        "coder", "DEEPSEEK", "deepseek-v4", "pattern-coder", "alice");
-        when(patterns.findByNameAndOwner("coder", "alice")).thenReturn(Optional.of(pattern));
-        when(sessions.findByOwnerAndNameAndWorkspaceRoots(anyString(), anyString(), anyString()))
+                        "coder", "DEEPSEEK", "deepseek-v4", "pattern-coder", TestUsers.ALICE);
+        when(patterns.findByNameAndUserId("coder", TestUsers.ALICE))
+                .thenReturn(Optional.of(pattern));
+        when(sessions.findByUserIdAndNameAndWorkspaceRoots(
+                        any(UUID.class), anyString(), anyString()))
                 .thenReturn(Optional.empty());
         when(sessions.save(any(SessionEntity.class))).thenAnswer(i -> i.getArgument(0));
         when(agents.save(any(AgentEntity.class))).thenAnswer(i -> i.getArgument(0));
@@ -284,7 +293,8 @@ class SessionServiceTest {
                         tierRegistry,
                         new WorkspaceAdmissionPolicy(
                                 new DeployerPolicyConfiguration(),
-                                mock(ProtectedSetResolver.class)),
+                                mock(ProtectedSetResolver.class),
+                                TestUsers.registry()),
                         mock(ScopedPluginStorage.class),
                         mock(HitlRecordRepository.class),
                         mock(PluginManager.class),
@@ -292,7 +302,7 @@ class SessionServiceTest {
                         mock(PluginDataCleanup.class),
                         mock(RequestContinuationStore.class));
 
-        SessionEntity session = service.createSession("alice", "coder");
+        SessionEntity session = service.createSession(TestUsers.ALICE, "coder");
         assertEquals(ToolResultPresentationMode.BASIC, session.getToolResultPresentation());
         assertEquals(List.of(), session.getPluginBindings());
         requirePrimaryAgentId(session, "primary agent created and linked");
@@ -308,9 +318,11 @@ class SessionServiceTest {
         SessionHistoryLoader loader = mock(SessionHistoryLoader.class);
         AgentPatternEntity pattern =
                 new AgentPatternEntity(
-                        "coder", "DEEPSEEK", "deepseek-v4", "pattern-coder", "alice");
-        when(patterns.findByNameAndOwner("coder", "alice")).thenReturn(Optional.of(pattern));
-        when(sessions.findByOwnerAndNameAndWorkspaceRoots(anyString(), anyString(), anyString()))
+                        "coder", "DEEPSEEK", "deepseek-v4", "pattern-coder", TestUsers.ALICE);
+        when(patterns.findByNameAndUserId("coder", TestUsers.ALICE))
+                .thenReturn(Optional.of(pattern));
+        when(sessions.findByUserIdAndNameAndWorkspaceRoots(
+                        any(UUID.class), anyString(), anyString()))
                 .thenReturn(Optional.empty());
         when(sessions.save(any(SessionEntity.class))).thenAnswer(i -> i.getArgument(0));
         when(agents.save(any(AgentEntity.class))).thenAnswer(i -> i.getArgument(0));
@@ -326,7 +338,8 @@ class SessionServiceTest {
                         tierRegistry,
                         new WorkspaceAdmissionPolicy(
                                 new DeployerPolicyConfiguration(),
-                                mock(ProtectedSetResolver.class)),
+                                mock(ProtectedSetResolver.class),
+                                TestUsers.registry()),
                         mock(ScopedPluginStorage.class),
                         mock(HitlRecordRepository.class),
                         mock(PluginManager.class),
@@ -336,7 +349,7 @@ class SessionServiceTest {
 
         SessionEntity session =
                 service.createSession(
-                        "alice",
+                        TestUsers.ALICE,
                         "coder",
                         "mysession",
                         List.of(CWD),
@@ -358,9 +371,11 @@ class SessionServiceTest {
         SessionHistoryLoader loader = mock(SessionHistoryLoader.class);
         AgentPatternEntity pattern =
                 new AgentPatternEntity(
-                        "coder", "DEEPSEEK", "deepseek-v4", "pattern-coder", "alice");
-        when(patterns.findByNameAndOwner("coder", "alice")).thenReturn(Optional.of(pattern));
-        when(sessions.findByOwnerAndNameAndWorkspaceRoots(anyString(), anyString(), anyString()))
+                        "coder", "DEEPSEEK", "deepseek-v4", "pattern-coder", TestUsers.ALICE);
+        when(patterns.findByNameAndUserId("coder", TestUsers.ALICE))
+                .thenReturn(Optional.of(pattern));
+        when(sessions.findByUserIdAndNameAndWorkspaceRoots(
+                        any(UUID.class), anyString(), anyString()))
                 .thenReturn(Optional.empty());
         when(sessions.save(any(SessionEntity.class))).thenAnswer(i -> i.getArgument(0));
         when(agents.save(any(AgentEntity.class))).thenAnswer(i -> i.getArgument(0));
@@ -376,7 +391,8 @@ class SessionServiceTest {
                         tierRegistry,
                         new WorkspaceAdmissionPolicy(
                                 new DeployerPolicyConfiguration(),
-                                mock(ProtectedSetResolver.class)),
+                                mock(ProtectedSetResolver.class),
+                                TestUsers.registry()),
                         mock(ScopedPluginStorage.class),
                         mock(HitlRecordRepository.class),
                         mock(PluginManager.class),
@@ -384,7 +400,7 @@ class SessionServiceTest {
                         mock(PluginDataCleanup.class),
                         mock(RequestContinuationStore.class));
 
-        SessionEntity session = service.createSession("alice", "coder", null, List.of(CWD));
+        SessionEntity session = service.createSession(TestUsers.ALICE, "coder", null, List.of(CWD));
         assertTrue(
                 session.getName().startsWith("coder-"),
                 "an implicit session name must be derived from the pattern name");
@@ -400,7 +416,7 @@ class SessionServiceTest {
         AgentPatternRepository patterns = mock(AgentPatternRepository.class);
         AgentService agentService = mock(AgentService.class);
         SessionHistoryLoader loader = mock(SessionHistoryLoader.class);
-        SessionEntity session = new SessionEntity("alice", "coder");
+        SessionEntity session = new SessionEntity(TestUsers.ALICE, "coder");
         AgentEntity agent =
                 new AgentEntity(
                         session.getId(),
@@ -412,14 +428,14 @@ class SessionServiceTest {
                         "pattern-coder");
         session.setPrimaryAgentId(agent.getId());
 
-        when(sessions.findByOwner("alice")).thenReturn(List.of(session));
-        when(sessions.findFirstByNameAndOwnerOrderByLastActiveAtDesc("coder", "alice"))
+        when(sessions.findByUserId(TestUsers.ALICE)).thenReturn(List.of(session));
+        when(sessions.findFirstByNameAndUserIdOrderByLastActiveAtDesc("coder", TestUsers.ALICE))
                 .thenReturn(Optional.of(session));
         when(sessions.findById(session.getId())).thenReturn(Optional.of(session));
         when(agents.findById(agent.getId())).thenReturn(Optional.of(agent));
         when(loader.load(session.getId(), agent.getId())).thenReturn(List.of());
         when(agentService.getOrCreateAgent(
-                        anyString(), any(), any(), anyList(), any(), any(), any(), anyInt(), any()))
+                        anyString(), any(), any(), anyList(), any(), any(), anyInt(), any()))
                 .thenReturn(mock(Agent.class));
 
         SessionService service =
@@ -433,7 +449,8 @@ class SessionServiceTest {
                         tierRegistry,
                         new WorkspaceAdmissionPolicy(
                                 new DeployerPolicyConfiguration(),
-                                mock(ProtectedSetResolver.class)),
+                                mock(ProtectedSetResolver.class),
+                                TestUsers.registry()),
                         mock(ScopedPluginStorage.class),
                         mock(HitlRecordRepository.class),
                         mock(PluginManager.class),
@@ -441,7 +458,7 @@ class SessionServiceTest {
                         mock(PluginDataCleanup.class),
                         mock(RequestContinuationStore.class));
 
-        Optional<LlmConfig> cfg = service.activate("term-1", "coder", "alice", CWD);
+        Optional<LlmConfig> cfg = service.activate("term-1", "coder", TestUsers.ALICE, CWD);
         assertTrue(cfg.isPresent());
         assertEquals(ProviderType.DEEPSEEK, cfg.get().provider());
         // The agent's tier (TOP) resolves live via the model-tier registry (mocked here).
@@ -459,7 +476,7 @@ class SessionServiceTest {
         AgentPatternRepository patterns = mock(AgentPatternRepository.class);
         AgentService agentService = mock(AgentService.class);
         SessionHistoryLoader loader = mock(SessionHistoryLoader.class);
-        SessionEntity session = new SessionEntity("alice", "coder");
+        SessionEntity session = new SessionEntity(TestUsers.ALICE, "coder");
         AgentEntity agent =
                 new AgentEntity(
                         session.getId(),
@@ -471,13 +488,13 @@ class SessionServiceTest {
                         "pattern-coder");
         session.setPrimaryAgentId(agent.getId());
 
-        when(sessions.findByOwner("alice")).thenReturn(List.of(session));
-        when(sessions.findFirstByNameAndOwnerOrderByLastActiveAtDesc("coder", "alice"))
+        when(sessions.findByUserId(TestUsers.ALICE)).thenReturn(List.of(session));
+        when(sessions.findFirstByNameAndUserIdOrderByLastActiveAtDesc("coder", TestUsers.ALICE))
                 .thenReturn(Optional.of(session));
         when(agents.findById(agent.getId())).thenReturn(Optional.of(agent));
         when(loader.load(session.getId(), agent.getId())).thenReturn(List.of());
         when(agentService.getOrCreateAgent(
-                        anyString(), any(), any(), anyList(), any(), any(), any(), anyInt(), any()))
+                        anyString(), any(), any(), anyList(), any(), any(), anyInt(), any()))
                 .thenReturn(mock(Agent.class));
 
         SessionService service =
@@ -491,14 +508,15 @@ class SessionServiceTest {
                         tierRegistry,
                         new WorkspaceAdmissionPolicy(
                                 new DeployerPolicyConfiguration(),
-                                mock(ProtectedSetResolver.class)),
+                                mock(ProtectedSetResolver.class),
+                                TestUsers.registry()),
                         mock(ScopedPluginStorage.class),
                         mock(HitlRecordRepository.class),
                         mock(PluginManager.class),
                         mock(EventManager.class),
                         mock(PluginDataCleanup.class),
                         mock(RequestContinuationStore.class));
-        service.activate("term-1", "coder", "alice", CWD);
+        service.activate("term-1", "coder", TestUsers.ALICE, CWD);
         service.deactivate("term-1");
         assertTrue(service.activeSession("term-1").isEmpty());
     }
@@ -510,7 +528,7 @@ class SessionServiceTest {
         AgentPatternRepository patterns = mock(AgentPatternRepository.class);
         AgentService agentService = mock(AgentService.class);
         SessionHistoryLoader loader = mock(SessionHistoryLoader.class);
-        SessionEntity session = new SessionEntity("alice", "coder");
+        SessionEntity session = new SessionEntity(TestUsers.ALICE, "coder");
         AgentEntity agent =
                 new AgentEntity(
                         session.getId(),
@@ -522,14 +540,14 @@ class SessionServiceTest {
                         "pattern-coder");
         session.setPrimaryAgentId(agent.getId());
 
-        when(sessions.findByOwner("alice")).thenReturn(List.of(session));
-        when(sessions.findFirstByNameAndOwnerOrderByLastActiveAtDesc("coder", "alice"))
+        when(sessions.findByUserId(TestUsers.ALICE)).thenReturn(List.of(session));
+        when(sessions.findFirstByNameAndUserIdOrderByLastActiveAtDesc("coder", TestUsers.ALICE))
                 .thenReturn(Optional.of(session));
         when(sessions.findById(session.getId())).thenReturn(Optional.of(session));
         when(agents.findById(agent.getId())).thenReturn(Optional.of(agent));
         when(loader.load(session.getId(), agent.getId())).thenReturn(List.of());
         when(agentService.getOrCreateAgent(
-                        anyString(), any(), any(), anyList(), any(), any(), any(), anyInt(), any()))
+                        anyString(), any(), any(), anyList(), any(), any(), anyInt(), any()))
                 .thenReturn(mock(Agent.class));
 
         SessionService service =
@@ -543,30 +561,31 @@ class SessionServiceTest {
                         tierRegistry,
                         new WorkspaceAdmissionPolicy(
                                 new DeployerPolicyConfiguration(),
-                                mock(ProtectedSetResolver.class)),
+                                mock(ProtectedSetResolver.class),
+                                TestUsers.registry()),
                         mock(ScopedPluginStorage.class),
                         mock(HitlRecordRepository.class),
                         mock(PluginManager.class),
                         mock(EventManager.class),
                         mock(PluginDataCleanup.class),
                         mock(RequestContinuationStore.class));
-        service.activate("term-1", "coder", "alice", CWD);
+        service.activate("term-1", "coder", TestUsers.ALICE, CWD);
         assertTrue(service.activeSession("term-1").isPresent());
 
-        service.deactivateUser("alice");
+        service.deactivateUser(TestUsers.ALICE);
         assertTrue(
                 service.activeSession("term-1").isEmpty(),
                 "unified logout detaches the user's terminals");
     }
 
     @Test
-    void resumeLastSessionActivatesOwnersMostRecent() {
+    void resumeLastSessionActivatesUserIdsMostRecent() {
         SessionRepository sessions = mock(SessionRepository.class);
         AgentInstanceRepository agents = mock(AgentInstanceRepository.class);
         AgentPatternRepository patterns = mock(AgentPatternRepository.class);
         AgentService agentService = mock(AgentService.class);
         SessionHistoryLoader loader = mock(SessionHistoryLoader.class);
-        SessionEntity session = new SessionEntity("alice", "coder");
+        SessionEntity session = new SessionEntity(TestUsers.ALICE, "coder");
         AgentEntity agent =
                 new AgentEntity(
                         session.getId(),
@@ -578,14 +597,14 @@ class SessionServiceTest {
                         "pattern-coder");
         session.setPrimaryAgentId(agent.getId());
 
-        when(sessions.findByOwner("alice")).thenReturn(List.of(session));
-        when(sessions.findFirstByNameAndOwnerOrderByLastActiveAtDesc("coder", "alice"))
+        when(sessions.findByUserId(TestUsers.ALICE)).thenReturn(List.of(session));
+        when(sessions.findFirstByNameAndUserIdOrderByLastActiveAtDesc("coder", TestUsers.ALICE))
                 .thenReturn(Optional.of(session));
         when(sessions.findById(session.getId())).thenReturn(Optional.of(session));
         when(agents.findById(agent.getId())).thenReturn(Optional.of(agent));
         when(loader.load(session.getId(), agent.getId())).thenReturn(List.of());
         when(agentService.getOrCreateAgent(
-                        anyString(), any(), any(), anyList(), any(), any(), any(), anyInt(), any()))
+                        anyString(), any(), any(), anyList(), any(), any(), anyInt(), any()))
                 .thenReturn(mock(Agent.class));
 
         SessionService service =
@@ -599,7 +618,8 @@ class SessionServiceTest {
                         tierRegistry,
                         new WorkspaceAdmissionPolicy(
                                 new DeployerPolicyConfiguration(),
-                                mock(ProtectedSetResolver.class)),
+                                mock(ProtectedSetResolver.class),
+                                TestUsers.registry()),
                         mock(ScopedPluginStorage.class),
                         mock(HitlRecordRepository.class),
                         mock(PluginManager.class),
@@ -607,19 +627,19 @@ class SessionServiceTest {
                         mock(PluginDataCleanup.class),
                         mock(RequestContinuationStore.class));
 
-        Optional<LlmConfig> cfg = service.resumeLastSession("term-1", "alice", CWD);
+        Optional<LlmConfig> cfg = service.resumeLastSession("term-1", TestUsers.ALICE, CWD);
         assertTrue(cfg.isPresent(), "last session auto-resumed");
         assertEquals(Optional.of(session.getId()), service.activeSession("term-1"));
     }
 
     @Test
-    void resumeLastSessionEmptyWhenOwnerHasNoSessions() {
+    void resumeLastSessionEmptyWhenUserIdHasNoSessions() {
         SessionRepository sessions = mock(SessionRepository.class);
         AgentInstanceRepository agents = mock(AgentInstanceRepository.class);
         AgentPatternRepository patterns = mock(AgentPatternRepository.class);
         AgentService agentService = mock(AgentService.class);
         SessionHistoryLoader loader = mock(SessionHistoryLoader.class);
-        when(sessions.findByOwner("alice")).thenReturn(List.of());
+        when(sessions.findByUserId(TestUsers.ALICE)).thenReturn(List.of());
 
         SessionService service =
                 new SessionService(
@@ -632,14 +652,15 @@ class SessionServiceTest {
                         tierRegistry,
                         new WorkspaceAdmissionPolicy(
                                 new DeployerPolicyConfiguration(),
-                                mock(ProtectedSetResolver.class)),
+                                mock(ProtectedSetResolver.class),
+                                TestUsers.registry()),
                         mock(ScopedPluginStorage.class),
                         mock(HitlRecordRepository.class),
                         mock(PluginManager.class),
                         mock(EventManager.class),
                         mock(PluginDataCleanup.class),
                         mock(RequestContinuationStore.class));
-        assertTrue(service.resumeLastSession("term-1", "alice", CWD).isEmpty());
+        assertTrue(service.resumeLastSession("term-1", TestUsers.ALICE, CWD).isEmpty());
         assertTrue(service.activeSession("term-1").isEmpty());
     }
 
@@ -650,7 +671,7 @@ class SessionServiceTest {
         AgentPatternRepository patterns = mock(AgentPatternRepository.class);
         AgentService agentService = mock(AgentService.class);
         SessionHistoryLoader loader = mock(SessionHistoryLoader.class);
-        when(patterns.findByNameAndOwner("nope", "alice")).thenReturn(Optional.empty());
+        when(patterns.findByNameAndUserId("nope", TestUsers.ALICE)).thenReturn(Optional.empty());
 
         SessionService service =
                 new SessionService(
@@ -663,14 +684,17 @@ class SessionServiceTest {
                         tierRegistry,
                         new WorkspaceAdmissionPolicy(
                                 new DeployerPolicyConfiguration(),
-                                mock(ProtectedSetResolver.class)),
+                                mock(ProtectedSetResolver.class),
+                                TestUsers.registry()),
                         mock(ScopedPluginStorage.class),
                         mock(HitlRecordRepository.class),
                         mock(PluginManager.class),
                         mock(EventManager.class),
                         mock(PluginDataCleanup.class),
                         mock(RequestContinuationStore.class));
-        assertThrows(IllegalArgumentException.class, () -> service.createSession("alice", "nope"));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> service.createSession(TestUsers.ALICE, "nope"));
     }
 
     @Test
@@ -680,7 +704,7 @@ class SessionServiceTest {
         AgentPatternRepository patterns = mock(AgentPatternRepository.class);
         AgentService agentService = mock(AgentService.class);
         SessionHistoryLoader loader = mock(SessionHistoryLoader.class);
-        SessionEntity session = new SessionEntity("alice", "coder");
+        SessionEntity session = new SessionEntity(TestUsers.ALICE, "coder");
         AgentEntity agent =
                 new AgentEntity(
                         session.getId(),
@@ -692,24 +716,24 @@ class SessionServiceTest {
                         "pattern-coder");
         session.setPrimaryAgentId(agent.getId());
 
-        when(sessions.findByOwner("alice")).thenReturn(List.of(session));
-        when(sessions.findFirstByNameAndOwnerOrderByLastActiveAtDesc("coder", "alice"))
+        when(sessions.findByUserId(TestUsers.ALICE)).thenReturn(List.of(session));
+        when(sessions.findFirstByNameAndUserIdOrderByLastActiveAtDesc("coder", TestUsers.ALICE))
                 .thenReturn(Optional.of(session));
         when(sessions.findById(session.getId())).thenReturn(Optional.of(session));
         when(agents.findById(agent.getId())).thenReturn(Optional.of(agent));
         when(loader.load(session.getId(), agent.getId())).thenReturn(List.of());
         when(agentService.getOrCreateAgent(
-                        anyString(), any(), any(), anyList(), any(), any(), any(), anyInt(), any()))
+                        anyString(), any(), any(), anyList(), any(), any(), anyInt(), any()))
                 .thenReturn(mock(Agent.class));
 
         boolean removed;
-        var scope = new Scope.AgentScope("alice", session.getId(), agent.getId());
+        var scope = new Scope.AgentScope(TestUsers.ALICE, session.getId(), agent.getId());
         try (var plugins = PluginTestSupport.manager()) {
             var events = spy(PluginTestSupport.eventManager(plugins));
             var users = mock(UserRegistry.class);
             var user = mock(UserEntity.class);
-            when(user.storageIdentity()).thenReturn("alice-storage-identity");
-            when(users.findByUsername("alice")).thenReturn(Optional.of(user));
+            when(user.getUserId()).thenReturn(TestUsers.ALICE);
+            when(users.findByUserId(TestUsers.ALICE)).thenReturn(Optional.of(user));
             var cleanup = new PluginDataCleanup(plugins, users);
             SessionService service =
                     new SessionService(
@@ -722,14 +746,15 @@ class SessionServiceTest {
                             tierRegistry,
                             new WorkspaceAdmissionPolicy(
                                     new DeployerPolicyConfiguration(),
-                                    mock(ProtectedSetResolver.class)),
+                                    mock(ProtectedSetResolver.class),
+                                    TestUsers.registry()),
                             mock(ScopedPluginStorage.class),
                             mock(HitlRecordRepository.class),
                             mock(PluginManager.class),
                             events,
                             cleanup,
                             mock(RequestContinuationStore.class));
-            service.activate("term-1", "coder", "alice", CWD);
+            service.activate("term-1", "coder", TestUsers.ALICE, CWD);
             assertTrue(service.activeSession("term-1").isPresent());
             String captured =
                     PluginTestSupport.protect(
@@ -744,7 +769,7 @@ class SessionServiceTest {
             TransactionSynchronizationManager.initSynchronization();
             TransactionSynchronizationManager.setActualTransactionActive(true);
             try {
-                removed = service.delete("alice", "coder");
+                removed = service.delete(TestUsers.ALICE, session.getId());
                 verify(events, never()).submit(any());
                 var synchronizations = TransactionSynchronizationManager.getSynchronizations();
                 for (var synchronization : synchronizations) synchronization.beforeCommit(false);
@@ -757,7 +782,7 @@ class SessionServiceTest {
                                                         && deleted.scope()
                                                                 .equals(
                                                                         new Scope.SessionScope(
-                                                                                "alice",
+                                                                                TestUsers.ALICE,
                                                                                 session.getId()))));
                 for (var synchronization : synchronizations) {
                     synchronization.afterCompletion(TransactionSynchronization.STATUS_COMMITTED);
@@ -792,8 +817,8 @@ class SessionServiceTest {
         AgentPatternRepository patterns = mock(AgentPatternRepository.class);
         AgentService agentService = mock(AgentService.class);
         SessionHistoryLoader loader = mock(SessionHistoryLoader.class);
-        when(sessions.findByOwner("alice")).thenReturn(List.of());
-        when(sessions.findFirstByNameAndOwnerOrderByLastActiveAtDesc("nope", "alice"))
+        when(sessions.findByUserId(TestUsers.ALICE)).thenReturn(List.of());
+        when(sessions.findFirstByNameAndUserIdOrderByLastActiveAtDesc("nope", TestUsers.ALICE))
                 .thenReturn(Optional.empty());
 
         SessionService service =
@@ -807,14 +832,15 @@ class SessionServiceTest {
                         tierRegistry,
                         new WorkspaceAdmissionPolicy(
                                 new DeployerPolicyConfiguration(),
-                                mock(ProtectedSetResolver.class)),
+                                mock(ProtectedSetResolver.class),
+                                TestUsers.registry()),
                         mock(ScopedPluginStorage.class),
                         mock(HitlRecordRepository.class),
                         mock(PluginManager.class),
                         mock(EventManager.class),
                         mock(PluginDataCleanup.class),
                         mock(RequestContinuationStore.class));
-        assertFalse(service.delete("alice", "nope"));
+        assertFalse(service.delete(TestUsers.ALICE, "nope"));
         verify(liveAgents, never()).stopSession(any());
     }
 
@@ -827,7 +853,7 @@ class SessionServiceTest {
         SessionHistoryLoader loader = mock(SessionHistoryLoader.class);
         SessionEntity session =
                 new SessionEntity(
-                        "alice",
+                        TestUsers.ALICE,
                         "coder",
                         CWD + "," + fakeDir("selected-root"),
                         1,
@@ -847,14 +873,14 @@ class SessionServiceTest {
                 List.of(
                         TurnRecord.userPrompt(1, "earlier prompt"),
                         TurnRecord.assistantResponse(2, "earlier reply"));
-        when(sessions.findByOwner("alice")).thenReturn(List.of(session));
-        when(sessions.findFirstByNameAndOwnerOrderByLastActiveAtDesc("coder", "alice"))
+        when(sessions.findByUserId(TestUsers.ALICE)).thenReturn(List.of(session));
+        when(sessions.findFirstByNameAndUserIdOrderByLastActiveAtDesc("coder", TestUsers.ALICE))
                 .thenReturn(Optional.of(session));
         when(sessions.findById(session.getId())).thenReturn(Optional.of(session));
         when(agents.findById(agent.getId())).thenReturn(Optional.of(agent));
         when(loader.load(session.getId(), agent.getId())).thenReturn(history);
         when(agentService.getOrCreateAgent(
-                        anyString(), any(), any(), anyList(), any(), any(), any(), anyInt(), any()))
+                        anyString(), any(), any(), anyList(), any(), any(), anyInt(), any()))
                 .thenReturn(mock(Agent.class));
 
         SessionService service =
@@ -868,14 +894,15 @@ class SessionServiceTest {
                         tierRegistry,
                         new WorkspaceAdmissionPolicy(
                                 new DeployerPolicyConfiguration(),
-                                mock(ProtectedSetResolver.class)),
+                                mock(ProtectedSetResolver.class),
+                                TestUsers.registry()),
                         mock(ScopedPluginStorage.class),
                         mock(HitlRecordRepository.class),
                         mock(PluginManager.class),
                         mock(EventManager.class),
                         mock(PluginDataCleanup.class),
                         mock(RequestContinuationStore.class));
-        service.activate("term-1", "coder", "alice", CWD);
+        service.activate("term-1", "coder", TestUsers.ALICE, CWD);
 
         // The replayed history loaded from the durable log is threaded into getOrCreateAgent so the
         // agent seeds it on first creation (idempotent across re-activates and resume).
@@ -886,7 +913,6 @@ class SessionServiceTest {
                         any(),
                         eq(history),
                         any(),
-                        eq("alice"),
                         any(),
                         eq(1),
                         eq(ToolResultPresentationMode.BASIC));
@@ -901,11 +927,12 @@ class SessionServiceTest {
         SessionHistoryLoader loader = mock(SessionHistoryLoader.class);
         AgentPatternEntity pattern =
                 new AgentPatternEntity(
-                        "coder", "DEEPSEEK", "deepseek-v4", "pattern-coder", "alice");
+                        "coder", "DEEPSEEK", "deepseek-v4", "pattern-coder", TestUsers.ALICE);
         var roots = List.of(fakeDir("root-a"), fakeDir("root-b"));
-        when(patterns.findByNameAndOwner("coder", "alice")).thenReturn(Optional.of(pattern));
-        when(sessions.findByOwnerAndNameAndWorkspaceRoots(
-                        "alice", "selected", String.join(",", roots)))
+        when(patterns.findByNameAndUserId("coder", TestUsers.ALICE))
+                .thenReturn(Optional.of(pattern));
+        when(sessions.findByUserIdAndNameAndWorkspaceRoots(
+                        TestUsers.ALICE, "selected", String.join(",", roots)))
                 .thenReturn(Optional.empty());
         when(sessions.save(any(SessionEntity.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
@@ -922,7 +949,8 @@ class SessionServiceTest {
                         tierRegistry,
                         new WorkspaceAdmissionPolicy(
                                 new DeployerPolicyConfiguration(),
-                                mock(ProtectedSetResolver.class)),
+                                mock(ProtectedSetResolver.class),
+                                TestUsers.registry()),
                         mock(ScopedPluginStorage.class),
                         mock(HitlRecordRepository.class),
                         mock(PluginManager.class),
@@ -932,7 +960,12 @@ class SessionServiceTest {
 
         SessionEntity created =
                 service.createSession(
-                        "alice", "coder", "selected", roots, 1, ToolResultPresentationMode.BASIC);
+                        TestUsers.ALICE,
+                        "coder",
+                        "selected",
+                        roots,
+                        1,
+                        ToolResultPresentationMode.BASIC);
 
         assertEquals(1, created.getCurrentWorkspaceRootIndex());
     }
@@ -946,9 +979,10 @@ class SessionServiceTest {
         SessionHistoryLoader loader = mock(SessionHistoryLoader.class);
         AgentPatternEntity pattern =
                 new AgentPatternEntity(
-                        "coder", "DEEPSEEK", "deepseek-v4", "pattern-coder", "alice");
+                        "coder", "DEEPSEEK", "deepseek-v4", "pattern-coder", TestUsers.ALICE);
         String roots = fakeDir("only-root");
-        when(patterns.findByNameAndOwner("coder", "alice")).thenReturn(Optional.of(pattern));
+        when(patterns.findByNameAndUserId("coder", TestUsers.ALICE))
+                .thenReturn(Optional.of(pattern));
         SessionService service =
                 new SessionService(
                         sessions,
@@ -960,7 +994,8 @@ class SessionServiceTest {
                         tierRegistry,
                         new WorkspaceAdmissionPolicy(
                                 new DeployerPolicyConfiguration(),
-                                mock(ProtectedSetResolver.class)),
+                                mock(ProtectedSetResolver.class),
+                                TestUsers.registry()),
                         mock(ScopedPluginStorage.class),
                         mock(HitlRecordRepository.class),
                         mock(PluginManager.class),
@@ -973,7 +1008,7 @@ class SessionServiceTest {
                         IllegalArgumentException.class,
                         () ->
                                 service.createSession(
-                                        "alice",
+                                        TestUsers.ALICE,
                                         "coder",
                                         "invalid-root",
                                         List.of(roots),
@@ -1017,11 +1052,11 @@ class SessionServiceTest {
         String projectB = fakeDir("veto-test-ws-B");
         String projectASub = fakeDir("veto-test-ws-A/sub");
 
-        SessionEntity inA = new SessionEntity("alice", "alpha", projectA);
-        SessionEntity inB = new SessionEntity("alice", "beta", projectB);
-        SessionEntity legacy = new SessionEntity("alice", "legacy", null); // no binding
+        SessionEntity inA = new SessionEntity(TestUsers.ALICE, "alpha", projectA);
+        SessionEntity inB = new SessionEntity(TestUsers.ALICE, "beta", projectB);
+        SessionEntity legacy = new SessionEntity(TestUsers.ALICE, "legacy", null); // no binding
 
-        when(sessions.findByOwner("alice")).thenReturn(List.of(inA, inB, legacy));
+        when(sessions.findByUserId(TestUsers.ALICE)).thenReturn(List.of(inA, inB, legacy));
 
         SessionService service =
                 new SessionService(
@@ -1034,7 +1069,8 @@ class SessionServiceTest {
                         tierRegistry,
                         new WorkspaceAdmissionPolicy(
                                 new DeployerPolicyConfiguration(),
-                                mock(ProtectedSetResolver.class)),
+                                mock(ProtectedSetResolver.class),
+                                TestUsers.registry()),
                         mock(ScopedPluginStorage.class),
                         mock(HitlRecordRepository.class),
                         mock(PluginManager.class),
@@ -1043,24 +1079,76 @@ class SessionServiceTest {
                         mock(RequestContinuationStore.class));
 
         // Terminal in projectA: sees inA (exact) + legacy (null = any) — NOT inB.
-        List<SessionEntity> seenInA = service.listSessions("alice", projectA);
+        List<SessionEntity> seenInA = service.listSessions(TestUsers.ALICE, projectA);
         assertEquals(2, seenInA.size());
         assertTrue(seenInA.contains(inA));
         assertTrue(seenInA.contains(legacy));
         assertFalse(seenInA.contains(inB));
 
         // Terminal in a subdirectory of projectA: still in-scope of inA.
-        List<SessionEntity> seenInASub = service.listSessions("alice", projectASub);
+        List<SessionEntity> seenInASub = service.listSessions(TestUsers.ALICE, projectASub);
         assertEquals(2, seenInASub.size());
         assertTrue(seenInASub.contains(inA));
         assertFalse(seenInASub.contains(inB));
 
         // Terminal in projectB: sees inB + legacy — NOT inA.
-        List<SessionEntity> seenInB = service.listSessions("alice", projectB);
+        List<SessionEntity> seenInB = service.listSessions(TestUsers.ALICE, projectB);
         assertEquals(2, seenInB.size());
         assertTrue(seenInB.contains(inB));
         assertTrue(seenInB.contains(legacy));
         assertFalse(seenInB.contains(inA));
+    }
+
+    @Test
+    void terminalWorkspaceAliasesResolveForListActivationAndResume(@TempDir @NonNull Path temp)
+            throws IOException, InterruptedException {
+        var root = Files.createDirectory(temp.resolve("workspace")).toRealPath();
+        var alias = temp.resolve("alias");
+        if (System.getProperty("os.name", "").startsWith("Windows")) {
+            var process =
+                    new ProcessBuilder(
+                                    "cmd", "/c", "mklink", "/J", alias.toString(), root.toString())
+                            .redirectErrorStream(true)
+                            .start();
+            var output = new String(process.getInputStream().readAllBytes());
+            assertEquals(0, process.waitFor(), output);
+        } else {
+            Files.createSymbolicLink(alias, root);
+        }
+        try {
+            var sessions = mock(SessionRepository.class);
+            var session = new SessionEntity(TestUsers.ALICE, "linked", root.toString());
+            when(sessions.findByUserId(TestUsers.ALICE)).thenReturn(List.of(session));
+            var service =
+                    new SessionService(
+                            sessions,
+                            mock(AgentInstanceRepository.class),
+                            mock(AgentPatternRepository.class),
+                            mock(AgentService.class),
+                            liveAgents,
+                            mock(SessionHistoryLoader.class),
+                            tierRegistry,
+                            new WorkspaceAdmissionPolicy(
+                                    new DeployerPolicyConfiguration(),
+                                    mock(ProtectedSetResolver.class),
+                                    TestUsers.registry()),
+                            mock(ScopedPluginStorage.class),
+                            mock(HitlRecordRepository.class),
+                            mock(PluginManager.class),
+                            mock(EventManager.class),
+                            mock(PluginDataCleanup.class),
+                            mock(RequestContinuationStore.class));
+            assertEquals(List.of(session), service.listSessions(TestUsers.ALICE, alias.toString()));
+            // A session without its primary agent resolves its workspace, then returns empty.
+            assertTrue(
+                    service.activate("terminal", "linked", TestUsers.ALICE, alias.toString())
+                            .isEmpty());
+            assertTrue(
+                    service.resumeLastSession("terminal", TestUsers.ALICE, alias.toString())
+                            .isEmpty());
+        } finally {
+            Files.delete(alias);
+        }
     }
 
     @Test
@@ -1070,9 +1158,9 @@ class SessionServiceTest {
         AgentPatternRepository patterns = mock(AgentPatternRepository.class);
         AgentService agentService = mock(AgentService.class);
         SessionHistoryLoader loader = mock(SessionHistoryLoader.class);
-        SessionEntity a = new SessionEntity("alice", "alpha", fakeDir("ws-A"));
-        SessionEntity b = new SessionEntity("alice", "beta", fakeDir("ws-B"));
-        when(sessions.findByOwner("alice")).thenReturn(List.of(a, b));
+        SessionEntity a = new SessionEntity(TestUsers.ALICE, "alpha", fakeDir("ws-A"));
+        SessionEntity b = new SessionEntity(TestUsers.ALICE, "beta", fakeDir("ws-B"));
+        when(sessions.findByUserId(TestUsers.ALICE)).thenReturn(List.of(a, b));
 
         SessionService service =
                 new SessionService(
@@ -1085,7 +1173,8 @@ class SessionServiceTest {
                         tierRegistry,
                         new WorkspaceAdmissionPolicy(
                                 new DeployerPolicyConfiguration(),
-                                mock(ProtectedSetResolver.class)),
+                                mock(ProtectedSetResolver.class),
+                                TestUsers.registry()),
                         mock(ScopedPluginStorage.class),
                         mock(HitlRecordRepository.class),
                         mock(PluginManager.class),
@@ -1094,7 +1183,7 @@ class SessionServiceTest {
                         mock(RequestContinuationStore.class));
 
         // Single-arg REST-style list returns every session regardless of binding.
-        assertEquals(2, service.listSessions("alice").size());
+        assertEquals(2, service.listSessions(TestUsers.ALICE).size());
     }
 
     @Test
@@ -1106,9 +1195,9 @@ class SessionServiceTest {
         SessionHistoryLoader loader = mock(SessionHistoryLoader.class);
         String projectA = fakeDir("veto-test-ws-A");
         String projectB = fakeDir("veto-test-ws-B");
-        SessionEntity session = new SessionEntity("alice", "alpha", projectA);
-        when(sessions.findByOwner("alice")).thenReturn(List.of(session));
-        when(sessions.findFirstByNameAndOwnerOrderByLastActiveAtDesc("alpha", "alice"))
+        SessionEntity session = new SessionEntity(TestUsers.ALICE, "alpha", projectA);
+        when(sessions.findByUserId(TestUsers.ALICE)).thenReturn(List.of(session));
+        when(sessions.findFirstByNameAndUserIdOrderByLastActiveAtDesc("alpha", TestUsers.ALICE))
                 .thenReturn(Optional.of(session));
 
         SessionService service =
@@ -1122,7 +1211,8 @@ class SessionServiceTest {
                         tierRegistry,
                         new WorkspaceAdmissionPolicy(
                                 new DeployerPolicyConfiguration(),
-                                mock(ProtectedSetResolver.class)),
+                                mock(ProtectedSetResolver.class),
+                                TestUsers.registry()),
                         mock(ScopedPluginStorage.class),
                         mock(HitlRecordRepository.class),
                         mock(PluginManager.class),
@@ -1133,7 +1223,7 @@ class SessionServiceTest {
         IllegalArgumentException ex =
                 assertThrows(
                         IllegalArgumentException.class,
-                        () -> service.activate("term-1", "alpha", "alice", projectB));
+                        () -> service.activate("term-1", "alpha", TestUsers.ALICE, projectB));
         assertTrue(
                 String.valueOf(ex.getMessage()).contains("alpha"),
                 "error names the session so the user can identify it");
@@ -1156,7 +1246,7 @@ class SessionServiceTest {
         SessionHistoryLoader loader = mock(SessionHistoryLoader.class);
         String projectA = fakeDir("veto-test-ws-A");
         String projectASub = fakeDir("veto-test-ws-A/inner");
-        SessionEntity session = new SessionEntity("alice", "alpha", projectA);
+        SessionEntity session = new SessionEntity(TestUsers.ALICE, "alpha", projectA);
         AgentEntity agent =
                 new AgentEntity(
                         session.getId(),
@@ -1168,14 +1258,14 @@ class SessionServiceTest {
                         "pattern-alpha");
         session.setPrimaryAgentId(agent.getId());
 
-        when(sessions.findByOwner("alice")).thenReturn(List.of(session));
-        when(sessions.findFirstByNameAndOwnerOrderByLastActiveAtDesc("alpha", "alice"))
+        when(sessions.findByUserId(TestUsers.ALICE)).thenReturn(List.of(session));
+        when(sessions.findFirstByNameAndUserIdOrderByLastActiveAtDesc("alpha", TestUsers.ALICE))
                 .thenReturn(Optional.of(session));
         when(sessions.findById(session.getId())).thenReturn(Optional.of(session));
         when(agents.findById(agent.getId())).thenReturn(Optional.of(agent));
         when(loader.load(session.getId(), agent.getId())).thenReturn(List.of());
         when(agentService.getOrCreateAgent(
-                        anyString(), any(), any(), anyList(), any(), any(), any(), anyInt(), any()))
+                        anyString(), any(), any(), anyList(), any(), any(), anyInt(), any()))
                 .thenReturn(mock(Agent.class));
 
         SessionService service =
@@ -1189,7 +1279,8 @@ class SessionServiceTest {
                         tierRegistry,
                         new WorkspaceAdmissionPolicy(
                                 new DeployerPolicyConfiguration(),
-                                mock(ProtectedSetResolver.class)),
+                                mock(ProtectedSetResolver.class),
+                                TestUsers.registry()),
                         mock(ScopedPluginStorage.class),
                         mock(HitlRecordRepository.class),
                         mock(PluginManager.class),
@@ -1198,7 +1289,7 @@ class SessionServiceTest {
                         mock(RequestContinuationStore.class));
 
         // Subdirectory of the bound workspace: still in-scope.
-        Optional<LlmConfig> cfg = service.activate("term-1", "alpha", "alice", projectASub);
+        Optional<LlmConfig> cfg = service.activate("term-1", "alpha", TestUsers.ALICE, projectASub);
         assertTrue(cfg.isPresent(), "subdirectory of bound workspace activates cleanly");
     }
 
@@ -1213,8 +1304,8 @@ class SessionServiceTest {
         String projectB = fakeDir("veto-test-ws-B");
         // The user's only session is in projectA; the terminal just opened in projectB.
         // (The session is the most-recent overall — the case where a naive
-        // findFirstByOwnerOrderByLastActiveAtDesc would silently resume into it.)
-        SessionEntity inA = new SessionEntity("alice", "alpha", projectA);
+        // findFirstByUserIdOrderByLastActiveAtDesc would silently resume into it.)
+        SessionEntity inA = new SessionEntity(TestUsers.ALICE, "alpha", projectA);
         try {
             Field f = SessionEntity.class.getDeclaredField("lastActiveAt");
             f.setAccessible(true);
@@ -1222,7 +1313,7 @@ class SessionServiceTest {
         } catch (ReflectiveOperationException e) {
             throw new AssertionError(e);
         }
-        when(sessions.findByOwner("alice")).thenReturn(List.of(inA));
+        when(sessions.findByUserId(TestUsers.ALICE)).thenReturn(List.of(inA));
 
         SessionService service =
                 new SessionService(
@@ -1235,7 +1326,8 @@ class SessionServiceTest {
                         tierRegistry,
                         new WorkspaceAdmissionPolicy(
                                 new DeployerPolicyConfiguration(),
-                                mock(ProtectedSetResolver.class)),
+                                mock(ProtectedSetResolver.class),
+                                TestUsers.registry()),
                         mock(ScopedPluginStorage.class),
                         mock(HitlRecordRepository.class),
                         mock(PluginManager.class),
@@ -1243,7 +1335,7 @@ class SessionServiceTest {
                         mock(PluginDataCleanup.class),
                         mock(RequestContinuationStore.class));
 
-        Optional<LlmConfig> cfg = service.resumeLastSession("term-1", "alice", projectB);
+        Optional<LlmConfig> cfg = service.resumeLastSession("term-1", TestUsers.ALICE, projectB);
         assertTrue(
                 cfg.isEmpty(),
                 "auto-resume must NOT silently resume into a session bound to a different"
@@ -1260,7 +1352,7 @@ class SessionServiceTest {
         SessionHistoryLoader loader = mock(SessionHistoryLoader.class);
         String projectA = fakeDir("veto-test-ws-A");
         // Two sessions in projectA; the newer one is alpha, the older one is zulu.
-        SessionEntity older = new SessionEntity("alice", "zulu", projectA);
+        SessionEntity older = new SessionEntity(TestUsers.ALICE, "zulu", projectA);
         try {
             Field f = SessionEntity.class.getDeclaredField("lastActiveAt");
             f.setAccessible(true);
@@ -1268,7 +1360,7 @@ class SessionServiceTest {
         } catch (ReflectiveOperationException e) {
             throw new AssertionError(e);
         }
-        SessionEntity newer = new SessionEntity("alice", "alpha", projectA);
+        SessionEntity newer = new SessionEntity(TestUsers.ALICE, "alpha", projectA);
         try {
             Field f = SessionEntity.class.getDeclaredField("lastActiveAt");
             f.setAccessible(true);
@@ -1287,14 +1379,14 @@ class SessionServiceTest {
                         "pattern-alpha");
         newer.setPrimaryAgentId(agent.getId());
 
-        when(sessions.findByOwner("alice")).thenReturn(List.of(older, newer));
-        when(sessions.findFirstByNameAndOwnerOrderByLastActiveAtDesc("alpha", "alice"))
+        when(sessions.findByUserId(TestUsers.ALICE)).thenReturn(List.of(older, newer));
+        when(sessions.findFirstByNameAndUserIdOrderByLastActiveAtDesc("alpha", TestUsers.ALICE))
                 .thenReturn(Optional.of(newer));
         when(sessions.findById(newer.getId())).thenReturn(Optional.of(newer));
         when(agents.findById(agent.getId())).thenReturn(Optional.of(agent));
         when(loader.load(newer.getId(), agent.getId())).thenReturn(List.of());
         when(agentService.getOrCreateAgent(
-                        anyString(), any(), any(), anyList(), any(), any(), any(), anyInt(), any()))
+                        anyString(), any(), any(), anyList(), any(), any(), anyInt(), any()))
                 .thenReturn(mock(Agent.class));
 
         SessionService service =
@@ -1308,7 +1400,8 @@ class SessionServiceTest {
                         tierRegistry,
                         new WorkspaceAdmissionPolicy(
                                 new DeployerPolicyConfiguration(),
-                                mock(ProtectedSetResolver.class)),
+                                mock(ProtectedSetResolver.class),
+                                TestUsers.registry()),
                         mock(ScopedPluginStorage.class),
                         mock(HitlRecordRepository.class),
                         mock(PluginManager.class),
@@ -1316,7 +1409,7 @@ class SessionServiceTest {
                         mock(PluginDataCleanup.class),
                         mock(RequestContinuationStore.class));
 
-        Optional<LlmConfig> cfg = service.resumeLastSession("term-1", "alice", projectA);
+        Optional<LlmConfig> cfg = service.resumeLastSession("term-1", TestUsers.ALICE, projectA);
         assertTrue(cfg.isPresent());
         assertEquals(
                 Optional.of(newer.getId()),
@@ -1337,11 +1430,13 @@ class SessionServiceTest {
         String projectB = fakeDir("ws-B");
         AgentPatternEntity pattern =
                 new AgentPatternEntity(
-                        "coder", "DEEPSEEK", "deepseek-v4", "pattern-coder", "alice");
-        when(patterns.findByNameAndOwner("coder", "alice")).thenReturn(Optional.of(pattern));
+                        "coder", "DEEPSEEK", "deepseek-v4", "pattern-coder", TestUsers.ALICE);
+        when(patterns.findByNameAndUserId("coder", TestUsers.ALICE))
+                .thenReturn(Optional.of(pattern));
         // No row with (alice, "coder", projectB) yet — the row for (alice, "coder", projectA) is
         // in a different workspace, so it doesn't match this exact (name, workspaceRoots) lookup.
-        when(sessions.findByOwnerAndNameAndWorkspaceRoots(anyString(), anyString(), anyString()))
+        when(sessions.findByUserIdAndNameAndWorkspaceRoots(
+                        any(UUID.class), anyString(), anyString()))
                 .thenReturn(Optional.empty());
         when(sessions.save(any(SessionEntity.class))).thenAnswer(i -> i.getArgument(0));
         when(agents.save(any(AgentEntity.class))).thenAnswer(i -> i.getArgument(0));
@@ -1357,7 +1452,8 @@ class SessionServiceTest {
                         tierRegistry,
                         new WorkspaceAdmissionPolicy(
                                 new DeployerPolicyConfiguration(),
-                                mock(ProtectedSetResolver.class)),
+                                mock(ProtectedSetResolver.class),
+                                TestUsers.registry()),
                         mock(ScopedPluginStorage.class),
                         mock(HitlRecordRepository.class),
                         mock(PluginManager.class),
@@ -1365,7 +1461,8 @@ class SessionServiceTest {
                         mock(PluginDataCleanup.class),
                         mock(RequestContinuationStore.class));
 
-        SessionEntity created = service.createSession("alice", "coder", null, List.of(projectB));
+        SessionEntity created =
+                service.createSession(TestUsers.ALICE, "coder", null, List.of(projectB));
         assertTrue(
                 created.getName().startsWith("coder-"),
                 "implicit name must use the pattern as a prefix even in a different workspace");
@@ -1397,10 +1494,11 @@ class SessionServiceTest {
         String projectA = fakeDir("ws-A");
         AgentPatternEntity pattern =
                 new AgentPatternEntity(
-                        "coder", "DEEPSEEK", "deepseek-v4", "pattern-coder", "alice");
-        SessionEntity existing = new SessionEntity("alice", "ds", projectA);
-        when(patterns.findByNameAndOwner("coder", "alice")).thenReturn(Optional.of(pattern));
-        when(sessions.findByOwnerAndNameAndWorkspaceRoots("alice", "ds", projectA))
+                        "coder", "DEEPSEEK", "deepseek-v4", "pattern-coder", TestUsers.ALICE);
+        SessionEntity existing = new SessionEntity(TestUsers.ALICE, "ds", projectA);
+        when(patterns.findByNameAndUserId("coder", TestUsers.ALICE))
+                .thenReturn(Optional.of(pattern));
+        when(sessions.findByUserIdAndNameAndWorkspaceRoots(TestUsers.ALICE, "ds", projectA))
                 .thenReturn(Optional.of(existing));
 
         SessionService service =
@@ -1414,7 +1512,8 @@ class SessionServiceTest {
                         tierRegistry,
                         new WorkspaceAdmissionPolicy(
                                 new DeployerPolicyConfiguration(),
-                                mock(ProtectedSetResolver.class)),
+                                mock(ProtectedSetResolver.class),
+                                TestUsers.registry()),
                         mock(ScopedPluginStorage.class),
                         mock(HitlRecordRepository.class),
                         mock(PluginManager.class),
@@ -1425,7 +1524,9 @@ class SessionServiceTest {
         IllegalArgumentException ex =
                 assertThrows(
                         IllegalArgumentException.class,
-                        () -> service.createSession("alice", "coder", "ds", List.of(projectA)));
+                        () ->
+                                service.createSession(
+                                        TestUsers.ALICE, "coder", "ds", List.of(projectA)));
         assertTrue(
                 String.valueOf(ex.getMessage()).contains("ds"),
                 "error names the session so the user can identify it");
@@ -1445,15 +1546,16 @@ class SessionServiceTest {
         String projectA = fakeDir("ws-A");
         AgentPatternEntity pattern =
                 new AgentPatternEntity(
-                        "coder", "DEEPSEEK", "deepseek-v4", "pattern-coder", "alice");
-        SessionEntity existing = new SessionEntity("alice", "coder", projectA);
-        when(patterns.findByNameAndOwner("coder", "alice")).thenReturn(Optional.of(pattern));
+                        "coder", "DEEPSEEK", "deepseek-v4", "pattern-coder", TestUsers.ALICE);
+        SessionEntity existing = new SessionEntity(TestUsers.ALICE, "coder", projectA);
+        when(patterns.findByNameAndUserId("coder", TestUsers.ALICE))
+                .thenReturn(Optional.of(pattern));
         // The bare pattern name 'coder' is already taken in this workspace, but any generated
         // name 'coder-xxxxxxxx' is free - so /session create coder (no explicit name) succeeds.
-        when(sessions.findByOwnerAndNameAndWorkspaceRoots("alice", "coder", projectA))
+        when(sessions.findByUserIdAndNameAndWorkspaceRoots(TestUsers.ALICE, "coder", projectA))
                 .thenReturn(Optional.of(existing));
-        when(sessions.findByOwnerAndNameAndWorkspaceRoots(
-                        eq("alice"),
+        when(sessions.findByUserIdAndNameAndWorkspaceRoots(
+                        eq(TestUsers.ALICE),
                         argThat(name -> name != null && name.startsWith("coder-")),
                         eq(projectA)))
                 .thenReturn(Optional.empty());
@@ -1471,7 +1573,8 @@ class SessionServiceTest {
                         tierRegistry,
                         new WorkspaceAdmissionPolicy(
                                 new DeployerPolicyConfiguration(),
-                                mock(ProtectedSetResolver.class)),
+                                mock(ProtectedSetResolver.class),
+                                TestUsers.registry()),
                         mock(ScopedPluginStorage.class),
                         mock(HitlRecordRepository.class),
                         mock(PluginManager.class),
@@ -1479,7 +1582,8 @@ class SessionServiceTest {
                         mock(PluginDataCleanup.class),
                         mock(RequestContinuationStore.class));
 
-        SessionEntity created = service.createSession("alice", "coder", null, List.of(projectA));
+        SessionEntity created =
+                service.createSession(TestUsers.ALICE, "coder", null, List.of(projectA));
         assertTrue(
                 created.getName().matches("coder-[0-9a-f]{8}"),
                 "must generate coder-xxxxxxxx when bare 'coder' is taken, got: "
@@ -1497,8 +1601,8 @@ class SessionServiceTest {
         String projectA = fakeDir("ws-A");
         // Two "ds" sessions for alice: one legacy (NULL = matches any cwd), one explicitly bound
         // to projectA. A terminal in projectA should activate the explicit one, not the legacy.
-        SessionEntity legacy = new SessionEntity("alice", "ds", null);
-        SessionEntity explicit = new SessionEntity("alice", "ds", projectA);
+        SessionEntity legacy = new SessionEntity(TestUsers.ALICE, "ds", null);
+        SessionEntity explicit = new SessionEntity(TestUsers.ALICE, "ds", projectA);
         AgentEntity agent =
                 new AgentEntity(
                         explicit.getId(),
@@ -1510,14 +1614,14 @@ class SessionServiceTest {
                         "pattern-ds");
         explicit.setPrimaryAgentId(agent.getId());
 
-        when(sessions.findByOwner("alice")).thenReturn(List.of(legacy, explicit));
-        when(sessions.findFirstByNameAndOwnerOrderByLastActiveAtDesc("ds", "alice"))
+        when(sessions.findByUserId(TestUsers.ALICE)).thenReturn(List.of(legacy, explicit));
+        when(sessions.findFirstByNameAndUserIdOrderByLastActiveAtDesc("ds", TestUsers.ALICE))
                 .thenReturn(Optional.of(explicit));
         when(sessions.findById(explicit.getId())).thenReturn(Optional.of(explicit));
         when(agents.findById(agent.getId())).thenReturn(Optional.of(agent));
         when(loader.load(explicit.getId(), agent.getId())).thenReturn(List.of());
         when(agentService.getOrCreateAgent(
-                        anyString(), any(), any(), anyList(), any(), any(), any(), anyInt(), any()))
+                        anyString(), any(), any(), anyList(), any(), any(), anyInt(), any()))
                 .thenReturn(mock(Agent.class));
 
         SessionService service =
@@ -1531,7 +1635,8 @@ class SessionServiceTest {
                         tierRegistry,
                         new WorkspaceAdmissionPolicy(
                                 new DeployerPolicyConfiguration(),
-                                mock(ProtectedSetResolver.class)),
+                                mock(ProtectedSetResolver.class),
+                                TestUsers.registry()),
                         mock(ScopedPluginStorage.class),
                         mock(HitlRecordRepository.class),
                         mock(PluginManager.class),
@@ -1539,7 +1644,7 @@ class SessionServiceTest {
                         mock(PluginDataCleanup.class),
                         mock(RequestContinuationStore.class));
 
-        Optional<LlmConfig> cfg = service.activate("term-1", "ds", "alice", projectA);
+        Optional<LlmConfig> cfg = service.activate("term-1", "ds", TestUsers.ALICE, projectA);
         assertTrue(cfg.isPresent());
         // The explicit one wins: the active session id is the explicit session's id, not the
         // legacy one's.
@@ -1550,7 +1655,7 @@ class SessionServiceTest {
     }
 
     @Test
-    void deleteRemovesAllSessionsWithSameName() {
+    void deleteRemovesOnlyTheSelectedSessionWithSameName() {
         SessionRepository sessions = mock(SessionRepository.class);
         AgentInstanceRepository agents = mock(AgentInstanceRepository.class);
         AgentPatternRepository patterns = mock(AgentPatternRepository.class);
@@ -1558,11 +1663,10 @@ class SessionServiceTest {
         SessionHistoryLoader loader = mock(SessionHistoryLoader.class);
         String projectA = fakeDir("ws-A");
         String projectB = fakeDir("ws-B");
-        // Two "ds" sessions for alice in different workspaces: the REST caller has no workspace
-        // context to disambiguate with, so both are removed.
-        SessionEntity inA = new SessionEntity("alice", "ds", projectA);
-        SessionEntity inB = new SessionEntity("alice", "ds", projectB);
-        when(sessions.findByOwner("alice")).thenReturn(List.of(inA, inB));
+        // Two names match, but deletion addresses only the selected immutable ID.
+        SessionEntity inA = new SessionEntity(TestUsers.ALICE, "ds", projectA);
+        SessionEntity inB = new SessionEntity(TestUsers.ALICE, "ds", projectB);
+        when(sessions.findByUserId(TestUsers.ALICE)).thenReturn(List.of(inA, inB));
 
         SessionService service =
                 new SessionService(
@@ -1575,7 +1679,8 @@ class SessionServiceTest {
                         tierRegistry,
                         new WorkspaceAdmissionPolicy(
                                 new DeployerPolicyConfiguration(),
-                                mock(ProtectedSetResolver.class)),
+                                mock(ProtectedSetResolver.class),
+                                TestUsers.registry()),
                         mock(ScopedPluginStorage.class),
                         mock(HitlRecordRepository.class),
                         mock(PluginManager.class),
@@ -1583,8 +1688,12 @@ class SessionServiceTest {
                         mock(PluginDataCleanup.class),
                         mock(RequestContinuationStore.class));
 
-        assertTrue(service.delete("alice", "ds"));
+        when(sessions.findById(inA.getId())).thenReturn(Optional.of(inA));
+        assertTrue(service.delete(TestUsers.ALICE, inA.getId()));
         verify(sessions).delete(inA);
-        verify(sessions).delete(inB);
+        verify(sessions, never()).delete(inB);
+        verify(liveAgents, never()).stopSession(UUID.fromString(inB.getId()));
+        assertFalse(service.delete(TestUsers.BOB, inA.getId()));
+        verify(sessions, times(1)).delete(any(SessionEntity.class));
     }
 }

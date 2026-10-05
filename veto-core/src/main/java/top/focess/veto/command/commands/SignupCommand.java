@@ -110,7 +110,7 @@ public class SignupCommand extends VetoCommand {
                         s.output("Account created but vault setup failed: " + e.getMessage());
                         return CommandResult.REFUSE;
                     }
-                    s.setUsername(u);
+                    s.setUser(users.findByUsername(u).orElseThrow());
                     s.output(
                             bootstrap
                                     ? "Administrator account created - welcome, " + u + "."

@@ -61,8 +61,8 @@ import top.focess.veto.api.agent.tool.ToolSecurity;
                 empty pages (EMPTY_CONTENT: `Empty content: ...`), network/model errors (READER_MODEL: \
                 `Reader model: ...`), cancellation (CANCELLED: `Cancelled: the web reader was cancelled.`), \
                 and exhausted budgets (TIMEOUT: `Reader timeout: ...`; READER_BUDGET: `Reader budget: \
-                ...`) are tool failures. A missing session owner is refused with NO_SESSION_CONTEXT (`Reader \
-                identity: an authenticated session owner is required.`). A cross-origin redirect needs a \
+                ...`) are tool failures. A missing session userId is refused with NO_SESSION_CONTEXT (`Reader \
+                identity: an authenticated session userId is required.`). A cross-origin redirect needs a \
                 fresh call. Failed retrieval never means information was absent.\
                 """,
         security =

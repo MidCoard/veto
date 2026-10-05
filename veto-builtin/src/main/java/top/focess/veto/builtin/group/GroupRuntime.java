@@ -160,7 +160,7 @@ public final class GroupRuntime implements AgentConfiguration, GroupObservations
 
     private static Scope.@NonNull AgentScope key(@NonNull Context context) {
         return new Scope.AgentScope(
-                context.owner(), context.storageGrant().scope().session(), context.agentId());
+                context.userId(), context.storageGrant().scope().session(), context.agentId());
     }
 
     private void transition(Scope.@NonNull AgentScope scope, @NonNull Transition transition) {
@@ -231,7 +231,7 @@ public final class GroupRuntime implements AgentConfiguration, GroupObservations
                         new Group(
                                 id,
                                 context.agentId(),
-                                context.storageGrant().scope().owner(),
+                                context.storageGrant().scope().userId(),
                                 saved.brief(),
                                 new ExecutionDag(
                                         id,
@@ -243,7 +243,6 @@ public final class GroupRuntime implements AgentConfiguration, GroupObservations
                                 GroupState.RECOVERING,
                                 saved.createdAt(),
                                 null,
-                                context.owner(),
                                 context.agents(),
                                 ToolResultPresentationMode.BASIC,
                                 UUID.fromString(context.storageGrant().scope().session()));
@@ -295,9 +294,8 @@ public final class GroupRuntime implements AgentConfiguration, GroupObservations
             String skillset) {
         var session = group.sessionId();
         if (session == null) throw new IllegalStateException("Missing session");
-        var owner = group.owner();
-        if (owner == null) throw new IllegalStateException("Missing group owner");
-        var state = agents.get(new Scope.AgentScope(owner, session.toString(), group.leaderId()));
+        var userId = group.userId();
+        var state = agents.get(new Scope.AgentScope(userId, session.toString(), group.leaderId()));
         var context = state == null ? null : state.context();
         if (context == null) throw new IllegalStateException("Team leader is not active");
         var profile = history().profile(session.toString(), id);
@@ -353,7 +351,7 @@ public final class GroupRuntime implements AgentConfiguration, GroupObservations
                             profile.metadata());
             history().profile(session.toString(), id, profile);
             transition(
-                    new Scope.AgentScope(owner, session.toString(), id),
+                    new Scope.AgentScope(userId, session.toString(), id),
                     new Transition(
                             "recovery:" + group.groupId() + ":" + id,
                             "runtime-group-recovery",
@@ -389,7 +387,7 @@ public final class GroupRuntime implements AgentConfiguration, GroupObservations
                 new Group(
                         id,
                         scope.agentId(),
-                        context.storageGrant().scope().owner(),
+                        context.storageGrant().scope().userId(),
                         brief,
                         new ExecutionDag(id, List.of()),
                         board,
@@ -397,7 +395,6 @@ public final class GroupRuntime implements AgentConfiguration, GroupObservations
                         GroupState.ACTIVE,
                         Instant.now(),
                         null,
-                        scope.owner(),
                         context.agents(),
                         ToolResultPresentationMode.BASIC,
                         UUID.fromString(scope.sessionId()));
@@ -426,7 +423,7 @@ public final class GroupRuntime implements AgentConfiguration, GroupObservations
                         group ->
                                 new GroupObservations.View(
                                         group.groupId().toString(),
-                                        group.owner(),
+                                        group.userId(),
                                         Objects.toString(group.sessionId(), null),
                                         group.leaderId(),
                                         group.state(),
@@ -477,7 +474,7 @@ public final class GroupRuntime implements AgentConfiguration, GroupObservations
         try {
             stopGroups(
                     group ->
-                            scope.owner().equals(group.owner())
+                            scope.userId().equals(group.userId())
                                     && scope.session().equals(String.valueOf(group.sessionId())));
         } finally {
             agents.keySet().removeIf(key -> key.sessionScope().equals(scope));
@@ -489,7 +486,7 @@ public final class GroupRuntime implements AgentConfiguration, GroupObservations
         try {
             stopGroups(
                     group ->
-                            scope.owner().equals(group.owner())
+                            scope.userId().equals(group.userId())
                                     && scope.agent().equals(group.leaderId())
                                     && scope.session().equals(String.valueOf(group.sessionId())));
         } finally {
@@ -500,7 +497,7 @@ public final class GroupRuntime implements AgentConfiguration, GroupObservations
     public void onUserLogout(@NonNull UserLogoutEvent event) {
         var scope = event.scope();
         try {
-            stopGroups(group -> scope.owner().equals(group.owner()));
+            stopGroups(group -> scope.userId().equals(group.userId()));
         } finally {
             agents.keySet().removeIf(key -> key.userScope().equals(scope));
         }

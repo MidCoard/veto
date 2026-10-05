@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -20,7 +21,12 @@ import top.focess.veto.plugin.runtime.*;
 
 class WorkflowHooksTest {
     private static @NonNull BeforeInputEvent input(@NonNull String text) {
-        return new BeforeInputEvent(new Scope.AgentScope("owner", "session", "agent"), text);
+        return new BeforeInputEvent(
+                new Scope.AgentScope(
+                        UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"),
+                        "session",
+                        "agent"),
+                text);
     }
 
     /** Appends a fixed suffix; optionally counts how many times it ran. */
@@ -75,7 +81,9 @@ class WorkflowHooksTest {
                                 Contribution.of(point, "first", first)))) {
             var event = input("");
             {
-                var invocation = new PluginInvocationContext("owner", "session");
+                var invocation =
+                        new PluginInvocationContext(
+                                UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"), "session");
                 try {
                     fixture.events.submit(event);
                 } finally {
@@ -85,7 +93,9 @@ class WorkflowHooksTest {
             assertEquals("AB", event.text());
             assertEquals(1, calls.get());
             {
-                var invocation = new PluginInvocationContext("owner", "session");
+                var invocation =
+                        new PluginInvocationContext(
+                                UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"), "session");
                 try {
                     Thread.currentThread().interrupt();
                     assertThrows(
@@ -99,7 +109,9 @@ class WorkflowHooksTest {
             fixture.useUnselectedSession();
             var unchanged = input("unchanged");
             {
-                var invocation = new PluginInvocationContext("owner", "session");
+                var invocation =
+                        new PluginInvocationContext(
+                                UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"), "session");
                 try {
                     fixture.events.submit(unchanged);
                 } finally {
@@ -111,7 +123,9 @@ class WorkflowHooksTest {
             fixture.runtime.close();
             var inactive = input("inactive");
             {
-                var invocation = new PluginInvocationContext("owner", "session");
+                var invocation =
+                        new PluginInvocationContext(
+                                UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"), "session");
                 try {
                     fixture.events.submit(inactive);
                 } finally {
@@ -142,7 +156,9 @@ class WorkflowHooksTest {
                                         Set.of(new ContributionId("fixture.workflow:bad")))))) {
             var event = input("");
             {
-                var invocation = new PluginInvocationContext("owner", "session");
+                var invocation =
+                        new PluginInvocationContext(
+                                UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"), "session");
                 try {
                     assertDoesNotThrow(() -> fixture.events.submit(event));
                 } finally {
@@ -195,7 +211,9 @@ class WorkflowHooksTest {
                                                         "fixture.workflow:observer")))))) {
             var event = input("original");
             {
-                var invocation = new PluginInvocationContext("owner", "session");
+                var invocation =
+                        new PluginInvocationContext(
+                                UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"), "session");
                 try {
                     fixture.events.submit(event);
                 } finally {

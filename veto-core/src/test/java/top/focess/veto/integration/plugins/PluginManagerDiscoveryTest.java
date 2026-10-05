@@ -40,7 +40,9 @@ class PluginManagerDiscoveryTest {
     void constructorOwnsFrontendInvalidationOnPluginShutdown() throws Exception {
         var sessions = mock(SessionRepository.class);
         var invalidations = mock(SessionInvalidations.class);
-        var session = new SessionEntity("owner", "session");
+        var session =
+                new SessionEntity(
+                        UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"), "session");
         try (var plugins =
                 new PluginManager(
                         PluginTestSupport.pluginPackages(),
@@ -92,7 +94,11 @@ class PluginManagerDiscoveryTest {
     @Test
     void importToolFailsWithoutHostGrantedAccess() throws Exception {
         try (var plugins = PluginTestSupport.manager()) {
-            var scope = new Scope.AgentScope("owner", "session", "agent");
+            var scope =
+                    new Scope.AgentScope(
+                            UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"),
+                            "session",
+                            "agent");
             String reference = capture(plugins, scope);
             var failure =
                     assertThrows(
@@ -108,7 +114,10 @@ class PluginManagerDiscoveryTest {
                 new VaultAccess.Handle() {
                     @Override
                     public Scope.@NonNull AgentScope scope() {
-                        return new Scope.AgentScope("owner", "session", "agent");
+                        return new Scope.AgentScope(
+                                UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"),
+                                "session",
+                                "agent");
                     }
 
                     @Override
@@ -129,7 +138,11 @@ class PluginManagerDiscoveryTest {
         try (var plugins =
                 PluginTestSupport.manager(
                         new PluginHostServices(Map.of(VaultAccess.class, access)))) {
-            var scope = new Scope.AgentScope("owner", "session", "agent");
+            var scope =
+                    new Scope.AgentScope(
+                            UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"),
+                            "session",
+                            "agent");
             String reference = capture(plugins, scope);
             String receipt = invokeImport(plugins, reference, "github", "Repository");
             assertEquals(
@@ -142,12 +155,20 @@ class PluginManagerDiscoveryTest {
     void lifecycleEventsReachThePluginThroughTheDispatcher() throws Exception {
         try (var plugins = PluginTestSupport.manager()) {
             var events = PluginTestSupport.eventManager(plugins);
-            var scope = new Scope.AgentScope("owner", "session", "agent");
+            var scope =
+                    new Scope.AgentScope(
+                            UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"),
+                            "session",
+                            "agent");
             String reference = capture(plugins, scope);
             events.submit(new AgentTerminatedEvent(scope));
             assertTrue(PluginTestSupport.reveal(plugins, scope, reference).isEmpty());
             reference = capture(plugins, scope);
-            events.submit(new SessionDeletedEvent(new Scope.SessionScope("owner", "session")));
+            events.submit(
+                    new SessionDeletedEvent(
+                            new Scope.SessionScope(
+                                    UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"),
+                                    "session")));
             assertTrue(PluginTestSupport.reveal(plugins, scope, reference).isEmpty());
             assertEquals(
                     "password=synthetic-token",
@@ -157,9 +178,16 @@ class PluginManagerDiscoveryTest {
                             scope,
                             "source",
                             "password=synthetic-token"));
-            var otherSession = new Scope.AgentScope("owner", "other-session", "agent");
+            var otherSession =
+                    new Scope.AgentScope(
+                            UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"),
+                            "other-session",
+                            "agent");
             String otherReference = capture(plugins, otherSession);
-            events.submit(new UserLogoutEvent(new Scope.UserScope("owner")));
+            events.submit(
+                    new UserLogoutEvent(
+                            new Scope.UserScope(
+                                    UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"))));
             assertTrue(PluginTestSupport.reveal(plugins, otherSession, otherReference).isEmpty());
             assertEquals(
                     "password=synthetic-token",
@@ -169,7 +197,10 @@ class PluginManagerDiscoveryTest {
                             otherSession,
                             "source",
                             "password=synthetic-token"));
-            events.submit(new UserLoggedInEvent(new Scope.UserScope("owner")));
+            events.submit(
+                    new UserLoggedInEvent(
+                            new Scope.UserScope(
+                                    UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"))));
             capture(plugins, otherSession);
         }
     }

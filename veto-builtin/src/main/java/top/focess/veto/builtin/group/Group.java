@@ -26,7 +26,7 @@ import top.focess.veto.api.plugin.agent.AgentHost;
 public record Group(
         @NonNull UUID groupId,
         @NonNull String leaderId,
-        @NonNull String userId,
+        @NonNull UUID userId,
         @NonNull String contextBrief,
         @NonNull ExecutionDag dag,
         @NonNull Blackboard blackboard,
@@ -34,7 +34,6 @@ public record Group(
         @NonNull GroupState state,
         @NonNull Instant createdAt,
         Instant disbandedAt,
-        String owner,
         AgentHost.Session agents,
         @NonNull ToolResultPresentationMode toolResultPresentation,
         UUID sessionId) {
@@ -46,7 +45,7 @@ public record Group(
     /** Creates an ACTIVE group without an owning session or agent handles. */
     public static @NonNull Group create(
             @NonNull String leaderId,
-            @NonNull String userId,
+            @NonNull UUID userId,
             String contextBrief,
             @NonNull Blackboard blackboard,
             @NonNull ExecutionDag dag) {
@@ -57,33 +56,6 @@ public record Group(
                 blackboard,
                 dag,
                 null,
-                null,
-                ToolResultPresentationMode.BASIC,
-                null);
-    }
-
-    /**
-     * Creates a Group carrying the session {@code owner} (the username whose active model-tier
-     * profile resolves every Mate / Leader tier in this group). The owner is stamped at {@code
-     * create_group} time from the calling agent's trusted invocation and read back when the {@link
-     * GroupTickScheduler} lazily provisions Mates on its own thread - where no tool-call scope, and
-     * therefore no thread-local owner, exists.
-     */
-    public static @NonNull Group create(
-            @NonNull String leaderId,
-            @NonNull String userId,
-            String contextBrief,
-            @NonNull Blackboard blackboard,
-            @NonNull ExecutionDag dag,
-            String owner) {
-        return create(
-                leaderId,
-                userId,
-                contextBrief,
-                blackboard,
-                dag,
-                owner,
-                null,
                 ToolResultPresentationMode.BASIC,
                 null);
     }
@@ -91,11 +63,10 @@ public record Group(
     /** Creates an ACTIVE group with the given tool-result presentation mode. */
     public static @NonNull Group create(
             @NonNull String leaderId,
-            @NonNull String userId,
+            @NonNull UUID userId,
             String contextBrief,
             @NonNull Blackboard blackboard,
             @NonNull ExecutionDag dag,
-            String owner,
             @NonNull ToolResultPresentationMode toolResultPresentation) {
         return create(
                 leaderId,
@@ -103,7 +74,6 @@ public record Group(
                 contextBrief,
                 blackboard,
                 dag,
-                owner,
                 null,
                 toolResultPresentation,
                 null);
@@ -112,11 +82,10 @@ public record Group(
     /** Creates an ACTIVE group bound to the given agent session handles. */
     public static @NonNull Group create(
             @NonNull String leaderId,
-            @NonNull String userId,
+            @NonNull UUID userId,
             String contextBrief,
             @NonNull Blackboard blackboard,
             @NonNull ExecutionDag dag,
-            String owner,
             AgentHost.Session agents,
             @NonNull ToolResultPresentationMode toolResultPresentation) {
         return create(
@@ -125,7 +94,6 @@ public record Group(
                 contextBrief,
                 blackboard,
                 dag,
-                owner,
                 agents,
                 toolResultPresentation,
                 null);
@@ -137,11 +105,10 @@ public record Group(
      */
     public static @NonNull Group create(
             @NonNull String leaderId,
-            @NonNull String userId,
+            @NonNull UUID userId,
             String contextBrief,
             @NonNull Blackboard blackboard,
             @NonNull ExecutionDag dag,
-            String owner,
             AgentHost.Session agents,
             @NonNull ToolResultPresentationMode toolResultPresentation,
             UUID sessionId) {
@@ -157,7 +124,6 @@ public record Group(
                 GroupState.ACTIVE,
                 Instant.now(),
                 null,
-                owner,
                 agents,
                 toolResultPresentation,
                 sessionId);
@@ -176,7 +142,6 @@ public record Group(
                 state,
                 createdAt,
                 disbandedAt,
-                owner,
                 agents,
                 toolResultPresentation,
                 sessionId);
@@ -197,7 +162,6 @@ public record Group(
                 newState,
                 createdAt,
                 newState == GroupState.DISBANDED ? when : disbandedAt,
-                owner,
                 agents,
                 toolResultPresentation,
                 sessionId);
@@ -218,7 +182,6 @@ public record Group(
                 state,
                 createdAt,
                 disbandedAt,
-                owner,
                 agents,
                 toolResultPresentation,
                 sessionId);
@@ -242,7 +205,6 @@ public record Group(
                 state,
                 createdAt,
                 disbandedAt,
-                owner,
                 agents,
                 toolResultPresentation,
                 sessionId);

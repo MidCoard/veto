@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 import java.util.Optional;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
@@ -26,8 +27,11 @@ class QuoteCheckControllerTest {
                                     ResponseStatusException.class,
                                     () -> controller.check("private", "agent", 2, body))
                             .getStatusCode());
-            when(vault.currentUser()).thenReturn("other-owner");
-            when(sessions.resolveByName("private", "other-owner")).thenReturn(Optional.empty());
+            when(vault.currentUser())
+                    .thenReturn(UUID.fromString("b8e2a363-b485-59e6-af0d-96f11fcd35db"));
+            when(sessions.resolveByName(
+                            "private", UUID.fromString("b8e2a363-b485-59e6-af0d-96f11fcd35db")))
+                    .thenReturn(Optional.empty());
             assertEquals(
                     HttpStatus.NOT_FOUND,
                     assertThrows(

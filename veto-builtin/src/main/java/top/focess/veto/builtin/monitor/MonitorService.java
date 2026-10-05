@@ -137,12 +137,12 @@ public class MonitorService implements ProcessObserver {
 
     /** Creates a one-shot timer without request correlation. */
     public synchronized @NonNull MonitorRecord createTimer(
-            @NonNull String owner,
+            @NonNull UUID userId,
             @NonNull String sessionId,
             @NonNull String agentId,
             @NonNull String purpose,
             @NonNull Instant dueAt) {
-        return createTimer(owner, sessionId, agentId, purpose, dueAt, null);
+        return createTimer(userId, sessionId, agentId, purpose, dueAt, null);
     }
 
     /**
@@ -150,7 +150,7 @@ public class MonitorService implements ProcessObserver {
      * limits.
      */
     public synchronized @NonNull MonitorRecord createTimer(
-            @NonNull String owner,
+            @NonNull UUID userId,
             @NonNull String sessionId,
             @NonNull String agentId,
             @NonNull String purpose,
@@ -173,7 +173,7 @@ public class MonitorService implements ProcessObserver {
         MonitorRecord record =
                 new MonitorRecord(
                         UUID.randomUUID().toString(),
-                        owner,
+                        userId,
                         sessionId,
                         agentId,
                         "TIME_ONCE",
@@ -193,9 +193,9 @@ public class MonitorService implements ProcessObserver {
 
     /** Returns every monitor owned by the given session. */
     public synchronized @NonNull List<MonitorRecord> list(
-            @NonNull String owner, @NonNull String sessionId) {
+            @NonNull UUID userId, @NonNull String sessionId) {
         return records.values().stream()
-                .filter(r -> r.owner().equals(owner) && r.sessionId().equals(sessionId))
+                .filter(r -> r.userId().equals(userId) && r.sessionId().equals(sessionId))
                 .toList();
     }
 
@@ -204,14 +204,14 @@ public class MonitorService implements ProcessObserver {
      * agent.
      */
     public synchronized @NonNull MonitorRecord control(
-            @NonNull String owner,
+            @NonNull UUID userId,
             @NonNull String sessionId,
             @NonNull String agentId,
             @NonNull String id,
             @NonNull String operation) {
         MonitorRecord r = records.get(id);
         if (r == null
-                || !r.owner().equals(owner)
+                || !r.userId().equals(userId)
                 || !r.sessionId().equals(sessionId)
                 || !r.agentId().equals(agentId))
             throw new SecurityException("Monitor not available");
@@ -416,7 +416,7 @@ public class MonitorService implements ProcessObserver {
                     || (!r.readyEvents().isEmpty()
                             && (r.state().equals("ACTIVE") || r.state().equals("COMPLETED")))) {
                 try {
-                    host.wake(r.owner(), r.sessionId(), r.agentId());
+                    host.wake(r.userId(), r.sessionId(), r.agentId());
                 } catch (RuntimeException error) {
                     log.debug("Monitor {} awaits agent recovery", r.id(), error);
                 }
@@ -426,7 +426,7 @@ public class MonitorService implements ProcessObserver {
 
     /** Process identity includes its instance UUID, so restarted task counters cannot collide. */
     public synchronized void observeProcess(
-            @NonNull String owner, @NonNull TaskInfo info, @NonNull String cause) {
+            @NonNull UUID userId, @NonNull TaskInfo info, @NonNull String cause) {
         if (terminatedAgents.contains(info.agentId())) return;
         UUID session = info.sessionId();
         if (session == null) return;
@@ -438,7 +438,7 @@ public class MonitorService implements ProcessObserver {
                         ? previous
                         : new MonitorRecord(
                                 id,
-                                owner,
+                                userId,
                                 session.toString(),
                                 info.agentId(),
                                 "PROCESS_EVENT",
@@ -481,8 +481,8 @@ public class MonitorService implements ProcessObserver {
 
     private void observeGroup(GroupObservations.@NonNull View group) {
         String session = group.sessionId();
-        String owner = group.owner();
-        if (session == null || owner == null) return;
+        UUID userId = group.userId();
+        if (session == null || userId == null) return;
         if (group.state() == GroupState.RECOVERING) return;
         String id = "group:" + group.id();
         MonitorRecord r = records.get(id);
@@ -490,7 +490,7 @@ public class MonitorService implements ProcessObserver {
             r =
                     new MonitorRecord(
                             id,
-                            owner,
+                            userId,
                             session,
                             group.leaderId(),
                             "RESOURCE_EVENT",
@@ -652,12 +652,13 @@ public class MonitorService implements ProcessObserver {
                 .removeIf(
                         entry -> {
                             if (!entry.getKey().sessionId().equals(scope.session())
-                                    || !entry.getKey().owner().equals(scope.owner())) return false;
+                                    || !entry.getKey().userId().equals(scope.userId()))
+                                return false;
                             entry.getValue().ready().cancel(false);
                             return true;
                         });
         var removed =
-                list(scope.owner(), scope.session()).stream()
+                list(scope.userId(), scope.session()).stream()
                         .map(MonitorRecord::id)
                         .collect(Collectors.toSet());
         records.keySet().removeAll(removed);
@@ -671,7 +672,7 @@ public class MonitorService implements ProcessObserver {
     }
 
     @Override
-    public void changed(@NonNull String owner, @NonNull TaskInfo info, @NonNull String cause) {
-        observeProcess(owner, info, cause);
+    public void changed(@NonNull UUID userId, @NonNull TaskInfo info, @NonNull String cause) {
+        observeProcess(userId, info, cause);
     }
 }

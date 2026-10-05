@@ -11,7 +11,7 @@ public interface MemoryBackendFactory {
 
     /** Removes data from every existing durable backend, including previously selected profiles. */
     default void deleteOwner(@NonNull UUID userId) {
-        throw new IllegalStateException("Durable owner cleanup is unavailable");
+        throw new IllegalStateException("Durable userId cleanup is unavailable");
     }
 
     default void deleteSession(@NonNull UUID userId, @NonNull UUID sessionId) {

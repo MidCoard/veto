@@ -33,7 +33,7 @@ import top.focess.veto.plugin.runtime.PluginJson;
  * Dispatches workflow events to selected plugin listeners and protects inputs at the host boundary.
  */
 final class AgentPluginHooks {
-    private final Scope.AgentScope scope;
+    private final Scope.@NonNull AgentScope scope;
     private final @NonNull String sessionId;
     private final @NonNull ObjectMapper mapper;
     private final @NonNull UniformLLMCaller caller;
@@ -43,7 +43,7 @@ final class AgentPluginHooks {
     private final @NonNull BooleanSupplier cancelled;
 
     AgentPluginHooks(
-            String owner,
+            @NonNull UUID userId,
             @NonNull String sessionId,
             @NonNull String agentId,
             @NonNull ObjectMapper mapper,
@@ -52,10 +52,7 @@ final class AgentPluginHooks {
             @NonNull Supplier<@Nullable EventManager> events,
             @NonNull BooleanSupplier alive,
             @NonNull BooleanSupplier cancelled) {
-        this.scope =
-                owner == null || owner.isBlank()
-                        ? null
-                        : new Scope.AgentScope(owner, sessionId, agentId);
+        this.scope = new Scope.AgentScope(userId, sessionId, agentId);
         this.sessionId = sessionId;
         this.mapper = mapper;
         this.caller = caller;
@@ -79,20 +76,13 @@ final class AgentPluginHooks {
     private void dispatch(@NonNull EventManager manager, @NonNull WorkflowEvent event) {
         checkCancellation();
         var identity = event.scope();
-        var invocation = new PluginInvocationContext(identity.owner(), identity.session());
+        var invocation = new PluginInvocationContext(identity.userId(), identity.session());
         try {
             manager.submit(event);
         } finally {
             invocation.close();
         }
         checkCancellation();
-    }
-
-    private Scope.@NonNull AgentScope requireScope() {
-        var identity = scope;
-        if (identity == null)
-            throw new IllegalStateException("Workflow delivery requires an owned agent");
-        return identity;
     }
 
     private BeforeToolEvent.@NonNull Invocation invocation(@NonNull ToolCall call) {
@@ -104,7 +94,7 @@ final class AgentPluginHooks {
     @NonNull String beforeInput(@NonNull String text) {
         var manager = events.get();
         if (manager == null) return text;
-        var event = new BeforeInputEvent(requireScope(), text);
+        var event = new BeforeInputEvent(scope, text);
         dispatch(manager, event);
         return event.text();
     }
@@ -113,7 +103,7 @@ final class AgentPluginHooks {
     BeforeToolEvent beforeTool(@NonNull ToolCall call) {
         var manager = events.get();
         if (manager == null) return null;
-        var event = new BeforeToolEvent(requireScope(), invocation(call));
+        var event = new BeforeToolEvent(scope, invocation(call));
         dispatch(manager, event);
         return event;
     }
@@ -125,7 +115,7 @@ final class AgentPluginHooks {
             checkCancellation();
             return response;
         }
-        var identity = requireScope();
+        var identity = scope;
         var model = new ModelCall(request.providerType().name(), request.modelName());
         var before = new BeforeModelEvent(identity, model);
         dispatch(manager, before);
@@ -144,7 +134,7 @@ final class AgentPluginHooks {
         if (manager == null) return result.content();
         var event =
                 new AfterToolEvent(
-                        requireScope(),
+                        scope,
                         invocation(call),
                         new AfterToolEvent.Output(result.format(), result.success()),
                         result.content());
@@ -156,7 +146,7 @@ final class AgentPluginHooks {
     @NonNull String beforeObservation(@NonNull String text) {
         var manager = events.get();
         if (manager == null) return text;
-        var event = new BeforeObservationEvent(requireScope(), text);
+        var event = new BeforeObservationEvent(scope, text);
         dispatch(manager, event);
         return event.text();
     }
@@ -169,11 +159,11 @@ final class AgentPluginHooks {
     @NonNull String captureUserPrompt(@NonNull String prompt) {
         var manager = events.get();
         if (manager == null) return prompt;
-        if (!alive.getAsBoolean() || scope == null) throw new ProtectedInputException();
+        if (!alive.getAsBoolean()) throw new ProtectedInputException();
         try {
             var event =
                     new BeforeTextCommitEvent(
-                            requireScope(),
+                            scope,
                             BeforeTextCommitEvent.Phase.INPUT,
                             UUID.randomUUID().toString(),
                             prompt);

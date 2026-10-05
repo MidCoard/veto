@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import org.jspecify.annotations.NonNull;
@@ -26,7 +27,8 @@ public final class WorkflowPluginFixture implements AutoCloseable {
     public final @NonNull PluginManager manager;
     public final @NonNull SessionPlugins sessions;
     public final @NonNull EventManager events;
-    public final @NonNull SessionEntity session = new SessionEntity("owner", "session");
+    public final @NonNull SessionEntity session =
+            new SessionEntity(UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"), "session");
     private final @NonNull SessionRepository repository = mock(SessionRepository.class);
 
     public WorkflowPluginFixture(@NonNull List<@NonNull Contribution<?>> contributions)
@@ -51,7 +53,7 @@ public final class WorkflowPluginFixture implements AutoCloseable {
                         () -> {},
                         () -> {
                             throw new IllegalStateException(
-                                    "Plugin context is not bound to a lifecycle owner");
+                                    "Plugin context is not bound to a lifecycle userId");
                         },
                         Map.of(),
                         Map.of()),
@@ -107,7 +109,7 @@ public final class WorkflowPluginFixture implements AutoCloseable {
 
     /** Supplies a separately initialized unselected row without mutating immutable session pins. */
     public void useUnselectedSession() {
-        var unselected = new SessionEntity(session.getOwner(), session.getName());
+        var unselected = new SessionEntity(session.getUserId(), session.getName());
         ReflectionTestUtils.setField(unselected, "id", session.getId());
         unselected.setPluginBindings(List.of());
         when(repository.findById(anyString())).thenReturn(Optional.of(unselected));

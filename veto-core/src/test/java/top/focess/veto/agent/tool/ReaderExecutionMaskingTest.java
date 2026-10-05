@@ -21,6 +21,7 @@ import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.builtin.web.FinishReadTool;
 import top.focess.veto.builtin.web.WebFetchTool;
 import top.focess.veto.integration.plugins.PluginTestSupport;
+import top.focess.veto.vault.TestUsers;
 
 class ReaderExecutionMaskingTest {
     @ParameterizedTest
@@ -62,8 +63,7 @@ class ReaderExecutionMaskingTest {
                 var context =
                         new ToolCallContext(
                                 "parent",
-                                UUID.randomUUID(),
-                                "owner",
+                                TestUsers.OWNER,
                                 UUID.randomUUID(),
                                 ToolResultPresentationMode.BASIC,
                                 permit);

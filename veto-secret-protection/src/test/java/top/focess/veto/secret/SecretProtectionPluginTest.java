@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import org.jspecify.annotations.NonNull;
@@ -29,7 +30,8 @@ import top.focess.veto.api.plugin.contribution.Contribution;
 /** The plugin is self-contained: typed points and host-service import. */
 class SecretProtectionPluginTest {
     private static final Scope.@NonNull AgentScope SCOPE =
-            new Scope.AgentScope("owner", "session", "agent");
+            new Scope.AgentScope(
+                    UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"), "session", "agent");
 
     private static @NonNull List<Contribution<?>> initialize(
             @NonNull Map<@NonNull Class<?>, @NonNull Object> services) {
@@ -77,12 +79,21 @@ class SecretProtectionPluginTest {
         var lifecycle = contribution(entries, SecretProtectionPlugin.SecretLifecycle.class);
         String captured = commit(lifecycle, SCOPE, "password=alpha");
         assertTrue(captured.contains("[SECRET_REF:s_"), captured);
-        lifecycle.onUserLogout(new UserLogoutEvent(new Scope.UserScope("owner")));
+        lifecycle.onUserLogout(
+                new UserLogoutEvent(
+                        new Scope.UserScope(
+                                UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"))));
         assertThrows(IllegalStateException.class, () -> commit(lifecycle, SCOPE, "password=alpha"));
-        lifecycle.onUserAuthenticated(new UserLoggedInEvent(new Scope.UserScope("owner")));
+        lifecycle.onUserAuthenticated(
+                new UserLoggedInEvent(
+                        new Scope.UserScope(
+                                UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"))));
         assertTrue(commit(lifecycle, SCOPE, "password=beta").contains("[SECRET_REF:s_"));
         lifecycle.onSessionDeleted(
-                new SessionDeletedEvent(new Scope.SessionScope("owner", "session")));
+                new SessionDeletedEvent(
+                        new Scope.SessionScope(
+                                UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"),
+                                "session")));
         assertThrows(IllegalStateException.class, () -> commit(lifecycle, SCOPE, "password=beta"));
     }
 
@@ -124,7 +135,10 @@ class SecretProtectionPluginTest {
                 new VaultAccess.Handle() {
                     @Override
                     public Scope.@NonNull AgentScope scope() {
-                        return new Scope.AgentScope("owner", "session", "agent");
+                        return new Scope.AgentScope(
+                                UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"),
+                                "session",
+                                "agent");
                     }
 
                     @Override

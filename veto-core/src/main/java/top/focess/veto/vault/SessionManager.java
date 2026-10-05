@@ -22,9 +22,9 @@ public class SessionManager {
     private final @NonNull ConcurrentHashMap<String, Session> sessions = new ConcurrentHashMap<>();
 
     /** Creates and registers a session for the user, returning its opaque token. */
-    public @NonNull String createSession(@NonNull String username) {
+    public @NonNull String createSession(@NonNull UUID userId, @NonNull String username) {
         String token = UUID.randomUUID().toString();
-        sessions.put(token, new Session(token, username, Instant.now()));
+        sessions.put(token, new Session(token, userId, username, Instant.now()));
         log.info("Session created for user '{}'", username);
         return token;
     }
@@ -46,7 +46,20 @@ public class SessionManager {
         return sessions.size();
     }
 
+    /** Revokes every token belonging to an account before its vault is closed or deleted. */
+    public void invalidateUser(@NonNull UUID userId) {
+        sessions.values().removeIf(session -> userId.equals(session.userId()));
+    }
+
+    /** Whether this account still has an authenticated client. */
+    public boolean hasSessions(@NonNull UUID userId) {
+        return sessions.values().stream().anyMatch(session -> userId.equals(session.userId()));
+    }
+
     /** An active authenticated session bound to an opaque token. */
     public record Session(
-            @NonNull String token, @NonNull String username, @NonNull Instant createdAt) {}
+            @NonNull String token,
+            @NonNull UUID userId,
+            @NonNull String username,
+            @NonNull Instant createdAt) {}
 }

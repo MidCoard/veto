@@ -33,7 +33,7 @@ final class AgentContinuationExecution {
     private static final int MAX_TRANSIENT_EPISODES = 256;
     private final @NonNull String agentId;
     private final @NonNull UUID sessionId;
-    private final String owner;
+    private final @NonNull UUID userId;
     private final long maxCallsPerEpisode;
     private final @NonNull AgentOutput output;
     private final @NonNull BlockingQueue<RunnerCommand> actionQueue;
@@ -56,14 +56,14 @@ final class AgentContinuationExecution {
     AgentContinuationExecution(
             @NonNull String agentId,
             @NonNull UUID sessionId,
-            String owner,
+            @NonNull UUID userId,
             long maxCallsPerEpisode,
             @NonNull AgentOutput output,
             @NonNull BlockingQueue<RunnerCommand> actionQueue,
             @NonNull Supplier<@Nullable SessionPlugins> sessionPlugins) {
         this.agentId = agentId;
         this.sessionId = sessionId;
-        this.owner = owner;
+        this.userId = userId;
         this.maxCallsPerEpisode = maxCallsPerEpisode;
         this.output = output;
         this.actionQueue = actionQueue;
@@ -229,7 +229,7 @@ final class AgentContinuationExecution {
             @NonNull LlmBinding binding,
             @NonNull Locale locale) {
         KeysteadVault vault = executionVault;
-        if (vault != null && (owner == null || !vault.isUnlocked(owner))) return null;
+        if (vault != null && !vault.isUnlocked(userId)) return null;
         AgentInbox service = source();
         if (!control.open()
                 || control instanceof ExecutionControl.Suspended suspended

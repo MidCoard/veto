@@ -205,7 +205,17 @@ public final class IpcClient implements AutoCloseable {
     }
 
     private void start() {
-        handshake();
+        try {
+            handshake();
+        } catch (RuntimeException | Error failure) {
+            closed = true;
+            try {
+                closeTransport();
+            } catch (RuntimeException | Error cleanup) {
+                failure.addSuppressed(cleanup);
+            }
+            throw failure;
+        }
         Thread io = new Thread(this::ioLoop, "ipc-io");
         this.ioThread = io;
         io.setDaemon(true);
@@ -289,8 +299,28 @@ public final class IpcClient implements AutoCloseable {
                 closed = true;
             }
         } finally {
-            transport.close();
+            closed = true;
+            Thread heartbeat = heartbeatThread;
+            if (heartbeat != null) heartbeat.interrupt();
+            closeTransport();
         }
+    }
+
+    /** Called by the transport owner: constructor during handshake, then the IO thread. */
+    private void closeTransport() {
+        try {
+            transport.close();
+        } catch (RuntimeException | Error failure) {
+            if (ownsContext && ctx != null) {
+                try {
+                    ctx.close();
+                } catch (RuntimeException | Error cleanup) {
+                    failure.addSuppressed(cleanup);
+                }
+            }
+            throw failure;
+        }
+        if (ownsContext && ctx != null) ctx.close();
     }
 
     /** Routes an inbound server frame to the correlator (sequenced) or the incoming queue. */
@@ -443,12 +473,8 @@ public final class IpcClient implements AutoCloseable {
      * Gracefully shuts down: enqueues a {@link IpcFrame.Bye}, signals the loops to stop, and waits
      * for the IO thread to flush the outbox and close the transport before releasing the context.
      *
-     * <p>Called from the owning (application) thread, never the IO thread — the IO loop's {@code
-     * finally} closes the transport, not this. If that invariant is ever broken and the IO thread
-     * does reach here, the {@code ioThread.join} self-joins (times out after 2 s), {@code
-     * ctx.close} runs, and the resumed loop's final drain logs a send failure — surfaced, not
-     * silent. No guard for it: it guards an unreachable path, and a guard here would be the same
-     * speculative defense we removed elsewhere.
+     * <p>Called from the owning application thread. The IO loop's {@code finally} closes both the
+     * transport and its owned context, including when IO fails before this method is called.
      */
     @Override
     public void close() {
@@ -469,9 +495,6 @@ public final class IpcClient implements AutoCloseable {
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
-        }
-        if (ownsContext && ctx != null) {
-            ctx.close();
         }
     }
 

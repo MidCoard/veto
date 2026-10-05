@@ -122,7 +122,7 @@ public final class MonitorRuntime implements AutoCloseable {
             public @NonNull Object create(@NonNull String purpose, @NonNull Instant due) {
                 var scope = scope("create_monitor");
                 return service.createTimer(
-                        scope.owner(),
+                        scope.userId(),
                         scope.sessionId(),
                         scope.agentId(),
                         purpose,
@@ -132,7 +132,7 @@ public final class MonitorRuntime implements AutoCloseable {
 
             public @NonNull Object inspect() {
                 var scope = scope("inspect_monitor");
-                return service.list(scope.owner(), scope.sessionId()).stream()
+                return service.list(scope.userId(), scope.sessionId()).stream()
                         .filter(row -> row.agentId().equals(scope.agentId()))
                         .toList();
             }
@@ -140,7 +140,7 @@ public final class MonitorRuntime implements AutoCloseable {
             public @NonNull Object control(@NonNull String id, @NonNull String operation) {
                 var scope = scope(operation + "_monitor");
                 return service.control(
-                        scope.owner(), scope.sessionId(), scope.agentId(), id, operation);
+                        scope.userId(), scope.sessionId(), scope.agentId(), id, operation);
             }
         };
     }

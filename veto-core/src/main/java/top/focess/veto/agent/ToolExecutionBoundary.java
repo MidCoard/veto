@@ -3,7 +3,6 @@ package top.focess.veto.agent;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import org.jspecify.annotations.NonNull;
@@ -62,34 +61,37 @@ public final class ToolExecutionBoundary {
 
     static final class AuthorizedInvocation {
         private final @NonNull ScreenedInvocation screened;
+        private final boolean maskObservation;
 
-        private AuthorizedInvocation(@NonNull ScreenedInvocation screened) {
+        private AuthorizedInvocation(
+                @NonNull ScreenedInvocation screened, boolean maskObservation) {
             this.screened = screened;
+            this.maskObservation = maskObservation;
         }
     }
 
     private final @NonNull String agentId;
     private final @NonNull UUID sessionId;
-    private final String owner;
+    private final @NonNull UUID userId;
     private final @NonNull ToolEngine tools;
     private final @NonNull Gateway gateway;
     private final @NonNull HitlRegistry hitl;
     private final @NonNull IngressDefense ingress;
     private final @NonNull Map<String, ScreenedInvocation> pending = new ConcurrentHashMap<>();
-    private final @NonNull Set<ScreenedInvocation> approved = ConcurrentHashMap.newKeySet();
+    private final @NonNull Map<ScreenedInvocation, Boolean> approved = new ConcurrentHashMap<>();
 
     /** Wires the screening, HITL and ingress-defense authorities for one agent's tool calls. */
     public ToolExecutionBoundary(
             @NonNull String agentId,
             @NonNull UUID sessionId,
-            String owner,
+            @NonNull UUID userId,
             @NonNull ToolEngine tools,
             @NonNull Gateway gateway,
             @NonNull HitlRegistry hitl,
             @NonNull IngressDefense ingress) {
         this.agentId = agentId;
         this.sessionId = sessionId;
-        this.owner = owner;
+        this.userId = userId;
         this.tools = tools;
         this.gateway = gateway;
         this.hitl = hitl;
@@ -107,11 +109,7 @@ public final class ToolExecutionBoundary {
             BeforeToolEvent.@NonNull Decision hookDecision) {
         var invocation =
                 new PluginHost.Invocation(
-                        owner == null ? "" : owner,
-                        sessionId.toString(),
-                        agentId,
-                        requestId,
-                        call.callId());
+                        userId, sessionId.toString(), agentId, requestId, call.callId());
         var prepared = tools.prepare(call, definition, invocation);
         GatewayResult screened =
                 gateway.screen(call, definition, task, thought, null, step, prepared);
@@ -136,20 +134,29 @@ public final class ToolExecutionBoundary {
     }
 
     @NonNull InterceptResolution await(@NonNull String callId) {
-        InterceptResolution resolution = hitl.await(agentId, callId);
-        ScreenedInvocation screened = pending.remove(callId);
-        if (screened != null
-                && !resolution.isRefusal()
-                && resolution.option() != VetoOption.DECLINE_AND_CONTINUE) approved.add(screened);
-        return resolution;
+        var screened = pending.get(callId);
+        try {
+            InterceptResolution resolution = hitl.await(agentId, callId);
+            if (screened != null
+                    && !resolution.isRefusal()
+                    && resolution.option() != VetoOption.DECLINE_AND_CONTINUE)
+                approved.put(
+                        screened,
+                        screened.definition.capability() != ToolCapability.WORKSPACE_READ
+                                || resolution.maskObservation());
+            return resolution;
+        } finally {
+            pending.remove(callId);
+        }
     }
 
     @NonNull AuthorizedInvocation authorize(@NonNull ScreenedInvocation screened) {
         if (screened.decision() instanceof ApprovalDecision.AutoApprove) {
-            return new AuthorizedInvocation(screened);
+            return new AuthorizedInvocation(screened, true);
         }
-        if (screened.decision() instanceof ApprovalDecision.Prompt && approved.remove(screened)) {
-            return new AuthorizedInvocation(screened);
+        if (screened.decision() instanceof ApprovalDecision.Prompt) {
+            var maskObservation = approved.remove(screened);
+            if (maskObservation != null) return new AuthorizedInvocation(screened, maskObservation);
         }
         throw new SecurityException("Tool invocation has not completed host authorization");
     }
@@ -173,7 +180,7 @@ public final class ToolExecutionBoundary {
                 screened.call,
                 screened.definition,
                 result,
-                screened.decision(),
+                authorized.maskObservation,
                 gateway.readHistory());
     }
 

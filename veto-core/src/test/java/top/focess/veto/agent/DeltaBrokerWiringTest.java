@@ -26,6 +26,7 @@ import top.focess.veto.bus.DeltaFrame;
 import top.focess.veto.bus.SessionInvalidations;
 import top.focess.veto.llm.core.ToolResultPresenter;
 import top.focess.veto.llm.core.UniformLLMCaller;
+import top.focess.veto.vault.TestUsers;
 
 /**
  * Verifies the Part-8 emission seam: an agent's user-facing message is published as a per-session
@@ -101,7 +102,8 @@ class DeltaBrokerWiringTest {
                         "delta-wire",
                         "What is 2 + 2?",
                         binding("You are a helpful assistant."),
-                        EPISODE_TIMEOUT);
+                        EPISODE_TIMEOUT,
+                        TestUsers.OWNER);
 
         assertTrue(result.success(), "episode should finish successfully");
         assertFalse(frames.isEmpty(), "a DeltaFrame should be published on emitMessage");

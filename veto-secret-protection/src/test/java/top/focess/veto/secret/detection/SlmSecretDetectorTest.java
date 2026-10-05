@@ -10,6 +10,28 @@ import top.focess.veto.secret.api.SecretDetectionModel;
 
 /** SLM-primary detection with deterministic degraded fallback behind a stub model port. */
 class SlmSecretDetectorTest {
+    @Test
+    void crossingModelSpanCannotExposeTheDeterministicSecretsTail() {
+        var detector =
+                new SlmSecretDetector(model(true, Optional.of("[\"prefix password=hunter\"]")));
+        String text = "prefix password=hunter2x";
+        assertEquals("[REDACTED_PASSWORD]", detector.mask(text));
+        assertEquals(text.length(), detector.detect(text).getFirst().end());
+    }
+
+    @Test
+    void containedModelSpanKeepsTheDeterministicCategoryAndCoverage() {
+        var detector = new SlmSecretDetector(model(true, Optional.of("[\"hunter\"]")));
+        assertEquals("password=[REDACTED_PASSWORD]", detector.mask("password=hunter2x"));
+    }
+
+    @Test
+    void crossingModelSpansPreserveBothSecrets() {
+        var detector =
+                new SlmSecretDetector(model(true, Optional.of("[\"alpha-beta\",\"beta-gamma\"]")));
+        assertEquals("[REDACTED_SLM_DETECTED]", detector.mask("alpha-beta-gamma"));
+    }
+
     private static @NonNull SecretDetectionModel model(
             boolean available, @NonNull Optional<String> response) {
         return new SecretDetectionModel() {

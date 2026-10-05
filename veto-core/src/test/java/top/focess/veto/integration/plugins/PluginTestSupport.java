@@ -15,6 +15,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import org.jspecify.annotations.NonNull;
@@ -165,7 +166,7 @@ public final class PluginTestSupport {
 
                     @Override
                     public void wake(
-                            @NonNull String owner,
+                            @NonNull UUID userId,
                             @NonNull String sessionId,
                             @NonNull String agentId) {}
 
@@ -200,7 +201,9 @@ public final class PluginTestSupport {
      */
     public static @NonNull SessionPlugins sessionPlugins(@NonNull PluginManager manager) {
         SessionRepository sessions = mock(SessionRepository.class);
-        var entity = new SessionEntity("owner", "session");
+        var entity =
+                new SessionEntity(
+                        UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"), "session");
         entity.setPluginBindings(
                 manager.registry().plugins().stream()
                         .map(
@@ -229,7 +232,7 @@ public final class PluginTestSupport {
             throws PluginFailure {
         var event =
                 new BeforeTextCommitEvent(
-                        new Scope.AgentScope(scope.owner(), scope.session(), scope.agent()),
+                        new Scope.AgentScope(scope.userId(), scope.session(), scope.agent()),
                         phase,
                         sourceId,
                         text);
@@ -268,7 +271,7 @@ public final class PluginTestSupport {
                                         entry.implementation()
                                                 .handle(
                                                         new Scope.AgentScope(
-                                                                scope.owner(),
+                                                                scope.userId(),
                                                                 scope.session(),
                                                                 scope.agent()),
                                                         "show",

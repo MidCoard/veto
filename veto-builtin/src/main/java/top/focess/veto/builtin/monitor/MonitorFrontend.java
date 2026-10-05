@@ -43,7 +43,7 @@ public final class MonitorFrontend implements FrontendContribution {
             JsonValue.@NonNull ObjectValue args)
             throws PluginFailure {
         try {
-            var records = service.list(scope.owner(), scope.session());
+            var records = service.list(scope.userId(), scope.session());
             int offset = offset(args);
             if (action.equals("list")) {
                 var items =
@@ -163,7 +163,7 @@ public final class MonitorFrontend implements FrontendContribution {
             }
             if (!List.of("pause", "resume", "cancel").contains(action))
                 throw new IllegalArgumentException();
-            service.control(scope.owner(), scope.session(), record.agentId(), record.id(), action);
+            service.control(scope.userId(), scope.session(), record.agentId(), record.id(), action);
             return new JsonValue.BooleanValue(true);
         } catch (IllegalArgumentException | ArithmeticException | SecurityException failure) {
             throw new PluginFailure(PluginFailure.Code.INVALID_ARGUMENTS);

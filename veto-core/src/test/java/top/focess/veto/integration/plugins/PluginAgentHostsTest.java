@@ -82,7 +82,8 @@ class PluginAgentHostsTest {
         try (var fixture = new Fixture()) {
             var mapper = new ObjectMapper();
             ModelTierRegistry models = mock(ModelTierRegistry.class);
-            when(models.resolve("owner", ModelTier.LOW))
+            when(models.resolve(
+                            UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"), ModelTier.LOW))
                     .thenReturn(new ModelBinding(ProviderType.DEEPSEEK, "reader", "key", 0, 2048));
             when(fixture.storage.currentSession()).thenReturn(fixture.scope);
             VetoAgent parent = mock(VetoAgent.class);
@@ -141,7 +142,7 @@ class PluginAgentHostsTest {
                 when(fixture.isolated.getObject()).thenReturn(executions);
                 var base = ToolExecutionPermit.empty();
                 var call = new ToolCall("reader_alias", Map.of(), "parent-call");
-                var user = UUID.randomUUID();
+                var user = fixture.session.getUserId();
                 var permit =
                         new ToolExecutionPermit(
                                         call,
@@ -157,13 +158,11 @@ class PluginAgentHostsTest {
                                 .withCaller(
                                         fixture.parent,
                                         user,
-                                        "owner",
                                         UUID.fromString(fixture.session.getId()));
                 var context =
                         new ToolCallContext(
                                 fixture.parent,
                                 user,
-                                "owner",
                                 UUID.fromString(fixture.session.getId()),
                                 ToolResultPresentationMode.BASIC,
                                 permit);
@@ -253,7 +252,8 @@ class PluginAgentHostsTest {
     static final class Fixture implements AutoCloseable {
         final @NonNull ExecutorService executor = Executors.newSingleThreadExecutor();
         final @NonNull ManagedPlugin plugin;
-        final @NonNull SessionEntity session = new SessionEntity("owner", "test");
+        final @NonNull SessionEntity session =
+                new SessionEntity(UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"), "test");
         final @NonNull String parent = UUID.randomUUID().toString();
         final @NonNull String childId = UUID.randomUUID().toString();
         final @NonNull PluginStorage storage = mock(PluginStorage.class);
@@ -288,7 +288,7 @@ class PluginAgentHostsTest {
                             () -> {},
                             () -> {
                                 throw new IllegalStateException(
-                                        "Plugin context is not bound to a lifecycle owner");
+                                        "Plugin context is not bound to a lifecycle userId");
                             },
                             Map.of(),
                             Map.of()),
@@ -297,9 +297,14 @@ class PluginAgentHostsTest {
             session.setPrimaryAgentId(parent);
             scope =
                     new PluginStorage.Grant<>(
-                            "token", new Scope.SessionScope("owner", session.getId()));
-            when(scopes.authorizeSession(storage, scope)).thenReturn("owner");
-            when(vault.isUnlocked("owner")).thenReturn(true);
+                            "token",
+                            new Scope.SessionScope(
+                                    UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"),
+                                    session.getId()));
+            when(scopes.authorizeSession(storage, scope))
+                    .thenReturn(UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"));
+            when(vault.isUnlocked(UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376")))
+                    .thenReturn(true);
             when(sessions.findById(session.getId())).thenReturn(Optional.of(session));
             var parentRow = AgentEntity.spawned(parent, session.getId(), "parent");
             when(identities.findById(parent)).thenReturn(Optional.of(parentRow));
@@ -341,9 +346,11 @@ class PluginAgentHostsTest {
     @Test
     void rejectsRevokedScopeLockedOwnerAndAnotherPluginsIdentity() throws Exception {
         try (var fixture = new Fixture()) {
-            when(fixture.vault.isUnlocked("owner")).thenReturn(false);
+            when(fixture.vault.isUnlocked(UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376")))
+                    .thenReturn(false);
             assertThrows(SecurityException.class, fixture::open);
-            when(fixture.vault.isUnlocked("owner")).thenReturn(true);
+            when(fixture.vault.isUnlocked(UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376")))
+                    .thenReturn(true);
             var foreign = AgentEntity.spawned(fixture.childId, fixture.session.getId(), "foreign");
             foreign.claimPlugin("other.plugin", fixture.parent);
             when(fixture.identities.findById(fixture.childId)).thenReturn(Optional.of(foreign));

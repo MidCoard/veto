@@ -7,6 +7,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.UUID;
 import java.util.stream.Stream;
 import org.jspecify.annotations.NonNull;
 import org.springframework.http.HttpStatus;
@@ -32,7 +33,7 @@ import top.focess.veto.vault.KeysteadVault;
  * response sizes) small. Hidden and unreadable entries are skipped.
  *
  * <p>Deployment policy and persisted workspace ownership constrain every operation. Tenant clients
- * see logical paths within their owner mapping; host base paths are never returned.
+ * see logical paths within their userId mapping; host base paths are never returned.
  */
 @RestController
 @RequestMapping("/api/fs")
@@ -62,23 +63,23 @@ public class FsController {
      */
     @GetMapping("/browse")
     public @NonNull ResponseEntity<?> browse(@RequestParam(required = false) String path) {
-        String user = vault.currentUser();
-        if (user == null) {
+        UUID userId = vault.currentUser();
+        if (userId == null) {
             return ResponseEntity.status(401)
                     .body(new ErrorResponse(Msg.get("error.auth.notAuthenticated")));
         }
-        var occupied = sessions.claimedRootsExcept(user);
+        var occupied = sessions.claimedRootsExcept(userId);
         if (path == null || path.isBlank()) {
             List<DirectoryEntryResponse> roots = new ArrayList<>();
-            for (Path root : policy.browseBases(user)) {
-                if (policy.canAccess(user, root, occupied)) {
-                    var text = policy.toClientPath(user, root);
+            for (Path root : policy.browseBases(userId)) {
+                if (policy.canAccess(userId, root, occupied)) {
+                    var text = policy.toClientPath(userId, root);
                     roots.add(
                             new DirectoryEntryResponse(
                                     policy.tenant() ? "Workspace " + (roots.size() + 1) : text,
                                     text,
                                     false,
-                                    policy.canSelect(user, root, occupied),
+                                    policy.canSelect(userId, root, occupied),
                                     true));
                 }
             }
@@ -88,12 +89,12 @@ public class FsController {
         try {
             // absoluteNormalized rejects traversal syntax; toRealPath resolves symlinks before use.
             //noinspection tainting
-            dir = policy.fromClientPath(user, path);
+            dir = policy.fromClientPath(userId, path);
         } catch (IllegalArgumentException e) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST, Msg.get("error.fs.notDirectory", path));
         }
-        if (!policy.canBrowse(user, dir, occupied))
+        if (!policy.canBrowse(userId, dir, occupied))
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Workspace access denied");
         if (policy.tenant() && !Files.exists(dir)) {
             return ResponseEntity.ok(
@@ -122,7 +123,7 @@ public class FsController {
                                 } catch (IOException e) {
                                     return;
                                 }
-                                if (!policy.canAccess(user, canonical, List.of())) return;
+                                if (!policy.canAccess(userId, canonical, List.of())) return;
                                 if (occupied.stream()
                                         .anyMatch(
                                                 claim ->
@@ -130,14 +131,14 @@ public class FsController {
                                                                 && !canonical.equals(claim)))
                                     return;
                                 var declared = occupied.contains(canonical);
-                                var text = policy.toClientPath(user, canonical);
+                                var text = policy.toClientPath(userId, canonical);
                                 entries.add(
                                         new DirectoryEntryResponse(
                                                 fileName(child),
                                                 text,
                                                 declared,
-                                                policy.canSelect(user, canonical, occupied),
-                                                policy.canBrowse(user, canonical, occupied)));
+                                                policy.canSelect(userId, canonical, occupied),
+                                                policy.canBrowse(userId, canonical, occupied)));
                             });
         } catch (IOException e) {
             throw new ResponseStatusException(
@@ -147,12 +148,12 @@ public class FsController {
         Path parent = dir.getParent();
         return ResponseEntity.ok(
                 new DirectoryListingResponse(
-                        policy.toClientPath(user, dir),
-                        parent != null && policy.canBrowse(user, parent, occupied)
-                                ? policy.toClientPath(user, parent)
+                        policy.toClientPath(userId, dir),
+                        parent != null && policy.canBrowse(userId, parent, occupied)
+                                ? policy.toClientPath(userId, parent)
                                 : null,
                         entries,
-                        policy.canSelect(user, dir, occupied),
+                        policy.canSelect(userId, dir, occupied),
                         true));
     }
 
@@ -167,8 +168,8 @@ public class FsController {
     @PostMapping("/directories")
     public @NonNull ResponseEntity<?> createDirectory(
             @RequestBody @NonNull CreateDirectoryRequest request) {
-        var user = vault.currentUser();
-        if (user == null) {
+        var userId = vault.currentUser();
+        if (userId == null) {
             return ResponseEntity.status(401)
                     .body(new ErrorResponse(Msg.get("error.auth.notAuthenticated")));
         }
@@ -186,9 +187,9 @@ public class FsController {
         Path parent;
         try {
             if (parentText == null) throw new IllegalArgumentException("Missing parent");
-            parent = policy.fromClientPath(user, parentText);
+            parent = policy.fromClientPath(userId, parentText);
             if (!Files.isDirectory(parent)
-                    && !(policy.tenant() && policy.browseBases(user).contains(parent)))
+                    && !(policy.tenant() && policy.browseBases(userId).contains(parent)))
                 throw new IllegalArgumentException("Not a directory");
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest()
@@ -198,17 +199,17 @@ public class FsController {
                                             "error.fs.notDirectory",
                                             parentText == null ? "" : parentText)));
         }
-        var occupied = sessions.claimedRootsExcept(user);
-        if (!policy.canBrowse(user, parent, occupied)
-                || !policy.canSelect(user, parent.resolve(name), occupied))
+        var occupied = sessions.claimedRootsExcept(userId);
+        if (!policy.canBrowse(userId, parent, occupied)
+                || !policy.canSelect(userId, parent.resolve(name), occupied))
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Workspace access denied");
         try {
-            Path created = service.createWorkspaceDirectory(user, parent, name);
+            Path created = service.createWorkspaceDirectory(userId, parent, name);
             return ResponseEntity.status(HttpStatus.CREATED)
                     .body(
                             new DirectoryCreatedResponse(
-                                    policy.toClientPath(user, created),
-                                    policy.canBrowse(user, created, occupied)));
+                                    policy.toClientPath(userId, created),
+                                    policy.canBrowse(userId, created, occupied)));
         } catch (FileAlreadyExistsException e) {
             return ResponseEntity.status(HttpStatus.CONFLICT)
                     .body(new ErrorResponse(Msg.get("error.fs.alreadyExists", name)));

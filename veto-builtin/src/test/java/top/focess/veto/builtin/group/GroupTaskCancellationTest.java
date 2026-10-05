@@ -20,7 +20,7 @@ class GroupTaskCancellationTest {
         Group group =
                 Group.create(
                                 "leader",
-                                "owner",
+                                UUID.fromString("4228b1e0-6b9e-582e-9848-fc4f2e11c332"),
                                 "brief",
                                 board,
                                 new ExecutionDag(UUID.randomUUID(), List.of()))

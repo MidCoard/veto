@@ -16,6 +16,7 @@ import top.focess.veto.model.AgentPatternRepository;
 import top.focess.veto.model.tier.ModelBinding;
 import top.focess.veto.model.tier.ModelTier;
 import top.focess.veto.model.tier.ModelTierRegistry;
+import top.focess.veto.vault.TestUsers;
 
 /**
  * Verifies that {@code /pattern create <name> <tier>} binds the pattern to a model tier (resolved
@@ -32,10 +33,11 @@ class PatternCommandSystemPromptTest {
         when(sender.hasPermission(any(CommandPermission.class))).thenReturn(true);
         when(sender.isLoggedIn()).thenReturn(true);
         when(sender.username()).thenReturn("alice");
-        when(sender.requireUsername()).thenReturn("alice");
+        when(sender.userId()).thenReturn(TestUsers.ALICE);
+        when(sender.requireUserId()).thenReturn(TestUsers.ALICE);
 
         ModelTierRegistry tierRegistry = mock(ModelTierRegistry.class);
-        when(tierRegistry.resolve("alice", ModelTier.TOP))
+        when(tierRegistry.resolve(TestUsers.ALICE, ModelTier.TOP))
                 .thenReturn(
                         new ModelBinding(
                                 ProviderType.DEEPSEEK,
@@ -62,7 +64,7 @@ class PatternCommandSystemPromptTest {
         assertEquals("DEEPSEEK", saved.getProvider());
         assertEquals("deepseek-chat", saved.getModel());
         assertEquals("deepseek-default", saved.getCredentialKey());
-        assertEquals("alice", saved.getOwner());
+        assertEquals(TestUsers.ALICE, saved.getUserId());
 
         // The system prompt is persona-derived in PromptCompiler; the pattern must not store it.
         // With the field removed from the entity, this is the structural guarantee it is gone.

@@ -33,7 +33,7 @@ public class JpaMemoryStore implements MemoryStore {
         // 1. Fetch candidate rows from the DB (tenant-scoped via userId filter).
         List<MemoryEntity> candidates =
                 repository.findByUserIdAndTierIn(
-                        query.userId().toString(), query.tiers().stream().map(Enum::name).toList());
+                        query.userId(), query.tiers().stream().map(Enum::name).toList());
         // 2. Compute cosine similarity in Java (production: pgvector).
         float[] queryVec = embedder.embed(query.queryText());
         List<ScoredMemory> matches = new ArrayList<>();
@@ -71,7 +71,7 @@ public class JpaMemoryStore implements MemoryStore {
     public MemoryId promote(@NonNull MemoryId id, @NonNull UUID userId) {
         MemoryEntity e = repository.findById(id.value().toString()).orElse(null);
         if (e == null
-                || !userId.toString().equals(e.getUserId())
+                || !userId.equals(e.getUserId())
                 || !MemoryTier.SESSION.name().equals(e.getTier())) {
             return null;
         }
@@ -95,7 +95,7 @@ public class JpaMemoryStore implements MemoryStore {
     @Override
     public boolean forget(@NonNull MemoryId id, @NonNull UUID userId) {
         MemoryEntity entity = repository.findById(id.value().toString()).orElse(null);
-        if (entity == null || !userId.toString().equals(entity.getUserId())) {
+        if (entity == null || !userId.equals(entity.getUserId())) {
             return false;
         }
         repository.delete(entity);
@@ -104,12 +104,12 @@ public class JpaMemoryStore implements MemoryStore {
 
     @Override
     public void deleteOwner(@NonNull UUID userId) {
-        repository.deleteByUserId(userId.toString());
+        repository.deleteByUserId(userId);
     }
 
     @Override
     public void deleteSession(@NonNull UUID userId, @NonNull UUID sessionId) {
-        repository.deleteByUserIdAndSessionId(userId.toString(), sessionId.toString());
+        repository.deleteByUserIdAndSessionId(userId, sessionId.toString());
     }
 
     private static float cosineSimilarity(float @NonNull [] a, float @NonNull [] b) {

@@ -9,13 +9,14 @@ import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.memory.TurnLogService;
+import top.focess.veto.vault.TestUsers;
 
 class AgentHistoryTest {
     @Test
     void requiredWriteFailureDoesNotBecomeVisibleOrConsumeTurnNumber() {
         var log = mock(requireNonNull(TurnLogService.class));
         var session = UUID.randomUUID();
-        var user = UUID.randomUUID();
+        var user = TestUsers.OWNER;
         var history = new AgentHistory(log, session, user, "agent");
         history.seed(List.of(TurnRecord.userPrompt(7, "persisted")));
         doThrow(new IllegalStateException("storage unavailable"))
@@ -34,7 +35,7 @@ class AgentHistoryTest {
     void snapshotsStayImmutableAndOrdinaryLogFailureDoesNotStopExecution() {
         var log = mock(requireNonNull(TurnLogService.class));
         var session = UUID.randomUUID();
-        var user = UUID.randomUUID();
+        var user = TestUsers.OWNER;
         var history = new AgentHistory(log, session, user, "agent");
         doThrow(new IllegalStateException("storage unavailable"))
                 .when(log)

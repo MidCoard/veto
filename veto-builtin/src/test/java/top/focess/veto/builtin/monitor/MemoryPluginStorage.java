@@ -24,7 +24,7 @@ final class MemoryPluginStorage implements PluginStorage {
     @Override
     public @NonNull Store user(@NonNull Grant<Scope.@NonNull UserScope> grant) {
         return stores.computeIfAbsent(
-                "user/" + grant.scope().owner(), ignored -> new MemoryStore());
+                "user/" + grant.scope().userId(), ignored -> new MemoryStore());
     }
 
     @Override
@@ -37,20 +37,36 @@ final class MemoryPluginStorage implements PluginStorage {
             @NonNull PluginScope kind, String cursor, int limit) {
         return new Page<>(
                 List.of(
-                        new Grant<>("s", new Scope.SessionScope("u", "session")),
-                        new Grant<>("c", new Scope.SessionScope("u", "closed")),
-                        new Grant<>("k", new Scope.SessionScope("u", "kept"))),
+                        new Grant<>(
+                                "s",
+                                new Scope.SessionScope(
+                                        UUID.fromString("f976584f-7d69-5125-869a-6897e8b4a84e"),
+                                        "session")),
+                        new Grant<>(
+                                "c",
+                                new Scope.SessionScope(
+                                        UUID.fromString("f976584f-7d69-5125-869a-6897e8b4a84e"),
+                                        "closed")),
+                        new Grant<>(
+                                "k",
+                                new Scope.SessionScope(
+                                        UUID.fromString("f976584f-7d69-5125-869a-6897e8b4a84e"),
+                                        "kept"))),
                 null);
     }
 
     @Override
     public @NonNull Grant<Scope.@NonNull SessionScope> currentSession() {
-        return new Grant<>("s", new Scope.SessionScope("u", "session"));
+        return new Grant<>(
+                "s",
+                new Scope.SessionScope(
+                        UUID.fromString("f976584f-7d69-5125-869a-6897e8b4a84e"), "session"));
     }
 
     @Override
     public @NonNull Grant<Scope.@NonNull UserScope> currentUser() {
-        return new Grant<>("u", new Scope.UserScope("u"));
+        return new Grant<>(
+                "u", new Scope.UserScope(UUID.fromString("f976584f-7d69-5125-869a-6897e8b4a84e")));
     }
 
     private static final class MemoryStore implements Store {

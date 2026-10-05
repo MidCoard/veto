@@ -70,14 +70,19 @@ public class AuthController {
         }
 
         try {
-            userRegistry.create(username, password, UserRegistry.Role.ADMIN);
+            var created = userRegistry.create(username, password, UserRegistry.Role.ADMIN);
             authLifecycleManager.signup(username, password);
-            String token = sessionManager.createSession(username);
+            String token = sessionManager.createSession(created.getUserId(), username);
 
             log.info("Vault setup complete - admin user '{}' created", username);
             return ResponseEntity.ok(
                     new AuthSetupResponse(
-                            "ok", token, username, "ADMIN", "Vault initialized and unlocked"));
+                            "ok",
+                            token,
+                            created.getUserId(),
+                            username,
+                            "ADMIN",
+                            "Vault initialized and unlocked"));
         } catch (Exception e) {
             log.error("Setup failed", e);
             return ResponseEntity.internalServerError()
@@ -109,11 +114,12 @@ public class AuthController {
 
         try {
             authLifecycleManager.login(username, password);
-            String token = sessionManager.createSession(username);
+            String token = sessionManager.createSession(user.get().getUserId(), username);
 
             log.info("User '{}' logged in", username);
             return ResponseEntity.ok(
-                    new AuthSessionResponse("ok", token, username, user.get().getRole()));
+                    new AuthSessionResponse(
+                            "ok", token, user.get().getUserId(), username, user.get().getRole()));
         } catch (Exception e) {
             log.error("Login failed for user '{}'", username, e);
             return ResponseEntity.internalServerError()
@@ -134,12 +140,13 @@ public class AuthController {
 
         sessionManager.invalidate(token);
 
-        if (sessionManager.activeSessionCount() == 0) {
-            authLifecycleManager.logout(session.get().username());
+        if (!sessionManager.hasSessions(session.get().userId())) {
+            authLifecycleManager.logout(session.get().userId());
         }
 
         return ResponseEntity.ok(
-                new AuthLogoutResponse("ok", "Logged out", session.get().username()));
+                new AuthLogoutResponse(
+                        "ok", "Logged out", session.get().userId(), session.get().username()));
     }
 
     // ── Status ─────────────────────────────────────────────────────────────
@@ -157,7 +164,7 @@ public class AuthController {
                         setupNeeded,
                         vaultLocked,
                         sessionManager.activeSessionCount(),
-                        vault.currentUser(),
+                        session.map(SessionManager.Session::userId).orElse(null),
                         Instant.now().toString(),
                         session.isPresent(),
                         session.map(value -> value.username()).orElse(null)));
@@ -182,7 +189,7 @@ public class AuthController {
         }
 
         // Verify admin role
-        var adminEntry = userRegistry.findByUsername(session.get().username());
+        var adminEntry = userRegistry.findByUserId(session.get().userId());
         if (adminEntry.isEmpty() || !"ADMIN".equals(adminEntry.get().getRole())) {
             return ResponseEntity.status(403).body(error(Msg.get("error.auth.adminRequired")));
         }
@@ -208,16 +215,18 @@ public class AuthController {
         }
 
         try {
-            userRegistry.create(username, password, role);
+            var created = userRegistry.create(username, password, role);
             // Provision the new user's vault (created closed; opened when they log in).
-            vault.createVault(username, password);
+            vault.createVault(created.getUserId(), password);
 
             log.info(
                     "Admin '{}' created user '{}' with role '{}'",
                     session.get().username(),
                     username,
                     role);
-            return ResponseEntity.ok(new UserCreatedResponse("ok", username, role, "User created"));
+            return ResponseEntity.ok(
+                    new UserCreatedResponse(
+                            "ok", created.getUserId(), username, role, "User created"));
         } catch (IllegalArgumentException e) {
             // Duplicate username (UserRegistry.create rejects an existing id).
             return ResponseEntity.status(409) // TODO check the security problem

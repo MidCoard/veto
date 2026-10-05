@@ -1,17 +1,23 @@
 package top.focess.veto.training;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.springframework.test.util.ReflectionTestUtils;
 
 /** Unit tests for {@link TrainingManager} lifecycle and progress tracking. */
 @SuppressWarnings("initialization.field.uninitialized")
@@ -30,6 +36,47 @@ class TrainingManagerTest {
         config.setModelOutputDir("./models");
         config.setQualityFilterEnabled(true);
         manager = new TrainingManager(config, new ObjectMapper());
+    }
+
+    @Test
+    void evaluationRejectsMissingOrMalformedCurrentReportsDespiteAnOlderReport()
+            throws IOException {
+        var oldReport = Files.writeString(tempDir.resolve("eval_report_java.json"), "{}");
+        var currentRun = Files.createDirectory(tempDir.resolve("conversion-current"));
+        var currentReport = currentRun.resolve("eval_report_java.json");
+        assertEquals(
+                Boolean.FALSE,
+                ReflectionTestUtils.invokeMethod(manager, "parseEvaluationReport", currentReport));
+        Files.writeString(currentReport, "{}");
+        assertEquals(
+                Boolean.FALSE,
+                ReflectionTestUtils.invokeMethod(manager, "parseEvaluationReport", currentReport));
+        assertNull(manager.getProgress().getEvaluation());
+        assertTrue(Files.exists(oldReport));
+    }
+
+    @Test
+    void silentTrainingChildTimesOutBeforeOutputEof() throws Exception {
+        Path source = tempDir.resolve("SilentChild.java");
+        Files.writeString(
+                source,
+                "class SilentChild { public static void main(String[] args) throws Exception { Thread.sleep(60000); } }");
+        String java =
+                Path.of(Objects.requireNonNull(System.getProperty("java.home")), "bin", "java")
+                        .toString();
+        var process = new ProcessBuilder(java, source.toString()).redirectErrorStream(true).start();
+        var builder = mock(ProcessBuilder.class);
+        when(builder.start()).thenReturn(process);
+        Consumer<@NonNull String> output = line -> {};
+        long started = System.nanoTime();
+        assertNull(
+                ReflectionTestUtils.invokeMethod(
+                        manager, "runProcess", builder, Duration.ofMillis(250), output, true));
+        assertTrue(
+                System.nanoTime() - started < TimeUnit.SECONDS.toNanos(10),
+                "silent output must not block the timeout");
+        assertNull(ReflectionTestUtils.getField(manager, "trainingProcess"));
+        assertTrue(process.waitFor(5, TimeUnit.SECONDS), "timed-out training child must be killed");
     }
 
     @Test

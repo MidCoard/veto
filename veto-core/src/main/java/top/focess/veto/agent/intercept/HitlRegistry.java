@@ -8,9 +8,12 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.ExecutionException;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.AgentService;
@@ -485,9 +488,19 @@ public class HitlRegistry {
             throw new IllegalStateException("no pending veto for " + agentId + "/" + callId);
         }
         try {
-            return p.future().join();
+            return p.future().get();
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            var cancelled = new CancellationException("Approval wait interrupted");
+            cancelled.initCause(interrupted);
+            throw cancelled;
+        } catch (ExecutionException failure) {
+            throw new CompletionException(failure.getCause());
         } finally {
-            pending.remove(key(agentId, callId));
+            if (pending.remove(key(agentId, callId), p)) {
+                p.future().cancel(false);
+                invalidations.agentChanged(agentId, "interactions");
+            }
         }
     }
 

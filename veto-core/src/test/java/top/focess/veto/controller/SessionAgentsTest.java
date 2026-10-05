@@ -22,6 +22,7 @@ import top.focess.veto.model.SessionEntity;
 import top.focess.veto.session.SessionHistoryLoader;
 import top.focess.veto.session.SessionService;
 import top.focess.veto.vault.KeysteadVault;
+import top.focess.veto.vault.TestUsers;
 
 class SessionAgentsTest {
     private final @NonNull SessionService sessions = mock();
@@ -45,17 +46,19 @@ class SessionAgentsTest {
     void sessionResponsesRenderLogicalRootsWithoutHostPaths() throws Exception {
         var hostRoot =
                 Path.of(System.getProperty("user.dir"), "private-tenants", "owner", "project");
-        var created = new SessionEntity("owner", "generated", hostRoot.toString());
-        var legacy = new SessionEntity("owner", "legacy");
+        var created = new SessionEntity(TestUsers.OWNER, "generated", hostRoot.toString());
+        var legacy = new SessionEntity(TestUsers.OWNER, "legacy");
         var unavailable =
-                new SessionEntity("owner", "unavailable", hostRoot.resolve("old").toString());
-        when(vault.currentUser()).thenReturn("owner");
-        when(workspaceAdmission.toClientPath("owner", hostRoot)).thenReturn("/0/project");
-        when(workspaceAdmission.toClientPath("owner", hostRoot.resolve("old")))
+                new SessionEntity(
+                        TestUsers.OWNER, "unavailable", hostRoot.resolve("old").toString());
+        when(vault.currentUser()).thenReturn(TestUsers.OWNER);
+        when(workspaceAdmission.toClientPath(TestUsers.OWNER, hostRoot)).thenReturn("/0/project");
+        when(workspaceAdmission.toClientPath(TestUsers.OWNER, hostRoot.resolve("old")))
                 .thenThrow(new IllegalArgumentException("workspace mapping unavailable"));
-        when(sessions.listSessions("owner")).thenReturn(List.of(created, legacy, unavailable));
+        when(sessions.listSessions(TestUsers.OWNER))
+                .thenReturn(List.of(created, legacy, unavailable));
         when(sessions.createSession(
-                        eq("owner"),
+                        eq(TestUsers.OWNER),
                         eq("coder"),
                         isNull(),
                         eq(List.of("/0/project")),
@@ -82,8 +85,8 @@ class SessionAgentsTest {
 
     @Test
     void creationValidatesRequiredFieldsAndAllowsBackendNaming() throws Exception {
-        when(vault.currentUser()).thenReturn("owner");
-        when(workspaceAdmission.toClientPath("owner", Path.of("/workspace")))
+        when(vault.currentUser()).thenReturn(TestUsers.OWNER);
+        when(workspaceAdmission.toClientPath(TestUsers.OWNER, Path.of("/workspace")))
                 .thenReturn("/workspace");
         for (String body :
                 List.of(
@@ -103,9 +106,9 @@ class SessionAgentsTest {
                     .andExpect(status().isBadRequest());
         }
         verifyNoInteractions(sessions);
-        var created = new SessionEntity("owner", "generated", "/workspace");
+        var created = new SessionEntity(TestUsers.OWNER, "generated", "/workspace");
         when(sessions.createSession(
-                        eq("owner"),
+                        eq(TestUsers.OWNER),
                         eq("coder"),
                         isNull(),
                         eq(List.of("/workspace", "/second")),
@@ -122,7 +125,7 @@ class SessionAgentsTest {
                 .andExpect(jsonPath("$.name").value("generated"));
         verify(sessions)
                 .createSession(
-                        eq("owner"),
+                        eq(TestUsers.OWNER),
                         eq("coder"),
                         isNull(),
                         eq(List.of("/workspace", "/second")),
@@ -135,9 +138,10 @@ class SessionAgentsTest {
     void conversationHistoryOnlyLoadsThePrimaryStream() throws Exception {
         SessionService.@NonNull SessionConfig cfg = mock();
         when(cfg.sessionId()).thenReturn("session-id");
-        when(vault.currentUser()).thenReturn("owner");
-        when(sessions.resolveByName("session", "owner")).thenReturn(Optional.of(cfg));
-        when(sessions.primaryAgentIdFor("session", "owner")).thenReturn(Optional.of("primary"));
+        when(vault.currentUser()).thenReturn(TestUsers.OWNER);
+        when(sessions.resolveByName("session", TestUsers.OWNER)).thenReturn(Optional.of(cfg));
+        when(sessions.primaryAgentIdFor("session", TestUsers.OWNER))
+                .thenReturn(Optional.of("primary"));
         when(history.load("session-id", "primary")).thenReturn(List.of());
         mvc.perform(get("/api/sessions/session/history")).andExpect(status().isOk());
         verify(history).load("session-id", "primary");
@@ -145,11 +149,14 @@ class SessionAgentsTest {
     }
 
     @Test
-    void requiresOwnerBeforeReadingRuntimeMetadata() throws Exception {
+    void requiresUserIdBeforeReadingRuntimeMetadata() throws Exception {
         mvc.perform(get("/api/sessions/private/execution")).andExpect(status().isUnauthorized());
         mvc.perform(get("/api/sessions/private/agents")).andExpect(status().isUnauthorized());
-        when(vault.currentUser()).thenReturn("other-user");
-        when(sessions.resolveByName("private", "other-user")).thenReturn(Optional.empty());
+        when(vault.currentUser())
+                .thenReturn(UUID.fromString("2170d64e-a3ea-5061-9454-b8ddb9127653"));
+        when(sessions.resolveByName(
+                        "private", UUID.fromString("2170d64e-a3ea-5061-9454-b8ddb9127653")))
+                .thenReturn(Optional.empty());
         mvc.perform(get("/api/sessions/private/agents")).andExpect(status().isNotFound());
         mvc.perform(get("/api/sessions/private/execution")).andExpect(status().isNotFound());
         verifyNoInteractions(registry);
@@ -161,8 +168,8 @@ class SessionAgentsTest {
         SessionService.@NonNull SessionConfig cfg = mock();
         top.focess.veto.agent.@NonNull VetoAgent agent = mock();
         when(cfg.sessionId()).thenReturn(sessionId.toString());
-        when(vault.currentUser()).thenReturn("owner");
-        when(sessions.resolveByName("session", "owner")).thenReturn(Optional.of(cfg));
+        when(vault.currentUser()).thenReturn(TestUsers.OWNER);
+        when(sessions.resolveByName("session", TestUsers.OWNER)).thenReturn(Optional.of(cfg));
         when(agent.id()).thenReturn("primary");
         when(agent.hasPendingWork()).thenReturn(true);
         when(registry.agents(sessionId))
@@ -179,8 +186,8 @@ class SessionAgentsTest {
         UUID sessionId = UUID.randomUUID();
         SessionService.@NonNull SessionConfig cfg = mock();
         when(cfg.sessionId()).thenReturn(sessionId.toString());
-        when(vault.currentUser()).thenReturn("owner");
-        when(sessions.resolveByName("session", "owner")).thenReturn(Optional.of(cfg));
+        when(vault.currentUser()).thenReturn(TestUsers.OWNER);
+        when(sessions.resolveByName("session", TestUsers.OWNER)).thenReturn(Optional.of(cfg));
         when(registry.records(sessionId))
                 .thenReturn(
                         List.of(

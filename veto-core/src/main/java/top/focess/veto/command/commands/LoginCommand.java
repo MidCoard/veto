@@ -57,7 +57,8 @@ public class LoginCommand extends VetoCommand {
                         return CommandResult.REFUSE;
                     }
 
-                    if (users.authenticate(u, p).isEmpty()) {
+                    var authenticated = users.authenticate(u, p);
+                    if (authenticated.isEmpty()) {
                         s.output("Invalid username or password.");
                         return CommandResult.REFUSE;
                     }
@@ -68,7 +69,7 @@ public class LoginCommand extends VetoCommand {
                         s.output("Failed to unlock vault: " + e.getMessage());
                         return CommandResult.REFUSE;
                     }
-                    s.setUsername(u);
+                    s.setUser(authenticated.orElseThrow());
                     s.output("Logged in as " + u + ".");
                     return CommandResult.ALLOW;
                 },

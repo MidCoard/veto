@@ -136,7 +136,7 @@ class GroupPublicationTest {
         var group =
                 Group.create(
                         "Leader",
-                        "user",
+                        UUID.fromString("a59028e2-7be6-5c04-9439-9d4f7a4942b2"),
                         "work",
                         board,
                         new ExecutionDag(UUID.randomUUID(), List.of()));

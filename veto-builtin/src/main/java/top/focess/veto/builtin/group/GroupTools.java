@@ -54,11 +54,11 @@ public final class GroupTools {
                     """
                     Success returns empty text. Failures: - Blank brief (failure, INVALID_ARGUMENTS): `Group not \
                     created: blank brief. Pass a real description of the work.` - No session (failure, \
-                    NO_SESSION_CONTEXT): `Group not created: no authenticated session owner is available.`\
+                    NO_SESSION_CONTEXT): `Group not created: no authenticated session userId is available.`\
                     """,
             errorsAndEdgeCases =
                     """
-                    A blank brief and a missing authenticated session owner are the only creation failures; both \
+                    A blank brief and a missing authenticated session userId are the only creation failures; both \
                     leave the group uncreated.\
                     """,
             security =

@@ -1,7 +1,6 @@
 package top.focess.veto.agent;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
@@ -33,7 +32,6 @@ import top.focess.veto.agent.screening.ProtectedSet;
 import top.focess.veto.agent.screening.ProtectedSetResolver;
 import top.focess.veto.agent.screening.ScreeningMode;
 import top.focess.veto.agent.screening.SlmScreeningProvider;
-import top.focess.veto.agent.tool.ToolCallContext;
 import top.focess.veto.agent.tool.ToolDefinition;
 import top.focess.veto.agent.tool.ToolEngine;
 import top.focess.veto.agent.workspace.Workspace;
@@ -76,14 +74,10 @@ public class AgentService {
     private final @NonNull KeysteadVault executionVault;
     private final @NonNull EventManager eventManager;
 
-    private void configureContinuations(@NonNull AgentRunner runner, String owner) {
-        // Session contributions require an authenticated owner; embedded agents have none.
-        if (owner != null && !owner.isBlank()) {
-            runner.attachSessionPlugins(sessionPlugins);
-            runner.attachEventManager(eventManager);
-            runner.attachExecutionVault(executionVault);
-        }
-        runner.attachContinuationStore(continuationStore);
+    private void configureSessionContributions(@NonNull AgentRunner runner) {
+        runner.attachSessionPlugins(sessionPlugins);
+        runner.attachEventManager(eventManager);
+        runner.attachExecutionVault(executionVault);
     }
 
     private static final @NonNull Logger log =
@@ -112,15 +106,6 @@ public class AgentService {
     private final @NonNull TurnLogService turnLogService;
     private final @NonNull ProtectedSetResolver protectedSetResolver;
     private final @NonNull SlmScreeningProvider slmScreeningProvider;
-
-    /**
-     * The fallback memory-tenant userId for legacy/test paths that bypass session activation (the
-     * {@code submit} overloads with no owner). The activate path derives a real per-user tenant via
-     * {@link #userIdForOwner(String)} instead, so memories and turn logs attribute to the actual
-     * session owner.
-     */
-    static final @NonNull UUID DEFAULT_USER_ID =
-            UUID.fromString("00000000-0000-0000-0000-000000000000");
 
     /** Spring-wired constructor: assembles the shared service from its collaborators and config. */
     public AgentService(
@@ -187,9 +172,13 @@ public class AgentService {
      * the prompt, and blocks for the result. Returns the {@link AgentResult}.
      */
     public @NonNull AgentResult submit(
-            @NonNull String agentKey, @NonNull String prompt, @NonNull LlmBinding binding) {
+            @NonNull String agentKey,
+            @NonNull String prompt,
+            @NonNull LlmBinding binding,
+            @NonNull UUID userId) {
         VetoAgent agent =
-                sessionAgents.getOrCreateTransport(agentKey, () -> createAgent(agentKey, binding));
+                sessionAgents.getOrCreateTransport(
+                        agentKey, () -> createAgent(agentKey, binding, userId));
         var request = agent.submitRequest(prompt, binding, LocaleContextHolder.getLocale(), null);
         try {
             return request.await(DEFAULT_AWAIT);
@@ -212,9 +201,13 @@ public class AgentService {
      * history stays the authoritative read.
      */
     public @NonNull RequestHandle submitNow(
-            @NonNull String agentKey, @NonNull String prompt, @NonNull LlmBinding binding) {
+            @NonNull String agentKey,
+            @NonNull String prompt,
+            @NonNull LlmBinding binding,
+            @NonNull UUID userId) {
         VetoAgent agent =
-                sessionAgents.getOrCreateTransport(agentKey, () -> createAgent(agentKey, binding));
+                sessionAgents.getOrCreateTransport(
+                        agentKey, () -> createAgent(agentKey, binding, userId));
         return agent.submitRequest(prompt, binding, LocaleContextHolder.getLocale(), null);
     }
 
@@ -223,10 +216,12 @@ public class AgentService {
             @NonNull String agentKey,
             @NonNull String prompt,
             @NonNull LlmBinding binding,
-            @NonNull Duration timeout)
+            @NonNull Duration timeout,
+            @NonNull UUID userId)
             throws TimeoutException, InterruptedException {
         VetoAgent agent =
-                sessionAgents.getOrCreateTransport(agentKey, () -> createAgent(agentKey, binding));
+                sessionAgents.getOrCreateTransport(
+                        agentKey, () -> createAgent(agentKey, binding, userId));
         var request = agent.submitRequest(prompt, binding, LocaleContextHolder.getLocale(), null);
         return request.await(timeout);
     }
@@ -244,9 +239,11 @@ public class AgentService {
             @NonNull String prompt,
             @NonNull LlmBinding binding,
             @NonNull Duration timeout,
-            Consumer<String> messageSink)
+            Consumer<String> messageSink,
+            @NonNull UUID userId)
             throws TimeoutException, InterruptedException {
-        return submit(agentKey, prompt, binding, timeout, messageSink, null, null, null, null);
+        return submit(
+                agentKey, prompt, binding, timeout, messageSink, null, null, null, null, userId);
     }
 
     /**
@@ -262,9 +259,20 @@ public class AgentService {
             @NonNull LlmBinding binding,
             @NonNull Duration timeout,
             Consumer<String> messageSink,
-            Consumer<VetoPrompt> vetoSink)
+            Consumer<VetoPrompt> vetoSink,
+            @NonNull UUID userId)
             throws TimeoutException, InterruptedException {
-        return submit(agentKey, prompt, binding, timeout, messageSink, vetoSink, null, null, null);
+        return submit(
+                agentKey,
+                prompt,
+                binding,
+                timeout,
+                messageSink,
+                vetoSink,
+                null,
+                null,
+                null,
+                userId);
     }
 
     /**
@@ -280,10 +288,20 @@ public class AgentService {
             @NonNull Duration timeout,
             Consumer<String> messageSink,
             Consumer<VetoPrompt> vetoSink,
-            Consumer<String> thoughtSink)
+            Consumer<String> thoughtSink,
+            @NonNull UUID userId)
             throws TimeoutException, InterruptedException {
         return submit(
-                agentKey, prompt, binding, timeout, messageSink, vetoSink, thoughtSink, null, null);
+                agentKey,
+                prompt,
+                binding,
+                timeout,
+                messageSink,
+                vetoSink,
+                thoughtSink,
+                null,
+                null,
+                userId);
     }
 
     /**
@@ -304,10 +322,12 @@ public class AgentService {
             Consumer<VetoPrompt> vetoSink,
             Consumer<String> thoughtSink,
             Consumer<ToolCallEvent> toolCallSink,
-            Consumer<ToolResultEvent> toolResultSink)
+            Consumer<ToolResultEvent> toolResultSink,
+            @NonNull UUID userId)
             throws TimeoutException, InterruptedException {
         VetoAgent agent =
-                sessionAgents.getOrCreateTransport(agentKey, () -> createAgent(agentKey, binding));
+                sessionAgents.getOrCreateTransport(
+                        agentKey, () -> createAgent(agentKey, binding, userId));
         if (messageSink != null) {
             agent.addMessageListener(messageSink);
         }
@@ -347,32 +367,6 @@ public class AgentService {
     }
 
     /**
-     * Synchronous submit with explicit user identity. The {@code userId} is threaded through to
-     * {@link AgentRunner} for memory capture and group ownership, enabling multi-user tenant
-     * isolation. Use this overload when the transport has authenticated the user.
-     *
-     * @param agentKey the transport identity (unique per session)
-     * @param prompt the user's prompt
-     * @param binding the LLM configuration
-     * @param timeout the maximum time to wait
-     * @param userId the authenticated user's id (for memory/group isolation)
-     * @return the agent result
-     */
-    public @NonNull AgentResult submit(
-            @NonNull String agentKey,
-            @NonNull String prompt,
-            @NonNull LlmBinding binding,
-            @NonNull Duration timeout,
-            @NonNull UUID userId)
-            throws TimeoutException, InterruptedException {
-        VetoAgent agent =
-                sessionAgents.getOrCreateTransport(
-                        agentKey, () -> createAgent(agentKey, binding, userId));
-        var request = agent.submitRequest(prompt, binding, LocaleContextHolder.getLocale(), null);
-        return request.await(timeout);
-    }
-
-    /**
      * Gets or creates the agent for a session id, seeding replayed history on first creation. The
      * session id is the agent key (replacing terminal-id keying) so an agent is shared across any
      * interface attached to the session. Seeding runs before the first {@code submit} (the loop
@@ -389,7 +383,6 @@ public class AgentService {
                 binding,
                 history,
                 userId,
-                null,
                 null,
                 0,
                 ToolResultPresentationMode.BASIC);
@@ -419,7 +412,6 @@ public class AgentService {
                 binding,
                 history,
                 userId,
-                null,
                 workspaceRoots,
                 0,
                 ToolResultPresentationMode.BASIC);
@@ -432,9 +424,7 @@ public class AgentService {
      * runner's session id is stamped to {@code sessionId} (session.getId()). When null the legacy
      * behavior (mint a fresh persona UUID, session id = persona id) is preserved.
      *
-     * @param owner the session owner (username) whose model-tier profile resolves the agent's tier;
-     *     threaded onto the runner's {@link ToolCallContext} so group spawns resolve per-user. Null
-     *     in legacy/test paths.
+     * @param userId the authenticated account identity for model tiers, tools and persisted turns.
      */
     public @NonNull Agent getOrCreateAgent(
             @NonNull String sessionId,
@@ -442,7 +432,6 @@ public class AgentService {
             @NonNull LlmBinding binding,
             @NonNull List<TurnRecord> history,
             @NonNull UUID userId,
-            String owner,
             String workspaceRoots) {
         return getOrCreateAgent(
                 sessionId,
@@ -450,7 +439,6 @@ public class AgentService {
                 binding,
                 history,
                 userId,
-                owner,
                 workspaceRoots,
                 0,
                 ToolResultPresentationMode.BASIC);
@@ -463,7 +451,6 @@ public class AgentService {
             @NonNull LlmBinding binding,
             @NonNull List<TurnRecord> history,
             @NonNull UUID userId,
-            String owner,
             String workspaceRoots,
             @NonNull ToolResultPresentationMode toolResultPresentation) {
         return getOrCreateAgent(
@@ -472,7 +459,6 @@ public class AgentService {
                 binding,
                 history,
                 userId,
-                owner,
                 workspaceRoots,
                 0,
                 toolResultPresentation);
@@ -489,7 +475,6 @@ public class AgentService {
             @NonNull LlmBinding binding,
             @NonNull List<TurnRecord> history,
             @NonNull UUID userId,
-            String owner,
             String workspaceRoots,
             int currentWorkspaceRootIndex,
             @NonNull ToolResultPresentationMode toolResultPresentation) {
@@ -503,7 +488,6 @@ public class AgentService {
                                         primaryAgentId,
                                         binding,
                                         userId,
-                                        owner,
                                         workspace,
                                         toolResultPresentation,
                                         history));
@@ -555,18 +539,6 @@ public class AgentService {
         sessionAgents.stopTransport(agentKey);
     }
 
-    private @NonNull VetoAgent createAgent(@NonNull String agentKey, @NonNull LlmBinding binding) {
-        return createAgent(
-                agentKey,
-                null,
-                binding,
-                DEFAULT_USER_ID,
-                null,
-                defaultWorkspace,
-                ToolResultPresentationMode.BASIC,
-                List.of());
-    }
-
     private @NonNull VetoAgent createAgent(
             @NonNull String agentKey, @NonNull LlmBinding binding, @NonNull UUID userId) {
         return createAgent(
@@ -574,7 +546,6 @@ public class AgentService {
                 null,
                 binding,
                 userId,
-                null,
                 defaultWorkspace,
                 ToolResultPresentationMode.BASIC,
                 List.of());
@@ -591,7 +562,6 @@ public class AgentService {
             String primaryAgentId,
             @NonNull LlmBinding binding,
             @NonNull UUID userId,
-            String owner,
             @NonNull Workspace workspace,
             @NonNull ToolResultPresentationMode toolResultPresentation,
             @NonNull List<TurnRecord> history) {
@@ -600,8 +570,7 @@ public class AgentService {
         // matching + path canonicalization scope to this session's workspace.
         hitlRegistry.setWorkspace(persona.id(), workspace);
         ReadHistory readHistory = new ReadHistory();
-        String protectionOwner = owner == null || owner.isBlank() ? userId.toString() : owner;
-        ProtectedSet userProtectedSet = protectedSetFor(protectionOwner, workspace);
+        ProtectedSet userProtectedSet = protectedSetFor(userId, workspace);
         Gateway gateway =
                 new Gateway(
                         workspace,
@@ -616,16 +585,14 @@ public class AgentService {
                                                         == DeployerPolicy.SANDBOXED
                                                 ? configuration.canonicalRoots()
                                                 : permit.workspaceRoots(),
-                                        owner == null
-                                                ? List.of()
-                                                : sessions.claimedRootsExcept(protectionOwner)));
+                                        sessions.claimedRootsExcept(userId)));
         UUID sessionId =
                 primaryAgentId == null ? UUID.fromString(persona.id()) : UUID.fromString(agentKey);
         ToolExecutionBoundary toolBoundary =
                 new ToolExecutionBoundary(
                         persona.id(),
                         sessionId,
-                        owner,
+                        userId,
                         toolEngine,
                         gateway,
                         hitlRegistry,
@@ -645,11 +612,11 @@ public class AgentService {
                         new DeltaBrokerEventSink(persona.id(), sessionId, deltaBroker),
                         userId,
                         turnLogService,
-                        owner,
                         sessionId);
         runner.configureModelTiers(modelTierRegistry);
         runner.setToolResultPresentation(toolResultPresentation);
-        configureContinuations(runner, owner);
+        configureSessionContributions(runner);
+        runner.attachContinuationStore(continuationStore);
         runner.seedHistory(history);
         return sessionAgents.start(persona, runner);
     }
@@ -662,8 +629,7 @@ public class AgentService {
             @NonNull String namespace,
             @NonNull AgentProfile profile,
             @NonNull List<TurnRecord> history) {
-        String owner = session.getOwner();
-        UUID userId = userIdForOwner(owner);
+        UUID userId = session.getUserId();
         UUID sessionId = UUID.fromString(session.getId());
         Workspace workspace =
                 buildWorkspace(session.getWorkspaceRoots(), session.getCurrentWorkspaceRootIndex());
@@ -679,7 +645,7 @@ public class AgentService {
         var authorized =
                 sessionPlugins.tools(session.getId(), Set.copyOf(toolEngine.getActiveTools(null)));
         var resolved =
-                AgentProfiles.resolve(id, owner, profile, authorized, base, modelTierRegistry);
+                AgentProfiles.resolve(id, userId, profile, authorized, base, modelTierRegistry);
         var intentPersona = resolved.persona();
         AgentPersona scoped =
                 new AgentPersona(
@@ -693,8 +659,7 @@ public class AgentService {
         var toolResultPresentation = session.getToolResultPresentation();
         hitlRegistry.setWorkspace(scoped.id(), workspace);
         ReadHistory readHistory = new ReadHistory();
-        String protectionOwner = owner.isBlank() ? userId.toString() : owner;
-        ProtectedSet scopedProtectedSet = protectedSetFor(protectionOwner, workspace);
+        ProtectedSet scopedProtectedSet = protectedSetFor(userId, workspace);
         Gateway gateway =
                 new Gateway(
                         workspace,
@@ -709,12 +674,12 @@ public class AgentService {
                                                         == DeployerPolicy.SANDBOXED
                                                 ? configuration.canonicalRoots()
                                                 : permit.workspaceRoots(),
-                                        sessions.claimedRootsExcept(protectionOwner)));
+                                        sessions.claimedRootsExcept(userId)));
         ToolExecutionBoundary toolBoundary =
                 new ToolExecutionBoundary(
                         scoped.id(),
                         sessionId,
-                        owner,
+                        userId,
                         toolEngine,
                         gateway,
                         hitlRegistry,
@@ -734,9 +699,9 @@ public class AgentService {
                         new DeltaBrokerEventSink(scoped.id(), sessionId, deltaBroker),
                         userId,
                         turnLogService,
-                        owner,
                         sessionId);
-        configureContinuations(runner, owner);
+        configureSessionContributions(runner);
+        runner.attachContinuationStore(continuationStore);
         runner.configureModelTiers(modelTierRegistry);
         runner.setToolResultPresentation(toolResultPresentation);
         runner.seedHistory(history);
@@ -760,16 +725,6 @@ public class AgentService {
     /** The fallback workspace used when no session workspace is set. */
     public @NonNull Workspace workspace() {
         return defaultWorkspace;
-    }
-
-    /**
-     * Derives the existing username-based compatibility identity for memories and turn logs,
-     * including host-created plugin children. The name-based UUID is deterministic across sessions
-     * and restarts; it is distinct from the account incarnation's immutable storage identity and
-     * remains unchanged when a username is reused.
-     */
-    public @NonNull UUID userIdForOwner(@NonNull String owner) {
-        return UUID.nameUUIDFromBytes(owner.getBytes(StandardCharsets.UTF_8));
     }
 
     /**
@@ -804,9 +759,8 @@ public class AgentService {
 
     /** Resolves the deployer-configured hard path exclusions for this user and workspace. */
     private @NonNull ProtectedSet protectedSetFor(
-            @NonNull String vetoUserId, @NonNull Workspace workspace) {
-        return protectedSetResolver.resolve(
-                configuration.getDeployerPolicy(), vetoUserId, workspace);
+            @NonNull UUID userId, @NonNull Workspace workspace) {
+        return protectedSetResolver.resolve(configuration.getDeployerPolicy(), userId, workspace);
     }
 
     /** Parses the screening mode (case-insensitive; defaults to STRICT on blank/unknown). */

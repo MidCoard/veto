@@ -2,6 +2,7 @@ package top.focess.veto.memory;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
@@ -31,7 +32,7 @@ public interface TurnRecordRepository extends JpaRepository<TurnRecordEntity, St
                     + " t.turnNumber = :turn")
     int updateRecordMetadata(
             @Param("sessionId") String sessionId,
-            @Param("userId") String userId,
+            @Param("userId") @NonNull UUID userId,
             @Param("agentId") String agentId,
             @Param("turn") int turn,
             @Param("payload") String payload,

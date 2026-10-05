@@ -165,14 +165,14 @@ public final class IsolatedExecutions {
         var current = ToolCallContextHolder.get();
         if (current == null) throw new SecurityException("No authorized parent invocation");
         var parent = CapabilityAccess.require(current.executionPermit().capability());
-        String owner = parent.owner();
+        UUID userId = parent.userId();
         UUID session = parent.sessionId();
-        if (owner == null || session == null || !admitted.getAsBoolean())
+        if (userId == null || session == null || !admitted.getAsBoolean())
             throw new SecurityException("No authenticated parent session");
         var invocation = new Invocation();
         if (INVOCATIONS.putIfAbsent(parent, invocation) != null)
             throw new SecurityException("This call already opened an isolated execution");
-        ModelBinding model = resolve(owner, spec.tiers());
+        ModelBinding model = resolve(userId, spec.tiers());
         var limits = limits(spec);
         if (spec.terminal().reservedCalls() >= limits.calls())
             throw new IllegalArgumentException("No nonterminal call budget");
@@ -281,7 +281,7 @@ public final class IsolatedExecutions {
                             new ToolExecutionBoundary(
                                     scope.id(),
                                     session,
-                                    owner,
+                                    userId,
                                     engine,
                                     gateway,
                                     new HitlRegistry(null, invalidations),
@@ -300,7 +300,6 @@ public final class IsolatedExecutions {
                             AgentEventSink.none(),
                             parent.userId(),
                             history,
-                            owner,
                             session);
             runner.setExecutionPolicy(new AgentExecutionPolicy(spec.terminal(), scope::check));
             var agent =
@@ -352,11 +351,11 @@ public final class IsolatedExecutions {
     }
 
     private @NonNull ModelBinding resolve(
-            @NonNull String owner, @NonNull List<@NonNull String> tiers) {
+            @NonNull UUID userId, @NonNull List<@NonNull String> tiers) {
         ModelTierConfigException failure = null;
         for (String tier : tiers) {
             try {
-                return models.resolve(owner, Nullness.requireNonNull(ModelTier.valueOf(tier)));
+                return models.resolve(userId, Nullness.requireNonNull(ModelTier.valueOf(tier)));
             } catch (ModelTierConfigException error) {
                 failure = error;
             }
@@ -454,7 +453,6 @@ public final class IsolatedExecutions {
             CapabilityAccess.require(parent.executionPermit().capability(), operation);
             if (!id.equals(context.agentId())
                     || !parent.userId().equals(context.userId())
-                    || !Objects.equals(parent.owner(), context.owner())
                     || !Objects.equals(parent.sessionId(), context.sessionId()))
                 throw new SecurityException("Private tool belongs to another execution");
             check();

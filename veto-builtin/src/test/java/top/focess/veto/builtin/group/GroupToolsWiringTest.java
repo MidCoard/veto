@@ -106,7 +106,7 @@ class GroupToolsWiringTest {
             var group = fixture.create();
             fixture.caller =
                     new PluginHost.Invocation(
-                            "owner",
+                            fixture.grant.scope().userId(),
                             fixture.grant.scope().session(),
                             "other-agent",
                             null,
@@ -134,7 +134,7 @@ class GroupToolsWiringTest {
             assertTrue(group.dag().nodes().isEmpty());
             assertTrue(group.mates().isEmpty());
             assertEquals("leader", group.leaderId());
-            assertEquals("owner", group.owner());
+            assertEquals(UUID.fromString("a59028e2-7be6-5c04-9439-9d4f7a4942b2"), group.userId());
             var intent = GroupTestHost.required(fixture.runtime.configure(fixture.configuration));
             assertEquals("LEADER", intent.profile().label());
             assertEquals("TOP", intent.profile().tier());
@@ -303,7 +303,11 @@ class GroupToolsWiringTest {
                     () -> tool.execute(new CollaborationTools.RemoveMate.Args("mate")));
             fixture.caller =
                     new PluginHost.Invocation(
-                            "owner", fixture.grant.scope().session(), "mate", null, "test-call");
+                            fixture.grant.scope().userId(),
+                            fixture.grant.scope().session(),
+                            "mate",
+                            null,
+                            "test-call");
             assertThrows(
                     ToolExecutionException.class,
                     () -> tool.execute(new CollaborationTools.RemoveMate.Args("mate")));
@@ -318,13 +322,13 @@ class GroupToolsWiringTest {
             for (var caller :
                     List.of(
                             new PluginHost.Invocation(
-                                    "foreign",
+                                    UUID.fromString("ec629ca2-6e80-51d3-a243-d00a0c2fcb52"),
                                     fixture.grant.scope().session(),
                                     "leader",
                                     null,
                                     "test-call"),
                             new PluginHost.Invocation(
-                                    "owner",
+                                    fixture.grant.scope().userId(),
                                     UUID.randomUUID().toString(),
                                     "leader",
                                     null,

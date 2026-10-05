@@ -9,7 +9,6 @@ import top.focess.veto.api.llm.ToolResultPresentationMode;
 public record ToolCallContext(
         @NonNull String agentId,
         @NonNull UUID userId,
-        String owner,
         UUID sessionId,
         @NonNull ToolResultPresentationMode toolResultPresentation,
         @NonNull ToolExecutionPermit executionPermit,
@@ -18,10 +17,9 @@ public record ToolCallContext(
     public ToolCallContext(
             @NonNull String agentId,
             @NonNull UUID userId,
-            String owner,
             UUID sessionId,
             @NonNull ToolResultPresentationMode toolResultPresentation,
             @NonNull ToolExecutionPermit executionPermit) {
-        this(agentId, userId, owner, sessionId, toolResultPresentation, executionPermit, null);
+        this(agentId, userId, sessionId, toolResultPresentation, executionPermit, null);
     }
 }

@@ -1,6 +1,7 @@
 package top.focess.veto.controller;
 
 import java.util.List;
+import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -18,7 +19,7 @@ import top.focess.veto.util.Nullness;
 import top.focess.veto.vault.KeysteadVault;
 
 /**
- * Per-user agent patterns: named model-tier choices whose concrete binding is resolved from the
+ * Per-userId agent patterns: named model-tier choices whose concrete binding is resolved from the
  * user's active tier profile at creation time and reused by session creation.
  */
 @RestController
@@ -42,28 +43,28 @@ public class PatternController {
     /** Lists the current user's patterns; empty when not logged in. */
     @GetMapping
     public @NonNull List<AgentPatternEntity> list() {
-        String user = vault.currentUser();
-        return user != null ? repo.findByOwner(user) : List.of();
+        UUID userId = vault.currentUser();
+        return userId != null ? repo.findByUserId(userId) : List.of();
     }
 
     /**
-     * Creates a pattern for the current user, resolving its model binding from the active tier
+     * Creates a pattern for the current userId, resolving its model binding from the active tier
      * profile. 400 on missing fields, unknown tier, or an unconfigured profile; 409 on a duplicate
      * name.
      */
     @PostMapping
     public @NonNull AgentPatternEntity create(@RequestBody @NonNull CreatePatternRequest body) {
-        String user = vault.currentUser();
-        if (user == null) throw new IllegalStateException(Msg.get("error.auth.notLoggedIn"));
+        UUID userId = vault.currentUser();
+        if (userId == null) throw new IllegalStateException(Msg.get("error.auth.notLoggedIn"));
         String name = body.name();
         String tierValue = body.tier();
         if (name == null || name.isBlank() || tierValue == null || tierValue.isBlank()) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST, Msg.get("error.pattern.missingFields"));
         }
-        // Names are unique per owner - a duplicate insert would poison findByNameAndOwner
+        // Names are unique per user - a duplicate insert would poison findByNameAndUserId
         // (NonUniqueResultException) for every later session create against this name.
-        if (repo.existsByNameAndOwner(name, user)) {
+        if (repo.existsByNameAndUserId(name, userId)) {
             throw new ResponseStatusException(
                     HttpStatus.CONFLICT, Msg.get("error.pattern.duplicate", name));
         }
@@ -76,27 +77,28 @@ public class PatternController {
         }
         ModelBinding binding;
         try {
-            binding = tierRegistry.resolve(user, tier);
+            binding = tierRegistry.resolve(userId, tier);
         } catch (ModelTierConfigException e) {
-            // No active model-tier profile (or incomplete binding) for this user - the client must
+            // No active model-tier profile (or incomplete binding) for this userId - the client
+            // must
             // configure one before creating a pattern that targets this tier.
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
         }
-        var p = new AgentPatternEntity(name, tier, binding, user);
+        var p = new AgentPatternEntity(name, tier, binding, userId);
         return repo.save(p);
     }
 
     /** Deletes the current user's pattern with the given name; a missing name is a no-op. */
     @DeleteMapping("/{name}")
     public @NonNull ResponseEntity<?> delete(@PathVariable @NonNull String name) {
-        String user = vault.currentUser();
-        if (user == null) {
+        UUID userId = vault.currentUser();
+        if (userId == null) {
             return ResponseEntity.status(401)
                     .body(
                             new StatusMessageResponse(
                                     "error", Msg.get("error.auth.notAuthenticated")));
         }
-        repo.deleteByNameAndOwner(name, user);
+        repo.deleteByNameAndUserId(name, userId);
         return ResponseEntity.noContent().build();
     }
 }

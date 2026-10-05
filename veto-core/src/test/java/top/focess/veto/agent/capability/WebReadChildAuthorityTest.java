@@ -61,6 +61,7 @@ import top.focess.veto.model.AgentInstanceRepository;
 import top.focess.veto.model.tier.ModelBinding;
 import top.focess.veto.model.tier.ModelTier;
 import top.focess.veto.model.tier.ModelTierRegistry;
+import top.focess.veto.vault.TestUsers;
 import top.focess.veto.vault.UserContext;
 
 class WebReadChildAuthorityTest {
@@ -96,7 +97,7 @@ class WebReadChildAuthorityTest {
                         assertNull(
                                 ToolCallContextHolder.get(),
                                 "Model dispatch must have no tool execution permit");
-                        assertEquals("test-owner", UserContext.get());
+                        assertEquals(TestUsers.OWNER, UserContext.get());
                         boolean throughAgentRunner =
                                 StackWalker.getInstance()
                                         .walk(
@@ -133,7 +134,7 @@ class WebReadChildAuthorityTest {
                         };
                     };
             var models = mock(ModelTierRegistry.class);
-            when(models.resolve("test-owner", ModelTier.LOW))
+            when(models.resolve(TestUsers.OWNER, ModelTier.LOW))
                     .thenReturn(
                             new ModelBinding(
                                     ProviderType.DEEPSEEK, "reader", "reader-key", 0, 2048));
@@ -207,7 +208,7 @@ class WebReadChildAuthorityTest {
                     .when(network)
                     .openApprovedDestination("url");
             URI url = URI.create("http://127.0.0.1:" + server.getAddress().getPort() + "/approved");
-            UserContext.set("test-owner");
+            UserContext.set(TestUsers.OWNER);
             String result =
                     CapabilityTestCalls.execute(
                             new WebFetchTool(reader, network),
@@ -227,7 +228,7 @@ class WebReadChildAuthorityTest {
                     parentScope.executionPermit().callId(), childScope.executionPermit().callId());
             assertEquals("fetch_page", childScope.executionPermit().toolName());
             assertEquals(parentScope.userId(), childScope.userId());
-            assertEquals(parentScope.owner(), childScope.owner());
+            assertEquals(parentScope.userId(), childScope.userId());
             assertEquals(parentScope.sessionId(), childScope.sessionId());
             ApprovedHttpDestination access = captured.get();
             assertNotNull(access);
@@ -239,9 +240,9 @@ class WebReadChildAuthorityTest {
 
     @Test
     void childBindingRejectsRebindingAndWrongIdentityEvenForCachedContent() {
-        UUID user = UUID.randomUUID();
+        UUID user = TestUsers.OWNER;
         UUID session = UUID.randomUUID();
-        ToolCallContext parent = install("parent", user, "owner", session, "web_fetch");
+        ToolCallContext parent = install("parent", user, session, "web_fetch");
         AtomicInteger fetches = new AtomicInteger();
         var access =
                 new HttpDestinationGrant(
@@ -272,7 +273,7 @@ class WebReadChildAuthorityTest {
         when(parentAgent.state()).thenReturn(AgentState.RUNNING);
         registry.register(session, parentAgent);
         var models = mock(ModelTierRegistry.class);
-        when(models.resolve("owner", ModelTier.LOW))
+        when(models.resolve(TestUsers.OWNER, ModelTier.LOW))
                 .thenReturn(new ModelBinding(ProviderType.DEEPSEEK, "reader", "key", 0, 2048));
         var executions =
                 new IsolatedExecutions(
@@ -323,7 +324,7 @@ class WebReadChildAuthorityTest {
                                     },
                                     () -> true));
             String id = child.id();
-            install(id, user, "owner", session, "fetch_page");
+            install(id, user, session, "fetch_page");
             assertEquals("source", access.fetch().content());
             var approved = ToolCallContextHolder.get();
             if (approved == null) throw new AssertionError();
@@ -343,12 +344,7 @@ class WebReadChildAuthorityTest {
                             Map.of("url", URI.create("https://evil.example/unapproved")));
             activate(
                     new ToolCallContext(
-                            id,
-                            user,
-                            "owner",
-                            session,
-                            ToolResultPresentationMode.BASIC,
-                            expanded));
+                            id, user, session, ToolResultPresentationMode.BASIC, expanded));
             assertThrows(
                     SecurityException.class,
                     () ->
@@ -360,12 +356,11 @@ class WebReadChildAuthorityTest {
                                     .openApprovedDestination("url"));
             for (ToolCallContext wrong :
                     List.of(
-                            scope("wrong-child", user, "owner", session, "fetch_page"),
-                            scope(id, UUID.randomUUID(), "owner", session, "fetch_page"),
-                            scope(id, user, "other-owner", session, "fetch_page"),
-                            scope(id, user, "owner", UUID.randomUUID(), "fetch_page"),
-                            scope(id, user, "owner", session, "web_fetch"),
-                            scope("parent", user, "owner", session, "web_fetch"))) {
+                            scope("wrong-child", user, session, "fetch_page"),
+                            scope(id, UUID.randomUUID(), session, "fetch_page"),
+                            scope(id, user, UUID.randomUUID(), "fetch_page"),
+                            scope(id, user, session, "web_fetch"),
+                            scope("parent", user, session, "web_fetch"))) {
                 activate(wrong);
                 assertThrows(SecurityException.class, access::fetch);
             }
@@ -392,10 +387,10 @@ class WebReadChildAuthorityTest {
 
     @Test
     void grantBindingMustNameAnActualPrivateTool() {
-        var parent = install("parent", UUID.randomUUID(), "owner", UUID.randomUUID(), "alias");
+        var parent = install("parent", TestUsers.OWNER, UUID.randomUUID(), "alias");
         var mapper = new ObjectMapper();
         var models = mock(ModelTierRegistry.class);
-        when(models.resolve("owner", ModelTier.LOW))
+        when(models.resolve(TestUsers.OWNER, ModelTier.LOW))
                 .thenReturn(new ModelBinding(ProviderType.DEEPSEEK, "reader", "key", 0, 2048));
         var executions =
                 new IsolatedExecutions(
@@ -442,7 +437,7 @@ class WebReadChildAuthorityTest {
 
     @Test
     void closingGrantDoesNotWaitForInFlightTransportAndRejectsLateContent() throws Exception {
-        var parent = install("parent", UUID.randomUUID(), "owner", UUID.randomUUID(), "alias");
+        var parent = install("parent", TestUsers.OWNER, UUID.randomUUID(), "alias");
         var entered = new CountDownLatch(1);
         var release = new CountDownLatch(1);
         var grant =
@@ -493,11 +488,11 @@ class WebReadChildAuthorityTest {
 
     @Test
     void privateCatalogCannotExpandParentCapability() {
-        install("parent", UUID.randomUUID(), "owner", UUID.randomUUID(), "alias");
+        install("parent", TestUsers.OWNER, UUID.randomUUID(), "alias");
         var mapper = new ObjectMapper();
         var disposed = new AtomicInteger();
         var models = mock(ModelTierRegistry.class);
-        when(models.resolve("owner", ModelTier.LOW))
+        when(models.resolve(TestUsers.OWNER, ModelTier.LOW))
                 .thenReturn(new ModelBinding(ProviderType.DEEPSEEK, "reader", "key", 0, 2048));
         var registry =
                 new SessionAgentRegistry(
@@ -547,10 +542,9 @@ class WebReadChildAuthorityTest {
     private static @NonNull ToolCallContext install(
             @NonNull String agent,
             @NonNull UUID user,
-            @NonNull String owner,
             @NonNull UUID session,
             @NonNull String tool) {
-        ToolCallContext context = scope(agent, user, owner, session, tool);
+        ToolCallContext context = scope(agent, user, session, tool);
         activate(context);
         return context;
     }
@@ -566,7 +560,6 @@ class WebReadChildAuthorityTest {
     private static @NonNull ToolCallContext scope(
             @NonNull String agent,
             @NonNull UUID user,
-            @NonNull String owner,
             @NonNull UUID session,
             @NonNull String tool) {
         ToolExecutionPermit base = ToolExecutionPermit.empty();
@@ -582,9 +575,8 @@ class WebReadChildAuthorityTest {
                                 base.deployerPolicy(),
                                 base.protectedPaths(),
                                 base.preparation())
-                        .withCaller(agent, user, owner, session);
-        return new ToolCallContext(
-                agent, user, owner, session, ToolResultPresentationMode.BASIC, permit);
+                        .withCaller(agent, user, session);
+        return new ToolCallContext(agent, user, session, ToolResultPresentationMode.BASIC, permit);
     }
 
     private static @NonNull VetoResponse call(

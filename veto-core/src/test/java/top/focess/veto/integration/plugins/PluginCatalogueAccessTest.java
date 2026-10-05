@@ -56,7 +56,6 @@ class PluginCatalogueAccessTest {
                 new ToolCallContext(
                         "agent",
                         UUID.randomUUID(),
-                        "owner",
                         UUID.randomUUID(),
                         ToolResultPresentationMode.BASIC,
                         permit));

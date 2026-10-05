@@ -57,7 +57,7 @@ public interface PluginServices {
 
         /**
          * Invokes a scoped service with a host-issued storage grant. The host revalidates the token
-         * against the calling plugin and current owner/session on every call. An AGENT service
+         * against the calling plugin and current user/session on every call. An AGENT service
          * requires a session grant and a matching currently admitted tool invocation; the host
          * derives the agent from that invocation. A retained session grant alone cannot authorize
          * an agent call, and request JSON cannot supply its identity.

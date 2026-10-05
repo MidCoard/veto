@@ -45,7 +45,7 @@ public final class TasksFrontend implements FrontendContribution {
             throws PluginFailure {
         try {
             String agent = scope.agent();
-            var owned = new Scope.AgentScope(scope.owner(), scope.session(), agent);
+            var owned = new Scope.AgentScope(scope.userId(), scope.session(), agent);
             int offset = Math.max(0, number(arguments, "offset", 0));
             if (action.equals("list")) {
                 var values = tasks.list(owned);

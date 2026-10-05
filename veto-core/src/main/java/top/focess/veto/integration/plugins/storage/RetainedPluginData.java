@@ -3,6 +3,7 @@ package top.focess.veto.integration.plugins.storage;
 import jakarta.persistence.EntityManager;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -71,7 +72,7 @@ public class RetainedPluginData {
     /** Lists only metadata from one scope kind; application records require an administrator. */
     @Transactional(readOnly = true)
     public @NonNull Page list(@NonNull PluginScope kind, String pluginId, String after, int limit) {
-        String owner = authorization.requireUser();
+        UUID userId = authorization.requireUserId();
         if (kind == PluginScope.AGENT)
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST, "Agent-scoped storage is not available");
@@ -80,7 +81,7 @@ public class RetainedPluginData {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Limit must be 1 to 100");
         String query =
                 "select r from PluginRecord r where r.kind = :kind and r.id > :after"
-                        + ownerClause(kind)
+                        + userClause(kind)
                         + (pluginId == null ? "" : " and r.plugin = :plugin")
                         + " order by r.id";
         var selection =
@@ -88,7 +89,7 @@ public class RetainedPluginData {
                         .setParameter("kind", kind.name())
                         .setParameter("after", after == null ? "" : after)
                         .setMaxResults(limit + 1);
-        if (kind != PluginScope.APPLICATION) selection.setParameter("owner", owner);
+        if (kind != PluginScope.APPLICATION) selection.setParameter("userId", userId);
         if (pluginId != null) selection.setParameter("plugin", pluginId);
         List<PluginRecord> rows = selection.getResultList();
         int count = Math.min(limit, rows.size());
@@ -101,7 +102,7 @@ public class RetainedPluginData {
      */
     @Transactional(readOnly = true)
     public @NonNull Export export(@NonNull String id) {
-        String owner = authorization.requireUser();
+        UUID userId = authorization.requireUserId();
         PluginRecord row = database.find(PluginRecord.class, id);
         if (row == null) throw notFound();
         PluginScope kind;
@@ -117,19 +118,19 @@ public class RetainedPluginData {
                 throw notFound();
             }
         } else if (row.user == null
-                || !owner.equals(row.user.getUsername())
+                || !userId.equals(row.user.getUserId())
                 || (kind == PluginScope.SESSION
-                        && (row.session == null || !owner.equals(row.session.getOwner())))) {
+                        && (row.session == null || !userId.equals(row.session.getUserId())))) {
             throw notFound();
         }
         return new Export(metadata(row), row.payload);
     }
 
-    private static @NonNull String ownerClause(@NonNull PluginScope kind) {
+    private static @NonNull String userClause(@NonNull PluginScope kind) {
         return switch (kind) {
             case APPLICATION -> "";
-            case USER -> " and r.user.username = :owner";
-            case SESSION -> " and r.user.username = :owner and r.session.owner = :owner";
+            case USER -> " and r.user.userId = :userId";
+            case SESSION -> " and r.user.userId = :userId and r.session.userId = :userId";
             case AGENT -> throw new IllegalArgumentException("Agent-scoped storage is unavailable");
         };
     }

@@ -40,14 +40,21 @@ class BoundPluginHostTest {
                     new PluginStorage.Grant<>(
                             "distinct-account",
                             new Scope.SessionScope(
-                                    "immutable-account-id", fixture.session.getId()));
-            when(fixture.scopes.authorizeSession(fixture.storage, grant)).thenReturn("owner");
+                                    fixture.session.getUserId(), fixture.session.getId()));
+            when(fixture.scopes.authorizeSession(fixture.storage, grant))
+                    .thenReturn(UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"));
             when(fixture.storage.scopes(PluginScope.SESSION, null, 200))
                     .thenReturn(new PluginStorage.Page<>(List.of(grant), null));
             var host =
                     new BoundPluginHost(delegate, fixture.plugin, fixture.storage, fixture.scopes);
-            var valid = new Scope.SessionScope("owner", fixture.session.getId());
-            var invalid = new Scope.SessionScope("different-owner", fixture.session.getId());
+            var valid =
+                    new Scope.SessionScope(
+                            UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"),
+                            fixture.session.getId());
+            var invalid =
+                    new Scope.SessionScope(
+                            UUID.fromString("709930b5-15f4-5ae0-8194-4a8c3f8b5713"),
+                            fixture.session.getId());
             var facts = new JsonValue.ObjectValue(Map.of());
             assertThrows(SecurityException.class, () -> host.publish(invalid, "changed", facts));
             assertThrows(SecurityException.class, () -> host.invalidate(invalid, "groups"));
@@ -56,8 +63,8 @@ class BoundPluginHostTest {
             host.invalidate(valid, "groups");
             verify(delegate).publish(fixture.session.getId(), "test.plugin:changed", facts);
             verify(delegate).invalidate(fixture.session.getId(), "groups");
-            assertNotEquals(valid.owner(), grant.scope().owner());
-            assertThrows(SecurityException.class, () -> host.invalidate(grant.scope(), "groups"));
+            assertEquals(valid.userId(), grant.scope().userId());
+            host.invalidate(grant.scope(), "groups");
         }
     }
 
@@ -96,19 +103,18 @@ class BoundPluginHostTest {
                                     BoundPluginHostTest.class,
                                     Map.of(),
                                     new Provenance("test.plugin", binding, "1.0.0", "operation"));
-                    var user = UUID.randomUUID();
+                    var user = fixture.session.getUserId();
                     var session = UUID.fromString(fixture.session.getId());
                     var permit =
                             ToolExecutionPermit.capture(
                                             new ToolCall(name, Map.of(), "call"),
                                             definition,
                                             Workspace.single(Path.of("."), PathMode.REAL))
-                                    .withCaller(fixture.childId, user, "owner", session);
+                                    .withCaller(fixture.childId, user, session);
                     ToolCallContextHolder.set(
                             new ToolCallContext(
                                     fixture.childId,
                                     user,
-                                    "owner",
                                     session,
                                     ToolResultPresentationMode.BASIC,
                                     permit,
@@ -166,15 +172,31 @@ class BoundPluginHostTest {
             var host =
                     new BoundPluginHost(delegate, fixture.plugin, fixture.storage, fixture.scopes);
             host.invalidate(fixture.session.getId(), "groups");
-            host.wake("owner", fixture.session.getId(), fixture.childId);
+            host.wake(
+                    UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"),
+                    fixture.session.getId(),
+                    fixture.childId);
             verify(delegate).invalidate(fixture.session.getId(), "groups");
-            verify(delegate).wake("owner", fixture.session.getId(), fixture.childId);
+            verify(delegate)
+                    .wake(
+                            UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"),
+                            fixture.session.getId(),
+                            fixture.childId);
             assertThrows(SecurityException.class, () -> host.invalidate("foreign", "groups"));
             assertThrows(
                     SecurityException.class,
-                    () -> host.wake("foreign-owner", fixture.session.getId(), fixture.childId));
+                    () ->
+                            host.wake(
+                                    UUID.fromString("ec629ca2-6e80-51d3-a243-d00a0c2fcb52"),
+                                    fixture.session.getId(),
+                                    fixture.childId));
             assertThrows(
-                    SecurityException.class, () -> host.wake("owner", "foreign", fixture.childId));
+                    SecurityException.class,
+                    () ->
+                            host.wake(
+                                    UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"),
+                                    "foreign",
+                                    fixture.childId));
             when(fixture.scopes.authorizeSession(fixture.storage, fixture.scope))
                     .thenThrow(new SecurityException("deselected"));
             assertThrows(

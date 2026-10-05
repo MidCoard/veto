@@ -3,6 +3,7 @@ package top.focess.veto.security;
 import static top.focess.veto.util.LogValues.safe;
 
 import java.util.List;
+import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -84,8 +85,8 @@ public class UserAdminService {
      */
     @Transactional
     public void create(@NonNull String username, @NonNull String password, @NonNull String role) {
-        users.create(username, password, role);
-        vault.createVault(username, password);
+        var created = users.create(username, password, role);
+        vault.createVault(created.getUserId(), password);
     }
 
     /**
@@ -94,22 +95,22 @@ public class UserAdminService {
      * cleanup is best-effort.
      */
     @Transactional
-    public void deleteUser(@NonNull String username) {
-        pluginDataCleanup.beforeOwnerDeleted(username);
+    public void deleteUser(@NonNull UUID userId) {
+        pluginDataCleanup.beforeUserDeleted(userId);
         try {
-            auth.logout(username);
+            auth.logout(userId);
         } catch (Exception e) {
             log.debug(
                     "UserAdminService: logout during delete of '{}' skipped: {}",
-                    username,
+                    userId,
                     safe(e.getMessage()));
         }
-        for (SessionEntity s : sessions.findByOwner(username)) {
+        for (SessionEntity s : sessions.findByUserId(userId)) {
             Runnable notifyDeleted =
                     () ->
                             eventManager.submit(
                                     new SessionDeletedEvent(
-                                            new Scope.SessionScope(username, s.getId())));
+                                            new Scope.SessionScope(userId, s.getId())));
             if (TransactionSynchronizationManager.isSynchronizationActive())
                 TransactionSynchronizationManager.registerSynchronization(
                         new TransactionSynchronization() {
@@ -123,11 +124,11 @@ public class UserAdminService {
             hitlRecords.deleteBySessionId(s.getId());
             agents.deleteBySessionId(s.getId());
         }
-        pluginStorage.deleteUser(username);
-        sessions.deleteByOwner(username);
-        patterns.deleteByOwner(username);
-        users.deleteByUsername(username);
-        vault.deleteVaultStore(username);
+        pluginStorage.deleteUser(userId);
+        sessions.deleteByUserId(userId);
+        patterns.deleteByUserId(userId);
+        vault.deleteVaultStore(userId);
+        users.deleteByUserId(userId);
     }
 
     /** Count of ADMIN users (for the last-admin guard). */
@@ -136,8 +137,8 @@ public class UserAdminService {
     }
 
     /** Whether the user exists and has the ADMIN role. */
-    public boolean isAdmin(@NonNull String username) {
-        return users.isAdmin(username);
+    public boolean isAdmin(@NonNull UUID userId) {
+        return users.isAdmin(userId);
     }
 
     /** Lists every user (admin only). */
@@ -146,7 +147,8 @@ public class UserAdminService {
     }
 
     /** Resets the password (new Argon2id hash; invalidates the existing vault). */
-    public void setPassword(@NonNull String username, @NonNull String password) {
-        users.setPassword(username, password);
+    public void setPassword(@NonNull UUID userId, @NonNull String password) {
+        auth.logout(userId);
+        users.setPassword(userId, password);
     }
 }

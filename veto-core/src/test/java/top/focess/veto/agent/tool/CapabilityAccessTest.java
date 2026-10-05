@@ -44,13 +44,12 @@ class CapabilityAccessTest {
                         new ToolCall(tool.getName(), arguments, "screened-call"),
                         ToolSchemaCompiler.compileNative(tool),
                         Workspace.single(root, PathMode.REAL))
-                .withCaller("agent", USER, "owner", null);
+                .withCaller("agent", USER, null);
     }
 
     private static void bind(@NonNull ToolExecutionPermit permit, @NonNull String agentId) {
         ToolCallContextHolder.set(
-                new ToolCallContext(
-                        agentId, USER, "owner", null, ToolResultPresentationMode.BASIC, permit));
+                new ToolCallContext(agentId, USER, null, ToolResultPresentationMode.BASIC, permit));
         ToolCallContextHolder.setCurrentCallId(permit.callId());
     }
 

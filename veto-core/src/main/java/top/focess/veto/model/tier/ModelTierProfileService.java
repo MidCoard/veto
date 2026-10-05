@@ -3,6 +3,7 @@ package top.focess.veto.model.tier;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 
 /**
@@ -26,12 +27,12 @@ public interface ModelTierProfileService {
      *
      * @throws IllegalArgumentException if a profile with this name already exists for the user
      */
-    void createProfile(@NonNull String username, @NonNull String name);
+    void createProfile(@NonNull UUID userId, @NonNull String name);
 
     /**
      * Set one field of one tier's binding within a profile, upserting the binding row.
      *
-     * @param username the session owner
+     * @param userId the account ID
      * @param profileName the profile name (must exist)
      * @param tier the tier whose binding is being configured
      * @param field the field to set
@@ -41,7 +42,7 @@ public interface ModelTierProfileService {
      *     CREDENTIAL_KEY} and no credential with that key is stored in the user's vault
      */
     void setField(
-            @NonNull String username,
+            @NonNull UUID userId,
             @NonNull String profileName,
             @NonNull ModelTier tier,
             @NonNull ModelTierField field,
@@ -49,7 +50,7 @@ public interface ModelTierProfileService {
 
     /** Updates a binding atomically: an invalid field leaves all fields unchanged. */
     void setFields(
-            @NonNull String username,
+            @NonNull UUID userId,
             @NonNull String profileName,
             @NonNull ModelTier tier,
             @NonNull Map<@NonNull ModelTierField, @NonNull String> fields);
@@ -60,23 +61,22 @@ public interface ModelTierProfileService {
      *
      * @throws IllegalArgumentException if the profile does not exist
      */
-    void activateProfile(@NonNull String username, @NonNull String name);
+    void activateProfile(@NonNull UUID userId, @NonNull String name);
 
     /** All profiles owned by the user. */
-    @NonNull List<ModelTierProfileEntity> listProfiles(@NonNull String username);
+    @NonNull List<ModelTierProfileEntity> listProfiles(@NonNull UUID userId);
 
     /** A profile by name within the user's profiles. */
-    @NonNull Optional<ModelTierProfileEntity> profile(
-            @NonNull String username, @NonNull String name);
+    @NonNull Optional<ModelTierProfileEntity> profile(@NonNull UUID userId, @NonNull String name);
 
     /** The bindings for one of the user's profiles (for {@code /modeltier show}). */
     @NonNull List<ModelTierBindingEntity> bindings(
-            @NonNull String username, @NonNull String profileName);
+            @NonNull UUID userId, @NonNull String profileName);
 
     /**
      * Delete a profile and its bindings. Returns false if the profile does not exist.
      *
      * @return true if a profile was deleted
      */
-    boolean deleteProfile(@NonNull String username, @NonNull String name);
+    boolean deleteProfile(@NonNull UUID userId, @NonNull String name);
 }

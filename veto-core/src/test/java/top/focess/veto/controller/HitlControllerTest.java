@@ -21,6 +21,7 @@ import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.bus.SessionInvalidations;
 import top.focess.veto.session.SessionService;
 import top.focess.veto.vault.KeysteadVault;
+import top.focess.veto.vault.TestUsers;
 
 class HitlControllerTest {
     @Test
@@ -47,8 +48,9 @@ class HitlControllerTest {
                         List.of(VetoOption.ACCEPT_READ, VetoOption.READ_DECLINE),
                         Danger.SAFE);
         var foreign = registry.register("outsider", "foreign");
-        when(vault.currentUser()).thenReturn("alice");
-        when(sessions.primaryAgentIdFor("session", "alice")).thenReturn(Optional.of("leader"));
+        when(vault.currentUser()).thenReturn(TestUsers.ALICE);
+        when(sessions.primaryAgentIdFor("session", TestUsers.ALICE))
+                .thenReturn(Optional.of("leader"));
         when(service.resolveVeto("mate", read.callId(), "ACCEPT_READ"))
                 .thenAnswer(
                         ignored -> registry.resolveOption("mate", read.callId(), "ACCEPT_READ"));

@@ -29,7 +29,7 @@ class ManagedPluginFlowTest {
                         new PluginIdentity("top.focess.builtin", "1.0.100"),
                         () -> {},
                         () -> {
-                            throw new IllegalStateException("No lifecycle owner");
+                            throw new IllegalStateException("No lifecycle userId");
                         },
                         Map.of(),
                         Map.of());
@@ -51,7 +51,7 @@ class ManagedPluginFlowTest {
                             () -> {},
                             () -> {
                                 throw new IllegalStateException(
-                                        "Plugin context is not bound to a lifecycle owner");
+                                        "Plugin context is not bound to a lifecycle userId");
                             },
                             Map.of(PluginHost.class, mock(requireNonNull(PluginHost.class))),
                             handlers);

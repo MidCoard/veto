@@ -2,7 +2,10 @@ package top.focess.veto.vault;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
+import static top.focess.veto.vault.TestUsers.ALICE;
+import static top.focess.veto.vault.TestUsers.BOB;
 
+import java.util.UUID;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
@@ -18,12 +21,39 @@ import top.focess.veto.integration.plugins.PluginManager;
 import top.focess.veto.integration.plugins.PluginTestSupport;
 
 class AuthLifecycleManagerTest {
+    private static @NonNull KeysteadVault vault() {
+        var vault = mock(KeysteadVault.class);
+        when(vault.signup("alice", "password")).thenReturn(ALICE);
+        when(vault.login("alice", "password")).thenReturn(ALICE);
+        when(vault.login("alice", "test-password")).thenReturn(ALICE);
+        when(vault.login("alice", "replacement-password")).thenReturn(ALICE);
+        return vault;
+    }
+
+    @Test
+    void ownerLogoutRevokesOldTokensBeforeTheUsernameCanBeReused() {
+        var sessions = new SessionManager();
+        var oldToken = sessions.createSession(ALICE, "alice");
+        var otherToken = sessions.createSession(BOB, "bob");
+        var vault = vault();
+        var lifecycle =
+                new AuthLifecycleManager(
+                        vault, mock(PromptHandler.class), mock(EventManager.class), sessions);
+        lifecycle.logout(ALICE);
+        lifecycle.login("alice", "replacement-password");
+        var replacementId = UUID.randomUUID();
+        var replacementToken = sessions.createSession(replacementId, "alice");
+        assertTrue(sessions.validate(oldToken).isEmpty());
+        assertEquals(replacementId, sessions.validate(replacementToken).orElseThrow().userId());
+        assertTrue(sessions.validate(otherToken).isPresent());
+    }
+
     @Test
     void failedAuthenticationPublishesNeitherSuccessEvent() {
-        var vault = mock(KeysteadVault.class);
+        var vault = vault();
         var prompts = mock(PromptHandler.class);
         var events = mock(EventManager.class);
-        var lifecycle = new AuthLifecycleManager(vault, prompts, events);
+        var lifecycle = new AuthLifecycleManager(vault, prompts, events, new SessionManager());
         doThrow(new IllegalArgumentException("Signup failed"))
                 .when(vault)
                 .signup("alice", "invalid");
@@ -35,11 +65,11 @@ class AuthLifecycleManagerTest {
 
     @Test
     void logoutNotificationPrecedesTerminalDetachAndVaultClose() {
-        var vault = mock(KeysteadVault.class);
+        var vault = vault();
         var prompts = mock(PromptHandler.class);
         var events = mock(EventManager.class);
-        var lifecycle = new AuthLifecycleManager(vault, prompts, events);
-        lifecycle.logout("alice");
+        var lifecycle = new AuthLifecycleManager(vault, prompts, events, new SessionManager());
+        lifecycle.logout(ALICE);
         var ordered = inOrder(events, prompts, vault);
         ordered.verify(events)
                 .submit(
@@ -47,17 +77,17 @@ class AuthLifecycleManagerTest {
                                 event ->
                                         event instanceof UserLogoutEvent fact
                                                 && fact.scope()
-                                                        .equals(new Scope.UserScope("alice"))));
-        ordered.verify(prompts).deactivateUser("alice");
-        ordered.verify(vault).logout("alice");
+                                                        .equals(new Scope.UserScope(ALICE))));
+        ordered.verify(prompts).deactivateUser(ALICE);
+        ordered.verify(vault).logout(ALICE);
     }
 
     @Test
     void signupAndLoginReportDifferentAuthenticationEvents() {
-        KeysteadVault vault = mock(KeysteadVault.class);
+        KeysteadVault vault = vault();
         PromptHandler prompts = mock(PromptHandler.class);
         EventManager events = mock(EventManager.class);
-        var lifecycle = new AuthLifecycleManager(vault, prompts, events);
+        var lifecycle = new AuthLifecycleManager(vault, prompts, events, new SessionManager());
 
         lifecycle.signup("alice", "password");
         verify(events)
@@ -66,14 +96,14 @@ class AuthLifecycleManagerTest {
                                 event ->
                                         event instanceof UserRegisteredEvent fact
                                                 && fact.scope()
-                                                        .equals(new Scope.UserScope("alice"))));
+                                                        .equals(new Scope.UserScope(ALICE))));
         verify(events, never())
                 .submit(
                         argThat(
                                 event ->
                                         event instanceof UserLoggedInEvent fact
                                                 && fact.scope()
-                                                        .equals(new Scope.UserScope("alice"))));
+                                                        .equals(new Scope.UserScope(ALICE))));
 
         lifecycle.login("alice", "password");
         verify(events)
@@ -82,26 +112,27 @@ class AuthLifecycleManagerTest {
                                 event ->
                                         event instanceof UserLoggedInEvent fact
                                                 && fact.scope()
-                                                        .equals(new Scope.UserScope("alice"))));
+                                                        .equals(new Scope.UserScope(ALICE))));
     }
 
     @Test
     void logoutClosesCaptureEvenWhenDetachAndVaultCloseFail() throws Exception {
-        KeysteadVault vault = mock(KeysteadVault.class);
+        KeysteadVault vault = vault();
         PromptHandler prompts = mock(PromptHandler.class);
         try (var plugins = PluginTestSupport.manager()) {
-            var scope = new Scope.AgentScope("alice", "session", "agent");
-            var other = new Scope.AgentScope("bob", "session", "agent");
+            var scope = new Scope.AgentScope(ALICE, "session", "agent");
+            var other = new Scope.AgentScope(BOB, "session", "agent");
             String reference = capture(plugins, scope, "password=alpha");
             String otherReference = capture(plugins, other, "password=beta");
             var lifecycle =
                     new AuthLifecycleManager(
-                            vault, prompts, PluginTestSupport.eventManager(plugins));
-            doThrow(new IllegalStateException("Detach failed"))
-                    .when(prompts)
-                    .deactivateUser("alice");
-            doThrow(new IllegalStateException("Close failed")).when(vault).logout("alice");
-            assertThrows(IllegalStateException.class, () -> lifecycle.logout("alice"));
+                            vault,
+                            prompts,
+                            PluginTestSupport.eventManager(plugins),
+                            new SessionManager());
+            doThrow(new IllegalStateException("Detach failed")).when(prompts).deactivateUser(ALICE);
+            doThrow(new IllegalStateException("Close failed")).when(vault).logout(ALICE);
+            assertThrows(IllegalStateException.class, () -> lifecycle.logout(ALICE));
             assertTrue(PluginTestSupport.reveal(plugins, scope, reference).isEmpty());
             assertEquals(
                     "password=late",
@@ -118,15 +149,18 @@ class AuthLifecycleManagerTest {
 
     @Test
     void onlySuccessfulLoginReopensCaptureWithoutRestoringOldReferences() throws Exception {
-        KeysteadVault vault = mock(KeysteadVault.class);
+        KeysteadVault vault = vault();
         PromptHandler prompts = mock(PromptHandler.class);
         try (var plugins = PluginTestSupport.manager()) {
-            var scope = new Scope.AgentScope("alice", "session", "agent");
+            var scope = new Scope.AgentScope(ALICE, "session", "agent");
             String old = capture(plugins, scope, "password=alpha");
             var lifecycle =
                     new AuthLifecycleManager(
-                            vault, prompts, PluginTestSupport.eventManager(plugins));
-            lifecycle.logout("alice");
+                            vault,
+                            prompts,
+                            PluginTestSupport.eventManager(plugins),
+                            new SessionManager());
+            lifecycle.logout(ALICE);
             doThrow(new IllegalArgumentException("Login failed"))
                     .when(vault)
                     .login("alice", "invalid");

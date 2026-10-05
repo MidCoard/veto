@@ -8,7 +8,7 @@ import top.focess.veto.api.agent.AgentState;
 import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.api.plugin.storage.PluginStorage;
 
-/** Session-bound execution authority. Plugins cannot choose an owner or host workspace path. */
+/** Session-bound execution authority. Plugins cannot choose a user or host workspace path. */
 public interface AgentHost {
     /**
      * Creates an ephemeral agent for the current authorized tool invocation.

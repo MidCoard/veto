@@ -13,6 +13,7 @@ import top.focess.veto.api.plugin.agent.AgentProfile;
 import top.focess.veto.api.plugin.contract.AgentConfiguration;
 import top.focess.veto.api.plugin.storage.PluginStorage;
 import top.focess.veto.builtin.group.GroupProfiles;
+import top.focess.veto.vault.TestUsers;
 
 /** Test assembly uses the shipped plugin policy, without restoring role policy to core. */
 public final class BuiltinProfiles {
@@ -31,9 +32,9 @@ public final class BuiltinProfiles {
                         Map.of());
         var context =
                 new AgentConfiguration.Context(
-                        "owner",
+                        TestUsers.OWNER,
                         new PluginStorage.Grant<>(
-                                "test", new Scope.SessionScope("user", "session")),
+                                "test", new Scope.SessionScope(TestUsers.OWNER, "session")),
                         new AgentHost.Session() {
                             public @NonNull String id() {
                                 return "session";

@@ -50,6 +50,7 @@ import top.focess.veto.model.SessionEntity;
 import top.focess.veto.model.SessionRepository;
 import top.focess.veto.plugin.runtime.ManagedPlugin;
 import top.focess.veto.util.Nullness;
+import top.focess.veto.vault.TestUsers;
 import top.focess.veto.vault.UserContext;
 import top.focess.veto.vault.UserEntity;
 
@@ -62,6 +63,7 @@ class ScopedPluginStorageTest {
     private @NonNull ManagedPlugin plugin = mock();
     private @NonNull PluginStorage first = mock();
     private @NonNull PluginStorage second = mock();
+    private @NonNull UUID userId = UUID.randomUUID();
     private @NonNull String session = UUID.randomUUID().toString();
     private static final PluginStorage.@NonNull Document VALUE =
             new PluginStorage.Document(1, new JsonValue.StringValue("payload"));
@@ -86,10 +88,12 @@ class ScopedPluginStorageTest {
         second = host.bind(plugin("two"));
         transactions.executeWithoutResult(
                 status -> {
-                    database.persist(
+                    var user =
                             new UserEntity(
-                                    "owner", new byte[0], new byte[0], "USER", Instant.now()));
-                    var row = new SessionEntity("owner", "test", "D:/workspace");
+                                    "alice", new byte[0], new byte[0], "USER", Instant.now());
+                    userId = user.getUserId();
+                    database.persist(user);
+                    var row = new SessionEntity(userId, "test", "D:/workspace");
                     session = row.getId();
                     row.setPluginBindings(
                             List.of(
@@ -117,7 +121,7 @@ class ScopedPluginStorageTest {
 
     private PluginStorage.@NonNull Grant<Scope.@NonNull SessionScope> scope(
             @NonNull PluginStorage storage) {
-        var invocation = new PluginInvocationContext("owner", session);
+        var invocation = new PluginInvocationContext(userId, session);
         try {
             return storage.currentSession();
         } finally {
@@ -132,7 +136,7 @@ class ScopedPluginStorageTest {
 
     @Test
     void retainedRecordsRemainVisibleAndExportableWithoutTheirPlugin() {
-        UserContext.set("owner");
+        UserContext.set(userId);
         try {
             var user = first.currentUser();
             first.user(user).put("retained-user", null, VALUE);
@@ -152,7 +156,7 @@ class ScopedPluginStorageTest {
                     new RetainedPluginData(
                             database,
                             manager,
-                            AuthorizationTestSupport.authorizer("admin"::equals));
+                            AuthorizationTestSupport.authorizer(TestUsers.ADMIN::equals));
             var userPage =
                     required(
                             transactions.execute(
@@ -180,7 +184,7 @@ class ScopedPluginStorageTest {
                     ResponseStatusException.class,
                     () -> data.list(PluginScope.APPLICATION, null, null, 10));
 
-            UserContext.set("intruder");
+            UserContext.set(TestUsers.BOB);
             assertTrue(
                     required(
                                     transactions.execute(
@@ -193,7 +197,7 @@ class ScopedPluginStorageTest {
                             () -> transactions.execute(status -> data.export(userRecord.id())));
             assertEquals(404, denied.getStatusCode().value());
 
-            UserContext.set("admin");
+            UserContext.set(TestUsers.ADMIN);
             var application =
                     required(
                             transactions.execute(
@@ -214,7 +218,7 @@ class ScopedPluginStorageTest {
 
     @Test
     void preparationAndPresentationCannotMutateAnyStorageScope() {
-        UserContext.set("owner");
+        UserContext.set(userId);
         PluginStorage.Grant<Scope.@NonNull UserScope> user;
         try {
             user = first.currentUser();
@@ -284,7 +288,7 @@ class ScopedPluginStorageTest {
         SessionPlugins selected = mock(SessionPlugins.class);
         PluginManager plugins = mock(PluginManager.class);
         var row = database.find(SessionEntity.class, session);
-        when(sessions.findFirstByNameAndOwnerOrderByLastActiveAtDesc("test", "owner"))
+        when(sessions.findFirstByNameAndUserIdOrderByLastActiveAtDesc("test", userId))
                 .thenReturn(Optional.of(Nullness.requireNonNull(row)));
         when(selected.bindings(session))
                 .thenReturn(List.of(new PluginBinding("one", "1.0.0", "1.0.0")));
@@ -335,8 +339,8 @@ class ScopedPluginStorageTest {
                         selected,
                         plugins,
                         agents);
-        var outer = new PluginInvocationContext("owner", "outer");
-        UserContext.set("owner");
+        var outer = new PluginInvocationContext(userId, "outer");
+        UserContext.set(userId);
         try {
             controller.act(
                     "test",
@@ -398,7 +402,10 @@ class ScopedPluginStorageTest {
                         first.session(
                                 new PluginStorage.Grant<>(
                                         authorized.token(),
-                                        new Scope.SessionScope("forged", session))));
+                                        new Scope.SessionScope(
+                                                UUID.fromString(
+                                                        "a5a4c1ab-06c4-5f77-930b-c65b7d1c390e"),
+                                                session))));
         assertThrows(
                 SecurityException.class,
                 () ->
@@ -406,7 +413,7 @@ class ScopedPluginStorageTest {
                                 new PluginStorage.Grant<>(
                                         authorized.token(),
                                         new Scope.SessionScope(
-                                                authorized.scope().owner(),
+                                                authorized.scope().userId(),
                                                 UUID.randomUUID().toString()))));
         assertThrows(
                 SecurityException.class,
@@ -421,7 +428,7 @@ class ScopedPluginStorageTest {
     @Test
     void erasedStoreMethodsRejectWrongGrantKind() throws Exception {
         var sessionGrant = scope(first);
-        UserContext.set("owner");
+        UserContext.set(userId);
         try {
             var userGrant = first.currentUser();
             first.session(sessionGrant).put("session-only", null, VALUE);
@@ -472,7 +479,7 @@ class ScopedPluginStorageTest {
                                 second));
 
         PluginStorage.Grant<Scope.@NonNull UserScope> callerUser;
-        UserContext.set("owner");
+        UserContext.set(userId);
         try {
             callerUser = first.currentUser();
         } finally {
@@ -567,7 +574,7 @@ class ScopedPluginStorageTest {
 
     @Test
     void userDeletionInvalidatesOldAccountScopeAndPreservesApplicationData() {
-        UserContext.set("owner");
+        UserContext.set(userId);
         PluginStorage.Grant<Scope.@NonNull UserScope> oldScope;
         try {
             oldScope = first.currentUser();
@@ -580,20 +587,22 @@ class ScopedPluginStorageTest {
         first.application().put("key", null, VALUE);
         transactions.executeWithoutResult(
                 status -> {
-                    host.deleteUser("owner");
+                    host.deleteUser(userId);
                     database.remove(database.find(SessionEntity.class, session));
-                    database.remove(database.find(UserEntity.class, "owner"));
+                    database.remove(database.find(UserEntity.class, userId));
                     database.flush();
-                    database.persist(
+                    var replacement =
                             new UserEntity(
-                                    "owner", new byte[0], new byte[0], "USER", Instant.now()));
+                                    "alice", new byte[0], new byte[0], "USER", Instant.now());
+                    userId = replacement.getUserId();
+                    database.persist(replacement);
                 });
         assertThrows(SecurityException.class, () -> userStore.put("resurrect", null, VALUE));
         assertTrue(first.application().get("key").isPresent());
-        UserContext.set("owner");
+        UserContext.set(userId);
         try {
             var replacement = first.currentUser();
-            assertNotEquals(oldScope.scope().owner(), replacement.scope().owner());
+            assertNotEquals(oldScope.scope().userId(), replacement.scope().userId());
             assertTrue(first.user(replacement).get("key").isEmpty());
         } finally {
             UserContext.clear();

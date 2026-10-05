@@ -73,7 +73,7 @@ public final class PluginProcessHosts implements PluginProcessHostFactory {
             ProcessHost.@NonNull Running running) {
         if (!(running instanceof RunningProcess process)
                 || process.owner.plugin != plugin
-                || !process.invocation.owner().equals(invocation.owner())
+                || !process.invocation.userId().equals(invocation.userId())
                 || !process.invocation.sessionId().equals(invocation.sessionId())
                 || !process.invocation.agentId().equals(invocation.agentId()))
             throw new SecurityException("Process belongs to another scope");
@@ -96,7 +96,7 @@ public final class PluginProcessHosts implements PluginProcessHostFactory {
                     || !plugin.bindingId().equals(context.executionPermit().remoteServerName()))
                 throw new SecurityException("Process invocation belongs to another plugin");
             var grant = storage.currentSession();
-            if (!scopes.authorizeSession(storage, grant).equals(context.owner())
+            if (!scopes.authorizeSession(storage, grant).equals(context.userId())
                     || !grant.scope().session().equals(String.valueOf(context.sessionId())))
                 throw new SecurityException("Process scope mismatch");
             return context;
@@ -211,7 +211,7 @@ public final class PluginProcessHosts implements PluginProcessHostFactory {
             if (!(prepared.intent() instanceof ToolPreparation.InputIntent intent)
                     || intent.process() != running)
                 throw new SecurityException("Input target changed after admission");
-            var owner = context.owner();
+            var owner = context.userId();
             if (owner == null) throw new SecurityException("Input caller owner unavailable");
             prepared.consume();
             validateInput(

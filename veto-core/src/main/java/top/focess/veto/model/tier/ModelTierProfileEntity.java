@@ -3,6 +3,8 @@ package top.focess.veto.model.tier;
 import jakarta.persistence.*;
 import java.time.Instant;
 import java.util.UUID;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import org.jspecify.annotations.NonNull;
 
 /**
@@ -17,13 +19,13 @@ import org.jspecify.annotations.NonNull;
  * concrete binding. Switching the active profile ({@code /modeltier use <profile>}) swaps the
  * concrete model for every pattern and agent that user owns, at the next resolution.
  *
- * <p>Unique on (owner, name) - a user's profile names are distinct. A user may have at most one
+ * <p>Unique on (userId, name) - a user's profile names are distinct. A user may have at most one
  * active profile (enforced by the service on {@code /modeltier use}).
  */
 @Entity
 @Table(
         name = "model_tier_profiles",
-        uniqueConstraints = @UniqueConstraint(columnNames = {"owner", "name"}))
+        uniqueConstraints = @UniqueConstraint(columnNames = {"user_id", "name"}))
 public class ModelTierProfileEntity {
 
     @Id private @NonNull String id = "";
@@ -31,8 +33,9 @@ public class ModelTierProfileEntity {
     @Column(nullable = false)
     private @NonNull String name = "";
 
-    @Column(nullable = false)
-    private @NonNull String owner = "";
+    @JdbcTypeCode(SqlTypes.VARCHAR)
+    @Column(name = "user_id", nullable = false)
+    private @NonNull UUID userId = new UUID(0, 0);
 
     @Column(nullable = false)
     private boolean active;
@@ -47,24 +50,24 @@ public class ModelTierProfileEntity {
      * Create a profile. New profiles start inactive - the user activates one via {@code /modeltier
      * use <profile>}.
      *
-     * @param name the profile name (unique per owner)
-     * @param owner the owning username
+     * @param name the profile name (unique per user)
+     * @param userId the owning userId
      */
-    public ModelTierProfileEntity(@NonNull String name, @NonNull String owner) {
-        this(name, owner, false);
+    public ModelTierProfileEntity(@NonNull String name, @NonNull UUID userId) {
+        this(name, userId, false);
     }
 
     /**
      * Create a profile with an explicit active flag (used to auto-activate a user's first profile).
      *
-     * @param name the profile name (unique per owner)
-     * @param owner the owning username
+     * @param name the profile name (unique per user)
+     * @param userId the owning userId
      * @param active whether the profile starts active
      */
-    public ModelTierProfileEntity(@NonNull String name, @NonNull String owner, boolean active) {
+    public ModelTierProfileEntity(@NonNull String name, @NonNull UUID userId, boolean active) {
         this.id = UUID.randomUUID().toString();
         this.name = name;
-        this.owner = owner;
+        this.userId = userId;
         this.active = active;
         this.createdAt = Instant.now();
     }
@@ -81,12 +84,12 @@ public class ModelTierProfileEntity {
         this.name = name;
     }
 
-    public @NonNull String getOwner() {
-        return owner;
+    public @NonNull UUID getUserId() {
+        return userId;
     }
 
-    public void setOwner(@NonNull String owner) {
-        this.owner = owner;
+    public void setUserId(@NonNull UUID userId) {
+        this.userId = userId;
     }
 
     public boolean isActive() {

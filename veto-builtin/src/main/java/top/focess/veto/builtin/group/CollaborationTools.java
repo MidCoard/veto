@@ -48,7 +48,7 @@ public final class CollaborationTools {
                     """,
             security =
                     """
-                    Caller must lead the current owner and Session scoped group.\
+                    Caller must lead the current userId and Session scoped group.\
                     """,
             examples = {
                 "{\"taskId\":\"analysis\"}",
@@ -140,7 +140,7 @@ public final class CollaborationTools {
                     """,
             security =
                     """
-                    Caller must lead the current owner and Session scoped group.\
+                    Caller must lead the current userId and Session scoped group.\
                     """,
             examples = {
                 "{\"mateId\":\"9b2e8c1a-4d5f-4e7b-8c9d-0a1b2c3d4e5f\"}",
@@ -230,7 +230,7 @@ public final class CollaborationTools {
                     """,
             security =
                     """
-                    Caller must lead the current owner and Session scoped group.\
+                    Caller must lead the current userId and Session scoped group.\
                     """,
             examples = {
                 "{\"name\":\"Alice\",\"responsibility\":\"Review the supplied calculations\"}",
@@ -323,7 +323,7 @@ public final class CollaborationTools {
                     """,
             security =
                     """
-                    Caller must lead the current owner and Session scoped group.\
+                    Caller must lead the current userId and Session scoped group.\
                     """,
             examples = {
                 "{\"taskId\":\"calculation\",\"description\":\"Calculate the supplied order total\",\"mateId\":\"9b2e8c1a-4d5f-4e7b-8c9d-0a1b2c3d4e5f\"}",

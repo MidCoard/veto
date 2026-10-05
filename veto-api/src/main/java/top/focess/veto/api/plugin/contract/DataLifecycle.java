@@ -1,28 +1,26 @@
 package top.focess.veto.api.plugin.contract;
 
+import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 
 /** Required permanent-data deletion, separate from best-effort runtime/logout notifications. */
 public interface DataLifecycle {
     /**
-     * Prepares permanent owner deletion on the deleting transaction's thread.
+     * Prepares permanent account deletion on the deleting transaction's thread.
      *
-     * @param owner authenticated owner name
-     * @param userId immutable user identity
+     * @param userId canonical account UUID
      * @return completion callback to receive the transaction outcome
      */
-    @NonNull Completion prepareOwnerDeletion(@NonNull String owner, @NonNull String userId);
+    @NonNull Completion prepareUserDeletion(@NonNull UUID userId);
 
     /**
      * Prepares permanent session deletion on the deleting transaction's thread.
      *
-     * @param owner authenticated owner name
-     * @param userId immutable user identity
+     * @param userId canonical account UUID
      * @param sessionId session being deleted
      * @return completion callback to receive the transaction outcome
      */
-    @NonNull Completion prepareSessionDeletion(
-            @NonNull String owner, @NonNull String userId, @NonNull String sessionId);
+    @NonNull Completion prepareSessionDeletion(@NonNull UUID userId, @NonNull String sessionId);
 
     /** Always delivered after the transaction ends; release reservations on rollback. */
     @FunctionalInterface
