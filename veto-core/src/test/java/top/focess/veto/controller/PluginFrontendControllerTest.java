@@ -12,6 +12,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.server.ResponseStatusException;
 import top.focess.veto.agent.SessionAgentRegistry;
 import top.focess.veto.api.agent.tool.NativeTool;
@@ -26,8 +27,8 @@ import top.focess.veto.integration.plugins.SessionPlugins;
 import top.focess.veto.integration.plugins.WorkflowPluginFixture;
 import top.focess.veto.model.SessionEntity;
 import top.focess.veto.model.SessionRepository;
+import top.focess.veto.vault.ExecutionSecurity;
 import top.focess.veto.vault.TestUsers;
-import top.focess.veto.vault.UserContext;
 
 class PluginFrontendControllerTest {
     @Test
@@ -92,7 +93,7 @@ class PluginFrontendControllerTest {
                             fixture.manager,
                             agents);
             clearInvocations(fixture.manager);
-            UserContext.set(TestUsers.OWNER);
+            SecurityContextHolder.setContext(ExecutionSecurity.contextFor(TestUsers.OWNER));
             try {
                 when(fixture.manager.registry()).thenReturn(captured, replacement);
                 var modules = controller.list("private").getBody();
@@ -118,7 +119,7 @@ class PluginFrontendControllerTest {
                 verify(fixture.manager, times(2)).registry();
                 verifyNoInteractions(replacement);
             } finally {
-                UserContext.clear();
+                SecurityContextHolder.clearContext();
             }
         }
     }
@@ -146,7 +147,7 @@ class PluginFrontendControllerTest {
                         selected,
                         plugins,
                         agents);
-        UserContext.set(TestUsers.OWNER);
+        SecurityContextHolder.setContext(ExecutionSecurity.contextFor(TestUsers.OWNER));
         try {
             for (String agent :
                     List.of("same-owner-other-session", "other-owner-agent", "missing")) {
@@ -167,13 +168,13 @@ class PluginFrontendControllerTest {
             }
             verifyNoInteractions(plugins);
         } finally {
-            UserContext.clear();
+            SecurityContextHolder.clearContext();
         }
     }
 
     @Test
     void anonymousRequestsCannotReadModulesOrInvokeActions() {
-        UserContext.clear();
+        SecurityContextHolder.clearContext();
         SessionRepository sessions = mock(SessionRepository.class);
         SessionPlugins selected = mock(SessionPlugins.class);
         PluginManager plugins = mock(PluginManager.class);
@@ -219,7 +220,7 @@ class PluginFrontendControllerTest {
                         selected,
                         plugins,
                         mock());
-        UserContext.set(TestUsers.BOB);
+        SecurityContextHolder.setContext(ExecutionSecurity.contextFor(TestUsers.BOB));
         try {
             assertEquals(
                     HttpStatus.NOT_FOUND,
@@ -240,7 +241,7 @@ class PluginFrontendControllerTest {
                             .getStatusCode());
             verifyNoInteractions(selected, plugins);
         } finally {
-            UserContext.clear();
+            SecurityContextHolder.clearContext();
         }
     }
 }

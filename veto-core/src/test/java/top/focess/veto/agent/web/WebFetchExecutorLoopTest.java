@@ -22,6 +22,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
+import org.springframework.security.core.context.SecurityContextHolder;
 import top.focess.veto.agent.SessionAgentRegistry;
 import top.focess.veto.agent.TurnRecord;
 import top.focess.veto.agent.TurnType;
@@ -56,8 +57,9 @@ import top.focess.veto.model.tier.ModelTier;
 import top.focess.veto.model.tier.ModelTierConfigException;
 import top.focess.veto.model.tier.ModelTierRegistry;
 import top.focess.veto.util.Nullness;
+import top.focess.veto.vault.CurrentUser;
+import top.focess.veto.vault.ExecutionSecurity;
 import top.focess.veto.vault.TestUsers;
-import top.focess.veto.vault.UserContext;
 
 class WebFetchExecutorLoopTest {
     private final @NonNull ObjectMapper mapper = new ObjectMapper();
@@ -71,7 +73,7 @@ class WebFetchExecutorLoopTest {
 
     @AfterEach
     void clearOwner() {
-        UserContext.clear();
+        SecurityContextHolder.clearContext();
     }
 
     @Test
@@ -194,7 +196,7 @@ class WebFetchExecutorLoopTest {
                 Set.of("fetch_page", "read_sections", "find_sections", "finish_read"),
                 Set.copyOf(first.tools().stream().map(ToolDefinition::name).toList()));
         assertFalse(first.systemPrompt().contains("UNRELATED_PAGE_BODY"));
-        assertEquals(TestUsers.OWNER, UserContext.get());
+        assertEquals(TestUsers.OWNER, CurrentUser.id());
         verify(access).fetch();
         verify(access).close();
         verify(models, never()).resolve(TestUsers.OWNER, ModelTier.MID);
@@ -475,7 +477,7 @@ class WebFetchExecutorLoopTest {
         assertNotNull(thread);
         thread.join(3000);
         assertFalse(thread.isAlive());
-        assertEquals(TestUsers.OWNER, UserContext.get());
+        assertEquals(TestUsers.OWNER, CurrentUser.id());
         verify(access).close();
     }
 
@@ -496,7 +498,7 @@ class WebFetchExecutorLoopTest {
                                     } catch (Exception error) {
                                         failure.set(error);
                                     } finally {
-                                        UserContext.clear();
+                                        SecurityContextHolder.clearContext();
                                     }
                                 });
         try {
@@ -511,7 +513,7 @@ class WebFetchExecutorLoopTest {
             assertNotNull(thread);
             thread.join(3000);
             assertFalse(thread.isAlive());
-            assertNull(UserContext.get());
+            assertNull(CurrentUser.id());
             verify(access).close();
         } finally {
             parent.interrupt();
@@ -523,7 +525,7 @@ class WebFetchExecutorLoopTest {
             @NonNull AtomicReference<Thread> worker,
             @NonNull CountDownLatch entered) {
         return (request, modelSessionId) -> {
-            assertEquals(TestUsers.OWNER, UserContext.get());
+            assertEquals(TestUsers.OWNER, CurrentUser.id());
             worker.set(Thread.currentThread());
             entered.countDown();
             try {
@@ -540,7 +542,7 @@ class WebFetchExecutorLoopTest {
     private @NonNull UniformLLMCaller script(@NonNull List<@NonNull VetoResponse> turns) {
         AtomicInteger index = new AtomicInteger();
         return (request, modelSessionId) -> {
-            assertEquals(TestUsers.OWNER, UserContext.get());
+            assertEquals(TestUsers.OWNER, CurrentUser.id());
             requests.add(request);
             return turns.get(index.getAndIncrement());
         };
@@ -626,7 +628,7 @@ class WebFetchExecutorLoopTest {
     }
 
     private @NonNull String execute(@NonNull WebFetchTool tool) throws Exception {
-        UserContext.set(TestUsers.OWNER);
+        SecurityContextHolder.setContext(ExecutionSecurity.contextFor(TestUsers.OWNER));
         return CapabilityTestCalls.execute(
                 tool, new WebFetchTool.Args("https://example.com/docs", "Find timeout units."));
     }

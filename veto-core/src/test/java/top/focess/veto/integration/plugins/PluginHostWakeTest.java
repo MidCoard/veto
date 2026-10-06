@@ -10,6 +10,7 @@ import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
+import org.springframework.security.core.context.SecurityContextHolder;
 import top.focess.veto.agent.SessionAgentRegistry;
 import top.focess.veto.agent.VetoAgent;
 import top.focess.veto.agent.identity.AgentPersona;
@@ -19,8 +20,9 @@ import top.focess.veto.bus.SessionInvalidations;
 import top.focess.veto.memory.TurnRecordRepository;
 import top.focess.veto.model.AgentInstanceRepository;
 import top.focess.veto.session.SessionService;
+import top.focess.veto.vault.CurrentUser;
+import top.focess.veto.vault.ExecutionSecurity;
 import top.focess.veto.vault.KeysteadVault;
-import top.focess.veto.vault.UserContext;
 
 class PluginHostWakeTest {
     @Test
@@ -49,12 +51,13 @@ class PluginHostWakeTest {
                         List.of(),
                         Instant.now());
         when(vault.isUnlocked()).thenReturn(true);
-        UserContext.set(UUID.fromString("92dca498-7be6-5c04-9439-9d4f7a4942b2"));
+        SecurityContextHolder.setContext(
+                ExecutionSecurity.contextFor(
+                        UUID.fromString("92dca498-7be6-5c04-9439-9d4f7a4942b2")));
         try {
             activator.wake(record.userId(), record.sessionId(), record.agentId());
             verifyNoInteractions(sessions);
-            assertEquals(
-                    UUID.fromString("92dca498-7be6-5c04-9439-9d4f7a4942b2"), UserContext.get());
+            assertEquals(UUID.fromString("92dca498-7be6-5c04-9439-9d4f7a4942b2"), CurrentUser.id());
             when(vault.isUnlocked(UUID.fromString("58e341e3-0de3-571d-81db-520951bc691b")))
                     .thenReturn(true);
             when(sessions.activateForObservation(
@@ -65,14 +68,13 @@ class PluginHostWakeTest {
                             invocation -> {
                                 assertEquals(
                                         UUID.fromString("58e341e3-0de3-571d-81db-520951bc691b"),
-                                        UserContext.get());
+                                        CurrentUser.id());
                                 throw new IllegalStateException("temporary recovery failure");
                             });
             assertThrows(
                     IllegalStateException.class,
                     () -> activator.wake(record.userId(), record.sessionId(), record.agentId()));
-            assertEquals(
-                    UUID.fromString("92dca498-7be6-5c04-9439-9d4f7a4942b2"), UserContext.get());
+            assertEquals(UUID.fromString("92dca498-7be6-5c04-9439-9d4f7a4942b2"), CurrentUser.id());
             VetoAgent agent = mock(VetoAgent.class);
             when(agent.id()).thenReturn("agent");
             when(agent.name()).thenReturn("Agent");
@@ -83,7 +85,7 @@ class PluginHostWakeTest {
                             invocation -> {
                                 assertEquals(
                                         UUID.fromString("58e341e3-0de3-571d-81db-520951bc691b"),
-                                        UserContext.get());
+                                        CurrentUser.id());
                                 if (registry.agents(session).isEmpty())
                                     registry.register(session, agent);
                                 return true;
@@ -101,10 +103,9 @@ class PluginHostWakeTest {
                             session,
                             UUID.fromString("58e341e3-0de3-571d-81db-520951bc691b"),
                             "agent");
-            assertEquals(
-                    UUID.fromString("92dca498-7be6-5c04-9439-9d4f7a4942b2"), UserContext.get());
+            assertEquals(UUID.fromString("92dca498-7be6-5c04-9439-9d4f7a4942b2"), CurrentUser.id());
         } finally {
-            UserContext.clear();
+            SecurityContextHolder.clearContext();
         }
     }
 }

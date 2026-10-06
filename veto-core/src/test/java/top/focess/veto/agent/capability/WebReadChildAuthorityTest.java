@@ -22,6 +22,7 @@ import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.util.ReflectionTestUtils;
 import top.focess.veto.agent.AgentRunner;
 import top.focess.veto.agent.SessionAgentRegistry;
@@ -61,14 +62,15 @@ import top.focess.veto.model.AgentInstanceRepository;
 import top.focess.veto.model.tier.ModelBinding;
 import top.focess.veto.model.tier.ModelTier;
 import top.focess.veto.model.tier.ModelTierRegistry;
+import top.focess.veto.vault.CurrentUser;
+import top.focess.veto.vault.ExecutionSecurity;
 import top.focess.veto.vault.TestUsers;
-import top.focess.veto.vault.UserContext;
 
 class WebReadChildAuthorityTest {
     @AfterEach
     void clearContext() {
         ToolCallContextHolder.clear();
-        UserContext.clear();
+        SecurityContextHolder.clearContext();
     }
 
     @Test
@@ -97,7 +99,7 @@ class WebReadChildAuthorityTest {
                         assertNull(
                                 ToolCallContextHolder.get(),
                                 "Model dispatch must have no tool execution permit");
-                        assertEquals(TestUsers.OWNER, UserContext.get());
+                        assertEquals(TestUsers.OWNER, CurrentUser.id());
                         boolean throughAgentRunner =
                                 StackWalker.getInstance()
                                         .walk(
@@ -208,7 +210,7 @@ class WebReadChildAuthorityTest {
                     .when(network)
                     .openApprovedDestination("url");
             URI url = URI.create("http://127.0.0.1:" + server.getAddress().getPort() + "/approved");
-            UserContext.set(TestUsers.OWNER);
+            SecurityContextHolder.setContext(ExecutionSecurity.contextFor(TestUsers.OWNER));
             String result =
                     CapabilityTestCalls.execute(
                             new WebFetchTool(reader, network),

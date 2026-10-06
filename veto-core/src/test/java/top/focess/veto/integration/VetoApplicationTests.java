@@ -7,10 +7,14 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.net.http.WebSocket;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
@@ -222,11 +226,74 @@ class VetoApplicationTests {
                 "llama.cpp must load the configured local model when the artifact is present");
     }
 
+    private @NonNull HttpHeaders authenticatedHeaders() {
+        var user =
+                context.getBean(UserRegistry.class)
+                        .create("http-security-" + UUID.randomUUID(), "test-password", "USER");
+        var headers = new HttpHeaders();
+        headers.set(
+                "X-Veto-Session-Token",
+                context.getBean(SessionManager.class)
+                        .createSession(user.getUserId(), user.getUsername()));
+        return headers;
+    }
+
+    @Test
+    void securityBoundaryProtectsRestAndPreservesBrowserWebSocketHandshake() throws Exception {
+        String base = "http://localhost:" + port;
+        assertEquals(
+                HttpStatus.UNAUTHORIZED,
+                restTemplate
+                        .exchange(base + "/api/veto/status", HttpMethod.GET, null, MAP_RESPONSE)
+                        .getStatusCode());
+        assertEquals(
+                HttpStatus.OK,
+                restTemplate
+                        .exchange(base + "/api/auth/status", HttpMethod.GET, null, MAP_RESPONSE)
+                        .getStatusCode());
+        var headers = authenticatedHeaders();
+        String token = headers.getFirst("X-Veto-Session-Token");
+        if (token == null) throw new AssertionError("Missing test session token");
+        try (var client = HttpClient.newHttpClient()) {
+            var socket =
+                    Objects.requireNonNull(
+                            client.newWebSocketBuilder()
+                                    .header("Origin", "http://localhost:5177")
+                                    .buildAsync(
+                                            URI.create(
+                                                    "ws://localhost:"
+                                                            + port
+                                                            + "/ws/veto/bus/123/securitytest/websocket?token="
+                                                            + token),
+                                            new WebSocket.Listener() {})
+                                    .get(10, TimeUnit.SECONDS));
+            try {
+                assertFalse(socket.isOutputClosed());
+                context.getBean(SessionManager.class).invalidate(token);
+                assertEquals(
+                        HttpStatus.UNAUTHORIZED,
+                        restTemplate
+                                .exchange(
+                                        base + "/api/veto/status",
+                                        HttpMethod.GET,
+                                        new HttpEntity<>(headers),
+                                        MAP_RESPONSE)
+                                .getStatusCode());
+            } finally {
+                socket.abort();
+            }
+        }
+    }
+
     @Test
     void restEndpointVetoStatus() {
         String url = "http://localhost:" + port + "/api/veto/status";
         ResponseEntity<Map<String, Object>> response =
-                restTemplate.exchange(url, HttpMethod.GET, null, MAP_RESPONSE);
+                restTemplate.exchange(
+                        url,
+                        HttpMethod.GET,
+                        new HttpEntity<>(authenticatedHeaders()),
+                        MAP_RESPONSE);
 
         assertEquals(HttpStatus.OK, response.getStatusCode(), "Status endpoint should return 200");
         Map<String, Object> body = requireBody(response);
@@ -239,7 +306,7 @@ class VetoApplicationTests {
     void restEndpointVetoProcess() {
         String url = "http://localhost:" + port + "/api/veto/process";
 
-        HttpHeaders headers = new HttpHeaders();
+        HttpHeaders headers = authenticatedHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
         HttpEntity<Map<String, Object>> request =
                 new HttpEntity<>(Map.of("payload", "Test IP: 10.0.0.55 for processing"), headers);
@@ -257,7 +324,7 @@ class VetoApplicationTests {
     void restEndpointVetoProcessRejectsEmptyPayload() {
         String url = "http://localhost:" + port + "/api/veto/process";
 
-        HttpHeaders headers = new HttpHeaders();
+        HttpHeaders headers = authenticatedHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
         HttpEntity<Map<String, Object>> request = new HttpEntity<>(Map.of("payload", ""), headers);
 
@@ -272,7 +339,7 @@ class VetoApplicationTests {
 
     @Test
     void restAcceptsNullOptionalVetoFields() {
-        HttpHeaders headers = new HttpHeaders();
+        HttpHeaders headers = authenticatedHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
         HttpEntity<String> request =
                 new HttpEntity<>(

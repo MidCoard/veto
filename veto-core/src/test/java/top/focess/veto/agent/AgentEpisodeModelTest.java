@@ -95,9 +95,9 @@ import top.focess.veto.model.tier.ModelTierRegistry;
 import top.focess.veto.session.SessionHistoryLoader;
 import top.focess.veto.session.SessionService;
 import top.focess.veto.util.Nullness;
+import top.focess.veto.vault.CurrentUser;
 import top.focess.veto.vault.KeysteadVault;
 import top.focess.veto.vault.TestUsers;
-import top.focess.veto.vault.UserContext;
 
 /**
  * Exercises episode budgets, recovered history, and provider response delivery in the agent loop.
@@ -506,7 +506,7 @@ class AgentEpisodeModelTest {
                 serviceWith(
                         new AgentServiceTestSupport.Dependencies().vault(vault).plugins(selected),
                         (request, modelSessionId) -> {
-                            assertEquals(TestUsers.ALICE, UserContext.get());
+                            assertEquals(TestUsers.ALICE, CurrentUser.id());
                             assertTrue(
                                     request.messages().toString().contains("Earlier conversation"));
                             calls.incrementAndGet();

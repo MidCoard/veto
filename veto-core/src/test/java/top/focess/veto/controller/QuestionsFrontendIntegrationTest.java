@@ -12,12 +12,13 @@ import java.util.stream.IntStream;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.web.servlet.ResultActions;
 import top.focess.veto.builtin.questions.Option;
 import top.focess.veto.builtin.questions.Question;
 import top.focess.veto.integration.plugins.QuestionActionFixture;
+import top.focess.veto.vault.ExecutionSecurity;
 import top.focess.veto.vault.TestUsers;
-import top.focess.veto.vault.UserContext;
 
 class QuestionsFrontendIntegrationTest {
     private static @NonNull List<@NonNull Question> questions(int count) {
@@ -37,7 +38,8 @@ class QuestionsFrontendIntegrationTest {
     @Test
     void tenQuestionBatchRoundTripsThroughHttpAndCannotBeAnsweredTwice() throws Exception {
         try (var fixture = new QuestionActionFixture()) {
-            UserContext.set(fixture.session.getUserId());
+            SecurityContextHolder.setContext(
+                    ExecutionSecurity.contextFor(fixture.session.getUserId()));
             var future = fixture.registerQuestions("call", questions(10));
             perform(fixture, "list", Map.of())
                     .andExpect(status().isOk())
@@ -55,7 +57,8 @@ class QuestionsFrontendIntegrationTest {
     @Test
     void malformedAnswersDoNotConsumePendingBatch() throws Exception {
         try (var fixture = new QuestionActionFixture()) {
-            UserContext.set(fixture.session.getUserId());
+            SecurityContextHolder.setContext(
+                    ExecutionSecurity.contextFor(fixture.session.getUserId()));
             var future = fixture.registerQuestions("call", questions(1));
             for (String body :
                     List.of(
@@ -85,15 +88,16 @@ class QuestionsFrontendIntegrationTest {
             throws Exception {
         try (var fixture = new QuestionActionFixture()) {
             var future = fixture.registerQuestions("call", questions(1));
-            UserContext.clear();
+            SecurityContextHolder.clearContext();
             perform(fixture, "list", Map.of()).andExpect(status().isUnauthorized());
             perform(fixture, "cancel", Map.of("callId", "call"))
                     .andExpect(status().isUnauthorized());
             perform(fixture, "answer", Map.of("callId", "call", "answers", Map.of("q_0", "A")))
                     .andExpect(status().isUnauthorized());
-            UserContext.set(TestUsers.BOB);
+            SecurityContextHolder.setContext(ExecutionSecurity.contextFor(TestUsers.BOB));
             perform(fixture, "list", Map.of()).andExpect(status().isNotFound());
-            UserContext.set(fixture.session.getUserId());
+            SecurityContextHolder.setContext(
+                    ExecutionSecurity.contextFor(fixture.session.getUserId()));
             var foreign = new LinkedHashMap<>(fixture.action("cancel", Map.of("callId", "call")));
             foreign.put("agentId", "foreign-agent");
             fixture.mvc

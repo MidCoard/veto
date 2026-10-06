@@ -18,6 +18,7 @@ import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.springframework.security.core.context.SecurityContextHolder;
 import top.focess.veto.api.credentials.VaultAccess;
 import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.secret.references.SecretCandidateStore;
@@ -170,7 +171,7 @@ class KeysteadVaultTest {
         String importId = "s_0123456789abcdef0123456789abcdef";
         try {
             assertEquals(ALICE, vault.signup("alice", "p@ssw0rd!"));
-            UserContext.set(ALICE);
+            SecurityContextHolder.setContext(ExecutionSecurity.contextFor(ALICE));
             vault.saveNote("Repository", "existing-value");
             String reference =
                     importedNote(vault, ALICE, importId, "github", "Repository", "synthetic-token");
@@ -227,11 +228,11 @@ class KeysteadVaultTest {
         var vault = newVault(tempDir);
         try {
             assertEquals(BOB, vault.signup("bob", "p@ssw0rd!"));
-            UserContext.set(BOB);
+            SecurityContextHolder.setContext(ExecutionSecurity.contextFor(BOB));
             assertTrue(vault.isUnlocked());
             assertTrue(vault.isUnlocked(BOB));
             assertFalse(vault.isUnlocked(ALICE));
-            UserContext.clear();
+            SecurityContextHolder.clearContext();
             assertFalse(vault.isUnlocked(ALICE));
             vault.logout(BOB);
             assertFalse(vault.isUnlocked(BOB));
@@ -310,7 +311,7 @@ class KeysteadVaultTest {
             start.countDown();
             String reference = results.getFirst().get(5, TimeUnit.SECONDS);
             for (var result : results) assertEquals(reference, result.get(5, TimeUnit.SECONDS));
-            UserContext.set(ALICE);
+            SecurityContextHolder.setContext(ExecutionSecurity.contextFor(ALICE));
             assertEquals(1, vault.listTitles().size());
         } finally {
             vault.shutdown();
@@ -318,8 +319,8 @@ class KeysteadVaultTest {
     }
 
     @AfterEach
-    void clearUserContext() {
-        UserContext.clear();
+    void clearCurrentUser() {
+        SecurityContextHolder.clearContext();
     }
 
     @Test
@@ -389,7 +390,7 @@ class KeysteadVaultTest {
         assertNull(vault.currentUser());
         assertEquals(ALICE, vault.currentUserOrOnlyUnlocked());
 
-        UserContext.set(ALICE);
+        SecurityContextHolder.setContext(ExecutionSecurity.contextFor(ALICE));
         assertEquals(ALICE, vault.currentUser());
     }
 }

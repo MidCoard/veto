@@ -11,21 +11,11 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.http.converter.HttpMessageConverter;
 import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
-import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
-/**
- * Web MVC configuration to register the {@link SecurityContextInterceptor} for all API endpoints.
- */
+/** Strict HTTP JSON conversion and browser CORS configuration. */
 @Configuration
 public class WebConfig implements WebMvcConfigurer {
-
-    private final @NonNull SecurityContextInterceptor interceptor;
-
-    /** Creates the configuration with the interceptor it registers on all API paths. */
-    public WebConfig(@NonNull SecurityContextInterceptor interceptor) {
-        this.interceptor = interceptor;
-    }
 
     @Override
     public void extendMessageConverters(@NonNull List<HttpMessageConverter<?>> converters) {
@@ -42,11 +32,6 @@ public class WebConfig implements WebMvcConfigurer {
                 json.setObjectMapper(mapper);
             }
         }
-    }
-
-    @Override
-    public void addInterceptors(@NonNull InterceptorRegistry registry) {
-        registry.addInterceptor(interceptor).addPathPatterns("/api/**");
     }
 
     @Override

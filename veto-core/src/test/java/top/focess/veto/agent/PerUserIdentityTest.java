@@ -30,8 +30,8 @@ import top.focess.veto.llm.core.UniformLLMCaller;
 import top.focess.veto.memory.TurnLogService;
 import top.focess.veto.memory.TurnRecordEntity;
 import top.focess.veto.memory.TurnRecordRepository;
+import top.focess.veto.vault.CurrentUser;
 import top.focess.veto.vault.TestUsers;
-import top.focess.veto.vault.UserContext;
 
 /**
  * Tests that per-user identity is threaded from the transport through {@link AgentService#submit}
@@ -119,7 +119,7 @@ class PerUserIdentityTest {
      * Verify the session owner is stamped onto the agent's virtual thread (by {@link
      * AgentRunner#run}) so credential resolution on the LLM-call path resolves against the owner's
      * vault. The mocked caller executes synchronously on the agent thread, so it observes {@link
-     * UserContext} as set by the runner.
+     * CurrentUser} as set by the runner.
      */
     @Test
     void ownerStampedOnAgentThreadForCredentialResolution() throws Exception {
@@ -129,7 +129,7 @@ class PerUserIdentityTest {
         List<UUID> seen = new CopyOnWriteArrayList<>();
         UniformLLMCaller caller =
                 (request, modelSessionId) -> {
-                    UUID currentUser = UserContext.get();
+                    UUID currentUser = CurrentUser.id();
                     if (currentUser != null) seen.add(currentUser);
                     return new VetoResponse("Done.", null, "Task complete.");
                 };
@@ -147,6 +147,6 @@ class PerUserIdentityTest {
         assertTrue(result.success(), "Episode should complete successfully");
         assertFalse(seen.isEmpty(), "Caller should have been invoked on the agent thread");
         assertEquals(
-                userId, seen.get(0), "UserContext on the agent thread must be the session owner");
+                userId, seen.get(0), "CurrentUser on the agent thread must be the session owner");
     }
 }

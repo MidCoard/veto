@@ -13,17 +13,18 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.server.ResponseStatusException;
 import top.focess.veto.controller.AuthorizationTestSupport;
 import top.focess.veto.controller.RequestAuthorization;
+import top.focess.veto.vault.ExecutionSecurity;
 import top.focess.veto.vault.TestUsers;
-import top.focess.veto.vault.UserContext;
 
 class TrainingControllerAuthorizationTest {
 
     @AfterEach
-    void clearUserContext() {
-        UserContext.clear();
+    void clearCurrentUser() {
+        SecurityContextHolder.clearContext();
     }
 
     @Test
@@ -42,7 +43,7 @@ class TrainingControllerAuthorizationTest {
 
     @Test
     void everyEndpointRejectsNonAdminUsers() {
-        UserContext.set(TestUsers.ALICE);
+        SecurityContextHolder.setContext(ExecutionSecurity.contextFor(TestUsers.ALICE));
         TrainingController controller =
                 controller(AuthorizationTestSupport.authorizer(name -> false));
 
@@ -57,7 +58,7 @@ class TrainingControllerAuthorizationTest {
 
     @Test
     void adminCanReadTrainingState() {
-        UserContext.set(TestUsers.ADMIN);
+        SecurityContextHolder.setContext(ExecutionSecurity.contextFor(TestUsers.ADMIN));
         TrainingController controller =
                 controller(AuthorizationTestSupport.authorizer(name -> true));
 
@@ -68,7 +69,7 @@ class TrainingControllerAuthorizationTest {
 
     @Test
     void manualDeployDefaultsToTheLatestConversion(@TempDir @NonNull Path root) throws Exception {
-        UserContext.set(TestUsers.ADMIN);
+        SecurityContextHolder.setContext(ExecutionSecurity.contextFor(TestUsers.ADMIN));
         TrainingConfiguration config = new TrainingConfiguration();
         config.setModelOutputDir(root.toString());
         config.setAutoDeployOnCompletion(false);

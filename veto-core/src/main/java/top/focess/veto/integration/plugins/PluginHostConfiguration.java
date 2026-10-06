@@ -23,8 +23,8 @@ import top.focess.veto.bus.DeltaFrame;
 import top.focess.veto.bus.SessionInvalidations;
 import top.focess.veto.session.SessionService;
 import top.focess.veto.util.Nullness;
+import top.focess.veto.vault.ExecutionSecurity;
 import top.focess.veto.vault.KeysteadVault;
-import top.focess.veto.vault.UserContext;
 
 /** Generic effects; feature interpretation and scheduling belong to their plugins. */
 @Configuration(proxyBeanMethods = false)
@@ -107,8 +107,7 @@ public class PluginHostConfiguration {
                     public void wake(
                             @NonNull UUID userId, @NonNull String session, @NonNull String agent) {
                         if (!vault.getObject().isUnlocked(userId)) return;
-                        UUID previous = UserContext.get();
-                        UserContext.set(userId);
+                        var security = ExecutionSecurity.open(userId);
                         try {
                             var id = UUID.fromString(session);
                             if (!sessions.getObject().activateForObservation(id, userId, agent))
@@ -117,8 +116,7 @@ public class PluginHostConfiguration {
                                     .filter(entry -> entry.agent().id().equals(agent))
                                     .forEach(entry -> entry.agent().signalWork());
                         } finally {
-                            if (previous == null) UserContext.clear();
-                            else UserContext.set(previous);
+                            security.close();
                         }
                     }
                 };

@@ -7,6 +7,7 @@ import static org.mockito.Mockito.when;
 
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.springframework.security.core.context.SecurityContextHolder;
 import top.focess.veto.api.agent.tool.NativeTool;
 import top.focess.veto.api.agent.tool.RemoteTool;
 import top.focess.veto.api.agent.tool.Tool;
@@ -19,8 +20,8 @@ import top.focess.veto.api.plugin.contribution.ContributionSource;
 import top.focess.veto.integration.plugins.PluginManager;
 import top.focess.veto.integration.plugins.PluginRegistry;
 import top.focess.veto.plugin.runtime.ManagedPlugin;
+import top.focess.veto.vault.ExecutionSecurity;
 import top.focess.veto.vault.TestUsers;
-import top.focess.veto.vault.UserContext;
 
 class PluginControllerTest {
     @Test
@@ -54,7 +55,7 @@ class PluginControllerTest {
         when(publication.toolName(portableEntry)).thenReturn("portable_alias");
         when(publication.toolName(nativeEntry)).thenReturn("native_alias");
 
-        UserContext.set(TestUsers.ADMIN);
+        SecurityContextHolder.setContext(ExecutionSecurity.contextFor(TestUsers.ADMIN));
         try {
             var response =
                     new PluginController(
@@ -66,7 +67,7 @@ class PluginControllerTest {
             assertEquals(List.of("native_alias", "portable_alias"), response.getFirst().tools());
             verify(manager).registry();
         } finally {
-            UserContext.clear();
+            SecurityContextHolder.clearContext();
         }
     }
 }

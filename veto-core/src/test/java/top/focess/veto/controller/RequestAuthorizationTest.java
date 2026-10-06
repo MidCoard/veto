@@ -11,10 +11,11 @@ import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.server.ResponseStatusException;
 import top.focess.veto.session.SessionService;
+import top.focess.veto.vault.ExecutionSecurity;
 import top.focess.veto.vault.KeysteadVault;
-import top.focess.veto.vault.UserContext;
 
 class RequestAuthorizationTest {
     private static final @NonNull UUID ALICE =
@@ -25,15 +26,15 @@ class RequestAuthorizationTest {
             UUID.fromString("33333333-3333-3333-3333-333333333333");
 
     @AfterEach
-    void clearUserContext() {
-        UserContext.clear();
+    void clearCurrentUser() {
+        SecurityContextHolder.clearContext();
     }
 
     @Test
     void sessionAccessRequiresUnlockedVaultAndUsesCurrentOwner() {
         KeysteadVault vault = mock(KeysteadVault.class);
         SessionService sessions = mock(SessionService.class);
-        UserContext.set(ALICE);
+        SecurityContextHolder.setContext(ExecutionSecurity.contextFor(ALICE));
         assertEquals(
                 HttpStatus.UNAUTHORIZED,
                 assertThrows(
@@ -71,7 +72,7 @@ class RequestAuthorizationTest {
 
     @Test
     void authenticatedUserMustBeAdministrator() {
-        UserContext.set(MEMBER);
+        SecurityContextHolder.setContext(ExecutionSecurity.contextFor(MEMBER));
         RequestAuthorization authorization = AuthorizationTestSupport.authorizer(name -> false);
 
         ResponseStatusException error =
@@ -82,7 +83,7 @@ class RequestAuthorizationTest {
 
     @Test
     void authenticatedAdministratorPasses() {
-        UserContext.set(ADMIN);
+        SecurityContextHolder.setContext(ExecutionSecurity.contextFor(ADMIN));
         RequestAuthorization authorization = AuthorizationTestSupport.authorizer(ADMIN::equals);
 
         assertDoesNotThrow(authorization::requireAdmin);

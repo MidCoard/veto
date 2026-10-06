@@ -7,8 +7,8 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.server.ResponseStatusException;
 import top.focess.veto.i18n.Msg;
 import top.focess.veto.session.SessionService;
+import top.focess.veto.vault.CurrentUser;
 import top.focess.veto.vault.KeysteadVault;
-import top.focess.veto.vault.UserContext;
 import top.focess.veto.vault.UserRegistry;
 
 /** Enforces request-scoped authentication and administrator authorization. */
@@ -24,7 +24,7 @@ public class RequestAuthorization {
 
     /** Returns the request-scoped UUID, or throws 401 if the request is unauthenticated. */
     public @NonNull UUID requireUserId() {
-        UUID userId = UserContext.get();
+        UUID userId = CurrentUser.id();
         if (userId == null || users.findByUserId(userId).isEmpty()) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Authentication required");
         }

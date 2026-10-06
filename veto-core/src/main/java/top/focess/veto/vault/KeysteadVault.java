@@ -40,7 +40,7 @@ import top.focess.keystead.service.VaultService;
  *
  * <p>An unlocked {@link VaultHandle} is cached per user for the lifetime of the login. Consumers
  * retrieve the current user's handle via {@link #currentHandle()} (resolved from {@link
- * UserContext}, with a single-active-user fallback for the CLI path) and call keystead's
+ * CurrentUser}, with a single-active-user fallback for the CLI path) and call keystead's
  * typed-secret API directly. Helpers ({@link #saveNote}, {@link #readNoteBody}, {@link
  * #deleteNote}, {@link #listTitles}) cover the flat key->string vocabulary veto uses (a credential
  * is a {@code SECURE_NOTE} titled by its key).
@@ -205,13 +205,13 @@ public class KeysteadVault {
     // ── current-user resolution ────────────────────────────────────────────
 
     /**
-     * The unlocked handle for the current user. Resolves from {@link UserContext}; if no context is
+     * The unlocked handle for the current user. Resolves from {@link CurrentUser}; if no context is
      * set (the agent virtual thread, or a single-user CLI), falls back to the sole open handle.
      *
      * @throws VaultLockedException if no handle is available
      */
     public @NonNull VaultHandle currentHandle() {
-        UUID user = UserContext.get();
+        UUID user = CurrentUser.id();
         if (user != null) {
             VaultHandle handle = handles.get(user);
             if (handle != null && !handle.isClosed()) {
@@ -229,7 +229,7 @@ public class KeysteadVault {
      * The request-scoped authenticated user UUID, or {@code null} when the request is anonymous.
      */
     public UUID currentUser() {
-        UUID user = UserContext.get();
+        UUID user = CurrentUser.id();
         if (user != null && handles.containsKey(user)) {
             return user;
         }
@@ -251,11 +251,11 @@ public class KeysteadVault {
     }
 
     /**
-     * Whether a vault is unlocked for the current request: the {@link UserContext} user's handle
+     * Whether a vault is unlocked for the current request: the {@link CurrentUser} user's handle
      * when a context is set, otherwise any open handle (single-user CLI path).
      */
     public boolean isUnlocked() {
-        UUID user = UserContext.get();
+        UUID user = CurrentUser.id();
         if (user != null) {
             return handles.containsKey(user);
         }
@@ -436,7 +436,7 @@ public class KeysteadVault {
 
     /**
      * Whether a credential with the given title (key) exists in the named user's vault. Unlike the
-     * other note helpers, which resolve the current user via {@link UserContext}, this takes the
+     * other note helpers, which resolve the current user via {@link CurrentUser}, this takes the
      * UUID explicitly so callers that already hold the user identity (e.g. the model-tier service
      * validating a {@code credKey}) can check without relying on a thread-local context.
      *

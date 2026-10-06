@@ -3,6 +3,7 @@ package top.focess.veto;
 import org.jspecify.annotations.NonNull;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.autoconfigure.security.servlet.UserDetailsServiceAutoConfiguration;
 import org.springframework.scheduling.annotation.EnableScheduling;
 import top.focess.veto.sandbox.SandboxBootstrap;
 
@@ -14,7 +15,7 @@ import top.focess.veto.sandbox.SandboxBootstrap;
  * SLM Veto Gateway · {@code vault} — Local Credential Vault · {@code observability} — Observability
  * &amp; Shadow Audit.
  */
-@SpringBootApplication
+@SpringBootApplication(exclude = UserDetailsServiceAutoConfiguration.class)
 @EnableScheduling
 public class VetoApplication {
 

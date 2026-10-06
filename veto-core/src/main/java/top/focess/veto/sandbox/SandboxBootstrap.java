@@ -6,7 +6,9 @@ import com.sun.jna.WString;
 import com.sun.jna.platform.win32.Kernel32;
 import com.sun.jna.platform.win32.WinNT;
 import java.io.File;
+import java.net.URISyntaxException;
 import java.nio.file.Path;
+import java.security.ProtectionDomain;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -105,10 +107,31 @@ public final class SandboxBootstrap {
             command.add("org.springframework.boot.loader.launch.PropertiesLauncher");
         } else {
             command.add("-cp");
-            command.add(classPath);
+            // The trusted bootstrap needs no application dependency graph. Keeping only its
+            // runtime locations avoids Windows command-length limits as application deps grow.
+            command.add(
+                    String.join(
+                            File.pathSeparator,
+                            classPathLocation(SandboxBootstrap.class.getProtectionDomain()),
+                            classPathLocation(Native.class.getProtectionDomain()),
+                            classPathLocation(Kernel32.class.getProtectionDomain()),
+                            classPathLocation(NonNull.class.getProtectionDomain())));
             command.add(SandboxBootstrap.class.getName());
         }
         return List.copyOf(command);
+    }
+
+    private static @NonNull String classPathLocation(@NonNull ProtectionDomain domain) {
+        var source = domain.getCodeSource();
+        if (source == null) {
+            throw new IllegalStateException("Sandbox bootstrap dependency location is unavailable");
+        }
+        try {
+            return Path.of(source.getLocation().toURI()).toAbsolutePath().normalize().toString();
+        } catch (URISyntaxException invalidLocation) {
+            throw new IllegalStateException(
+                    "Invalid sandbox bootstrap dependency location", invalidLocation);
+        }
     }
 
     private static @NonNull String absoluteClassPathEntry(@NonNull String entry) {

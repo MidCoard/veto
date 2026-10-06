@@ -51,8 +51,8 @@ public class PromptController {
 
     /**
      * POST /api/sessions/{name}/prompt - submit a prompt to the agent bound to the named session.
-     * The caller must be authenticated (the SecurityContextInterceptor sets the vault's currentUser
-     * from the X-Veto-Session-Token header). Returns 202 as soon as the episode is enqueued.
+     * The caller must be authenticated (Spring Security supplies the vault's currentUser from the
+     * X-Veto-Session-Token header). Returns 202 as soon as the episode is enqueued.
      */
     @PostMapping(
             value = "/{name}/prompt",

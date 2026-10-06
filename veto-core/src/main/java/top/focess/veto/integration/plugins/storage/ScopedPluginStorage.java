@@ -33,7 +33,7 @@ import top.focess.veto.model.SessionEntity;
 import top.focess.veto.plugin.runtime.ManagedPlugin;
 import top.focess.veto.plugin.runtime.PluginJson;
 import top.focess.veto.util.Nullness;
-import top.focess.veto.vault.UserContext;
+import top.focess.veto.vault.CurrentUser;
 import top.focess.veto.vault.UserEntity;
 
 /** Scoped CAS records share the host transaction and referential deletion boundary. */
@@ -257,7 +257,7 @@ public class ScopedPluginStorage implements PluginStorageFactory {
 
         @Override
         public PluginStorage.@NonNull Grant<Scope.@NonNull UserScope> currentUser() {
-            UUID userId = UserContext.get();
+            UUID userId = CurrentUser.id();
             if (userId == null) throw new SecurityException("No authenticated user invocation");
             return transaction(() -> issueUser(userId));
         }

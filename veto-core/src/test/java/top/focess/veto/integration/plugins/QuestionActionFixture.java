@@ -11,6 +11,7 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import org.jspecify.annotations.NonNull;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
@@ -31,7 +32,6 @@ import top.focess.veto.model.SessionEntity;
 import top.focess.veto.model.SessionRepository;
 import top.focess.veto.plugin.runtime.ManagedPlugin;
 import top.focess.veto.util.Nullness;
-import top.focess.veto.vault.UserContext;
 
 /** Actual builtin contributions behind the generic authenticated frontend router. */
 public final class QuestionActionFixture implements AutoCloseable {
@@ -250,7 +250,7 @@ public final class QuestionActionFixture implements AutoCloseable {
 
     @Override
     public void close() {
-        UserContext.clear();
+        SecurityContextHolder.clearContext();
         manager.close();
     }
 }

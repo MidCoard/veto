@@ -24,6 +24,7 @@ import org.junit.jupiter.params.provider.EnumSource;
 import org.mockito.Mockito;
 import org.springframework.context.ApplicationContext;
 import org.springframework.http.MediaType;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.util.ReflectionTestUtils;
 import top.focess.veto.agent.intercept.ToolExecutionPermit;
 import top.focess.veto.api.agent.tool.ToolCapability;
@@ -37,7 +38,7 @@ import top.focess.veto.event.EventManager;
 import top.focess.veto.integration.plugins.PluginManager;
 import top.focess.veto.integration.plugins.QuestionActionFixture;
 import top.focess.veto.util.Nullness;
-import top.focess.veto.vault.UserContext;
+import top.focess.veto.vault.ExecutionSecurity;
 
 /** Exercises the real tool dispatch, pending registry, and HTTP response path together. */
 @Timeout(15)
@@ -89,7 +90,8 @@ class AskUserActionTest {
             ToolDefinition definition =
                     Nullness.requireNonNull(engine.resolveDefinition("ask_user"));
             var mvc = fixture.mvc;
-            UserContext.set(fixture.session.getUserId());
+            SecurityContextHolder.setContext(
+                    ExecutionSecurity.contextFor(fixture.session.getUserId()));
 
             // Raw JSON deliberately enters before schema validation and record deserialization.
             StringJoiner questions = new StringJoiner(",", "{\"questions\":[", "]}");

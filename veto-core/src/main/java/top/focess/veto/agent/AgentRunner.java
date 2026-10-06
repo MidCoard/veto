@@ -44,8 +44,8 @@ import top.focess.veto.llm.core.UniformLLMCaller;
 import top.focess.veto.memory.TurnLogService;
 import top.focess.veto.model.tier.ModelTierRegistry;
 import top.focess.veto.util.Nullness;
+import top.focess.veto.vault.ExecutionSecurity;
 import top.focess.veto.vault.KeysteadVault;
-import top.focess.veto.vault.UserContext;
 
 /**
  * Owns agent execution state, request transitions and the single-thread action queue.
@@ -296,12 +296,12 @@ public final class AgentRunner {
         if (Thread.currentThread() != executionThread)
             throw new IllegalStateException("Runner must execute on its attached thread");
         // Stamp the session userId onto the agent's virtual thread so credential resolution on the
-        // LLM-call path (CredentialResolver → KeysteadVault.currentHandle → UserContext.get) and
+        // LLM-call path (CredentialResolver → KeysteadVault.currentHandle → CurrentUser.id) and
         // the embedder path resolve against the userId's vault rather than the single-active-handle
         // fallback. Owner is set once by AgentService before this thread starts, so a single set at
         // entry covers every turn; clear on exit so the thread never leaks a stale user.
         UUID currentUserId = userId;
-        UserContext.set(currentUserId);
+        var security = ExecutionSecurity.open(currentUserId);
         try {
             while (stopReason == null && control.open()) {
                 try {
@@ -415,7 +415,7 @@ public final class AgentRunner {
                 retire();
             } finally {
                 try {
-                    UserContext.clear();
+                    security.close();
                 } finally {
                     try {
                         notifyTermination();

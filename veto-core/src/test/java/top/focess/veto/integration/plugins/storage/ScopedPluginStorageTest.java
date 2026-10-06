@@ -23,6 +23,7 @@ import org.springframework.orm.jpa.JpaTransactionManager;
 import org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean;
 import org.springframework.orm.jpa.SharedEntityManagerCreator;
 import org.springframework.orm.jpa.vendor.HibernateJpaVendorAdapter;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.server.ResponseStatusException;
 import top.focess.veto.agent.SessionAgentRegistry;
@@ -50,8 +51,8 @@ import top.focess.veto.model.SessionEntity;
 import top.focess.veto.model.SessionRepository;
 import top.focess.veto.plugin.runtime.ManagedPlugin;
 import top.focess.veto.util.Nullness;
+import top.focess.veto.vault.ExecutionSecurity;
 import top.focess.veto.vault.TestUsers;
-import top.focess.veto.vault.UserContext;
 import top.focess.veto.vault.UserEntity;
 
 class ScopedPluginStorageTest {
@@ -136,7 +137,7 @@ class ScopedPluginStorageTest {
 
     @Test
     void retainedRecordsRemainVisibleAndExportableWithoutTheirPlugin() {
-        UserContext.set(userId);
+        SecurityContextHolder.setContext(ExecutionSecurity.contextFor(userId));
         try {
             var user = first.currentUser();
             first.user(user).put("retained-user", null, VALUE);
@@ -184,7 +185,7 @@ class ScopedPluginStorageTest {
                     ResponseStatusException.class,
                     () -> data.list(PluginScope.APPLICATION, null, null, 10));
 
-            UserContext.set(TestUsers.BOB);
+            SecurityContextHolder.setContext(ExecutionSecurity.contextFor(TestUsers.BOB));
             assertTrue(
                     required(
                                     transactions.execute(
@@ -197,7 +198,7 @@ class ScopedPluginStorageTest {
                             () -> transactions.execute(status -> data.export(userRecord.id())));
             assertEquals(404, denied.getStatusCode().value());
 
-            UserContext.set(TestUsers.ADMIN);
+            SecurityContextHolder.setContext(ExecutionSecurity.contextFor(TestUsers.ADMIN));
             var application =
                     required(
                             transactions.execute(
@@ -212,18 +213,18 @@ class ScopedPluginStorageTest {
                                                             application.entries().getFirst().id())))
                             .payload());
         } finally {
-            UserContext.clear();
+            SecurityContextHolder.clearContext();
         }
     }
 
     @Test
     void preparationAndPresentationCannotMutateAnyStorageScope() {
-        UserContext.set(userId);
+        SecurityContextHolder.setContext(ExecutionSecurity.contextFor(userId));
         PluginStorage.Grant<Scope.@NonNull UserScope> user;
         try {
             user = first.currentUser();
         } finally {
-            UserContext.clear();
+            SecurityContextHolder.clearContext();
         }
         var stores = List.of(first.application(), first.user(user), first.session(scope(first)));
         for (var store : stores) {
@@ -340,7 +341,7 @@ class ScopedPluginStorageTest {
                         plugins,
                         agents);
         var outer = new PluginInvocationContext(userId, "outer");
-        UserContext.set(userId);
+        SecurityContextHolder.setContext(ExecutionSecurity.contextFor(userId));
         try {
             controller.act(
                     "test",
@@ -360,7 +361,7 @@ class ScopedPluginStorageTest {
             assertSame(outer, Nullness.requireNonNull(PluginInvocationContext.current()));
         } finally {
             outer.close();
-            UserContext.clear();
+            SecurityContextHolder.clearContext();
         }
         assertThrows(SecurityException.class, first::currentSession);
         assertTrue(first.session(scope(first)).get("frontend").isPresent());
@@ -428,7 +429,7 @@ class ScopedPluginStorageTest {
     @Test
     void erasedStoreMethodsRejectWrongGrantKind() throws Exception {
         var sessionGrant = scope(first);
-        UserContext.set(userId);
+        SecurityContextHolder.setContext(ExecutionSecurity.contextFor(userId));
         try {
             var userGrant = first.currentUser();
             first.session(sessionGrant).put("session-only", null, VALUE);
@@ -457,7 +458,7 @@ class ScopedPluginStorageTest {
                     first.session(sessionGrant).get("session-only").orElseThrow().document());
             assertEquals(VALUE, first.user(userGrant).get("user-only").orElseThrow().document());
         } finally {
-            UserContext.clear();
+            SecurityContextHolder.clearContext();
         }
     }
 
@@ -479,11 +480,11 @@ class ScopedPluginStorageTest {
                                 second));
 
         PluginStorage.Grant<Scope.@NonNull UserScope> callerUser;
-        UserContext.set(userId);
+        SecurityContextHolder.setContext(ExecutionSecurity.contextFor(userId));
         try {
             callerUser = first.currentUser();
         } finally {
-            UserContext.clear();
+            SecurityContextHolder.clearContext();
         }
         var providerUser = host.transferUser(first, callerUser, second);
         assertNotEquals(callerUser.token(), providerUser.token());
@@ -574,12 +575,12 @@ class ScopedPluginStorageTest {
 
     @Test
     void userDeletionInvalidatesOldAccountScopeAndPreservesApplicationData() {
-        UserContext.set(userId);
+        SecurityContextHolder.setContext(ExecutionSecurity.contextFor(userId));
         PluginStorage.Grant<Scope.@NonNull UserScope> oldScope;
         try {
             oldScope = first.currentUser();
         } finally {
-            UserContext.clear();
+            SecurityContextHolder.clearContext();
         }
         var userStore = first.user(oldScope);
         userStore.put("key", null, VALUE);
@@ -599,13 +600,13 @@ class ScopedPluginStorageTest {
                 });
         assertThrows(SecurityException.class, () -> userStore.put("resurrect", null, VALUE));
         assertTrue(first.application().get("key").isPresent());
-        UserContext.set(userId);
+        SecurityContextHolder.setContext(ExecutionSecurity.contextFor(userId));
         try {
             var replacement = first.currentUser();
             assertNotEquals(oldScope.scope().userId(), replacement.scope().userId());
             assertTrue(first.user(replacement).get("key").isEmpty());
         } finally {
-            UserContext.clear();
+            SecurityContextHolder.clearContext();
         }
     }
 }

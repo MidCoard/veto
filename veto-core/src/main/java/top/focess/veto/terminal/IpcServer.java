@@ -15,6 +15,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.security.concurrent.DelegatingSecurityContextCallable;
 import org.springframework.stereotype.Component;
 import org.zeromq.ZContext;
 import top.focess.veto.VetoVersion;
@@ -29,7 +30,7 @@ import top.focess.veto.contract.ServerTransport;
 import top.focess.veto.contract.Transport;
 import top.focess.veto.contract.Version;
 import top.focess.veto.contract.ZmqChannel;
-import top.focess.veto.vault.UserContext;
+import top.focess.veto.vault.ExecutionSecurity;
 
 /**
  * Backend IPC server — the {@link IpcClient} counterpart. Multiplexes many terminal sessions over a
@@ -433,9 +434,7 @@ public class IpcServer {
     private void handleSessionFrame(@NonNull Session session, @NonNull IpcFrame frame) {
         String identity = session.identity;
         UUID user = session.sender.userId();
-        if (user != null) {
-            UserContext.set(user);
-        }
+        var security = ExecutionSecurity.open(user);
         try {
             switch (frame) {
                 case IpcFrame.Request req -> {
@@ -596,7 +595,7 @@ public class IpcServer {
                 }
             }
         } finally {
-            UserContext.clear();
+            security.close();
         }
     }
 
@@ -633,40 +632,39 @@ public class IpcServer {
         final Future<?>[] holder = new Future<?>[1];
         FutureTask<Void> task =
                 new FutureTask<>(
-                        () -> {
-                            // UserContext is a ThreadLocal — set it on THIS (request-pool)
-                            // thread, where registry.dispatch runs. The set in
-                            // handleSessionFrame runs on the session-worker thread and does not
-                            // propagate across requestPool.execute.
-                            UUID user = session.sender.userId();
-                            if (user != null) {
-                                UserContext.set(user);
-                            }
-                            try {
-                                IpcFrame.TerminalResponse response =
-                                        registry.dispatch(session.sender, req.raw());
-                                sendTerminal(session, response, holder[0]);
-                                return null;
-                            } catch (Throwable t) {
-                                // Last line of defense. A command may throw an Error (e.g. a native
-                                // vault KDF failure) that escapes every catch(Exception) above.
-                                // FutureTask.run() would swallow it silently, leaving the terminal
-                                // hung with no diagnostic. Log the full trace and surface an error
-                                // response so the user sees the failure; sendTerminal's
-                                // exactly-once
-                                // guard (terminalSent) suppresses it if the session is already
-                                // closing/cancelled, so this never races the cancel path.
-                                log.error(
-                                        "REQ  {}: dispatch threw", peerLabel(session.identity), t);
-                                sendTerminal(
-                                        session,
-                                        IpcFrame.Error.ofError("Internal error: " + t),
-                                        holder[0]);
-                                return null;
-                            } finally {
-                                UserContext.clear();
-                            }
-                        }) {
+                        new DelegatingSecurityContextCallable<Void>(
+                                () -> {
+                                    try {
+                                        IpcFrame.TerminalResponse response =
+                                                registry.dispatch(session.sender, req.raw());
+                                        sendTerminal(session, response, holder[0]);
+                                        return null;
+                                    } catch (Throwable t) {
+                                        // Last line of defense. A command may throw an Error (e.g.
+                                        // a native
+                                        // vault KDF failure) that escapes every catch(Exception)
+                                        // above.
+                                        // FutureTask.run() would swallow it silently, leaving the
+                                        // terminal
+                                        // hung with no diagnostic. Log the full trace and surface
+                                        // an error
+                                        // response so the user sees the failure; sendTerminal's
+                                        // exactly-once
+                                        // guard (terminalSent) suppresses it if the session is
+                                        // already
+                                        // closing/cancelled, so this never races the cancel path.
+                                        log.error(
+                                                "REQ  {}: dispatch threw",
+                                                peerLabel(session.identity),
+                                                t);
+                                        sendTerminal(
+                                                session,
+                                                IpcFrame.Error.ofError("Internal error: " + t),
+                                                holder[0]);
+                                        return null;
+                                    }
+                                },
+                                ExecutionSecurity.contextFor(session.sender.userId()))) {
                     // Sole owner of slot release + dispatch-next. Runs once — when the body
                     // returns, throws, or is cancelled (cancel(true) interrupts the body, then
                     // calls done()).

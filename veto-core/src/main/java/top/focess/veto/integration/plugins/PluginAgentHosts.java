@@ -31,8 +31,8 @@ import top.focess.veto.model.AgentInstanceRepository;
 import top.focess.veto.model.SessionRepository;
 import top.focess.veto.plugin.runtime.ManagedPlugin;
 import top.focess.veto.session.SessionHistoryLoader;
+import top.focess.veto.vault.ExecutionSecurity;
 import top.focess.veto.vault.KeysteadVault;
-import top.focess.veto.vault.UserContext;
 
 /**
  * Per-plugin, session-bound child execution. No feature policy lives here.
@@ -194,8 +194,7 @@ public final class PluginAgentHosts implements PluginAgentHostFactory {
                     row.claimPlugin(namespace, parentId);
                     identities.saveAndFlush(row);
                 }
-                UUID previous = UserContext.get();
-                UserContext.set(userId);
+                var security = ExecutionSecurity.open(userId);
                 try {
                     agent =
                             service.getObject()
@@ -207,8 +206,7 @@ public final class PluginAgentHosts implements PluginAgentHostFactory {
                                             profile,
                                             history.load(session.getId(), id));
                 } finally {
-                    if (previous == null) UserContext.clear();
-                    else UserContext.set(previous);
+                    security.close();
                 }
             }
         }
