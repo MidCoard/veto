@@ -1,5 +1,6 @@
 package top.focess.veto.command;
 
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -112,10 +113,14 @@ public class CommandRegistry {
             @NonNull VetoCommandSender sender, @NonNull String commandLine) {
 
         String input = commandLine.substring(1);
+        String commandName = "<unresolved>";
         try {
-            ExecutionResult result = manager.dispatch(sender, input);
+            var route = manager.route(sender, input);
+            var command = route.getCommand();
+            commandName = command == null ? "<unknown>" : command.getName();
+            ExecutionResult result = route.execute();
             CommandResult cr = result.result();
-            log.info("Dispatch result for '{}': {}", input, cr);
+            log.info("Dispatch result for '{}': {}", commandName, cr);
 
             if (cr == CommandResult.COMMAND_NOT_FOUND) {
                 return IpcFrame.Error.ofError("Unknown command, try /help.");
@@ -135,7 +140,13 @@ public class CommandRegistry {
             Map<String, Object> doneMeta = buildDoneMeta(sender, false);
             return new IpcFrame.Done(doneMeta, null);
         } catch (Exception e) {
-            log.error("Dispatch failed for {}", sender.terminalId(), e);
+            // Exception messages and causes can echo command arguments, including secrets.
+            log.error(
+                    "Dispatch of '{}' failed for {}: {} at {}",
+                    commandName,
+                    sender.terminalId(),
+                    e.getClass().getSimpleName(),
+                    Arrays.toString(e.getStackTrace()));
             String msg = e.getMessage() != null ? e.getMessage() : "Command failed.";
             return IpcFrame.Error.ofError(msg);
         }

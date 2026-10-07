@@ -4,6 +4,7 @@ import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 import top.focess.veto.api.event.UserLoggedInEvent;
 import top.focess.veto.api.event.UserLogoutEvent;
@@ -11,6 +12,7 @@ import top.focess.veto.api.event.UserRegisteredEvent;
 import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.command.PromptHandler;
 import top.focess.veto.event.EventManager;
+import top.focess.veto.terminal.IpcServer;
 
 /**
  * Unified service for managing user authentication and vault lifecycle. Ensures that login and
@@ -30,17 +32,20 @@ public class AuthLifecycleManager {
     private final @NonNull KeysteadVault vault;
     private final @NonNull PromptHandler promptHandler;
     private final @NonNull SessionManager sessions;
+    private final @NonNull ObjectProvider<IpcServer> ipcServers;
 
     /** Constructs the manager with vault access, terminal detachment, and event delivery. */
     public AuthLifecycleManager(
             @NonNull KeysteadVault vault,
             @NonNull PromptHandler promptHandler,
             @NonNull EventManager eventManager,
-            @NonNull SessionManager sessions) {
+            @NonNull SessionManager sessions,
+            @NonNull ObjectProvider<IpcServer> ipcServers) {
         this.vault = vault;
         this.promptHandler = promptHandler;
         this.eventManager = eventManager;
         this.sessions = sessions;
+        this.ipcServers = ipcServers;
     }
 
     /**
@@ -76,6 +81,8 @@ public class AuthLifecycleManager {
     public synchronized void logout(@NonNull UUID userId) {
         log.info("AuthLifecycleManager: Logging out user {}", userId);
         sessions.invalidateUser(userId);
+        var ipcServer = ipcServers.getIfAvailable();
+        if (ipcServer != null) ipcServer.revokeUser(userId);
         eventManager.submit(new UserLogoutEvent(new Scope.UserScope(userId)));
         try {
             promptHandler.deactivateUser(userId);

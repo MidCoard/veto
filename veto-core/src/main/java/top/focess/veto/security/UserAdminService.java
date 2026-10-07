@@ -148,7 +148,9 @@ public class UserAdminService {
 
     /** Resets the password (new Argon2id hash; invalidates the existing vault). */
     public void setPassword(@NonNull UUID userId, @NonNull String password) {
-        auth.logout(userId);
-        users.setPassword(userId, password);
+        synchronized (auth) {
+            auth.logout(userId);
+            users.setPassword(userId, password);
+        }
     }
 }

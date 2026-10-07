@@ -701,7 +701,9 @@ public class SessionService {
                 session.getWorkspaceRoots(),
                 session.getCurrentWorkspaceRootIndex(),
                 session.getToolResultPresentation());
-        return true;
+        // Creating the primary does not necessarily restore a plugin-owned target child.
+        return sessionAgents.agents(sessionId).stream()
+                .anyMatch(entry -> entry.agent().id().equals(targetId));
     }
 
     /**

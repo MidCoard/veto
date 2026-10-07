@@ -61,4 +61,23 @@ class QuoteCheckControllerTest {
                         .getStatusCode());
         verifyNoInteractions(quotes);
     }
+
+    @Test
+    void doesNotReclassifyUnexpectedQuotationFailuresAsMissingOrChanged() {
+        var sessions = mock(SessionService.class);
+        var vault = mock(KeysteadVault.class);
+        var quotes = mock(QuoteCheckService.class);
+        var owned = mock(SessionConfig.class);
+        when(owned.sessionId()).thenReturn("owned-session");
+        when(vault.currentUser()).thenReturn(TestUsers.ALICE);
+        when(sessions.resolveByName("private", TestUsers.ALICE)).thenReturn(Optional.of(owned));
+        var failure = new IllegalArgumentException("Saved citations are not available");
+        when(quotes.check("owned-session", "agent", 2, "answer")).thenThrow(failure);
+        var task =
+                new QuoteCheckController(sessions, vault, quotes)
+                        .check("private", "agent", 2, new QuoteCheckController.Request("answer"));
+        var callable = task.getCallable();
+        if (callable == null) throw new AssertionError("Quotation callable was not configured");
+        assertSame(failure, assertThrows(IllegalArgumentException.class, callable::call));
+    }
 }

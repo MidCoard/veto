@@ -318,8 +318,9 @@ public final class VetoCommandSender extends AbstractCommandSender {
      */
     public @NonNull CompletableFuture<String> inputAsync(
             @NonNull String text, boolean mask, long timeoutMillis) {
+        var future = super.inputAsync(timeoutMillis);
         ipcServer.send(terminalId, new IpcFrame.Prompt(text, mask));
-        return super.inputAsync(timeoutMillis);
+        return future;
     }
 
     // ── cancel ───────────────────────────────────────────────────────────

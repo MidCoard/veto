@@ -65,28 +65,31 @@ public class AuthController {
         if (registrationError != null) {
             return ResponseEntity.badRequest().body(error(registrationError));
         }
-        if (userRegistry.anyUserExists()) {
-            return ResponseEntity.status(409).body(error(Msg.get("error.auth.alreadySetup")));
-        }
+        // Share registration admission with terminal signup; the transaction commits inside it.
+        synchronized (userRegistry) {
+            if (userRegistry.anyUserExists()) {
+                return ResponseEntity.status(409).body(error(Msg.get("error.auth.alreadySetup")));
+            }
 
-        try {
-            var created = userRegistry.create(username, password, UserRegistry.Role.ADMIN);
-            authLifecycleManager.signup(username, password);
-            String token = sessionManager.createSession(created.getUserId(), username);
+            try {
+                var created = userRegistry.create(username, password, UserRegistry.Role.ADMIN);
+                authLifecycleManager.signup(username, password);
+                String token = sessionManager.createSession(created.getUserId(), username);
 
-            log.info("Vault setup complete - admin user '{}' created", username);
-            return ResponseEntity.ok(
-                    new AuthSetupResponse(
-                            "ok",
-                            token,
-                            created.getUserId(),
-                            username,
-                            "ADMIN",
-                            "Vault initialized and unlocked"));
-        } catch (Exception e) {
-            log.error("Setup failed", e);
-            return ResponseEntity.internalServerError()
-                    .body(error(Msg.get("error.auth.setupFailed")));
+                log.info("Vault setup complete - admin user '{}' created", username);
+                return ResponseEntity.ok(
+                        new AuthSetupResponse(
+                                "ok",
+                                token,
+                                created.getUserId(),
+                                username,
+                                "ADMIN",
+                                "Vault initialized and unlocked"));
+            } catch (Exception e) {
+                log.error("Setup failed", e);
+                return ResponseEntity.internalServerError()
+                        .body(error(Msg.get("error.auth.setupFailed")));
+            }
         }
     }
 
@@ -107,23 +110,31 @@ public class AuthController {
                     .body(error(Msg.get("error.auth.credentialsRequired")));
         }
 
-        var user = userRegistry.authenticate(username, password);
-        if (user.isEmpty()) {
-            return ResponseEntity.status(401).body(error(Msg.get("error.auth.invalidCredentials")));
-        }
+        // Password verification and token issuance must not straddle logout/password reset.
+        synchronized (authLifecycleManager) {
+            var user = userRegistry.authenticate(username, password);
+            if (user.isEmpty()) {
+                return ResponseEntity.status(401)
+                        .body(error(Msg.get("error.auth.invalidCredentials")));
+            }
 
-        try {
-            authLifecycleManager.login(username, password);
-            String token = sessionManager.createSession(user.get().getUserId(), username);
+            try {
+                authLifecycleManager.login(username, password);
+                String token = sessionManager.createSession(user.get().getUserId(), username);
 
-            log.info("User '{}' logged in", username);
-            return ResponseEntity.ok(
-                    new AuthSessionResponse(
-                            "ok", token, user.get().getUserId(), username, user.get().getRole()));
-        } catch (Exception e) {
-            log.error("Login failed for user '{}'", username, e);
-            return ResponseEntity.internalServerError()
-                    .body(error(Msg.get("error.auth.loginFailed")));
+                log.info("User '{}' logged in", username);
+                return ResponseEntity.ok(
+                        new AuthSessionResponse(
+                                "ok",
+                                token,
+                                user.get().getUserId(),
+                                username,
+                                user.get().getRole()));
+            } catch (Exception e) {
+                log.error("Login failed for user '{}'", username, e);
+                return ResponseEntity.internalServerError()
+                        .body(error(Msg.get("error.auth.loginFailed")));
+            }
         }
     }
 
@@ -133,20 +144,22 @@ public class AuthController {
     @PostMapping(value = "/logout", produces = MediaType.APPLICATION_JSON_VALUE)
     public @NonNull ResponseEntity<RestResponse> logout(
             @RequestHeader(TOKEN_HEADER) @NonNull String token) {
-        var session = sessionManager.validate(token);
-        if (session.isEmpty()) {
-            return ResponseEntity.status(401).body(error(Msg.get("error.auth.invalidSession")));
+        synchronized (authLifecycleManager) {
+            var session = sessionManager.validate(token);
+            if (session.isEmpty()) {
+                return ResponseEntity.status(401).body(error(Msg.get("error.auth.invalidSession")));
+            }
+
+            sessionManager.invalidate(token);
+
+            if (!sessionManager.hasSessions(session.get().userId())) {
+                authLifecycleManager.logout(session.get().userId());
+            }
+
+            return ResponseEntity.ok(
+                    new AuthLogoutResponse(
+                            "ok", "Logged out", session.get().userId(), session.get().username()));
         }
-
-        sessionManager.invalidate(token);
-
-        if (!sessionManager.hasSessions(session.get().userId())) {
-            authLifecycleManager.logout(session.get().userId());
-        }
-
-        return ResponseEntity.ok(
-                new AuthLogoutResponse(
-                        "ok", "Logged out", session.get().userId(), session.get().username()));
     }
 
     // ── Status ─────────────────────────────────────────────────────────────

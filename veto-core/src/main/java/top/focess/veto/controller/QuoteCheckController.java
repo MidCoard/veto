@@ -11,6 +11,8 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.context.request.async.WebAsyncTask;
 import org.springframework.web.server.ResponseStatusException;
 import top.focess.veto.session.QuoteCheckService;
+import top.focess.veto.session.QuoteCheckService.AnswerChangedException;
+import top.focess.veto.session.QuoteCheckService.AnswerNotFoundException;
 import top.focess.veto.session.QuoteCheckService.Check;
 import top.focess.veto.session.SessionService;
 import top.focess.veto.vault.KeysteadVault;
@@ -53,7 +55,18 @@ public class QuoteCheckController {
         if (body == null || body.length() > 64_000)
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST);
         return new WebAsyncTask<>(
-                10_000, () -> quotes.check(session.sessionId(), agent, turn, body));
+                10_000,
+                () -> {
+                    try {
+                        return quotes.check(session.sessionId(), agent, turn, body);
+                    } catch (AnswerNotFoundException unavailable) {
+                        throw new ResponseStatusException(
+                                HttpStatus.NOT_FOUND, "Saved answer is not available");
+                    } catch (AnswerChangedException changed) {
+                        throw new ResponseStatusException(
+                                HttpStatus.CONFLICT, "Saved answer changed");
+                    }
+                });
     }
 
     /** Quotation check payload: the quoted {@code body} text to verify. */

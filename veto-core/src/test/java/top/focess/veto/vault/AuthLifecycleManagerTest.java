@@ -9,6 +9,8 @@ import java.util.UUID;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.support.StaticListableBeanFactory;
 import top.focess.veto.api.event.BeforeTextCommitEvent;
 import top.focess.veto.api.event.UserLoggedInEvent;
 import top.focess.veto.api.event.UserLogoutEvent;
@@ -19,8 +21,13 @@ import top.focess.veto.command.PromptHandler;
 import top.focess.veto.event.EventManager;
 import top.focess.veto.integration.plugins.PluginManager;
 import top.focess.veto.integration.plugins.PluginTestSupport;
+import top.focess.veto.terminal.IpcServer;
 
 class AuthLifecycleManagerTest {
+    private static @NonNull ObjectProvider<IpcServer> ipcServers() {
+        return new StaticListableBeanFactory().getBeanProvider(IpcServer.class);
+    }
+
     private static @NonNull KeysteadVault vault() {
         var vault = mock(KeysteadVault.class);
         when(vault.signup("alice", "password")).thenReturn(ALICE);
@@ -38,7 +45,11 @@ class AuthLifecycleManagerTest {
         var vault = vault();
         var lifecycle =
                 new AuthLifecycleManager(
-                        vault, mock(PromptHandler.class), mock(EventManager.class), sessions);
+                        vault,
+                        mock(PromptHandler.class),
+                        mock(EventManager.class),
+                        sessions,
+                        ipcServers());
         lifecycle.logout(ALICE);
         lifecycle.login("alice", "replacement-password");
         var replacementId = UUID.randomUUID();
@@ -53,7 +64,9 @@ class AuthLifecycleManagerTest {
         var vault = vault();
         var prompts = mock(PromptHandler.class);
         var events = mock(EventManager.class);
-        var lifecycle = new AuthLifecycleManager(vault, prompts, events, new SessionManager());
+        var lifecycle =
+                new AuthLifecycleManager(
+                        vault, prompts, events, new SessionManager(), ipcServers());
         doThrow(new IllegalArgumentException("Signup failed"))
                 .when(vault)
                 .signup("alice", "invalid");
@@ -68,7 +81,9 @@ class AuthLifecycleManagerTest {
         var vault = vault();
         var prompts = mock(PromptHandler.class);
         var events = mock(EventManager.class);
-        var lifecycle = new AuthLifecycleManager(vault, prompts, events, new SessionManager());
+        var lifecycle =
+                new AuthLifecycleManager(
+                        vault, prompts, events, new SessionManager(), ipcServers());
         lifecycle.logout(ALICE);
         var ordered = inOrder(events, prompts, vault);
         ordered.verify(events)
@@ -87,7 +102,9 @@ class AuthLifecycleManagerTest {
         KeysteadVault vault = vault();
         PromptHandler prompts = mock(PromptHandler.class);
         EventManager events = mock(EventManager.class);
-        var lifecycle = new AuthLifecycleManager(vault, prompts, events, new SessionManager());
+        var lifecycle =
+                new AuthLifecycleManager(
+                        vault, prompts, events, new SessionManager(), ipcServers());
 
         lifecycle.signup("alice", "password");
         verify(events)
@@ -129,7 +146,8 @@ class AuthLifecycleManagerTest {
                             vault,
                             prompts,
                             PluginTestSupport.eventManager(plugins),
-                            new SessionManager());
+                            new SessionManager(),
+                            ipcServers());
             doThrow(new IllegalStateException("Detach failed")).when(prompts).deactivateUser(ALICE);
             doThrow(new IllegalStateException("Close failed")).when(vault).logout(ALICE);
             assertThrows(IllegalStateException.class, () -> lifecycle.logout(ALICE));
@@ -159,7 +177,8 @@ class AuthLifecycleManagerTest {
                             vault,
                             prompts,
                             PluginTestSupport.eventManager(plugins),
-                            new SessionManager());
+                            new SessionManager(),
+                            ipcServers());
             lifecycle.logout(ALICE);
             doThrow(new IllegalArgumentException("Login failed"))
                     .when(vault)

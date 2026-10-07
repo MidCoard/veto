@@ -632,39 +632,53 @@ public class IpcServer {
         final Future<?>[] holder = new Future<?>[1];
         FutureTask<Void> task =
                 new FutureTask<>(
-                        new DelegatingSecurityContextCallable<Void>(
-                                () -> {
-                                    try {
-                                        IpcFrame.TerminalResponse response =
-                                                registry.dispatch(session.sender, req.raw());
-                                        sendTerminal(session, response, holder[0]);
-                                        return null;
-                                    } catch (Throwable t) {
-                                        // Last line of defense. A command may throw an Error (e.g.
-                                        // a native
-                                        // vault KDF failure) that escapes every catch(Exception)
-                                        // above.
-                                        // FutureTask.run() would swallow it silently, leaving the
-                                        // terminal
-                                        // hung with no diagnostic. Log the full trace and surface
-                                        // an error
-                                        // response so the user sees the failure; sendTerminal's
-                                        // exactly-once
-                                        // guard (terminalSent) suppresses it if the session is
-                                        // already
-                                        // closing/cancelled, so this never races the cancel path.
-                                        log.error(
-                                                "REQ  {}: dispatch threw",
-                                                peerLabel(session.identity),
-                                                t);
-                                        sendTerminal(
-                                                session,
-                                                IpcFrame.Error.ofError("Internal error: " + t),
-                                                holder[0]);
-                                        return null;
-                                    }
-                                },
-                                ExecutionSecurity.contextFor(session.sender.userId()))) {
+                        () ->
+                                new DelegatingSecurityContextCallable<Void>(
+                                                () -> {
+                                                    try {
+                                                        IpcFrame.TerminalResponse response =
+                                                                registry.dispatch(
+                                                                        session.sender, req.raw());
+                                                        sendTerminal(session, response, holder[0]);
+                                                        return null;
+                                                    } catch (Throwable t) {
+                                                        // Last line of defense. A command may throw
+                                                        // an Error (e.g.
+                                                        // a native
+                                                        // vault KDF failure) that escapes every
+                                                        // catch(Exception)
+                                                        // above.
+                                                        // FutureTask.run() would swallow it
+                                                        // silently, leaving the
+                                                        // terminal
+                                                        // hung with no diagnostic. Log the full
+                                                        // trace and surface
+                                                        // an error
+                                                        // response so the user sees the failure;
+                                                        // sendTerminal's
+                                                        // exactly-once
+                                                        // guard (terminalSent) suppresses it if the
+                                                        // session is
+                                                        // already
+                                                        // closing/cancelled, so this never races
+                                                        // the cancel path.
+                                                        log.error(
+                                                                "REQ  {}: dispatch threw",
+                                                                peerLabel(session.identity),
+                                                                t);
+                                                        sendTerminal(
+                                                                session,
+                                                                IpcFrame.Error.ofError(
+                                                                        "Internal error: " + t),
+                                                                holder[0]);
+                                                        return null;
+                                                    }
+                                                },
+                                                // Resolve at execution time: logout can revoke a
+                                                // queued request.
+                                                ExecutionSecurity.contextFor(
+                                                        session.sender.userId()))
+                                        .call()) {
                     // Sole owner of slot release + dispatch-next. Runs once — when the body
                     // returns, throws, or is cancelled (cancel(true) interrupts the body, then
                     // calls done()).
@@ -769,6 +783,15 @@ public class IpcServer {
     }
 
     // ── Session lifecycle helpers ─────────────────────────────────────────
+
+    /** Revokes account authentication while leaving terminals connected for a fresh login. */
+    public void revokeUser(@NonNull UUID userId) {
+        for (var session : sessions.values()) {
+            if (userId.equals(session.sender.userId())) {
+                session.sender.setUser(null);
+            }
+        }
+    }
 
     /**
      * Idempotently closes a session. Uses {@link AtomicBoolean#compareAndSet} so concurrent calls

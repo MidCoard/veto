@@ -57,19 +57,20 @@ public class LoginCommand extends VetoCommand {
                         return CommandResult.REFUSE;
                     }
 
-                    var authenticated = users.authenticate(u, p);
-                    if (authenticated.isEmpty()) {
-                        s.output("Invalid username or password.");
-                        return CommandResult.REFUSE;
+                    synchronized (authLifecycleManager) {
+                        var authenticated = users.authenticate(u, p);
+                        if (authenticated.isEmpty()) {
+                            s.output("Invalid username or password.");
+                            return CommandResult.REFUSE;
+                        }
+                        try {
+                            authLifecycleManager.login(u, p);
+                            s.setUser(authenticated.orElseThrow());
+                        } catch (Exception e) {
+                            s.output("Failed to unlock vault: " + e.getMessage());
+                            return CommandResult.REFUSE;
+                        }
                     }
-
-                    try {
-                        authLifecycleManager.login(u, p);
-                    } catch (Exception e) {
-                        s.output("Failed to unlock vault: " + e.getMessage());
-                        return CommandResult.REFUSE;
-                    }
-                    s.setUser(authenticated.orElseThrow());
                     s.output("Logged in as " + u + ".");
                     return CommandResult.ALLOW;
                 },

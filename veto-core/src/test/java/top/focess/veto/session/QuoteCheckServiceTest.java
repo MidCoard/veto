@@ -49,7 +49,7 @@ class QuoteCheckServiceTest {
         var service = new QuoteCheckService(repo, mapper);
         assertEquals(List.of(check), service.check("session", "author", 3, body));
         assertThrows(
-                IllegalArgumentException.class,
+                QuoteCheckService.AnswerChangedException.class,
                 () -> service.check("session", "author", 3, "changed"));
         verify(repo, times(2)).findBySessionIdAndAgentIdAndTurnNumber("session", "author", 3);
         verifyNoMoreInteractions(repo);

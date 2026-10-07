@@ -223,6 +223,20 @@ class SessionServiceTest {
         ReflectionTestUtils.setField(reader, "parentCallId", "read-call");
         when(agents.findById("reader")).thenReturn(Optional.of(reader));
         assertFalse(service.activateForObservation(id, TestUsers.ALICE, "reader"));
+        var livePrimary = mock(VetoAgent.class);
+        when(livePrimary.id()).thenReturn(primary.getId());
+        doAnswer(
+                        invocation -> {
+                            when(liveAgents.agents(id))
+                                    .thenReturn(
+                                            List.of(
+                                                    new SessionAgentRegistry.Entry(
+                                                            id, null, null, livePrimary)));
+                            return livePrimary;
+                        })
+                .when(runtime)
+                .getOrCreateAgent(
+                        anyString(), anyString(), any(), anyList(), any(), any(), anyInt(), any());
         assertTrue(service.activateForObservation(id, TestUsers.ALICE, primary.getId()));
         verify(runtime)
                 .getOrCreateAgent(
@@ -234,6 +248,34 @@ class SessionServiceTest {
                         any(),
                         anyInt(),
                         any());
+
+        // An inactive plugin mate remains pending; restoring only its primary is not success.
+        var mate = AgentEntity.spawned("mate", session.getId(), "Mate");
+        ReflectionTestUtils.setField(mate, "recoveryVersion", 1);
+        ReflectionTestUtils.setField(mate, "runtimeRole", "MATE");
+        when(agents.findById(mate.getId())).thenReturn(Optional.of(mate));
+        when(history.load(session.getId(), mate.getId())).thenReturn(replay);
+        clearInvocations(runtime);
+        assertFalse(service.activateForObservation(id, user, mate.getId()));
+        assertFalse(service.activateForObservation(id, user, mate.getId()));
+        verify(runtime, times(2))
+                .getOrCreateAgent(
+                        anyString(), anyString(), any(), anyList(), any(), any(), anyInt(), any());
+
+        // Once plugin-owned recovery supplies the exact mate, the next retry can deliver work.
+        var liveMate = mock(VetoAgent.class);
+        when(liveMate.id()).thenReturn(mate.getId());
+        when(liveAgents.agents(id))
+                .thenReturn(
+                        List.of(
+                                new SessionAgentRegistry.Entry(id, null, null, livePrimary),
+                                new SessionAgentRegistry.Entry(
+                                        id, primary.getId(), null, liveMate)));
+        clearInvocations(runtime);
+        assertTrue(service.activateForObservation(id, user, mate.getId()));
+        verifyNoInteractions(runtime);
+        verify(agents, never()).save(any());
+        verify(agents, never()).delete(any());
         verify(sessions, never())
                 .findFirstByNameAndUserIdOrderByLastActiveAtDesc(anyString(), any(UUID.class));
         verify(sessions, never()).save(any());

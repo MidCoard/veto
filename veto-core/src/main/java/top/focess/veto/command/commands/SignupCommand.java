@@ -72,7 +72,6 @@ public class SignupCommand extends VetoCommand {
                     }
 
                     String u = args.get("user");
-                    String p = args.get("pass");
 
                     if (u == null) {
                         u = s.input("Choose a username:", false);
@@ -85,44 +84,53 @@ public class SignupCommand extends VetoCommand {
                             return CommandResult.REFUSE;
                         }
                     }
+                    // Passwords are never command arguments or command-history entries.
+                    String p = s.input("Choose a password:", true);
                     if (p == null) {
-                        p = s.input("Choose a password:", true);
-                        if (p == null) {
-                            s.output("Signup cancelled.");
-                            return CommandResult.REFUSE;
-                        }
-                        if (p.isEmpty()) {
-                            s.output("Password cannot be empty.");
-                            return CommandResult.REFUSE;
-                        }
+                        s.output("Signup cancelled.");
+                        return CommandResult.REFUSE;
+                    }
+                    if (p.isEmpty()) {
+                        s.output("Password cannot be empty.");
+                        return CommandResult.REFUSE;
                     }
 
-                    String role = bootstrap ? UserRegistry.Role.ADMIN : UserRegistry.Role.USER;
-                    try {
-                        users.create(u, p, role);
-                    } catch (IllegalArgumentException e) {
-                        s.output(e.getMessage());
-                        return CommandResult.REFUSE;
+                    synchronized (users) {
+                        // Another REST or terminal signup may have completed while we prompted.
+                        bootstrap = users.adminCount() == 0;
+                        if (!bootstrap && mode != SignupMode.PUBLIC) {
+                            s.output(
+                                    "Self-signup is no longer available; use /login or ask an administrator.");
+                            return CommandResult.REFUSE;
+                        }
+                        String role = bootstrap ? UserRegistry.Role.ADMIN : UserRegistry.Role.USER;
+                        try {
+                            users.create(u, p, role);
+                        } catch (IllegalArgumentException e) {
+                            s.output(e.getMessage());
+                            return CommandResult.REFUSE;
+                        }
+                        try {
+                            synchronized (authLifecycleManager) {
+                                authLifecycleManager.signup(u, p);
+                                s.setUser(users.findByUsername(u).orElseThrow());
+                            }
+                        } catch (Exception e) {
+                            s.output("Account created but vault setup failed: " + e.getMessage());
+                            return CommandResult.REFUSE;
+                        }
+                        s.output(
+                                bootstrap
+                                        ? "Administrator account created - welcome, " + u + "."
+                                        : "Account created - welcome, " + u + ".");
+                        return CommandResult.ALLOW;
                     }
-                    try {
-                        authLifecycleManager.signup(u, p);
-                    } catch (Exception e) {
-                        s.output("Account created but vault setup failed: " + e.getMessage());
-                        return CommandResult.REFUSE;
-                    }
-                    s.setUser(users.findByUsername(u).orElseThrow());
-                    s.output(
-                            bootstrap
-                                    ? "Administrator account created - welcome, " + u + "."
-                                    : "Account created - welcome, " + u + ".");
-                    return CommandResult.ALLOW;
                 },
-                opt("user"),
-                opt("pass"));
+                opt("user"));
     }
 
     @Override
     public @NonNull List<String> usage(@NonNull CommandSender s) {
-        return List.of("/signup [user] [pass] - Create a new account (password is prompted)");
+        return List.of("/signup [user] - Create a new account (password is prompted)");
     }
 }
