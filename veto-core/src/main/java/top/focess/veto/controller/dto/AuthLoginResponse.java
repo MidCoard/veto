@@ -4,9 +4,9 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import java.util.UUID;
 import org.jspecify.annotations.*;
 
-/** Payload returned on successful authentication, carrying the new session token and user role. */
+/** Payload returned on successful authentication, carrying the new login token and user role. */
 @JsonInclude(JsonInclude.Include.NON_NULL)
-public record AuthSessionResponse(
+public record AuthLoginResponse(
         @NonNull String status,
         @NonNull String token,
         @NonNull UUID userId,

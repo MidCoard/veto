@@ -20,7 +20,8 @@ import org.springframework.web.socket.handler.ConcurrentWebSocketSessionDecorato
 import org.springframework.web.socket.handler.TextWebSocketHandler;
 import top.focess.veto.bus.BusMessage.*;
 import top.focess.veto.model.SessionRepository;
-import top.focess.veto.vault.SessionManager;
+import top.focess.veto.vault.LoginSessionManager;
+import top.focess.veto.vault.LoginSessionManager.LoginSession;
 import top.focess.veto.veto.VetoGateway;
 
 /**
@@ -37,9 +38,9 @@ public class VetoWebSocketHandler extends TextWebSocketHandler {
     private final @NonNull ObjectMapper objectMapper;
     private final @NonNull VetoGateway vetoGateway;
     private final @NonNull SessionRepository sessionRepository;
-    private final @NonNull SessionManager sessionManager;
+    private final @NonNull LoginSessionManager loginSessions;
 
-    private final @NonNull CopyOnWriteArrayList<@NonNull WebSocketSession> sessions =
+    private final @NonNull CopyOnWriteArrayList<@NonNull WebSocketSession> webSocketSessions =
             new CopyOnWriteArrayList<>();
     private final @NonNull ConcurrentHashMap<@NonNull String, @NonNull String> sessionRoutes =
             new ConcurrentHashMap<>();
@@ -53,11 +54,11 @@ public class VetoWebSocketHandler extends TextWebSocketHandler {
             @NonNull ObjectMapper objectMapper,
             @NonNull VetoGateway vetoGateway,
             @NonNull SessionRepository sessionRepository,
-            @NonNull SessionManager sessionManager) {
+            @NonNull LoginSessionManager loginSessions) {
         this.objectMapper = objectMapper;
         this.vetoGateway = vetoGateway;
         this.sessionRepository = sessionRepository;
-        this.sessionManager = sessionManager;
+        this.loginSessions = loginSessions;
     }
 
     @Override
@@ -67,7 +68,7 @@ public class VetoWebSocketHandler extends TextWebSocketHandler {
             session.close(CloseStatus.POLICY_VIOLATION.withReason("authentication required"));
             return;
         }
-        sessions.add(new ConcurrentWebSocketSessionDecorator(session, 10000, 1024 * 1024));
+        webSocketSessions.add(new ConcurrentWebSocketSessionDecorator(session, 10000, 1024 * 1024));
         sessionUsers.put(session.getId(), authenticatedUser);
         log.info("WS Bus: Authenticated client '{}' connected", session.getId());
 
@@ -216,7 +217,7 @@ public class VetoWebSocketHandler extends TextWebSocketHandler {
     @Override
     public void afterConnectionClosed(
             @NonNull WebSocketSession session, @NonNull CloseStatus status) {
-        sessions.removeIf(candidate -> candidate.getId().equals(session.getId()));
+        webSocketSessions.removeIf(candidate -> candidate.getId().equals(session.getId()));
         sessionRoutes.remove(session.getId());
         sessionUsers.remove(session.getId());
         log.info(
@@ -233,7 +234,7 @@ public class VetoWebSocketHandler extends TextWebSocketHandler {
                 "WS Bus: Transport error for '{}': {}",
                 session.getId(),
                 safe(exception.getMessage()));
-        sessions.removeIf(candidate -> candidate.getId().equals(session.getId()));
+        webSocketSessions.removeIf(candidate -> candidate.getId().equals(session.getId()));
         sessionRoutes.remove(session.getId());
         sessionUsers.remove(session.getId());
     }
@@ -252,7 +253,7 @@ public class VetoWebSocketHandler extends TextWebSocketHandler {
         if (senderUser == null) {
             return;
         }
-        for (WebSocketSession s : sessions) {
+        for (WebSocketSession s : webSocketSessions) {
             String route = sessionRoutes.get(s.getId());
             String messageType = message.type();
             boolean acceptsRoute =
@@ -286,7 +287,7 @@ public class VetoWebSocketHandler extends TextWebSocketHandler {
             return;
         }
         String json = frame.toJson(objectMapper);
-        for (WebSocketSession session : sessions) {
+        for (WebSocketSession session : webSocketSessions) {
             if (session.isOpen() && userId.equals(sessionUsers.get(session.getId()))) {
                 try {
                     sendTo(session, new TextMessage(json));
@@ -315,7 +316,7 @@ public class VetoWebSocketHandler extends TextWebSocketHandler {
             return;
         }
         WebSocketSession wrapped =
-                sessions.stream()
+                webSocketSessions.stream()
                         .filter(candidate -> candidate.getId().equals(target.getId()))
                         .findFirst()
                         .orElse(null);
@@ -333,7 +334,7 @@ public class VetoWebSocketHandler extends TextWebSocketHandler {
     }
 
     public int getActiveSessionCount() {
-        return (int) sessions.stream().filter(WebSocketSession::isOpen).count();
+        return (int) webSocketSessions.stream().filter(WebSocketSession::isOpen).count();
     }
 
     public long getTotalMessages() {
@@ -345,12 +346,12 @@ public class VetoWebSocketHandler extends TextWebSocketHandler {
                 session.getAttributes()
                         .get(VetoWebSocketAuthInterceptor.AUTHENTICATED_USER_ATTRIBUTE);
         Object token =
-                session.getAttributes().get(VetoWebSocketAuthInterceptor.SESSION_TOKEN_ATTRIBUTE);
+                session.getAttributes().get(VetoWebSocketAuthInterceptor.LOGIN_TOKEN_ATTRIBUTE);
         if (!(value instanceof UUID user) || !(token instanceof String text)) return null;
-        return sessionManager
-                .validate(text)
+        return loginSessions
+                .validateToken(text)
                 .filter(authenticated -> user.equals(authenticated.userId()))
-                .map(SessionManager.Session::userId)
+                .map(LoginSession::userId)
                 .orElse(null);
     }
 

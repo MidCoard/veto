@@ -13,17 +13,17 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.AnonymousAuthenticationFilter;
 import org.springframework.security.web.context.NullSecurityContextRepository;
-import top.focess.veto.vault.SessionManager;
+import top.focess.veto.vault.LoginSessionManager;
 import top.focess.veto.vault.UserRegistry;
 
-/** Stateless HTTP authentication using the existing Veto session-token protocol. */
+/** Stateless HTTP authentication using the Veto login-token protocol. */
 @Configuration
 @EnableWebSecurity
 public class WebSecurityConfig {
     @Bean
     public @NonNull SecurityFilterChain securityFilterChain(
             @NonNull HttpSecurity http,
-            @NonNull SessionManager sessions,
+            @NonNull LoginSessionManager loginSessions,
             @NonNull UserRegistry users)
             throws Exception {
         return http
@@ -77,7 +77,7 @@ public class WebSecurityConfig {
                                         .denyAll())
                 // Constructed only here: never also registered as a servlet-container filter.
                 .addFilterBefore(
-                        new SessionTokenAuthenticationFilter(sessions, users),
+                        new LoginTokenAuthenticationFilter(loginSessions, users),
                         AnonymousAuthenticationFilter.class)
                 .build();
     }

@@ -26,7 +26,7 @@ import top.focess.veto.event.EventManager;
 import top.focess.veto.vault.AuthLifecycleManager;
 import top.focess.veto.vault.CurrentUser;
 import top.focess.veto.vault.KeysteadVault;
-import top.focess.veto.vault.SessionManager;
+import top.focess.veto.vault.LoginSessionManager;
 import top.focess.veto.vault.TestUsers;
 
 class IpcPeerIsolationTest {
@@ -69,7 +69,7 @@ class IpcPeerIsolationTest {
                         mock(KeysteadVault.class),
                         mock(PromptHandler.class),
                         mock(EventManager.class),
-                        new SessionManager(),
+                        new LoginSessionManager(),
                         beans.getBeanProvider(IpcServer.class));
         server.start();
         try (var context = new ZContext()) {

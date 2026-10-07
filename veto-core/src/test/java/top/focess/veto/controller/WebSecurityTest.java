@@ -45,7 +45,7 @@ import top.focess.veto.session.SessionService.SessionConfig;
 import top.focess.veto.vault.CurrentUser;
 import top.focess.veto.vault.ExecutionSecurity;
 import top.focess.veto.vault.KeysteadVault;
-import top.focess.veto.vault.SessionManager;
+import top.focess.veto.vault.LoginSessionManager;
 import top.focess.veto.vault.TestUsers;
 import top.focess.veto.vault.UserEntity;
 import top.focess.veto.vault.UserRegistry;
@@ -54,7 +54,7 @@ import top.focess.veto.vault.UserRegistry;
 @SpringJUnitConfig(WebSecurityTest.Config.class)
 @WebAppConfiguration
 class WebSecurityTest {
-    private final @NonNull SessionManager sessions;
+    private final @NonNull LoginSessionManager sessions;
     private final @NonNull UserRegistry users;
     private final @NonNull ProbeController controller;
     private final @NonNull ThreadPoolTaskExecutor worker;
@@ -67,7 +67,7 @@ class WebSecurityTest {
     @Autowired
     WebSecurityTest(
             @NonNull WebApplicationContext context,
-            @NonNull SessionManager sessions,
+            @NonNull LoginSessionManager sessions,
             @NonNull UserRegistry users,
             @NonNull ProbeController controller,
             @NonNull ThreadPoolTaskExecutor worker,
@@ -81,7 +81,7 @@ class WebSecurityTest {
         this.quoteSessions = quoteSessions;
         this.vault = vault;
         this.quotes = quotes;
-        token = sessions.createSession(TestUsers.OWNER, "security-test");
+        token = sessions.createLoginSession(TestUsers.OWNER, "security-test");
         mvc = MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build();
     }
 
@@ -170,7 +170,7 @@ class WebSecurityTest {
                         .andExpect(request().asyncStarted())
                         .andReturn();
         assertCleared();
-        sessions.invalidate(token);
+        sessions.revokeToken(token);
         assertTrue(controller.result.complete("finished"));
         completeOnAnotherThread(initial, 401);
     }
@@ -324,8 +324,8 @@ class WebSecurityTest {
     @Import({WebSecurityConfig.class, WebConfig.class, QuoteCheckController.class})
     static class Config implements WebMvcConfigurer {
         @Bean
-        @NonNull SessionManager sessions() {
-            return new SessionManager();
+        @NonNull LoginSessionManager sessions() {
+            return new LoginSessionManager();
         }
 
         @Bean

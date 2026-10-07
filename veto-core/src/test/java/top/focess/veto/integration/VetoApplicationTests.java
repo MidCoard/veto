@@ -34,7 +34,7 @@ import top.focess.veto.bus.DeltaBroker;
 import top.focess.veto.integration.plugins.PluginManager;
 import top.focess.veto.memory.TurnLogService;
 import top.focess.veto.observability.AuditLogger;
-import top.focess.veto.vault.SessionManager;
+import top.focess.veto.vault.LoginSessionManager;
 import top.focess.veto.vault.UserRegistry;
 import top.focess.veto.veto.GBNFGrammarEngine;
 import top.focess.veto.veto.LlamaCppBridge;
@@ -233,8 +233,8 @@ class VetoApplicationTests {
         var headers = new HttpHeaders();
         headers.set(
                 "X-Veto-Session-Token",
-                context.getBean(SessionManager.class)
-                        .createSession(user.getUserId(), user.getUsername()));
+                context.getBean(LoginSessionManager.class)
+                        .createLoginSession(user.getUserId(), user.getUsername()));
         return headers;
     }
 
@@ -269,7 +269,7 @@ class VetoApplicationTests {
                                     .get(10, TimeUnit.SECONDS));
             try {
                 assertFalse(socket.isOutputClosed());
-                context.getBean(SessionManager.class).invalidate(token);
+                context.getBean(LoginSessionManager.class).revokeToken(token);
                 assertEquals(
                         HttpStatus.UNAUTHORIZED,
                         restTemplate
@@ -360,13 +360,13 @@ class VetoApplicationTests {
     void restRejectsMalformedJsonAtTheBoundary() {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
-        var sessions = context.getBean(SessionManager.class);
+        var sessions = context.getBean(LoginSessionManager.class);
         var boundaryUser =
                 context.getBean(UserRegistry.class)
                         .create("json-boundary-owner", "test-password", "USER");
         headers.set(
                 "X-Veto-Session-Token",
-                sessions.createSession(boundaryUser.getUserId(), boundaryUser.getUsername()));
+                sessions.createLoginSession(boundaryUser.getUserId(), boundaryUser.getUsername()));
         for (String path : List.of("/api/auth/setup", "/api/auth/login")) {
             HttpEntity<String> request =
                     new HttpEntity<>("{\"username\":42,\"password\":\"password123\"}", headers);
@@ -455,12 +455,12 @@ class VetoApplicationTests {
         String createUrl = "http://localhost:" + port + "/api/tasks";
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
-        var sessions = context.getBean(SessionManager.class);
+        var sessions = context.getBean(LoginSessionManager.class);
         var taskUser =
                 context.getBean(UserRegistry.class).create("task-owner", "test-password", "USER");
         headers.set(
                 "X-Veto-Session-Token",
-                sessions.createSession(taskUser.getUserId(), taskUser.getUsername()));
+                sessions.createLoginSession(taskUser.getUserId(), taskUser.getUsername()));
         HttpEntity<Void> authenticated = new HttpEntity<>(headers);
         for (HttpMethod method : List.of(HttpMethod.GET, HttpMethod.POST)) {
             HttpHeaders anonymousHeaders = new HttpHeaders();
@@ -513,7 +513,8 @@ class VetoApplicationTests {
                         .create("other-task-owner", "test-password", "USER");
         otherHeaders.set(
                 "X-Veto-Session-Token",
-                sessions.createSession(otherTaskUser.getUserId(), otherTaskUser.getUsername()));
+                sessions.createLoginSession(
+                        otherTaskUser.getUserId(), otherTaskUser.getUsername()));
         HttpEntity<Void> other = new HttpEntity<>(otherHeaders);
         for (HttpMethod method : List.of(HttpMethod.GET, HttpMethod.DELETE)) {
             assertEquals(

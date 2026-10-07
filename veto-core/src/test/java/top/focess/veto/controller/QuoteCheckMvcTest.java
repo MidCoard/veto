@@ -39,7 +39,7 @@ import top.focess.veto.session.SessionService;
 import top.focess.veto.session.SessionService.SessionConfig;
 import top.focess.veto.vault.CurrentUser;
 import top.focess.veto.vault.KeysteadVault;
-import top.focess.veto.vault.SessionManager;
+import top.focess.veto.vault.LoginSessionManager;
 import top.focess.veto.vault.TestUsers;
 import top.focess.veto.vault.UserEntity;
 import top.focess.veto.vault.UserRegistry;
@@ -57,12 +57,12 @@ class QuoteCheckMvcTest {
     @Autowired
     QuoteCheckMvcTest(
             @NonNull WebApplicationContext context,
-            @NonNull SessionManager sessions,
+            @NonNull LoginSessionManager sessions,
             @NonNull TurnRecordRepository records,
             @NonNull ObjectMapper mapper,
             @NonNull ThreadPoolTaskExecutor worker) {
         mvc = MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build();
-        token = sessions.createSession(TestUsers.OWNER, "quotation-test");
+        token = sessions.createLoginSession(TestUsers.OWNER, "quotation-test");
         this.records = records;
         this.mapper = mapper;
         this.worker = worker;
@@ -135,8 +135,8 @@ class QuoteCheckMvcTest {
     @Import({WebSecurityConfig.class, WebConfig.class, QuoteCheckController.class})
     static class Config implements WebMvcConfigurer {
         @Bean
-        @NonNull SessionManager sessions() {
-            return new SessionManager();
+        @NonNull LoginSessionManager sessions() {
+            return new LoginSessionManager();
         }
 
         @Bean

@@ -31,7 +31,7 @@ public class AuthLifecycleManager {
 
     private final @NonNull KeysteadVault vault;
     private final @NonNull PromptHandler promptHandler;
-    private final @NonNull SessionManager sessions;
+    private final @NonNull LoginSessionManager loginSessions;
     private final @NonNull ObjectProvider<IpcServer> ipcServers;
 
     /** Constructs the manager with vault access, terminal detachment, and event delivery. */
@@ -39,12 +39,12 @@ public class AuthLifecycleManager {
             @NonNull KeysteadVault vault,
             @NonNull PromptHandler promptHandler,
             @NonNull EventManager eventManager,
-            @NonNull SessionManager sessions,
+            @NonNull LoginSessionManager loginSessions,
             @NonNull ObjectProvider<IpcServer> ipcServers) {
         this.vault = vault;
         this.promptHandler = promptHandler;
         this.eventManager = eventManager;
-        this.sessions = sessions;
+        this.loginSessions = loginSessions;
         this.ipcServers = ipcServers;
     }
 
@@ -80,14 +80,14 @@ public class AuthLifecycleManager {
      */
     public synchronized void logout(@NonNull UUID userId) {
         log.info("AuthLifecycleManager: Logging out user {}", userId);
-        sessions.invalidateUser(userId);
+        loginSessions.revokeUserTokens(userId);
         var ipcServer = ipcServers.getIfAvailable();
         if (ipcServer != null) ipcServer.revokeUser(userId);
         eventManager.submit(new UserLogoutEvent(new Scope.UserScope(userId)));
         try {
             promptHandler.deactivateUser(userId);
         } catch (Exception e) {
-            log.warn("Error detaching sessions for user '{}' during logout", userId, e);
+            log.warn("Error detaching terminal agents for user '{}' during logout", userId, e);
         }
         vault.logout(userId);
     }

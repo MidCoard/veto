@@ -9,21 +9,22 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.socket.WebSocketHandler;
 import org.springframework.web.socket.server.HandshakeInterceptor;
 import org.springframework.web.util.UriComponentsBuilder;
-import top.focess.veto.vault.SessionManager;
+import top.focess.veto.vault.LoginSessionManager;
+import top.focess.veto.vault.LoginSessionManager.LoginSession;
 
 /** Authenticates the WebSocket handshake and binds its Veto user to the connection. */
 @Component
 public final class VetoWebSocketAuthInterceptor implements HandshakeInterceptor {
 
     public static final @NonNull String AUTHENTICATED_USER_ATTRIBUTE = "veto.authenticatedUser";
-    public static final @NonNull String SESSION_TOKEN_ATTRIBUTE = "veto.sessionToken";
+    public static final @NonNull String LOGIN_TOKEN_ATTRIBUTE = "veto.sessionToken";
     private static final @NonNull String TOKEN_HEADER = "X-Veto-Session-Token";
 
-    private final @NonNull SessionManager sessionManager;
+    private final @NonNull LoginSessionManager loginSessions;
 
-    /** Creates the interceptor validating handshake tokens against the session manager. */
-    public VetoWebSocketAuthInterceptor(@NonNull SessionManager sessionManager) {
-        this.sessionManager = sessionManager;
+    /** Creates the interceptor validating handshake tokens against the login-session manager. */
+    public VetoWebSocketAuthInterceptor(@NonNull LoginSessionManager loginSessions) {
+        this.loginSessions = loginSessions;
     }
 
     @Override
@@ -44,13 +45,13 @@ public final class VetoWebSocketAuthInterceptor implements HandshakeInterceptor 
             response.setStatusCode(HttpStatus.UNAUTHORIZED);
             return false;
         }
-        SessionManager.Session authenticated = sessionManager.validate(token).orElse(null);
+        LoginSession authenticated = loginSessions.validateToken(token).orElse(null);
         if (authenticated == null) {
             response.setStatusCode(HttpStatus.UNAUTHORIZED);
             return false;
         }
         attributes.put(AUTHENTICATED_USER_ATTRIBUTE, authenticated.userId());
-        attributes.put(SESSION_TOKEN_ATTRIBUTE, token);
+        attributes.put(LOGIN_TOKEN_ATTRIBUTE, token);
         return true;
     }
 

@@ -11,17 +11,17 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.filter.OncePerRequestFilter;
-import top.focess.veto.vault.SessionManager;
+import top.focess.veto.vault.LoginSessionManager;
 import top.focess.veto.vault.UserRegistry;
 
-/** Resolves Veto's opaque session token independently on each HTTP dispatch. */
-final class SessionTokenAuthenticationFilter extends OncePerRequestFilter {
-    private final @NonNull SessionManager sessions;
+/** Resolves Veto's opaque login token independently on each HTTP dispatch. */
+final class LoginTokenAuthenticationFilter extends OncePerRequestFilter {
+    private final @NonNull LoginSessionManager loginSessions;
     private final @NonNull UserRegistry users;
 
-    SessionTokenAuthenticationFilter(
-            @NonNull SessionManager sessions, @NonNull UserRegistry users) {
-        this.sessions = sessions;
+    LoginTokenAuthenticationFilter(
+            @NonNull LoginSessionManager loginSessions, @NonNull UserRegistry users) {
+        this.loginSessions = loginSessions;
         this.users = users;
     }
 
@@ -52,13 +52,13 @@ final class SessionTokenAuthenticationFilter extends OncePerRequestFilter {
                 token = request.getParameter("token");
             }
             if (token != null && !token.isBlank()) {
-                var session = sessions.validate(token).orElse(null);
-                if (session != null) {
-                    var user = users.findByUserId(session.userId()).orElse(null);
+                var loginSession = loginSessions.validateToken(token).orElse(null);
+                if (loginSession != null) {
+                    var user = users.findByUserId(loginSession.userId()).orElse(null);
                     if (user != null) {
                         var authentication =
                                 UsernamePasswordAuthenticationToken.authenticated(
-                                        session.userId(),
+                                        loginSession.userId(),
                                         "",
                                         List.of(
                                                 new SimpleGrantedAuthority(

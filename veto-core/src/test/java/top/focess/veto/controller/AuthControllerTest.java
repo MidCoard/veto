@@ -19,7 +19,7 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import top.focess.veto.controller.dto.AuthCredentials;
 import top.focess.veto.vault.AuthLifecycleManager;
 import top.focess.veto.vault.KeysteadVault;
-import top.focess.veto.vault.SessionManager;
+import top.focess.veto.vault.LoginSessionManager;
 import top.focess.veto.vault.UserEntity;
 import top.focess.veto.vault.UserRegistry;
 
@@ -28,7 +28,7 @@ class AuthControllerTest {
     void concurrentFirstRunSetupsCannotBothCreateAdministrators() throws Exception {
         var users = mock(UserRegistry.class);
         var lifecycle = mock(AuthLifecycleManager.class);
-        var sessions = new SessionManager();
+        var sessions = new LoginSessionManager();
         var controller = new AuthController(users, sessions, mock(KeysteadVault.class), lifecycle);
         var exists = new AtomicBoolean();
         var checks = new AtomicInteger();
@@ -75,7 +75,7 @@ class AuthControllerTest {
             assertEquals(200, first.get(5, TimeUnit.SECONDS).getStatusCode().value());
             assertEquals(409, second.get(5, TimeUnit.SECONDS).getStatusCode().value());
             verify(users, times(1)).create(anyString(), anyString(), eq(UserRegistry.Role.ADMIN));
-            assertEquals(1, sessions.activeSessionCount());
+            assertEquals(1, sessions.activeLoginSessionCount());
         } finally {
             release.countDown();
         }
@@ -85,7 +85,7 @@ class AuthControllerTest {
     void passwordResetCannotInterleaveAuthenticationAndTokenIssuance() throws Exception {
         var users = mock(UserRegistry.class);
         var lifecycle = mock(AuthLifecycleManager.class);
-        var sessions = new SessionManager();
+        var sessions = new LoginSessionManager();
         var controller = new AuthController(users, sessions, mock(KeysteadVault.class), lifecycle);
         var userId = UUID.randomUUID();
         var user = mock(UserEntity.class);
@@ -105,7 +105,7 @@ class AuthControllerTest {
         doAnswer(
                         invocation -> {
                             resetEntered.countDown();
-                            sessions.invalidateUser(userId);
+                            sessions.revokeUserTokens(userId);
                             return null;
                         })
                 .when(lifecycle)
@@ -133,7 +133,7 @@ class AuthControllerTest {
             }
             assertEquals(200, login.get(5, TimeUnit.SECONDS).getStatusCode().value());
             reset.get(5, TimeUnit.SECONDS);
-            assertFalse(sessions.hasSessions(userId));
+            assertFalse(sessions.hasLoginSessions(userId));
         } finally {
             release.countDown();
         }
@@ -141,10 +141,10 @@ class AuthControllerTest {
 
     @Test
     void lastOwnerTokenLogoutClosesItsVaultWhileAnotherOwnerRemainsLoggedIn() throws Exception {
-        var sessions = new SessionManager();
+        var sessions = new LoginSessionManager();
         var aliceId = UUID.randomUUID();
-        var aliceToken = sessions.createSession(aliceId, "alice");
-        var bobToken = sessions.createSession(UUID.randomUUID(), "bob");
+        var aliceToken = sessions.createLoginSession(aliceId, "alice");
+        var bobToken = sessions.createLoginSession(UUID.randomUUID(), "bob");
         var lifecycle = mock(AuthLifecycleManager.class);
         var mvc =
                 MockMvcBuilders.standaloneSetup(
@@ -157,13 +157,13 @@ class AuthControllerTest {
         mvc.perform(post("/api/auth/logout").header("X-Veto-Session-Token", aliceToken))
                 .andExpect(status().isOk());
         verify(lifecycle).logout(aliceId);
-        assertTrue(sessions.validate(bobToken).isPresent());
+        assertTrue(sessions.validateToken(bobToken).isPresent());
     }
 
     @Test
     void invalidRegistrationNeverCreatesAUserOrVault() throws Exception {
         UserRegistry users = mock(UserRegistry.class);
-        SessionManager sessions = mock(SessionManager.class);
+        LoginSessionManager sessions = mock(LoginSessionManager.class);
         KeysteadVault vault = mock(KeysteadVault.class);
         AuthLifecycleManager lifecycle = mock(AuthLifecycleManager.class);
         var mvc =

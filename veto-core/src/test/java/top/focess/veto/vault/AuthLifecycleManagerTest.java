@@ -39,9 +39,9 @@ class AuthLifecycleManagerTest {
 
     @Test
     void ownerLogoutRevokesOldTokensBeforeTheUsernameCanBeReused() {
-        var sessions = new SessionManager();
-        var oldToken = sessions.createSession(ALICE, "alice");
-        var otherToken = sessions.createSession(BOB, "bob");
+        var sessions = new LoginSessionManager();
+        var oldToken = sessions.createLoginSession(ALICE, "alice");
+        var otherToken = sessions.createLoginSession(BOB, "bob");
         var vault = vault();
         var lifecycle =
                 new AuthLifecycleManager(
@@ -53,10 +53,11 @@ class AuthLifecycleManagerTest {
         lifecycle.logout(ALICE);
         lifecycle.login("alice", "replacement-password");
         var replacementId = UUID.randomUUID();
-        var replacementToken = sessions.createSession(replacementId, "alice");
-        assertTrue(sessions.validate(oldToken).isEmpty());
-        assertEquals(replacementId, sessions.validate(replacementToken).orElseThrow().userId());
-        assertTrue(sessions.validate(otherToken).isPresent());
+        var replacementToken = sessions.createLoginSession(replacementId, "alice");
+        assertTrue(sessions.validateToken(oldToken).isEmpty());
+        assertEquals(
+                replacementId, sessions.validateToken(replacementToken).orElseThrow().userId());
+        assertTrue(sessions.validateToken(otherToken).isPresent());
     }
 
     @Test
@@ -66,7 +67,7 @@ class AuthLifecycleManagerTest {
         var events = mock(EventManager.class);
         var lifecycle =
                 new AuthLifecycleManager(
-                        vault, prompts, events, new SessionManager(), ipcServers());
+                        vault, prompts, events, new LoginSessionManager(), ipcServers());
         doThrow(new IllegalArgumentException("Signup failed"))
                 .when(vault)
                 .signup("alice", "invalid");
@@ -83,7 +84,7 @@ class AuthLifecycleManagerTest {
         var events = mock(EventManager.class);
         var lifecycle =
                 new AuthLifecycleManager(
-                        vault, prompts, events, new SessionManager(), ipcServers());
+                        vault, prompts, events, new LoginSessionManager(), ipcServers());
         lifecycle.logout(ALICE);
         var ordered = inOrder(events, prompts, vault);
         ordered.verify(events)
@@ -104,7 +105,7 @@ class AuthLifecycleManagerTest {
         EventManager events = mock(EventManager.class);
         var lifecycle =
                 new AuthLifecycleManager(
-                        vault, prompts, events, new SessionManager(), ipcServers());
+                        vault, prompts, events, new LoginSessionManager(), ipcServers());
 
         lifecycle.signup("alice", "password");
         verify(events)
@@ -146,7 +147,7 @@ class AuthLifecycleManagerTest {
                             vault,
                             prompts,
                             PluginTestSupport.eventManager(plugins),
-                            new SessionManager(),
+                            new LoginSessionManager(),
                             ipcServers());
             doThrow(new IllegalStateException("Detach failed")).when(prompts).deactivateUser(ALICE);
             doThrow(new IllegalStateException("Close failed")).when(vault).logout(ALICE);
@@ -177,7 +178,7 @@ class AuthLifecycleManagerTest {
                             vault,
                             prompts,
                             PluginTestSupport.eventManager(plugins),
-                            new SessionManager(),
+                            new LoginSessionManager(),
                             ipcServers());
             lifecycle.logout(ALICE);
             doThrow(new IllegalArgumentException("Login failed"))

@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.*;
 import top.focess.veto.controller.dto.*;
 import top.focess.veto.i18n.Msg;
 import top.focess.veto.vault.*;
+import top.focess.veto.vault.LoginSessionManager.LoginSession;
 
 /**
  * REST controller for authentication and vault lifecycle. Provides endpoints for first-run setup,
@@ -29,18 +30,20 @@ public class AuthController {
     private static final String TOKEN_HEADER = "X-Veto-Session-Token";
 
     private final @NonNull UserRegistry userRegistry;
-    private final @NonNull SessionManager sessionManager;
+    private final @NonNull LoginSessionManager loginSessions;
     private final @NonNull KeysteadVault vault;
     private final @NonNull AuthLifecycleManager authLifecycleManager;
 
-    /** Creates the controller with user-registry, session, vault, and lifecycle collaborators. */
+    /**
+     * Creates the controller with user-registry, login-session, vault, and lifecycle collaborators.
+     */
     public AuthController(
             @NonNull UserRegistry userRegistry,
-            @NonNull SessionManager sessionManager,
+            @NonNull LoginSessionManager loginSessions,
             @NonNull KeysteadVault vault,
             @NonNull AuthLifecycleManager authLifecycleManager) {
         this.userRegistry = userRegistry;
-        this.sessionManager = sessionManager;
+        this.loginSessions = loginSessions;
         this.vault = vault;
         this.authLifecycleManager = authLifecycleManager;
     }
@@ -74,7 +77,7 @@ public class AuthController {
             try {
                 var created = userRegistry.create(username, password, UserRegistry.Role.ADMIN);
                 authLifecycleManager.signup(username, password);
-                String token = sessionManager.createSession(created.getUserId(), username);
+                String token = loginSessions.createLoginSession(created.getUserId(), username);
 
                 log.info("Vault setup complete - admin user '{}' created", username);
                 return ResponseEntity.ok(
@@ -120,11 +123,11 @@ public class AuthController {
 
             try {
                 authLifecycleManager.login(username, password);
-                String token = sessionManager.createSession(user.get().getUserId(), username);
+                String token = loginSessions.createLoginSession(user.get().getUserId(), username);
 
                 log.info("User '{}' logged in", username);
                 return ResponseEntity.ok(
-                        new AuthSessionResponse(
+                        new AuthLoginResponse(
                                 "ok",
                                 token,
                                 user.get().getUserId(),
@@ -140,52 +143,58 @@ public class AuthController {
 
     // ── Logout ──────────────────────────────────────────────────────────────
 
-    /** POST /api/auth/logout - Invalidate session and lock vault if no other sessions active. */
+    /**
+     * POST /api/auth/logout - Invalidate login session and lock vault if no other login sessions
+     * remain.
+     */
     @PostMapping(value = "/logout", produces = MediaType.APPLICATION_JSON_VALUE)
     public @NonNull ResponseEntity<RestResponse> logout(
             @RequestHeader(TOKEN_HEADER) @NonNull String token) {
         synchronized (authLifecycleManager) {
-            var session = sessionManager.validate(token);
-            if (session.isEmpty()) {
+            var loginSession = loginSessions.validateToken(token);
+            if (loginSession.isEmpty()) {
                 return ResponseEntity.status(401).body(error(Msg.get("error.auth.invalidSession")));
             }
 
-            sessionManager.invalidate(token);
+            loginSessions.revokeToken(token);
 
-            if (!sessionManager.hasSessions(session.get().userId())) {
-                authLifecycleManager.logout(session.get().userId());
+            if (!loginSessions.hasLoginSessions(loginSession.get().userId())) {
+                authLifecycleManager.logout(loginSession.get().userId());
             }
 
             return ResponseEntity.ok(
                     new AuthLogoutResponse(
-                            "ok", "Logged out", session.get().userId(), session.get().username()));
+                            "ok",
+                            "Logged out",
+                            loginSession.get().userId(),
+                            loginSession.get().username()));
         }
     }
 
     // ── Status ─────────────────────────────────────────────────────────────
 
-    /** GET /api/auth/status - Returns vault and session state. */
+    /** GET /api/auth/status - Returns vault and login-session state. */
     @GetMapping(value = "/status", produces = MediaType.APPLICATION_JSON_VALUE)
     public @NonNull ResponseEntity<RestResponse> status(
             @RequestHeader(value = TOKEN_HEADER, required = false) String token) {
         boolean setupNeeded = !userRegistry.anyUserExists();
         boolean vaultLocked = !vault.isUnlocked();
 
-        var session = sessionManager.validate(token == null ? "" : token);
+        var loginSession = loginSessions.validateToken(token == null ? "" : token);
         return ResponseEntity.ok(
                 new AuthStatusResponse(
                         setupNeeded,
                         vaultLocked,
-                        sessionManager.activeSessionCount(),
-                        session.map(SessionManager.Session::userId).orElse(null),
+                        loginSessions.activeLoginSessionCount(),
+                        loginSession.map(LoginSession::userId).orElse(null),
                         Instant.now().toString(),
-                        session.isPresent(),
-                        session.map(value -> value.username()).orElse(null)));
+                        loginSession.isPresent(),
+                        loginSession.map(value -> value.username()).orElse(null)));
     }
 
     // ── User management (admin only) ────────────────────────────────────────
 
-    /** POST /api/auth/users - Add a new user with their own vault. Requires admin session. */
+    /** POST /api/auth/users - Add a new user with their own vault. Requires admin login session. */
     @PostMapping(
             value = "/users",
             consumes = MediaType.APPLICATION_JSON_VALUE,
@@ -196,13 +205,13 @@ public class AuthController {
             @RequestHeader(TOKEN_HEADER) @NonNull String token,
             @RequestBody @NonNull CreateUserRequest request) {
 
-        var session = sessionManager.validate(token);
-        if (session.isEmpty()) {
+        var loginSession = loginSessions.validateToken(token);
+        if (loginSession.isEmpty()) {
             return ResponseEntity.status(401).body(error(Msg.get("error.auth.invalidSession")));
         }
 
         // Verify admin role
-        var adminEntry = userRegistry.findByUserId(session.get().userId());
+        var adminEntry = userRegistry.findByUserId(loginSession.get().userId());
         if (adminEntry.isEmpty() || !"ADMIN".equals(adminEntry.get().getRole())) {
             return ResponseEntity.status(403).body(error(Msg.get("error.auth.adminRequired")));
         }
@@ -234,7 +243,7 @@ public class AuthController {
 
             log.info(
                     "Admin '{}' created user '{}' with role '{}'",
-                    session.get().username(),
+                    loginSession.get().username(),
                     username,
                     role);
             return ResponseEntity.ok(

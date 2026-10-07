@@ -28,7 +28,7 @@ import org.springframework.web.socket.WebSocketHandler;
 import org.springframework.web.socket.WebSocketSession;
 import top.focess.veto.model.SessionEntity;
 import top.focess.veto.model.SessionRepository;
-import top.focess.veto.vault.SessionManager;
+import top.focess.veto.vault.LoginSessionManager;
 import top.focess.veto.vault.TestUsers;
 import top.focess.veto.veto.VetoGateway;
 
@@ -36,8 +36,8 @@ class VetoWebSocketSecurityTest {
 
     @Test
     void handshakeRequiresAValidSessionToken() {
-        SessionManager sessionManager = new SessionManager();
-        String token = sessionManager.createSession(TestUsers.ALICE, "alice");
+        LoginSessionManager sessionManager = new LoginSessionManager();
+        String token = sessionManager.createLoginSession(TestUsers.ALICE, "alice");
         VetoWebSocketAuthInterceptor interceptor = new VetoWebSocketAuthInterceptor(sessionManager);
         ServerHttpRequest validRequest = request("ws://localhost/ws?token=" + token);
         ServerHttpResponse validResponse = mock(ServerHttpResponse.class);
@@ -63,7 +63,7 @@ class VetoWebSocketSecurityTest {
     @Test
     void deltaFramesReachOnlyConnectionsOwnedByTheSessionUser() throws Exception {
         SessionRepository sessions = mock(SessionRepository.class);
-        SessionManager tokens = new SessionManager();
+        LoginSessionManager tokens = new LoginSessionManager();
         VetoWebSocketHandler handler =
                 new VetoWebSocketHandler(
                         new ObjectMapper(), mock(VetoGateway.class), sessions, tokens);
@@ -71,9 +71,12 @@ class VetoWebSocketSecurityTest {
                 socket(
                         "alice-socket",
                         TestUsers.ALICE,
-                        tokens.createSession(TestUsers.ALICE, "alice"));
+                        tokens.createLoginSession(TestUsers.ALICE, "alice"));
         WebSocketSession bob =
-                socket("bob-socket", TestUsers.BOB, tokens.createSession(TestUsers.BOB, "bob"));
+                socket(
+                        "bob-socket",
+                        TestUsers.BOB,
+                        tokens.createLoginSession(TestUsers.BOB, "bob"));
         handler.afterConnectionEstablished(alice);
         handler.afterConnectionEstablished(bob);
         clearInvocations(alice, bob);
@@ -100,16 +103,16 @@ class VetoWebSocketSecurityTest {
 
     @Test
     void revokedSocketCannotReadRecreatedAccountOrSubmitMessages() throws Exception {
-        var tokens = new SessionManager();
-        var token = tokens.createSession(TestUsers.ALICE, "alice");
+        var tokens = new LoginSessionManager();
+        var token = tokens.createLoginSession(TestUsers.ALICE, "alice");
         var sessions = mock(SessionRepository.class);
         var gateway = mock(VetoGateway.class);
         var handler = new VetoWebSocketHandler(new ObjectMapper(), gateway, sessions, tokens);
         var oldSocket = socket("old-alice", TestUsers.ALICE, token);
         handler.afterConnectionEstablished(oldSocket);
         clearInvocations(oldSocket);
-        tokens.invalidate(token);
-        var newToken = tokens.createSession(TestUsers.OWNER, "alice");
+        tokens.revokeToken(token);
+        var newToken = tokens.createLoginSession(TestUsers.OWNER, "alice");
         var newSocket = socket("new-alice", TestUsers.OWNER, newToken);
         handler.afterConnectionEstablished(newSocket);
         clearInvocations(newSocket);
@@ -139,7 +142,7 @@ class VetoWebSocketSecurityTest {
                         Map.of(
                                 VetoWebSocketAuthInterceptor.AUTHENTICATED_USER_ATTRIBUTE,
                                 userId,
-                                VetoWebSocketAuthInterceptor.SESSION_TOKEN_ATTRIBUTE,
+                                VetoWebSocketAuthInterceptor.LOGIN_TOKEN_ATTRIBUTE,
                                 token));
         return session;
     }
