@@ -37,7 +37,7 @@ import top.focess.veto.transport.zmq.ZmqChannel;
  * <ul>
  *   <li><b>Main thread</b> — blocks in {@link LineReader#readLine}; on each return it asks the
  *       session for the current state to render the prompt, then submits the line.
- *   <li><b>Consumer thread ({@code veto-incoming})</b> — drains {@link ProtocolClient#receive} into
+ *   <li><b>Virtual consumer ({@code veto-incoming})</b> — drains {@link ProtocolClient#receive} into
  *       {@link ClientSession#onFrame}, which drives rendering back through {@link TerminalView} and
  *       returns the next frame to dispatch (sent here).
  * </ul>
@@ -157,7 +157,7 @@ public class VetoTerminal {
         printBanner();
         running = true;
 
-        // Heartbeats are sent by the ProtocolClient itself (its ipc-hb thread).
+        // The protocol IO owner also schedules heartbeats.
 
         // --- hint widgets ---
         // Binds custom parameter autocomplete / tail-tip widgets to JLine reader.
@@ -168,46 +168,54 @@ public class VetoTerminal {
         // Drains frames from the connection through the session, which drives rendering back via
         // TerminalView and returns the next frame to dispatch (if any).
         Thread consumerThread = createConsumerThread();
-        consumerThread.setDaemon(true);
         consumerThread.start();
 
         try {
             // Enter the main interactive loop.
             repl();
         } finally {
-            // Teardown: stop loops, disable widgets, interrupt the consumer, restore the terminal
-            // scroll region + clear the status bar, and close the connection (close flushes the Bye
-            // frame before teardown).
+            // Stop rendering before restoring the terminal and closing its status bar.
             running = false;
             hintWidgets.disable();
             consumerThread.interrupt();
-            status.close();
             client.close();
+            try {
+                consumerThread.join(2_000);
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+            } finally {
+                status.close();
+            }
         }
     }
 
     private @NonNull Thread createConsumerThread() {
-        return new Thread(
+        return Thread.ofVirtual().name("veto-incoming").unstarted(
                 () -> {
+                    try {
                     while (running) {
-                        try {
                             Frame.ServerFrame frame = client.receive();
                             if (frame == null) {
+                                if (client.isClosed()) {
+                                    if (running) session.onFrame(new Frame.Terminate("Backend connection closed."));
+                                    break;
+                                }
                                 continue;
                             }
                             Frame.ClientFrame reply = session.onFrame(frame);
                             if (reply != null) {
                                 client.send(reply);
                             }
-                        } catch (Exception e) {
-                            if (running) {
-                                log.warn("Error in incoming loop, terminating thread", e);
-                            }
-                            break;
+                        }
+                    } catch (InterruptedException interrupted) {
+                        Thread.currentThread().interrupt();
+                    } catch (RuntimeException failure) {
+                        if (running) {
+                            log.warn("Terminal receive failed ({})", failure.getClass().getSimpleName());
+                            session.onFrame(new Frame.Terminate("Backend connection failed."));
                         }
                     }
-                },
-                "veto-incoming");
+                });
     }
 
     // ── repl ──────────────────────────────────────────────────────────────
@@ -267,6 +275,7 @@ public class VetoTerminal {
             try {
                 line = reader.readLine(promptText, mask);
             } catch (UserInterruptException e) {
+                if (!running) break;
                 // two ways to trigger this, first the user press the ctrl+C,
                 // second the consumerThread actively call the mainThread to interrupt.
                 // when consumerThread actively call the mainThread to interrupt, the
@@ -304,7 +313,7 @@ public class VetoTerminal {
                 break;
             }
 
-            if (line == null) break;
+            if (line == null || !running) break;
             line = line.trim();
             if (line.isEmpty()) continue;
 
@@ -612,16 +621,7 @@ public class VetoTerminal {
         public void onTerminate(@NonNull StyledText content) {
             renderer.println(theme.style(content.token(), content.text()));
             running = false;
-            // The main thread is blocked in readLine; setting running=false alone won't wake it, so
-            // the prompt would keep blinking (the session is dead but the REPL looks alive) until
-            // the user presses Enter. Interrupt to break readLine — the UserInterruptException
-            // catch
-            // then sees promptSwapPending is false (a Terminate is not a swap) and routes to
-            // cancel, which always ends the iteration (null at IDLE → break; or a Cancel at
-            // RUNNING
-            // → send + continue → while(running) is now false → exit). Either way the REPL exits
-            // and
-            // teardown runs, promptly telling the user the session is over.
+            // Wake readLine; the REPL checks running before interpreting the interrupt as Ctrl+C.
             mainThread.interrupt();
         }
 
@@ -736,7 +736,7 @@ public class VetoTerminal {
             System.out.println("Connecting to backend at " + options.address() + " ...");
             ProtocolClient transport =
                     new ProtocolClient(
-                            ZmqChannel.Client.connect(options.address()),
+                            () -> ZmqChannel.Client.connect(options.address()),
                             VetoVersion.VERSION,
                             workspaceCwd);
             Version serverVersion = transport.serverProductVersion();

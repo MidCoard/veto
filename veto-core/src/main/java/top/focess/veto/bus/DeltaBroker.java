@@ -15,7 +15,7 @@ import org.springframework.stereotype.Component;
 import top.focess.veto.contract.EventFrame;
 
 /**
- * Sits between the agent loop and the transport layer ({@link WebSocketBus}) and multiplexes
+ * Sits between the agent loop and the transport layer ({@link DeltaBusBridge}) and multiplexes
  * per-session {@link EventFrame} streams to subscribed consumers.
  *
  * <p>The broker atomically assigns increasing sequence numbers per session. Subscribers run inline

@@ -10,9 +10,11 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.zeromq.ZContext;
+import org.zeromq.ZMQException;
 import top.focess.veto.contract.EventFrame;
 import top.focess.veto.contract.Frame;
-import top.focess.veto.contract.Transport;
+import top.focess.veto.contract.FrameCodec;
+import top.focess.veto.contract.ServerTransport;
 import top.focess.veto.contract.Version;
 
 /** Round-trip tests for {@link ZmqChannel} over a real loopback ZMQ ROUTER/DEALER pair. */
@@ -77,7 +79,7 @@ class ZmqChannelRoundTripTest {
         activeDealer.send(new Frame.Hello(Frame.PROTOCOL_VERSION, 1L, Version.UNKNOWN, userDir));
 
         // 2. ROUTER receives Hello, capturing the DEALER identity.
-        Transport.FramedMsg hello = activeRouter.recv(2_000);
+        ServerTransport.Message hello = activeRouter.recv(2_000);
         if (hello == null) {
             throw new AssertionError("ROUTER should receive Hello");
         }
@@ -98,20 +100,18 @@ class ZmqChannelRoundTripTest {
         activeRouter.send(dealerId, new Frame.Done(Map.of(), null));
 
         // 4. DEALER receives both, in order.
-        Transport.FramedMsg f1 = activeDealer.recv(2_000);
+        Frame.ServerFrame f1 = activeDealer.recv(2_000);
         if (f1 == null) {
             throw new AssertionError("DEALER should receive Delta");
         }
-        assertInstanceOf(EventFrame.class, f1.frame());
-        assertEquals(event, f1.frame());
-        // Client-side recv carries an empty identity (DEALER strips it).
-        assertEquals("", f1.identity());
+        assertInstanceOf(EventFrame.class, f1);
+        assertEquals(event, f1);
 
-        Transport.FramedMsg f2 = activeDealer.recv(2_000);
+        Frame.ServerFrame f2 = activeDealer.recv(2_000);
         if (f2 == null) {
             throw new AssertionError("DEALER should receive Done");
         }
-        assertInstanceOf(Frame.Done.class, f2.frame());
+        assertInstanceOf(Frame.Done.class, f2);
     }
 
     @Test
@@ -119,6 +119,31 @@ class ZmqChannelRoundTripTest {
         // No frames sent: a non-blocking recv must return null immediately.
         assertNull(router().recv(0));
         assertNull(dealer().recv(0));
+    }
+
+    @Test
+    void rejectsExtraMultipartPartsAndWrongDirection() {
+        assertTrue(dealer().socket.sendMore("extra"));
+        assertTrue(dealer().socket.send(FrameCodec.encode(new Frame.Heartbeat(1))));
+        assertNull(router().recv(2_000));
+        assertTrue(dealer().socket.send(FrameCodec.encode(new Frame.Error("wrong direction", 0))));
+        assertNull(router().recv(2_000));
+        dealer().send(new Frame.Heartbeat(2));
+        var message = router().recv(2_000);
+        if (message == null) throw new AssertionError("Missing valid heartbeat");
+        assertEquals(new Frame.Heartbeat(2), message.frame());
+        assertTrue(router().socket.sendMore(message.identity()));
+        assertTrue(router().socket.send(FrameCodec.encode(new Frame.Request("wrong direction"))));
+        assertNull(dealer().recv(2_000));
+    }
+
+    @Test
+    void failedSharedContextSetupDoesNotRetainSocket() {
+        int before = context().getSockets().size();
+        assertThrows(
+                ZMQException.class,
+                () -> ZmqChannel.Client.connectDealer(context(), "invalid://address", "peer"));
+        assertEquals(before, context().getSockets().size());
     }
 
     @Test

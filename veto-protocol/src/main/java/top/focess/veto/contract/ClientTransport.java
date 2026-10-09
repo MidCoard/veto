@@ -2,19 +2,16 @@ package top.focess.veto.contract;
 
 import org.jspecify.annotations.NonNull;
 
-/**
- * Transport half that sends frames from a client to the backend — e.g. a ZMQ DEALER socket that
- * automatically prepends its identity and sends a bare payload.
- *
- * <p>Split from {@link ServerTransport} so the two send shapes cannot be confused: a client
- * transport only offers {@link #send(Frame.ClientFrame)}, never the identity-addressed server send.
- */
-public non-sealed interface ClientTransport extends Transport {
+/** Client connection. All IO and close calls belong to one owner thread. */
+public interface ClientTransport extends AutoCloseable {
+    void send(Frame.@NonNull ClientFrame frame);
 
     /**
-     * Sends a client→server frame.
-     *
-     * @param frame the frame to send
+     * Zero polls, positive milliseconds wait, negative waits indefinitely. Malformed input is
+     * skipped.
      */
-    void send(Frame.@NonNull ClientFrame frame);
+    Frame.ServerFrame recv(long timeoutMillis);
+
+    @Override
+    void close();
 }

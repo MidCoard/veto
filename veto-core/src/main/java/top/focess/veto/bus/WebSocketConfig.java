@@ -10,7 +10,7 @@ import org.springframework.web.socket.config.annotation.WebSocketHandlerRegistry
 
 /**
  * Spring WebSocket configuration. Registers the Veto WebSocket handler at /ws/veto/bus for client
- * connections. Also configures allowed origins and SockJS fallback.
+ * browser connections with an explicit origin policy.
  */
 @Configuration
 @EnableWebSocket
@@ -41,11 +41,8 @@ public class WebSocketConfig implements WebSocketConfigurer {
                         busConfiguration
                                 .getWebsocket()
                                 .getAllowedOriginPatterns()
-                                .toArray(String[]::new))
-                .withSockJS()
-                .setClientLibraryUrl(
-                        "https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js");
+                                .toArray(String[]::new));
 
-        log.info("WS Config: Registered /ws/veto/bus handler with SockJS fallback");
+        log.info("WS Config: Registered native /ws/veto/bus endpoint");
     }
 }

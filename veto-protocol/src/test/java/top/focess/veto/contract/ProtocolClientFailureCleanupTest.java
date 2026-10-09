@@ -23,18 +23,19 @@ class ProtocolClientFailureCleanupTest {
                         throw handshakeFailure;
                     }
 
-                    public Transport.FramedMsg recv(long timeoutMillis) {
+                    public Frame.ServerFrame recv(long timeoutMillis) {
                         return null;
                     }
 
                     public void close() {
-                        assertSame(caller, Thread.currentThread());
+                        assertNotSame(caller, Thread.currentThread());
+                        assertTrue(Thread.currentThread().isVirtual());
                         closes.countDown();
                         throw cleanupFailure;
                     }
                 };
         var failure =
-                assertThrows(IllegalStateException.class, () -> new ProtocolClient(transport));
+                assertThrows(IllegalStateException.class, () -> new ProtocolClient(() -> transport));
         assertSame(handshakeFailure, failure);
         assertArrayEquals(new Throwable[] {cleanupFailure}, failure.getSuppressed());
         assertEquals(0, closes.getCount());
@@ -42,7 +43,7 @@ class ProtocolClientFailureCleanupTest {
 
     @Test
     @Timeout(10)
-    void receiveFailureClosesOnTheIoOwnerAndStopsHeartbeat() throws Exception {
+    void receiveFailureClosesOnTheVirtualIoOwner() throws Exception {
         var failReceive = new CountDownLatch(1);
         var closed = new CountDownLatch(1);
         var transport =
@@ -51,12 +52,10 @@ class ProtocolClientFailureCleanupTest {
 
                     public void send(Frame.@NonNull ClientFrame frame) {}
 
-                    public Transport.FramedMsg recv(long timeoutMillis) {
+                    public Frame.ServerFrame recv(long timeoutMillis) {
                         if (!welcomed) {
                             welcomed = true;
-                            return new Transport.FramedMsg(
-                                    "",
-                                    new Frame.Welcome(Frame.PROTOCOL_VERSION, 1, Version.UNKNOWN));
+                            return new Frame.Welcome(Frame.PROTOCOL_VERSION, 1, Version.UNKNOWN);
                         }
                         try {
                             if (!failReceive.await(5, TimeUnit.SECONDS))
@@ -73,15 +72,16 @@ class ProtocolClientFailureCleanupTest {
                         closed.countDown();
                     }
                 };
-        try (var client = new ProtocolClient(transport)) {
-            Field heartbeatField = ProtocolClient.class.getDeclaredField("heartbeatThread");
-            heartbeatField.setAccessible(true);
-            if (!(heartbeatField.get(client) instanceof Thread heartbeat))
-                throw new AssertionError("heartbeat was not started");
+        try (var client = new ProtocolClient(() -> transport)) {
+            Field ioField = ProtocolClient.class.getDeclaredField("ioThread");
+            ioField.setAccessible(true);
+            if (!(ioField.get(client) instanceof Thread io))
+                throw new AssertionError("IO worker was not started");
+            assertTrue(io.isVirtual(), "connections must not allocate platform IO threads");
             failReceive.countDown();
             assertTrue(closed.await(5, TimeUnit.SECONDS));
-            heartbeat.join(1_000);
-            assertFalse(heartbeat.isAlive(), "failed connection must not retain its heartbeat");
+            io.join(1_000);
+            assertFalse(io.isAlive(), "failed connection must not retain its IO worker");
             assertTrue(client.isClosed());
         } finally {
             failReceive.countDown();

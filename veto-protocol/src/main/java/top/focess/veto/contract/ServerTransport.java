@@ -2,20 +2,18 @@ package top.focess.veto.contract;
 
 import org.jspecify.annotations.NonNull;
 
-/**
- * Transport half that sends frames from the backend (server) to a specific connected peer — e.g. a
- * ZMQ ROUTER socket that addresses each peer by identity.
- *
- * <p>Split from {@link ClientTransport} so the two send shapes cannot be confused: a server
- * transport only offers {@link #send(String, Frame)}, never the bare client send.
- */
-public non-sealed interface ServerTransport extends Transport {
+/** Server connection with peer-addressed output. All IO and close belong to one owner thread. */
+public interface ServerTransport extends AutoCloseable {
+    record Message(@NonNull String identity, Frame.@NonNull ClientFrame frame) {}
+
+    void send(@NonNull String identity, Frame.@NonNull ServerFrame frame);
 
     /**
-     * Sends a frame to a specific connected peer.
-     *
-     * @param identity the destination peer routing identity
-     * @param frame the frame to send
+     * Zero polls, positive milliseconds wait, negative waits indefinitely. Malformed input is
+     * skipped.
      */
-    void send(@NonNull String identity, @NonNull Frame frame);
+    Message recv(long timeoutMillis);
+
+    @Override
+    void close();
 }

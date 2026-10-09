@@ -6,53 +6,41 @@ import java.io.IOException;
 import java.time.Instant;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicLong;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
-import org.springframework.web.socket.*;
+import org.springframework.web.socket.CloseStatus;
+import org.springframework.web.socket.TextMessage;
+import org.springframework.web.socket.WebSocketSession;
 import org.springframework.web.socket.handler.ConcurrentWebSocketSessionDecorator;
 import org.springframework.web.socket.handler.TextWebSocketHandler;
 import top.focess.veto.VetoVersion;
 import top.focess.veto.contract.EventFrame;
 import top.focess.veto.contract.Frame;
-import top.focess.veto.contract.Frame.*;
+import top.focess.veto.contract.FrameCodec;
 import top.focess.veto.model.SessionRepository;
-import top.focess.veto.transport.websocket.WebSocketChannel;
 import top.focess.veto.vault.LoginSessionManager;
 import top.focess.veto.vault.LoginSessionManager.LoginSession;
 import top.focess.veto.veto.VetoGateway;
 
 /**
- * Server-side WebSocket handler for the Veto Bus (/ws/veto/bus). Clients (UI, MCP servers, workers)
- * connect here for real-time payload streaming. Routes DAG payloads, streams veto results, and
- * handles heartbeats.
+ * Authenticated browser endpoint registered by {@link WebSocketConfig} at /ws/veto/bus. Spring
+ * callbacks decode shared frames directly; {@link DeltaBusBridge} supplies live session events.
  */
 @Component
 public class VetoWebSocketHandler extends TextWebSocketHandler {
-
     private static final @NonNull Logger log =
             LoggerFactory.getLogger("top.focess.veto.bus.VetoWebSocketHandler");
 
     private final @NonNull VetoGateway vetoGateway;
     private final @NonNull SessionRepository sessionRepository;
     private final @NonNull LoginSessionManager loginSessions;
-
-    private final @NonNull CopyOnWriteArrayList<@NonNull WebSocketSession> webSocketSessions =
-            new CopyOnWriteArrayList<>();
-    private final @NonNull ConcurrentHashMap<@NonNull String, @NonNull String> sessionRoutes =
+    private final @NonNull ConcurrentHashMap<@NonNull String, @NonNull Connection> connections =
             new ConcurrentHashMap<>();
-    private final @NonNull ConcurrentHashMap<@NonNull String, @NonNull UUID> sessionUsers =
-            new ConcurrentHashMap<>();
+    private final @NonNull AtomicLong messageCounter = new AtomicLong();
 
-    private final @NonNull ConcurrentHashMap<@NonNull String, WebSocketChannel.@NonNull Server>
-            channels = new ConcurrentHashMap<>();
-
-    private final @NonNull AtomicLong messageCounter = new AtomicLong(0);
-
-    /** Creates the handler with its JSON codec, veto gateway, and session registry. */
     public VetoWebSocketHandler(
             @NonNull VetoGateway vetoGateway,
             @NonNull SessionRepository sessionRepository,
@@ -63,248 +51,177 @@ public class VetoWebSocketHandler extends TextWebSocketHandler {
     }
 
     @Override
-    public void afterConnectionEstablished(@NonNull WebSocketSession session) throws IOException {
-        UUID authenticatedUser = authenticatedUser(session);
-        if (authenticatedUser == null) {
-            session.close(CloseStatus.POLICY_VIOLATION.withReason("authentication required"));
+    public void afterConnectionEstablished(@NonNull WebSocketSession socket) throws IOException {
+        UUID user = authenticatedUser(socket);
+        if (user == null) {
+            socket.close(CloseStatus.POLICY_VIOLATION.withReason("authentication required"));
             return;
         }
-        webSocketSessions.add(new ConcurrentWebSocketSessionDecorator(session, 10000, 1024 * 1024));
-        sessionUsers.put(session.getId(), authenticatedUser);
-        log.info("WS Bus: Authenticated client '{}' connected", session.getId());
-
-        channels.put(
-                session.getId(),
-                new WebSocketChannel.Server(
-                        session.getId(),
-                        text -> sendTo(session, new TextMessage(text)),
-                        session::close));
-        sendJson(session, new Frame.Welcome(Frame.PROTOCOL_VERSION, 0, VetoVersion.VERSION));
+        var connection = new Connection(socket, user);
+        connections.put(socket.getId(), connection);
+        send(connection, new Frame.Welcome(Frame.PROTOCOL_VERSION, 0, VetoVersion.VERSION));
     }
 
     @Override
     protected void handleTextMessage(
-            @NonNull WebSocketSession session, @NonNull TextMessage message) throws IOException {
-        if (authenticatedUser(session) == null) {
-            session.close(CloseStatus.POLICY_VIOLATION.withReason("authentication expired"));
+            @NonNull WebSocketSession socket, @NonNull TextMessage message) {
+        var connection = connections.get(socket.getId());
+        if (connection == null || !isAuthenticated(connection)) return;
+        long sequence = messageCounter.incrementAndGet();
+        var decoded = FrameCodec.decode(message.getPayload());
+        if (!(decoded instanceof Frame.ClientFrame frame)) {
+            send(connection, new Frame.Error("Invalid client frame", 0));
             return;
         }
-        long seq = messageCounter.incrementAndGet();
-        var channel = channels.get(session.getId());
-        if (channel == null) return;
-        if (!channel.accept(message.getPayload())) {
-            sendJson(session, new Frame.Error("Invalid client frame", 0));
-            return;
-        }
-        var received = channel.recv(0);
-        if (received == null) return;
-        Frame frame = received.frame();
         switch (frame) {
             case Frame.Hello hello -> {
                 if (hello.version() != Frame.PROTOCOL_VERSION)
-                    sendJson(session, new Frame.Error("Unsupported protocol version", hello.seq()));
+                    send(connection, new Frame.Error("Unsupported protocol version", hello.seq()));
                 else
-                    sendJson(
-                            session,
-                            new Frame.Welcome(
-                                    Frame.PROTOCOL_VERSION, hello.seq(), VetoVersion.VERSION));
+                    send(connection, new Frame.Welcome(
+                            Frame.PROTOCOL_VERSION, hello.seq(), VetoVersion.VERSION));
             }
-            case Frame.Bye ignored -> session.close(CloseStatus.NORMAL);
+            case Frame.Bye ignored -> close(connection, CloseStatus.NORMAL);
             case Frame.Heartbeat heartbeat ->
-                    sendJson(session, new Frame.HeartbeatAck(heartbeat.seq(), Instant.now()));
+                    send(connection, new Frame.HeartbeatAck(heartbeat.seq(), Instant.now()));
             case Frame.DagPayload dag -> {
-                sendJson(session, new Frame.Received(dag.data().getTaskType(), seq, Instant.now()));
-                broadcast(new Frame.DagPayload(dag.data(), session.getId()), session.getId());
+                send(connection, new Frame.Received(dag.data().taskType(), sequence, Instant.now()));
+                broadcast(connection, new Frame.DagPayload(dag.data(), socket.getId()));
             }
-            case Frame.Process process -> handleVetoProcess(session, process, seq);
+            case Frame.Process process -> handleVetoProcess(connection, process, sequence);
             case Frame.Subscribe subscribe -> {
                 String topic = subscribe.topic();
                 if (topic == null) topic = "all";
-                sessionRoutes.put(session.getId(), "sub:" + topic);
-                sendJson(session, new Frame.Subscribed(topic, Instant.now()));
+                connection.topic = topic;
+                send(connection, new Frame.Subscribed(topic, Instant.now()));
             }
             case Frame.Unsubscribe ignored -> {
-                sessionRoutes.remove(session.getId());
-                sendJson(session, new Frame.Unsubscribed(Instant.now()));
+                connection.topic = null;
+                send(connection, new Frame.Unsubscribed(Instant.now()));
             }
-            default ->
-                    sendJson(
-                            session,
-                            new Frame.Error(
-                                    "Unsupported frame on this connection",
-                                    frame instanceof Frame.SeqRequest request ? request.seq() : 0));
+            default -> send(connection, new Frame.Error(
+                    "Unsupported frame on this connection",
+                    frame instanceof Frame.SeqRequest request ? request.seq() : 0));
         }
     }
 
     private void handleVetoProcess(
-            @NonNull WebSocketSession session, Frame.@NonNull Process process, long seq) {
+            @NonNull Connection connection, Frame.@NonNull Process process, long sequence) {
         String payload = process.payload();
         if (payload.isEmpty()) {
-            sendJson(session, new Frame.Error("payload field is required", 0));
+            send(connection, new Frame.Error("payload field is required", 0));
             return;
         }
         String dagPayloadId = process.dagPayloadId();
-        if (dagPayloadId == null) dagPayloadId = "ws-" + seq;
+        if (dagPayloadId == null) dagPayloadId = "ws-" + sequence;
         String requestId = process.requestId();
-        if (requestId == null) requestId = "ws-req-" + seq;
+        if (requestId == null) requestId = "ws-req-" + sequence;
         String componentSource = process.componentSource();
         if (componentSource == null) componentSource = "WS-Client";
         var result = vetoGateway.processOutbound(payload, dagPayloadId, requestId, componentSource);
-        sendJson(
-                session,
-                new Frame.VetoResult(
-                        seq,
-                        result.decision().name(),
-                        result.processedPayload(),
-                        result.reason(),
-                        result.redactionCount(),
-                        result.isAllowed(),
-                        Instant.now()));
+        send(connection, new Frame.VetoResult(
+                sequence, result.decision().name(), result.processedPayload(), result.reason(),
+                result.redactionCount(), result.isAllowed(), Instant.now()));
     }
 
     @Override
     public void afterConnectionClosed(
-            @NonNull WebSocketSession session, @NonNull CloseStatus status) {
-        removeChannel(session.getId());
-        webSocketSessions.removeIf(candidate -> candidate.getId().equals(session.getId()));
-        sessionRoutes.remove(session.getId());
-        sessionUsers.remove(session.getId());
-        log.info(
-                "WS Bus: Client '{}' disconnected (code={}, reason='{}')",
-                session.getId(),
-                status.getCode(),
-                safe(status.getReason()));
+            @NonNull WebSocketSession socket, @NonNull CloseStatus status) {
+        connections.remove(socket.getId());
+        log.debug("WS Bus: Client '{}' disconnected (code={}, reason='{}')",
+                socket.getId(), status.getCode(), safe(status.getReason()));
     }
 
     @Override
     public void handleTransportError(
-            @NonNull WebSocketSession session, @NonNull Throwable exception) {
-        log.error(
-                "WS Bus: Transport error for '{}': {}",
-                session.getId(),
-                safe(exception.getMessage()));
-        removeChannel(session.getId());
-        webSocketSessions.removeIf(candidate -> candidate.getId().equals(session.getId()));
-        sessionRoutes.remove(session.getId());
-        sessionUsers.remove(session.getId());
+            @NonNull WebSocketSession socket, @NonNull Throwable failure) {
+        log.warn("WS Bus: Transport error for '{}' ({})",
+                socket.getId(), failure.getClass().getSimpleName());
+        var connection = connections.get(socket.getId());
+        if (connection != null) close(connection, CloseStatus.SERVER_ERROR);
     }
 
-    /** Broadcast a message to all connected clients except the sender. */
-    public void broadcast(Frame.@NonNull DagPayload message, @NonNull String excludeSessionId) {
-        UUID senderUser = sessionUsers.get(excludeSessionId);
-        if (senderUser == null) {
-            return;
-        }
-        for (WebSocketSession s : webSocketSessions) {
-            String route = sessionRoutes.get(s.getId());
-            String messageType = "dag.payload";
-            boolean acceptsRoute =
-                    route == null
-                            || "all".equals(route)
-                            || "sub:all".equals(route)
-                            || route.equals(messageType)
-                            || route.equals("sub:" + messageType);
-            if (s.isOpen()
-                    && !s.getId().equals(excludeSessionId)
-                    && senderUser.equals(sessionUsers.get(s.getId()))
-                    && acceptsRoute) {
-                try {
-                    sendJson(s, message);
-                } catch (RuntimeException e) {
-                    log.warn("WS Bus: Failed to send broadcast to '{}'", s.getId(), e);
-                }
+    private void broadcast(@NonNull Connection sender, Frame.@NonNull DagPayload frame) {
+        for (var recipient : connections.values()) {
+            String topic = recipient.topic;
+            if (recipient != sender && sender.user.equals(recipient.user)
+                    && (topic == null || "all".equals(topic) || "dag.payload".equals(topic))) {
+                send(recipient, frame);
             }
         }
     }
 
-    /** Sends one agent frame only to authenticated connections that own its session. */
+    /** Sends session events only to authenticated connections belonging to the session owner. */
     public void sendFrame(@NonNull EventFrame frame) {
         UUID sessionId = frame.sessionId();
         if (sessionId == null) return;
-        UUID userId =
-                sessionRepository
-                        .findById(sessionId.toString())
-                        .map(session -> session.getUserId())
-                        .orElse(null);
-        if (userId == null) {
-            log.warn("WS Bus: Dropped frame for unknown session {}", sessionId);
+        UUID user = sessionRepository.findById(sessionId.toString())
+                .map(session -> session.getUserId()).orElse(null);
+        if (user == null) return;
+        for (var connection : connections.values()) {
+            if (user.equals(connection.user)) send(connection, frame);
+        }
+    }
+
+    private void send(@NonNull Connection connection, Frame.@NonNull ServerFrame frame) {
+        var socket = connection.socket;
+        if (connections.get(socket.getId()) != connection) return;
+        if (!socket.isOpen()) {
+            connections.remove(socket.getId(), connection);
             return;
         }
-        for (WebSocketSession session : webSocketSessions) {
-            if (session.isOpen() && userId.equals(sessionUsers.get(session.getId()))) {
-                try {
-                    sendJson(session, frame);
-                } catch (RuntimeException e) {
-                    log.warn("WS Bus: Failed to send frame to '{}'", session.getId(), e);
-                }
-            }
-        }
-    }
-
-    private void removeChannel(@NonNull String identity) {
-        var channel = channels.remove(identity);
-        if (channel != null) {
-            try {
-                channel.close();
-            } catch (RuntimeException error) {
-                log.warn("WS Bus: Failed to close '{}'", identity, error);
-            }
-        }
-    }
-
-    private void sendJson(@NonNull WebSocketSession session, Frame.@NonNull ServerFrame data) {
-        var channel = channels.get(session.getId());
-        if (channel == null || !session.isOpen()) return;
+        if (!isAuthenticated(connection)) return;
         try {
-            channel.send(session.getId(), data);
-        } catch (RuntimeException error) {
-            log.warn("WS Bus: Failed to send to '{}'", session.getId(), error);
+            socket.sendMessage(new TextMessage(FrameCodec.encodeString(frame)));
+        } catch (IOException | RuntimeException failure) {
+            log.warn("WS Bus: Failed to send to '{}' ({})",
+                    socket.getId(), failure.getClass().getSimpleName());
+            close(connection, CloseStatus.SERVER_ERROR);
         }
     }
 
-    private void sendTo(@NonNull WebSocketSession target, @NonNull TextMessage message)
-            throws IOException {
-        if (authenticatedUser(target) == null) {
-            target.close(CloseStatus.POLICY_VIOLATION.withReason("authentication expired"));
-            return;
-        }
-        WebSocketSession wrapped =
-                webSocketSessions.stream()
-                        .filter(candidate -> candidate.getId().equals(target.getId()))
-                        .findFirst()
-                        .orElse(null);
-        if (wrapped == null) return;
+    private boolean isAuthenticated(@NonNull Connection connection) {
+        if (connection.user.equals(authenticatedUser(connection.socket))) return true;
+        close(connection, CloseStatus.POLICY_VIOLATION.withReason("authentication expired"));
+        return false;
+    }
+
+    private void close(@NonNull Connection connection, @NonNull CloseStatus status) {
+        if (!connections.remove(connection.socket.getId(), connection)) return;
         try {
-            wrapped.sendMessage(message);
-        } catch (RuntimeException | IOException error) {
-            try {
-                wrapped.close(CloseStatus.SERVER_ERROR);
-            } catch (IOException closeError) {
-                log.debug("Could not close failed socket", closeError);
-            }
-            throw error;
+            connection.socket.close(status);
+        } catch (IOException | RuntimeException failure) {
+            log.debug("WS Bus: Could not close '{}' ({})",
+                    connection.socket.getId(), failure.getClass().getSimpleName());
         }
     }
 
     public int getActiveSessionCount() {
-        return (int) webSocketSessions.stream().filter(WebSocketSession::isOpen).count();
+        return (int) connections.values().stream().filter(c -> c.socket.isOpen()).count();
     }
 
     public long getTotalMessages() {
         return messageCounter.get();
     }
 
-    private UUID authenticatedUser(@NonNull WebSocketSession session) {
-        Object value =
-                session.getAttributes()
-                        .get(VetoWebSocketAuthInterceptor.AUTHENTICATED_USER_ATTRIBUTE);
-        Object token =
-                session.getAttributes().get(VetoWebSocketAuthInterceptor.LOGIN_TOKEN_ATTRIBUTE);
+    private UUID authenticatedUser(@NonNull WebSocketSession socket) {
+        Object value = socket.getAttributes()
+                .get(VetoWebSocketAuthInterceptor.AUTHENTICATED_USER_ATTRIBUTE);
+        Object token = socket.getAttributes().get(VetoWebSocketAuthInterceptor.LOGIN_TOKEN_ATTRIBUTE);
         if (!(value instanceof UUID user) || !(token instanceof String text)) return null;
-        return loginSessions
-                .validateToken(text)
+        return loginSessions.validateToken(text)
                 .filter(authenticated -> user.equals(authenticated.userId()))
-                .map(LoginSession::userId)
-                .orElse(null);
+                .map(LoginSession::userId).orElse(null);
+    }
+
+    private static final class Connection {
+        private final @NonNull WebSocketSession socket;
+        private final @NonNull UUID user;
+        private volatile String topic;
+
+        private Connection(@NonNull WebSocketSession socket, @NonNull UUID user) {
+            this.socket = new ConcurrentWebSocketSessionDecorator(socket, 10_000, 1024 * 1024);
+            this.user = user;
+        }
     }
 }

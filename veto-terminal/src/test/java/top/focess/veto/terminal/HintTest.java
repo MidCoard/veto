@@ -11,7 +11,7 @@ public class HintTest {
     public static void main(@NonNull String @NonNull [] args) throws Exception {
         String addr = args.length > 0 ? args[0] : "tcp://127.0.0.1:5555";
         System.out.println("Connecting to " + addr + " ...");
-        ProtocolClient t = new ProtocolClient(ZmqChannel.Client.connect(addr));
+        ProtocolClient t = new ProtocolClient(() -> ZmqChannel.Client.connect(addr));
 
         // Test hint for /login (should return [user] [pass])
         Frame.HintResult r = t.hint("/login ", 5, TimeUnit.SECONDS);

@@ -64,4 +64,15 @@ class VersionTest {
         assertTrue(Version.UNKNOWN.isUnknown());
         assertFalse(Version.parse("1.0.0").isUnknown());
     }
+
+    @Test
+    void numericPrereleaseIdentifiersAreNotLimitedToIntegerRange() {
+        assertTrue(
+                Version.parse("1.0.0-99999999999999999999")
+                                .compareTo(Version.parse("1.0.0-100000000000000000000"))
+                        < 0);
+        assertTrue(
+                Version.parse("1.0.0-99999999999999999999").compareTo(Version.parse("1.0.0--1"))
+                        < 0);
+    }
 }

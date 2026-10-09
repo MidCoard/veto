@@ -2,6 +2,8 @@ import { frameSchemas, protocolVersion } from './schema';
 
 export { protocolVersion };
 
+export type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
+
 type Shape = string
   | { readonly nullable: Shape }
   | { readonly enum: readonly string[] }
@@ -16,7 +18,7 @@ type Value<S> = S extends { readonly nullable: infer T } ? Value<T> | null
         : S extends { readonly object: infer T } ? { [K in keyof T]: Value<T[K]> }
           : S extends 'string' ? string
             : S extends 'integer' | 'number' ? number
-              : S extends 'boolean' ? boolean : unknown;
+              : S extends 'boolean' ? boolean : JsonValue;
 
 type Schemas = typeof frameSchemas;
 export type Frame = {
@@ -29,6 +31,22 @@ export type ControlFrame = Exclude<Frame, EventFrame> & Record<string, unknown>;
 
 function object(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function json(value: unknown, ancestors: Set<object>): boolean {
+  if (value === null || typeof value === 'string' || typeof value === 'boolean') return true;
+  if (typeof value === 'number') return Number.isFinite(value);
+  if (typeof value !== 'object') return false;
+  if (!Array.isArray(value) && Object.getPrototypeOf(value) !== Object.prototype
+    && Object.getPrototypeOf(value) !== null) return false;
+  if (ancestors.has(value) || Object.getOwnPropertySymbols(value).length !== 0) return false;
+  ancestors.add(value);
+  try {
+    const entries = Array.isArray(value) ? Array.from(value) : Object.values(value);
+    return entries.every(entry => json(entry, ancestors));
+  } finally {
+    ancestors.delete(value);
+  }
 }
 
 function matches(shape: Shape, value: unknown): boolean {
@@ -51,7 +69,7 @@ function matches(shape: Shape, value: unknown): boolean {
 
 /** Validates the one application-frame hierarchy after a transport has decoded its payload. */
 export function decodeFrame(value: unknown): Frame | null {
-  if (!object(value) || typeof value.type !== 'string'
+  if (!json(value, new Set()) || !object(value) || typeof value.type !== 'string'
     || !Object.prototype.hasOwnProperty.call(frameSchemas, value.type)) return null;
   const fields = frameSchemas[value.type as keyof Schemas];
   return matches({ object: fields }, value) ? value as Frame : null;

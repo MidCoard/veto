@@ -1,14 +1,20 @@
 package top.focess.veto.contract;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import static org.junit.jupiter.api.Assertions.*;
 
+import java.io.UncheckedIOException;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.jspecify.annotations.NonNull;
 
 class FrameSerializationTest {
+    private static final @NonNull ObjectMapper JSON = new ObjectMapper();
     @Test
     void allVariantsUseOneDiscriminatorAndRoundTrip() throws Exception {
         var now = Instant.parse("2026-10-10T00:00:00Z");
@@ -48,7 +54,7 @@ class FrameSerializationTest {
         };
         for (var frame : frames) {
             var json = FrameCodec.encodeString(frame);
-            assertTrue(ProtocolJson.readTree(json).path("type").isTextual());
+            assertTrue(JSON.readTree(json).path("type").isTextual());
             assertEquals(frame, FrameCodec.decode(json));
             assertEquals(frame, FrameCodec.decode(FrameCodec.encode(frame)));
         }
@@ -65,5 +71,28 @@ class FrameSerializationTest {
         assertNull(FrameCodec.decode("{\"type\":\"delta\",\"content\":\"old\"}"));
         assertNull(FrameCodec.decode("{\"type\":\"tool_call\",\"toolName\":\"old\"}"));
         assertNull(FrameCodec.decode("{\"sessionId\":\"s\",\"kind\":\"NOTICE\"}"));
+    }
+
+    @Test
+    void scalarTypesAreNotCoerced() {
+        String[] payloads = {
+            "{\"type\":\"request\",\"raw\":123}",
+            "{\"type\":\"request\",\"raw\":true}",
+            "{\"type\":\"heartbeat\",\"seq\":\"1\"}",
+            "{\"type\":\"heartbeat\",\"seq\":1.5}",
+            "{\"type\":\"prompt\",\"content\":\"Name\",\"mask\":1}",
+            "{\"type\":\"prompt\",\"content\":\"Name\",\"mask\":\"true\"}"
+        };
+        for (var payload : payloads) {
+            assertNull(FrameCodec.decode(payload));
+            assertNull(FrameCodec.decode(payload.getBytes(StandardCharsets.UTF_8)));
+        }
+    }
+
+    @Test
+    void serializationFailureUsesStandardIoException() {
+        var frame = new Frame.Done(Map.of("unsupported", new Object()), null);
+        assertThrows(UncheckedIOException.class, () -> FrameCodec.encode(frame));
+        assertThrows(UncheckedIOException.class, () -> FrameCodec.encodeString(frame));
     }
 }

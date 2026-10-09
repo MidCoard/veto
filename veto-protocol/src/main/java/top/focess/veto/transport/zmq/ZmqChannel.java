@@ -1,10 +1,7 @@
 package top.focess.veto.transport.zmq;
 
-import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.zeromq.SocketType;
 import org.zeromq.ZContext;
 import org.zeromq.ZMQ;
@@ -13,146 +10,114 @@ import top.focess.veto.contract.ClientTransport;
 import top.focess.veto.contract.Frame;
 import top.focess.veto.contract.FrameCodec;
 import top.focess.veto.contract.ServerTransport;
-import top.focess.veto.contract.Transport;
 
-/**
- * ZMQ-backed {@link Transport}. A single base owns the socket, poller, and multipart-envelope
- * decode; two nested concrete channels expose the type-safe send shapes:
- *
- * <ul>
- *   <li>{@link Client} — a DEALER socket (implements {@link ClientTransport}); created via {@link
- *       Client#connectDealer}.
- *   <li>{@link Server} — a ROUTER socket (implements {@link ServerTransport}); created via {@link
- *       Server#bindRouter}.
- * </ul>
- *
- * <h2>Thread safety</h2>
- *
- * <b>Not thread-safe.</b> JeroMQ sockets are not safe for concurrent use. Callers must serialize
- * all access — the supported pattern is a single IO thread owning the channel (see {@code
- * ProtocolClient#ioLoop} and {@code IpcServer#ioLoop}).
- *
- * <p>Unlike the prior {@code ZmqTransport}, the raw {@link ZMQ.Socket} is encapsulated (no public
- * field) and framing is delegated to {@link FrameCodec}, so this class concerns itself only with
- * socket lifecycle and the ZMQ multipart envelope.
- */
+/** ZeroMQ framing and resources. One IO owner serializes all socket operations. */
 public abstract class ZmqChannel {
-
-    private static final @NonNull Logger log =
-            LoggerFactory.getLogger("top.focess.veto.transport.zmq.ZmqChannel");
-
     protected final ZMQ.@NonNull Socket socket;
     private final ZMQ.@NonNull Poller poller;
-    private final @NonNull SocketType type;
-    private ZContext ownedContext;
+    private final ZContext ownedContext;
+    private boolean closed;
 
-    private ZmqChannel(
-            ZMQ.@NonNull Socket socket, @NonNull SocketType type, @NonNull ZContext ctx) {
+    private ZmqChannel(ZMQ.@NonNull Socket socket, @NonNull ZContext context, boolean owned) {
         this.socket = socket;
-        this.type = type;
-        this.poller = ctx.createPoller(1);
-        this.poller.register(socket, ZMQ.Poller.POLLIN);
+        ownedContext = owned ? context : null;
+        var created = context.createPoller(1);
+        try {
+            if (created.register(socket, ZMQ.Poller.POLLIN) < 0)
+                throw new IllegalStateException("Cannot register ZeroMQ socket");
+        } catch (RuntimeException | Error failure) {
+            try {
+                created.close();
+            } catch (RuntimeException | Error cleanup) {
+                failure.addSuppressed(cleanup);
+            }
+            throw failure;
+        }
+        poller = created;
     }
 
-    // ── Transport: recv / close ──────────────────────────────────────────
-
-    /**
-     * Receives the next framed message, honoring the {@link Transport} timeout convention.
-     *
-     * @param timeoutMillis {@code 0} non-blocking, {@code >0} up to N ms, {@code <0} infinite
-     * @return the next message, or {@code null} on timeout or dropped malformed payload
-     */
-    public Transport.FramedMsg recv(long timeoutMillis) {
-        long rc = poller.poll(timeoutMillis < 0 ? -1 : timeoutMillis);
-        if (rc <= 0 || !poller.pollin(0)) return null;
-        ZMsg msg = ZMsg.recvMsg(socket, ZMQ.DONTWAIT);
-        return decode(msg);
+    protected ZMsg receive(long timeoutMillis, int parts) {
+        if (closed) throw new IllegalStateException("ZeroMQ channel is closed");
+        if (poller.poll(timeoutMillis < 0 ? -1 : timeoutMillis) <= 0 || !poller.pollin(0))
+            return null;
+        var message = ZMsg.recvMsg(socket, ZMQ.DONTWAIT);
+        if (message != null && message.size() != parts) {
+            message.destroy();
+            return null;
+        }
+        return message;
     }
 
-    /**
-     * Closes the poller and socket.
-     *
-     * <p>Single-threaded contract: the owning thread that runs {@link #recv} is the thread that
-     * calls {@code close}. There is deliberately no liveness flag — guarding one field with {@code
-     * volatile} cannot make concurrent socket use safe (the socket itself would race), so such a
-     * guard would be thread-safety theater. Callers that need a stop signal own their own flag (see
-     * {@code ProtocolClient#closed}, {@code IpcServer#running}); the loop exits when that flag
-     * flips and {@code close} is then called from the owning thread.
-     */
     public void close() {
+        if (closed) return;
+        closed = true;
         try {
             poller.close();
-        } catch (Exception ignored) {
-        }
-        try {
-            socket.close();
         } finally {
-            if (ownedContext != null) ownedContext.close();
-        }
-    }
-
-    // ── envelope decode ──────────────────────────────────────────────────
-
-    private Transport.FramedMsg decode(ZMsg msg) {
-        if (msg == null || msg.isEmpty()) {
-            if (msg != null) msg.destroy();
-            return null;
-        }
-        final String identity;
-        final byte[] payload;
-        if (type == SocketType.ROUTER) {
-            // ROUTER envelopes: [identity][payload] (at least).
-            if (msg.size() < 2) {
-                msg.destroy();
-                return null;
+            try {
+                socket.close();
+            } finally {
+                if (ownedContext != null) ownedContext.close();
             }
-            identity = new String(msg.pop().getData(), StandardCharsets.UTF_8);
-        } else {
-            identity = "";
         }
-        payload = msg.pop().getData();
-        msg.destroy();
-
-        Frame frame = FrameCodec.decode(payload);
-        if (frame == null) {
-            log.warn("Dropped malformed frame from [{}]", identity);
-            return null;
-        }
-        return new Transport.FramedMsg(identity, frame);
     }
 
-    // ── concrete channels ────────────────────────────────────────────────
+    private static ZMQ.@NonNull Socket open(
+            @NonNull ZContext context,
+            @NonNull SocketType type,
+            @NonNull String address,
+            String identity) {
+        var socket = context.createSocket(type);
+        try {
+            if (!socket.setSendTimeOut(1_000) || !socket.setLinger(1_000))
+                throw new IllegalStateException("Cannot configure ZeroMQ timeouts");
+            if (identity != null && !socket.setIdentity(identity.getBytes(ZMQ.CHARSET)))
+                throw new IllegalStateException("Cannot configure ZeroMQ identity");
+            if (!(type == SocketType.ROUTER ? socket.bind(address) : socket.connect(address)))
+                throw new IllegalStateException("Cannot open ZeroMQ channel");
+            return socket;
+        } catch (RuntimeException | Error failure) {
+            try {
+                socket.close();
+            } catch (RuntimeException | Error cleanup) {
+                failure.addSuppressed(cleanup);
+            }
+            throw failure;
+        }
+    }
 
-    /** A DEALER-backed {@link ClientTransport}. */
     public static final class Client extends ZmqChannel implements ClientTransport {
-
-        private Client(ZMQ.@NonNull Socket socket, @NonNull ZContext ctx) {
-            super(socket, SocketType.DEALER, ctx);
+        private Client(ZMQ.@NonNull Socket socket, @NonNull ZContext context, boolean owned) {
+            super(socket, context, owned);
         }
 
-        /**
-         * Connects a DEALER socket with the given identity to the backend ROUTER.
-         *
-         * @param ctx the shared ZeroMQ context
-         * @param addr the backend connect address (e.g. {@code tcp://127.0.0.1:5555})
-         * @param identity the unique client identity used for ZMQ routing
-         * @return a connected client channel
-         */
+        private static @NonNull Client connect(
+                @NonNull ZContext context,
+                @NonNull String address,
+                @NonNull String identity,
+                boolean owned) {
+            var socket = open(context, SocketType.DEALER, address, identity);
+            try {
+                return new Client(socket, context, owned);
+            } catch (RuntimeException | Error failure) {
+                try {
+                    socket.close();
+                } catch (RuntimeException | Error cleanup) {
+                    failure.addSuppressed(cleanup);
+                }
+                throw failure;
+            }
+        }
+
         public static @NonNull Client connectDealer(
-                @NonNull ZContext ctx, @NonNull String addr, @NonNull String identity) {
-            ZMQ.Socket sock = ctx.createSocket(SocketType.DEALER);
-            sock.setIdentity(identity.getBytes(ZMQ.CHARSET));
-            sock.connect(addr);
-            return new Client(sock, ctx);
+                @NonNull ZContext context, @NonNull String address, @NonNull String identity) {
+            return connect(context, address, identity, false);
         }
 
-        /** Creates a connection that owns and closes its ZeroMQ context. */
         public static @NonNull Client connect(@NonNull String address) {
             var context = new ZContext();
             try {
-                var channel = connectDealer(context, address, UUID.randomUUID().toString());
-                ((ZmqChannel) channel).ownedContext = context;
-                return channel;
+                return connect(context, address, UUID.randomUUID().toString(), true);
             } catch (RuntimeException | Error failure) {
                 try {
                     context.close();
@@ -165,36 +130,63 @@ public abstract class ZmqChannel {
 
         @Override
         public void send(Frame.@NonNull ClientFrame frame) {
-            // DEALER sockets automatically prepend the identity frame and send the bare payload.
-            socket.send(FrameCodec.encode(frame));
-        }
-    }
-
-    /** A ROUTER-backed {@link ServerTransport}. */
-    public static final class Server extends ZmqChannel implements ServerTransport {
-
-        private Server(ZMQ.@NonNull Socket socket, @NonNull ZContext ctx) {
-            super(socket, SocketType.ROUTER, ctx);
-        }
-
-        /**
-         * Binds a ROUTER socket to the given address.
-         *
-         * @param ctx the shared ZeroMQ context
-         * @param addr the bind address (e.g. {@code tcp://*:5555})
-         * @return a bound server channel
-         */
-        public static @NonNull Server bindRouter(@NonNull ZContext ctx, @NonNull String addr) {
-            ZMQ.Socket sock = ctx.createSocket(SocketType.ROUTER);
-            sock.bind(addr);
-            return new Server(sock, ctx);
+            if (!socket.send(FrameCodec.encode(frame)))
+                throw new IllegalStateException("ZeroMQ send failed");
         }
 
         @Override
-        public void send(@NonNull String identity, @NonNull Frame frame) {
-            // ROUTER sockets expect [identity][payload].
-            socket.sendMore(identity.getBytes(ZMQ.CHARSET));
-            socket.send(FrameCodec.encode(frame));
+        public Frame.ServerFrame recv(long timeoutMillis) {
+            var message = receive(timeoutMillis, 1);
+            if (message == null) return null;
+            try {
+                var frame = FrameCodec.decode(message.getFirst().getData());
+                return frame instanceof Frame.ServerFrame server ? server : null;
+            } finally {
+                message.destroy();
+            }
+        }
+    }
+
+    public static final class Server extends ZmqChannel implements ServerTransport {
+        private Server(ZMQ.@NonNull Socket socket, @NonNull ZContext context) {
+            super(socket, context, false);
+        }
+
+        public static @NonNull Server bindRouter(
+                @NonNull ZContext context, @NonNull String address) {
+            var socket = open(context, SocketType.ROUTER, address, null);
+            try {
+                return new Server(socket, context);
+            } catch (RuntimeException | Error failure) {
+                try {
+                    socket.close();
+                } catch (RuntimeException | Error cleanup) {
+                    failure.addSuppressed(cleanup);
+                }
+                throw failure;
+            }
+        }
+
+        @Override
+        public void send(@NonNull String identity, Frame.@NonNull ServerFrame frame) {
+            byte[] payload = FrameCodec.encode(frame);
+            if (!socket.sendMore(identity.getBytes(ZMQ.CHARSET)) || !socket.send(payload))
+                throw new IllegalStateException("ZeroMQ send failed");
+        }
+
+        @Override
+        public Message recv(long timeoutMillis) {
+            var message = receive(timeoutMillis, 2);
+            if (message == null) return null;
+            try {
+                String identity = new String(message.getFirst().getData(), ZMQ.CHARSET);
+                var frame = FrameCodec.decode(message.getLast().getData());
+                return frame instanceof Frame.ClientFrame client
+                        ? new Message(identity, client)
+                        : null;
+            } finally {
+                message.destroy();
+            }
         }
     }
 }

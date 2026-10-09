@@ -1,5 +1,7 @@
 package top.focess.veto.contract;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import com.fasterxml.jackson.annotation.JsonSubTypes;
@@ -21,6 +23,7 @@ import org.junit.jupiter.api.Test;
 
 /** Generates and verifies the browser binding from the actual Java wire types. */
 public class FrontendBindingsTest {
+    private static final @NonNull ObjectMapper JSON = new ObjectMapper();
     private static final @NonNull JsonNodeFactory NODES = JsonNodeFactory.instance;
 
     /** Used by generateFrontendBindings; runtime libraries do not contain this build utility. */
@@ -48,7 +51,7 @@ public class FrontendBindingsTest {
                 + Frame.PROTOCOL_VERSION
                 + ";\n"
                 + "export const frameSchemas = "
-                + ProtocolJson.encodeString(frames)
+                + JSON.writeValueAsString(frames)
                 + " as const;\n";
     }
 
@@ -132,7 +135,7 @@ public class FrontendBindingsTest {
         };
         var fixtures = NODES.arrayNode();
         for (var frame : frames)
-            fixtures.add(ProtocolJson.readTree(FrameCodec.encodeString(frame)));
-        return ProtocolJson.encodeString(fixtures) + "\n";
+            fixtures.add(JSON.readTree(FrameCodec.encodeString(frame)));
+        return JSON.writeValueAsString(fixtures) + "\n";
     }
 }

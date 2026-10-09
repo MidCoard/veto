@@ -20,27 +20,27 @@ class DAGPayloadTest {
                         .targetComponent("bus")
                         .build();
 
-        assertEquals("test-1", payload.getId());
-        assertEquals("compile_cpp", payload.getTaskType());
-        assertEquals(2, payload.getParameters().size());
-        assertEquals("test.cpp", payload.getParameters().get("source"));
-        assertTrue(payload.getDependencies().contains("dep-1"));
-        assertEquals(DAGPayload.DAGPayloadStatus.PENDING, payload.getStatus());
+        assertEquals("test-1", payload.id());
+        assertEquals("compile_cpp", payload.taskType());
+        assertEquals(2, payload.parameters().size());
+        assertEquals("test.cpp", payload.parameters().get("source"));
+        assertTrue(payload.dependencies().contains("dep-1"));
+        assertEquals(DAGPayload.DAGPayloadStatus.PENDING, payload.status());
     }
 
     @Test
     void testAutoGenerateId() {
         DAGPayload payload = DAGPayload.builder().taskType("test").build();
-        assertNotNull(payload.getId());
-        assertFalse(payload.getId().isEmpty());
+        assertNotNull(payload.id());
+        assertFalse(payload.id().isEmpty());
     }
 
     @Test
     void testWithStatus() {
         DAGPayload payload = DAGPayload.builder().taskType("test").build();
         DAGPayload updated = payload.withStatus(DAGPayload.DAGPayloadStatus.RUNNING);
-        assertEquals(DAGPayload.DAGPayloadStatus.RUNNING, updated.getStatus());
-        assertEquals(payload.getId(), updated.getId());
+        assertEquals(DAGPayload.DAGPayloadStatus.RUNNING, updated.status());
+        assertEquals(payload.id(), updated.id());
     }
 
     @Test
@@ -48,8 +48,8 @@ class DAGPayloadTest {
         DAGPayload payload =
                 DAGPayload.builder().taskType("test").parameter("key1", "value1").build();
         DAGPayload updated = payload.withUpdatedParameters(Map.of("key2", "value2"));
-        assertTrue(updated.getParameters().containsKey("key2"));
-        assertTrue(updated.getParameters().containsKey("key1"));
+        assertTrue(updated.parameters().containsKey("key2"));
+        assertTrue(updated.parameters().containsKey("key1"));
     }
 
     @Test
@@ -66,12 +66,12 @@ class DAGPayloadTest {
                 DAGPayload.builder().taskType("test").parameter("key", "value").build();
         assertThrows(
                 UnsupportedOperationException.class,
-                () -> payload.getParameters().put("new", "value"));
+                () -> payload.parameters().put("new", "value"));
     }
 
     @Test
     void testImmutableDependencies() {
         DAGPayload payload = DAGPayload.builder().taskType("test").build();
-        assertThrows(UnsupportedOperationException.class, () -> payload.getDependencies().add("x"));
+        assertThrows(UnsupportedOperationException.class, () -> payload.dependencies().add("x"));
     }
 }

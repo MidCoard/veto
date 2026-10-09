@@ -31,7 +31,7 @@ class InMemoryTransportTest {
     @BeforeEach
     void setUp() {
         transport = new InMemoryTransport();
-        conn = new ProtocolClient(transport);
+        conn = new ProtocolClient(() -> transport);
         responderRunning = true;
         responder =
                 new Thread(
@@ -151,23 +151,19 @@ class InMemoryTransportTest {
     /** Minimal in-memory {@link ClientTransport} that auto-replies to Hello with Welcome. */
     static final class InMemoryTransport implements ClientTransport {
         final @NonNull BlockingQueue<Frame.@NonNull ClientFrame> sent = new LinkedBlockingQueue<>();
-        final @NonNull BlockingQueue<Transport.@NonNull FramedMsg> inbox =
+        final @NonNull BlockingQueue<Frame.@NonNull ServerFrame> inbox =
                 new LinkedBlockingQueue<>();
 
         @Override
         public void send(Frame.@NonNull ClientFrame frame) {
             sent.offer(frame);
             if (frame instanceof Frame.Hello h) {
-                inbox.offer(
-                        new Transport.FramedMsg(
-                                "",
-                                new Frame.Welcome(
-                                        Frame.PROTOCOL_VERSION, h.seq(), Version.UNKNOWN)));
+                inbox.offer(new Frame.Welcome(Frame.PROTOCOL_VERSION, h.seq(), Version.UNKNOWN));
             }
         }
 
         @Override
-        public Transport.FramedMsg recv(long timeoutMillis) {
+        public Frame.ServerFrame recv(long timeoutMillis) {
             try {
                 return inbox.poll(timeoutMillis, TimeUnit.MILLISECONDS);
             } catch (InterruptedException e) {
@@ -180,7 +176,7 @@ class InMemoryTransportTest {
         public void close() {}
 
         void deliver(Frame.@NonNull ServerFrame frame) {
-            inbox.offer(new Transport.FramedMsg("", frame));
+            inbox.offer(frame);
         }
     }
 }

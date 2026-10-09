@@ -9,7 +9,6 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantLock;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
@@ -28,69 +27,17 @@ import top.focess.veto.contract.Frame.HintInfo;
 import top.focess.veto.contract.FrameMeta;
 import top.focess.veto.contract.ProtocolClient;
 import top.focess.veto.contract.ServerTransport;
-import top.focess.veto.contract.Transport;
 import top.focess.veto.contract.Version;
 import top.focess.veto.transport.zmq.ZmqChannel;
 import top.focess.veto.vault.ExecutionSecurity;
 
 /**
- * Backend IPC server — the {@link ProtocolClient} counterpart. Multiplexes many terminal sessions
- * over a single ZMQ ROUTER socket. (The asymmetry with {@link ProtocolClient}'s single-DEALER,
- * single-socket shape is by design: the server is 1:N, the client is 1:1 — they are not mirror
- * images.)
- *
- * <h3>Three-pool threading model</h3>
- *
- * <ul>
- *   <li><b>Pool 1 — Infrastructure</b> (2 fixed platform threads): runs {@link #ioLoop} and {@link
- *       #heartbeatLoop}. The IO thread is the <em>sole</em> owner of the transport; no other thread
- *       ever calls {@link ServerTransport#recv(long)} or {@link ServerTransport#send(String,
- *       Frame)}.
- *   <li><b>Pool 2 — Session workers</b> (one virtual thread per connected terminal): each session
- *       has a dedicated {@link BlockingQueue} mailbox. The session worker drains that mailbox and
- *       processes non-Request frames <em>synchronously</em>, preserving per-session ordering
- *       without any explicit locking. {@link Frame.Request} frames are submitted to Pool 3.
- *   <li><b>Pool 3 — Request pool</b> (virtual thread per task): executes {@code registry.dispatch},
- *       which may block for an extended period (AI inference, tool calls, etc.). The server
- *       enforces 1:1 request serialization: at most one request runs at a time per session;
- *       additional requests are queued in {@link Session#pendingRequests} and dispatched
- *       sequentially (dispatch-next-or-idle) when the in-flight request completes.
- * </ul>
- *
- * <h3>Per-session request lock</h3>
- *
- * <p>The request lifecycle — checking whether a request is in-flight, enqueuing to / polling from
- * the pending queue, setting / clearing the in-flight future, and sending the terminal frame —
- * involves compound operations on multiple fields that must be atomic as a group. A CAS on a single
- * {@code AtomicBoolean} only makes that one bit-flip atomic; it cannot protect the surrounding code
- * from racing with another thread's CAS + surrounding code. A per-session {@link ReentrantLock}
- * ({@link Session#requestLock}) makes the entire compound operation atomic.
- *
- * <p>The lock is held only for brief state transitions (never during {@code registry.dispatch},
- * which runs outside the lock in the request pool). Different sessions do not contend — each has
- * its own lock.
- *
- * <h3>Frame routing</h3>
- *
- * <ul>
- *   <li>{@link Frame.Hello} — handled directly on the IO thread (fast path; session doesn't exist
- *       yet). On success the session is created and its worker virtual thread is spawned.
- *   <li>All other frames — enqueued to the session's mailbox via {@link Session#mailbox} and
- *       processed in arrival order by the session worker.
- * </ul>
- *
- * <h3>Session lifecycle</h3>
- *
- * <ul>
- *   <li>Created on {@link Frame.Hello} (IO thread).
- *   <li>Closed on {@link Frame.Bye} (session worker), heartbeat timeout (heartbeat thread), or
- *       server shutdown. Closing is idempotent via {@link Session#closed} ({@link AtomicBoolean}).
- * </ul>
+ * Terminal entry point: one virtual IO owner binds the ZeroMQ ROUTER, routes frames, scans idle
+ * sessions and closes the socket. Per-session workers keep ordered input/cancel/completion handling
+ * responsive while commands run separately. Request locking preserves one terminal reply per request.
  */
 @Component
 @ConditionalOnProperty(name = "veto.terminal.enabled", havingValue = "true", matchIfMissing = true)
-@SuppressWarnings(
-        "NotNullFieldNotInitialized") // Spring start() initializes transport lifecycle fields.
 public class IpcServer {
 
     private static final @NonNull Logger log =
@@ -106,31 +53,13 @@ public class IpcServer {
     private final @NonNull CommandRegistry registry;
     private final @NonNull AgentService agentService;
 
-    /**
-     * Outbox queue: any thread may enqueue; only the IO thread dequeues and sends. Using {@link
-     * ConcurrentLinkedQueue} here avoids blocking the IO thread on backpressure.
-     */
-    private final @NonNull ConcurrentLinkedQueue<@NonNull OutboxEntry> outbox =
-            new ConcurrentLinkedQueue<>();
-
-    /**
-     * Live count of {@link #outbox} entries, maintained alongside the queue so the backpressure
-     * check in {@link #send} is O(1) — {@link ConcurrentLinkedQueue#size()} is O(n) and {@code
-     * send} sits on the hot streaming-output path.
-     */
-    private final @NonNull AtomicInteger outboxSize = new AtomicInteger();
+    /** Many producers enqueue; only the IO owner sends. Capacity is enforced by the queue itself. */
+    private final @NonNull BlockingQueue<@NonNull OutboxEntry> outbox =
+            new ArrayBlockingQueue<>(MAX_OUTBOX_SIZE);
 
     /** Active sessions keyed by ZMQ identity string. */
     private final @NonNull ConcurrentHashMap<@NonNull String, @NonNull Session> sessions =
             new ConcurrentHashMap<>();
-
-    /**
-     * Pool 1 — fixed platform threads for the IO loop and heartbeat loop. Platform threads are
-     * preferred here because these are long-lived, CPU-aware tight loops that should not be subject
-     * to virtual-thread pinning or carrier-thread scheduling delays.
-     */
-    private final @NonNull ExecutorService infraPool =
-            Executors.newFixedThreadPool(2, Thread.ofPlatform().name("veto-infra-", 0).factory());
 
     /**
      * Pool 2 — one virtual thread per session. Each session worker blocks on its mailbox queue;
@@ -146,8 +75,7 @@ public class IpcServer {
     private final @NonNull ExecutorService requestPool =
             Executors.newVirtualThreadPerTaskExecutor();
 
-    private @NonNull ZContext ctx;
-    private @NonNull ServerTransport transport;
+    private Thread ioThread;
     private volatile boolean running;
 
     private final @NonNull String bindAddress;
@@ -160,7 +88,6 @@ public class IpcServer {
      * @param agentService the agent service used to resolve/decline pending HITL vetoes
      * @param bindAddress the required configured ZeroMQ bind address
      */
-    @SuppressWarnings({"initialization.fields.uninitialized", "NotNullFieldNotInitialized"})
     public IpcServer(
             @NonNull CommandRegistry registry,
             @NonNull AgentService agentService,
@@ -170,128 +97,91 @@ public class IpcServer {
         this.bindAddress = bindAddress;
     }
 
-    // ── Lifecycle ────────────────────────────────────────────────────────
-
-    /**
-     * Initializes the ZeroMQ context, binds the ROUTER socket, and starts the IO and heartbeat
-     * infrastructure threads.
-     *
-     * <p>Invoked automatically by Spring after the bean is constructed ({@link PostConstruct}). The
-     * bind address is read from the required {@code veto.terminal.bind-address} property.
-     */
+    /** Starts the actual terminal endpoint and reports bind failures before Spring admits traffic. */
     @PostConstruct
     public void start() {
-        ctx = new ZContext();
-        transport = ZmqChannel.Server.bindRouter(ctx, bindAddress);
+        var ready = new CompletableFuture<Void>();
         running = true;
-        infraPool.submit(this::ioLoop);
-        infraPool.submit(this::heartbeatLoop);
-        log.info("IpcServer bound to {}", bindAddress);
+        ioThread = Thread.ofVirtual().name("terminal-io").start(() -> ioLoop(ready));
+        try {
+            ready.get();
+        } catch (InterruptedException interrupted) {
+            stop();
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Terminal startup interrupted", interrupted);
+        } catch (ExecutionException failure) {
+            throw new IllegalStateException("Cannot start terminal endpoint", failure.getCause());
+        }
     }
 
-    /**
-     * Gracefully shuts down the server.
-     *
-     * <p>Invoked automatically by Spring before the bean is destroyed ({@link PreDestroy}). The
-     * shutdown sequence is:
-     *
-     * <ol>
-     *   <li>Sets {@link #running} to {@code false} so loops exit after their current iteration.
-     *   <li>Sends a {@link Frame.Terminate} frame to every connected terminal.
-     *   <li>Waits 100 ms to allow the IO thread to flush outgoing terminate frames.
-     *   <li>Shuts down session and request pools ({@code shutdownNow}).
-     *   <li>Awaits infrastructure pool termination (up to 3 seconds).
-     *   <li>Closes the transport socket and ZMQ context.
-     * </ol>
-     */
+    /** Signals the IO owner, which terminates peers and closes its own transport and context. */
     @PreDestroy
     public void stop() {
-        // Notify all connected terminals BEFORE flipping `running` — the IO loop must still be
-        // running to drain these Terminate frames. (ioLoop also does a final drain on exit, so
-        // late frames are flushed too; enqueuing while running avoids the race where the loop
-        // exits before they're sent.)
-        for (Session session : sessions.values()) {
-            send(session.identity, new Frame.Terminate("Server shutting down."));
-        }
-        // Brief pause to let the IO loop flush the Terminate frames while it is still running.
-        try {
-            Thread.sleep(100);
-        } catch (InterruptedException ignored) {
-        }
-        running = false; // signal loops to exit (ioLoop does a final outbox drain on the way out)
-        // Shut down pools in dependency order: sessions first (they enqueue to requestPool),
-        // then requests, then infrastructure (IO thread drains outbox).
-        sessionPool.shutdownNow();
-        requestPool.shutdownNow();
-        infraPool.shutdownNow();
-        try {
-            boolean terminated = infraPool.awaitTermination(3, TimeUnit.SECONDS);
-            if (!terminated) {
-                log.warn("Infrastructure pool did not terminate within 3 seconds");
+        running = false;
+        var worker = ioThread;
+        if (worker != null && worker != Thread.currentThread()) {
+            try {
+                worker.join(4_000);
+                if (worker.isAlive()) log.warn("Terminal IO owner is still closing its socket");
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
             }
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
         }
-        transport.close();
-        ctx.close();
-        log.info("IpcServer stopped");
     }
 
-    // ── Pool 1 — IO loop ─────────────────────────────────────────────────
-
-    /**
-     * The main IO event loop. Runs on a dedicated platform thread and is the <em>only</em> thread
-     * allowed to read from or write to the transport.
-     *
-     * <p>On each iteration it:
-     *
-     * <ol>
-     *   <li>Receives one frame from the transport (with a short timeout so outbox draining is still
-     *       responsive) and routes it via {@link #routeFrame}.
-     *   <li>Drains the outbox and sends all queued response frames.
-     * </ol>
-     */
-    private void ioLoop() {
-        while (running) {
-            // Use 0 ms timeout when there is pending outgoing work to minimise latency.
-            long timeout = outbox.isEmpty() ? 50 : 0;
-
-            // Step 1 — receive one incoming frame and route it. The transport polls internally;
-            // malformed payloads are dropped (and logged) by the transport, never surfaced.
-            Transport.FramedMsg msg = transport.recv(timeout);
-            if (msg != null) {
-                try {
-                    routeFrame(msg.identity(), msg.frame());
-                } catch (RuntimeException invalid) {
-                    rejectFrame(msg.identity(), msg.frame(), invalid);
+    private void ioLoop(@NonNull CompletableFuture<Void> ready) {
+        try (var context = new ZContext();
+                var transport = ZmqChannel.Server.bindRouter(context, bindAddress)) {
+            ready.complete(null);
+            log.info("IpcServer bound to {}", bindAddress);
+            long lastScan = System.nanoTime();
+            try {
+                while (running) {
+                    var message = transport.recv(outbox.isEmpty() ? 50 : 0);
+                    if (message != null) {
+                        try {
+                            routeFrame(message.identity(), message.frame());
+                        } catch (RuntimeException invalid) {
+                            rejectFrame(message.identity(), message.frame(), invalid);
+                        }
+                    }
+                    // Bound each drain so producers cannot starve receive, eviction or shutdown.
+                    for (int i = 0; running && i < 256; i++) {
+                        var entry = outbox.poll();
+                        if (entry == null) break;
+                        deliver(transport, entry.identity(), entry.frame());
+                    }
+                    if (System.nanoTime() - lastScan >= TimeUnit.MILLISECONDS.toNanos(HEARTBEAT_CHECK_MS)) {
+                        evictIdleSessions();
+                        lastScan = System.nanoTime();
+                    }
+                }
+            } finally {
+                running = false;
+                outbox.clear();
+                for (var session : sessions.values()) {
+                    deliver(transport, session.identity, new Frame.Terminate("Server shutting down."));
+                    closeSession(session);
                 }
             }
-
-            // Step 2 — drain the outbox so responses reach terminals promptly.
-            drainOutbox();
+        } catch (RuntimeException | Error failure) {
+            if (!ready.completeExceptionally(failure))
+                log.warn("Terminal IO failed ({})", failure.getClass().getSimpleName());
+        } finally {
+            running = false;
+            for (var session : sessions.values()) closeSession(session);
+            sessionPool.shutdownNow();
+            requestPool.shutdownNow();
         }
-        // Final drain: flush anything enqueued after `running` flipped (e.g. shutdown Terminate
-        // frames, or a command's late output) before the transport closes.
-        drainOutbox();
     }
 
-    /**
-     * Drains the outbox and sends every queued frame, decrementing {@link #outboxSize} per entry.
-     * Never throws — logs send failures and continues.
-     */
-    private void drainOutbox() {
-        OutboxEntry entry;
-        while ((entry = outbox.poll()) != null) {
-            outboxSize.decrementAndGet();
-            try {
-                transport.send(entry.identity, entry.frame);
-            } catch (Exception e) {
-                log.warn(
-                        "Failed to send {} to {}",
-                        entry.frame.getClass().getSimpleName(),
-                        entry.identity,
-                        e);
-            }
+    private void deliver(@NonNull ServerTransport transport, @NonNull String identity,
+            Frame.@NonNull ServerFrame frame) {
+        try {
+            transport.send(identity, frame);
+        } catch (RuntimeException failure) {
+            log.warn("Failed to send {} to {} ({})", frame.getClass().getSimpleName(),
+                    peerLabel(identity), failure.getClass().getSimpleName());
         }
     }
 
@@ -402,17 +292,17 @@ public class IpcServer {
      */
     private void sessionLoop(@NonNull Session session) {
         log.debug("Session worker started for {}", peerLabel(session.identity));
-        while (!session.closed.get() && running) {
+        while (!session.closed.get()) {
             Frame frame;
             try {
-                // Poll with a 1-second timeout so we re-check `running` and `closed` periodically.
+                // Poll with a 1-second timeout so we re-check closure periodically.
                 frame = session.mailbox.poll(1, TimeUnit.SECONDS);
                 if (frame == null) continue;
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 break;
             }
-            session.lastActivityMillis = System.currentTimeMillis();
+            session.lastActivityNanos = System.nanoTime();
             try {
                 handleSessionFrame(session, frame);
             } catch (RuntimeException invalid) {
@@ -586,7 +476,7 @@ public class IpcServer {
                 }
 
                 case Frame.Heartbeat h -> {
-                    session.lastActivityMillis = System.currentTimeMillis();
+                    session.lastActivityNanos = System.nanoTime();
                     send(identity, new Frame.HeartbeatAck(h.seq(), Instant.now()));
                 }
 
@@ -751,32 +641,13 @@ public class IpcServer {
         }
     }
 
-    // ── Pool 1 — Heartbeat loop ───────────────────────────────────────────
-
-    /**
-     * Periodically scans all active sessions and evicts any that have been silent for longer than
-     * {@link #SESSION_TIMEOUT_MS}. Runs on a dedicated infrastructure platform thread.
-     *
-     * <p>Checking at {@link #HEARTBEAT_CHECK_MS} intervals (⅓ of the timeout) bounds the worst-case
-     * eviction lag to {@code SESSION_TIMEOUT_MS + HEARTBEAT_CHECK_MS}.
-     */
-    @SuppressWarnings("BusyWait") // Deliberate fixed-rate heartbeat timeout scan, not a spin loop.
-    private void heartbeatLoop() {
-        while (running) {
-            try {
-                Thread.sleep(HEARTBEAT_CHECK_MS);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                break;
-            }
-            long cutoff = System.currentTimeMillis() - SESSION_TIMEOUT_MS;
-            for (Session session : sessions.values()) {
-                if (session.lastActivityMillis < cutoff && !session.closed.get()) {
-                    log.info("Evicting timed-out session {}", peerLabel(session.identity));
-                    // Notify the terminal before closing so it can display a message.
-                    send(session.identity, new Frame.Terminate("Session timed out."));
-                    closeSession(session);
-                }
+    /** Runs on the IO owner; elapsed monotonic time is unaffected by wall-clock adjustments. */
+    private void evictIdleSessions() {
+        long now = System.nanoTime();
+        for (var session : sessions.values()) {
+            if (now - session.lastActivityNanos >= TimeUnit.MILLISECONDS.toNanos(SESSION_TIMEOUT_MS)) {
+                send(session.identity, new Frame.Terminate("Session timed out."));
+                closeSession(session);
             }
         }
     }
@@ -797,7 +668,7 @@ public class IpcServer {
 
     /**
      * Idempotently closes a session. Uses {@link AtomicBoolean#compareAndSet} so concurrent calls
-     * from the session worker, heartbeat thread, or server shutdown are all safe.
+     * from the session worker, IO owner, or server shutdown are all safe.
      *
      * <p>The pending queue is cleared and the in-flight task (if any) is {@code cancel(true)}'d so
      * its {@code done()} hook clears the slot (and dispatches nothing — the queue is already
@@ -835,18 +706,12 @@ public class IpcServer {
      * @param identity the ZMQ DEALER identity of the target terminal
      * @param frame the frame to send
      */
-    public void send(@NonNull String identity, @NonNull Frame frame) {
-        int size = outboxSize.incrementAndGet();
-        if (size > MAX_OUTBOX_SIZE) {
-            outboxSize.decrementAndGet(); // not actually enqueuing — undo the reservation
-            log.warn(
-                    "Outbox congested ({} entries) — dropping {} for {}",
-                    size,
-                    frame.getClass().getSimpleName(),
-                    identity);
-            return;
+    public void send(@NonNull String identity, Frame.@NonNull ServerFrame frame) {
+        if (running && !outbox.offer(new OutboxEntry(identity, frame))) {
+            log.warn("Terminal outbox is full; closing peer {}", peerLabel(identity));
+            var session = sessions.get(identity);
+            if (session != null) closeSession(session);
         }
-        outbox.add(new OutboxEntry(identity, frame));
     }
 
     /**
@@ -871,7 +736,7 @@ public class IpcServer {
     // ── Types ─────────────────────────────────────────────────────────────
 
     /** A frame that has been queued for sending by the IO thread. */
-    public record OutboxEntry(@NonNull String identity, @NonNull Frame frame) {}
+    private record OutboxEntry(@NonNull String identity, Frame.@NonNull ServerFrame frame) {}
 
     /**
      * All mutable state for a single connected terminal session.
@@ -885,8 +750,8 @@ public class IpcServer {
         final @NonNull String identity;
         final @NonNull VetoCommandSender sender;
 
-        /** Timestamp of the last received frame; read by the heartbeat thread. */
-        volatile long lastActivityMillis = System.currentTimeMillis();
+        /** Monotonic time of the last received frame; read by the IO owner. */
+        volatile long lastActivityNanos = System.nanoTime();
 
         /**
          * Incoming frame mailbox. Written by the IO thread via {@link #routeFrame}; consumed in

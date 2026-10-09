@@ -439,13 +439,24 @@ is generated output and must not be committed.
   they carry `@NonNull`; primitive types are outside that contract.
 - Run focused tests while iterating and the complete `check` task before a release.
 - Keep shared message contracts and format codecs in `veto-protocol`; IPC and WebSocket use
-  its `ProtocolJson` codec for UTF-8 bytes and JSON text. Authentication, backend dispatch and
+  its public `FrameCodec` for UTF-8 bytes and JSON text, with strict parsing in that same codec.
+  Authentication, backend dispatch and
   recipient routing belong to the application. Both transports use the same `Frame` hierarchy
   and `type` discriminator, including `EventFrame` for streaming events. ZeroMQ transport and
   connection code live in `veto-protocol`; terminal interaction, rendering and logging live in
-  `veto-terminal`. `ProtocolClient` runs the shared handshake, IO, heartbeat and correlation
-  over either `ZmqChannel.Client` or `WebSocketChannel.Client`; Spring WebSocket endpoints use
-  the matching server adapter and retain application authentication/routing. Browser clients consume
+  `veto-terminal`. `ProtocolClient` runs the terminal handshake, IO, heartbeat and correlation
+  over `ZmqChannel.Client`. Each connection uses one virtual
+  IO worker from transport creation through handshake and cleanup, with bounded queues and private request futures.
+  Closing wakes readers and pending exchanges immediately and discards unsent application frames.
+  Client transports receive server frames directly; server transports alone carry peer identities.
+  The browser entry point is `veto-ui/src/state/SessionContext.tsx`, which connects `VetoBus`
+  to `/ws/veto/bus` on the backend HTTP port. `WebSocketConfig` registers the authenticated native WebSocket
+  endpoint; `VetoWebSocketHandler` decodes frames directly in Spring callbacks and owns socket
+  authentication, subscriptions and recipient routing. Agent output follows
+  `DeltaBroker -> DeltaBusBridge -> VetoWebSocketHandler -> VetoBus`.
+  There is no outbound Java cloud bus or remote task executor. `/api/tasks` is a user-owned
+  in-memory task registry; creating a task records it locally without executing it.
+  Browser clients consume
   the dependency-free `@veto/protocol` package in `veto-protocol/frontend`. Its schema and fixtures
   are generated from Java contracts with `:veto-protocol:generateFrontendBindings` and checked by
   tests. `veto-terminal` must not depend on `veto-core`.

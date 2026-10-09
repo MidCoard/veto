@@ -2,6 +2,7 @@ package top.focess.veto.contract;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonValue;
+import java.math.BigInteger;
 import org.jspecify.annotations.NonNull;
 
 /**
@@ -14,7 +15,7 @@ import org.jspecify.annotations.NonNull;
  * "1.0.0+build.42"} - and reformatted canonically as {@code
  * MAJOR.MINOR.PATCH[-preRelease][+build]}.
  *
- * <p>On the IPC wire it serializes to that canonical string (Jackson {@code @JsonValue} /
+ * <p>On the protocol wire it serializes to that canonical string (Jackson {@code @JsonValue} /
  * {@code @JsonCreator}), so the JSON stays a plain string while Java code handles a typed value.
  *
  * <p>Null is never a valid {@code Version}; peers that genuinely cannot report a version use the
@@ -144,19 +145,10 @@ public record Version(int major, int minor, int patch, String preRelease, String
     }
 
     private static int compareIdentifier(@NonNull String a, @NonNull String b) {
-        Integer ai = tryNumeric(a);
-        Integer bi = tryNumeric(b);
-        if (ai != null && bi != null) return ai.compareTo(bi);
-        if (ai != null) return -1; // numeric < non-numeric
-        if (bi != null) return 1;
-        return a.compareTo(b); // lexical
-    }
-
-    private static Integer tryNumeric(@NonNull String s) {
-        try {
-            return Integer.parseInt(s);
-        } catch (NumberFormatException e) {
-            return null;
-        }
+        boolean numericA = a.matches("[0-9]+");
+        boolean numericB = b.matches("[0-9]+");
+        if (numericA && numericB) return new BigInteger(a).compareTo(new BigInteger(b));
+        if (numericA != numericB) return numericA ? -1 : 1;
+        return a.compareTo(b);
     }
 }

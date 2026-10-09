@@ -16,8 +16,8 @@ import top.focess.veto.contract.EventFrame;
  * <p>This closes the loop: {@code AgentRunner.emitMessage → DeltaBroker.publish → DeltaBusBridge →
  * VetoWebSocketHandler → connected clients}. The broker fans out per-session to its direct
  * subscribers (tests, other transports); this bridge is the production subscriber that reaches the
- * wire. A bad client send is logged and swallowed so one slow client cannot stall the agent's
- * virtual thread (the broker already isolates per-subscriber failures).
+ * wire. Delivery is synchronous. Failed sends are isolated, while concurrent socket writes use
+ * Spring's bounded session decorator; neither boundary makes an individual socket write asynchronous.
  */
 @Component
 public class DeltaBusBridge {

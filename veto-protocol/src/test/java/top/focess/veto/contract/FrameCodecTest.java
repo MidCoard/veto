@@ -1,151 +1,104 @@
 package top.focess.veto.contract;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static top.focess.veto.contract.ContractTestSupport.assertInstanceOf;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.nio.charset.StandardCharsets;
-import java.util.List;
 import java.util.Map;
+import java.util.UUID;
+import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
-/**
- * Unit tests for {@link FrameCodec} — the pure JSON codec for {@link Frame}. Covers round-trip of
- * every frame type, rejection of unknown types, and null-on-malformed input.
- */
 class FrameCodecTest {
 
     @Test
-    void roundTripsEveryFrameType() {
-        String userDir = System.getProperty("user.dir");
-        if (userDir == null) {
-            throw new AssertionError("user.dir system property is unavailable");
+    @SuppressWarnings(
+            "ConstantValue") // Checker applies the nullable default to synthetic values().
+    void everyStreamingKindPreservesItsCompleteValueAcrossBytesAndText() throws Exception {
+        var attrs = JsonNodeFactory.instance.objectNode();
+        attrs.put("中文", "提示");
+        attrs.putArray("items").add(1).add(true).addNull();
+        var kinds = EventFrame.Kind.values();
+        if (kinds == null) {
+            throw new AssertionError("Enum values are unavailable");
         }
-        Frame[] frames = {
-            new Frame.Hello(Frame.PROTOCOL_VERSION, 7L, Version.parse("1.0.0-SNAPSHOT"), userDir),
-            new Frame.Welcome(Frame.PROTOCOL_VERSION, 7L, Version.parse("1.2.3")),
-            new Frame.Request("do the thing"),
-            new Frame.Complete("/log", 11L),
-            new Frame.Hint("/login ", 12L),
-            new Frame.Input("secret-value"),
-            new Frame.Cancel(),
-            new Frame.Bye(),
-            new Frame.Heartbeat(0),
-            new Frame.CompleteResult(
-                    List.of(
-                            new Frame.Completion("/login", "sign in", "auth"),
-                            new Frame.Completion("/status", null, null)),
-                    11L),
-            new Frame.HintResult(new Frame.HintInfo("<user>", "enter username"), 12L),
-            new Frame.Done(Map.of("username", "alice", "turnNumber", 3), "ok"),
-            new Frame.Error("boom", 9L),
-            EventFrame.command("chunk"),
-            new Frame.Progress("working", 42),
-            new Frame.Progress("working", Frame.Progress.INDETERMINATE),
-            new Frame.Prompt("password:", true),
-            new Frame.Terminate("bye"),
-        };
-
-        for (Frame frame : frames) {
-            byte[] encoded = FrameCodec.encode(frame);
-            Frame decoded = FrameCodec.decode(encoded);
-            if (decoded == null) {
-                throw new AssertionError(
-                        "decode returned null for " + frame.getClass().getSimpleName());
-            }
-            assertEquals(
-                    frame.getClass(),
-                    decoded.getClass(),
-                    "type mismatch for " + frame.getClass().getSimpleName());
-            assertEquals(
-                    frame, decoded, "round-trip not equal for " + frame.getClass().getSimpleName());
+        for (var kind : kinds) {
+            var original =
+                    EventFrame.builder()
+                            .sessionId(UUID.randomUUID())
+                            .sequence(42)
+                            .kind(kind)
+                            .text("消息 /compact")
+                            .attr("detail", attrs)
+                            .attr("success", true)
+                            .build();
+            var bytes = FrameCodec.encode(original);
+            var text = FrameCodec.encodeString(original);
+            assertArrayEquals(text.getBytes(StandardCharsets.UTF_8), bytes);
+            assertEquals(original, FrameCodec.decode(bytes));
+            assertEquals(original, FrameCodec.decode(text));
+            var envelope = new ObjectMapper().readTree(text);
+            assertEquals(original.emittedAt().toString(), envelope.path("emittedAt").asText());
+            assertEquals(kind.name(), envelope.path("kind").asText());
+            assertEquals(attrs, envelope.path("attrs").path("detail"));
         }
     }
 
     @Test
-    void encodeStringMatchesEncodeBytes() {
-        Frame frame = EventFrame.command("hello");
-        String json = FrameCodec.encodeString(frame);
-        assertEquals(new String(FrameCodec.encode(frame), StandardCharsets.UTF_8), json);
+    void textAndByteTransportsUseTheSameWireContract() {
+        var heartbeat = new Frame.Heartbeat(9);
+        assertEquals("{\"type\":\"heartbeat\",\"seq\":9}", FrameCodec.encodeString(heartbeat));
+        Frame original = new Frame.Done(Map.of("username", "alice"), "完成");
+        assertArrayEquals(FrameCodec.encodeString(original).getBytes(StandardCharsets.UTF_8), FrameCodec.encode(original));
+        assertEquals(original, FrameCodec.decode(FrameCodec.encode(original)));
     }
 
     @Test
-    void obsoleteAndUnknownTypesAreRejected() {
-        assertNull(FrameCodec.decode("{\"type\":\"some_future_frame\",\"content\":\"x\"}"));
-        assertNull(FrameCodec.decode("{\"type\":\"delta\",\"content\":\"x\"}"));
+    void dagRoundTripPreservesLifecycleAndImmutableData() throws Exception {
+        var original =
+                DAGPayload.builder()
+                        .id("task-1")
+                        .taskType("compile")
+                        .parameter("source", "测试.java")
+                        .dependency("task-0")
+                        .sourceComponent("terminal")
+                        .targetComponent("backend")
+                        .build()
+                        .withStatus(DAGPayload.DAGPayloadStatus.RUNNING);
+        var frame = new Frame.DagPayload(original, "terminal");
+        if (!(FrameCodec.decode(FrameCodec.encode(frame)) instanceof Frame.DagPayload decoded))
+            throw new AssertionError("Missing DAG frame");
+        var parsed = decoded.data();
+        assertEquals(original.id(), parsed.id());
+        assertEquals(original.taskType(), parsed.taskType());
+        assertEquals(original.parameters(), parsed.parameters());
+        assertEquals(original.dependencies(), parsed.dependencies());
+        assertEquals(original.status(), parsed.status());
+        assertEquals(original.createdAt(), parsed.createdAt());
+        assertEquals(original.updatedAt(), parsed.updatedAt());
+        assertEquals(original.sourceComponent(), parsed.sourceComponent());
+        assertEquals(original.targetComponent(), parsed.targetComponent());
+        assertThrows(
+                UnsupportedOperationException.class, () -> parsed.parameters().put("new", "value"));
+        assertThrows(UnsupportedOperationException.class, () -> parsed.dependencies().add("new"));
+        assertNull(FrameCodec.decode("{\"type\":\"dag.payload\",\"data\":{}}"));
     }
 
-    @Test
-    void malformedPayloadReturnsNull() {
-        assertNull(FrameCodec.decode("not json at all"));
-        assertNull(FrameCodec.decode("{"));
-    }
-
-    @Test
-    void decodeStringOverloadMatchesBytes() {
-        Frame frame = EventFrame.command("x");
-        String json = FrameCodec.encodeString(frame);
-        assertEquals(
-                FrameCodec.decode(json), FrameCodec.decode(json.getBytes(StandardCharsets.UTF_8)));
-    }
-
-    @Test
-    void handshakeFramesRoundTripWithOnlyVersionAndSeq() {
-        // Handshake frames are pure: version + seq, no auth (auth is a transport/tunnel concern,
-        // not a frame concern).
-        String userDir = System.getProperty("user.dir");
-        if (userDir == null) {
-            throw new AssertionError("user.dir system property is unavailable");
-        }
-        String helloJson =
-                FrameCodec.encodeString(
-                        new Frame.Hello(
-                                Frame.PROTOCOL_VERSION,
-                                1L,
-                                Version.parse("1.0.0-SNAPSHOT"),
-                                userDir));
-        assertFalse(helloJson.contains("\"auth\""));
-        Frame decodedHello = FrameCodec.decode(helloJson);
-        if (decodedHello == null) {
-            throw new AssertionError("Hello deserialization returned null");
-        }
-        Frame.Hello helloBack = assertInstanceOf(Frame.Hello.class, decodedHello);
-        assertEquals(Frame.PROTOCOL_VERSION, helloBack.version());
-        assertEquals(1L, helloBack.seq());
-        assertEquals(Version.parse("1.0.0-SNAPSHOT"), helloBack.productVersion());
-
-        Frame.Welcome w = new Frame.Welcome(Frame.PROTOCOL_VERSION, 9L, Version.parse("1.2.3"));
-        Frame decodedWelcome = FrameCodec.decode(FrameCodec.encode(w));
-        if (decodedWelcome == null) {
-            throw new AssertionError("Welcome deserialization returned null");
-        }
-        Frame.Welcome back = assertInstanceOf(Frame.Welcome.class, decodedWelcome);
-        assertEquals(Frame.PROTOCOL_VERSION, back.version());
-        assertEquals(9L, back.seq());
-        assertEquals(Version.parse("1.2.3"), back.productVersion());
-    }
-
-    @Test
-    void doneTypedAccessorsReadMetaSafely() {
-        Frame.Done done =
-                new Frame.Done(
-                        Map.of("username", "alice", "turnNumber", 7, "cancelled", true), "ok");
-        assertEquals("alice", done.username());
-        assertEquals(7, done.turnNumber());
-        assertTrue(done.cancelled());
-        assertFalse(done.clearSession());
-
-        // Absent keys degrade to defaults, not exceptions.
-        Frame.Done empty = new Frame.Done(Map.of(), null);
-        assertNull(empty.username());
-        assertEquals(-1, empty.turnNumber());
-        assertFalse(empty.cancelled());
-    }
-
-    @Test
-    void promptMaskAccessor() {
-        Frame.Prompt masked = new Frame.Prompt("password:", true);
-        assertTrue(masked.mask());
-        Frame.Prompt plain = new Frame.Prompt("name:", false);
-        assertFalse(plain.mask());
+    @ParameterizedTest
+    @ValueSource(
+            strings = {
+                "{\"type\":\"heartbeat\",\"type\":\"bye\"}",
+                "{\"type\":\"heartbeat\"} {}",
+                "{\"type\":\"heartbeat\"} trailing",
+                "{broken",
+                "null",
+                ""
+            })
+    void malformedInputIsRejectedByTextAndByteDecoders(@NonNull String payload) {
+        assertNull(FrameCodec.decode(payload));
+        assertNull(FrameCodec.decode(payload.getBytes(StandardCharsets.UTF_8)));
     }
 }

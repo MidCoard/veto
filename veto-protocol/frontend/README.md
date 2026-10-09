@@ -23,3 +23,5 @@ Consumers select presentation behavior without defining another wire envelope.
 `:veto-protocol:generateFrontendBindings`. Protocol tests reject stale generated files;
 frontend tests decode the actual Java fixtures. Edit the Java contracts first, regenerate,
 and update all consumers together. Protocol version 2 has no legacy frame fallback.
+
+`JsonValue` represents JSON data recursively. Encoding rejects nonfinite numbers, unsupported objects, functions and cycles rather than silently changing their values. Java and browser scalar fields reject type coercion.

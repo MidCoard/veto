@@ -20,16 +20,6 @@ spring:
     show-sql: false
 
 veto:
-  bus:
-    websocket:
-      port: 9090
-      path: /ws/veto/bus
-      heartbeat-interval-ms: 30000
-      reconnect-delay-ms: 5000
-      max-reconnect-attempts: 10
-    grpc:
-      port: 9091
-
   slm:
     enabled: true
     executable-path: llama-server

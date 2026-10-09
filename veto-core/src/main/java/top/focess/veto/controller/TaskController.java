@@ -13,14 +13,12 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
-import top.focess.veto.bus.RoutingBusService;
 import top.focess.veto.contract.DAGPayload;
 import top.focess.veto.controller.dto.*;
 import top.focess.veto.i18n.Msg;
 
 /**
- * REST controller for DAG task lifecycle management. Provides endpoints to create, query, and
- * manage DAG payload tasks.
+ * User-owned, in-memory DAG task registry. Creating a record does not execute or submit work.
  */
 @RestController
 @RequestMapping("/api/tasks")
@@ -29,7 +27,6 @@ public class TaskController {
     private static final @NonNull Logger log =
             LoggerFactory.getLogger("top.focess.veto.controller.TaskController");
 
-    private final @NonNull RoutingBusService routingBusService;
     private final @NonNull RequestAuthorization authorization;
 
     private record OwnedTask(@NonNull UUID userId, @NonNull DAGPayload payload) {}
@@ -37,15 +34,12 @@ public class TaskController {
     private final @NonNull ConcurrentHashMap<String, OwnedTask> taskStore =
             new ConcurrentHashMap<>();
 
-    /** Creates the controller with the routing bus and request authorizer. */
-    public TaskController(
-            @NonNull RoutingBusService routingBusService,
-            @NonNull RequestAuthorization authorization) {
-        this.routingBusService = routingBusService;
+    /** Creates the local registry with its request authorizer. */
+    public TaskController(@NonNull RequestAuthorization authorization) {
         this.authorization = authorization;
     }
 
-    /** POST /api/tasks - Create and submit a new DAG task. */
+    /** POST /api/tasks - Register a local DAG task. */
     @PostMapping(
             consumes = MediaType.APPLICATION_JSON_VALUE,
             produces = MediaType.APPLICATION_JSON_VALUE)
@@ -76,23 +70,17 @@ public class TaskController {
                         .targetComponent(targetComponent)
                         .build();
 
-        if (taskStore.putIfAbsent(payload.getId(), new OwnedTask(userId, payload)) != null) {
+        if (taskStore.putIfAbsent(payload.id(), new OwnedTask(userId, payload)) != null) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Task id already exists");
         }
-        log.info("REST: Created task id={}, type={}", payload.getId(), payload.getTaskType());
-
-        if (routingBusService.isConnected()) {
-            routingBusService.submitDAGPayload(payload);
-        } else {
-            log.warn("REST: Bus not connected - task stored locally only");
-        }
+        log.info("REST: Created task id={}, type={}", payload.id(), payload.taskType());
 
         return ResponseEntity.ok(
                 new TaskCreatedResponse(
                         "ok",
-                        payload.getId(),
-                        payload.getTaskType(),
-                        payload.getStatus().name(),
+                        payload.id(),
+                        payload.taskType(),
+                        payload.status().name(),
                         Instant.now().toString()));
     }
 
@@ -110,15 +98,15 @@ public class TaskController {
         return ResponseEntity.ok(
                 new TaskDetailResponse(
                         "ok",
-                        payload.getId(),
-                        payload.getTaskType(),
-                        payload.getStatus().name(),
-                        payload.getParameters(),
-                        payload.getDependencies(),
-                        payload.getSourceComponent(),
-                        payload.getTargetComponent(),
-                        payload.getCreatedAt().toString(),
-                        payload.getUpdatedAt().toString(),
+                        payload.id(),
+                        payload.taskType(),
+                        payload.status().name(),
+                        payload.parameters(),
+                        payload.dependencies(),
+                        payload.sourceComponent(),
+                        payload.targetComponent(),
+                        payload.createdAt().toString(),
+                        payload.updatedAt().toString(),
                         Instant.now().toString()));
     }
 
@@ -139,12 +127,11 @@ public class TaskController {
                                 .map(
                                         p ->
                                                 new TaskSummaryResponse(
-                                                        p.getId(),
-                                                        p.getTaskType(),
-                                                        p.getStatus().name(),
-                                                        p.getCreatedAt().toString()))
+                                                        p.id(),
+                                                        p.taskType(),
+                                                        p.status().name(),
+                                                        p.createdAt().toString()))
                                 .toList(),
-                        routingBusService.isConnected(),
                         Instant.now().toString()));
     }
 
