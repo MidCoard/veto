@@ -12,6 +12,8 @@ import org.springframework.web.server.ResponseStatusException;
 import top.focess.veto.agent.ProtectedInputException;
 import top.focess.veto.agent.SessionAgentRegistry;
 import top.focess.veto.api.agent.AgentState;
+import top.focess.veto.command.SessionCommandService;
+import top.focess.veto.command.SessionCommandService.SessionNotFoundException;
 import top.focess.veto.controller.dto.*;
 import top.focess.veto.session.SessionService;
 import top.focess.veto.vault.KeysteadVault;
@@ -22,15 +24,18 @@ public class AgentPromptController {
     private final @NonNull SessionService sessions;
     private final @NonNull SessionAgentRegistry agents;
     private final @NonNull KeysteadVault vault;
+    private final @NonNull SessionCommandService commands;
 
     /** Creates the controller with session, agent-registry, and vault collaborators. */
     public AgentPromptController(
             @NonNull SessionService sessions,
             @NonNull SessionAgentRegistry agents,
-            @NonNull KeysteadVault vault) {
+            @NonNull KeysteadVault vault,
+            @NonNull SessionCommandService commands) {
         this.sessions = sessions;
         this.agents = agents;
         this.vault = vault;
+        this.commands = commands;
     }
 
     /**
@@ -66,7 +71,13 @@ public class AgentPromptController {
             return ResponseEntity.status(HttpStatus.CONFLICT)
                     .body(new ErrorResponse("Agent has terminated"));
         try {
-            agent.submitUserPrompt(prompt);
+            if (commands.supports(prompt)) {
+                var sessionId = commands.enqueue(name, userId);
+                commands.primaryNotice(sessionId, agentId);
+            } else {
+                agent.submitUserPrompt(prompt);
+                commands.notice(session.sessionId(), agentId, prompt);
+            }
         } catch (ProtectedInputException rejected) {
             return ResponseEntity.unprocessableEntity()
                     .body(
@@ -74,6 +85,8 @@ public class AgentPromptController {
                                     "PROTECTED_INPUT_UNAVAILABLE",
                                     "Protected input could not be processed; retry or use"
                                             + " credential settings"));
+        } catch (SessionNotFoundException missing) {
+            return ResponseEntity.notFound().build();
         } catch (IllegalStateException error) {
             return ResponseEntity.status(HttpStatus.CONFLICT)
                     .body(new ErrorResponse("Agent is no longer available"));

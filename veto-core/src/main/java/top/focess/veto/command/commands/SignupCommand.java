@@ -5,132 +5,55 @@ import org.jspecify.annotations.NonNull;
 import top.focess.command.CommandResult;
 import top.focess.command.CommandSender;
 import top.focess.veto.command.VetoCommand;
-import top.focess.veto.command.VetoCommandSender;
-import top.focess.veto.security.SignupMode;
-import top.focess.veto.security.SignupPolicy;
-import top.focess.veto.vault.*;
+import top.focess.veto.vault.AuthException;
+import top.focess.veto.vault.AuthService;
+import top.focess.veto.vault.UserRegistry;
 
-/**
- * Creates a new account ({@code /signup}). The first account becomes the bootstrap administrator;
- * afterwards the configured {@link SignupPolicy} mode governs whether self-signup is allowed.
- */
+/** Terminal authentication adapter; passwords are always entered through masked input. */
 public class SignupCommand extends VetoCommand {
+    private final @NonNull AuthService auth;
 
-    private final @NonNull UserRegistry users;
-    private final @NonNull AuthLifecycleManager authLifecycleManager;
-    private final @NonNull SignupPolicy policy;
-
-    /** Constructs the {@code /signup} command over the registry, auth lifecycle, and policy. */
-    public SignupCommand(
-            @NonNull UserRegistry users,
-            @NonNull AuthLifecycleManager authLifecycleManager,
-            @NonNull SignupPolicy policy) {
+    public SignupCommand(@NonNull AuthService auth) {
         super("signup", "Create a new account");
-        this.users = users;
-        this.authLifecycleManager = authLifecycleManager;
-        this.policy = policy;
+        this.auth = auth;
     }
 
     @Override
     public void init() {
         addExecutor(
                 (sender, args) -> {
-                    VetoCommandSender s = vetoSender(sender);
+                    var s = vetoSender(sender);
                     if (s == null) return CommandResult.REFUSE;
-
-                    // Signup is an unauthenticated entry point. Once a session is logged in it must
-                    // not create further accounts; the caller logs out first (or, in multi-user
-                    // modes, an admin provisions the account via /user create).
-                    if (s.isLoggedIn()) {
-                        s.output(
-                                "You are already logged in as "
-                                        + s.requireUsername()
-                                        + "; log out before signing up as a different user.");
-                        return CommandResult.REFUSE;
-                    }
-
-                    // The first account is always the bootstrap admin (created in-app, any mode).
-                    // After an admin exists, the signup mode governs further self-signup.
-                    boolean bootstrap = users.adminCount() == 0;
-                    SignupMode mode = policy.mode();
-                    if (!bootstrap) {
-                        switch (mode) {
-                            case SOLO -> {
-                                s.output("An account already exists - use /login.");
-                                return CommandResult.REFUSE;
-                            }
-                            case INVITE -> {
-                                s.output(
-                                        "Self-signup is disabled; ask an administrator to create your"
-                                                + " account.");
-                                return CommandResult.REFUSE;
-                            }
-                            case PUBLIC -> {
-                                // allowed; users after the bootstrap admin are USERs.
-                            }
-                        }
-                    }
-
-                    String u = args.get("user");
-
-                    if (u == null) {
-                        u = s.input("Choose a username:", false);
-                        if (u == null) {
-                            s.output("Signup cancelled.");
-                            return CommandResult.REFUSE;
-                        }
-                        if (u.isEmpty()) {
-                            s.output("Username cannot be empty.");
-                            return CommandResult.REFUSE;
-                        }
-                    }
-                    // Passwords are never command arguments or command-history entries.
-                    String p = s.input("Choose a password:", true);
-                    if (p == null) {
+                    String username = args.get("user");
+                    if (username == null) username = s.input("Username:", false);
+                    if (username == null) {
                         s.output("Signup cancelled.");
                         return CommandResult.REFUSE;
                     }
-                    if (p.isEmpty()) {
-                        s.output("Password cannot be empty.");
+                    String password = s.input("Choose a password:", true);
+                    if (password == null) {
+                        s.output("Signup cancelled.");
                         return CommandResult.REFUSE;
                     }
-
-                    synchronized (users) {
-                        // Another REST or terminal signup may have completed while we prompted.
-                        bootstrap = users.adminCount() == 0;
-                        if (!bootstrap && mode != SignupMode.PUBLIC) {
-                            s.output(
-                                    "Self-signup is no longer available; use /login or ask an administrator.");
-                            return CommandResult.REFUSE;
-                        }
-                        String role = bootstrap ? UserRegistry.Role.ADMIN : UserRegistry.Role.USER;
-                        try {
-                            users.create(u, p, role);
-                        } catch (IllegalArgumentException e) {
-                            s.output(e.getMessage());
-                            return CommandResult.REFUSE;
-                        }
-                        try {
-                            synchronized (authLifecycleManager) {
-                                authLifecycleManager.signup(u, p);
-                                s.setUser(users.findByUsername(u).orElseThrow());
-                            }
-                        } catch (Exception e) {
-                            s.output("Account created but vault setup failed: " + e.getMessage());
-                            return CommandResult.REFUSE;
-                        }
+                    try {
+                        var user = auth.signupTerminal(s, username, password);
                         s.output(
-                                bootstrap
-                                        ? "Administrator account created - welcome, " + u + "."
-                                        : "Account created - welcome, " + u + ".");
+                                (UserRegistry.Role.ADMIN.equals(user.getRole())
+                                                ? "Administrator account created - welcome, "
+                                                : "Account created - welcome, ")
+                                        + user.getUsername()
+                                        + ".");
                         return CommandResult.ALLOW;
+                    } catch (AuthException rejected) {
+                        s.output(rejected.getMessage());
+                        return CommandResult.REFUSE;
                     }
                 },
                 opt("user"));
     }
 
     @Override
-    public @NonNull List<String> usage(@NonNull CommandSender s) {
+    public @NonNull List<String> usage(@NonNull CommandSender sender) {
         return List.of("/signup [user] - Create a new account (password is prompted)");
     }
 }

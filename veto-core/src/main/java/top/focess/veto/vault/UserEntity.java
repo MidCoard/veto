@@ -7,7 +7,7 @@ import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 import org.jspecify.annotations.NonNull;
 
-/** JPA entity for the {@code users} table — replaces the old {@code users.json} file. */
+/** JPA account entity with a canonical UUID and unique login username. */
 @Entity
 @Table(name = "users")
 public class UserEntity {

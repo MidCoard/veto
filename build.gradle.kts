@@ -36,6 +36,8 @@ subprojects {
         }
 
         tasks.withType<JavaCompile>().configureEach {
+            // Checker analysis of the full source/test tree exceeds the default worker heap.
+            options.forkOptions.memoryMaximumSize = "2g"
             // Compiler warnings are defects: keep the same zero-warning contract in every module
             // and for both production and test sources.
             options.compilerArgs.addAll(

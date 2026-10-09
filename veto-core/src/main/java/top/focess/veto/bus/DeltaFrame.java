@@ -14,13 +14,13 @@ import org.jspecify.annotations.NonNull;
 import top.focess.veto.util.Nullness;
 
 /**
- * A single streaming update emitted by the agent loop and consumed by a transport such as a
- * terminal, REST client, or WebSocket session. Frames are ordered by {@code sequence} within a
- * session.
+ * A single streaming update emitted by the backend and consumed by a transport such as a terminal,
+ * REST client, or WebSocket session. Frames are ordered by {@code sequence} within a session.
  *
  * <p>Frame kinds:
  *
  * <ul>
+ *   <li>{@link Kind#NOTICE} — deterministic backend feedback, independent of model output
  *   <li>{@link Kind#ASSISTANT_THOUGHT} — the agent's emitted thought (interim, can be hidden for
  *       terse UIs)
  *   <li>{@link Kind#ASSISTANT_MESSAGE} — the agent's user-facing message (final or interim)
@@ -45,6 +45,8 @@ public record DeltaFrame(
 
     /** Classification of the streaming update a frame carries. */
     public enum Kind {
+        /** Transient server-authored presentation notice, excluded from conversation history. */
+        NOTICE,
         ASSISTANT_THOUGHT,
         ASSISTANT_MESSAGE,
         TOOL_CALL,

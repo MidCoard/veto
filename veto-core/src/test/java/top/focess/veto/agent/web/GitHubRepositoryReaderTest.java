@@ -47,7 +47,8 @@ class GitHubRepositoryReaderTest {
         HttpResponse<byte[]> response = (HttpResponse<byte[]>) mock(HttpResponse.class);
         String token = "synthetic-token";
         try (var plugins = PluginTestSupport.manager()) {
-            var userId = vault.signup("alice", "test-password");
+            vault.createVault(TestUsers.ALICE, "test-password");
+            var userId = vault.login("alice", "test-password");
             String reference =
                     vault.createSecureNoteIfAbsent(
                             userId,

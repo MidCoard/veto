@@ -10,9 +10,7 @@ import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
 import top.focess.command.CommandPermission;
 import top.focess.veto.command.commands.SignupCommand;
-import top.focess.veto.security.SignupPolicy;
-import top.focess.veto.vault.AuthLifecycleManager;
-import top.focess.veto.vault.UserRegistry;
+import top.focess.veto.vault.AuthService;
 
 class CommandRegistryLoggingTest {
     @Test
@@ -26,11 +24,7 @@ class CommandRegistryLoggingTest {
             when(sender.hasPermission(any(CommandPermission.class))).thenReturn(true);
             when(sender.terminalId()).thenReturn("terminal");
             var registry = new CommandRegistry(null);
-            registry.register(
-                    new SignupCommand(
-                            mock(UserRegistry.class),
-                            mock(AuthLifecycleManager.class),
-                            new SignupPolicy("solo", "LOCAL")));
+            registry.register(new SignupCommand(mock(AuthService.class)));
             assertNotNull(registry.dispatch(sender, "/signup alice legacy-secret"));
             when(sender.hasPermission(any(CommandPermission.class)))
                     .thenThrow(new IllegalStateException("echoed-secret"));

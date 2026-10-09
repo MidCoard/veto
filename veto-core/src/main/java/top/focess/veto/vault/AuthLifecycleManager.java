@@ -19,8 +19,11 @@ import top.focess.veto.terminal.IpcServer;
  * logout operations are performed consistently across all frontends (REST API/UI and terminal CLI).
  *
  * <p>The vault is keystead-backed: {@code login} opens the user's vault with their password, {@code
- * signup} creates and opens it. keystead performs the KDF and vault-key wrapping internally, so
- * this layer no longer handles master/vault key derivation.
+ * signup} opens the already-provisioned vault. keystead performs the KDF and vault-key wrapping
+ * internally, so this layer no longer handles master/vault key derivation.
+ *
+ * <p>UserRegistry owns persisted credentials. Account workflows hold their account lock from
+ * password verification through transaction completion and identity publication.
  */
 @Service
 public class AuthLifecycleManager {
@@ -33,6 +36,7 @@ public class AuthLifecycleManager {
     private final @NonNull PromptHandler promptHandler;
     private final @NonNull LoginSessionManager loginSessions;
     private final @NonNull ObjectProvider<IpcServer> ipcServers;
+    private final @NonNull AccountLocks locks = new AccountLocks();
 
     /** Constructs the manager with vault access, terminal detachment, and event delivery. */
     public AuthLifecycleManager(
@@ -48,28 +52,39 @@ public class AuthLifecycleManager {
         this.ipcServers = ipcServers;
     }
 
-    /**
-     * Performs a unified signup: creates the user's keystead vault and opens it.
-     *
-     * @param username the name of the user signing up
-     * @param password the user's login password (also the vault master password)
-     */
-    public synchronized void signup(@NonNull String username, @NonNull String password) {
-        log.info("AuthLifecycleManager: Signing up user '{}'", username);
-        UUID userId = vault.signup(username, password);
-        eventManager.submit(new UserRegisteredEvent(new Scope.UserScope(userId)));
+    /** Account boundaries for transactions, vault effects and identity publication. */
+    @NonNull AccountLocks locks() {
+        return locks;
     }
 
     /**
-     * Performs a unified login: opens the user's keystead vault.
+     * Opens a newly provisioned account after its database transaction has committed.
      *
-     * @param username the name of the user logging in
+     * @param account the newly provisioned account
      * @param password the user's login password (also the vault master password)
      */
-    public synchronized void login(@NonNull String username, @NonNull String password) {
-        log.info("AuthLifecycleManager: Logging in user '{}'", username);
-        UUID userId = vault.login(username, password);
-        eventManager.submit(new UserLoggedInEvent(new Scope.UserScope(userId)));
+    public void signup(@NonNull UserEntity account, @NonNull String password) {
+        try (var _ = locks.account(account.getUserId())) {
+            String username = account.getUsername();
+            log.info("AuthLifecycleManager: Signing up user '{}'", username);
+            UUID userId = vault.login(username, password);
+            eventManager.submit(new UserRegisteredEvent(new Scope.UserScope(userId)));
+        }
+    }
+
+    /**
+     * Opens the vault after the caller has authenticated the account through UserRegistry.
+     *
+     * @param account the authenticated account
+     * @param password the user's login password (also the vault master password)
+     */
+    public void login(@NonNull UserEntity account, @NonNull String password) {
+        try (var _ = locks.account(account.getUserId())) {
+            String username = account.getUsername();
+            log.info("AuthLifecycleManager: Logging in user '{}'", username);
+            UUID userId = vault.login(username, password);
+            eventManager.submit(new UserLoggedInEvent(new Scope.UserScope(userId)));
+        }
     }
 
     /**
@@ -78,17 +93,19 @@ public class AuthLifecycleManager {
      *
      * @param userId the canonical identity of the user logging out
      */
-    public synchronized void logout(@NonNull UUID userId) {
-        log.info("AuthLifecycleManager: Logging out user {}", userId);
-        loginSessions.revokeUserTokens(userId);
-        var ipcServer = ipcServers.getIfAvailable();
-        if (ipcServer != null) ipcServer.revokeUser(userId);
-        eventManager.submit(new UserLogoutEvent(new Scope.UserScope(userId)));
-        try {
-            promptHandler.deactivateUser(userId);
-        } catch (Exception e) {
-            log.warn("Error detaching terminal agents for user '{}' during logout", userId, e);
+    public void logout(@NonNull UUID userId) {
+        try (var _ = locks.account(userId)) {
+            log.info("AuthLifecycleManager: Logging out user {}", userId);
+            loginSessions.revokeUserTokens(userId);
+            var ipcServer = ipcServers.getIfAvailable();
+            if (ipcServer != null) ipcServer.revokeUser(userId);
+            eventManager.submit(new UserLogoutEvent(new Scope.UserScope(userId)));
+            try {
+                promptHandler.deactivateUser(userId);
+            } catch (Exception e) {
+                log.warn("Error detaching terminal agents for user '{}' during logout", userId, e);
+            }
+            vault.logout(userId);
         }
-        vault.logout(userId);
     }
 }

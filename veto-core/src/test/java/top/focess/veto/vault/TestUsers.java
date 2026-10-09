@@ -8,15 +8,18 @@ import java.util.Optional;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 
-/** Stable account fixtures shared by identity-sensitive service and filesystem tests. */
+/**
+ * Stable identities on distinct lock stripes for concurrency fixtures. Collision tests supply
+ * colliding identities explicitly.
+ */
 public final class TestUsers {
     public static final @NonNull UUID ALICE =
-            UUID.fromString("11111111-1111-1111-1111-111111111111");
-    public static final @NonNull UUID BOB = UUID.fromString("22222222-2222-2222-2222-222222222222");
+            UUID.fromString("11111111-1111-1111-1111-111111111110");
+    public static final @NonNull UUID BOB = UUID.fromString("22222222-2222-2222-2222-222222222220");
     public static final @NonNull UUID ADMIN =
-            UUID.fromString("33333333-3333-3333-3333-333333333333");
+            UUID.fromString("33333333-3333-3333-3333-333333333330");
     public static final @NonNull UUID OWNER =
-            UUID.fromString("44444444-4444-4444-4444-444444444444");
+            UUID.fromString("44444444-4444-4444-4444-444444444440");
 
     private TestUsers() {}
 

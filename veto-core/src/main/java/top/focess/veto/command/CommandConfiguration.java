@@ -9,8 +9,6 @@ import top.focess.veto.command.commands.*;
 import top.focess.veto.model.AgentPatternRepository;
 import top.focess.veto.model.tier.ModelTierProfileService;
 import top.focess.veto.model.tier.ModelTierRegistry;
-import top.focess.veto.security.SignupPolicy;
-import top.focess.veto.security.UserAdminService;
 import top.focess.veto.session.SessionService;
 import top.focess.veto.vault.*;
 
@@ -62,15 +60,12 @@ public class CommandConfiguration {
      *   <li>{@code /help} — list available commands
      * </ol>
      *
-     * @param users the user registry for signup/login lookups
      * @param promptHandler the prompt handler bean; passed to logout/status commands so they can
      *     clear or inspect the agent session
      * @param patternRepo the pattern repository used by the pattern command
-     * @param authLifecycleManager coordinates login and logout lifecycle changes
+     * @param auth shared authentication workflows
      * @param sessionService manages persistent and active sessions
      * @param keysteadVault the credential vault used by auth-related commands
-     * @param signupPolicy controls whether new user registration is allowed
-     * @param userAdminService manages administrative user operations
      * @param tierRegistry the model-tier registry used to resolve pattern tiers
      * @param profileService manages model-tier profiles and bindings
      * @param workspaceAdmission maps native terminal roots to the session request representation
@@ -78,23 +73,21 @@ public class CommandConfiguration {
      */
     @Bean
     public @NonNull CommandRegistry commandRegistry(
-            @NonNull UserRegistry users,
             @NonNull PromptHandler promptHandler,
             @NonNull AgentPatternRepository patternRepo,
-            @NonNull AuthLifecycleManager authLifecycleManager,
+            @NonNull AuthService auth,
+            @NonNull SessionCommandService sessionCommands,
             @NonNull SessionService sessionService,
             @NonNull KeysteadVault keysteadVault,
-            @NonNull SignupPolicy signupPolicy,
-            @NonNull UserAdminService userAdminService,
             @NonNull ModelTierRegistry tierRegistry,
             @NonNull ModelTierProfileService profileService,
             @NonNull WorkspaceAdmissionPolicy workspaceAdmission) {
 
         CommandRegistry registry = new CommandRegistry(promptHandler);
 
-        registry.register(new LoginCommand(users, authLifecycleManager));
-        registry.register(new LogoutCommand(authLifecycleManager, promptHandler));
-        registry.register(new SignupCommand(users, authLifecycleManager, signupPolicy));
+        registry.register(new LoginCommand(auth));
+        registry.register(new LogoutCommand(auth));
+        registry.register(new SignupCommand(auth));
         registry.register(new StatusCommand(keysteadVault, promptHandler));
         registry.register(new VersionCommand());
         registry.register(new ExitCommand());
@@ -102,8 +95,8 @@ public class CommandConfiguration {
         registry.register(new ModelTierCommand(profileService, tierRegistry));
         registry.register(new CredentialCommand(keysteadVault));
         registry.register(new SessionCommand(sessionService, workspaceAdmission));
-        registry.register(new CompactCommand(promptHandler));
-        registry.register(new UserAdminCommand(userAdminService, signupPolicy));
+        registry.register(new CompactCommand(promptHandler, sessionCommands));
+        registry.register(new UserAdminCommand(auth));
         registry.register(new HelpCommand(registry));
         return registry;
     }

@@ -3,12 +3,16 @@ package top.focess.veto.vault;
 import static top.focess.veto.util.LogValues.safe;
 
 import jakarta.annotation.PreDestroy;
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.nio.channels.FileChannel;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
+import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.Arrays;
 import java.util.Map;
@@ -22,12 +26,15 @@ import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import top.focess.keystead.memory.SecretBuffer;
+import top.focess.keystead.memory.WipeableByteArrayOutputStream;
 import top.focess.keystead.model.SecretId;
 import top.focess.keystead.model.SecretMetadata;
 import top.focess.keystead.model.SecretType;
-import top.focess.keystead.service.CreateVaultRequest;
 import top.focess.keystead.service.DefaultVaultService;
+import top.focess.keystead.service.FullVaultBackupService;
 import top.focess.keystead.service.VaultHandle;
 import top.focess.keystead.service.VaultService;
 
@@ -69,22 +76,6 @@ public class KeysteadVault {
 
     // ── lifecycle ──────────────────────────────────────────────────────────
 
-    /** Creates a new vault for the user and caches its unlocked handle (signup). */
-    public @NonNull UUID signup(@NonNull String username, @NonNull String password) {
-        UUID userId = requireUser(username).getUserId();
-        char[] pw = password.toCharArray();
-        try {
-            ensureVaultDir(username);
-            VaultHandle handle =
-                    vaultService.createVault(new CreateVaultRequest(vaultPath(username)), pw);
-            handles.put(userId, handle);
-            log.info("KeysteadVault: vault created and opened for user {}", userId);
-            return userId;
-        } finally {
-            wipe(pw);
-        }
-    }
-
     /**
      * Creates a new vault for the user without opening it (the handle is closed immediately). Used
      * when an admin provisions another user's vault - the vault exists on disk but is not unlocked
@@ -96,13 +87,31 @@ public class KeysteadVault {
                         .orElseThrow(
                                 () -> new IllegalArgumentException("User not found: " + userId))
                         .getUsername();
+        Path directory = userVaultDirectory(username);
+        try {
+            Files.createDirectories(vaultBase);
+            // Never overwrite or compensate a store belonging to an earlier account.
+            Files.createDirectory(directory);
+        } catch (IOException e) {
+            throw new UncheckedIOException("Could not provision a new vault directory", e);
+        }
         char[] pw = password.toCharArray();
         try {
-            ensureVaultDir(username);
-            VaultHandle handle =
-                    vaultService.createVault(new CreateVaultRequest(vaultPath(username)), pw);
+            VaultHandle handle = vaultService.createVault(vaultPath(username), pw);
             handle.close();
+            if (TransactionSynchronizationManager.isSynchronizationActive()) {
+                TransactionSynchronizationManager.registerSynchronization(
+                        new TransactionSynchronization() {
+                            @Override
+                            public void afterCompletion(int status) {
+                                if (status == STATUS_ROLLED_BACK) deleteStore(directory, username);
+                            }
+                        });
+            }
             log.info("KeysteadVault: vault created (closed) for user '{}'", username);
+        } catch (RuntimeException | Error e) {
+            deleteStore(directory, username);
+            throw e;
         } finally {
             wipe(pw);
         }
@@ -117,12 +126,148 @@ public class KeysteadVault {
         }
         char[] pw = password.toCharArray();
         try {
-            VaultHandle handle = vaultService.openVault(vaultPath(username), pw);
+            VaultHandle handle = openRecoveringPasswordChange(username, pw);
             handles.put(userId, handle);
             log.info("KeysteadVault: vault opened for user {}", userId);
             return userId;
         } finally {
             wipe(pw);
+        }
+    }
+
+    /**
+     * Migrates an unlocked vault using keystead's portable backup. Call only inside an account
+     * transaction under the account monitor. The previous file remains until an authenticated login
+     * establishes the committed password, including recovery after process interruption.
+     */
+    public void changePassword(@NonNull UUID userId, @NonNull String password) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive())
+            throw new IllegalStateException(
+                    "Vault password migration requires an account transaction");
+        VaultHandle handle = handles.get(userId);
+        if (handle == null || handle.isClosed())
+            throw new IllegalArgumentException(
+                    "The user must log in before their vault password can be changed.");
+        String username = users.findByUserId(userId).orElseThrow().getUsername();
+        Path current = vaultPath(username);
+        Path previous = passwordPreviousPath(username);
+        Path staged = current.resolveSibling("vault.password-next.keystead");
+        if (Files.exists(previous) || Files.exists(staged))
+            throw new IllegalArgumentException(
+                    "Log in again to finish the previous password change before retrying.");
+        char[] backupPassword = (UUID.randomUUID().toString() + UUID.randomUUID()).toCharArray();
+        char[] newPassword = password.toCharArray();
+        byte[] archive = null;
+        boolean replaced = false;
+        try {
+            synchronized (handle) {
+                var backups = new FullVaultBackupService();
+                try (var output = new WipeableByteArrayOutputStream()) {
+                    backups.export(handle, backupPassword, output);
+                    archive = output.toByteArray();
+                }
+                try (var restored =
+                        backups.restore(
+                                staged,
+                                new ByteArrayInputStream(archive),
+                                backupPassword,
+                                newPassword)) {
+                    if (!handle.vaultFingerprint().equals(restored.vaultFingerprint())
+                            || !handle.vaultKeyId().equals(restored.vaultKeyId())
+                            || !handle.listSecrets().equals(restored.listSecrets()))
+                        throw new IllegalStateException(
+                                "Restored vault identity or credentials differ");
+                }
+                // Stop writers before replacing the file whose handle they held.
+                logout(userId);
+                Files.copy(current, previous);
+                try (var persisted = FileChannel.open(previous, StandardOpenOption.WRITE)) {
+                    persisted.force(true);
+                }
+                Files.move(
+                        staged,
+                        current,
+                        StandardCopyOption.ATOMIC_MOVE,
+                        StandardCopyOption.REPLACE_EXISTING);
+                replaced = true;
+                TransactionSynchronizationManager.registerSynchronization(
+                        new TransactionSynchronization() {
+                            @Override
+                            public void afterCompletion(int status) {
+                                if (status == STATUS_ROLLED_BACK) {
+                                    try {
+                                        Files.move(
+                                                previous,
+                                                current,
+                                                StandardCopyOption.ATOMIC_MOVE,
+                                                StandardCopyOption.REPLACE_EXISTING);
+                                    } catch (IOException e) {
+                                        log.error(
+                                                "Vault rollback needs login recovery for user {}",
+                                                userId,
+                                                e);
+                                    }
+                                }
+                            }
+                        });
+            }
+        } catch (IOException e) {
+            throw new UncheckedIOException("Could not migrate the vault password", e);
+        } finally {
+            wipe(backupPassword);
+            wipe(newPassword);
+            if (archive != null) Arrays.fill(archive, (byte) 0);
+            if (!replaced) cleanupPasswordFile(staged);
+            cleanupPasswordFile(staged.resolveSibling(staged.getFileName() + ".lock"));
+        }
+    }
+
+    private @NonNull VaultHandle openRecoveringPasswordChange(
+            @NonNull String username, char @NonNull [] password) {
+        Path current = vaultPath(username);
+        Path previous = passwordPreviousPath(username);
+        if (!Files.exists(previous)) {
+            var opened = vaultService.openVault(current, password);
+            cleanupPasswordFile(current.resolveSibling("vault.password-next.keystead"));
+            return opened;
+        }
+        // Recovery must never revive an old password after the account hash has committed.
+        if (users.authenticate(username, new String(password)).isEmpty())
+            throw new IllegalArgumentException("Invalid credentials for vault password recovery");
+        VaultHandle opened;
+        try {
+            opened = vaultService.openVault(current, password);
+        } catch (RuntimeException failedCurrent) {
+            try (var recovered = vaultService.openVault(previous, password)) {
+                if (recovered.isClosed())
+                    throw new IllegalStateException("Recovery vault is closed");
+            }
+            try {
+                Files.move(
+                        previous,
+                        current,
+                        StandardCopyOption.ATOMIC_MOVE,
+                        StandardCopyOption.REPLACE_EXISTING);
+            } catch (IOException e) {
+                throw new UncheckedIOException("Could not recover the vault password change", e);
+            }
+            opened = vaultService.openVault(current, password);
+        }
+        cleanupPasswordFile(previous);
+        cleanupPasswordFile(current.resolveSibling("vault.password-next.keystead"));
+        return opened;
+    }
+
+    private @NonNull Path passwordPreviousPath(@NonNull String username) {
+        return vaultPath(username).resolveSibling("vault.password-previous.keystead");
+    }
+
+    private void cleanupPasswordFile(@NonNull Path path) {
+        try {
+            if (Files.deleteIfExists(path))
+                log.debug("Removed completed vault password migration file");
+        } catch (IOException e) {
+            log.warn("Could not clean vault password migration file: {}", safe(e.getMessage()));
         }
     }
 
@@ -142,18 +287,23 @@ public class KeysteadVault {
     }
 
     /**
-     * Deletes the user's vault store from disk (used by user-deletion cascade). Closes any open
-     * handle and drops the cached service first. Best-effort: if a file is locked the store may be
-     * partially left, but the user row and DB-owned data are already removed by the caller.
+     * Captures a cleanup operation before the account row is removed. The caller must run it only
+     * after successful database commit, while still holding the account monitor.
      */
-    public void deleteVaultStore(@NonNull UUID userId) {
-        logout(userId);
+    public @NonNull Runnable prepareStoreDeletion(@NonNull UUID userId) {
         String username =
                 users.findByUserId(userId)
                         .orElseThrow(
                                 () -> new IllegalArgumentException("User not found: " + userId))
                         .getUsername();
         Path path = userVaultDirectory(username);
+        return () -> {
+            logout(userId);
+            deleteStore(path, username);
+        };
+    }
+
+    private void deleteStore(@NonNull Path path, @NonNull String username) {
         if (!Files.exists(path)) {
             return;
         }
@@ -303,16 +453,16 @@ public class KeysteadVault {
                                 .findFirst();
                 if (existing.isPresent()) {
                     SecretMetadata metadata = existing.get();
-                    if (metadata.type() != SecretType.SECURE_NOTE
+                    if (metadata.secretType() != SecretType.SECURE_NOTE
                             || !attributes.equals(metadata.profile().attributes()))
                         throw new IllegalArgumentException("Secure note binding does not match");
                     boolean[] same = {false};
                     handle.withSecureNote(
-                            metadata.id(),
+                            metadata.secretId(),
                             note -> note.withBody(body -> same[0] = Arrays.equals(chars, body)));
                     if (!same[0])
                         throw new IllegalArgumentException("Secure note binding does not match");
-                    return "cred_" + metadata.id().value();
+                    return "cred_" + metadata.secretId().value();
                 }
                 try (SecretBuffer body = SecretBuffer.fromChars(chars)) {
                     SecretId id =
@@ -367,7 +517,7 @@ public class KeysteadVault {
         synchronized (handle) {
             SecretMetadata metadata =
                     handle.listSecrets().stream()
-                            .filter(item -> credentialRef.equals("cred_" + item.id().value()))
+                            .filter(item -> credentialRef.equals("cred_" + item.secretId().value()))
                             .findFirst()
                             .orElseThrow(
                                     () ->
@@ -375,13 +525,13 @@ public class KeysteadVault {
                                                     "Credential is unavailable"));
             var attributes = metadata.profile().attributes();
             String importId = attributes.get("veto.import.id");
-            if (metadata.type() != SecretType.SECURE_NOTE
+            if (metadata.secretType() != SecretType.SECURE_NOTE
                     || !service.equals(attributes.get("veto.import.service"))
                     || importId == null
                     || !importId.matches("s_[a-f0-9]{32}")
                     || !metadata.profile().title().equals("veto.import." + importId))
                 throw new IllegalArgumentException("Credential service binding does not match");
-            handle.withSecureNote(metadata.id(), note -> note.withBody(operation));
+            handle.withSecureNote(metadata.secretId(), note -> note.withBody(operation));
         }
     }
 
@@ -428,7 +578,7 @@ public class KeysteadVault {
         VaultHandle handle = currentHandle();
         synchronized (handle) {
             return handle.listSecrets().stream()
-                    .filter(m -> m.type() == SecretType.SECURE_NOTE)
+                    .filter(m -> m.secretType() == SecretType.SECURE_NOTE)
                     .map(m -> m.profile().title())
                     .collect(Collectors.toSet());
         }
@@ -458,9 +608,9 @@ public class KeysteadVault {
         return handle.listSecrets().stream()
                 .filter(
                         m ->
-                                m.type() == SecretType.SECURE_NOTE
+                                m.secretType() == SecretType.SECURE_NOTE
                                         && title.equals(m.profile().title()))
-                .map(SecretMetadata::id)
+                .map(SecretMetadata::secretId)
                 .findFirst()
                 .orElse(null);
     }
@@ -484,17 +634,6 @@ public class KeysteadVault {
             throw new IllegalArgumentException("Invalid vault username");
         }
         return directory;
-    }
-
-    private void ensureVaultDir(@NonNull String username) {
-        try {
-            // userVaultDirectory validates one safe child of vaultBase.
-            //noinspection tainting
-            Files.createDirectories(userVaultDirectory(username));
-        } catch (IOException e) {
-            throw new UncheckedIOException(
-                    "Could not create vault directory for user '" + username + "'", e);
-        }
     }
 
     private static void wipe(char @NonNull [] chars) {

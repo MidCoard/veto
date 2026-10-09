@@ -28,9 +28,16 @@ class AuthLifecycleManagerTest {
         return new StaticListableBeanFactory().getBeanProvider(IpcServer.class);
     }
 
+    private static @NonNull UserEntity alice() {
+        var account = mock(UserEntity.class);
+        when(account.getUserId()).thenReturn(ALICE);
+        when(account.getUsername()).thenReturn("alice");
+        return account;
+    }
+
     private static @NonNull KeysteadVault vault() {
         var vault = mock(KeysteadVault.class);
-        when(vault.signup("alice", "password")).thenReturn(ALICE);
+
         when(vault.login("alice", "password")).thenReturn(ALICE);
         when(vault.login("alice", "test-password")).thenReturn(ALICE);
         when(vault.login("alice", "replacement-password")).thenReturn(ALICE);
@@ -51,7 +58,7 @@ class AuthLifecycleManagerTest {
                         sessions,
                         ipcServers());
         lifecycle.logout(ALICE);
-        lifecycle.login("alice", "replacement-password");
+        lifecycle.login(alice(), "replacement-password");
         var replacementId = UUID.randomUUID();
         var replacementToken = sessions.createLoginSession(replacementId, "alice");
         assertTrue(sessions.validateToken(oldToken).isEmpty());
@@ -70,10 +77,10 @@ class AuthLifecycleManagerTest {
                         vault, prompts, events, new LoginSessionManager(), ipcServers());
         doThrow(new IllegalArgumentException("Signup failed"))
                 .when(vault)
-                .signup("alice", "invalid");
+                .login("alice", "invalid");
         doThrow(new IllegalArgumentException("Login failed")).when(vault).login("alice", "invalid");
-        assertThrows(IllegalArgumentException.class, () -> lifecycle.signup("alice", "invalid"));
-        assertThrows(IllegalArgumentException.class, () -> lifecycle.login("alice", "invalid"));
+        assertThrows(IllegalArgumentException.class, () -> lifecycle.signup(alice(), "invalid"));
+        assertThrows(IllegalArgumentException.class, () -> lifecycle.login(alice(), "invalid"));
         verifyNoInteractions(events);
     }
 
@@ -107,7 +114,7 @@ class AuthLifecycleManagerTest {
                 new AuthLifecycleManager(
                         vault, prompts, events, new LoginSessionManager(), ipcServers());
 
-        lifecycle.signup("alice", "password");
+        lifecycle.signup(alice(), "password");
         verify(events)
                 .submit(
                         argThat(
@@ -123,7 +130,7 @@ class AuthLifecycleManagerTest {
                                                 && fact.scope()
                                                         .equals(new Scope.UserScope(ALICE))));
 
-        lifecycle.login("alice", "password");
+        lifecycle.login(alice(), "password");
         verify(events)
                 .submit(
                         argThat(
@@ -184,7 +191,7 @@ class AuthLifecycleManagerTest {
             doThrow(new IllegalArgumentException("Login failed"))
                     .when(vault)
                     .login("alice", "invalid");
-            assertThrows(IllegalArgumentException.class, () -> lifecycle.login("alice", "invalid"));
+            assertThrows(IllegalArgumentException.class, () -> lifecycle.login(alice(), "invalid"));
             assertEquals(
                     "password=alpha",
                     PluginTestSupport.protect(
@@ -194,7 +201,7 @@ class AuthLifecycleManagerTest {
                             "source",
                             "password=alpha"));
             assertTrue(PluginTestSupport.reveal(plugins, scope, old).isEmpty());
-            lifecycle.login("alice", "test-password");
+            lifecycle.login(alice(), "test-password");
             String reopened = capture(plugins, scope, "password=alpha");
             assertNotEquals(old, reopened);
             assertTrue(PluginTestSupport.reveal(plugins, scope, old).isEmpty());

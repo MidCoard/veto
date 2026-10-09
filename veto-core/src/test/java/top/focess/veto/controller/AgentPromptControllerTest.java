@@ -16,6 +16,8 @@ import top.focess.veto.agent.VetoAgent;
 import top.focess.veto.api.agent.AgentState;
 import top.focess.veto.api.llm.ProviderType;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
+import top.focess.veto.command.SessionCommandService;
+import top.focess.veto.controller.dto.CodedErrorResponse;
 import top.focess.veto.controller.dto.SubmitPromptRequest;
 import top.focess.veto.session.LlmConfig;
 import top.focess.veto.session.SessionService;
@@ -27,9 +29,10 @@ class AgentPromptControllerTest {
     private final @NonNull SessionAgentRegistry agents = mock();
     private final @NonNull KeysteadVault vault = mock();
     private final @NonNull VetoAgent mate = mock();
+    private final @NonNull SessionCommandService commands = mock();
     private final @NonNull UUID sessionId = UUID.randomUUID();
     private final @NonNull AgentPromptController controller =
-            new AgentPromptController(sessions, agents, vault);
+            new AgentPromptController(sessions, agents, vault, commands);
 
     @Test
     void protectedInputFailureIsRejectedBeforeAcknowledgement() {
@@ -39,7 +42,7 @@ class AgentPromptControllerTest {
         var response =
                 controller.prompt("session", "mate", new SubmitPromptRequest("synthetic-secret"));
         assertEquals(422, response.getStatusCode().value());
-        if (!(response.getBody() instanceof top.focess.veto.controller.dto.CodedErrorResponse body))
+        if (!(response.getBody() instanceof CodedErrorResponse body))
             throw new AssertionError("Missing error body");
         assertEquals("PROTECTED_INPUT_UNAVAILABLE", body.code());
         assertFalse(String.valueOf(response.getBody()).contains("synthetic-secret"));
@@ -122,6 +125,70 @@ class AgentPromptControllerTest {
                                         "session", "mate", new SubmitPromptRequest("Review")));
         assertEquals(HttpStatus.NOT_FOUND, missing.getStatusCode());
         verifyNoInteractions(agents);
+    }
+
+    @Test
+    void recognizedCommandTargetsPrimaryAfterChildInteractionChecks() {
+        ownedSession();
+        when(mate.userInteractionEnabled()).thenReturn(true);
+        when(commands.supports("/compact")).thenReturn(true);
+        when(commands.enqueue("session", TestUsers.OWNER)).thenReturn(sessionId.toString());
+        assertEquals(
+                HttpStatus.ACCEPTED,
+                controller
+                        .prompt("session", "mate", new SubmitPromptRequest("/compact"))
+                        .getStatusCode());
+        verify(commands).enqueue("session", TestUsers.OWNER);
+        verify(commands).primaryNotice(sessionId.toString(), "mate");
+        verify(mate, never()).submitUserPrompt(anyString());
+    }
+
+    @Test
+    void unknownSlashInputIsSubmittedUnchangedWithScopedNotice() {
+        ownedSession();
+        when(mate.userInteractionEnabled()).thenReturn(true);
+        var prompt = "  /signup secret-looking-argument  ";
+        assertEquals(
+                HttpStatus.ACCEPTED,
+                controller
+                        .prompt("session", "mate", new SubmitPromptRequest(prompt))
+                        .getStatusCode());
+        verify(mate).submitUserPrompt(prompt);
+        verify(commands).notice(sessionId.toString(), "mate", prompt);
+        verify(commands, never()).enqueue(anyString(), any());
+    }
+
+    @Test
+    void disabledChildCannotTriggerPrimaryCommand() {
+        ownedSession();
+        assertEquals(
+                HttpStatus.FORBIDDEN,
+                controller
+                        .prompt("session", "mate", new SubmitPromptRequest("/compact"))
+                        .getStatusCode());
+        verifyNoInteractions(commands);
+        verify(mate, never()).submitUserPrompt(anyString());
+    }
+
+    @Test
+    void terminatedOrMissingChildCannotTriggerPrimaryCommand() {
+        ownedSession();
+        when(mate.userInteractionEnabled()).thenReturn(true);
+        when(mate.state()).thenReturn(AgentState.TERMINATED);
+        assertEquals(
+                HttpStatus.CONFLICT,
+                controller
+                        .prompt("session", "mate", new SubmitPromptRequest("/compact"))
+                        .getStatusCode());
+        var missing =
+                assertThrows(
+                        ResponseStatusException.class,
+                        () ->
+                                controller.prompt(
+                                        "session", "missing", new SubmitPromptRequest("/compact")));
+        assertEquals(HttpStatus.NOT_FOUND, missing.getStatusCode());
+        verifyNoInteractions(commands);
+        verify(mate, never()).submitUserPrompt(anyString());
     }
 
     @Test

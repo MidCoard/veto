@@ -789,6 +789,9 @@ public class IpcServer {
         for (var session : sessions.values()) {
             if (userId.equals(session.sender.userId())) {
                 session.sender.setUser(null);
+                if (session.sender.cancelCurrentPrompt()) {
+                    log.debug("Cancelled pending input for revoked user {}", userId);
+                }
             }
         }
     }

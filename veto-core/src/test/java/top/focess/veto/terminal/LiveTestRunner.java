@@ -1,10 +1,14 @@
 package top.focess.veto.terminal;
 
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
 import org.zeromq.SocketType;
 import org.zeromq.ZContext;
 import org.zeromq.ZMQ;
@@ -21,7 +25,6 @@ import top.focess.veto.contract.Version;
         properties = {
             "veto.terminal.enabled=true",
             "veto.terminal.bind-address=tcp://127.0.0.1:15570",
-            "veto.vault.vault-home=./build/tmp/veto-live",
             "spring.datasource.url=jdbc:h2:mem:veto_live;DB_CLOSE_DELAY=-1",
             "spring.datasource.username=sa",
             "spring.datasource.password=",
@@ -30,6 +33,19 @@ import top.focess.veto.contract.Version;
             "spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.H2Dialect",
         })
 class LiveTestRunner {
+
+    @TempDir private static Path vaultHome;
+
+    @DynamicPropertySource
+    static void isolatedVault(@NonNull DynamicPropertyRegistry properties) {
+        properties.add(
+                "veto.vault.vault-home",
+                () -> {
+                    var directory = vaultHome;
+                    if (directory == null) throw new AssertionError("Vault directory is required");
+                    return directory.toString();
+                });
+    }
 
     private static final @NonNull String ADDR = "tcp://127.0.0.1:15570";
 

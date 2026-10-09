@@ -87,7 +87,7 @@ dependencies {
     implementation("org.bouncycastle:bcprov-jdk18on:1.84")
 
     // Keystead credential vault (Maven Central release)
-    implementation("top.focess:keystead-core:0.4.3")
+    implementation("top.focess:keystead-core:0.5.4")
 
     // JNA (Java Native Access) for kernel-level sandbox substrate
     implementation("net.java.dev.jna:jna:5.14.0")

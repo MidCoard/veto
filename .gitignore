@@ -129,6 +129,7 @@ CLAUDE.local.md
 /work/
 /models/
 /release/
+/plugins/
 /audit/
 veto-core/training/data/*.json
 veto-core/training/data/*.jsonl

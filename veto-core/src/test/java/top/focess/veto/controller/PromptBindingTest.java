@@ -16,6 +16,7 @@ import top.focess.veto.api.llm.ProviderType;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.api.plugin.agent.AgentProfile;
 import top.focess.veto.command.PromptHandler;
+import top.focess.veto.command.SessionCommandService;
 import top.focess.veto.command.VetoCommandSender;
 import top.focess.veto.controller.dto.SubmitPromptRequest;
 import top.focess.veto.model.tier.ModelBinding;
@@ -56,7 +57,7 @@ class PromptBindingTest {
                                 new SessionService.SessionConfig(
                                         "session-id", config, ToolResultPresentationMode.BASIC)));
         var response =
-                new PromptController(sessions, agents, vault)
+                new PromptController(sessions, agents, vault, mock(SessionCommandService.class))
                         .prompt("session", new SubmitPromptRequest("Explain TCP"));
         if (response == null) {
             throw new AssertionError("Prompt submission must return an HTTP response");

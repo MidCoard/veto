@@ -10,6 +10,8 @@ import top.focess.veto.agent.AgentService;
 import top.focess.veto.agent.ProtectedInputException;
 import top.focess.veto.api.llm.ProviderType;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
+import top.focess.veto.command.SessionCommandService;
+import top.focess.veto.controller.dto.CodedErrorResponse;
 import top.focess.veto.controller.dto.SubmitPromptRequest;
 import top.focess.veto.session.LlmConfig;
 import top.focess.veto.session.SessionService;
@@ -34,11 +36,11 @@ class PromptControllerTest {
                 .when(agents)
                 .submitNow(anyString(), anyString(), any(), any());
         var response =
-                new PromptController(sessions, agents, vault)
+                new PromptController(sessions, agents, vault, mock(SessionCommandService.class))
                         .prompt("session", new SubmitPromptRequest("synthetic-secret"));
         if (response == null) throw new AssertionError("Missing rejection response");
         assertEquals(422, response.getStatusCode().value());
-        if (!(response.getBody() instanceof top.focess.veto.controller.dto.CodedErrorResponse body))
+        if (!(response.getBody() instanceof CodedErrorResponse body))
             throw new AssertionError("Missing error body");
         assertEquals("PROTECTED_INPUT_UNAVAILABLE", body.code());
         assertFalse(String.valueOf(body).contains("synthetic-secret"));

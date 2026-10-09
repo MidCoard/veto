@@ -4,6 +4,7 @@ import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.time.Instant;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.regex.Pattern;
@@ -12,6 +13,7 @@ import org.bouncycastle.crypto.params.Argon2Parameters;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -19,7 +21,10 @@ import org.springframework.transaction.annotation.Transactional;
  * User registry backed by PostgreSQL via Spring Data JPA. Stores username, Argon2id password hash,
  * per-user salt, and role.
  *
- * <p>Replaces the old {@code users.json} file-based storage.
+ * <p>This registry owns persisted account facts and password verification, not login tokens,
+ * unlocked vault handles, terminal authentication or lifecycle events. Those runtime effects belong
+ * to {@link AuthLifecycleManager}; workflows coordinate both through {@link
+ * AuthLifecycleManager#locks()}.
  */
 @Component
 @Transactional
@@ -60,7 +65,15 @@ public class UserRegistry {
         newSecureRandom().nextBytes(salt);
         byte[] hash = hashPassword(password, salt);
         UserEntity user = new UserEntity(username, hash, salt, role, Instant.now());
-        repo.save(user);
+        try {
+            user =
+                    Objects.requireNonNull(
+                            repo.saveAndFlush(user), "Account insert returned no account");
+        } catch (DataIntegrityViolationException duplicate) {
+            // Database uniqueness is authoritative when concurrent requests pass the existence
+            // check.
+            throw new IllegalArgumentException("User '" + username + "' already exists", duplicate);
+        }
         log.info("User '{}' created with role '{}'", username, role);
         return user;
     }
@@ -134,8 +147,8 @@ public class UserRegistry {
 
     /**
      * Resets the password: new salt + Argon2id hash, preserving role and {@code created_at}. The
-     * password is also the keystead vault master password, so a reset invalidates the existing
-     * vault (the user must re-provision credentials after re-login).
+     * password is also the keystead vault master password. A caller must coordinate the vault
+     * password change before changing this hash; changing it alone cannot reset the vault.
      */
     public void setPassword(@NonNull UUID userId, @NonNull String password) {
         UserEntity user =

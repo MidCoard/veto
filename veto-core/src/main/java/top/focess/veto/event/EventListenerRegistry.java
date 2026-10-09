@@ -22,6 +22,7 @@ import top.focess.veto.api.event.BeforeModelEvent;
 import top.focess.veto.api.event.BeforeObservationEvent;
 import top.focess.veto.api.event.BeforeTextCommitEvent;
 import top.focess.veto.api.event.BeforeToolEvent;
+import top.focess.veto.api.event.BeforeUserRegisterEvent;
 import top.focess.veto.api.event.Cancellable;
 import top.focess.veto.api.event.Event;
 import top.focess.veto.api.event.EventHandler;
@@ -69,6 +70,7 @@ public final class EventListenerRegistry {
                     BeforeTextCommitEvent.class,
                     AfterModelEvent.class,
                     AfterToolEvent.class,
+                    BeforeUserRegisterEvent.class,
                     UserRegisteredEvent.class,
                     UserLoggedInEvent.class,
                     UserLogoutEvent.class,

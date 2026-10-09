@@ -24,16 +24,17 @@ import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.secret.references.SecretCandidateStore;
 
 /**
- * Verifies {@link KeysteadVault} against the real keystead {@code OneFileVaultStore} crypto: signup
- * opens a handle, notes round-trip, logout/login reopens a persisted vault, upsert does not
- * duplicate, and a locked vault rejects operations.
+ * Verifies {@link KeysteadVault} against the real keystead {@code OneFileVaultStore} crypto:
+ * provisioning/login opens a handle, notes round-trip, logout/login reopens a persisted vault,
+ * upsert does not duplicate, and a locked vault rejects operations.
  */
 class KeysteadVaultTest {
     @Test
     void importedServicesAreBoundedGenericIdentifiers(@TempDir @NonNull Path tempDir) {
         var vault = newVault(tempDir);
         try {
-            assertEquals(ALICE, vault.signup("alice", "password"));
+            vault.createVault(ALICE, "password");
+            assertEquals(ALICE, vault.login("alice", "password"));
             var ref =
                     importedNote(
                             vault,
@@ -74,7 +75,8 @@ class KeysteadVaultTest {
     void importedCredentialUseRequiresTheExactOwnerAndService(@TempDir @NonNull Path tempDir) {
         var vault = newVault(tempDir);
         try {
-            assertEquals(ALICE, vault.signup("alice", "p@ssw0rd!"));
+            vault.createVault(ALICE, "p@ssw0rd!");
+            assertEquals(ALICE, vault.login("alice", "p@ssw0rd!"));
             String reference =
                     importedNote(
                             vault,
@@ -93,7 +95,8 @@ class KeysteadVaultTest {
                         invoked[0] = true;
                     });
             assertTrue(invoked[0]);
-            assertEquals(BOB, vault.signup("bob", "other-password"));
+            vault.createVault(BOB, "other-password");
+            assertEquals(BOB, vault.login("bob", "other-password"));
             assertThrows(
                     IllegalArgumentException.class,
                     () ->
@@ -132,7 +135,8 @@ class KeysteadVaultTest {
         var writer = credentialWriter(vault);
         var scope = new Scope.AgentScope(ALICE, "session", "agent");
         try {
-            assertEquals(ALICE, vault.signup("alice", "p@ssw0rd!"));
+            vault.createVault(ALICE, "p@ssw0rd!");
+            assertEquals(ALICE, vault.login("alice", "p@ssw0rd!"));
             String reference =
                     store.capture(scope, "source", "password=synthetic-token")
                             .candidates()
@@ -170,7 +174,8 @@ class KeysteadVaultTest {
         var vault = newVault(tempDir);
         String importId = "s_0123456789abcdef0123456789abcdef";
         try {
-            assertEquals(ALICE, vault.signup("alice", "p@ssw0rd!"));
+            vault.createVault(ALICE, "p@ssw0rd!");
+            assertEquals(ALICE, vault.login("alice", "p@ssw0rd!"));
             SecurityContextHolder.setContext(ExecutionSecurity.contextFor(ALICE));
             vault.saveNote("Repository", "existing-value");
             String reference =
@@ -227,7 +232,8 @@ class KeysteadVaultTest {
     void explicitOwnerReadinessCannotBorrowTheOnlyUnlockedVault(@TempDir @NonNull Path tempDir) {
         var vault = newVault(tempDir);
         try {
-            assertEquals(BOB, vault.signup("bob", "p@ssw0rd!"));
+            vault.createVault(BOB, "p@ssw0rd!");
+            assertEquals(BOB, vault.login("bob", "p@ssw0rd!"));
             SecurityContextHolder.setContext(ExecutionSecurity.contextFor(BOB));
             assertTrue(vault.isUnlocked());
             assertTrue(vault.isUnlocked(BOB));
@@ -292,7 +298,8 @@ class KeysteadVaultTest {
             throws Exception {
         var vault = newVault(tempDir);
         try (var workers = Executors.newVirtualThreadPerTaskExecutor()) {
-            assertEquals(ALICE, vault.signup("alice", "p@ssw0rd!"));
+            vault.createVault(ALICE, "p@ssw0rd!");
+            assertEquals(ALICE, vault.login("alice", "p@ssw0rd!"));
             var start = new CountDownLatch(1);
             var results = new ArrayList<Future<String>>();
             for (int i = 0; i < 8; i++)
@@ -326,7 +333,8 @@ class KeysteadVaultTest {
     @Test
     void signupAndRoundTrip(@TempDir @NonNull Path tempDir) {
         KeysteadVault vault = newVault(tempDir);
-        assertEquals(ALICE, vault.signup("alice", "p@ssw0rd!"));
+        vault.createVault(ALICE, "p@ssw0rd!");
+        assertEquals(ALICE, vault.login("alice", "p@ssw0rd!"));
 
         vault.saveNote("pattern-coder", "sk-xxx");
         assertEquals(Optional.of("sk-xxx"), vault.readNoteBody("pattern-coder"));
@@ -339,7 +347,8 @@ class KeysteadVaultTest {
     @Test
     void loginReopensPersistedVault(@TempDir @NonNull Path tempDir) {
         KeysteadVault vault = newVault(tempDir);
-        assertEquals(ALICE, vault.signup("alice", "p@ssw0rd!"));
+        vault.createVault(ALICE, "p@ssw0rd!");
+        assertEquals(ALICE, vault.login("alice", "p@ssw0rd!"));
         vault.saveNote("pattern-coder", "sk-xxx");
         vault.logout(ALICE);
 
@@ -352,7 +361,8 @@ class KeysteadVaultTest {
     @Test
     void saveNoteUpsertDoesNotDuplicate(@TempDir @NonNull Path tempDir) {
         KeysteadVault vault = newVault(tempDir);
-        assertEquals(ALICE, vault.signup("alice", "p@ssw0rd!"));
+        vault.createVault(ALICE, "p@ssw0rd!");
+        assertEquals(ALICE, vault.login("alice", "p@ssw0rd!"));
         vault.saveNote("pattern-coder", "sk-old");
         vault.saveNote("pattern-coder", "sk-new");
 
@@ -373,7 +383,8 @@ class KeysteadVaultTest {
     @Test
     void wrongPasswordFailsToOpen(@TempDir @NonNull Path tempDir) {
         KeysteadVault vault = newVault(tempDir);
-        assertEquals(ALICE, vault.signup("alice", "p@ssw0rd!"));
+        vault.createVault(ALICE, "p@ssw0rd!");
+        assertEquals(ALICE, vault.login("alice", "p@ssw0rd!"));
         vault.logout(ALICE);
 
         KeysteadVault reopened = newVault(tempDir);
@@ -385,7 +396,8 @@ class KeysteadVaultTest {
     @Test
     void unlockedVaultDoesNotAuthenticateAnonymousRequest(@TempDir @NonNull Path tempDir) {
         KeysteadVault vault = newVault(tempDir);
-        assertEquals(ALICE, vault.signup("alice", "p@ssw0rd!"));
+        vault.createVault(ALICE, "p@ssw0rd!");
+        assertEquals(ALICE, vault.login("alice", "p@ssw0rd!"));
 
         assertNull(vault.currentUser());
         assertEquals(ALICE, vault.currentUserOrOnlyUnlocked());

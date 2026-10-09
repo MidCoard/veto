@@ -6,8 +6,26 @@ import static org.mockito.Mockito.*;
 import java.time.Instant;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
+import org.springframework.dao.DataIntegrityViolationException;
 
 class UserRegistryIdentityTest {
+    @Test
+    void databaseDuplicateAfterExistenceCheckBecomesABusinessConflict() {
+        var repository = mock(UserRepository.class);
+        var violation = new DataIntegrityViolationException("duplicate username");
+        when(repository.existsByUsername("alice")).thenReturn(false);
+        when(repository.saveAndFlush(any(UserEntity.class))).thenThrow(violation);
+        var registry = new UserRegistry(repository);
+        var rejected =
+                assertThrows(
+                        IllegalArgumentException.class,
+                        () -> registry.create("alice", "test-password", UserRegistry.Role.USER));
+        assertEquals("User 'alice' already exists", rejected.getMessage());
+        var cause = rejected.getCause();
+        if (cause == null) throw new AssertionError("Duplicate conflict lost its database cause");
+        assertSame(violation, cause);
+    }
+
     @Test
     void passwordResetPreservesIdentityButUsernameRecreationDoesNot() {
         var original =

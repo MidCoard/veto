@@ -1,7 +1,6 @@
 package top.focess.veto.controller;
 
 import java.time.Instant;
-import java.util.Locale;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -10,263 +9,121 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import top.focess.veto.controller.dto.*;
 import top.focess.veto.i18n.Msg;
-import top.focess.veto.vault.*;
+import top.focess.veto.vault.AuthException;
+import top.focess.veto.vault.AuthService;
 import top.focess.veto.vault.LoginSessionManager.LoginSession;
 
-/**
- * REST controller for authentication and vault lifecycle. Provides endpoints for first-run setup,
- * login, logout, status, and admin user management.
- *
- * <p>The vault is keystead-backed: each user has their own vault, created and opened with their
- * login password. No user can read another user's secrets.
- */
+/** HTTP input/output adapter for the shared authentication workflows. */
 @RestController
-@RequestMapping("/api/auth")
+@RequestMapping(value = "/api/auth", produces = MediaType.APPLICATION_JSON_VALUE)
 public class AuthController {
-
     private static final @NonNull Logger log =
             LoggerFactory.getLogger("top.focess.veto.controller.AuthController");
-
     private static final String TOKEN_HEADER = "X-Veto-Session-Token";
+    private final @NonNull AuthService auth;
 
-    private final @NonNull UserRegistry userRegistry;
-    private final @NonNull LoginSessionManager loginSessions;
-    private final @NonNull KeysteadVault vault;
-    private final @NonNull AuthLifecycleManager authLifecycleManager;
-
-    /**
-     * Creates the controller with user-registry, login-session, vault, and lifecycle collaborators.
-     */
-    public AuthController(
-            @NonNull UserRegistry userRegistry,
-            @NonNull LoginSessionManager loginSessions,
-            @NonNull KeysteadVault vault,
-            @NonNull AuthLifecycleManager authLifecycleManager) {
-        this.userRegistry = userRegistry;
-        this.loginSessions = loginSessions;
-        this.vault = vault;
-        this.authLifecycleManager = authLifecycleManager;
+    public AuthController(@NonNull AuthService auth) {
+        this.auth = auth;
     }
 
-    // ── Setup (first-run) ───────────────────────────────────────────────────
-
-    /** POST /api/auth/setup - First-run admin creation. Only works when no users exist. */
-    @PostMapping(
-            value = "/setup",
-            consumes = MediaType.APPLICATION_JSON_VALUE,
-            produces = MediaType.APPLICATION_JSON_VALUE)
+    @PostMapping(value = "/setup", consumes = MediaType.APPLICATION_JSON_VALUE)
     public @NonNull ResponseEntity<RestResponse> setup(
             @RequestBody @NonNull AuthCredentials request) {
-        String username = request.username();
-        String password = request.password();
-
-        if (username == null || username.isEmpty() || password == null || password.isEmpty()) {
-            return ResponseEntity.badRequest()
-                    .body(error(Msg.get("error.auth.credentialsRequired")));
-        }
-        String registrationError = registrationError(username, password);
-        if (registrationError != null) {
-            return ResponseEntity.badRequest().body(error(registrationError));
-        }
-        // Share registration admission with terminal signup; the transaction commits inside it.
-        synchronized (userRegistry) {
-            if (userRegistry.anyUserExists()) {
-                return ResponseEntity.status(409).body(error(Msg.get("error.auth.alreadySetup")));
-            }
-
-            try {
-                var created = userRegistry.create(username, password, UserRegistry.Role.ADMIN);
-                authLifecycleManager.signup(username, password);
-                String token = loginSessions.createLoginSession(created.getUserId(), username);
-
-                log.info("Vault setup complete - admin user '{}' created", username);
-                return ResponseEntity.ok(
-                        new AuthSetupResponse(
-                                "ok",
-                                token,
-                                created.getUserId(),
-                                username,
-                                "ADMIN",
-                                "Vault initialized and unlocked"));
-            } catch (Exception e) {
-                log.error("Setup failed", e);
-                return ResponseEntity.internalServerError()
-                        .body(error(Msg.get("error.auth.setupFailed")));
-            }
+        try {
+            var login = auth.setup(request.username(), request.password());
+            var user = login.user();
+            return ResponseEntity.ok(
+                    new AuthSetupResponse(
+                            "ok",
+                            login.token(),
+                            user.getUserId(),
+                            user.getUsername(),
+                            user.getRole(),
+                            "Vault initialized and unlocked"));
+        } catch (RuntimeException failure) {
+            return failure(failure, "error.auth.setupFailed");
         }
     }
 
-    // ── Login ───────────────────────────────────────────────────────────────
-
-    /** POST /api/auth/login - Authenticate and unlock the user's credential vault. */
-    @PostMapping(
-            value = "/login",
-            consumes = MediaType.APPLICATION_JSON_VALUE,
-            produces = MediaType.APPLICATION_JSON_VALUE)
+    @PostMapping(value = "/login", consumes = MediaType.APPLICATION_JSON_VALUE)
     public @NonNull ResponseEntity<RestResponse> login(
             @RequestBody @NonNull AuthCredentials request) {
-        String username = request.username();
-        String password = request.password();
-
-        if (username == null || username.isEmpty() || password == null || password.isEmpty()) {
-            return ResponseEntity.badRequest()
-                    .body(error(Msg.get("error.auth.credentialsRequired")));
-        }
-
-        // Password verification and token issuance must not straddle logout/password reset.
-        synchronized (authLifecycleManager) {
-            var user = userRegistry.authenticate(username, password);
-            if (user.isEmpty()) {
-                return ResponseEntity.status(401)
-                        .body(error(Msg.get("error.auth.invalidCredentials")));
-            }
-
-            try {
-                authLifecycleManager.login(username, password);
-                String token = loginSessions.createLoginSession(user.get().getUserId(), username);
-
-                log.info("User '{}' logged in", username);
-                return ResponseEntity.ok(
-                        new AuthLoginResponse(
-                                "ok",
-                                token,
-                                user.get().getUserId(),
-                                username,
-                                user.get().getRole()));
-            } catch (Exception e) {
-                log.error("Login failed for user '{}'", username, e);
-                return ResponseEntity.internalServerError()
-                        .body(error(Msg.get("error.auth.loginFailed")));
-            }
+        try {
+            var login = auth.login(request.username(), request.password());
+            var user = login.user();
+            return ResponseEntity.ok(
+                    new AuthLoginResponse(
+                            "ok",
+                            login.token(),
+                            user.getUserId(),
+                            user.getUsername(),
+                            user.getRole()));
+        } catch (RuntimeException failure) {
+            return failure(failure, "error.auth.loginFailed");
         }
     }
 
-    // ── Logout ──────────────────────────────────────────────────────────────
-
-    /**
-     * POST /api/auth/logout - Invalidate login session and lock vault if no other login sessions
-     * remain.
-     */
-    @PostMapping(value = "/logout", produces = MediaType.APPLICATION_JSON_VALUE)
+    @PostMapping("/logout")
     public @NonNull ResponseEntity<RestResponse> logout(
             @RequestHeader(TOKEN_HEADER) @NonNull String token) {
-        synchronized (authLifecycleManager) {
-            var loginSession = loginSessions.validateToken(token);
-            if (loginSession.isEmpty()) {
-                return ResponseEntity.status(401).body(error(Msg.get("error.auth.invalidSession")));
-            }
-
-            loginSessions.revokeToken(token);
-
-            if (!loginSessions.hasLoginSessions(loginSession.get().userId())) {
-                authLifecycleManager.logout(loginSession.get().userId());
-            }
-
-            return ResponseEntity.ok(
-                    new AuthLogoutResponse(
-                            "ok",
-                            "Logged out",
-                            loginSession.get().userId(),
-                            loginSession.get().username()));
-        }
+        var login = auth.logout(token);
+        return ResponseEntity.ok(
+                new AuthLogoutResponse("ok", "Logged out", login.userId(), login.username()));
     }
 
-    // ── Status ─────────────────────────────────────────────────────────────
-
-    /** GET /api/auth/status - Returns vault and login-session state. */
-    @GetMapping(value = "/status", produces = MediaType.APPLICATION_JSON_VALUE)
+    @GetMapping("/status")
     public @NonNull ResponseEntity<RestResponse> status(
             @RequestHeader(value = TOKEN_HEADER, required = false) String token) {
-        boolean setupNeeded = !userRegistry.anyUserExists();
-        boolean vaultLocked = !vault.isUnlocked();
-
-        var loginSession = loginSessions.validateToken(token == null ? "" : token);
+        var status = auth.status(token);
         return ResponseEntity.ok(
                 new AuthStatusResponse(
-                        setupNeeded,
-                        vaultLocked,
-                        loginSessions.activeLoginSessionCount(),
-                        loginSession.map(LoginSession::userId).orElse(null),
+                        status.setupNeeded(),
+                        status.vaultLocked(),
+                        status.activeSessions(),
+                        status.login().map(LoginSession::userId).orElse(null),
                         Instant.now().toString(),
-                        loginSession.isPresent(),
-                        loginSession.map(value -> value.username()).orElse(null)));
+                        status.login().isPresent(),
+                        status.login().map(LoginSession::username).orElse(null)));
     }
 
-    // ── User management (admin only) ────────────────────────────────────────
-
-    /** POST /api/auth/users - Add a new user with their own vault. Requires admin login session. */
-    @PostMapping(
-            value = "/users",
-            consumes = MediaType.APPLICATION_JSON_VALUE,
-            produces = MediaType.APPLICATION_JSON_VALUE)
-    // User-controlled fields below are validated and serialized as application/json by Jackson.
-    @SuppressWarnings("JvmTaintAnalysis")
+    @PostMapping(value = "/users", consumes = MediaType.APPLICATION_JSON_VALUE)
     public @NonNull ResponseEntity<RestResponse> addUser(
             @RequestHeader(TOKEN_HEADER) @NonNull String token,
             @RequestBody @NonNull CreateUserRequest request) {
-
-        var loginSession = loginSessions.validateToken(token);
-        if (loginSession.isEmpty()) {
-            return ResponseEntity.status(401).body(error(Msg.get("error.auth.invalidSession")));
-        }
-
-        // Verify admin role
-        var adminEntry = userRegistry.findByUserId(loginSession.get().userId());
-        if (adminEntry.isEmpty() || !"ADMIN".equals(adminEntry.get().getRole())) {
-            return ResponseEntity.status(403).body(error(Msg.get("error.auth.adminRequired")));
-        }
-
-        String username = request.username();
-        String password = request.password();
-        String requestedRole = request.role();
-        String role =
-                requestedRole == null
-                        ? UserRegistry.Role.USER
-                        : requestedRole.trim().toUpperCase(Locale.ROOT);
-
-        if (username == null || username.isEmpty() || password == null || password.isEmpty()) {
-            return ResponseEntity.badRequest()
-                    .body(error(Msg.get("error.auth.credentialsRequired")));
-        }
-        String registrationError = registrationError(username, password);
-        if (registrationError != null) {
-            return ResponseEntity.badRequest().body(error(registrationError));
-        }
-        if (!UserRegistry.isValidRole(role)) {
-            return ResponseEntity.badRequest().body(error(Msg.get("error.auth.invalidRole")));
-        }
-
         try {
-            var created = userRegistry.create(username, password, role);
-            // Provision the new user's vault (created closed; opened when they log in).
-            vault.createVault(created.getUserId(), password);
-
-            log.info(
-                    "Admin '{}' created user '{}' with role '{}'",
-                    loginSession.get().username(),
-                    username,
-                    role);
+            var user =
+                    auth.createUser(token, request.username(), request.password(), request.role());
             return ResponseEntity.ok(
                     new UserCreatedResponse(
-                            "ok", created.getUserId(), username, role, "User created"));
-        } catch (IllegalArgumentException e) {
-            // Duplicate username (UserRegistry.create rejects an existing id).
-            return ResponseEntity.status(409) // TODO check the security problem
-                    .body(error(Msg.get("error.auth.userExists", username)));
-        } catch (Exception e) {
-            log.error("Failed to create user '{}'", username, e);
-            return ResponseEntity.internalServerError()
-                    .body(error(Msg.get("error.auth.createUserFailed")));
+                            "ok",
+                            user.getUserId(),
+                            user.getUsername(),
+                            user.getRole(),
+                            "User created"));
+        } catch (RuntimeException failure) {
+            return failure(failure, "error.auth.createUserFailed");
         }
     }
 
-    private static String registrationError(@NonNull String username, @NonNull String password) {
-        if (!UserRegistry.isValidUsername(username)) return Msg.get("error.auth.invalidUsername");
-        if (password.length() < 8) return Msg.get("error.auth.passwordTooShort");
-        return null;
+    @ExceptionHandler(AuthException.class)
+    public @NonNull ResponseEntity<RestResponse> rejected(@NonNull AuthException rejection) {
+        int status =
+                switch (rejection.kind()) {
+                    case INVALID_INPUT -> 400;
+                    case INVALID_CREDENTIALS, INVALID_SESSION -> 401;
+                    case FORBIDDEN -> 403;
+                    case CONFLICT -> 409;
+                    case INTERNAL -> 500;
+                };
+        return ResponseEntity.status(status)
+                .body(new StatusMessageResponse("error", rejection.getMessage()));
     }
 
-    private static @NonNull StatusMessageResponse error(@NonNull String message) {
-        return new StatusMessageResponse("error", message);
+    private static @NonNull ResponseEntity<RestResponse> failure(
+            @NonNull RuntimeException failure, @NonNull String messageKey) {
+        if (failure instanceof AuthException rejection) throw rejection;
+        log.error("Authentication operation failed", failure);
+        return ResponseEntity.internalServerError()
+                .body(new StatusMessageResponse("error", Msg.get(messageKey)));
     }
 }

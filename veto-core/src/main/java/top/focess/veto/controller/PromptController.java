@@ -15,6 +15,8 @@ import org.springframework.web.bind.annotation.RestController;
 import top.focess.veto.agent.AgentService;
 import top.focess.veto.agent.ProtectedInputException;
 import top.focess.veto.api.llm.LlmBinding;
+import top.focess.veto.command.SessionCommandService;
+import top.focess.veto.command.SessionCommandService.SessionNotFoundException;
 import top.focess.veto.controller.dto.*;
 import top.focess.veto.i18n.Msg;
 import top.focess.veto.session.SessionService;
@@ -39,14 +41,17 @@ public class PromptController {
     private final @NonNull SessionService sessionService;
     private final @NonNull AgentService agentService;
     private final @NonNull KeysteadVault vault;
+    private final @NonNull SessionCommandService commands;
 
     PromptController(
             @NonNull SessionService sessionService,
             @NonNull AgentService agentService,
-            @NonNull KeysteadVault vault) {
+            @NonNull KeysteadVault vault,
+            @NonNull SessionCommandService commands) {
         this.sessionService = sessionService;
         this.agentService = agentService;
         this.vault = vault;
+        this.commands = commands;
     }
 
     /**
@@ -93,7 +98,13 @@ public class PromptController {
                         cfg.config().baseUrl());
 
         try {
+            if (commands.supports(prompt)) {
+                var sessionId = commands.enqueue(name, userId);
+                return ResponseEntity.accepted()
+                        .body(new PromptStartedResponse("started", sessionId));
+            }
             agentService.submitNow(cfg.sessionId(), prompt, binding, userId);
+            commands.notice(cfg.sessionId(), null, prompt);
             log.info("Prompt accepted for session {} (agent {})", name, cfg.sessionId());
             return ResponseEntity.status(HttpStatus.ACCEPTED)
                     .body(new PromptStartedResponse("started", cfg.sessionId()));
@@ -104,6 +115,11 @@ public class PromptController {
                                     "PROTECTED_INPUT_UNAVAILABLE",
                                     "Protected input could not be processed; retry or use"
                                             + " credential settings"));
+        } catch (SessionNotFoundException missing) {
+            return ResponseEntity.notFound().build();
+        } catch (IllegalStateException busy) {
+            return ResponseEntity.status(HttpStatus.CONFLICT)
+                    .body(new ErrorResponse(Msg.get("error.prompt.failed")));
         } catch (Exception e) {
             log.warn("Prompt submit failed for session {}", name, e);
             return ResponseEntity.internalServerError()

@@ -6,10 +6,10 @@ import top.focess.command.CommandResult;
 import top.focess.command.CommandSender;
 import top.focess.veto.command.VetoCommand;
 import top.focess.veto.command.VetoCommandSender;
-import top.focess.veto.security.SignupPolicy;
-import top.focess.veto.security.UserAdminService;
+import top.focess.veto.vault.AuthException;
+import top.focess.veto.vault.AuthService;
+import top.focess.veto.vault.UserAdminService;
 import top.focess.veto.vault.UserEntity;
-import top.focess.veto.vault.UserRegistry;
 
 /**
  * Admin account-management command ({@code /user}). Available in multi-user signup modes ({@code
@@ -18,30 +18,16 @@ import top.focess.veto.vault.UserRegistry;
  */
 public class UserAdminCommand extends VetoCommand {
 
-    private final @NonNull UserAdminService admin;
-    private final @NonNull SignupPolicy policy;
+    private final @NonNull AuthService auth;
 
-    /** Constructs the {@code /user} command over the admin service and signup policy. */
-    public UserAdminCommand(@NonNull UserAdminService admin, @NonNull SignupPolicy policy) {
+    public UserAdminCommand(@NonNull AuthService auth) {
         super("user", "Manage user accounts (admin)", "users");
-        this.admin = admin;
-        this.policy = policy;
+        this.auth = auth;
     }
 
     @Override
     public void init() {
-        // /user is admin-only and only meaningful in multi-user modes. Folding both into the
-        // executor-permission predicate hides the command from non-admin senders (and entirely
-        // under solo) in /help and tab-completion, and routes a non-admin invocation to
-        // COMMAND_NOT_FOUND ("Unknown command") instead of leaking "Administrator only." The
-        // predicate captures `this` and reads admin/policy lazily, so it is safe to install here
-        // during super()/init() before those fields are assigned in the constructor body.
-        setExecutorPermission(
-                s ->
-                        s instanceof VetoCommandSender vs
-                                && vs.isLoggedIn()
-                                && policy.multiUser()
-                                && admin.isAdmin(vs.requireUserId()));
+        setExecutorPermission(s -> s instanceof VetoCommandSender vs && auth.canManageUsers(vs));
 
         // /user create <name> [admin]
         addExecutor(
@@ -49,27 +35,26 @@ public class UserAdminCommand extends VetoCommand {
                     VetoCommandSender s = vetoSender(sender);
                     if (s == null) return CommandResult.REFUSE;
 
+                    var actor = s.requireUserId();
                     String name = requiredArg(args.get("name"), "name");
-                    boolean asAdmin = "admin".equalsIgnoreCase(args.get("role"));
+                    String role = args.get("role");
                     String pw = s.input("Password for " + name + ":", true);
                     if (pw == null) {
                         s.output("Cancelled.");
                         return CommandResult.REFUSE;
                     }
-                    if (pw.isEmpty()) {
-                        s.output("Password cannot be empty.");
-                        return CommandResult.REFUSE;
-                    }
                     try {
-                        admin.create(
-                                name,
-                                pw,
-                                asAdmin ? UserRegistry.Role.ADMIN : UserRegistry.Role.USER);
-                    } catch (IllegalArgumentException e) {
+                        var created = auth.createUser(s, actor, name, pw, role);
+                        s.output(
+                                "User '"
+                                        + created.getUsername()
+                                        + "' created ("
+                                        + created.getRole()
+                                        + ").");
+                    } catch (AuthException e) {
                         s.output(e.getMessage());
                         return CommandResult.REFUSE;
                     }
-                    s.output("User '" + name + "' created (" + (asAdmin ? "ADMIN" : "USER") + ").");
                     return CommandResult.ALLOW;
                 },
                 fixed("create").description("Create a user account"),
@@ -82,22 +67,13 @@ public class UserAdminCommand extends VetoCommand {
                     VetoCommandSender s = vetoSender(sender);
                     if (s == null) return CommandResult.REFUSE;
 
+                    var actor = s.requireUserId();
                     String name = requiredArg(args.get("name"), "name");
-                    if (name.equals(s.requireUsername())) {
-                        s.output("Cannot delete your own account.");
-                        return CommandResult.REFUSE;
-                    }
-                    var target =
-                            admin.listAll().stream()
-                                    .filter(u -> u.getUsername().equals(name))
-                                    .findFirst();
-                    if (target.isEmpty()) {
-                        s.output("No such user: " + name);
-                        return CommandResult.REFUSE;
-                    }
-                    if (admin.isAdmin(target.orElseThrow().getUserId())
-                            && admin.adminCount() <= 1) {
-                        s.output("Cannot delete the last administrator account.");
+                    UserEntity target;
+                    try {
+                        target = auth.findUser(s, actor, name);
+                    } catch (AuthException rejected) {
+                        s.output(rejected.getMessage());
                         return CommandResult.REFUSE;
                     }
                     String confirm =
@@ -110,7 +86,12 @@ public class UserAdminCommand extends VetoCommand {
                         s.output("Cancelled.");
                         return CommandResult.REFUSE;
                     }
-                    admin.deleteUser(target.orElseThrow().getUserId());
+                    try {
+                        auth.deleteUser(s, actor, target.getUserId());
+                    } catch (AuthException rejected) {
+                        s.output(rejected.getMessage());
+                        return CommandResult.REFUSE;
+                    }
                     s.output("User '" + name + "' deleted.");
                     return CommandResult.ALLOW;
                 },
@@ -123,7 +104,14 @@ public class UserAdminCommand extends VetoCommand {
                     VetoCommandSender s = vetoSender(sender);
                     if (s == null) return CommandResult.REFUSE;
 
-                    List<UserEntity> all = admin.listAll();
+                    List<UserEntity> all;
+                    var actor = s.requireUserId();
+                    try {
+                        all = auth.listUsers(s, actor);
+                    } catch (AuthException rejected) {
+                        s.output(rejected.getMessage());
+                        return CommandResult.REFUSE;
+                    }
                     if (all.isEmpty()) {
                         s.output("No users.");
                         return CommandResult.ALLOW;
@@ -145,27 +133,23 @@ public class UserAdminCommand extends VetoCommand {
                     VetoCommandSender s = vetoSender(sender);
                     if (s == null) return CommandResult.REFUSE;
 
+                    var actor = s.requireUserId();
                     String name = requiredArg(args.get("name"), "name");
+                    UserEntity target;
+                    try {
+                        target = auth.findUser(s, actor, name);
+                    } catch (AuthException rejected) {
+                        s.output(rejected.getMessage());
+                        return CommandResult.REFUSE;
+                    }
                     String pw = s.input("New password for " + name + ":", true);
                     if (pw == null) {
                         s.output("Cancelled.");
                         return CommandResult.REFUSE;
                     }
-                    if (pw.isEmpty()) {
-                        s.output("Password cannot be empty.");
-                        return CommandResult.REFUSE;
-                    }
                     try {
-                        var target =
-                                admin.listAll().stream()
-                                        .filter(account -> account.getUsername().equals(name))
-                                        .findFirst()
-                                        .orElseThrow(
-                                                () ->
-                                                        new IllegalArgumentException(
-                                                                "No such user: " + name));
-                        admin.setPassword(target.getUserId(), pw);
-                    } catch (IllegalArgumentException e) {
+                        auth.setPassword(s, actor, target.getUserId(), pw);
+                    } catch (AuthException e) {
                         s.output(e.getMessage());
                         return CommandResult.REFUSE;
                     }

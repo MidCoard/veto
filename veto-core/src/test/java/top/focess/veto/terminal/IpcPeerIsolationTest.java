@@ -32,6 +32,46 @@ import top.focess.veto.vault.TestUsers;
 class IpcPeerIsolationTest {
     @Test
     @Timeout(20)
+    void revocationCancelsPendingInputAndTerminalCanLoginAgain() throws Exception {
+        int port;
+        try (var reservation = new ServerSocket(0)) {
+            port = reservation.getLocalPort();
+        }
+        String address = "tcp://127.0.0.1:" + port;
+        var alice = TestUsers.registry().findByUserId(TestUsers.ALICE).orElseThrow();
+        var registry = mock(CommandRegistry.class);
+        when(registry.dispatch(any(), anyString()))
+                .thenAnswer(
+                        invocation -> {
+                            VetoCommandSender sender = invocation.getArgument(0);
+                            if (sender == null) throw new AssertionError("Missing command sender");
+                            String raw = invocation.getArgument(1);
+                            if ("login".equals(raw)) sender.setUser(alice);
+                            else if ("prompt".equals(raw))
+                                assertNull(sender.input("Confirm action", false));
+                            return new IpcFrame.Done(Map.of("loggedIn", sender.isLoggedIn()), null);
+                        });
+        var server = new IpcServer(registry, mock(AgentService.class), address);
+        server.start();
+        try (var context = new ZContext()) {
+            var terminal = connect(context, address, "pending-input");
+            assertEquals(true, request(terminal, "login").meta().get("loggedIn"));
+            assertTrue(terminal.send("{\"type\":\"request\",\"raw\":\"prompt\"}"));
+            assertInstanceOf(IpcFrame.Prompt.class, receive(terminal));
+            server.revokeUser(TestUsers.ALICE);
+            assertEquals(
+                    false,
+                    assertInstanceOf(IpcFrame.Done.class, receive(terminal))
+                            .meta()
+                            .get("loggedIn"));
+            assertEquals(true, request(terminal, "login").meta().get("loggedIn"));
+        } finally {
+            server.stop();
+        }
+    }
+
+    @Test
+    @Timeout(20)
     void logoutRevokesConnectedTerminalsAndQueuedRequestIdentity() throws Exception {
         int port;
         try (var reservation = new ServerSocket(0)) {

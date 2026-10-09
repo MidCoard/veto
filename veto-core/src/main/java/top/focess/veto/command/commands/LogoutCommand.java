@@ -1,15 +1,14 @@
 package top.focess.veto.command.commands;
 
 import java.util.List;
-import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import top.focess.command.CommandResult;
 import top.focess.command.CommandSender;
 import top.focess.veto.command.LogoutException;
-import top.focess.veto.command.PromptHandler;
 import top.focess.veto.command.VetoCommand;
 import top.focess.veto.command.VetoCommandSender;
-import top.focess.veto.vault.AuthLifecycleManager;
+import top.focess.veto.vault.AuthException;
+import top.focess.veto.vault.AuthService;
 
 /**
  * Signs the current user out, closes their vault, and detaches the terminal's active session
@@ -17,16 +16,11 @@ import top.focess.veto.vault.AuthLifecycleManager;
  */
 public class LogoutCommand extends VetoCommand {
 
-    private final @NonNull AuthLifecycleManager authLifecycleManager;
-    private final @NonNull PromptHandler promptHandler;
+    private final @NonNull AuthService auth;
 
-    /** Constructs the {@code /logout} command over the given auth lifecycle and prompt handler. */
-    public LogoutCommand(
-            @NonNull AuthLifecycleManager authLifecycleManager,
-            @NonNull PromptHandler promptHandler) {
+    public LogoutCommand(@NonNull AuthService auth) {
         super("logout", "Sign out");
-        this.authLifecycleManager = authLifecycleManager;
-        this.promptHandler = promptHandler;
+        this.auth = auth;
     }
 
     @Override
@@ -37,10 +31,12 @@ public class LogoutCommand extends VetoCommand {
                     VetoCommandSender s = vetoSender(sender);
                     if (s == null) return CommandResult.REFUSE;
 
-                    UUID user = s.requireUserId();
-                    authLifecycleManager.logout(user);
-                    s.setUser(null);
-                    promptHandler.deactivate(s.terminalId());
+                    try {
+                        auth.logoutTerminal(s, s.requireUserId());
+                    } catch (AuthException rejected) {
+                        s.output(rejected.getMessage());
+                        return CommandResult.REFUSE;
+                    }
                     s.output("Logged out.");
                     throw new LogoutException();
                 });

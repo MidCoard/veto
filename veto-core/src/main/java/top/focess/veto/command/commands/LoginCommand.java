@@ -5,80 +5,49 @@ import org.jspecify.annotations.NonNull;
 import top.focess.command.CommandResult;
 import top.focess.command.CommandSender;
 import top.focess.veto.command.VetoCommand;
-import top.focess.veto.command.VetoCommandSender;
-import top.focess.veto.vault.*;
+import top.focess.veto.vault.AuthException;
+import top.focess.veto.vault.AuthService;
 
-/**
- * Authenticates the terminal user and unlocks their vault. The password is always prompted with
- * masked input, never accepted as an argument.
- */
+/** Terminal authentication adapter; passwords are always entered through masked input. */
 public class LoginCommand extends VetoCommand {
+    private final @NonNull AuthService auth;
 
-    private final @NonNull UserRegistry users;
-    private final @NonNull AuthLifecycleManager authLifecycleManager;
-
-    /** Constructs the {@code /login} command over the given user registry and auth lifecycle. */
-    public LoginCommand(
-            @NonNull UserRegistry users, @NonNull AuthLifecycleManager authLifecycleManager) {
+    public LoginCommand(@NonNull AuthService auth) {
         super("login", "Sign in to your account");
-        this.users = users;
-        this.authLifecycleManager = authLifecycleManager;
+        this.auth = auth;
     }
 
     @Override
     public void init() {
         addExecutor(
                 (sender, args) -> {
-                    VetoCommandSender s = vetoSender(sender);
+                    var s = vetoSender(sender);
                     if (s == null) return CommandResult.REFUSE;
-
-                    String u = args.get("user");
-
-                    if (u == null) {
-                        u = s.input("Username:", false);
-                        if (u == null) {
-                            s.output("Login cancelled.");
-                            return CommandResult.REFUSE;
-                        }
-                        if (u.isEmpty()) {
-                            s.output("Username cannot be empty.");
-                            return CommandResult.REFUSE;
-                        }
-                    }
-                    // Password is always prompted interactively with masking - never
-                    // accepted as a command-line argument.
-                    String p = s.input("Password:", true);
-                    if (p == null) {
+                    String username = args.get("user");
+                    if (username == null) username = s.input("Username:", false);
+                    if (username == null) {
                         s.output("Login cancelled.");
                         return CommandResult.REFUSE;
                     }
-                    if (p.isEmpty()) {
-                        s.output("Password cannot be empty.");
+                    String password = s.input("Password:", true);
+                    if (password == null) {
+                        s.output("Login cancelled.");
                         return CommandResult.REFUSE;
                     }
-
-                    synchronized (authLifecycleManager) {
-                        var authenticated = users.authenticate(u, p);
-                        if (authenticated.isEmpty()) {
-                            s.output("Invalid username or password.");
-                            return CommandResult.REFUSE;
-                        }
-                        try {
-                            authLifecycleManager.login(u, p);
-                            s.setUser(authenticated.orElseThrow());
-                        } catch (Exception e) {
-                            s.output("Failed to unlock vault: " + e.getMessage());
-                            return CommandResult.REFUSE;
-                        }
+                    try {
+                        var user = auth.loginTerminal(s, username, password);
+                        s.output("Logged in as " + user.getUsername() + ".");
+                        return CommandResult.ALLOW;
+                    } catch (AuthException rejected) {
+                        s.output(rejected.getMessage());
+                        return CommandResult.REFUSE;
                     }
-                    s.output("Logged in as " + u + ".");
-                    return CommandResult.ALLOW;
                 },
                 opt("user"));
     }
 
     @Override
-    public @NonNull List<String> usage(@NonNull CommandSender s) {
+    public @NonNull List<String> usage(@NonNull CommandSender sender) {
         return List.of("/login [user] - Sign in to your account (password is prompted)");
     }
 }

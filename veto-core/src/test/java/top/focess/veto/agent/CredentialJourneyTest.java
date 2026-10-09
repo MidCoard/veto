@@ -72,7 +72,8 @@ class CredentialJourneyTest {
         var configuration = new CredentialVaultConfiguration();
         configuration.setVaultHome(root.resolve("vault").toString());
         var vault = new KeysteadVault(configuration, TestUsers.registry());
-        var userId = vault.signup("owner", "test-password");
+        vault.createVault(TestUsers.OWNER, "test-password");
+        var userId = vault.login("owner", "test-password");
         var pluginConfiguration = new PluginConfigurations();
         pluginConfiguration.setToolNames(
                 Map.of(
